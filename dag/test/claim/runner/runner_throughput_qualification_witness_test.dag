@@ -52,7 +52,7 @@ import gunbc.runner_throughput_qualification_route {
   QualificationStage, mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels,
   route_controller_writes_are_gated, route_controller_write_count, route_registers_one_slot,
   route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
-  route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing, stage_egress, BootHostUnderApprovalGate,
+  route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing, mtcollins1_capacity_class_candidate, stage_egress, BootHostUnderApprovalGate,
   RegisterEphemeralRunnerSlot, DispatchFloorToSlot, CollectInstruments, DeregisterRunnerSlot,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire,
 }
@@ -155,10 +155,10 @@ fn good_run(revision: String) -> QualificationRun {
 fn subject(runs: List<QualificationRun>) -> RunnerThroughputQualification {
   RunnerThroughputQualification {
     host: "mtcollins1",
-    capacity_class_candidate: ControlPlaneCapacity,
+    capacity_class_candidate: mtcollins1_capacity_class_candidate,
     workload: pin(),
     slot_envelope: gunbc_runner_slot_desired(),
-    workspace_backing: RamBackedTmpfs,
+    workspace_backing: mtcollins1_qualification_workspace_backing,
     cores_per_slot: gunbc_runner_cores_per_slot(),
     calibration: floor_eval_step_calibration,
     runs: runs,

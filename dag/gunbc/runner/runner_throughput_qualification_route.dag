@@ -3,7 +3,7 @@ module gunbc.runner_throughput_qualification_route
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size_count, hardware_thread_count_value }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { CapacityClass, ControlPlaneCapacity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
