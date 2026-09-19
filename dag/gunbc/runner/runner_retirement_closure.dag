@@ -10,6 +10,9 @@ import gunbc.fleet_runner_connectivity {
   RosterReadUnavailable,
 }
 import gunbc.runner_slot_retirement {
+  authoritative_standing_for,
+  authoritative_standing_is_complete,
+  authoritative_standing_cause,
   RetirementMethodAvailability,
   MethodAvailable,
   MethodUnavailable,
@@ -20,13 +23,17 @@ import gunbc.runner_slot_retirement {
 import gunbc.runner_host_retirement {
   SurplusIdentityDisposition,
   surplus_identity_disposition,
+  host_retirement_capture,
   surplus_identity_blocks_closure,
+  surplus_identity_within_retirement_scope,
   surplus_identity_name,
   EstateCleanupStanding,
   EstateCleanupComplete,
   EstateCleanupOutstanding,
   EstateObligation,
   estate_obligation_wire,
+  RetireeObligationBasis,
+  retiree_obligation_ungrounded_cause,
 }
 
 // THE CLOSURE CLAIM IS A CONJUNCTION, AND EVERY WAY OF NOT KNOWING IS A CONJUNCT.
@@ -132,7 +139,20 @@ fn roster_surplus_dispositions(
         host: host,
         decoding: decode_registration_slot(reg: r),
         name: r.name,
+        capture: host_retirement_capture(host: host),
       ))
+  }
+}
+
+// THE BLOCKER NAMES WHICH KIND OF OUTSIDER THIS IS, because the remedies differ and a single
+// sentence for all of them sends an operator to the wrong one. An identity inside a declared
+// retirement's scope is owed a retirement; an owned one on a host nobody retired is a surplus
+// somebody must adjudicate; an unresolved or foreign name may not be touched at all.
+fn surplus_blocker_cause(d: SurplusIdentityDisposition) -> String {
+  if surplus_identity_within_retirement_scope(d: d) {
+    "this identity is ours and falls inside a declared retirement's scope, so it is owed a retirement this assessment has not established; the committed-slot decoder not recognizing it is a fact about the decoder, not a discharge"
+  } else {
+    "this identity sits outside the committed population and outside any declared retirement scope, so it may be neither retired under this transaction nor dropped from it; it needs adjudication before anything acts on it"
   }
 }
 
@@ -141,23 +161,28 @@ fn surplus_blockers(dispositions: List<SurplusIdentityDisposition>) -> List<Clos
     |> filter(d => surplus_identity_blocks_closure(d: d))
     |> map(d => ClosureBlocker {
         subject: surplus_identity_name(d: d) as String,
-        cause: "this identity sits outside the committed population and is still an obligation of this closure; the committed-slot decoder not recognizing it is a fact about the decoder, not a discharge",
+        cause: surplus_blocker_cause(d: d),
       })
 }
 
 // A REQUIRED RETIREE IS ITS OWN BLOCKER UNTIL ITS STANDING SAYS `RetirementComplete`, and a required
 // retiree with NO standing at all blocks hardest -- the identity join is over the obligation, so an
 // omitted subject cannot be covered by a neighbour's success or by the shorter list arriving.
+// EVERY REQUIRED RETIREE GOES THROUGH THE SHARED AUTHORITATIVE JOIN. The previous version filtered to
+// the completed standings and asked for membership, which discards a disagreeing reading for the same
+// unit: [Complete(u), Unobserved(u)] produced no blocker in either list order.
 fn retiree_blockers(
   required: List<NonEmptyStr>,
   standings: List<RunnerRetirementStanding>,
 ) -> List<ClosureBlocker> {
-  let completed = standings |> filter(s => retirement_is_complete(s: s)) |> map(s => retirement_unit(s: s))
   required
-    |> filter(u => !any(completed, c => c == (u as String)))
+    |> filter(u => !authoritative_standing_is_complete(a: authoritative_standing_for(standings: standings, unit: u as String)))
     |> map(u => ClosureBlocker {
         subject: u as String,
-        cause: "this required retiree has no observed RetirementComplete standing in this assessment; it is either outstanding, unobserved, or absent from the standings, and all three leave a required subject unestablished",
+        cause: join([
+          "this required retiree has no authoritative RetirementComplete standing in this assessment: ",
+          authoritative_standing_cause(a: authoritative_standing_for(standings: standings, unit: u as String)),
+        ], ""),
       })
 }
 
@@ -180,6 +205,65 @@ fn method_blockers(
 // the count that says which it is. `PlannerSawCompleteSubject { operations_emitted: _ } => []` meant
 // the converging control stayed green when its operation count moved from 0 to 1. "Zero hunks alone
 // is insufficient" is a statement that zero is not ENOUGH; it never made a non-zero count harmless.
+// AN UNGROUNDED POPULATION IS A BLOCKER, NOT A MARKER. The basis was reported on the receipt and
+// consumed by nothing: an authored search range reached the obligation consumer with `UNGROUNDED`
+// printed beside it and no consequence, so the assessment could read clear over a set of identities
+// nobody had observed. The blocker names population grounding specifically, so the remedy -- the
+// owned-identity capture -- is what an operator is sent to get.
+fn grounding_blockers(host: HostIdentity, basis: RetireeObligationBasis) -> List<ClosureBlocker> {
+  match retiree_obligation_ungrounded_cause(b: basis) {
+    Absent => []
+    Present { value: c } => [
+      ClosureBlocker {
+        subject: join([host as String, "/population-grounding"], ""),
+        cause: c,
+      },
+    ]
+  }
+}
+
+// THE ASSESSED POPULATION IS COMPARED AGAINST THE WHOLE OBLIGATION AUTHORITY, NOT AGAINST ONE ARM.
+//
+// The first version of this fold compared `required` against the host-retirement CAPTURE alone and
+// labelled every identity it did not contain an obligation the evidence does not support. But the
+// production population is the union of two independent authorities -- declared width transitions and
+// grounded host retirements -- and `transition_required_retiring` deduplicates them by exact
+// identity. So an identity contributed by the WIDTH TRANSITION was reported as unsupported, and the
+// check rejected the very union its own producer constructs. A width-transition declaration supports
+// its retirees exactly as a capture supports its members; neither authority may be rewritten to make
+// the other's comparison pass.
+//
+// THE EXPECTED POPULATION IS THEREFORE DERIVED ONCE, from the same function production consumes, and
+// the join runs in both directions over it: an identity the authority names and the assessment
+// omitted was never established, and an identity the assessment carries that no authority names is an
+// obligation nothing supports.
+//
+// WHAT THIS DOES AND DOES NOT CATCH, said plainly. The production route derives the assessed
+// population and this expected population from ONE call, so they cannot disagree there -- this fold
+// is not reporting a live divergence and would be dishonest to describe as one. It is the wall
+// against a caller that assembles the assessed set some other way, and it is exercised by claims that
+// supply the two separately. The grounding of the capture is a different question and stays with
+// `grounding_blockers`.
+fn obligation_coverage_blockers(
+  obligation_population: List<NonEmptyStr>,
+  required: List<NonEmptyStr>,
+) -> List<ClosureBlocker> {
+  concat(
+    obligation_population
+      |> filter(o => !any(required, r => (r as String) == (o as String)))
+      |> map(o => ClosureBlocker {
+          subject: o as String,
+          cause: "a declared obligation authority -- a width transition or a grounded host retirement -- names this identity as a required retiree, and this assessment did not cover it, so nothing was established about it",
+        }),
+    required
+      |> filter(r => !any(obligation_population, o => (o as String) == (r as String)))
+      |> map(r => ClosureBlocker {
+          subject: r as String,
+          cause: "this identity was assessed as a required retiree but no declared obligation authority names it -- neither a width transition nor a grounded owned-identity capture -- so nothing supports the obligation claimed for it",
+        }),
+  )
+}
+
 fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
   match d {
     PlannerSawCompleteSubject { operations_emitted: n } =>
@@ -250,7 +334,10 @@ fn retirement_assessment_verdict(
   method_subjects: List<String>,
   method_availability: RetirementMethodAvailability,
   planner: PlannerDisposition,
+  basis: RetireeObligationBasis,
+  obligation_population: List<NonEmptyStr>,
   estate: EstateCleanupStanding,
+  extra: List<ClosureBlocker>,
 ) -> RetirementAssessmentVerdict {
   let blockers = concat(
     concat(
@@ -263,7 +350,13 @@ fn retirement_assessment_verdict(
         flat_map(method_subjects, u => method_blockers(unit: u, availability: method_availability)),
       ),
     ),
-    concat(planner_blockers(d: planner), estate_blockers(host: host, estate: estate)),
+    concat(
+      concat(
+        concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+        obligation_coverage_blockers(obligation_population: obligation_population, required: required),
+      ),
+      concat(estate_blockers(host: host, estate: estate), extra),
+    ),
   )
   if list_length(items: blockers) == 0 {
     AssessmentClearOfBlockers { revision: revision, required_subjects: list_length(items: required) }
