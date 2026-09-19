@@ -2652,6 +2652,37 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   )
 }
 
+// A LIST LITERAL WITH NO EXPECTED TYPE CLAIMS ITS HEAD ELEMENT'S TYPE FOR EVERY MEMBER. The
+// ExprListLit arm types the literal List<head> and, with no expected element, judged no member
+// against that claim -- so `join(["id-", maybe_s(x: 1)], "")` typed as List<String> while holding a
+// String?, compiled with ZERO diagnostics, and the interpreter stringified the variant (gunbc#11626).
+// The head is not a declaration, so only the one DECIDED verdict is asserted against it: a member
+// that carries optionality where the head established a Required, non-generic type
+// (optional_produced_at_required_declared, the same predicate the declared-type relation consumes).
+// Every other disagreement between members stays unjudged at this seam, because the head's type is
+// an elected representative rather than an authored contract, and refusing on the relation's other
+// arms against it would be a fabricated obligation.
+fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  match typed_elements |> first {
+    Present { value: head } =>
+      let head_type = resolved_type(n: head)
+      flat_map(typed_elements |> skip(1), te =>
+        if optional_produced_at_required_declared(declared: head_type, produced: resolved_type(n: te), scope: scope) {
+          [make_error_node(
+            diagnostic: DeclaredTypeNotInhabited {
+              position: declared_type_position_label(position: PositionListElement, subject: ""),
+              expected: node_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
+              span: te.span
+            },
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      )
+    Absent => []
+  }
+}
+
 fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope) -> InferResult {
   let result = infer_expr(texpr: element, scope: scope, expected: expected)
   match expected {
@@ -3436,6 +3467,7 @@ type InhabitanceRefusalReason
   | RefusedKernelAtStructured
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
+  | RefusedOptionalAtRequired
 
 
 type InhabitanceVerdict
@@ -3662,7 +3694,9 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
-  if either_optional {
+  if optional_produced_at_required_declared(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedOptionalAtRequired }
+  } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
@@ -3701,6 +3735,41 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
         }
     }
   }
+}
+
+// AN OPTIONAL WHERE A REQUIRED VALUE IS DECLARED IS DECIDED, NOT UNDECIDABLE (DESIGN 4b floor:
+// "values inhabit declared types"). UndecidableOptionalCarrier was written for the lift direction --
+// a T standing in an Optional<T> position is the declared spelling -- and that direction stays
+// undecided below. The converse was swept into the same arm: a produced value that CARRIES
+// optionality (CardOptional, or the nominal Optional coproduct) at a declared position that carries
+// none has no inhabitant relation to settle, because Absent inhabits no Required type. Filing it as
+// undecidable made it an advisory, the program compiled, and the interpreter then rendered the
+// variant into a String context -- receipt gunbc#11626, `join([prefix, base64_encode(..)], "")`
+// producing `id-Present { value: ... }`. Refusal requires the declared side to be ESTABLISHED
+// Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
+// or erased declared identity is not a Required fact, so those stay with their own arms.
+fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_carries_optional = produced.return_cardinality == CardOptional
+    || qualified_last_segment(name: produced_name) == "Optional"
+  let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  let declared_carries_optional = declared.return_cardinality == CardOptional
+    || declared_peeled.return_cardinality == CardOptional
+    || qualified_last_segment(name: declared_name) == "Optional"
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
+  produced_carries_optional
+    && !declared_carries_optional
+    && !declared_is_generic
+    && declared_name != ""
+    && !type_node_is_callable(n: declared)
+    && !type_node_is_callable(n: produced)
+    && !direct_call_formal_has_unbound_type_variable(n: declared)
 }
 
 // Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>,
@@ -7595,7 +7664,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               scope: scope
             )
           )
-        Absent => []
+        Absent => list_literal_optional_member_diags(typed_elements: typed_elements, scope: scope)
       }
       let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let elem_type_node = if count(elem_results) > 0 {

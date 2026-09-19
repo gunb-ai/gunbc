@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data optional_admitted_where_a_required_value_is_declared: RecurringFailureMode = RecurringFailureMode {
+  identity: "optional_admitted_where_a_required_value_is_declared" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a value that carries optionality -- a CardOptional T? or the nominal Optional coproduct -- stands at a position whose declared type is Required and non-generic: a direct-call argument, a list element, or a member of a list literal whose type was elected from a Required head element. Absent inhabits no Required type, so the program has no meaning at that position; the floor obligation 'values inhabit declared types' (DESIGN 4b, the floor first) is broken.",
+    "RECEIPT, gunbc#11626 (2026-09-19): NUMERIC-BIT-0 #11643 changed std.encoding base64_encode to return String?; the approval_device_wire site from #11660 calls join([prefix, base64_encode(..)], \"\"). No diagnostic. The regenerated vectors.json on CRYPTO-0's #11647 branch rendered the URL path as `id-Present { value: ZXNj... }` instead of `id-ZXNj...`, and the ci-auto-heal bot committed those bytes (e7b8ad2 on session/royal-stag-544) -- fabricated plausible output reaching a committed fixture.",
+    "DISTINGUISHING FACTS, measured on main 3fabccc35f: a String? at a String direct-call parameter and at a List<String> argument's element compiled with only an advisory, v1.compiler.infer declared_type_inhabitance filing both under UndecidableOptionalCarrier -- a reason written for the LIFT direction (a T standing in an Optional<T> position) and applied to the converse, which is decided. A list literal with NO expected type (join's receiver) typed as List<head> and judged no member at all: 0 diagnostics. Neighbouring walls were silent by construction: kernel_value_declared_type_mismatch bails unless the ACTUAL is a kernel type, and nominal_call_arg_brand_mismatch requires equal structural-carrier templates.",
+    "SECOND HALF OF THE SAME CLASS: the interpreter's rendering of a variant value into a String context (join, concat, interpolation) produces the Debug-shaped text `Present { value: ... }` rather than refusing. That is the runtime realization of the same invalid state; the compile wall makes it unreachable for Accepted programs at the judged positions, and the interpreter arm itself remains a mitigation-rung obligation: a String context receiving a non-String value should refuse typed, never stringify.",
+    "HARM: silent wrongness, outside the ladder -- the output is plausible bytes, not a crash, and it was committed as a fixture by an automated heal.",
+    "RUNG FOUND AT: silent, below the floor. CURRENT RUNG after the change filing this row: structurally guaranteed at the direct-call argument, declared list element, and undeclared list-literal member positions -- optional_produced_at_required_declared refuses with DeclaredTypeNotInhabited naming position, parameter, declared and produced types. CEILING: structurally guaranteed (typecheck refusal); decidable from the two resolved types.",
+    "NEXT-RUNG TRIGGER: the remaining DeclaredTypePosition producers (record literal field, let annotation, declared return, map value, ...) route through the same relation, and the interpreter's String-context rendering of a variant refuses typed. Fixtures: test.claim.optional_at_required_position_witness_test.",
+  ],
+  evidence: [],
+}

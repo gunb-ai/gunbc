@@ -1,0 +1,94 @@
+module test.claim.optional_at_required_position_witness_test
+
+// AN OPTIONAL WHERE A REQUIRED VALUE IS DECLARED MUST REFUSE (DESIGN 4b floor: values inhabit
+// declared types). Class row: gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared.
+// Receipt gunbc#11626: join([prefix, base64_encode(..)], "") with base64_encode returning String?
+// compiled clean and the interpreter rendered `id-Present { value: ... }`.
+//
+// Three REDs, one per judged position: a direct-call String parameter, an element of a list
+// supplied at a declared List<String> parameter, and a member of a list literal with NO expected
+// type (join's receiver, the production shape). Measured on main 3fabccc35f before the wall: the
+// first two compiled with an advisory only, the third with zero diagnostics. Three positive
+// controls keep the red measuring the distinction and not a blanket refusal: a String at the
+// String parameter, the Optional matched before join, and the LIFT direction (a String at a
+// String? parameter), which stays outside this wall.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn oar_direct_negative_source() -> String {
+  "module oar.direct\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  take_s(s: maybe_s(x: 1))\n}\n"
+}
+
+test fn an_optional_at_a_string_parameter_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    oar_direct_negative_source(),
+    "src/oar_direct_negative.rs",
+    [],
+    []
+  )
+}
+
+fn oar_list_arg_negative_source() -> String {
+  "module oar.list_arg\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> Int {\n  take_l(xs: [\"p\", maybe_s(x: 1)])\n}\n"
+}
+
+test fn an_optional_member_of_a_declared_string_list_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    oar_list_arg_negative_source(),
+    "src/oar_list_arg_negative.rs",
+    [],
+    []
+  )
+}
+
+fn oar_join_negative_source() -> String {
+  "module oar.join\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  join([\"id-\", maybe_s(x: 1)], \"\")\n}\n"
+}
+
+test fn an_optional_member_of_an_undeclared_list_literal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    oar_join_negative_source(),
+    "src/oar_join_negative.rs",
+    [],
+    []
+  )
+}
+
+fn oar_direct_positive_source() -> String {
+  "module oar.direct_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  take_s(s: \"v\")\n}\n"
+}
+
+test fn a_string_at_a_string_parameter_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    oar_direct_positive_source(),
+    "src/oar_direct_positive.rs",
+    [],
+    []
+  )
+}
+
+fn oar_join_positive_source() -> String {
+  "module oar.join_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> String {\n  match maybe_s(x: 1) {\n    Present { value: v } => join([\"id-\", v], \"\")\n    Absent => \"\"\n  }\n}\n"
+}
+
+test fn matching_the_optional_before_join_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    oar_join_positive_source(),
+    "src/oar_join_positive.rs",
+    [],
+    []
+  )
+}
+
+fn oar_lift_positive_source() -> String {
+  "module oar.lift_ok\n\nimport std.types { Int, String }\n\nfn maybe_s(x: Int) -> String? {\n  if x > 0 { Present { value: \"v\" } } else { none }\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_l(xs: List<String>) -> Int {\n  xs |> count\n}\n\nfn take_o(s: String?) -> Int {\n  match s {\n    Present { value: _ } => 1\n    Absent => 0\n  }\n}\n\nfn probe() -> Int {\n  take_o(s: \"v\")\n}\n"
+}
+
+test fn a_string_at_an_optional_parameter_is_not_this_wall() -> Bool {
+  compile_dag_rust_emit_check(
+    oar_lift_positive_source(),
+    "src/oar_lift_positive.rs",
+    [],
+    []
+  )
+}
