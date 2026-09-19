@@ -1,9 +1,24 @@
-module gunbc.runner_registration_name
+module gunbc.legacy_slot_incarnation_name
 
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import std.algebra { trim }
 
-// THE REGISTRATION NAME THE RUNNING FLEET ACTUALLY USES, AND THE MODEL THAT SAID OTHERWISE.
+// THE NAMING AUTHORITY FOR THE LEGACY SHARED-HOST SLOT INCARNATION GRAMMAR.
+//
+// TWO CONSUMERS, AND THE SECOND IS WHY THIS IS A MODULE RATHER THAN A HELPER INSIDE THE CAPTURE
+// BOUNDARY. At the capture boundary it CORROBORATES: a `.runner` found under `.../srv2-02/` must
+// carry a name that decodes to `srv2-02`, and disagreement leaves that capture unresolved rather than
+// letting the directory or the name win. In a COMPLETE ROSTER SCAN it CLASSIFIES: a remote
+// registration with no local capture at all has only its name to go on, and decoding it is how owned
+// surplus beyond the captured files is found. Folding this into the capture boundary would lose the
+// second consumer entirely, and the second consumer is the one that finds what nobody wrote a file
+// for.
+//
+// WHAT A DECODE ESTABLISHES IN EACH CASE IS DIFFERENT, AND THE DIFFERENCE IS NOT IN THIS MODULE.
+// Here a decode says only WHAT THE NAME DENOTES. At the capture boundary that is corroboration of an
+// admitted observation; in a roster scan it is a CANDIDATE that still needs corroboration and is
+// never ownership on its own. This module deliberately returns the same answer to both and lets each
+// consumer decide what it is worth.
 //
 // THE PRODUCER, AS INSTALLED EVIDENCE RATHER THAN A DEPENDENCY. srv2's live `.runner` files carry
 // AgentName values like `srv2-02-1789774588-3693107` (operator-authorized census 2026-09-19 10:34Z,

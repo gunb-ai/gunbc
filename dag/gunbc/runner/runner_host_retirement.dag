@@ -7,7 +7,7 @@ import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import std.nat { Nat, nat_range_inclusive }
-import gunbc.runner_registration_name {
+import gunbc.legacy_slot_incarnation_name {
   RegistrationNameMatch,
   MatchedBareSlotName,
   MatchedJitInstance,
@@ -379,7 +379,7 @@ data registration_discovery_bound: Nat = 50
 // unresolved even when handed a COMPLETE capture that listed it, because recognition gates ownership
 // and recognition could not place it. The grounding path could not be grounded by real data.
 //
-// The comparison now goes through `gunbc.runner_registration_name`, which anchors on the FULL
+// The comparison now goes through `gunbc.legacy_slot_incarnation_name`, which anchors on the FULL
 // canonical slot name and requires the remainder to be exactly the producer's two numeric fields.
 fn canonical_slot_index_of(host: HostIdentity, name: NonEmptyStr) -> Nat? {
   fold(

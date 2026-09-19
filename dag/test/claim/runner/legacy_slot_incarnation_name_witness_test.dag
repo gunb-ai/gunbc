@@ -1,10 +1,10 @@
-module test.claim.runner.runner_registration_name_witness
+module test.claim.runner.legacy_slot_incarnation_name_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.types { NonEmptyStr, String, Int }
 import gunbc.fleet_intent_network { operator_host_srv2 }
-import gunbc.runner_registration_name {
+import gunbc.legacy_slot_incarnation_name {
   MatchedBareSlotName,
   MatchedJitInstance,
   RegistrationNameNoMatch,

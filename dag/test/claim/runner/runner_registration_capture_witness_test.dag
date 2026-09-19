@@ -1,0 +1,259 @@
+module test.claim.runner.runner_registration_capture_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String, Int, list_length }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import extdeps.github.actions_runner { ActionsRunnerRegistrationEphemeral, ActionsRunnerRegistrationPersistent }
+import gunbc.runner_registration_capture {
+  CaptureProvenance,
+  RunnerRegistrationBinding,
+  CaptureAdmission,
+  CaptureBound,
+  CaptureUnresolved,
+  capture_admission,
+  binding_local_unit,
+  binding_remote_subject,
+  local_unit_obligations,
+  remote_registration_obligations,
+  CapturesCoherent,
+  CaptureIdAttributedTwice,
+  capture_coherence,
+  CaptureCensusComplete,
+  CaptureCensusPartial,
+  CaptureCensusUnavailable,
+  census_binding_for_agent,
+  CapturePopulationKnown,
+  CapturePopulationIncomplete,
+  capture_population_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE LITERAL CENSUS SPECIMEN, THROUGH THE WHOLE PATH ──────────────────────────────────────
+
+// READ OFF srv2 ON 2026-09-19 AT 10:34Z. The JSON is the shape config.sh writes; the AgentId and
+// AgentName are the observed values for slot 02.
+data srv2_02_runner_json: String = "{\"AgentId\":251463,\"AgentName\":\"srv2-02-1789774588-3693107\",\"PoolId\":1,\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}"
+
+fn census_provenance() -> CaptureProvenance {
+  CaptureProvenance {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    method: "operator-authorized read-only census" as NonEmptyStr,
+  }
+}
+
+fn srv2_02_admission() -> CaptureAdmission {
+  capture_admission(
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    raw: srv2_02_runner_json,
+    provenance: census_provenance(),
+  )
+}
+
+// THE PRINCIPAL POSITIVE. The specimen must preserve AgentId 251463 and the full remote name WHILE
+// producing the unsuffixed local unit. Before the binding, mapping the captured name through the unit
+// projection produced actions-runner@srv2-02-1789774588-3693107.service, which is no unit on the
+// host; mapping the bare slot instead lost the identity needed to address the remote object.
+test fn the_census_specimen_binds_slot_unit_and_registration() -> Bool {
+  match srv2_02_admission() {
+    CaptureBound { binding: b } =>
+      (binding_local_unit(b: b) as String) == "actions-runner@srv2-02.service"
+        && b.agent_id == 251463
+        && (b.agent_name as String) == "srv2-02-1789774588-3693107"
+        && (b.organization as String) == "https://github.com/gunb-ai"
+        && (b.slot_instance as String) == "srv2-02"
+        && (b.provenance.observed_on as String) == "2026-09-19T10:34Z"
+    CaptureUnresolved { capture_path: _, cause: _ } => false
+  }
+}
+
+// THE REMOTE SUBJECT IS ADDRESSED BY ID, with the name carried only to corroborate.
+test fn the_remote_subject_is_the_org_scoped_id() -> Bool {
+  match srv2_02_admission() {
+    CaptureBound { binding: b } => {
+      let s = binding_remote_subject(b: b)
+      s.agent_id == 251463 && (s.organization as String) == "https://github.com/gunb-ai"
+    }
+    CaptureUnresolved { capture_path: _, cause: _ } => false
+  }
+}
+
+// ── THE PAIRED CONTROLS ──────────────────────────────────────────────────────────────────────
+
+// THE SAME VALID NAME WITHOUT OWNERSHIP EVIDENCE stays recognized-but-unresolved: a census that never
+// observed it yields no binding for that id, so nothing establishes it is ours.
+test fn a_valid_name_with_no_capture_yields_no_binding() -> Bool {
+  match census_binding_for_agent(
+    c: CaptureCensusUnavailable { cause: "no census taken" },
+    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    agent_id: 251463,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A MALFORMED SUFFIX REFUSES DESPITE THE PREFIX -- the capture-boundary corroboration consumes the
+// legacy name authority, so a name in the namespace that is not an incarnation of this slot blocks.
+test fn a_malformed_suffix_refuses_despite_the_prefix() -> Bool {
+  match capture_admission(
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    raw: "{\"AgentId\":9,\"AgentName\":\"srv2-02-notanumber-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
+    provenance: census_provenance(),
+  ) {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// CAPTURE-DIRECTORY / NAME DISAGREEMENT BLOCKS. A `.runner` naming slot 05 found under slot 02's
+// installation is a copied or misplaced file, and it is not resolved by preferring either side.
+test fn a_directory_and_name_disagreement_blocks() -> Bool {
+  match capture_admission(
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    raw: "{\"AgentId\":251484,\"AgentName\":\"srv2-05-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
+    provenance: census_provenance(),
+  ) {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// TWO INCARNATIONS OF ONE SLOT ARE TWO REMOTE SUBJECTS AND ONE LOCAL UNIT. Collapsing them by slot
+// would drop a live registration; collapsing the unit twice would demand two inhibitions of one unit.
+fn incarnation(agent_id: Int, name: String) -> RunnerRegistrationBinding {
+  RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    agent_id: agent_id,
+    agent_name: name as NonEmptyStr,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: census_provenance(),
+  }
+}
+
+test fn two_incarnations_are_two_remote_subjects_and_one_unit() -> Bool {
+  let bs = [
+    incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+    incarnation(agent_id: 301000, name: "srv2-02-1789999999-4111111"),
+  ]
+  list_length(items: local_unit_obligations(bindings: bs)) == 1
+    && list_length(items: remote_registration_obligations(bindings: bs)) == 2
+}
+
+// ONE ID ATTRIBUTED TO TWO SLOTS IS A CONTRADICTION.
+test fn one_id_attributed_to_two_slots_is_incoherent() -> Bool {
+  let a = incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107")
+  let b = RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: "srv2-05" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-05/.runner" as NonEmptyStr,
+    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    agent_id: 251463,
+    agent_name: "srv2-05-1789774588-3693107" as NonEmptyStr,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: census_provenance(),
+  }
+  match capture_coherence(bindings: [a, b]) {
+    CaptureIdAttributedTwice { agent_id: i, first_slot: _, second_slot: _ } => i == 251463
+    CapturesCoherent => false
+  }
+}
+
+// ── COMPLETENESS IS NOT A PREREQUISITE FOR A POSITIVE MEMBER FACT ────────────────────────────
+
+// A PARTIAL CENSUS STILL CARRIES A SOUND BINDING for a member it did observe. The earlier blanket
+// refusal of ownership from any partial capture was too coarse.
+test fn a_partial_census_still_binds_an_observed_member() -> Bool {
+  match census_binding_for_agent(
+    c: CaptureCensusPartial {
+      observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+      bindings: [incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107")],
+      unresolved: [],
+      cause: "four of seven trees read",
+    },
+    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    agent_id: 251463,
+  ) {
+    Present { value: b } => b.agent_id == 251463
+    Absent => false
+  }
+}
+
+// AND IT STILL CANNOT SAY THE POPULATION IS KNOWN, which is the claim completeness governs.
+test fn a_partial_census_cannot_establish_the_population() -> Bool {
+  match capture_population_standing(c: CaptureCensusPartial {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    bindings: [incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107")],
+    unresolved: [],
+    cause: "four of seven trees read",
+  }) {
+    CapturePopulationIncomplete { cause: _ } => true
+    CapturePopulationKnown { observed_on: _, bindings: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR COMPLETENESS, so the standing is not permanently incomplete.
+test fn a_complete_coherent_census_establishes_the_population() -> Bool {
+  match capture_population_standing(c: CaptureCensusComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    bindings: [incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107")],
+    unresolved: [],
+  }) {
+    CapturePopulationKnown { observed_on: _, bindings: bs } => list_length(items: bs) == 1
+    CapturePopulationIncomplete { cause: _ } => false
+  }
+}
+
+// AN UNRESOLVED CAPTURE INSIDE A COMPLETE CENSUS STILL REFUSES THE POPULATION -- a member the
+// procedure could not settle is one the population does not account for.
+test fn an_unresolved_capture_blocks_the_population() -> Bool {
+  match capture_population_standing(c: CaptureCensusComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    bindings: [incarnation(agent_id: 251463, name: "srv2-02-1789774588-3693107")],
+    unresolved: [CaptureUnresolved { capture_path: "/opt/actions-runner/srv2-11/.runner" as NonEmptyStr, cause: "name disagrees with directory" }],
+  }) {
+    CapturePopulationIncomplete { cause: _ } => true
+    CapturePopulationKnown { observed_on: _, bindings: _ } => false
+  }
+}
+
+// A CAPTURED SLOT OUTSIDE COMMITTED MEMBERSHIP STILL BINDS. srv2 commits nothing, and srv2-11 is
+// outside any committed range -- so if desired capacity ever became an identity-recognition filter,
+// this row goes red.
+test fn a_captured_slot_outside_committed_membership_still_binds() -> Bool {
+  match capture_admission(
+    host: operator_host_srv2,
+    slot_instance: "srv2-11" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-11/.runner" as NonEmptyStr,
+    raw: "{\"AgentId\":91529,\"AgentName\":\"srv2-11-1780000000-1111111\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
+    provenance: census_provenance(),
+  ) {
+    CaptureBound { binding: b } =>
+      b.agent_id == 91529 && (binding_local_unit(b: b) as String) == "actions-runner@srv2-11.service"
+    CaptureUnresolved { capture_path: _, cause: _ } => false
+  }
+}
+
+// A BARE (UNSUFFIXED) CAPTURED NAME BINDS TOO, so the repair did not make the suffix mandatory.
+test fn a_bare_captured_name_binds() -> Bool {
+  match capture_admission(
+    host: operator_host_srv2,
+    slot_instance: "srv2-03" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-03/.runner" as NonEmptyStr,
+    raw: "{\"AgentId\":7,\"AgentName\":\"srv2-03\",\"Ephemeral\":\"False\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
+    provenance: census_provenance(),
+  ) {
+    CaptureBound { binding: b } => (binding_local_unit(b: b) as String) == "actions-runner@srv2-03.service"
+    CaptureUnresolved { capture_path: _, cause: _ } => false
+  }
+}
