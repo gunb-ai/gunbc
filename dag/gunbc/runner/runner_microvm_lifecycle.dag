@@ -1,0 +1,445 @@
+module gunbc.runner_microvm_lifecycle
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.disposition { Disposition, SingleAuthority }
+import product.fabric.sanitation {
+  CellId, SandboxId, CellReadiness, SanitationFact, SanitationReadback, SanitationObservation,
+  FactConfirmed, FactRefuted, FactUnobservable,
+  NoSurvivingProcesses, CgroupEmpty, MountsRemoved, SlotNetworkQuiescent, SlotScopedNetwork,
+  WritableLayersDeleted, SecretsRemoved, cell_readiness_after,
+}
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_microvm { RunnerGuestImage }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
+  runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
+}
+import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired,
+  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
+  InFlightAttempt, CellBoundAttempt, AttemptCellBinding, AttemptBoundToCell, AttemptCellMismatch,
+  bind_attempt_to_cell, in_flight_attempt_unit,
+}
+
+data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
+
+// THE HOST-SIDE PER-ATTEMPT LIFECYCLE CONTROLLER, AS THE DECISIONS IT MAKES.
+//
+// gunbc.runner_microvm names the topology VmmUnderLifecycleController: a controller is the slot
+// unit's MainPID, the VMM runs beneath it, and the unit's intent (ExitType=main with
+// KillMode=control-group, gunbc#11662) makes systemd's stop reach the whole cgroup once the
+// controller exits. This module is what the controller decides at each step, from what it has
+// observed; the realization that performs the steps consumes these decisions and adds none.
+//
+// DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
+// no production entry calls it yet. NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize, the
+// controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
+// stop_request_admission and settle_teardown, reading and writing the store through
+// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
+// adhoc-3faa2033-f8f lane. TRIGGER: that module lands with srv1 transient-unit receipts for the
+// modeled REDs (SIGTERM-ignoring child, double-fork, unkillable task, failed cgroup read, stale stop,
+// background process after success). SUFFICIENT FOR retiring this paragraph. NOT satisfied by that
+// module compiling, or by it existing without an entry the slot unit execs.
+//
+// THE RULE THE WHOLE MODULE IS SHAPED BY: A GUEST EVENT MAY TRIGGER TEARDOWN, AND NO GUEST EVENT
+// MAY ESTABLISH SANITATION. The guest is the tenant. "The runner exited 0" and "the guest powered
+// off" are statements made by the code whose residue sanitation exists to find, so they can start a
+// teardown and can never finish one. That is carried structurally rather than as a rule a caller
+// must remember: sanitation_readback_of_teardown takes only a host-joined teardown readback, and there is no type through
+// which a guest's report could reach it.
+
+// EVERY LIFECYCLE EVENT CARRIES THE ATTEMPT'S WHOLE IDENTITY, because every question this
+// controller answers is "about WHICH incarnation". A stop request, a boot report or a readback that
+// names only the slot is ambiguous across incarnations, and the ambiguity is exactly how a stop
+// meant for the previous incarnation lands on the current one. The host and slot are inside
+// MicroVmAttempt; the VMM identity is derived from it rather than carried beside it, so the two
+// cannot disagree.
+type AttemptIdentity {
+  attempt: MicroVmAttempt
+  allocation_generation: Int
+  invocation_id: NonEmptyStr
+  jit_registration_id: NonEmptyStr
+  guest_image: RunnerGuestImage
+}
+
+// The guest image is not compared: two incarnations of one attempt id at one generation under one
+// InvocationID with one registration are one incarnation, and a comparison on a record with no
+// equality would be a second spelling of the tuple's identity.
+fn attempt_identity_same(a: AttemptIdentity, b: AttemptIdentity) -> Bool {
+  (runner_microvm_attempt_unit_name(attempt: a.attempt) as String) == (runner_microvm_attempt_unit_name(attempt: b.attempt) as String)
+    && a.allocation_generation == b.allocation_generation
+    && (a.invocation_id as String) == (b.invocation_id as String)
+    && (a.jit_registration_id as String) == (b.jit_registration_id as String)
+}
+
+// AN IDENTITY IS BOUND TO THE ADMITTED CELL BEFORE THE CONTROLLER MAY ACT ON IT, AND THE BINDING IS
+// SEALED. The admission answers for one (cell, generation); the identity names its own cell through
+// its slot and its own generation. Comparing only the generation would let an admission for cell A
+// start an attempt whose identity is cell B's (side-chat ruling on #11670): two independently
+// supplied values agreeing on one axis. CellBoundIdentity is constructible only by
+// bind_identity_to_admission, which joins BOTH axes, so every consumer that holds one holds the join.
+type CellBoundIdentity sole_constructor {
+  attempt: CellBoundAttempt
+  guest_image: RunnerGuestImage
+}
+
+type CellBinding
+  = CellBound { bound: CellBoundIdentity }
+  | CellBindingRefusedCell { admitted: CellId, identity_cell: CellId }
+  | CellBindingRefusedGeneration { admitted: Int, identity_generation: Int }
+
+fn in_flight_attempt_of_identity(identity: AttemptIdentity) -> InFlightAttempt {
+  InFlightAttempt {
+    attempt: identity.attempt,
+    invocation_id: identity.invocation_id,
+    jit_registration_id: identity.jit_registration_id,
+  }
+}
+
+// The cell axis is joined by gunbc.runner_microvm_cell_readiness bind_attempt_to_cell, the same
+// binder the store uses at read, so the controller and the store cannot disagree about what "this
+// attempt's cell" means.
+fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptIdentity) -> CellBinding {
+  if identity.allocation_generation != generation {
+    CellBindingRefusedGeneration { admitted: generation, identity_generation: identity.allocation_generation }
+  } else {
+    match bind_attempt_to_cell(cell: cell, generation: generation, attempt: in_flight_attempt_of_identity(identity: identity)) {
+      AttemptBoundToCell { bound: b } => CellBound { bound: CellBoundIdentity { attempt: b, guest_image: identity.guest_image } }
+      AttemptCellMismatch { cell: c, attempt_cell: ac } => CellBindingRefusedCell { admitted: c, identity_cell: ac }
+    }
+  }
+}
+
+// THE CONTROLLER STARTS ONLY FROM AN ADMITTED CELL, AND ITS FIRST DURABLE ACT IS THE IN-FLIGHT
+// RECORD. The admission is gunbc.runner_microvm_cell_readiness's; the controller does not re-derive
+// it. CellRecoveryRequired is not a refusal to do nothing: it is the instruction to run the terminal
+// path for the attempt that never settled, before any new attempt is prepared.
+type ControllerStart
+  = StartAttempt { bound: CellBoundIdentity, record: CellReadinessWrite }
+  | StartRecovery { bound: CellBoundAttempt, trigger: TerminalTrigger }
+  | StartQuarantineUnattributedResidue { trigger: TerminalTrigger, record: CellReadinessWrite }
+  | StartRefused { admission: CellIncarnationAdmission }
+  | StartBindingRefused { binding: CellBinding }
+
+// THE GROUND IS gunbc.runner_attempt_launch's AttemptGround, the host's own check for prior attempt
+// resources, and it outranks an admitting record: a store that says Ready over a cell whose jail or
+// attempt directory is still present is a store that missed something, and the answer is a
+// quarantine, not a launch onto the residue. The residue names no attempt the store knows, so the
+// controller does not invent one: it records WriteUnattributedResidue at the generation that was
+// about to run, which can only quarantine (gunbc.runner_microvm_cell_readiness). Both arms act only
+// on a bound identity, so the quarantine lands on the cell that was admitted AND identified.
+fn controller_start(
+  admission: CellIncarnationAdmission,
+  ground: AttemptGround,
+  identity: AttemptIdentity,
+) -> ControllerStart {
+  match admission {
+    CellIncarnationAdmitted { cell: c, generation: g } =>
+      match bind_identity_to_admission(cell: c, generation: g, identity: identity) {
+        CellBound { bound: b } => start_on_bound_cell(bound: b, ground: ground)
+        refused => StartBindingRefused { binding: refused }
+      }
+    CellRecoveryRequired { bound: b } => StartRecovery { bound: b, trigger: ControllerLost }
+    refused => StartRefused { admission: refused }
+  }
+}
+
+fn start_on_bound_cell(bound: CellBoundIdentity, ground: AttemptGround) -> ControllerStart {
+  match ground {
+    GroundOccupied =>
+      StartQuarantineUnattributedResidue {
+        trigger: ResourcesFoundOnRecovery,
+        record: WriteUnattributedResidue { cell: bound.attempt.cell, generation: bound.attempt.generation },
+      }
+    GroundClear =>
+      StartAttempt {
+        bound: bound,
+        record: WriteAttemptStarted { bound: bound.attempt },
+      }
+  }
+}
+
+// THE BRING-UP PROGRESSION IS A TOTAL ORDER AND EACH STEP IS OBSERVED, NOT ASSUMED.
+//
+// AttemptPrepared: credential disk and workspace staged by the host, slot network converged. VmmStarted: the host saw
+// the jailer's VMM running in the cell's cgroup. GuestBooted and RunnerListening: the guest reported
+// them -- these are guest events, admissible here because progression only decides whether the
+// slot is SERVING, never whether it is CLEAN. SlotServing: the listener is up and the host has
+// nothing left to do but wait for a terminal trigger.
+type BringUpPhase
+  = AttemptPrepared
+  | VmmStarted
+  | GuestBooted
+  | RunnerListening
+  | SlotServing
+
+fn bring_up_rank(phase: BringUpPhase) -> Int {
+  match phase {
+    AttemptPrepared => 0
+    VmmStarted => 1
+    GuestBooted => 2
+    RunnerListening => 3
+    SlotServing => 4
+  }
+}
+
+type BringUpEvent {
+  identity: AttemptIdentity
+  reached: BringUpPhase
+}
+
+// A SKIPPED PHASE IS A REFUSAL, not a fast path: a runner reporting "listening" before the host saw
+// a VMM means the report is not from this attempt's guest, and advancing would let an unrelated
+// listener stand for this slot. An event naming a different incarnation is refused before its
+// phase is even looked at.
+type BringUpTransition
+  = BringUpAdvanced { phase: BringUpPhase }
+  | BringUpRefusedForeignIncarnation
+  | BringUpRefusedOutOfOrder { from: BringUpPhase, to: BringUpPhase }
+
+fn advance_bring_up(live: AttemptIdentity, at: BringUpPhase, event: BringUpEvent) -> BringUpTransition {
+  if !attempt_identity_same(a: live, b: event.identity) {
+    BringUpRefusedForeignIncarnation
+  } else if bring_up_rank(phase: event.reached) == bring_up_rank(phase: at) + 1 {
+    BringUpAdvanced { phase: event.reached }
+  } else {
+    BringUpRefusedOutOfOrder { from: at, to: event.reached }
+  }
+}
+
+// THE TERMINAL TRIGGERS. Any one of them starts the same teardown, and none of them decides its
+// outcome -- which is why RunnerExited carries its exit code and the code goes nowhere: a job that
+// succeeded and left a background process is a dirty cell, and there is no parameter downstream
+// through which "succeeded" could say otherwise.
+type TerminalTrigger
+  = VmmExited { exit_code: Int }
+  | RunnerExited { exit_code: Int }
+  | DeadlineReached
+  | StopRequested
+  | ControllerLost
+  | ResourcesFoundOnRecovery
+
+// A STOP NAMES ITS INCARNATION, and a stop for any other is refused. The warm pool reuses slots,
+// so a stop issued against incarnation N that arrives while N + 1 runs is the ordinary late
+// delivery, not an exotic race -- honoring it would tear down a job that never asked to stop.
+type StopAdmission
+  = StopAdmitted { trigger: TerminalTrigger }
+  | StopRefusedStaleIncarnation { live_generation: Int, requested_generation: Int }
+
+fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> StopAdmission {
+  if attempt_identity_same(a: live, b: requested) {
+    StopAdmitted { trigger: StopRequested }
+  } else {
+    StopRefusedStaleIncarnation {
+      live_generation: live.allocation_generation,
+      requested_generation: requested.allocation_generation,
+    }
+  }
+}
+
+// THE STOP IS GRACEFUL, THEN FORCED, AND THE FORCE IS BOUNDED. What the controller observes is
+// which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
+// survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
+// it whatever the cgroup readback says afterwards.
+type TeardownStop
+  = StoppedGracefully
+  | StoppedByForce
+  | ForceStopBoundExceeded { survivors: List<Int> }
+
+// THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
+// cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
+// down is invisible to it -- so the readback covers the subtree. A read that fails is
+// Unobservable, never Empty: "could not read" is the one answer that must not release a cell.
+type CgroupSubtreeReadback
+  = CgroupSubtreeEmpty
+  | CgroupSubtreePopulated { pids: List<Int>, cgroups: List<NonEmptyStr> }
+  | CgroupSubtreeReadFailed { reason: NonEmptyStr }
+
+// EACH ATTEMPT RESOURCE IS READ BACK ABSENT FROM THE HOST, separately, because each leaks something
+// different (product.fabric.sanitation SanitationFact).
+type ResourceReadback
+  = ResourceAbsent
+  | ResourcePresent { detail: NonEmptyStr }
+  | ResourceUnreadable { reason: NonEmptyStr }
+
+// THE SLOT NETWORK IS NOT AN ATTEMPT RESOURCE, SO IT IS NOT READ BACK ABSENT. The tap and nft ruleset
+// are slot-scoped converge state (sunny-ant-606 ruling A); the attempt owns only its jail subtree and
+// workspace. What must hold after an attempt is that the slot network is QUIESCENT -- no process holds
+// the tap, conntrack for the reused guest address is empty, the ruleset digest equals the converged
+// one -- which is product.fabric.sanitation's SlotNetworkQuiescent, owed by a SlotScopedNetwork
+// readback, and not NetworkNamespaceRemoved, which is the attempt-scoped contract. Its vocabulary is
+// quiet/active rather than absent/present for the same reason. Its typed producer is
+// gunbc.runner_microvm_network slot_network_readback (networking lane, gunbc#11675); until that lands
+// this type is the frontier where that readback is consumed.
+type SlotNetworkQuiescence
+  = SlotNetworkQuiet
+  | SlotNetworkActive { detail: NonEmptyStr }
+  | SlotNetworkUnreadable { reason: NonEmptyStr }
+
+// TEARDOWN EVIDENCE NAMES WHAT IT OBSERVED, AND IT IS JOINED TO THE ATTEMPT BEFORE IT MAY SETTLE ONE.
+//
+// A readback bundle without subjects can be stamped with any identity: clean readbacks of cell A's
+// attempt would settle cell B as Ready (side-chat ruling on #11670). So every fact carries the subject
+// the host actually read -- the host itself, the generation, the VMM unit and the controller's
+// InvocationID the stop was issued under, the cgroup root, the jail root, the attempt directory and
+// the credential drive -- and AttemptTeardownReadback, which is sealed, is constructible only by
+// attempt_teardown_readback, which derives every expected subject from the CellBoundAttempt and
+// refuses on the first disagreement. settle_teardown accepts nothing else.
+type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
+
+type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
+
+type ObservedPath { path: String, readback: ResourceReadback }
+
+// DECLARED GAP, NOT YET JOINED: `network` carries no subject. Its subject-bearing readback is
+// gunbc.runner_microvm_network BoundSlotNetworkReadback (gunbc#11675); when that lands, `network`
+// becomes it and gains a SubjectSlotNetwork join against the attempt's slot before its result is
+// mapped onto SlotNetworkQuiescent.
+type ObservedTeardown {
+  host: String
+  generation: Int
+  stop: ObservedStop
+  cgroup: ObservedCgroup
+  mounts: ObservedPath
+  attempt_storage: ObservedPath
+  credential_disk: ObservedPath
+  network: SlotNetworkQuiescence
+}
+
+type TeardownSubject
+  = SubjectHost
+  | SubjectGeneration
+  | SubjectVmmUnit
+  | SubjectInvocation
+  | SubjectCgroupRoot
+  | SubjectJailRoot
+  | SubjectAttemptDirectory
+  | SubjectCredentialDrive
+
+type AttemptTeardownReadback sole_constructor {
+  bound: CellBoundAttempt
+  observed: ObservedTeardown
+}
+
+type TeardownReadbackBinding
+  = TeardownReadbackBound { readback: AttemptTeardownReadback }
+  | TeardownReadbackForeignSubject { subject: TeardownSubject, expected: String, observed: String }
+
+type SubjectPair { subject: TeardownSubject, expected: String, observed: String }
+
+fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<SubjectPair> {
+  let a = bound.attempt.attempt
+  [
+    SubjectPair { subject: SubjectHost, expected: a.slot.host as String, observed: o.host },
+    SubjectPair { subject: SubjectGeneration, expected: to_string(bound.generation), observed: to_string(o.generation) },
+    SubjectPair { subject: SubjectVmmUnit, expected: in_flight_attempt_unit(attempt: bound.attempt) as String, observed: o.stop.unit as String },
+    SubjectPair { subject: SubjectInvocation, expected: bound.attempt.invocation_id as String, observed: o.stop.invocation_id as String },
+    SubjectPair { subject: SubjectCgroupRoot, expected: fabric_cell_slice_name(slot: a.slot), observed: o.cgroup.root as String },
+    SubjectPair { subject: SubjectJailRoot, expected: runner_microvm_attempt_jail_base(attempt: a), observed: o.mounts.path },
+    SubjectPair { subject: SubjectAttemptDirectory, expected: runner_microvm_attempt_dir(attempt: a), observed: o.attempt_storage.path },
+    SubjectPair { subject: SubjectCredentialDrive, expected: runner_microvm_attempt_jit_drive_path(attempt: a), observed: o.credential_disk.path },
+  ]
+}
+
+fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
+  match filter(teardown_subject_pairs(bound: bound, o: observed), p => p.expected != p.observed).first() {
+    Absent => TeardownReadbackBound { readback: AttemptTeardownReadback { bound: bound, observed: observed } }
+    Present { value: p } =>
+      TeardownReadbackForeignSubject { subject: p.subject, expected: p.expected, observed: p.observed }
+  }
+}
+
+fn resource_observation(fact: SanitationFact, readback: ResourceReadback) -> SanitationObservation {
+  match readback {
+    ResourceAbsent => FactConfirmed { fact: fact }
+    ResourcePresent { detail: d } => FactRefuted { fact: fact, detail: d }
+    ResourceUnreadable { reason: r } => FactUnobservable { fact: fact, reason: r }
+  }
+}
+
+fn slot_network_observation(readback: SlotNetworkQuiescence) -> SanitationObservation {
+  match readback {
+    SlotNetworkQuiet => FactConfirmed { fact: SlotNetworkQuiescent }
+    SlotNetworkActive { detail: d } => FactRefuted { fact: SlotNetworkQuiescent, detail: d }
+    SlotNetworkUnreadable { reason: r } => FactUnobservable { fact: SlotNetworkQuiescent, reason: r }
+  }
+}
+
+fn pid_list_text(pids: List<Int>) -> String {
+  join(map(pids, p => to_string(p)), ",")
+}
+
+fn cgroup_observation(readback: CgroupSubtreeReadback) -> SanitationObservation {
+  match readback {
+    CgroupSubtreeEmpty => FactConfirmed { fact: CgroupEmpty }
+    CgroupSubtreePopulated { pids: p, cgroups: _ } =>
+      FactRefuted { fact: CgroupEmpty, detail: join(["pids ", pid_list_text(pids: p), " remain in the cell's cgroup subtree"], "") as NonEmptyStr }
+    CgroupSubtreeReadFailed { reason: r } => FactUnobservable { fact: CgroupEmpty, reason: r }
+  }
+}
+
+// NO SURVIVING PROCESS NEEDS BOTH HOST FACTS: the stop did not exceed its bound, AND the subtree
+// holds no pid. Either one alone is refuted by a case the other misses -- the unkillable task
+// that later leaves the cgroup listing, and the double-forked daemon the stop never waited for.
+fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> SanitationObservation {
+  match stop {
+    ForceStopBoundExceeded { survivors: s } =>
+      FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
+    StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
+    StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
+  }
+}
+
+fn process_observation_of_cgroup(cgroup: CgroupSubtreeReadback) -> SanitationObservation {
+  match cgroup {
+    CgroupSubtreeEmpty => FactConfirmed { fact: NoSurvivingProcesses }
+    CgroupSubtreePopulated { pids: p, cgroups: _ } =>
+      FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: p), " are still running"], "") as NonEmptyStr }
+    CgroupSubtreeReadFailed { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
+  }
+}
+
+fn teardown_observations(o: ObservedTeardown) -> List<SanitationObservation> {
+  [
+    surviving_process_observation(stop: o.stop.outcome, cgroup: o.cgroup.readback),
+    cgroup_observation(readback: o.cgroup.readback),
+    resource_observation(fact: MountsRemoved, readback: o.mounts.readback),
+    slot_network_observation(readback: o.network),
+    resource_observation(fact: WritableLayersDeleted, readback: o.attempt_storage.readback),
+    resource_observation(fact: SecretsRemoved, readback: o.credential_disk.readback),
+  ]
+}
+
+// THE ONLY ROUTE FROM A TEARDOWN TO A SanitationReadback. Its one parameter is the sealed carrier, so
+// the cell and sandbox it reports are the ones every observation was joined against. The trigger is
+// deliberately absent: it started the teardown and has nothing to say about how it ended.
+fn sanitation_readback_of_teardown(readback: AttemptTeardownReadback) -> SanitationReadback {
+  SanitationReadback {
+    cell: readback.bound.cell,
+    sandbox: in_flight_attempt_unit(attempt: readback.bound.attempt) as String as SandboxId,
+    network_scope: SlotScopedNetwork,
+    observations: teardown_observations(o: readback.observed),
+  }
+}
+
+// THE TERMINAL PATH'S RESULT: the readiness, and the store write that records it at the attempt's
+// own generation, so a readback arriving after a newer incarnation's record is refused by the store
+// as stale rather than trusted by the controller.
+type TeardownSettlement {
+  trigger: TerminalTrigger
+  readiness: CellReadiness
+  record: CellReadinessWrite
+}
+
+// ONE SETTLEMENT FOR A LIVE TEARDOWN AND A RECOVERED ONE: both are a CellBoundAttempt torn down and
+// read back, and the store write is at that attempt's own generation, so a readback arriving after a
+// newer incarnation's record is refused by the store as stale rather than trusted by the controller.
+fn settle_teardown(readback: AttemptTeardownReadback, trigger: TerminalTrigger) -> TeardownSettlement {
+  let readiness = cell_readiness_after(readback: sanitation_readback_of_teardown(readback: readback))
+  TeardownSettlement {
+    trigger: trigger,
+    readiness: readiness,
+    record: WriteReadbackSettled { bound: readback.bound, readiness: readiness },
+  }
+}
