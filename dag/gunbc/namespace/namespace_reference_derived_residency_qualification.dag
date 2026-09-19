@@ -1,0 +1,219 @@
+module gunbc.namespace_reference_derived_residency_qualification
+
+import std.types { Bool, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE REPAIR SITE FOR gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence,
+// placed at the CONSUMPTION the filed trigger names and nowhere else. The trigger binds any consumer
+// claiming BOUNDED REALIZATION or MEMORY-READY DEPLOYMENT of the reference-derived graph to require
+// resource evidence SEPARATELY from semantic delivery, and it deliberately does not touch what
+// ReferenceGraphInstrumentDelivered means. So this module adds no arm to the semantic receipt: it
+// declares the SECOND evidence a bounded-realization claim needs, and `admit_bounded_realization` has
+// no arm that mints an admission from semantic delivery alone. A producer's answer-scope independence
+// verdict (gunbc.namespace_pool_independence PoolIndependenceVerdict) is a different TYPE and cannot
+// reach this admission at all, which is the ceiling the class row names: the conflation becomes
+// unwritable rather than reviewable.
+//
+// WHY THE READING HAS TWO BOUNDARIES AND THE FIRST ONE DECIDES. A producer that loads and retains
+// every tree, computes the graph, RELEASES what it held and returns is indistinguishable AFTER THE
+// FACT from one whose active syntax was bounded throughout: identical answers, identical post-return
+// retention, different construction high-water. So `constructed` is read first and on its own is
+// sufficient to refuse, and an empty lifecycle reading refuses rather than qualifying by default --
+// absence of a reading is not evidence of a bound.
+//
+// WHY THE READING IS A LIST OF CARRIERS AND NOT ONE FIELD. In v2.lens.module_graph the pool's syntax
+// population is reachable TWICE: `ReferenceDerivedPool.trees` is Map<String, Node> over every
+// normalized module root, and `v2.std.symbol_index` SymbolIndex is `entries: Map<QualifiedName, Node>`
+// -- a Node per qualified name over the same population. An obligation written against `trees` alone
+// is discharged by moving retention into the index and measures nothing, so both carriers enter one
+// reading and either one refuses it.
+
+// The per-key payload a carrier holds. The distinction that matters is whether the payload is SYNTAX
+// -- whose size is the source it came from -- or a bounded per-key record.
+type CarrierPayloadGrain
+  = SyntaxNodePerKey
+  | IdentityDigestPerKey
+  | ModuleQualifiedNamePerKey
+
+// What the carrier is keyed over. A carrier keyed by the whole pool population scales with the
+// corpus; one keyed by the single subject under production does not.
+type CarrierKeyPopulation
+  = KeyedByWholePoolPopulation
+  | KeyedBySingleSubject
+
+type ProducerCarrierReading {
+  carrier: DeclarationRef
+  grain: CarrierPayloadGrain
+  population: CarrierKeyPopulation
+}
+
+// The production lifecycle at the two boundaries that differ between the specimens: what the producer
+// CONSTRUCTS (its high-water) and what survives its return.
+type ProductionLifecycleReading {
+  subject: DeclarationRef
+  constructed: List<ProducerCarrierReading>
+  retained_at_return: List<ProducerCarrierReading>
+}
+
+type ResidencyBoundFailure
+  = WholeCorpusSyntaxAtConstructionPeak { carrier: DeclarationRef }
+  | WholeCorpusSyntaxRetainedAtReturn { carrier: DeclarationRef }
+  | LifecycleReadingAbsent
+
+// A QUALIFICATION RESULT, not a reading that exists. The class row's harm is a reading being consumed
+// as a bound; a reading alone therefore has no admitting arm anywhere in this module.
+type ResidencyQualification
+  = BoundedRealizationQualified { subject: DeclarationRef }
+  | BoundedRealizationRefused { subject: DeclarationRef, failure: ResidencyBoundFailure }
+
+fn carrier_holds_whole_corpus_syntax(reading: ProducerCarrierReading) -> Bool {
+  match reading.population {
+    KeyedBySingleSubject => false
+    KeyedByWholePoolPopulation =>
+      match reading.grain {
+        SyntaxNodePerKey => true
+        IdentityDigestPerKey => false
+        ModuleQualifiedNamePerKey => false
+      }
+  }
+}
+
+fn whole_corpus_syntax_carriers(
+  readings: List<ProducerCarrierReading>,
+) -> List<ProducerCarrierReading> {
+  readings |> filter(r => carrier_holds_whole_corpus_syntax(reading: r))
+}
+
+fn first_whole_corpus_syntax_carrier(
+  readings: List<ProducerCarrierReading>,
+) -> ProducerCarrierReading? {
+  whole_corpus_syntax_carriers(readings: readings) |> first
+}
+
+// Construction peak is read BEFORE retention, so the whole-pool-build-then-release specimen refuses on
+// the strength of `constructed` with `retained_at_return` empty. An empty `constructed` is refused
+// rather than qualified: a producer that reports no carriers has supplied no evidence of a bound.
+fn qualify_bounded_realization(
+  reading: ProductionLifecycleReading,
+) -> ResidencyQualification {
+  match reading.constructed |> first {
+    Absent =>
+      BoundedRealizationRefused {
+        subject: reading.subject,
+        failure: LifecycleReadingAbsent,
+      }
+    Present { value: _ } =>
+      match first_whole_corpus_syntax_carrier(readings: reading.constructed) {
+        Present { value: peak } =>
+          BoundedRealizationRefused {
+            subject: reading.subject,
+            failure: WholeCorpusSyntaxAtConstructionPeak { carrier: peak.carrier },
+          }
+        Absent =>
+          match first_whole_corpus_syntax_carrier(readings: reading.retained_at_return) {
+            Present { value: held } =>
+              BoundedRealizationRefused {
+                subject: reading.subject,
+                failure: WholeCorpusSyntaxRetainedAtReturn { carrier: held.carrier },
+              }
+            Absent => BoundedRealizationQualified { subject: reading.subject }
+          }
+      }
+  }
+}
+
+// THE CONSUMPTION SIDE. `semantic_delivered` is the semantic instrument's own receipt, carried as the
+// Bool it reduces to precisely so that this module neither redefines it nor can be satisfied by it:
+// there is no arm below in which `semantic_delivered: true` reaches an admission without a
+// BoundedRealizationQualified beside it.
+type BoundedRealizationAdmission
+  = BoundedRealizationAdmitted { subject: DeclarationRef }
+  | BoundedRealizationSemanticDeliveryOutstanding
+  | BoundedRealizationResourceQualificationOutstanding { failure: ResidencyBoundFailure }
+
+fn admit_bounded_realization(
+  semantic_delivered: Bool,
+  resource: ResidencyQualification,
+) -> BoundedRealizationAdmission {
+  match resource {
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      BoundedRealizationResourceQualificationOutstanding { failure: failure }
+    BoundedRealizationQualified { subject: subject } =>
+      if semantic_delivered {
+        BoundedRealizationAdmitted { subject: subject }
+      } else {
+        BoundedRealizationSemanticDeliveryOutstanding
+      }
+  }
+}
+
+// THE LIVE READING, from the producer as it stands. Derived by reading v2.lens.module_graph
+// `load_reference_derived_pool` and `reference_derived_pool_from_located_roots`: the population comes
+// from `module_declaration_facts_live(pool_roots)` -- the whole corpus under the roots -- and every
+// located root is inserted into BOTH `trees` and, via `symbol_index_fill_module_root`, the index's
+// Node-valued entries, before `emit_reference_edges_for_located_root` filters which roots emit edges.
+// Retention at return is the projection only, so this reading refuses on construction peak alone --
+// which is the whole reason the peak boundary is in the carrier.
+data reference_derived_pool_lifecycle_reading: ProductionLifecycleReading = ProductionLifecycleReading {
+  subject: decl_ref(
+    module_path: "v2.lens.module_graph",
+    decl_name: "load_reference_derived_pool",
+  ),
+  constructed: [
+    ProducerCarrierReading {
+      carrier: decl_ref(
+        module_path: "v2.lens.module_graph",
+        decl_name: "ReferenceDerivedPool",
+      ),
+      grain: SyntaxNodePerKey,
+      population: KeyedByWholePoolPopulation,
+    },
+    ProducerCarrierReading {
+      carrier: decl_ref(
+        module_path: "v2.std.symbol_index",
+        decl_name: "SymbolIndex",
+      ),
+      grain: SyntaxNodePerKey,
+      population: KeyedByWholePoolPopulation,
+    },
+  ],
+  retained_at_return: [],
+}
+
+// WHAT A BOUNDED REALIZATION WOULD LOOK LIKE, and it is a reachable shape rather than an aspiration.
+// Every read the edge fold makes of the pool's index discards the Node: `resolve_reference_provenance`
+// in v2.compiler.resolution_provenance takes `Present { value: _ }` from symbol_index_lookup,
+// `LexicalHit { node: _, path: path }` from symbol_index_lexical_lookup and
+// `GlobalBareHit { node: _, path: path }` from symbol_index_global_unique_lookup, and
+// `module_dependencies_from_provenance` folds over answers carrying only QualifiedNames. The one place
+// the index's construction genuinely needs more than a name is `symbol_index_track_global_bare`, which
+// compares the resolved Node to decide unique versus ambiguous -- an EQUALITY discriminant, which a
+// per-key identity digest supplies. And `trees` is read at exactly one site, to fetch the importer's
+// OWN root one at a time. So the producer's demand on the corpus is a NAME TABLE keyed by the pool
+// population plus one subject tree at a time, and the whole-corpus syntax it holds today is a
+// lifetime artifact of building the pool before the fold rather than anything the answer demands.
+data bounded_reference_derived_pool_specimen: ProductionLifecycleReading = ProductionLifecycleReading {
+  subject: decl_ref(
+    module_path: "v2.lens.module_graph",
+    decl_name: "load_reference_derived_pool",
+  ),
+  constructed: [
+    ProducerCarrierReading {
+      carrier: decl_ref(
+        module_path: "v2.std.symbol_index",
+        decl_name: "SymbolIndex",
+      ),
+      grain: IdentityDigestPerKey,
+      population: KeyedByWholePoolPopulation,
+    },
+    ProducerCarrierReading {
+      carrier: decl_ref(
+        module_path: "v2.lens.module_graph",
+        decl_name: "LocatedModuleRoot",
+      ),
+      grain: SyntaxNodePerKey,
+      population: KeyedBySingleSubject,
+    },
+  ],
+  retained_at_return: [],
+}
