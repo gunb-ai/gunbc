@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_authority_log
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
-import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, HostQuiescenceEvidence, residue_spec_members, residue_spec_decode, quiescence_evidence_members, quiescence_evidence_decode, quiescence_evidence_covers }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, HostQuiescenceEvidence, residue_spec_members, residue_spec_decode, quiescence_evidence_members, quiescence_evidence_decode, quiescence_evidence_covers, ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, release_provenance_members, release_provenance_decode, release_provenance_covers }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
@@ -22,7 +22,9 @@ import gunbc.fabric_event_log {
   EventLogLayout, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition_with,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with,
 }
-import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host }
+import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group, fabric_group_of_host }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, released_baseline_wire, parse_released_baseline }
@@ -98,7 +100,10 @@ fn pair_authority_partition(group: FabricGroup) -> PartitionId {
 // escalation may reuse it: recovery that selected history by the word alone would complete a new
 // consent from an old transaction's terminal. The identity is on the event so the fold can keep it.
 type PairAuthorityEvent
-  = AuthorityTransitioned {
+  = AuthorityEstablished {
+      authority: PairServingGroupAuthority
+    }
+  | AuthorityTransitioned {
       previous: PairServingGroupAuthority
       next: PairServingGroupAuthority
       transaction: NonEmptyStr
@@ -120,6 +125,7 @@ type PairAuthorityEvent
   | HostEffectReleased {
       admitted_by: EventId
       evidence: HostQuiescenceEvidence
+      provenance: ReleaseProvenance
     }
 
 // ── HOST EFFECTS ARE CLAIMED ON THE SAME PARTITION AS THE AUTHORITY ────────────────────────────
@@ -173,12 +179,15 @@ type ReleaseAdmission
   = ReleaseAdmitted { record: HostEffectRecord }
   | ReleaseNotLive
   | ReleaseEvidenceForAnother { record: HostEffectRecord }
+  | ReleaseProvenanceForAnother { record: HostEffectRecord }
 
-fn release_admission(records: List<HostEffectRecord>, claim: EventId, evidence: HostQuiescenceEvidence) -> ReleaseAdmission {
+fn release_admission(records: List<HostEffectRecord>, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance) -> ReleaseAdmission {
   match first(filter(records, r => (r.id as String) == (claim as String) && !r.released)) {
     Absent => ReleaseNotLive
     Present { value: r } =>
-      if quiescence_evidence_covers(e: evidence, host: r.host, spec: r.residue) { ReleaseAdmitted { record: r } } else { ReleaseEvidenceForAnother { record: r } }
+      if !quiescence_evidence_covers(e: evidence, claim: claim, admitted_at: r.recorded_at, host: r.host, spec: r.residue) { ReleaseEvidenceForAnother { record: r } }
+      else if !release_provenance_covers(p: provenance, claim: claim) { ReleaseProvenanceForAnother { record: r } }
+      else { ReleaseAdmitted { record: r } }
   }
 }
 
@@ -186,7 +195,8 @@ fn release_refusal_reason(a: ReleaseAdmission, claim: EventId) -> String {
   match a {
     ReleaseAdmitted { record: _ } => ""
     ReleaseNotLive => join(["no live host effect claim ", claim as String, " on this partition"], "")
-    ReleaseEvidenceForAnother { record: r } => join(["the quiescence evidence is not for claim ", claim as String, ": it must name host ", r.host as String, " and the claim's own residue (process pattern `", r.residue.process_pattern as String, "`)"], "")
+    ReleaseProvenanceForAnother { record: _ } => join(["the recovery authorization is not for claim ", claim as String], "")
+    ReleaseEvidenceForAnother { record: r } => join(["the quiescence evidence is not for claim ", claim as String, ": it must name that claim, host ", r.host as String, " and the claim's own residue (process pattern `", r.residue.process_pattern as String, "`), and be observed no earlier than ", to_string(r.recorded_at)], "")
   }
 }
 
@@ -350,23 +360,25 @@ fn entry_state_members(d: ContentHash?) -> List<JsonKeyValue> {
 
 fn pair_authority_event_members(e: PairAuthorityEvent) -> List<JsonKeyValue> {
   match e {
+    AuthorityEstablished { authority: a } => authority_members(prefix: "est_", a: a)
     AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: g, entry_state: d } =>
       concat([kv(prefix: "", key: "transaction", value: t as String)], concat(lifecycle_members(l: lc), concat(authority_members(prefix: "prev_", a: p), concat(authority_members(prefix: "next_", a: n), concat(grant_members(g: g), entry_state_members(d: d))))))
     EntryStateRecorded { transaction: t, body: b } =>
       [kv(prefix: "", key: "transaction", value: t as String), kv(prefix: "", key: "body", value: b)]
     HostEffectAdmitted { host: h, purpose: p, executor: x, term: t, residue: rs } =>
       concat([kv(prefix: "", key: "host", value: h as String), kv(prefix: "", key: "purpose", value: p as String), kv(prefix: "", key: "executor", value: x as String), json_kv(key: "term_seconds", value: json_int(n: second_count(s: t)))], residue_spec_members(prefix: "residue_", s: rs))
-    HostEffectReleased { admitted_by: a, evidence: ev } =>
-      concat([kv(prefix: "", key: "admitted_by", value: a as String)], quiescence_evidence_members(e: ev))
+    HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
+      concat([kv(prefix: "", key: "admitted_by", value: a as String)], concat(quiescence_evidence_members(e: ev), release_provenance_members(p: pv)))
   }
 }
 
 fn pair_authority_event_kind(e: PairAuthorityEvent) -> String {
   match e {
+    AuthorityEstablished { authority: _ } => "established"
     AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _ } => "transitioned"
     EntryStateRecorded { transaction: _, body: _ } => "entry-state-recorded"
     HostEffectAdmitted { host: _, purpose: _, executor: _, term: _, residue: _ } => "host-effect-admitted"
-    HostEffectReleased { admitted_by: _, evidence: _ } => "host-effect-released"
+    HostEffectReleased { admitted_by: _, evidence: _, provenance: _ } => "host-effect-released"
   }
 }
 
@@ -552,7 +564,12 @@ fn optional_hash_member(doc: JsonValue, key: String) -> OptionalHashMember {
 }
 
 fn pair_authority_kind_decode(doc: JsonValue, word: String) -> PairAuthorityEvent? {
-  if word == "host-effect-admitted" {
+  if word == "established" {
+    match authority_decode(doc: doc, prefix: "est_") {
+      Absent => none
+      Present { value: a } => Present { value: AuthorityEstablished { authority: a } }
+    }
+  } else if word == "host-effect-admitted" {
     match member_nonempty(doc: doc, key: "host") {
       Absent => none
       Present { value: h } =>
@@ -579,7 +596,11 @@ fn pair_authority_kind_decode(doc: JsonValue, word: String) -> PairAuthorityEven
       Present { value: a } =>
         match quiescence_evidence_decode(doc: doc) {
           Absent => none
-          Present { value: ev } => Present { value: HostEffectReleased { admitted_by: (a as String) as EventId, evidence: ev } }
+          Present { value: ev } =>
+            match release_provenance_decode(doc: doc) {
+              Absent => none
+              Present { value: pv } => Present { value: HostEffectReleased { admitted_by: (a as String) as EventId, evidence: ev, provenance: pv } }
+            }
         }
     }
   } else if word == "entry-state-recorded" {
@@ -634,8 +655,22 @@ fn pair_authority_event_decode(text: String) -> EventDecode<PairAuthorityEvent> 
 // `admitted_by` is the id of the transition event that landed the current state -- what a grant's
 // fence must name. It is not the partition head: a recorded receipt may sit between the admitting
 // write and the settling one.
+// ── ONE DURABLE GENESIS PER GROUP PARTITION ────────────────────────────────────────────────────
+//
+// Every group's partition begins UNESTABLISHED and commits no host: the genesis is a fact of the
+// log, not of today's source roster. The source row (gunbc.spark.pair_serving_authority
+// spark_pair_serving_authorities) is the DESIRED authority; it becomes the group's authority only
+// when an AuthorityEstablished event lands on the partition (pair_serving_authority_establish,
+// one compare-and-set at the head), and that establishment is admitted only over the host-effect
+// records already on the chain -- a live claim on a host the row commits refuses it, exactly as
+// it refuses a transition. So adding or removing a source row never changes how a persisted chain
+// folds: the same fold reads every group partition from the same genesis, a claim landed before
+// the group was established fences the establishment and every transition after it, and the
+// roster is consulted by nothing that reads the log. Generation counts transitions since the
+// establishment (the established state is generation 0).
 type AuthorityFold
-  = AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord>, host_effects: List<HostEffectRecord> }
+  = AuthorityUnestablished { host_effects: List<HostEffectRecord> }
+  | AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord>, host_effects: List<HostEffectRecord> }
   | AuthorityFoldRefused { at_event: EventId, reason: String }
 
 // EVERY ADMITTED TRANSITION, OLDEST FIRST, BY THE TRANSACTION THAT WROTE IT. A transaction that
@@ -705,11 +740,50 @@ fn grant_genealogy(gr: LeaseGrant, next: PairServingGroupAuthority, transaction:
   }
 }
 
+// A host-effect event folds the same way before and after the establishment; only the committed
+// check needs an authority, and an unestablished group commits nothing.
+fn host_effects_step(effs: List<HostEffectRecord>, env: ChainEnvelope<PairAuthorityEvent>) -> HostEffectFold {
+  host_effect_fold_step(acc: HostEffectsFolded { records: effs }, env: env)
+}
+
+fn establishment_refusal(a: PairServingGroupAuthority, effs: List<HostEffectRecord>, at: EpochSecs) -> String? {
+  let fenced = live_host_effects_on(records: effs, hosts: pair_serving_committed_hosts(a: a), at: at)
+  if length(fenced) != 0 {
+    Present { value: join(["the authority would commit a host under a live host effect: ", join(map(fenced, r => host_effect_line_at(r: r, at: at)), "; ")], "") }
+  } else if pair_serving_commits_hosts(a: a) && length(pair_serving_committed_hosts(a: a)) == 0 {
+    Present { value: "the authority commits hosts but names none" }
+  } else {
+    match lease_of(a: a) {
+      Present { value: _ } => Present { value: "an authority that holds a lease cannot be established; a lease is granted by a transition" }
+      Absent => none
+    }
+  }
+}
+
 fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent>) -> AuthorityFold {
   match acc {
     AuthorityFoldRefused { at_event: _, reason: _ } => acc
+    AuthorityUnestablished { host_effects: effs } =>
+      match env.event.payload {
+        AuthorityEstablished { authority: a } =>
+          match establishment_refusal(a: a, effs: effs, at: env.event.recorded_at) {
+            Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: join(["the establishment is refused: ", why], "") }
+            Absent => AuthorityFolded { current: a, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, host_effects: effs }
+          }
+        AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _ } =>
+          AuthorityFoldRefused { at_event: env.id, reason: "a transition was recorded before any authority was established on this partition" }
+        EntryStateRecorded { transaction: _, body: _ } =>
+          AuthorityFoldRefused { at_event: env.id, reason: "an entry state was recorded before any authority was established on this partition" }
+        _ =>
+          match host_effects_step(effs: effs, env: env) {
+            HostEffectsFolded { records: rs } => AuthorityUnestablished { host_effects: rs }
+            HostEffectFoldRefused { at_event: e, reason: why } => AuthorityFoldRefused { at_event: e, reason: why }
+          }
+      }
     AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: effs } =>
       match env.event.payload {
+        AuthorityEstablished { authority: _ } =>
+          AuthorityFoldRefused { at_event: env.id, reason: "an authority is already established on this partition; the state moves by transition" }
         EntryStateRecorded { transaction: _, body: _ } =>
           AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: effs }
         HostEffectAdmitted { host: h, purpose: p, executor: x, term: t, residue: rs } =>
@@ -720,8 +794,8 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
           } else {
             AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: concat(effs, [HostEffectRecord { id: env.id, host: h, purpose: p, executor: x, recorded_at: env.event.recorded_at, term: t, residue: rs, released: false }]) }
           }
-        HostEffectReleased { admitted_by: a, evidence: ev } =>
-          match release_admission(records: effs, claim: a, evidence: ev) {
+        HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
+          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv) {
             ReleaseAdmitted { record: _ } =>
               AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: map(effs, r => if (r.id as String) == (a as String) { host_effect_released(r: r) } else { r }) }
             other => AuthorityFoldRefused { at_event: env.id, reason: join(["a host effect release is refused: ", release_refusal_reason(a: other, claim: a)], "") }
@@ -754,10 +828,10 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
   }
 }
 
-// From the resting authority through every recorded transition, oldest first. Generation 0 is the
-// resting state itself; each admitted transition adds one.
-fn authority_fold(resting: PairServingGroupAuthority, oldest_first: List<ChainEnvelope<PairAuthorityEvent>>) -> AuthorityFold {
-  fold(oldest_first, init: AuthorityFolded { current: resting, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, host_effects: [] as List<HostEffectRecord> }, f: (acc, env) => authority_fold_step(acc: acc, env: env))
+// From the unestablished genesis through the establishment and every recorded transition, oldest
+// first.
+fn authority_fold(oldest_first: List<ChainEnvelope<PairAuthorityEvent>>) -> AuthorityFold {
+  fold(oldest_first, init: AuthorityUnestablished { host_effects: [] as List<HostEffectRecord> }, f: (acc, env) => authority_fold_step(acc: acc, env: env))
 }
 
 // ── THE READ ───────────────────────────────────────────────────────────────────────────────────
@@ -793,28 +867,115 @@ fn authority_with_lease_observed(a: PairServingGroupAuthority, grant: LeaseGrant
 
 data pair_authority_read_budget: Nat = 4096
 
-// THE CURRENT AUTHORITY OF A CLAIMED GROUP. A group with no resting row is not claimed and has no
-// authority to read (absence is not permission, exactly as pair_serving_authority_for says); a
-// claimed group's partition is read and folded from its resting row. Every failure to read is
-// Unread with its step, and no arm answers the resting row when the log could not be read.
+// THE GROUP PARTITION, READ AND FOLDED. Every failure to read is Unread with its step; a refused
+// fold is Unread at "fold". The two readable outcomes are the two fold states.
+type GroupPartitionRead
+  = GroupPartitionAt { head: HeadExpectation, fold: AuthorityFold }
+  | GroupPartitionUnread { step: String, reason: String }
+
+fn read_group_partition(layout: EventLogLayout, group: FabricGroup) -> GroupPartitionRead {
+  match event_log_read_partition_with(layout: layout, partition: pair_authority_partition(group: group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
+    PartitionReadRefused { step: s, reason: why } => GroupPartitionUnread { step: s, reason: why }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => GroupPartitionUnread { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
+        ChainBudgetExhausted { at: a } => GroupPartitionUnread { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
+        ChainWalked { oldest_first: xs } =>
+          match authority_fold(oldest_first: xs) {
+            AuthorityFoldRefused { at_event: e, reason: why } => GroupPartitionUnread { step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
+            other => GroupPartitionAt { head: head, fold: other }
+          }
+      }
+  }
+}
+
+// THE CURRENT AUTHORITY OF A GROUP. A group whose partition carries no establishment is not claimed
+// and has no authority to read (absence is not permission); every failure to read is Unread with
+// its step, and no arm answers the source row when the log could not be read.
 fn current_pair_serving_authority(layout: EventLogLayout, group: FabricGroup, at: EpochSecs) -> CurrentAuthority {
-  match pair_serving_authority_for(group: group) {
-    Absent => CurrentAuthorityUnread { group: group, step: "claim", reason: "no authority row claims this group" }
-    Present { value: resting } =>
-      match event_log_read_partition_with(layout: layout, partition: pair_authority_partition(group: group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
-        PartitionReadRefused { step: s, reason: why } => CurrentAuthorityUnread { group: group, step: s, reason: why }
-        PartitionReadOk { head: head, walk: walk } =>
-          match walk {
-            ChainIncomplete { missing: m, newest_first_so_far: _ } =>
-              CurrentAuthorityUnread { group: group, step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
-            ChainBudgetExhausted { at: a } =>
-              CurrentAuthorityUnread { group: group, step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
-            ChainWalked { oldest_first: xs } =>
-              match authority_fold(resting: resting, oldest_first: xs) {
-                AuthorityFoldRefused { at_event: e, reason: why } =>
-                  CurrentAuthorityUnread { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
-                AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs, host_effects: effs } =>
-                  CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs, host_effects: effs }
+  match read_group_partition(layout: layout, group: group) {
+    GroupPartitionUnread { step: s, reason: why } => CurrentAuthorityUnread { group: group, step: s, reason: why }
+    GroupPartitionAt { head: head, fold: f } =>
+      match f {
+        AuthorityFoldRefused { at_event: e, reason: why } => CurrentAuthorityUnread { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
+        AuthorityUnestablished { host_effects: _ } => CurrentAuthorityUnread { group: group, step: "claim", reason: "no authority has been established on this group's partition (the source row is desired, not established)" }
+        AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs, host_effects: effs } =>
+          CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs, host_effects: effs }
+      }
+  }
+}
+
+// ── ESTABLISHING A GROUP'S AUTHORITY ───────────────────────────────────────────────────────────
+//
+// ONE COMPARE-AND-SET AT THE HEAD the establishment read. Refused when an authority is already
+// established, when the authority names another group, when it would commit a host under a live
+// claim, when it commits no host, or when it holds a lease; stale when the partition moved.
+type AuthorityEstablishment
+  = AuthorityEstablishedAt { id: EventId }
+  | AuthorityEstablishmentRefused { group: FabricGroup, step: String, reason: String }
+
+fn pair_serving_authority_establish(layout: EventLogLayout, group: FabricGroup, authority: PairServingGroupAuthority, actor: NonEmptyStr, at: EpochSecs) -> AuthorityEstablishment {
+  if (fabric_group_wire(g: pair_serving_authority_group(a: authority)) as String) != (fabric_group_wire(g: group) as String) {
+    AuthorityEstablishmentRefused { group: group, step: "subject", reason: "the authority names a different group than the partition" }
+  } else {
+    match read_group_partition(layout: layout, group: group) {
+      GroupPartitionUnread { step: s, reason: why } => AuthorityEstablishmentRefused { group: group, step: s, reason: why }
+      GroupPartitionAt { head: head, fold: f } =>
+        match f {
+          AuthorityFoldRefused { at_event: e, reason: why } => AuthorityEstablishmentRefused { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
+          AuthorityFolded { current: cur } => AuthorityEstablishmentRefused { group: group, step: "established", reason: join(["an authority is already established: ", authority_wire(a: cur)], "") }
+          AuthorityUnestablished { host_effects: effs } =>
+            match establishment_refusal(a: authority, effs: effs, at: at) {
+              Present { value: why } => AuthorityEstablishmentRefused { group: group, step: "host-effects", reason: why }
+              Absent => {
+                let event = ChainEvent {
+                  partition: pair_authority_partition(group: group),
+                  parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                  recorded_at: at,
+                  actor: actor,
+                  payload: AuthorityEstablished { authority: authority },
+                }
+                match event_log_append_with(layout: layout, partition: pair_authority_partition(group: group), event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) }) {
+                  EventAppended { id: h } => AuthorityEstablishedAt { id: h }
+                  EventAppendStale { expected: _, observed: _ } => AuthorityEstablishmentRefused { group: group, step: "stale", reason: "the partition moved between the read and the establishment; nothing was established" }
+                  EventAppendRefused { step: st, reason: why } => AuthorityEstablishmentRefused { group: group, step: st, reason: why }
+                }
+              }
+            }
+        }
+    }
+  }
+}
+
+// THE SOURCE ROW, ESTABLISHED ON THE LOG: the production route from a desired authority row to a
+// group authority, run once per group by an operator on an executor with the event log placed:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/pair_serving_authority_log.dag
+//     --function pair_serving_authority_establish_wet --arg group=<group-a|group-b>
+// A group with no source row refuses; an already established group refuses (the state moves by
+// transition, never by re-establishment).
+fn pair_serving_authority_establish_wet(group: String) -> ProcessExit
+  uses net: Network
+{
+  match parse_fabric_group(wire: group) {
+    Absent => exit_failure(reason: join(["`", group, "` is not a fabric group"], ""))
+    Present { value: g } =>
+      match pair_serving_authority_for(group: g) {
+        Absent => exit_failure(reason: join(["no source row declares an authority for ", group], ""))
+        Present { value: desired } =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["the executor could not be identified: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: _ } =>
+              match event_log_layout_for_host(short_hostname: executor) {
+                HostLayoutRefused { detail: d } => exit_failure(reason: d)
+                HostLayoutResolved { layout: layout, executor: _ } =>
+                  match now_epoch_seconds() {
+                    Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
+                    Present { value: at } =>
+                      match pair_serving_authority_establish(layout: layout, group: g, authority: desired, actor: executor as NonEmptyStr, at: at) {
+                        AuthorityEstablishedAt { id: _ } => ExitSuccess
+                        AuthorityEstablishmentRefused { group: _, step: st, reason: why } => exit_failure(reason: join(["establishment refused at ", st, ": ", why], ""))
+                      }
+                  }
               }
           }
       }
@@ -987,11 +1148,12 @@ fn current_authority_wire(c: CurrentAuthority) -> String {
 // ── WHERE A HOST'S EFFECT CLAIMS LIVE ──────────────────────────────────────────────────────────
 //
 // One home per host, decided by the host's fabric group (a source fact), never by whether an
-// authority row claims that group today. A grouped host's home is its group's partition; there
-// the claim is serialized by the one head lease with every authority transition, and when the
-// group is unclaimed the partition carries host-effect events only, read by a fold that admits
-// nothing else. A host in no fabric group has its own partition. The refusal names the partition
-// it was decided on -- the subject of a host-partition claim is the host, not a group.
+// authority is established on that group today. A grouped host's home is its group's partition,
+// read by the one authority fold from the one genesis: before the establishment the claims fold
+// alone, and the establishment and every transition after it are fenced by them. A host in no
+// fabric group has its own partition, folded by host_effect_fold_step (which admits nothing but
+// host-effect events). The refusal names the partition it was decided on -- the subject of a
+// host-partition claim is the host, not a group.
 type HostEffectHome
   = GroupHome { group: FabricGroup }
   | HostHome { host: HostIdentity }
@@ -1029,8 +1191,8 @@ fn host_effect_fold_step(acc: HostEffectFold, env: ChainEnvelope<PairAuthorityEv
           } else {
             HostEffectsFolded { records: concat(effs, [HostEffectRecord { id: env.id, host: h, purpose: p, executor: x, recorded_at: env.event.recorded_at, term: t, residue: rs, released: false }]) }
           }
-        HostEffectReleased { admitted_by: a, evidence: ev } =>
-          match release_admission(records: effs, claim: a, evidence: ev) {
+        HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
+          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv) {
             ReleaseAdmitted { record: _ } => HostEffectsFolded { records: map(effs, r => if (r.id as String) == (a as String) { host_effect_released(r: r) } else { r }) }
             other => HostEffectFoldRefused { at_event: env.id, reason: join(["a host effect release is refused: ", release_refusal_reason(a: other, claim: a)], "") }
           }
@@ -1072,21 +1234,21 @@ type HostEffectHomeReading
 
 fn host_effect_home_read(layout: EventLogLayout, home: HostEffectHome, at: EpochSecs) -> HostEffectHomeReading {
   let partition = host_effect_home_partition(home: home)
-  let claimed = match home { GroupHome { group: g } => pair_serving_authority_for(group: g)  HostHome { host: _ } => none }
-  match claimed {
-    Present { value: _ } =>
-      match home {
-        HostHome { host: _ } => HostEffectHomeUnread { partition: partition, step: "home", reason: "a host home has no authority row" }
-        GroupHome { group: g } =>
-          match current_pair_serving_authority(layout: layout, group: g, at: at) {
-            CurrentAuthorityUnread { group: _, step: st, reason: why } => HostEffectHomeUnread { partition: partition, step: st, reason: why }
-            CurrentAuthorityRead { authority: cur, head: head, host_effects: effs } => HostEffectHomeRead { head: head, current: Present { value: cur }, records: effs }
-          }
-      }
-    Absent =>
+  match home {
+    HostHome { host: _ } =>
       match host_effects_on_partition(layout: layout, partition: partition) {
         HostEffectsUnread { partition: _, step: st, reason: why } => HostEffectHomeUnread { partition: partition, step: st, reason: why }
         HostEffectsReadAt { head: head, records: effs } => HostEffectHomeRead { head: head, current: none, records: effs }
+      }
+    GroupHome { group: g } =>
+      match read_group_partition(layout: layout, group: g) {
+        GroupPartitionUnread { step: st, reason: why } => HostEffectHomeUnread { partition: partition, step: st, reason: why }
+        GroupPartitionAt { head: head, fold: f } =>
+          match f {
+            AuthorityFoldRefused { at_event: e, reason: why } => HostEffectHomeUnread { partition: partition, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
+            AuthorityUnestablished { host_effects: effs } => HostEffectHomeRead { head: head, current: none, records: effs }
+            AuthorityFolded { current: cur, grant: gr, host_effects: effs } => HostEffectHomeRead { head: head, current: Present { value: authority_with_lease_observed(a: cur, grant: gr, at: at) }, records: effs }
+          }
       }
   }
 }
@@ -1135,19 +1297,19 @@ type HostEffectRelease
   = HostEffectReleasedAt { id: EventId }
   | HostEffectReleaseRefused { partition: PartitionId, step: String, reason: String }
 
-fn host_effect_release(layout: EventLogLayout, home: HostEffectHome, claim: EventId, evidence: HostQuiescenceEvidence, executor: NonEmptyStr, at: EpochSecs) -> HostEffectRelease {
+fn host_effect_release(layout: EventLogLayout, home: HostEffectHome, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, executor: NonEmptyStr, at: EpochSecs) -> HostEffectRelease {
   let partition = host_effect_home_partition(home: home)
   match host_effect_home_read(layout: layout, home: home, at: at) {
     HostEffectHomeUnread { partition: _, step: st, reason: why } => HostEffectReleaseRefused { partition: partition, step: st, reason: why }
     HostEffectHomeRead { head: head, current: _, records: effs } =>
-      match release_admission(records: effs, claim: claim, evidence: evidence) {
+      match release_admission(records: effs, claim: claim, evidence: evidence, provenance: provenance) {
         ReleaseAdmitted { record: _ } => {
           let event = ChainEvent {
             partition: partition,
             parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
             recorded_at: at,
             actor: executor,
-            payload: HostEffectReleased { admitted_by: claim, evidence: evidence },
+            payload: HostEffectReleased { admitted_by: claim, evidence: evidence, provenance: provenance },
           }
           match event_log_append_with(layout: layout, partition: partition, event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) }) {
             EventAppended { id: h } => HostEffectReleasedAt { id: h }

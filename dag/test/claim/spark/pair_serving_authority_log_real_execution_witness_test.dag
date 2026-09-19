@@ -14,7 +14,7 @@ import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lea
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.host_commitment {
   SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over,
@@ -25,13 +25,14 @@ import std.measure { second }
 import extdeps.shell
 import extdeps.python
 import gunbc.spark.host_effect_quiescence {
-  HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiet, ArgvRun, ArgvRan, observe_host_effect_quiescence,
+  HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiet, ArgvRun, ArgvRan, observe_host_effect_quiescence, ClaimantTerminal,
 }
 import gunbc.spark.pair_serving_authority_log {
   HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused,
   HostEffectsRead, HostEffectsReadAt, HostEffectsUnread, host_effects_on_host, host_effects_on_partition, pair_authority_partition,
   HostEffectHome, GroupHome, HostHome, host_effect_home, host_effect_admit, host_effect_release, HostEffectHomeRead, HostEffectHomeUnread, host_effect_home_read,
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
+  AuthorityEstablishment, AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
   authority_eq,
 }
@@ -56,8 +57,19 @@ fn alr_witness_layout(dir: FilePath) -> EventLogLayout {
   event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
 }
 
+// A ready remote has group A's source row ESTABLISHED on its partition (the durable genesis the
+// fold reads from), at 990, before any scenario event; group B stays unestablished.
 fn alr_witness_remote_ready(dir: FilePath) -> Bool {
   git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+    && alr_established(layout: alr_witness_layout(dir: dir), group: FabricGroupA)
+}
+
+fn alr_established(layout: EventLogLayout, group: FabricGroup) -> Bool {
+  match pair_serving_authority_for(group: group) {
+    Absent => false
+    Present { value: desired } =>
+      match pair_serving_authority_establish(layout: layout, group: group, authority: desired, actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false }
+  }
 }
 
 fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
@@ -190,8 +202,8 @@ fn alr_quiet_leg(argv: List<String>) -> ArgvRun {
   ArgvRan { exit_code: 1, stdout: "", stderr: "" }
 }
 
-fn alr_evidence_for(host: HostIdentity, spec: HostEffectResidueSpec, at: Int) -> HostQuiescenceEvidence? {
-  match observe_host_effect_quiescence(run: fn(argv) { alr_quiet_leg(argv: argv) }, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: at) {
+fn alr_evidence_for(claim: EventId, host: HostIdentity, spec: HostEffectResidueSpec, at: Int) -> HostQuiescenceEvidence? {
+  match observe_host_effect_quiescence(run: fn(argv) { alr_quiet_leg(argv: argv) }, claim: claim, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: at) {
     HostQuiet { evidence: e } => Present { value: e }
     _ => none
   }
@@ -222,9 +234,9 @@ fn alr_occupied(layout: EventLogLayout, host: HostIdentity, at: Int) -> Bool {
 }
 
 fn alr_release_with_quiet(handle: HostEffectHandle, layout: EventLogLayout, at: Int) -> Bool {
-  match alr_evidence_for(host: handle.host, spec: handle.residue, at: at) {
+  match alr_evidence_for(claim: handle.claim, host: handle.host, spec: handle.residue, at: at) {
     Absent => false
-    Present { value: e } => match release_host_effect_over(handle: handle, evidence: e, layout: layout, executor: "executor-1" as NonEmptyStr, at: at) { Absent => true  Present { value: _ } => false }
+    Present { value: e } => match release_host_effect_over(handle: handle, evidence: e, provenance: ClaimantTerminal, layout: layout, executor: "executor-1" as NonEmptyStr, at: at) { Absent => true  Present { value: _ } => false }
   }
 }
 
@@ -278,8 +290,8 @@ test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -
                     (match host_effect_admit(layout: layout, home: GroupHome { group: FabricGroupA }, host: srv, purpose: "a second lane" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1002) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "held"  _ => false })
                       && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
                       && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1012) { AuthorityTransitionRefused { group: _, step: st, reason: r } => st == "host-effects" && r.contains("OVERDUE")  _ => false })
-                      && (match alr_evidence_for(host: srv, spec: alr_residue(pattern: "/srv/other"), at: 1013) { Present { value: e } => (match host_effect_release(layout: layout, home: GroupHome { group: FabricGroupA }, claim: claim, evidence: e, executor: "operator" as NonEmptyStr, at: 1013) { HostEffectReleaseRefused { partition: _, step: st, reason: _ } => st == "evidence"  _ => false })  Absent => false })
-                      && (match alr_evidence_for(host: srv, spec: alr_residue(pattern: "/srv/build"), at: 1013) { Present { value: e } => (match host_effect_release(layout: layout, home: GroupHome { group: FabricGroupA }, claim: claim, evidence: e, executor: "operator" as NonEmptyStr, at: 1013) { HostEffectReleasedAt { id: _ } => true  _ => false })  Absent => false })
+                      && (match alr_evidence_for(claim: claim, host: srv, spec: alr_residue(pattern: "/srv/other"), at: 1013) { Present { value: e } => (match host_effect_release(layout: layout, home: GroupHome { group: FabricGroupA }, claim: claim, evidence: e, provenance: ClaimantTerminal, executor: "operator" as NonEmptyStr, at: 1013) { HostEffectReleaseRefused { partition: _, step: st, reason: _ } => st == "evidence"  _ => false })  Absent => false })
+                      && (match alr_evidence_for(claim: claim, host: srv, spec: alr_residue(pattern: "/srv/build"), at: 1013) { Present { value: e } => (match host_effect_release(layout: layout, home: GroupHome { group: FabricGroupA }, claim: claim, evidence: e, provenance: ClaimantTerminal, executor: "operator" as NonEmptyStr, at: 1013) { HostEffectReleasedAt { id: _ } => true  _ => false })  Absent => false })
                       && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1014) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
                       && (match host_effect_admit(layout: layout, home: GroupHome { group: FabricGroupA }, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1015) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
                   _ => false
@@ -308,7 +320,7 @@ test fn an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution() ->
                   && (match host_effect_admit(layout: layout, home: home, host: host, purpose: "a second build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "held"  _ => false })
                   && (match host_effects_on_host(layout: layout, host: host) { HostEffectsReadAt { head: _, records: rs } => length(rs) == 1  _ => false })
                   && alr_release_with_quiet(handle: HostEffectHandle { home: home, host: host, residue: spec, claim: c }, layout: layout, at: 1002)
-                  && (match alr_evidence_for(host: host, spec: spec, at: 1003) { Present { value: e } => (match host_effect_release(layout: layout, home: home, claim: c, evidence: e, executor: "executor-1" as NonEmptyStr, at: 1003) { HostEffectReleaseRefused { partition: _, step: st, reason: _ } => st == "evidence"  _ => false })  Absent => false })
+                  && (match alr_evidence_for(claim: c, host: host, spec: spec, at: 1003) { Present { value: e } => (match host_effect_release(layout: layout, home: home, claim: c, evidence: e, provenance: ClaimantTerminal, executor: "executor-1" as NonEmptyStr, at: 1003) { HostEffectReleaseRefused { partition: _, step: st, reason: _ } => st == "evidence"  _ => false })  Absent => false })
                   && (match host_effect_admit(layout: layout, home: home, host: host, purpose: "a third build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1004) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
               _ => false
             })
@@ -316,32 +328,43 @@ test fn an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution() ->
   })
 }
 
-// A GROUPED HOST'S HOME IS ITS GROUP'S PARTITION, CLAIMED OR NOT. Group B has no authority row; a
-// claim on one of its hosts lands on group B's partition (not a per-host one), the production
-// standings fold reads that partition and commits the host as OccupiedByHostEffect, and the
-// authority fold that would run once the group is claimed refuses a transition committing the
-// host at that event -- the claim did not move when the group's standing did. The release with
-// evidence clears the standing.
+// A GROUPED HOST'S HOME IS ITS GROUP'S PARTITION, ESTABLISHED OR NOT, AND THE GENESIS IS THE LOG'S.
+// Group B has no establishment (and no source row): a claim on one of its hosts lands on group
+// B's partition (not a per-host one), the production standings fold reads that partition and
+// commits the host as OccupiedByHostEffect, and then the authority is established OVER THE SAME
+// PERSISTED CHAIN: an authority committing the host refuses at `host-effects`; a non-committing
+// one (ReleasedToFleet) lands and the current authority reads at generation 0; the transition
+// that would commit the host refuses under the claim; the claim's own release lands; the same
+// transition then succeeds at generation 1.
 test fn a_claim_on_an_unclaimed_groups_host_lives_on_the_group_partition_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
   alr_with_temp_dir(scenario: fn(dir) {
     let layout = alr_witness_layout(dir: dir)
     let host = match get(xs: fabric_group_hosts(g: FabricGroupB), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv14") }
     let home = host_effect_home(host: host)
     let spec = alr_residue(pattern: "/srv/build")
+    let active_b = PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }
+    let released_b = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
     alr_witness_remote_ready(dir: dir)
       && (match pair_serving_authority_for(group: FabricGroupB) { Absent => true  Present { value: _ } => false })
       && (match home { GroupHome { group: FabricGroupB } => true  _ => false })
       && !alr_occupied(layout: layout, host: host, at: 999)
       && (match host_effect_admit(layout: layout, home: home, host: host, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1000) {
             HostEffectClaimed { id: c, generation: _ } =>
-              (match host_effects_on_partition(layout: layout, partition: pair_authority_partition(group: FabricGroupB)) { HostEffectsReadAt { head: _, records: rs } => length(rs) == 1  _ => false })
-                && (match host_effects_on_host(layout: layout, host: host) { HostEffectsReadAt { head: _, records: rs } => length(rs) == 0  _ => false })
+              (match host_effects_on_host(layout: layout, host: host) { HostEffectsReadAt { head: _, records: rs } => length(rs) == 0  _ => false })
                 && alr_occupied(layout: layout, host: host, at: 1001)
                 && (match host_effect_home_read(layout: layout, home: home, at: 1001) { HostEffectHomeRead { head: _, current: Absent, records: rs } => length(rs) == 1  _ => false })
-                && alr_release_with_quiet(handle: HostEffectHandle { home: home, host: host, residue: spec, claim: c }, layout: layout, at: 1002)
-                && !alr_occupied(layout: layout, host: host, at: 1003)
+                && (match pair_serving_authority_establish(layout: layout, group: FabricGroupB, authority: active_b, actor: "operator" as NonEmptyStr, at: 1002) { AuthorityEstablishmentRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
+                && (match pair_serving_authority_establish(layout: layout, group: FabricGroupB, authority: released_b, actor: "operator" as NonEmptyStr, at: 1003) { AuthorityEstablishedAt { id: _ } => true  _ => false })
+                && (match current_pair_serving_authority(layout: layout, group: FabricGroupB, at: 1004) { CurrentAuthorityRead { authority: a, generation: g, host_effects: effs } => g == 0 && authority_eq(a: a, b: released_b) && length(effs) == 1  _ => false })
+                && (match pair_serving_authority_establish(layout: layout, group: FabricGroupB, authority: released_b, actor: "operator" as NonEmptyStr, at: 1004) { AuthorityEstablishmentRefused { group: _, step: st, reason: _ } => st == "established"  _ => false })
+                && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: released_b, next: active_b, transaction: "tx-claim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "operator" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
+                && alr_occupied(layout: layout, host: host, at: 1006)
+                && alr_release_with_quiet(handle: HostEffectHandle { home: home, host: host, residue: spec, claim: c }, layout: layout, at: 1007)
+                && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: released_b, next: active_b, transaction: "tx-claim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "operator" as NonEmptyStr, at: 1008) { AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1  _ => false })
             _ => false
           })
+  })
   })
 }
 
@@ -372,10 +395,10 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
             && (match host_effect_admit(layout: layout, home: GroupHome { group: FabricGroupA }, host: srv, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) {
                   HostEffectClaimed { id: c, generation: _ } => {
                     let handle = HostEffectHandle { home: GroupHome { group: FabricGroupA }, host: srv, residue: spec, claim: c }
-                    (match settle_host_effect_over(handle: handle, run: fn(argv) { alr_local_leg(argv: argv) }, layout: layout, executor: "executor-1" as NonEmptyStr, at: 1002) { HostEffectStillHeld { cause: why } => why.contains("still carries the effect")  HostEffectSettled => false })
+                    (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal, run: fn(argv) { alr_local_leg(argv: argv) }, layout: layout, executor: "executor-1" as NonEmptyStr, at: 1002) { HostEffectStillHeld { cause: why } => why.contains("still carries the effect")  HostEffectSettled => false })
                       && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1003) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
                       && shell.Exec.RunArgv(program: "kill", arguments: ["-9", pid]).exit_code == 0
-                      && (match settle_host_effect_over(handle: handle, run: fn(argv) { alr_local_leg(argv: argv) }, layout: layout, executor: "executor-1" as NonEmptyStr, at: 1004) { HostEffectSettled => true  HostEffectStillHeld { cause: _ } => false })
+                      && (match settle_host_effect_over(handle: handle, provenance: ClaimantTerminal, run: fn(argv) { alr_local_leg(argv: argv) }, layout: layout, executor: "executor-1" as NonEmptyStr, at: 1004) { HostEffectSettled => true  HostEffectStillHeld { cause: _ } => false })
                       && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
                   }
                   _ => false

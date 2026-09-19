@@ -21,7 +21,7 @@ import gunbc.spark.pair_serving_authority { FencedRefusal, pair_serving_authorit
 import gunbc.spark.serving_incarnation_observe { UnitInstalled, EndpointListenerReading, EndpointNoListener, EndpointListening, EndpointListenerUnread, read_endpoint_listener }
 import gunbc.host_effect { LocalShell }
 import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, AuthorityTransitionAppended, pair_serving_authority_transition }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, AuthorityTransitionAppended, pair_serving_authority_transition, AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish }
 import gunbc.spark.pair_serving_d0 {
   FrontDoorReading, FrontDoorNoStatus, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
   IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation, RankOccupancyReading,
@@ -230,8 +230,15 @@ fn d0fd_witness_layout(dir: FilePath) -> EventLogLayout {
   event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
 }
 
+// A ready remote has group A's source row ESTABLISHED on its partition (the log's durable
+// genesis) at 990, before any scenario event.
 fn d0fd_witness_remote_ready(dir: FilePath) -> Bool {
   git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+    && (match pair_serving_authority_for(group: FabricGroupA) {
+          Absent => false
+          Present { value: desired } =>
+            match pair_serving_authority_establish(layout: d0fd_witness_layout(dir: dir), group: FabricGroupA, authority: desired, actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false }
+        })
 }
 
 fn d0fd_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {

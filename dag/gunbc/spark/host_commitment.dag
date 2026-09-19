@@ -23,9 +23,11 @@ import gunbc.spark.pair_serving_authority_log {
   HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused,
   HostEffectRecord, HostEffectsRead, HostEffectsReadAt, HostEffectsUnread, host_effects_on_partition, host_effect_partition, pair_authority_partition,
   HostEffectHome, GroupHome, HostHome, host_effect_home, host_effect_home_read, HostEffectHomeRead, HostEffectHomeUnread, host_effect_admit, host_effect_release,
+  GroupPartitionRead, GroupPartitionAt, GroupPartitionUnread, read_group_partition, AuthorityFold, AuthorityFolded, AuthorityUnestablished, AuthorityFoldRefused,
 }
 import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRun, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
+  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, parse_claimant_standing,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -603,23 +605,24 @@ fn spark_host_standings_current(current: List<CurrentAuthority>, host_claims: Li
   }
 }
 
-// EVERY HOME THAT IS NOT A CLAIMED GROUP'S AUTHORITY, read on a layout: the partition of each
-// unclaimed fabric group (host-effect events only) and the own partition of every unit in no
-// fabric group. One unread partition is the whole reading unread.
+// EVERY HOME, read on a layout. Each group partition is read by the one authority fold from its
+// durable genesis: an established group contributes its current authority and its claims; a
+// group that is unestablished AND undeclared in the source roster contributes its claims alone;
+// a group the source roster declares but the log has not established is UNREAD -- the desired
+// row has not been actuated (pair_serving_authority_establish_wet), and until it is, nothing may
+// treat its hosts as free. The own partition of every unit in no fabric group is read as claims.
+// One unread partition is the whole reading unread.
 type HostClaimsRead
   = HostClaimsReadAt { records: List<HostEffectRecord> }
   | HostClaimsUnread { cause: NonEmptyStr }
 
-fn other_home_partitions() -> List<PartitionId> {
-  let unclaimed_groups = filter([FabricGroupA, FabricGroupB], g => match pair_serving_authority_for(group: g) { Absent => true  Present { value: _ } => false })
+fn ungrouped_unit_partitions() -> List<PartitionId> {
   let ungrouped_units = filter(dgx_spark_reserved_identities(), h => match fabric_group_of_host(host: h) { Absent => true  Present { value: _ } => false })
-  let group_partitions = flat_map(unclaimed_groups, g => [pair_authority_partition(group: g)])
-  let unit_partitions = flat_map(ungrouped_units, u => [host_effect_partition(host: u)])
-  concat(group_partitions, unit_partitions)
+  flat_map(ungrouped_units, u => [host_effect_partition(host: u)])
 }
 
-fn other_home_host_claims(layout: EventLogLayout) -> HostClaimsRead {
-  fold(other_home_partitions(), init: HostClaimsReadAt { records: [] as List<HostEffectRecord> }, f: (acc, pt) =>
+fn ungrouped_unit_claims(layout: EventLogLayout) -> HostClaimsRead {
+  fold(ungrouped_unit_partitions(), init: HostClaimsReadAt { records: [] as List<HostEffectRecord> }, f: (acc, pt) =>
     match acc {
       HostClaimsUnread { cause: _ } => acc
       HostClaimsReadAt { records: rs } =>
@@ -630,11 +633,39 @@ fn other_home_host_claims(layout: EventLogLayout) -> HostClaimsRead {
     })
 }
 
+type GroupStanding
+  = GroupStandingEstablished { current: CurrentAuthority }
+  | GroupStandingUnclaimed { records: List<HostEffectRecord> }
+  | GroupStandingUnread { cause: String }
+
+fn group_standing_over(layout: EventLogLayout, group: FabricGroup, at: EpochSecs) -> GroupStanding {
+  match read_group_partition(layout: layout, group: group) {
+    GroupPartitionUnread { step: st, reason: why } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, " at ", st, ": ", why], "") }
+    GroupPartitionAt { head: _, fold: f } =>
+      match f {
+        AuthorityFoldRefused { at_event: e, reason: why } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, " at fold: event ", e as String, " refused: ", why], "") }
+        AuthorityUnestablished { host_effects: effs } =>
+          match pair_serving_authority_for(group: group) {
+            Absent => GroupStandingUnclaimed { records: effs }
+            Present { value: _ } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, ": the source roster declares an authority that has not been established on the log (pair_serving_authority_establish_wet); its hosts are not free"], "") }
+          }
+        AuthorityFolded { current: _ } => GroupStandingEstablished { current: current_pair_serving_authority(layout: layout, group: group, at: at) }
+      }
+  }
+}
+
 fn spark_host_standings_over(layout: EventLogLayout, at: EpochSecs) -> CurrentStandings {
-  let current = map(spark_pair_serving_authorities, a => current_pair_serving_authority(layout: layout, group: pair_serving_authority_group(a: a), at: at))
-  match other_home_host_claims(layout: layout) {
-    HostClaimsUnread { cause: c } => CurrentStandingsUnread { cause: c }
-    HostClaimsReadAt { records: claims } => spark_host_standings_current(current: current, host_claims: claims)
+  let standings = map([FabricGroupA, FabricGroupB], g => group_standing_over(layout: layout, group: g, at: at))
+  let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  _ => [] as List<String> })
+  if length(unread) != 0 {
+    CurrentStandingsUnread { cause: join(["a group partition could not be read, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
+  } else {
+    let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  _ => [] as List<CurrentAuthority> })
+    let unclaimed = flat_map(standings, st => match st { GroupStandingUnclaimed { records: rs } => rs  _ => [] as List<HostEffectRecord> })
+    match ungrouped_unit_claims(layout: layout) {
+      HostClaimsUnread { cause: c } => CurrentStandingsUnread { cause: c }
+      HostClaimsReadAt { records: claims } => spark_host_standings_current(current: current, host_claims: concat(unclaimed, claims))
+    }
   }
 }
 
@@ -910,8 +941,8 @@ fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second, res
 // THE RELEASE IS THE EVIDENCE LANDING: given a quiescence reading of the claim's host, append the
 // release. A release that did not land is returned as its cause, never hidden -- the host stays
 // held until one lands.
-fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEvidence, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> String? {
-  match host_effect_release(layout: layout, home: handle.home, claim: handle.claim, evidence: evidence, executor: executor, at: at) {
+fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> String? {
+  match host_effect_release(layout: layout, home: handle.home, claim: handle.claim, evidence: evidence, provenance: provenance, executor: executor, at: at) {
     HostEffectReleasedAt { id: _ } => none
     HostEffectReleaseRefused { partition: pt, step: st, reason: why } => Present { value: join(["the host-effect claim ", handle.claim as String, " was not released on ", pt as String, " at ", st, ": ", why, "; the host stays held until a release with quiescence evidence lands"], "") }
   }
@@ -936,12 +967,12 @@ type HostEffectSettlement
   = HostEffectSettled
   | HostEffectStillHeld { cause: String }
 
-fn settle_host_effect_over(handle: HostEffectHandle, run: fn(List<String>) -> ArgvRun, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> HostEffectSettlement {
-  match observe_host_effect_quiescence(run: run, host: handle.host, spec: handle.residue, observer: executor, at: at) {
+fn settle_host_effect_over(handle: HostEffectHandle, provenance: ReleaseProvenance, run: fn(List<String>) -> ArgvRun, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> HostEffectSettlement {
+  match observe_host_effect_quiescence(run: run, claim: handle.claim, host: handle.host, spec: handle.residue, observer: executor, at: at) {
     HostQuiescenceUnread { host: h, cause: c } => HostEffectStillHeld { cause: join([h as String, " could not be read for quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
     HostResidue { host: h, detail: d } => HostEffectStillHeld { cause: join([h as String, " still carries the effect, so the host-effect claim ", handle.claim as String, " stays live: ", d], "") }
     HostQuiet { evidence: ev } =>
-      match release_host_effect_over(handle: handle, evidence: ev, layout: layout, executor: executor, at: at) {
+      match release_host_effect_over(handle: handle, evidence: ev, provenance: provenance, layout: layout, executor: executor, at: at) {
         Absent => HostEffectSettled
         Present { value: why } => HostEffectStillHeld { cause: why }
       }
@@ -961,7 +992,7 @@ fn settle_host_effect_live(handle: HostEffectHandle) -> HostEffectSettlement {
               match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
                 FleetSshContextRefused { cause: c } => HostEffectStillHeld { cause: join(["the host could not be reached to observe quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
                 FleetSshContextReady { context: context, receipt: _ } =>
-                  settle_host_effect_over(handle: handle, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at)
+                  settle_host_effect_over(handle: handle, provenance: ClaimantTerminal, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at)
               }
           }
       }
@@ -986,50 +1017,63 @@ fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> Pro
 // ── RECOVERING A CRASHED LANE'S CLAIM ──────────────────────────────────────────────────────────
 //
 // A lane that died between its claim and its release left the claim live, and nothing releases
-// it on a clock. This entry is the authorized route: it reads the host's home, takes the live
-// claim on the host, observes the host against THAT claim's residue, and releases only when the
-// host is quiet. It takes a host and never picks one; an operator runs it once the lane is known
-// dead, on an executor with the fleet agent key:
+// it on a clock. This entry is the authorized route, and it consumes TWO facts the normal
+// terminal has by construction: the exact claim (never "whatever is live on the host"), and the
+// claimant's standing -- terminated or abandoned -- as a typed operator disposition with the
+// receipt that established it (a cancelled run's id, a dead process's last observation). A quiet
+// host alone is not enough: a live lane between two legs is quiet too, and releasing it would
+// admit another placement under it. The observation is then taken against THAT claim's residue,
+// and the release lands only when the host is quiet.
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/host_commitment.dag
-//     --function host_effect_recover_wet --arg host=<identity>
-fn host_effect_recover_wet(host: String) -> ProcessExit
+//     --function host_effect_recover_wet --arg host=<identity> --arg claim=<event id>
+//     --arg claimant=terminated|abandoned --arg receipt=<how that was established>
+fn host_effect_recover_wet(host: String, claim: String, claimant: String, receipt: String) -> ProcessExit
   uses net: Network
 {
-  if host == "" {
-    exit_failure(reason: "no host was named; this entry takes one and does not pick")
+  if host == "" || claim == "" {
+    exit_failure(reason: "a host and the exact claim (event id) are required; this entry does not pick a claim by host")
+  } else if receipt == "" {
+    exit_failure(reason: "a receipt establishing the claimant's standing is required (what showed the lane terminated or abandoned)")
   } else {
-    let h = host as HostIdentity
-    match observe_executor_reach() {
-      ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["the executor could not be identified: ", c], ""))
-      ExecutorReachKnown { short_hostname: executor, path: _ } =>
-        match event_log_layout_for_host(short_hostname: executor) {
-          HostLayoutRefused { detail: d } => exit_failure(reason: d)
-          HostLayoutResolved { layout: layout, executor: _ } =>
-            match now_epoch_seconds() {
-              Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
-              Present { value: at } => {
-                let home = host_effect_home(host: h)
-                match host_effect_home_read(layout: layout, home: home, at: at) {
-                  HostEffectHomeUnread { partition: pt, step: st, reason: why } => exit_failure(reason: join([pt as String, " could not be read at ", st, ": ", why], ""))
-                  HostEffectHomeRead { head: _, current: _, records: rs } =>
-                    match first(filter(rs, r => !r.released && host_identity_eq(a: r.host, b: h))) {
-                      Absent => exit_failure(reason: join(["no live host-effect claim on ", host, "; nothing to recover"], ""))
-                      Present { value: r } =>
-                        match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
-                          FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-                          FleetSshContextReady { context: context, receipt: _ } => {
-                            let handle = HostEffectHandle { home: home, host: h, residue: r.residue, claim: r.id }
-                            match settle_host_effect_over(handle: handle, run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at) {
-                              HostEffectSettled => ExitSuccess
-                              HostEffectStillHeld { cause: why } => exit_failure(reason: why)
+    match parse_claimant_standing(wire: claimant) {
+      Absent => exit_failure(reason: join(["`", claimant, "` is not a claimant standing; say terminated or abandoned"], ""))
+      Present { value: standing } => {
+        let h = host as HostIdentity
+        let c = (claim as NonEmptyStr) as EventId
+        match observe_executor_reach() {
+          ExecutorReachUnknown { cause: cause } => exit_failure(reason: join(["the executor could not be identified: ", cause], ""))
+          ExecutorReachKnown { short_hostname: executor, path: _ } =>
+            match event_log_layout_for_host(short_hostname: executor) {
+              HostLayoutRefused { detail: d } => exit_failure(reason: d)
+              HostLayoutResolved { layout: layout, executor: _ } =>
+                match now_epoch_seconds() {
+                  Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
+                  Present { value: at } => {
+                    let home = host_effect_home(host: h)
+                    let provenance = RecoveryAuthorized { claim: c, claimant: standing, authorized_by: executor as NonEmptyStr, receipt: receipt as NonEmptyStr }
+                    match host_effect_home_read(layout: layout, home: home, at: at) {
+                      HostEffectHomeUnread { partition: pt, step: st, reason: why } => exit_failure(reason: join([pt as String, " could not be read at ", st, ": ", why], ""))
+                      HostEffectHomeRead { head: _, current: _, records: rs } =>
+                        match first(filter(rs, r => !r.released && (r.id as String) == claim && host_identity_eq(a: r.host, b: h))) {
+                          Absent => exit_failure(reason: join(["no live host-effect claim ", claim, " on ", host, "; nothing to recover"], ""))
+                          Present { value: r } =>
+                            match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
+                              FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+                              FleetSshContextReady { context: context, receipt: _ } => {
+                                let handle = HostEffectHandle { home: home, host: h, residue: r.residue, claim: r.id }
+                                match settle_host_effect_over(handle: handle, provenance: provenance, run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at) {
+                                  HostEffectSettled => ExitSuccess
+                                  HostEffectStillHeld { cause: why } => exit_failure(reason: why)
+                                }
+                              }
                             }
-                          }
                         }
                     }
+                  }
                 }
-              }
             }
         }
+      }
     }
   }
 }
