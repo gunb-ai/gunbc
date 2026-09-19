@@ -18,7 +18,7 @@ import gunbc.review_sheet_identity {
   SearchVisibilityUnresolved,
   LegacyExtentEvidence,
   LegacyExtentAbsentByOperator,
-  LegacyFileSelectedByOperator,
+  LegacyFileSelection,
   LegacySearchObserved,
   LegacyExtentUnresolved,
   ReviewSheetIdentityStanding,
@@ -80,13 +80,13 @@ test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unreso
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
     legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
   ) {
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: f, cause: _ } =>
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: f, cause: _, evidence: _ } =>
       (f as String) == "current-A"
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -100,11 +100,11 @@ test fn an_empty_legacy_search_under_established_visibility_is_a_single_lineage(
     legacy: w_search(o: SheetAbsent, v: w_visible()),
   ) {
     ReviewSheetSingleLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "current-A"
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -117,13 +117,13 @@ test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool {
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
     legacy: w_search(o: SheetAbsent, v: PositiveFindEstablishesVisibility),
   ) {
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: c } =>
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: c, evidence: _ } =>
       string_contains(s: c as String, pattern: "did not make")
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -134,13 +134,13 @@ test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool {
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
     legacy: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
   ) {
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: c, legacy_file_ids: l } =>
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: c, legacy_file_ids: l, evidence: _ } =>
       any(c, i => i == "current-A") && any(l, i => i == "legacy-B")
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -153,11 +153,11 @@ test fn one_file_under_both_markers_is_a_single_lineage() -> Bool {
     legacy: w_search(o: SheetObservedOne { file_id: "same" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
   ) {
     ReviewSheetSingleLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "same"
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -172,9 +172,9 @@ test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool 
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "legacy-B"
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -186,12 +186,12 @@ test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bo
     current: SheetAbsent,
     legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
   ) {
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => true
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => true
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -208,11 +208,11 @@ test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool 
     },
   ) {
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => true
-    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -228,13 +228,13 @@ test fn evidence_naming_another_subject_is_unreadable() -> Bool {
       basis: "fixture: a declaration about a different drive" as NonEmptyStr,
     },
   ) {
-    ReviewSheetIdentityUnreadable { subject: _, cause: c } =>
+    ReviewSheetIdentityUnreadable { subject: _, cause: c, evidence: _ } =>
       string_contains(s: c as String, pattern: "different identity subject")
     ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
     ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
     ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
-    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
-    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: _ } => false
   }
 }
 
@@ -251,4 +251,57 @@ test fn a_subject_differing_only_in_the_superseded_field_does_not_match() -> Boo
       superseded_marker_field: "someLaterField" as NonEmptyStr,
     },
   ) == false
+}
+
+// AN OPERATOR'S SELECTION IS CARRIED, NOT CONSUMED, AND THIS CLAIM IS WHY THAT MATTERS. An earlier
+// revision of this cut made the selection an arm of LegacyExtentEvidence and derived a lineage from
+// it -- selecting A beside a current hit on A became SingleLineage(A), selecting B beside no current
+// file became LegacyOnlyLineage(B). Neither is established by the input: selecting A says which file
+// the operator selected, never that an invisible B does not exist.
+//
+// So the selection reaches no standing at all in this cut. What a caller holding one gets instead is
+// the standing the EVIDENCE supports, which for an unresolved extent is Unresolved -- and
+// reconciling the selection against it is the admission, a later cut with its own refusals.
+test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
+  let selection = LegacyFileSelection {
+    subject: w_subject(),
+    file_id: "current-A" as NonEmptyStr,
+    basis: "fixture: an operator supplied this file id" as NonEmptyStr,
+  }
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
+  ) {
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: f, cause: _, evidence: _ } =>
+      (f as String) == "current-A" && (selection.file_id as String) == "current-A"
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
+  }
+}
+
+// PROVENANCE SURVIVES TO EVERY TERMINAL ARM, including the ones that used to carry only a cause
+// string. The point of this cut is that different evidence sources do not collapse into one
+// conclusion; losing the typed evidence at the output boundary would have re-collapsed them there.
+test fn an_unresolved_standing_still_carries_its_typed_evidence() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
+  ) {
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _, evidence: e } =>
+      match e {
+        LegacySearchObserved { subject: _, observation: _, visibility_basis: _ } => true
+        LegacyExtentAbsentByOperator { subject: _, basis: _ } => false
+        LegacyExtentUnresolved { subject: _, cause: _ } => false
+      }
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _, evidence: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _, evidence: _ } => false
+  }
 }
