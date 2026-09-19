@@ -1,0 +1,461 @@
+module test.claim.review_sheet_batch_actuator_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import gunbc.review_sheet_projection {
+  ReviewColumn,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  DerivedErasureMark,
+  ReviewSheetSchema,
+  ReviewSheetProjection,
+  ProjectionRow,
+  DerivedCell,
+  ReviewSheetWritePlan,
+  DerivedCellWrite,
+  AppendCellRun,
+  AppendListingRow,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  listing_standing_label,
+  StandingObserved,
+  A1Column,
+  A1Cell,
+  A1RowSpan,
+  a1_cell_wire,
+  a1_row_span_wire,
+}
+import gunbc.review_sheet_sheets {
+  TabBoundWritePlan,
+  lower_write_plan,
+  WritePlanLowered,
+  WritePlanUnlowerable,
+  WritePlanRefusal,
+  EmptyWritePlan,
+  TabTitleUnquotable,
+  AppendRunMalformed,
+  AppendRunSpanNotOneRow,
+  AppendRunOffListingRow,
+  AppendRunSpanColumnUnreadable,
+  AppendRunWidthMismatch,
+  review_sheet_ensure_assess,
+  review_sheet_get_values_request,
+  ReviewSheetEnsureAssessment,
+  ReviewSheetRequestRejected,
+  ReviewSheetReadbackRejected,
+  ReviewSheetProjectionClassified,
+}
+import gunbc.review_sheet_batch_actuator {
+  batch_values_request,
+  BatchRequestBuilt,
+  BatchRequestUnlowerable,
+  BatchMutationStanding,
+  BatchCommitted,
+  BatchRefused,
+  BatchNotIssued,
+  BatchCommitAmbiguous,
+  batch_mutation_obliges_readback,
+  review_sheet_write_receipt,
+  WriteVerifiedConverged,
+  WriteUnverified,
+  WriteNotCommitted,
+}
+import extdeps.google.sheets { ValueRange, ValueRangeWrite, InputRaw, InputUserEntered }
+
+// THE SUBJECT IS THREE PURE INTERFACES: the lowering (plan -> ranges), the request build
+// (plan -> one batch request), and the receipt (mutation standing x whole-tab assessment ->
+// receipt). Every input is SUPPLIED at its boundary (DESIGN §3, a witness discriminates at one
+// interface). The network route -- perform_batch_write, reassess_after_write,
+// write_and_verify_review_sheet -- is not executed here and is a declared frontier in
+// gunbc.review_sheet_batch_actuator, whose named consumer is private.
+
+fn cell(letter: String, row: Int) -> A1Cell {
+  A1Cell { column: A1Column { letter: letter as NonEmptyStr }, row: row }
+}
+
+fn span(start_letter: String, end_letter: String, row: Int) -> A1RowSpan {
+  A1RowSpan { start: cell(letter: start_letter, row: row), end: cell(letter: end_letter, row: row) }
+}
+
+fn patch(listing_id: String, letter: String, row: Int, value: String) -> DerivedCellWrite {
+  DerivedCellWrite {
+    listing_id: listing_id as NonEmptyStr,
+    column: "title" as NonEmptyStr,
+    a1: cell(letter: letter, row: row),
+    value: value,
+  }
+}
+
+fn run(start_letter: String, end_letter: String, row: Int, cells: List<String>) -> AppendCellRun {
+  AppendCellRun { a1: span(start_letter: start_letter, end_letter: end_letter, row: row), cells: cells, columns: [] }
+}
+
+fn append(listing_id: String, sheet_row: Int, runs: List<AppendCellRun>) -> AppendListingRow {
+  AppendListingRow { listing_id: listing_id as NonEmptyStr, sheet_row: sheet_row, runs: runs }
+}
+
+fn bound(tab: String, patches: List<DerivedCellWrite>, appends: List<AppendListingRow>) -> TabBoundWritePlan {
+  TabBoundWritePlan { tab: tab as NonEmptyStr, plan: ReviewSheetWritePlan { patches: patches, appends: appends } }
+}
+
+// Two patches and one append row of two runs: four ranges, every kind the plan can carry.
+fn w_full_plan() -> TabBoundWritePlan {
+  bound(
+    tab: "Review",
+    patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha"), patch(listing_id: "L2", letter: "B", row: 3, value: "beta")],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [
+      run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"]),
+      run(start_letter: "E", end_letter: "E", row: 4, cells: ["x"]),
+    ])],
+  )
+}
+
+// The wire an element of the plan must become. Cells carry no comma in this fixture, so a comma
+// join is injective over it; the claim is about WHICH ranges exist, and the encoding is local.
+fn values_wire(rows: List<List<String>>) -> String {
+  join(map(rows, r => join(r, ",")), ";")
+}
+
+fn range_wire(vr: ValueRangeWrite) -> String {
+  join([vr.range, "=", values_wire(rows: vr.values)], "")
+}
+
+fn expected_wires(b: TabBoundWritePlan) -> List<String> {
+  concat(
+    map(b.plan.patches, w => join([b.tab as String, "!", a1_cell_wire(cell: w.a1), "=", w.value], "")),
+    fold(b.plan.appends, init: [], f: fn(acc, row) {
+      concat(acc, map(row.runs, r => join([b.tab as String, "!", a1_row_span_wire(span: r.a1), "=", join(r.cells, ",")], "")))
+    }),
+  )
+}
+
+fn occurrences(wires: List<String>, wire: String) -> Int {
+  count(filter(wires, w => w == wire))
+}
+
+// AN IDENTITY JOIN, NOT A COUNT. Every plan element appears exactly once among the lowered ranges,
+// and every lowered range is a plan element. A count equality would pass a lowering that dropped
+// one range and duplicated another.
+fn is_identity_join(expected: List<String>, lowered: List<String>) -> Bool {
+  all(expected, e => occurrences(wires: lowered, wire: e) == 1)
+    && all(lowered, l => occurrences(wires: expected, wire: l) == 1)
+}
+
+test fn lowering_covers_patches_and_append_runs_as_an_identity_join() -> Bool {
+  let b = w_full_plan()
+  match lower_write_plan(bound: b) {
+    WritePlanLowered { ranges: rs } =>
+      count(rs) == 4
+        && is_identity_join(expected: expected_wires(b: b), lowered: map(rs, r => range_wire(vr: r)))
+        && all(rs, r => r.majorDimension == "ROWS")
+    WritePlanUnlowerable { refusals: _ } => false
+  }
+}
+
+test fn the_identity_join_rejects_a_dropped_and_a_duplicated_range() -> Bool {
+  let e = ["a", "b", "c"]
+  !is_identity_join(expected: e, lowered: ["a", "b"])
+    && !is_identity_join(expected: e, lowered: ["a", "b", "b"])
+    && !is_identity_join(expected: e, lowered: ["a", "b", "c", "d"])
+    && is_identity_join(expected: e, lowered: ["c", "a", "b"])
+}
+
+fn sole_refusal(b: TabBoundWritePlan) -> WritePlanRefusal? {
+  match lower_write_plan(bound: b) {
+    WritePlanLowered { ranges: _ } => none
+    WritePlanUnlowerable { refusals: rs } =>
+      if count(rs) == 1 { rs |> first } else { none }
+  }
+}
+
+// A malformed run refuses the WHOLE plan; the well-formed patch beside it is not lowered on its
+// own, because a partial lowering is a dropped range wearing a success arm.
+test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool {
+  let b = bound(
+    tab: "Review",
+    patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma"])])],
+  )
+  match sole_refusal(b: b) {
+    Present { value: AppendRunMalformed { listing_id: id, span: s, defect: d } } =>
+      (id as String) == "L3"
+        && a1_row_span_wire(span: s) == "A4:C4"
+        && match d {
+          AppendRunWidthMismatch { cell_count: c, span_width: w } => c == 2 && w == 3
+          AppendRunSpanNotOneRow => false
+          AppendRunOffListingRow { sheet_row: _ } => false
+          AppendRunSpanColumnUnreadable => false
+        }
+    Present { value: EmptyWritePlan } => false
+    Present { value: TabTitleUnquotable { tab: _ } } => false
+    Absent => false
+  }
+}
+
+test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
+  let b = bound(
+    tab: "Review",
+    patches: [],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "B", row: 5, cells: ["L3", "gamma"])])],
+  )
+  match sole_refusal(b: b) {
+    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: d } } =>
+      match d {
+        AppendRunOffListingRow { sheet_row: r } => r == 4
+        AppendRunWidthMismatch { cell_count: _, span_width: _ } => false
+        AppendRunSpanNotOneRow => false
+        AppendRunSpanColumnUnreadable => false
+      }
+    Present { value: EmptyWritePlan } => false
+    Present { value: TabTitleUnquotable { tab: _ } } => false
+    Absent => false
+  }
+}
+
+test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
+  let two_rows = A1RowSpan { start: cell(letter: "A", row: 4), end: cell(letter: "B", row: 5) }
+  let b = bound(
+    tab: "Review",
+    patches: [],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [AppendCellRun { a1: two_rows, cells: ["L3", "gamma"], columns: [] }])],
+  )
+  match sole_refusal(b: b) {
+    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: AppendRunSpanNotOneRow } } => true
+    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
+    Present { value: EmptyWritePlan } => false
+    Present { value: TabTitleUnquotable { tab: _ } } => false
+    Absent => false
+  }
+}
+
+test fn lowering_refuses_an_empty_plan_rather_than_building_a_zero_range_batch() -> Bool {
+  match sole_refusal(b: bound(tab: "Review", patches: [], appends: [])) {
+    Present { value: EmptyWritePlan } => true
+    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
+    Present { value: TabTitleUnquotable { tab: _ } } => false
+    Absent => false
+  }
+}
+
+test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool {
+  let b = bound(tab: "Bob's", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
+  match sole_refusal(b: b) {
+    Present { value: TabTitleUnquotable { tab: t } } => (t as String) == "Bob's"
+    Present { value: EmptyWritePlan } => false
+    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
+    Absent => false
+  }
+}
+
+// Every defect is reported, not the first: a plan with two malformed runs names both.
+test fn lowering_reports_every_refusal_it_found() -> Bool {
+  let b = bound(
+    tab: "Review",
+    patches: [],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [
+      run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3"]),
+      run(start_letter: "E", end_letter: "E", row: 5, cells: ["x"]),
+    ])],
+  )
+  match lower_write_plan(bound: b) {
+    WritePlanLowered { ranges: _ } => false
+    WritePlanUnlowerable { refusals: rs } => count(rs) == 2
+  }
+}
+
+// THE BATCH REQUEST CARRIES ALL RANGES IN ONE CALL, asserted on the request built: one record,
+// one data list, every lowered range in it, RAW as the input option.
+test fn batch_request_carries_every_range_of_the_plan_in_one_call() -> Bool {
+  let b = w_full_plan()
+  match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: b) {
+    BatchRequestBuilt { request: req } =>
+      (req.spreadsheet_id as String) == "sheet-1"
+        && count(req.data) == 4
+        && is_identity_join(expected: expected_wires(b: b), lowered: map(req.data, r => range_wire(vr: r)))
+        && match req.value_input_option {
+          InputRaw => true
+          InputUserEntered => false
+        }
+    BatchRequestUnlowerable { refusals: _ } => false
+  }
+}
+
+test fn batch_request_is_not_built_from_an_unlowerable_plan() -> Bool {
+  match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: bound(tab: "Review", patches: [], appends: [])) {
+    BatchRequestBuilt { request: _ } => false
+    BatchRequestUnlowerable { refusals: rs } => count(rs) == 1
+  }
+}
+
+// ---- verification: the receipt over a supplied whole-tab assessment ----
+
+fn w_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: [
+      ReviewColumn { name: "title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "standing" as NonEmptyStr, kind: ListingStanding },
+      ReviewColumn { name: "judgement" as NonEmptyStr, kind: OperatorEntered },
+      ReviewColumn { name: "erasure" as NonEmptyStr, kind: DerivedErasureMark },
+    ]
+  }
+}
+
+fn w_row(listing_id: String, title: String) -> ProjectionRow {
+  ProjectionRow {
+    listing_id: listing_id as NonEmptyStr,
+    derived: [DerivedCell { column: "title" as NonEmptyStr, value: title }],
+  }
+}
+
+fn w_projection() -> ReviewSheetProjection {
+  ReviewSheetProjection { schema: w_schema(), rows: [w_row(listing_id: "L1", title: "alpha"), w_row(listing_id: "L2", title: "beta")] }
+}
+
+fn w_headers() -> List<String> {
+  ["listing_id", "title", "standing", "judgement", "erasure"]
+}
+
+fn observed_row(listing_id: String, title: String) -> List<String> {
+  [listing_id, title, listing_standing_label(state: StandingObserved), "", ""]
+}
+
+// A whole-tab FORMATTED_VALUE readback, the shape the fresh read returns.
+fn w_readback(rows: List<List<String>>) -> ValueRange {
+  ValueRange {
+    range: "Review!A1:E",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], rows) },
+  }
+}
+
+fn w_assess(rows: List<List<String>>) -> ReviewSheetEnsureAssessment {
+  review_sheet_ensure_assess(
+    requested: review_sheet_get_values_request(tab: "Review" as NonEmptyStr),
+    range: w_readback(rows: rows),
+    projection: w_projection(),
+    erasures: [],
+  )
+}
+
+fn converged_rows() -> List<List<String>> {
+  [observed_row(listing_id: "L1", title: "alpha"), observed_row(listing_id: "L2", title: "beta")]
+}
+
+fn committed() -> BatchMutationStanding {
+  BatchCommitted { total_updated_cells: Present { value: 4 } }
+}
+
+fn ambiguous() -> BatchMutationStanding {
+  BatchCommitAmbiguous { detail: "no response arrived for a mutation" as NonEmptyStr }
+}
+
+test fn the_fixture_readback_classifies_as_converged() -> Bool {
+  match w_assess(rows: converged_rows()) {
+    ReviewSheetProjectionClassified { observed: _, tab: _, classification: ReviewSheetConverged } => true
+    ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => false
+    ReviewSheetRequestRejected { cause: _ } => false
+    ReviewSheetReadbackRejected { reason: _ } => false
+  }
+}
+
+test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool {
+  match review_sheet_write_receipt(mutation_standing: committed(), readback_assessment: w_assess(rows: converged_rows())) {
+    WriteVerifiedConverged { mutation_standing: s, observed: o } =>
+      count(o.rows) == 2
+        && match s {
+          BatchCommitted { total_updated_cells: _ } => true
+          BatchCommitAmbiguous { detail: _ } => false
+          BatchRefused { status: _, body: _ } => false
+          BatchNotIssued { refusals: _ } => false
+        }
+    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
+    WriteNotCommitted { mutation_standing: _ } => false
+  }
+}
+
+// A readback missing one range -- the L2 row never landed -- is UNVERIFIED and carries the
+// assessment: the residual plan says which listing is still owed an append. Per-range readback of
+// the ranges that were sent could not have said this.
+test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
+  match review_sheet_write_receipt(
+    mutation_standing: committed(),
+    readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "alpha")]),
+  ) {
+    WriteUnverified { mutation_standing: _, readback_assessment: a } =>
+      match a {
+        ReviewSheetProjectionClassified { observed: _, tab: _, classification: c } =>
+          match c {
+            ReviewSheetNeedsWrite { plan: p } =>
+              count(p.patches) == 0
+                && count(p.appends) == 1
+                && match p.appends |> first {
+                  Present { value: row } => (row.listing_id as String) == "L2" && row.sheet_row == 3
+                  Absent => false
+                }
+            ReviewSheetConverged => false
+            ReviewSheetConflict { conflict: _ } => false
+            ReviewSheetUnreadable { reason: _ } => false
+          }
+        ReviewSheetRequestRejected { cause: _ } => false
+        ReviewSheetReadbackRejected { reason: _ } => false
+      }
+    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
+    WriteNotCommitted { mutation_standing: _ } => false
+  }
+}
+
+// A readback whose cell holds a value the plan did not choose is a conflict, and a conflict is
+// not convergence even after a committed write.
+test fn a_conflicting_readback_is_unverified() -> Bool {
+  match review_sheet_write_receipt(
+    mutation_standing: committed(),
+    readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "someone else's title"), observed_row(listing_id: "L2", title: "beta")]),
+  ) {
+    WriteUnverified { mutation_standing: _, readback_assessment: a } =>
+      match a {
+        ReviewSheetProjectionClassified { observed: _, tab: _, classification: ReviewSheetConflict { conflict: _ } } => true
+        ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => false
+        ReviewSheetRequestRejected { cause: _ } => false
+        ReviewSheetReadbackRejected { reason: _ } => false
+      }
+    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
+    WriteNotCommitted { mutation_standing: _ } => false
+  }
+}
+
+test fn a_rejected_readback_is_unverified_not_a_success() -> Bool {
+  match review_sheet_write_receipt(
+    mutation_standing: committed(),
+    readback_assessment: ReviewSheetReadbackRejected { reason: "values.get refused with status 429" as NonEmptyStr },
+  ) {
+    WriteUnverified { mutation_standing: _, readback_assessment: ReviewSheetReadbackRejected { reason: r } } =>
+      (r as String) == "values.get refused with status 429"
+    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
+    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
+    WriteNotCommitted { mutation_standing: _ } => false
+  }
+}
+
+// COMMIT-AMBIGUOUS PLUS A CONVERGED READBACK IS A SUCCESS, and the ambiguity stays in the receipt:
+// the sheet is what the projection says, and the receipt still says the remote never confirmed it.
+test fn an_ambiguous_commit_with_a_converged_readback_is_verified_and_keeps_the_ambiguity() -> Bool {
+  match review_sheet_write_receipt(mutation_standing: ambiguous(), readback_assessment: w_assess(rows: converged_rows())) {
+    WriteVerifiedConverged { mutation_standing: BatchCommitAmbiguous { detail: d }, observed: _ } =>
+      (d as String) == "no response arrived for a mutation"
+    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
+    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
+    WriteNotCommitted { mutation_standing: _ } => false
+  }
+}
+
+// AMBIGUOUS IS NOT REFUSED. Committed and ambiguous both oblige the fresh read; refused (a 4xx
+// decision before commit) and not-issued (nothing was sent) do not.
+test fn committed_and_ambiguous_oblige_a_readback_while_refused_and_not_issued_do_not() -> Bool {
+  batch_mutation_obliges_readback(standing: committed())
+    && batch_mutation_obliges_readback(standing: ambiguous())
+    && !batch_mutation_obliges_readback(standing: BatchRefused { status: 400, body: "bad range" })
+    && !batch_mutation_obliges_readback(standing: BatchNotIssued { refusals: [EmptyWritePlan] })
+}

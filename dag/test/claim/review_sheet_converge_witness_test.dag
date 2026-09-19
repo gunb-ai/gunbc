@@ -81,7 +81,9 @@ import gunbc.review_sheet_sheets {
   SheetRequestCause,
   BoundedRequest,
   ColumnBoundedRequest,
-  value_ranges_from_write_plan,
+  lower_write_plan,
+  WritePlanLowered,
+  WritePlanUnlowerable,
   value_range_includes_column_letter,
   TabBoundWritePlan,
   ReadbackObserved,
@@ -102,6 +104,7 @@ import gunbc.review_sheet_sheets {
 }
 import extdeps.google.sheets {
   ValueRange,
+  ValueRangeWrite,
   sheets_major_dimension_wire,
   sheets_major_dimension_from_wire,
   DimensionRows,
@@ -253,6 +256,17 @@ fn w_erasure_applied() -> String {
 
 fn w_erasure(listing_id: NonEmptyStr) -> DerivedPayloadErasure {
   DerivedPayloadErasure { listing_id: listing_id }
+}
+
+// The lowering is total and typed; these claims are about the ensure decision and read only the
+// lowered ranges of a plan they already hold, so a refusal here surfaces as an empty list and the
+// claim's own `first` match goes red. The refusal arms are the subject of
+// test.claim.review_sheet_batch_actuator_witness, not of this file.
+fn lowered_ranges(bound: TabBoundWritePlan) -> List<ValueRangeWrite> {
+  match lower_write_plan(bound: bound) {
+    WritePlanLowered { ranges: rs } => rs
+    WritePlanUnlowerable { refusals: _ } => []
+  }
 }
 
 fn w_value_range(rows: List<List<String>>) -> ValueRange {
@@ -1025,7 +1039,7 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
           Present { value: w } =>
             a1_cell_wire(cell: w.a1) == "B2"
               && !string_contains(s: a1_cell_wire(cell: w.a1), pattern: "!")
-              && match value_ranges_from_write_plan(bound: bound) |> first {
+              && match lowered_ranges(bound: bound) |> first {
                 Present { value: vr } =>
                   vr.range == "Review!B2"
                     && !string_contains(s: vr.range, pattern: "Review!Review!")
@@ -1048,7 +1062,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
   match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "OtherTab" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Apply { plan: bound } =>
       (bound.tab as String) == "OtherTab"
-        && match value_ranges_from_write_plan(bound: bound) |> first {
+        && match lowered_ranges(bound: bound) |> first {
           Present { value: vr } =>
             vr.range == "OtherTab!B2"
               && !string_contains(s: vr.range, pattern: "Review!")
@@ -1240,7 +1254,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
   ) {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"
-        && match value_ranges_from_write_plan(bound: bound) |> first {
+        && match lowered_ranges(bound: bound) |> first {
           Present { value: vr } => vr.range == "Review!B2"
           Absent => false
         }
@@ -1463,24 +1477,20 @@ test fn absent_listing_appends_a_located_row() -> Bool {
                               standing == w_standing_observed()
                                 && (run.cells |> count) == 3
                                 && all(
-                                  value_ranges_from_write_plan(
+                                  lowered_ranges(
                                     bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                   ),
                                   vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
                                 )
-                                && match value_ranges_from_write_plan(
+                                && match lowered_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                   Present { value: vr } =>
                                     vr.range == "Review!A2:C2"
-                                      && match vr.values {
-                                        Present { value: rows } =>
-                                          match rows |> first {
-                                            Present { value: cells } =>
-                                              match cells.skip(n: 1).first() {
-                                                Present { value: title } => title == "beta"
-                                                Absent => false
-                                              }
+                                      && match vr.values |> first {
+                                        Present { value: cells } =>
+                                          match cells.skip(n: 1).first() {
+                                            Present { value: title } => title == "beta"
                                             Absent => false
                                           }
                                         Absent => false
@@ -1525,28 +1535,24 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
                             Present { value: _ } => false
                             Absent =>
                               all(
-                                value_ranges_from_write_plan(
+                                lowered_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ),
                                 vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
                               )
-                                && match value_ranges_from_write_plan(
+                                && match lowered_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                 Present { value: vr } =>
-                                  match vr.values {
-                                    Present { value: rows } =>
-                                      match rows |> first {
-                                        Present { value: cells } =>
-                                          match cells.skip(n: 1).first() {
-                                            Present { value: standing_cell } =>
-                                              standing_cell == w_standing_observed()
-                                                && match cells.skip(n: 2).first() {
-                                                  Present { value: title_cell } => title_cell == "alpha"
-                                                  Absent => false
-                                                }
-                                            Absent => false
-                                          }
+                                  match vr.values |> first {
+                                    Present { value: cells } =>
+                                      match cells.skip(n: 1).first() {
+                                        Present { value: standing_cell } =>
+                                          standing_cell == w_standing_observed()
+                                            && match cells.skip(n: 2).first() {
+                                              Present { value: title_cell } => title_cell == "alpha"
+                                              Absent => false
+                                            }
                                         Absent => false
                                       }
                                     Absent => false
@@ -1679,7 +1685,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                       raw: sheets_value_render_option_wire(o: review_sheet_get_value_render_option()),
                     ) {
                       Present { value: RenderFormattedValue } =>
-                        match value_ranges_from_write_plan(
+                        match lowered_ranges(
                           bound: TabBoundWritePlan {
                             tab: "Review" as NonEmptyStr,
                             plan: ReviewSheetWritePlan {
@@ -1700,14 +1706,10 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                         ) |> first {
                           Present { value: vr } =>
                             vr.range == "Review!B2"
-                              && match vr.values {
-                                Present { value: rows } =>
-                                  match rows |> first {
-                                    Present { value: cells } =>
-                                      match cells |> first {
-                                        Present { value: v } => v == "Widget"
-                                        Absent => false
-                                      }
+                              && match vr.values |> first {
+                                Present { value: cells } =>
+                                  match cells |> first {
+                                    Present { value: v } => v == "Widget"
                                     Absent => false
                                   }
                                 Absent => false
