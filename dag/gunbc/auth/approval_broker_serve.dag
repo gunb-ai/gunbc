@@ -47,6 +47,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
+  http_method_label_join,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
@@ -73,8 +74,16 @@ import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source 
 // rather than a thing it enters less often (DESIGN section 4b, construction over mitigation).
 //
 // WHAT WAS EXTRACTED AND WHAT WAS NOT. The four handler folds below and the HTTP adapter around
-// them MOVED here; they were not copied, and roadmap_serve no longer declares them, no longer
-// routes to them, and no longer imports the approval store or either keyring. Two route owners
+// them MOVED here; roadmap_serve no longer declares them, no longer routes to them, and no longer
+// imports the approval store or either keyring.
+//
+// ONE HELPER WAS COPIED AND THE SENTENCE ABOVE ONCE DENIED IT (review 68357). The 405 allow-set
+// join was duplicated out of roadmap_serve into this module, which made a claim of extraction
+// false in the file that made it -- and it was the third spelling of a closed map the corpus
+// already owned in two other places. The map and the join now live once, beside their own inverse,
+// at extdeps.http.server http_method_label / http_method_label_join, and all three consumers read
+// them. Recorded rather than quietly corrected, because "moved, not copied" is the claim this
+// module's whole argument rests on and it was wrong in one place. Two route owners
 // would be the section 3 fork, and two PROCESSES able to open the single-writer 0600 store would be
 // worse than a fork: the store's single-writer discipline is a property of there being one writer.
 // The authority folds -- submission verification, the store, capability redemption, notification,
@@ -356,23 +365,11 @@ fn approval_broker_selection_response(
       broker_text_response(
         status: 405,
         content_type: text_plain_utf8,
-        body: join(["method not allowed; allowed: ", broker_http_method_label_join(methods: ms), "\n"], ""),
+        body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
     NoRouteMatched =>
       broker_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
   }
-}
-
-fn broker_http_method_label_join(methods: List<HttpMethod>) -> String {
-  join(map(methods, m => match m {
-    GET => "GET"
-    POST => "POST"
-    PUT => "PUT"
-    PATCH => "PATCH"
-    DELETE => "DELETE"
-    HEAD => "HEAD"
-    OPTIONS => "OPTIONS"
-  }), ", ")
 }
 
 // THE INVOKE TAKES THE CALLING PROCESS, and that parameter is the whole of item 3 of the cutover

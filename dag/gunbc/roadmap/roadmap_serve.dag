@@ -25,6 +25,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
+  http_method_label_join,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
@@ -831,18 +832,6 @@ fn serve_sessions_response_for_instance(
 
 fn serve_sessions_response() -> ServeHttpResponse {
   serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
-}
-
-fn http_method_label_join(methods: List<HttpMethod>) -> String {
-  join(map(methods, m => match m {
-    GET => "GET"
-    POST => "POST"
-    PUT => "PUT"
-    PATCH => "PATCH"
-    DELETE => "DELETE"
-    HEAD => "HEAD"
-    OPTIONS => "OPTIONS"
-  }), ", ")
 }
 
 fn roadmap_serve_selection_response_over(
