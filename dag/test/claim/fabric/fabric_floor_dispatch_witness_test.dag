@@ -25,7 +25,7 @@ import std.measure {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
-import product.fabric.envelope { unstated_envelope }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 import product.fabric.supply {
@@ -62,7 +62,7 @@ fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmpt
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
     route: fixture_route(),
-    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: d_caps(),
     trust_domain: d_trust(),
     isolation: IsolationProfile { guarantees: [] },

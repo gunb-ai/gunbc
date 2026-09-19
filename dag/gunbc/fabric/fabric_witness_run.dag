@@ -5,7 +5,8 @@ import extdeps.currency.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.envelope { unstated_envelope }
+import product.fabric.envelope { ResourceEnvelope }
+import gunbc.floor_demand { floor_memory_requirement }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -458,12 +459,48 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // receipt work, which must never be satisfied by capacity sanctioned for
 // customer execution. Declared on the side we ORIGINATE, so no supplier can
 // author it and the refusal is decided at admission rather than after ranking.
+//
+// THE ENVELOPE STATES MEMORY AND NOTHING ELSE, AND EACH ABSENCE HAS A REASON.
+//
+// Memory was unstated until 2026-09-19 while the runner cells were sized to
+// this very Work's demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling)
+// -- the cell knew what the floor needed and the floor's own Work did not say,
+// so a microVM guest sized for it had nothing to read. It now reads
+// gunbc.floor_demand, the receipts' home, and the figure is a LOWER BOUND
+// because a MemoryRequirement is a minimum and a lower bound is what the
+// receipts honestly establish. Stating it has a consequence on the offer side
+// that is the point rather than a cost: an offer that does not state memory no
+// longer covers this Work (product.fabric.supply MemoryNotOffered), so every
+// offer that claims to run the floor must say how much memory it runs it in.
+//
+// Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
+// floor_storage_requirement and consumed there by the microVM shape's
+// workspace fit and the cold-build receipt plan, but NOT placed on this
+// envelope yet. product.fabric.supply compares no storage axis, so a stated
+// requirement here would be silently unchecked -- the fail-open absence of
+// observation the envelope exists to prevent -- and adding the axis to the
+// fold would make every host-slot offer refuse, because a shared host slot has
+// no storage number to offer (gunbc.runner_slot_allocation: disk admits
+// nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
+// the floor runs on, at which point the axis joins the fold and this field
+// reads floor_storage_requirement.
+//
+// Architecture is unstated because the Work does not require one: the job
+// builds what it runs, and the aarch64 the fleet provides is a fact about the
+// fleet's labels rather than about this Work. Stating it would refuse an x86
+// offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
     capacity_class: ControlPlaneCapacity,
     shape: Shape {
       hard: HardRequirements { threads: hardware_thread_count(count: 8) },
-      envelope: unstated_envelope(),
+      envelope: ResourceEnvelope {
+        cpu: none,
+        gpu: none,
+        memory: Present { value: floor_memory_requirement() },
+        storage: none,
+        network: none,
+      },
     },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",

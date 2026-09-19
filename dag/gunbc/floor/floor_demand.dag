@@ -1,0 +1,304 @@
+module gunbc.floor_demand
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { nat_max }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Second, second,
+  gibibyte_scale_factor_bytes,
+}
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.storage.types { Ephemeral }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import product.fabric.envelope { MemoryRequirement, StorageRequirement }
+
+data floor_demand_disposition: Disposition = SingleAuthority
+
+// WHAT THE FLOOR JOB DEMANDS OF A MACHINE, IN ONE PLACE, AS RECEIPTS RATHER THAN AS PROSE.
+//
+// Three authorities each carried a piece of this before: gunbc.runner_slot_allocation held the
+// measured peak the cell wall gates on, gunbc.ci_floor_measurement held the per-run cgroup peak
+// carrier, and the 2026-09-12 uncensored measurement that sized the 26/25 GiB cell lived only in a
+// comment beside the literal it justified. The floor's Work (gunbc.fabric_witness_run) stated eight
+// threads and nothing else, so anything sizing a machine for it -- the cell, a microVM guest --
+// had to read the demand out of a paragraph. This module is the demand's home: the receipts are
+// typed, the lower bound is a fold over them, and the Work's envelope and the guest shape both read
+// it from here. It is a leaf on purpose, so that the slot allocation, the CI measurement module and
+// the floor's Work can all import it without a cycle.
+
+// ── the per-run cgroup peak carrier (moved here from gunbc.ci_floor_measurement) ────────────────
+//
+// AN OBSERVATION IS EVIDENCE ONLY TOGETHER WITH THE CONDITIONS IT WAS TAKEN UNDER. armed_memory_high
+// is what the cgroup's memory.high WAS for that run, so a peak stays decidable against the line it
+// was actually taken under and never re-interprets itself against a later declaration. The four
+// 2026-07-11 receipts below keep proving exactly what they always proved -- the caps of that day were
+// applied and the reclaim clamp held within 0.65 MiB -- whatever the row says today.
+type FloorRunCgroupPeakReceipt
+  = FloorRunCgroupPeakMeasured {
+      run_id: String,
+      runner_unit: String,
+      cgroup_peak: ByteSize,
+      armed_memory_high: ByteSize,
+      floor_outcome: String,
+    }
+  | FloorRunCgroupPeakUnmeasured
+
+data gunbc_ci_floor_run_peak_receipt_overshoot_ceiling: ByteSize = byte_size(681574)
+
+data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
+  FloorRunCgroupPeakMeasured {
+    run_id: "29137081535",
+    runner_unit: "actions-runner@srv1-01.service",
+    cgroup_peak: byte_size(16106127360),
+    armed_memory_high: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29142398465",
+    runner_unit: "actions-runner@srv1-03.service",
+    cgroup_peak: byte_size(16106127360),
+    armed_memory_high: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29159082043",
+    runner_unit: "actions-runner@srv2-01.service",
+    cgroup_peak: byte_size(16106127360),
+    armed_memory_high: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+  FloorRunCgroupPeakMeasured {
+    run_id: "29112500694",
+    runner_unit: "actions-runner@srv2-02.service",
+    cgroup_peak: byte_size(16106127360),
+    armed_memory_high: byte_size(16106127360),
+    floor_outcome: "timeout",
+  },
+]
+
+fn floor_run_peak_receipt_at_throttle_line(receipt: FloorRunCgroupPeakReceipt) -> Bool {
+  match receipt {
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: peak, armed_memory_high: high, floor_outcome: _ } =>
+      floor_run_peak_within_throttle_overshoot(peak: peak, high: high)
+    FloorRunCgroupPeakUnmeasured => false
+  }
+}
+
+fn floor_run_peak_within_throttle_overshoot(peak: ByteSize, high: ByteSize) -> Bool {
+  let overshoot_ceiling = gunbc_ci_floor_run_peak_receipt_overshoot_ceiling
+  byte_size_count(b: peak) >= byte_size_count(b: high)
+    && byte_size_count(b: peak) <= (byte_size_count(b: high) + byte_size_count(b: overshoot_ceiling))
+}
+
+// ── the two receipts the demand is read from ───────────────────────────────────────────────────
+//
+// A READING IS ONE OF TWO KINDS AND THE KIND DECIDES WHAT IT MAY BE USED FOR. A peak that sits
+// strictly below the line it was armed under is UNCENSORED: the workload stopped growing on its
+// own, so the peak is the demand of that run. A peak at or over its armed line is a THROTTLE PIN:
+// the kernel was holding the workload at the line, so the reading says the demand is AT LEAST
+// that and says nothing about how far past it the workload wanted to go. Both are lower bounds on
+// demand -- a run that touched 25 GiB wanted at least 25 GiB whether or not it was held there --
+// so both feed the lower-bound fold. Only an uncensored reading may SIZE anything, which is why
+// gunbc_floor_measured_peak_observation is drawn from the uncensored receipt alone and
+// gunbc.runner_slot_allocation's wall guards its input with gunbc_floor_measured_peak_is_uncensored.
+type FloorPeakReadingKind
+  = UncensoredPeak { peak: ByteSize }
+  | ThrottlePin { peak: ByteSize, armed_line: ByteSize }
+  | PeakUnmeasured
+
+fn floor_peak_reading_kind(receipt: FloorRunCgroupPeakReceipt) -> FloorPeakReadingKind {
+  match receipt {
+    FloorRunCgroupPeakUnmeasured => PeakUnmeasured
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: peak, armed_memory_high: high, floor_outcome: _ } =>
+      if byte_size_count(b: peak) < byte_size_count(b: high) {
+        UncensoredPeak { peak: peak }
+      } else {
+        ThrottlePin { peak: peak, armed_line: high }
+      }
+  }
+}
+
+// THE UNCENSORED MEASUREMENT BEHIND THE 26/25 GiB CELL (operator ruling 2026-09-12), typed here for
+// the first time. It was taken on the lane CI actually runs, on srv1, under
+// `systemd-run --user --scope -p MemoryMax=64G` with MALLOC_ARENA_MAX=2, against commit
+// 975706293d0f02c83ecda5f978607ad9e54b11b8 with a binary of sha256 5cc271009d24...7a471:
+//
+//   claim_executor --required-ci --required-lane witnesses --source-root dag --source-root src/v2
+//   verdict FloorClean  planned=3762 executed=3762  claims_failed=0  stall 0 faults/min
+//
+// The scope's memory.high was `max`, so the armed line recorded here is the scope's 64 GiB
+// MemoryMax: the reading sat 40 GiB under it, which is what makes it a demand rather than another
+// pin. THE RULING TOOK A LARGER FIGURE THAN THIS ROW CARRIES, and the difference is stated rather
+// than smoothed: the run heartbeat's own cgroup-charge reading peaked at about 24.7 GiB against
+// the scope's 22.74 GiB memory.peak, the ruling could not say which level the larger reading named,
+// and it sized the cell to the larger one in the fail-closed direction. The heartbeat figure
+// survives only as a rounded rendering, so the PRECISE byte count typed here is the scope's, and
+// the ruling's rounding to 25 GiB is carried by gunbc.runner_slot_allocation's memory_high row,
+// where it always was. Nothing here re-derives that row; the receipt is what it rested on.
+data gunbc_floor_uncensored_demand_receipt: FloorRunCgroupPeakReceipt = FloorRunCgroupPeakMeasured {
+  run_id: "srv1 systemd-run scope, 2026-09-12, commit 975706293d0f",
+  runner_unit: "systemd-run --user --scope -p MemoryMax=64G",
+  cgroup_peak: byte_size(24412725248),
+  armed_memory_high: byte_size(68719476736),
+  floor_outcome: "FloorClean",
+}
+
+// THE FLOOR IS PINNED AT THE 26/25 GiB ROW AGAIN, ONE WEEK AFTER THE ROW WAS SIZED TO END PINNING.
+// Read from the required-witnesses-floor job of merge-group run 35408627003 (job 105803508248,
+// srv1-03, 2026-09-19, the composed revision of gunbc#11662), from the run's own [floor-cgroup]
+// heartbeat at beat-30: max=27917287424 high=26843545600 peak=26849763328, memory.high events
+// 1928, memory.max events 0, oom_kill 0, verdict FloorClean, whole-job wall 46m28s. The peak
+// overshoots the armed line by 5.9 MiB -- past the 0.65 MiB reclaim-clamp signature of the July
+// receipts, so this is not merely the line being touched -- and 1928 high events say the kernel
+// was holding it there. Under the 2026-09-12 ruling's own rule, a line BELOW a measured peak is
+// known to be too low; this receipt says 25 GiB is such a line. It is recorded rather than argued
+// away: a cell sized "to end welding to the throttle line" that welds a week later is a finding
+// about demand growth, and the fold below carries it into every consumer as the lower bound it is.
+data gunbc_floor_throttle_pin_receipt_2026_09_19: FloorRunCgroupPeakReceipt = FloorRunCgroupPeakMeasured {
+  run_id: "35408627003",
+  runner_unit: "actions-runner@srv1-03.service",
+  cgroup_peak: byte_size(26849763328),
+  armed_memory_high: byte_size(26843545600),
+  floor_outcome: "FloorClean",
+}
+
+fn gunbc_floor_demand_receipts() -> List<FloorRunCgroupPeakReceipt> {
+  [gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19]
+}
+
+// THE SIZING INPUT IS THE UNCENSORED RECEIPT AND NOTHING ELSE. These three rows keep the names
+// gunbc.runner_slot_allocation has gated on since 2026-08-17 (they moved here; they did not
+// change meaning), and they are DERIVED from the receipt rather than typed beside it, so the
+// wall's input and the receipt cannot disagree.
+fn floor_peak_receipt_peak(receipt: FloorRunCgroupPeakReceipt) -> ByteSize {
+  match receipt {
+    FloorRunCgroupPeakUnmeasured => byte_size(0)
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: peak, armed_memory_high: _, floor_outcome: _ } => peak
+  }
+}
+
+fn floor_peak_receipt_armed_high(receipt: FloorRunCgroupPeakReceipt) -> ByteSize {
+  match receipt {
+    FloorRunCgroupPeakUnmeasured => byte_size(0)
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: _, armed_memory_high: high, floor_outcome: _ } => high
+  }
+}
+
+data gunbc_floor_measured_peak_observation: ByteSize = floor_peak_receipt_peak(receipt: gunbc_floor_uncensored_demand_receipt)
+
+data gunbc_floor_measured_peak_armed_high: ByteSize = floor_peak_receipt_armed_high(receipt: gunbc_floor_uncensored_demand_receipt)
+
+fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
+  match floor_peak_reading_kind(receipt: gunbc_floor_uncensored_demand_receipt) {
+    UncensoredPeak { peak: _ } => true
+    ThrottlePin { peak: _, armed_line: _ } => false
+    PeakUnmeasured => false
+  }
+}
+
+// THE LOWER BOUND IS THE LARGEST PEAK ANY RECEIPT REACHED, CENSORED OR NOT. A pin's peak is a
+// weaker fact than an uncensored one -- it bounds demand from below without locating it -- but it
+// is still a fact the workload demonstrated, and a bound that ignored it would be a bound chosen
+// to fit. This is the figure the floor's Work states as its memory requirement: a MemoryRequirement
+// is a minimum, and a lower bound is exactly what a minimum honestly is.
+fn floor_memory_demand_lower_bound(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
+  byte_size(fold(receipts, init: 0, f: (acc, r) => nat_max(acc, byte_size_count(b: floor_peak_receipt_peak(receipt: r)))))
+}
+
+fn gunbc_floor_memory_demand_lower_bound() -> ByteSize {
+  floor_memory_demand_lower_bound(receipts: gunbc_floor_demand_receipts())
+}
+
+fn floor_memory_requirement() -> MemoryRequirement {
+  MemoryRequirement { min_bytes: gunbc_floor_memory_demand_lower_bound() }
+}
+
+// ── storage ────────────────────────────────────────────────────────────────────────────────────
+//
+// THE FLOOR'S STORAGE DEMAND WAS NEVER STATED ANYWHERE, and on a shared host slot nothing forced
+// the question: the slot writes into a filesystem with hundreds of gibibytes free and the disk
+// axis "admits nothing numeric" in gunbc.runner_slot_allocation. A microVM guest has exactly the
+// workspace image it is handed, so the question has to be answered before one is sized. It is
+// answered as a SUM OF MEASURED COMPONENTS, each carrying the architecture it was measured on,
+// because the components come from different places and only some of them are arm64 readings:
+//
+//   checkout tree     du -sb of the worktree at 7261964510, excluding .git and target -- source
+//                     bytes, architecture-neutral
+//   git object store  the full-history pack actions/checkout materialises at fetch-depth 0
+//                     (git count-objects size-pack, 519.85 MiB) -- architecture-neutral
+//   rust toolchain    du -sb of a 1.93.0 aarch64 toolchain carrying the clippy and rustfmt
+//                     components rust-toolchain.toml names -- an arm64 reading
+//   cargo registry    CARGO_HOME after a cold fetch of the workspace's dependencies -- source
+//                     crates, architecture-neutral, read on the x86_64 run below
+//   build tree        target/ after `cargo build --release -p v1-compiler --bin claim_executor
+//                     --bin gunbc` from a wiped CARGO_HOME with RUSTC_WRAPPER unset, on a
+//                     6-vCPU x86_64 BuildBuddy executor, 2026-09-19 (BuildBuddy invocation
+//                     abbc8fb7-69eb-4ef0-b8a4-5504084196c9): a PROXY reading, since arm64 object
+//                     code differs in size from x86_64 object code
+//
+// The sum is a LOWER BOUND on the guest's working set for the same reason the memory figure is:
+// it counts what the job materialises and not the transient it passes through (rustup extracts
+// each component beside its tarball, cargo unpacks beside its .crate). The arm64 cold-build receipt
+// planned in gunbc.floor_cold_build_receipt replaces the proxy components with readings from the
+// guest itself, and this note's "proxy" rows delete when it lands.
+type StorageComponentReceipt {
+  component: NonEmptyStr
+  bytes: ByteSize
+  measured_on: Architecture
+}
+
+data gunbc_floor_storage_components: List<StorageComponentReceipt> = [
+  StorageComponentReceipt { component: "checkout tree", bytes: byte_size(103107266), measured_on: Aarch64 },
+  StorageComponentReceipt { component: "git object store, full history", bytes: byte_size(545103872), measured_on: Aarch64 },
+  StorageComponentReceipt { component: "rust toolchain 1.93.0 with clippy and rustfmt", bytes: byte_size(543035523), measured_on: Aarch64 },
+  StorageComponentReceipt { component: "cargo registry after cold fetch", bytes: byte_size(58151348), measured_on: X86_64 },
+  StorageComponentReceipt { component: "target after cold release build of claim_executor and gunbc", bytes: byte_size(558310704), measured_on: X86_64 },
+]
+
+fn storage_components_total(components: List<StorageComponentReceipt>) -> ByteSize {
+  byte_size(fold(components, init: 0, f: (acc, c) => acc + byte_size_count(b: c.bytes)))
+}
+
+// ROUNDED UP TO WHOLE-GIBIBYTE GRAIN, in the fail-closed direction the corpus already applies to
+// demand figures (gunbc.whole_corpus_compile_admission, gunbc.runner_slot_allocation): rounding
+// down would admit a workspace the measured sum does not fit.
+fn round_up_to_gibibyte_grain(bytes: ByteSize) -> ByteSize {
+  let g = gibibyte_scale_factor_bytes()
+  let n = byte_size_count(b: bytes)
+  byte_size(((n + g - 1) / g) * g)
+}
+
+fn gunbc_floor_storage_demand_lower_bound() -> ByteSize {
+  round_up_to_gibibyte_grain(bytes: storage_components_total(components: gunbc_floor_storage_components))
+}
+
+// EPHEMERAL, BECAUSE THE FLOOR KEEPS NOTHING: every job wipes its toolchain homes and starts from
+// a fresh checkout, and the microVM attempt's workspace ceases to exist with the attempt.
+fn floor_storage_requirement() -> StorageRequirement {
+  StorageRequirement { min_bytes: gunbc_floor_storage_demand_lower_bound(), persistence: Ephemeral }
+}
+
+// ── wall ───────────────────────────────────────────────────────────────────────────────────────
+//
+// THE WHOLE-JOB WALL OF THE SAME 2026-09-19 RUN THE PIN RECEIPT COMES FROM, read from the Actions
+// job's own startedAt/completedAt (00:14:56 to 01:01:24) and from the build step's Finished line.
+// The build step took 3m17s WITH sccache reachable, which is the condition a guest does not have:
+// this receipt is the warm baseline the planned cold receipt is compared against, not a cold
+// figure. Ten of the eleven measured phases sit in the witnesses lane, so a cold build changes the
+// build step and not the whole.
+type FloorJobWallReceipt {
+  run_id: NonEmptyStr
+  job_id: NonEmptyStr
+  runner_unit: NonEmptyStr
+  whole_job_wall: Second
+  build_step_wall: Second
+  sccache_reachable: Bool
+}
+
+data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWallReceipt {
+  run_id: "35408627003",
+  job_id: "105803508248",
+  runner_unit: "actions-runner@srv1-03.service",
+  whole_job_wall: second(count: 2788),
+  build_step_wall: second(count: 198),
+  sccache_reachable: true,
+}

@@ -1,0 +1,136 @@
+module test.claim.floor_demand_witness_test
+
+import std.types { Bool, String, List, Int }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second_count }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import gunbc.floor_demand {
+  FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
+  floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
+  floor_memory_demand_lower_bound, gunbc_floor_memory_demand_lower_bound,
+  gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
+  gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
+  floor_memory_requirement, floor_storage_requirement,
+  StorageComponentReceipt, storage_components_total, round_up_to_gibibyte_grain,
+  gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
+}
+import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
+  FloorRunCgroupPeakMeasured {
+    run_id: "fixture",
+    runner_unit: "fixture",
+    cgroup_peak: byte_size(peak),
+    armed_memory_high: byte_size(high),
+    floor_outcome: "FloorClean",
+  }
+}
+
+// THE KIND IS DECIDED BY THE PEAK AGAINST THE LINE IT WAS TAKEN UNDER, in both directions, with
+// the boundary on the pin side: a peak exactly at its line was being held there.
+test fn a_peak_under_its_line_is_uncensored_and_a_peak_at_or_over_it_is_a_pin() -> Bool {
+  let under = match floor_peak_reading_kind(receipt: receipt(peak: 99, high: 100)) {
+    UncensoredPeak { peak: p } => byte_size_count(b: p) == 99
+    _ => false
+  }
+  let at = match floor_peak_reading_kind(receipt: receipt(peak: 100, high: 100)) {
+    ThrottlePin { peak: _, armed_line: l } => byte_size_count(b: l) == 100
+    _ => false
+  }
+  let over = match floor_peak_reading_kind(receipt: receipt(peak: 106, high: 100)) {
+    ThrottlePin { peak: p, armed_line: _ } => byte_size_count(b: p) == 106
+    _ => false
+  }
+  let unmeasured = match floor_peak_reading_kind(receipt: FloorRunCgroupPeakUnmeasured) {
+    PeakUnmeasured => true
+    _ => false
+  }
+  under && at && over && unmeasured
+}
+
+// THE LOWER BOUND IS THE LARGEST PEAK, PINS INCLUDED, AND AN UNMEASURED RECEIPT CONTRIBUTES ZERO
+// RATHER THAN REFUSING THE FOLD: absence of a reading is not a demand.
+test fn the_demand_lower_bound_is_the_largest_peak_across_receipts() -> Bool {
+  byte_size_count(b: floor_memory_demand_lower_bound(receipts: [
+    receipt(peak: 7, high: 100),
+    FloorRunCgroupPeakUnmeasured,
+    receipt(peak: 42, high: 40),
+    receipt(peak: 9, high: 100),
+  ])) == 42
+    && byte_size_count(b: floor_memory_demand_lower_bound(receipts: [] as List<FloorRunCgroupPeakReceipt>)) == 0
+}
+
+// THE PRODUCTION ROWS: the sizing input is the uncensored receipt's peak and is classified
+// uncensored; the lower bound is the 2026-09-19 pin's peak, which is the larger; and the floor's
+// Work carries that bound as its memory requirement -- the route from receipt to Work executed.
+test fn the_floor_work_states_the_demand_lower_bound_read_from_the_receipts() -> Bool {
+  let sizing_input_kind = match floor_peak_reading_kind(receipt: gunbc_floor_uncensored_demand_receipt) {
+    UncensoredPeak { peak: p } => byte_size_count(b: p) == byte_size_count(b: gunbc_floor_measured_peak_observation)
+    _ => false
+  }
+  let sizing_input_is_uncensored = gunbc_floor_measured_peak_is_uncensored() && sizing_input_kind
+  let bound_is_the_pin = match floor_peak_reading_kind(receipt: gunbc_floor_throttle_pin_receipt_2026_09_19) {
+    ThrottlePin { peak: p, armed_line: _ } =>
+      byte_size_count(b: p) == byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
+        && byte_size_count(b: p) > byte_size_count(b: gunbc_floor_measured_peak_observation)
+    _ => false
+  }
+  let work_states_it = match floor_execution_requirements().shape.envelope.memory {
+    Absent => false
+    Present { value: m } =>
+      byte_size_count(b: m.min_bytes) == byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
+        && byte_size_count(b: m.min_bytes) == byte_size_count(b: floor_memory_requirement().min_bytes)
+  }
+  sizing_input_is_uncensored && bound_is_the_pin && work_states_it
+}
+
+// THE PIN WAS TAKEN UNDER THE CURRENT ROW, which is what makes it a finding about the row rather
+// than about a line that no longer exists.
+test fn the_pin_receipt_was_armed_at_the_declared_throttle_line() -> Bool {
+  match gunbc_floor_throttle_pin_receipt_2026_09_19 {
+    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: _, armed_memory_high: h, floor_outcome: _ } =>
+      byte_size_count(b: h) == byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+    FloorRunCgroupPeakUnmeasured => false
+  }
+}
+
+test fn gibibyte_grain_rounds_up_and_leaves_a_whole_gibibyte_alone() -> Bool {
+  let g = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 1)))
+  byte_size_count(b: round_up_to_gibibyte_grain(bytes: byte_size(1))) == g
+    && byte_size_count(b: round_up_to_gibibyte_grain(bytes: byte_size(g))) == g
+    && byte_size_count(b: round_up_to_gibibyte_grain(bytes: byte_size(g + 1))) == 2 * g
+    && byte_size_count(b: round_up_to_gibibyte_grain(bytes: byte_size(0))) == 0
+}
+
+// THE STORAGE FIGURE IS THE ROUNDED SUM OF ITS COMPONENTS, two of which are foreign-architecture
+// proxies; the sum is under two gibibytes and the requirement is exactly two, which is the grain
+// doing its job rather than a number chosen.
+test fn the_floor_storage_requirement_is_the_rounded_component_sum() -> Bool {
+  let total = storage_components_total(components: gunbc_floor_storage_components)
+  let two = byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 2)))
+  byte_size_count(b: floor_storage_requirement().min_bytes) == byte_size_count(b: round_up_to_gibibyte_grain(bytes: total))
+    && byte_size_count(b: total) < two
+    && byte_size_count(b: floor_storage_requirement().min_bytes) == two
+    && any(gunbc_floor_storage_components, c => component_measured_on_x86_64(c: c))
+    && any(gunbc_floor_storage_components, c => component_measured_on_aarch64(c: c))
+}
+
+fn component_measured_on_x86_64(c: StorageComponentReceipt) -> Bool {
+  match c.measured_on {
+    X86_64 => true
+    _ => false
+  }
+}
+
+fn component_measured_on_aarch64(c: StorageComponentReceipt) -> Bool {
+  match c.measured_on {
+    Aarch64 => true
+    _ => false
+  }
+}
+
+test fn the_warm_wall_receipt_is_a_warm_reading_under_the_lane_timeout() -> Bool {
+  gunbc_floor_job_wall_receipt_2026_09_19.sccache_reachable
+    && second_count(gunbc_floor_job_wall_receipt_2026_09_19.build_step_wall)
+      < second_count(gunbc_floor_job_wall_receipt_2026_09_19.whole_job_wall)
+}

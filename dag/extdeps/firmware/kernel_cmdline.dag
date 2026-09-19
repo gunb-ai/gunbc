@@ -25,3 +25,13 @@ fn kernel_cmdline_arg_wire(arg: KernelCmdlineArg) -> String {
 fn kernel_cmdline_render(args: List<KernelCmdlineArg>) -> String {
   join(map(args, a => kernel_cmdline_arg_wire(arg: a)), " ")
 }
+
+// THE `sysctl.` PREFIX SETS A KERNEL SYSCTL FROM THE COMMAND LINE. kernel-parameters.html:
+// "sysctl.*= [KNL] Set a sysctl parameter, right before loading the init process, as if the value
+// was written to the corresponding /proc/sys/... file" -- every dot in the sysctl's own name is a
+// path component under /proc/sys. Present since Linux 5.8; a guest whose kernel predates it
+// ignores the argument, which is why a consumer that relies on the value must read it back from
+// inside the guest rather than trust the argument was honoured.
+fn sysctl_cmdline_arg(parameter: NonEmptyStr, value: String) -> KernelCmdlineArg {
+  KernelKeyValue { key: concat("sysctl.", parameter as String) as NonEmptyStr, value: value }
+}

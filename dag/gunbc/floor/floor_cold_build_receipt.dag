@@ -1,0 +1,164 @@
+module gunbc.floor_cold_build_receipt
+
+import std.types { NonEmptyStr, Bool, List }
+import std.measure {
+  ByteSize, byte_size_count, Second, second, second_count, Minute, minute_count, seconds_per_minute,
+  Mebibyte, mebibyte_to_byte_size,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import gunbc.floor_demand { FloorJobWallReceipt, gunbc_floor_job_wall_receipt_2026_09_19 }
+import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_microvm { runner_microvm_workspace_grant }
+
+data floor_cold_build_receipt_disposition: Disposition = SingleAuthority
+
+// THE COLD-BUILD RECEIPT: PLANNED HERE, TAKEN BY THE FIRST FLOOR ATTEMPT INSIDE A GUEST.
+//
+// Every figure the guest shape rests on was measured on a shared host slot with sccache reachable
+// (gunbc.floor_demand: the memory receipts, the wall receipt) or on a foreign architecture (the
+// storage proxy components). A guest has none of that: CARGO_HOME is wiped by the job's own
+// isolation step, sccache is on the host's network and not the guest's, and the object code is
+// arm64. So the guest's first floor is also a measurement, and this module says in advance what it
+// measures, from where, and what answer would refuse the shape -- so the receipt is read against a
+// verdict written before the run rather than fitted to it afterwards (DESIGN 6b: measurement as
+// adversary, the prediction stated first).
+//
+// THREE READINGS, ALL FROM THE HOST. The rule the lifecycle controller lives under is that a guest
+// event may trigger teardown and never establishes anything; the same rule governs a receipt. The
+// whole-job wall comes from the Actions job's own timestamps, the memory peak from the attempt
+// cell's memory.peak read by the controller after the VMM exits, and the workspace's used bytes
+// from the allocated blocks of the sparse work image read before it is deleted. Nothing the guest
+// prints is a reading.
+type ColdBuildSubject {
+  architecture: Architecture
+  cargo_home_wiped: Bool
+  sccache_reachable: Bool
+}
+
+fn gunbc_floor_cold_build_subject() -> ColdBuildSubject {
+  ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: false }
+}
+
+type ColdBuildReceipt {
+  subject: ColdBuildSubject
+  run_id: NonEmptyStr
+  whole_job_wall: Second
+  build_step_wall: Second
+  cell_memory_peak: ByteSize
+  workspace_bytes_used: ByteSize
+}
+
+// THE VERDICT IS DECIDED AGAINST THE ROWS THAT WOULD HAVE TO MOVE, AND EACH ARM NAMES ONE.
+// A wall past the lane timeout is a run GitHub cancels before it reports, so it refuses the whole
+// arrangement rather than a size; a peak past the cell is the cell row; a workspace past the
+// grant is the grant. A receipt taken under a subject that is not cold is refused BEFORE any
+// figure is read, because a warm reading answers a different question and would be cited as this
+// one.
+type ColdBuildVerdict
+  = ColdBuildWithinShape
+  | ColdBuildSubjectNotCold { subject: ColdBuildSubject }
+  | ColdBuildWallExceedsTimeout { wall: Second, timeout: Second }
+  | ColdBuildPeakExceedsCell { peak: ByteSize, cell: ByteSize }
+  | ColdBuildWorkspaceExceedsGrant { used: ByteSize, grant: ByteSize }
+
+fn subject_is_cold(subject: ColdBuildSubject) -> Bool {
+  match subject.architecture {
+    Aarch64 => subject.cargo_home_wiped && !subject.sccache_reachable
+    _ => false
+  }
+}
+
+fn minute_to_second(m: Minute) -> Second {
+  second(count: minute_count(m) * seconds_per_minute())
+}
+
+fn cold_build_receipt_verdict(
+  receipt: ColdBuildReceipt,
+  timeout: Minute,
+  cell: ByteSize,
+  workspace: Mebibyte,
+) -> ColdBuildVerdict {
+  if !subject_is_cold(subject: receipt.subject) {
+    ColdBuildSubjectNotCold { subject: receipt.subject }
+  } else {
+    let limit = minute_to_second(m: timeout)
+    if second_count(receipt.whole_job_wall) > second_count(limit) {
+      ColdBuildWallExceedsTimeout { wall: receipt.whole_job_wall, timeout: limit }
+    } else {
+      if byte_size_count(b: receipt.cell_memory_peak) > byte_size_count(b: cell) {
+        ColdBuildPeakExceedsCell { peak: receipt.cell_memory_peak, cell: cell }
+      } else {
+        let grant = mebibyte_to_byte_size(m: workspace)
+        if byte_size_count(b: receipt.workspace_bytes_used) > byte_size_count(b: grant) {
+          ColdBuildWorkspaceExceedsGrant { used: receipt.workspace_bytes_used, grant: grant }
+        } else {
+          ColdBuildWithinShape
+        }
+      }
+    }
+  }
+}
+
+// THE PLAN: subject, instruments, the warm baseline the cold figures are compared against, and
+// the rows a taken receipt revises. It is data a reader and the cutover lane both consume, and
+// the verdict fold above is its acceptance -- with production inputs, through
+// gunbc_floor_cold_build_verdict below.
+type ColdBuildReceiptPlan {
+  subject: ColdBuildSubject
+  instruments: List<NonEmptyStr>
+  warm_baseline: FloorJobWallReceipt
+  revises: List<DeclarationRef>
+}
+
+fn gunbc_floor_cold_build_receipt_plan() -> ColdBuildReceiptPlan {
+  ColdBuildReceiptPlan {
+    subject: gunbc_floor_cold_build_subject(),
+    instruments: [
+      "whole-job wall: the Actions job's startedAt to completedAt, and the build step's own Finished line for the cold compile alone",
+      "memory peak: the attempt cell's memory.peak and memory.events, read on the host by the lifecycle controller after the VMM exits and before the cell is judged sane",
+      "workspace used: allocated blocks of the sparse work image (stat %b * %B), read on the host before the image is deleted",
+    ],
+    warm_baseline: gunbc_floor_job_wall_receipt_2026_09_19,
+    revises: [
+      DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_job_wall_receipt_2026_09_19", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.runner_microvm", decl_name: "runner_microvm_workspace_grant", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.fabric_witness_run", decl_name: "floor_grant_duration", field: WholeDeclaration },
+    ],
+  }
+}
+
+// WHAT THE WARM BASELINE PREDICTS, STATED BEFORE THE COLD RUN SO THE RUN CAN FALSIFY IT. The
+// 2026-09-19 job took 2788 s with a 198 s build step; the same build cold on a 6-vCPU x86_64
+// executor took 267 s (gunbc.floor_demand, the storage note). A cold arm64 build is therefore
+// expected to move the build step by minutes, not the whole job by an hour: the witnesses lane
+// that dominates the wall does not compile. The prediction is that the cold wall stays under
+// twice the warm wall. A cold receipt over that line falsifies the reading that the build step
+// is the only cold cost, and is a finding about the guest rather than about the toolchain.
+fn cold_wall_prediction_ceiling(warm: FloorJobWallReceipt) -> Second {
+  second(count: second_count(warm.whole_job_wall) * 2)
+}
+
+type ColdBuildReceiptStanding
+  = ColdBuildReceiptPending { plan: ColdBuildReceiptPlan }
+  | ColdBuildReceiptTaken { receipt: ColdBuildReceipt, verdict: ColdBuildVerdict }
+
+fn gunbc_floor_cold_build_verdict(receipt: ColdBuildReceipt) -> ColdBuildVerdict {
+  cold_build_receipt_verdict(
+    receipt: receipt,
+    timeout: witness_floor_lane_timeout,
+    cell: gunbc_runner_slot_desired().memory_max,
+    workspace: runner_microvm_workspace_grant,
+  )
+}
+
+// NO RECEIPT HAS BEEN TAKEN, AND THIS ROW SAYS SO RATHER THAN CARRYING A FIGURE. The first guest
+// floor attempt is the cutover lane's (parent sunny-ant-606); when it lands, this standing becomes
+// ColdBuildReceiptTaken with the verdict gunbc_floor_cold_build_verdict returns for it, and the
+// rows the plan names are revised from the receipt.
+fn gunbc_floor_cold_build_receipt_standing() -> ColdBuildReceiptStanding {
+  ColdBuildReceiptPending { plan: gunbc_floor_cold_build_receipt_plan() }
+}

@@ -14,7 +14,13 @@ import std.measure {
   mebibyte_to_byte_size,
   hardware_thread_count,
   hardware_thread_count_value,
+  mebibyte_scale_factor_bytes,
 }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.envelope { StorageRequirement }
+import extdeps.firmware.kernel_cmdline { sysctl_cmdline_arg, kernel_cmdline_arg_wire }
+import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.floor_demand { floor_storage_requirement }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,
@@ -302,9 +308,8 @@ fn guest_memory_fits(
 // VmmProcessTopology, so a launch path remains separate, unbuilt work.
 //
 // THE CELL'S CPU AXIS IS NOW ABSOLUTE WHEN THE SLOT SURVEY RESOLVES. fabric_cell_slice_quota_
-// directives emits slice_cpu_quota from the same RunnerSlotCpuQuota this function reads; a guest
-// vCPU count can be derived from that ceiling. The declared product size therefore withdraws
-// (runner_microvm_size_decision's Absolute arm) rather than remaining an absorbing answer.
+// directives emits slice_cpu_quota from the same RunnerSlotCpuQuota this function reads, and
+// runner_microvm_shape below admits the Work's thread count against that ceiling.
 data gunbc_runner_microvm_declared_realization_allowance: Gibibyte = gibibyte(count: 1)
 
 fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
@@ -321,10 +326,9 @@ fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
 // Refused is RelativeOnly carrying the survey cause -- never a second invented ceiling, and never
 // the CPUWeight-only story that was true before the slice directive existed.
 //
-// THE DECLARED PRODUCT SIZE WITHDRAWS THE MOMENT THIS RETURNS ABSOLUTE. That is
-// runner_microvm_size_decision's job: a stale declaration that kept succeeding would hide that
-// topology is now derivable. Deriving it is the remaining work, not inventing an entitlement the
-// cell already grants.
+// runner_microvm_shape consumes this: an Absolute entitlement bounds the Work's thread count, and
+// a RelativeOnly one refuses the shape, because a guest whose vCPUs nothing bounds is not a guest
+// the cell can be said to contain.
 type CellCpuEntitlement
   = CpuEntitlementAbsolute { threads: HardwareThreadCount }
   | CpuEntitlementRelativeOnly { cause: String }
@@ -336,45 +340,203 @@ fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
   }
 }
 
-// THE GUEST'S TOPOLOGY WAS A DECLARED PRODUCT DECISION WHILE THE CELL GRANTED NO ABSOLUTE
-// ENTITLEMENT. That declaration withdraws the moment gunbc_runner_microvm_cell_cpu_entitlement
-// returns Absolute -- which is now the production path when the slot survey resolves. The numbers
-// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm still
-// serves, not as a sizing anyone may provision against once Absolute is inhabited.
+// THE srv4 MVP SIZE, KEPT AS THE BOOT-SMOKE FIXTURE AND NO LONGER A PRODUCTION SIZING ARM. Until
+// 2026-09-19 this row was served whenever the cell granted only a relative CPU share, and the
+// absolute arm refused because the derivation below did not exist. The derivation exists now, so a
+// cell that grants no absolute entitlement REFUSES the shape rather than being handed a size that
+// nothing bounded -- a declared row that keeps answering after its forcing condition is gone is the
+// absorbing fallback DESIGN 5 forbids. The row survives because the boot smoke and the attempt
+// planner's witnesses drive a guest of exactly this size, which is the size srv4 was observed to
+// boot; it is a fixture with a receipt behind it, not a sizing anyone provisions against.
 data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
   vcpu_count: hardware_thread_count(count: 4),
   memory: mebibyte(count: 4096),
 }
 
-type RunnerMicroVmSizing
-  = MicroVmSized { size: RunnerMicroVmSize }
-  | MicroVmSizeUnresolved { cause: String }
+// THE PER-ATTEMPT WORKSPACE GRANT: X's WORKGB=4 (`dd bs=1M count=0 seek=$((WORKGB*1024))`), four
+// gibibytes as a Mebibyte seek. It lives beside the workspace drive it sizes rather than in the
+// planner, because the shape below judges the Work's storage demand against it and the planner
+// only realizes it. It is a GRANT rather than a derivation: the cell places no numeric bound on
+// disk (gunbc.runner_slot_allocation: disk admits nothing numeric anywhere), so there is no
+// remainder to derive a workspace from the way memory derives from the cell's ceiling, and a
+// workspace sized exactly to a measured lower bound would ENOSPC on the first byte of growth. The
+// fit check is what keeps the grant honest: a demand the grant does not hold refuses the shape.
+data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
 
-// THE ABSOLUTE ARM REFUSES, AND THAT IS THE WHOLE REASON THIS TAKES THE ENTITLEMENT AS AN ARGUMENT
-// RATHER THAN IGNORING IT.
+// THE GUEST SHAPE, DERIVED FROM THE WORK AND THE CELL RATHER THAN DECLARED BESIDE THEM.
 //
-// A declared product size is honest exactly while the fact that FORCED the declaration still holds.
-// The day the cell grants an absolute CPU entitlement, this declaration is a stale answer to a
-// question that has become derivable -- and a stale answer that keeps returning successfully is
-// worse than no answer, because nothing would ever surface that the repair is now available. So the
-// arm that would silently keep serving the declaration refuses instead, and names the repair.
+// Four quantities, each with one source:
 //
-// That is what keeps this from being the absorbing fallback DESIGN section 5 forbids. The
-// declaration is not a widened substitute for a computation that failed; it is a product fact
-// standing where no computation exists, and it withdraws the moment one does.
-fn runner_microvm_size_decision(cpu: CellCpuEntitlement) -> RunnerMicroVmSizing {
+//   vCPUs        the Work's own hard thread requirement, admitted against the cell's absolute
+//                CPU entitlement. The guest is sized to what the Work asks for, not to the whole
+//                quota: the VMM's own threads -- the API thread, the block and net device threads
+//                -- draw on the same CPUQuota, and a guest holding every entitled thread leaves
+//                them nothing, exactly as a guest holding the whole MemoryMax left the VMM nothing.
+//   memory       the cell's MemoryMax less the realization reserve: everything the cell admits
+//                beside the VMM, admitted only if it is at least the Work's stated minimum. The
+//                guest is granted the REMAINDER rather than the minimum because the minimum is a
+//                lower bound (gunbc.floor_demand: receipts, one of them a throttle pin) and guest
+//                RAM is lazily faulted, so headroom above a bound known to be too low costs
+//                nothing until touched. Floor division to MiB keeps guest + reserve <= MemoryMax by
+//                construction, so guest_memory_fits admits the derived guest without a second
+//                relation.
+//   workspace    the attempt's workspace grant, admitted only if it holds the Work's stated
+//                storage minimum.
+//   task ceiling the cell's TasksMax, carried INTO the guest as kernel.pid_max. In the lifecycle-
+//                controller topology the cell's TasksMax bounds only the VMM's handful of threads;
+//                the floor's processes live behind the guest kernel, where the cell cannot count
+//                them. Re-applying the same row inside the guest keeps the 2026-06-21 incident's
+//                repair value (gunbc.runner_slot_allocation: TasksMax=512 was the EAGAIN outage)
+//                governing the workload that produced the incident.
+//
+// EVERY REFUSAL IS TYPED AND CARRIES THE TWO NUMBERS THAT DISAGREED, because the remedy differs by
+// arm: a Work exceeding the cell's remainder is either a cell row to raise (a fleet decision with
+// a slot cost) or a demand to reduce, a Work exceeding the entitlement is a thread count to
+// revisit, and an unstated Work axis is a Work to complete. Collapsing them into a String would
+// send the reader to the wrong authority.
+type RunnerMicroVmShape {
+  size: RunnerMicroVmSize
+  workspace: Mebibyte
+  task_ceiling: Int
+}
+
+type RunnerMicroVmShapeRefusal
+  = ShapeRefusedCpuEntitlementRelativeOnly { cause: String }
+  | ShapeRefusedWorkThreadsExceedEntitlement { required: HardwareThreadCount, entitled: HardwareThreadCount }
+  | ShapeRefusedWorkMemoryUnstated
+  | ShapeRefusedReserveUnmodeled { cause: String }
+  | ShapeRefusedReserveExceedsCell { reserve: ByteSize, envelope: ByteSize }
+  | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, remainder: ByteSize }
+  | ShapeRefusedWorkStorageExceedsWorkspace { required: ByteSize, workspace: ByteSize }
+
+type RunnerMicroVmShapeResolution
+  = MicroVmShapeResolved { shape: RunnerMicroVmShape }
+  | MicroVmShapeRefused { refusal: RunnerMicroVmShapeRefusal }
+
+fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
+  match r {
+    ShapeRefusedCpuEntitlementRelativeOnly { cause: c } =>
+      concat("the cell grants no absolute CPU entitlement, so no vCPU count is bounded by it: ", c)
+    ShapeRefusedWorkThreadsExceedEntitlement { required: r, entitled: e } =>
+      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " threads and the cell entitles ", to_string(hardware_thread_count_value(t: e))], "")
+    ShapeRefusedWorkMemoryUnstated =>
+      "the work states no memory requirement, so no guest memory can be judged sufficient for it"
+    ShapeRefusedReserveUnmodeled { cause: c } =>
+      concat("the realization reserve is unmodeled, so the cell's remainder cannot be computed: ", c)
+    ShapeRefusedReserveExceedsCell { reserve: r, envelope: e } =>
+      join(["the realization reserve of ", to_string(byte_size_count(b: r)), " bytes exceeds the cell's MemoryMax of ", to_string(byte_size_count(b: e))], "")
+    ShapeRefusedWorkMemoryExceedsCellRemainder { required: r, remainder: m } =>
+      join(["the work's memory demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: m)), " bytes the cell admits beside the realization reserve; raise the cell row or reduce the demand"], "")
+    ShapeRefusedWorkStorageExceedsWorkspace { required: r, workspace: w } =>
+      join(["the work's storage demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: w)), " byte workspace grant"], "")
+  }
+}
+
+fn runner_microvm_shape(
+  work: ExecutionRequirements,
+  storage: StorageRequirement,
+  cpu: CellCpuEntitlement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
   match cpu {
-    CpuEntitlementRelativeOnly { cause: _ } =>
-      MicroVmSized { size: gunbc_runner_microvm_declared_size }
-    CpuEntitlementAbsolute { threads: _ } =>
-      MicroVmSizeUnresolved {
-        cause: "the cell now grants an absolute CPU entitlement, so this guest's topology is derivable and the declared product size is a stale answer to a question that has become answerable; derive the topology from the entitlement rather than reading the declaration",
+    CpuEntitlementRelativeOnly { cause: c } =>
+      MicroVmShapeRefused { refusal: ShapeRefusedCpuEntitlementRelativeOnly { cause: c } }
+    CpuEntitlementAbsolute { threads: entitled } =>
+      if hardware_thread_count_value(t: work.shape.hard.threads) > hardware_thread_count_value(t: entitled) {
+        MicroVmShapeRefused {
+          refusal: ShapeRefusedWorkThreadsExceedEntitlement { required: work.shape.hard.threads, entitled: entitled },
+        }
+      } else {
+        match work.shape.envelope.memory {
+          Absent => MicroVmShapeRefused { refusal: ShapeRefusedWorkMemoryUnstated }
+          Present { value: need } =>
+            runner_microvm_shape_after_cpu(
+              vcpus: work.shape.hard.threads,
+              need: need.min_bytes,
+              storage: storage,
+              envelope: envelope,
+              reserve: reserve,
+              task_ceiling: task_ceiling,
+              workspace: workspace,
+            )
+        }
       }
   }
 }
 
-fn gunbc_runner_microvm_size() -> RunnerMicroVmSizing {
-  runner_microvm_size_decision(cpu: gunbc_runner_microvm_cell_cpu_entitlement())
+// THE SUBTRACTION STAYS IN RANGE FOR THE SAME REASON guest_memory_fits GIVES: reserve > envelope is
+// split off before envelope - reserve is evaluated, so the remainder is never negative.
+fn runner_microvm_shape_after_cpu(
+  vcpus: HardwareThreadCount,
+  need: ByteSize,
+  storage: StorageRequirement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  match reserve {
+    ReserveUnmodeled { cause: c } =>
+      MicroVmShapeRefused { refusal: ShapeRefusedReserveUnmodeled { cause: c } }
+    ReserveDeclared { bytes: r } =>
+      if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
+        MicroVmShapeRefused { refusal: ShapeRefusedReserveExceedsCell { reserve: r, envelope: envelope.bytes } }
+      } else {
+        let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: r)
+        if remainder < byte_size_count(b: need) {
+          MicroVmShapeRefused {
+            refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, remainder: byte_size(remainder) },
+          }
+        } else {
+          let workspace_bytes = mebibyte_to_byte_size(m: workspace)
+          if byte_size_count(b: storage.min_bytes) > byte_size_count(b: workspace_bytes) {
+            MicroVmShapeRefused {
+              refusal: ShapeRefusedWorkStorageExceedsWorkspace { required: storage.min_bytes, workspace: workspace_bytes },
+            }
+          } else {
+            MicroVmShapeResolved {
+              shape: RunnerMicroVmShape {
+                size: RunnerMicroVmSize {
+                  vcpu_count: vcpus,
+                  memory: mebibyte(count: remainder / mebibyte_scale_factor_bytes()),
+                },
+                workspace: workspace,
+                task_ceiling: task_ceiling,
+              },
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE FLEET'S OWN SHAPE: the floor's Work against this fleet's cell, reserve, task row and
+// workspace grant. Every input is read from the authority that owns it; nothing here is a
+// parameter a caller could use to hand the guest an envelope the cell did not declare.
+fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
+  let cell = gunbc_runner_slot_desired()
+  runner_microvm_shape(
+    work: floor_execution_requirements(),
+    storage: floor_storage_requirement(),
+    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
+    envelope: CellMemoryEnvelope { bytes: cell.memory_max },
+    reserve: gunbc_runner_microvm_realization_reserve(),
+    task_ceiling: cell.tasks_max,
+    workspace: runner_microvm_workspace_grant,
+  )
+}
+
+// THE TASK CEILING REACHES THE GUEST AS A KERNEL COMMAND-LINE SYSCTL, rendered by the cited
+// kernel-parameters authority rather than spelled here. The guest reads it back as
+// /proc/sys/kernel/pid_max; a guest kernel too old to honour `sysctl.` boots with its default and
+// the readback, not this argument, is what establishes the ceiling.
+fn runner_microvm_task_ceiling_boot_arg(shape: RunnerMicroVmShape) -> String {
+  kernel_cmdline_arg_wire(
+    arg: sysctl_cmdline_arg(parameter: "kernel.pid_max", value: to_string(shape.task_ceiling)),
+  )
 }
 
 fn runner_microvm_isolation_profile() -> IsolationProfile {
@@ -671,16 +833,17 @@ fn gunbc_runner_microvm_vm_config(
   kernel_path: FilePath,
   net: RunnerMicroVmNetworking,
 ) -> RunnerMicroVmConfigResolution {
-  match gunbc_runner_microvm_size() {
-    MicroVmSizeUnresolved { cause: c } => MicroVmConfigUnresolved { cause: c }
-    MicroVmSized { size: s } =>
+  match gunbc_runner_microvm_shape() {
+    MicroVmShapeRefused { refusal: r } =>
+      MicroVmConfigUnresolved { cause: runner_microvm_shape_refusal_text(r: r) }
+    MicroVmShapeResolved { shape: s } =>
       MicroVmConfigResolved {
         config: runner_microvm_vm_config(
           rootfs_path: rootfs_path,
           jit_config_path: jit_config_path,
           kernel_path: kernel_path,
           net: net,
-          size: s,
+          size: s.size,
           transport: gunbc_runner_jit_transport,
         ),
       }
