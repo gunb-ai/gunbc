@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_retirement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.types { NonEmptyStr, String, list_length }
+import std.types { NonEmptyStr, String, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
@@ -21,7 +21,9 @@ import gunbc.runner_host_retirement {
   host_retirement_spec,
   srv2_host_retirement,
   OwnershipEstablished,
-  OwnershipUnestablished,
+  OwnershipCandidateUnresolved,
+  OwnershipForeign,
+  UnresolvedCandidate,
   registration_ownership,
   ownership_is_established,
   CommittedSlotIdentity,
@@ -35,11 +37,16 @@ import gunbc.runner_host_retirement {
   ObligationFromCapturedSnapshot,
   ObligationFromSearchBound,
   ObligationAbsent,
+  retiree_obligation_ungrounded_cause,
+  CaptureComplete,
+  CapturePartial,
+  CaptureUnavailable,
   host_retirement_obligation_basis,
-  retiree_obligation_is_grounded,
+  host_retirement_obligation_basis_of,
   ReconcileMechanismReading,
   ReconcilePropertyValue,
   ReconcilePropertyUnreadable,
+  estate_obligation_is_settled,
   EstateObligationStanding,
   EstateObligationDischarged,
   EstateObligationOutstanding,
@@ -56,6 +63,7 @@ import gunbc.runner_host_retirement {
   reconcile_timer_estate_standing,
 }
 import gunbc.runner_slot_retirement { transition_required_retiring }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -152,6 +160,7 @@ test fn an_owned_registration_outside_the_committed_population_stays_an_obligati
   match disposition_of(host: operator_host_srv2, reg: registration(name: "srv2-07", id: 701)) {
     SurplusOwnedRetiree { name: _, host: _ } => true
     CommittedSlotIdentity { name: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     UnownedRegistration { name: _, cause: _ } => false
   }
 }
@@ -162,6 +171,7 @@ test fn an_owned_former_member_outside_every_commitment_stays_an_obligation() ->
   match disposition_of(host: operator_host_srv2, reg: registration(name: "srv2-19", id: 719)) {
     SurplusOwnedRetiree { name: _, host: _ } => true
     CommittedSlotIdentity { name: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     UnownedRegistration { name: _, cause: _ } => false
   }
 }
@@ -172,6 +182,7 @@ test fn a_unit_shaped_name_is_not_an_owned_registration() -> Bool {
   match disposition_of(host: operator_host_srv2, reg: registration(name: "actions-runner@srv2-07.service", id: 799)) {
     UnownedRegistration { name: _, cause: _ } => true
     SurplusOwnedRetiree { name: _, host: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     CommittedSlotIdentity { name: _ } => false
   }
 }
@@ -181,6 +192,7 @@ test fn a_registration_this_estate_never_issued_is_unowned_rather_than_surplus()
   match disposition_of(host: operator_host_srv2, reg: registration(name: "someone-elses-runner", id: 900)) {
     UnownedRegistration { name: _, cause: _ } => true
     SurplusOwnedRetiree { name: _, host: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     CommittedSlotIdentity { name: _ } => false
   }
 }
@@ -193,6 +205,7 @@ test fn another_hosts_registration_is_not_owned_by_this_one() -> Bool {
   match disposition_of(host: operator_host_srv2, reg: registration(name: "srv3-19", id: 319)) {
     UnownedRegistration { name: _, cause: _ } => true
     SurplusOwnedRetiree { name: _, host: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     CommittedSlotIdentity { name: _ } => false
   }
 }
@@ -205,6 +218,7 @@ test fn a_committed_registration_blocks_nothing() -> Bool {
     CommittedSlotIdentity { name: _ } =>
       !surplus_identity_blocks_closure(d: d) && !surplus_identity_within_retirement_scope(d: d)
     SurplusOwnedRetiree { name: _, host: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     UnownedRegistration { name: _, cause: _ } => false
   }
 }
@@ -217,6 +231,7 @@ test fn ownership_without_a_declared_retirement_is_not_in_retirement_scope() -> 
     SurplusOwnedRetiree { name: _, host: _ } =>
       !surplus_identity_within_retirement_scope(d: d) && surplus_identity_blocks_closure(d: d)
     CommittedSlotIdentity { name: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
     UnownedRegistration { name: _, cause: _ } => false
   }
 }
@@ -243,6 +258,53 @@ test fn ownership_is_read_off_the_registration_naming_authority() -> Bool {
     && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "actions-runner@srv2-01.service" as NonEmptyStr))
 }
 
+// THE REQUIRED DISCRIMINATOR: a name inside srv2's namespace that names no canonical slot must NOT
+// establish ownership. Under the previous prefix test both of these were OwnershipEstablished, and a
+// registration nobody in this estate issued would have become an owned retiree.
+test fn a_namespace_shaped_name_that_names_no_slot_is_not_owned() -> Bool {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-not-a-slot" as NonEmptyStr) {
+    OwnershipCandidateUnresolved { name: _, cause: _ } => true
+    OwnershipEstablished { host: _, slot_index: _, basis: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+test fn a_bare_host_prefix_is_not_owned() -> Bool {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-" as NonEmptyStr) {
+    OwnershipCandidateUnresolved { name: _, cause: _ } => true
+    OwnershipEstablished { host: _, slot_index: _, basis: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+// AN UNRESOLVED CANDIDATE BLOCKS AND IS NOT IN SCOPE -- it is neither promoted to ours nor dropped.
+test fn an_unresolved_candidate_blocks_without_entering_scope() -> Bool {
+  let d = disposition_of(host: operator_host_srv2, reg: registration(name: "srv2-not-a-slot", id: 950))
+  match d {
+    UnresolvedCandidate { name: _, cause: _ } =>
+      surplus_identity_blocks_closure(d: d) && !surplus_identity_within_retirement_scope(d: d)
+    SurplusOwnedRetiree { name: _, host: _ } => false
+    CommittedSlotIdentity { name: _ } => false
+    UnresolvedCandidate { name: _, cause: _ } => false
+    UnownedRegistration { name: _, cause: _ } => false
+  }
+}
+
+// THE CANONICAL INDEX IS CARRIED, which is what makes this an identity rather than a shape match.
+test fn an_owned_registration_carries_its_canonical_slot_index() -> Bool {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-07" as NonEmptyStr) {
+    OwnershipEstablished { host: _, slot_index: i, basis: _ } => (i as Int) == 7
+    OwnershipCandidateUnresolved { name: _, cause: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+// THE UNIT PROJECTION IS THE EXISTING ONE, not a second composition of prefix/name/suffix.
+test fn the_unit_projection_matches_the_shared_authority() -> Bool {
+  (unit_name_for_owned_registration(name: "srv2-07" as NonEmptyStr) as String)
+    == (runner_unit_name_of_registration(registration_name: "srv2-07" as NonEmptyStr) as String)
+}
+
 // THE UNIT IDENTITY IS DERIVED FROM THE REGISTRATION, and the two grammars stay distinguishable.
 test fn the_unit_identity_is_derived_from_the_owned_registration() -> Bool {
   (unit_name_for_owned_registration(name: "srv2-07" as NonEmptyStr) as String) == "actions-runner@srv2-07.service"
@@ -253,8 +315,13 @@ test fn the_unit_identity_is_derived_from_the_owned_registration() -> Bool {
 test fn a_search_bound_obligation_is_reported_ungrounded() -> Bool {
   let b = host_retirement_obligation_basis(host: operator_host_srv2)
   match b {
-    ObligationFromSearchBound { units: _, bound: n } => n == 21 && !retiree_obligation_is_grounded(b: b)
-    ObligationFromCapturedSnapshot { units: _ } => false
+    ObligationFromSearchBound { units: _, bound: n, cause: _ } =>
+      n == 21
+        && match retiree_obligation_ungrounded_cause(b: b) {
+             Present { value: _ } => true
+             Absent => false
+           }
+    ObligationFromCapturedSnapshot { observed_on: _, units: _ } => false
     ObligationAbsent { host: _ } => false
   }
 }
@@ -312,6 +379,7 @@ test fn all_three_estate_obligations_discharged_completes() -> Bool {
 
 fn reading(file_state: String, timer_active: String, service_active: String) -> ReconcileMechanismReading {
   ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "loaded" },
     timer_unit_file_state: ReconcilePropertyValue { value: file_state },
     timer_active_state: ReconcilePropertyValue { value: timer_active },
     service_active_state: ReconcilePropertyValue { value: service_active },
@@ -404,6 +472,7 @@ test fn an_unrecognized_enablement_state_is_unobserved() -> Bool {
 // that were taken.
 test fn an_unreadable_property_is_unobserved() -> Bool {
   is_unobserved(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "loaded" },
     timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
     timer_active_state: ReconcilePropertyUnreadable { cause: "ssh refused" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
@@ -417,4 +486,130 @@ test fn a_quiescent_mechanism_on_a_retained_host_does_not_discharge() -> Bool {
     intent: runner_liveness_reconcile_timer_intent(host: operator_host_srv4),
     reading: reading(file_state: "masked", timer_active: "inactive", service_active: "inactive"),
   ))
+}
+
+// A RUNTIME MASK LASTS UNTIL THE NEXT REBOOT, so it cannot discharge an obligation that the mechanism
+// will not come back. The previous version accepted it as persistent inhibition.
+test fn a_runtime_mask_does_not_discharge() -> Bool {
+  is_outstanding(s: srv2_standing(r: reading(file_state: "masked-runtime", timer_active: "inactive", service_active: "inactive")))
+}
+
+// BLANK TIMER ACTIVITY IS UNOBSERVED. `masked / blank / inactive` discharged before: a blank
+// ActiveState is what systemctl returns for a unit the manager does not hold, which is a fact about
+// the query rather than about quiescence.
+test fn a_blank_timer_activity_is_unobserved() -> Bool {
+  is_unobserved(s: srv2_standing(r: reading(file_state: "masked", timer_active: "", service_active: "inactive")))
+}
+
+// AND BLANK RECONCILER ACTIVITY TOO -- the second of the pair, which the enablement-only blank
+// control could not see.
+test fn a_blank_reconciler_activity_is_unobserved() -> Bool {
+  is_unobserved(s: srv2_standing(r: reading(file_state: "masked", timer_active: "inactive", service_active: "")))
+}
+
+// ABSENCE IS STILL REACHABLE AND IS ESTABLISHED POSITIVELY. A host that never had the mechanism
+// reports not-found, which is evidence rather than a gap -- so the repair does not make the discharge
+// unreachable in the opposite direction.
+test fn a_positively_absent_timer_discharges() -> Bool {
+  is_discharged(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-found" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "" },
+    timer_active_state: ReconcilePropertyValue { value: "" },
+    service_active_state: ReconcilePropertyValue { value: "" },
+  }))
+}
+
+// AN UNREADABLE LOAD STATE BLOCKS, so absence cannot be inferred from a refused read.
+test fn an_unreadable_load_state_is_unobserved() -> Bool {
+  is_unobserved(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyUnreadable { cause: "ssh refused" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
+    timer_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
+}
+
+// ── R5: A CONTRADICTORY ESTATE READING CANNOT MINT COMPLETION ────────────────────────────────
+
+// THREE DISCHARGED OBLIGATIONS PLUS AN UNOBSERVED READING FOR ONE OF THEM. The previous fold filtered
+// to the discharged subset and never looked outside it, so this produced EstateCleanupComplete.
+test fn a_contradictory_estate_reading_blocks_completion() -> Bool {
+  match estate_cleanup_standing(standings: [
+    EstateObligationDischarged { obligation: RegistrationRemoval, evidence: "delisted" },
+    EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+    EstateObligationUnobserved { obligation: RegistrationRemoval, cause: "read failed" },
+  ]) {
+    EstateCleanupOutstanding { outstanding: os } => list_length(items: os) == 1
+    EstateCleanupComplete => false
+  }
+}
+
+// AND IN THE OTHER ORDER, because a fold that scans for the first or the last match is order
+// sensitive and this one must not be.
+test fn a_contradictory_estate_reading_blocks_in_either_order() -> Bool {
+  match estate_cleanup_standing(standings: [
+    EstateObligationUnobserved { obligation: RegistrationRemoval, cause: "read failed" },
+    EstateObligationDischarged { obligation: RegistrationRemoval, evidence: "delisted" },
+    EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+  ]) {
+    EstateCleanupOutstanding { outstanding: os } => list_length(items: os) == 1
+    EstateCleanupComplete => false
+  }
+}
+
+// AN AGREEING DUPLICATE IS STILL A DUPLICATE AND IS REFUSED, because two readings of one subject are
+// one observation taken twice only if something established that -- and nothing here did.
+test fn a_duplicate_estate_reading_is_not_settled() -> Bool {
+  !estate_obligation_is_settled(
+    standings: [
+      EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+      EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    ],
+    o: RunnerTreeRemoval,
+  )
+}
+
+// ── R7: CAPTURE AVAILABILITY IS NOT MEMBER COUNT ─────────────────────────────────────────────
+
+// AN UNAVAILABLE CAPTURE LEAVES THE POPULATION UNGROUNDED, and the cause is available for a consumer
+// to block on rather than only to print.
+test fn an_unavailable_capture_yields_an_ungrounded_cause() -> Bool {
+  match retiree_obligation_ungrounded_cause(b: host_retirement_obligation_basis(host: operator_host_srv2)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A COMPLETE CAPTURE THAT FOUND NOTHING IS GROUNDED AND EMPTY -- the case a bare list could not
+// express, and the direction the repair must not break.
+test fn a_complete_but_empty_capture_is_grounded() -> Bool {
+  match host_retirement_obligation_basis_of(
+    capture: CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: [] },
+    host: operator_host_srv2,
+    bound: 21,
+  ) {
+    ObligationFromCapturedSnapshot { observed_on: _, units: us } => list_length(items: us) == 0
+    ObligationFromSearchBound { units: _, bound: _, cause: _ } => false
+    ObligationAbsent { host: _ } => false
+  }
+}
+
+// A PARTIAL CAPTURE IS NOT GROUNDED HOWEVER MANY MEMBERS IT CARRIES, because the members it missed
+// are exactly the ones an assessment would stop looking for.
+test fn a_partial_capture_is_not_grounded() -> Bool {
+  match host_retirement_obligation_basis_of(
+    capture: CapturePartial {
+      observed_on: "2026-09-19" as NonEmptyStr,
+      members: ["srv2-01" as NonEmptyStr, "srv2-02" as NonEmptyStr],
+      cause: "page 1 of 3",
+    },
+    host: operator_host_srv2,
+    bound: 21,
+  ) {
+    ObligationFromSearchBound { units: _, bound: _, cause: _ } => true
+    ObligationFromCapturedSnapshot { observed_on: _, units: _ } => false
+    ObligationAbsent { host: _ } => false
+  }
 }

@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState }
+import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, LoadState }
 import product.placement_supply { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding {
@@ -56,6 +56,10 @@ import gunbc.runner_slot_retirement {
   transition_retirement_admission,
   transition_required_retiring,
   observe_retirement_standings,
+  authoritative_standing_for,
+  StandingUnique,
+  StandingAbsent,
+  StandingConflicting,
   retirement_method_availability,
   retirement_unit,
   retirement_standing_wire,
@@ -93,7 +97,11 @@ import gunbc.runner_host_retirement {
   ReconcilePropertyUnreadable,
   reconcile_reading_text,
 }
+import extdeps.git
+import extdeps.git.inspect
+import gunbc.output_policy { ExpectSuccess }
 import gunbc.runner_retirement_closure {
+  ClosureBlocker,
   PlannerDisposition,
   PlannerSawCompleteSubject,
   PlannerRefusedAccess,
@@ -277,15 +285,24 @@ fn retirement_route_transport(
 // A REQUIRED SUBJECT WITH NO STANDING IS UNOBSERVED, NEVER SKIPPED. `observe_retirement_standings`
 // maps over the obligation, so the lists agree today; joining by identity rather than by position
 // means they keep agreeing when one of them later does not.
+// THE SAME AUTHORITATIVE JOIN THE CLOSURE USES. This folded with last-matching-wins, which is an
+// unresolved selection rule rather than a decision: two disagreeing readings for one unit resolved to
+// whichever came later. Absence and contradiction now both land on an UNOBSERVED standing, which is
+// the arm the invocation fold already treats as pending.
 fn standing_for_required(standings: List<RunnerRetirementStanding>, unit: NonEmptyStr) -> RunnerRetirementStanding {
-  fold(
-    standings,
-    init: RetirementUnobserved {
-      unit: unit as String,
-      cause: "this required retiree has no standing in this assessment's readback, so nothing is known about it",
-    },
-    f: (acc, s) => if retirement_unit(s: s) == (unit as String) { s } else { acc },
-  )
+  match authoritative_standing_for(standings: standings, unit: unit as String) {
+    StandingUnique { standing: s } => s
+    StandingAbsent { unit: u } =>
+      RetirementUnobserved {
+        unit: u,
+        cause: "this required retiree has no standing in this assessment's readback, so nothing is known about it",
+      }
+    StandingConflicting { unit: u, readings: n } =>
+      RetirementUnobserved {
+        unit: u,
+        cause: join([to_string(n), " disagreeing readings were taken for ", u, " in this assessment, so none of them is authoritative"], ""),
+      }
+  }
 }
 
 fn retirement_evidence_for(target: HostIdentity) -> SlotRetirementEvidence {
@@ -321,6 +338,11 @@ fn observe_reconcile_mechanism_reading(transport: HostEffectTransport) -> Reconc
   uses net: Network
 {
   ReconcileMechanismReading {
+    timer_load_state: reconcile_property_read(
+      transport: transport,
+      unit: runner_liveness_reconcile_timer_unit,
+      property: LoadState,
+    ),
     timer_unit_file_state: reconcile_property_read(
       transport: transport,
       unit: runner_liveness_reconcile_timer_unit,
@@ -509,6 +531,80 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
 // narrower question this run can actually answer: is every required subject of THIS host settled.
 //
 // NEITHER MAY BE READ AS THE OTHER, which is why the terminal line prints both words.
+// ── WHAT REVISION THIS ASSESSMENT ACTUALLY RAN AGAINST ───────────────────────────────────────
+//
+// THE EVENT BINDING IS NOT A CHECKOUT OBSERVATION, AND THE FIRST REPAIR TREATED IT AS ONE.
+//
+// `observe_actions_run_binding` reads `GITHUB_SHA` into `binding.run_revision`, and
+// `admit_run_revision` compares that to `RLM_EXPECTED_REVISION`. GitHub defines `GITHUB_SHA` as the
+// commit of the TRIGGERING EVENT. So the pair establishes exactly one thing -- event revision equals
+// expected revision -- and the comment beside it claimed it established that the source and the
+// executable used for the assessment correspond to that revision. It does not, and the job's other
+// candidate is not one either: `claim_executor --verify-build-artifacts` checks that each path is a
+// file, is executable and is nonempty, and says nothing about revision or build identity.
+//
+// THREE SEPARATE FACTS, KEPT SEPARATE:
+//
+//   EVENT      -- GITHUB_SHA versus the operator-selected R. Already checked; retained.
+//   CHECKOUT   -- what `git rev-parse HEAD` reports in the tree this process is reading. Observed
+//                 here, and a disagreement REFUSES: this job checks out
+//                 `expected_revision || github.ref`, so the checkout is the fact that actually
+//                 decides which sources produced the assessment.
+//   EXECUTABLE -- which revision built the binary performing the assessment. THERE IS NO PRODUCER
+//                 FOR THIS. Nothing in this repository binds a release binary to the revision that
+//                 built it, so the honest state is unresolved, and it is carried as a named blocker
+//                 rather than asserted or omitted. The run identity travels on the receipt so the
+//                 eventual package can join this assessment to its actual producer.
+type CheckoutRevisionReading
+  = CheckoutRevisionRead { revision: String }
+  | CheckoutRevisionUnreadable { cause: String }
+
+fn observe_checkout_revision() -> CheckoutRevisionReading {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success || (head.sha as String) == "" {
+    CheckoutRevisionUnreadable {
+      cause: "git.Inspect.HeadCommit refused or returned an empty revision, so the tree this assessment read cannot be identified",
+    }
+  } else {
+    CheckoutRevisionRead { revision: head.sha as String }
+  }
+}
+
+type RevisionCorroboration
+  = RevisionCorroborated { revision: String }
+  | RevisionCorroborationRefused { cause: String }
+
+fn corroborate_checkout_revision(expected: String, reading: CheckoutRevisionReading) -> RevisionCorroboration {
+  match reading {
+    CheckoutRevisionUnreadable { cause: c } => RevisionCorroborationRefused { cause: c }
+    CheckoutRevisionRead { revision: r } =>
+      if trim(s: r) == trim(s: expected) {
+        RevisionCorroborated { revision: trim(s: r) }
+      } else {
+        RevisionCorroborationRefused {
+          cause: join([
+            "the checked-out revision is ", trim(s: r), " but the operator selected ", trim(s: expected),
+            "; the event SHA agreeing with the selection does not make the tree this assessment read the selected one",
+          ], ""),
+        }
+      }
+  }
+}
+
+// THE BUILD PROVENANCE BLOCKER. Named rather than silent, and it blocks the assessment the same way
+// an unread roster does -- an assessment whose producer cannot be identified cannot join a package
+// that is defined at one revision.
+fn build_provenance_blocker(run_id: String) -> ClosureBlocker {
+  ClosureBlocker {
+    subject: "assessment-build-provenance",
+    cause: join([
+      "no producer in this repository binds the executable performing this assessment to the revision that built it -- claim_executor --verify-build-artifacts checks only that each path is a file, executable and nonempty -- so the build identity behind run ",
+      run_id,
+      " is UNRESOLVED and this assessment cannot be joined to its producer",
+    ], ""),
+  }
+}
+
 // THE REVISION ON THE RECEIPT IS THE ONE THIS RUN EXECUTED, CORROBORATED, NOT `GITHUB_SHA`.
 //
 // The first version read `GITHUB_SHA` and used it as the assessment revision. But this job checks out
@@ -538,13 +634,18 @@ fn runner_slot_retire_ci_wet() -> ProcessExit
             RunRevisionRefused { expected: e, observed: o } =>
               exit_failure(reason: join(["runner_slot_retire: RunRevisionRefused -- the operator selected ", e, " but this run's own revision is ", o, "; refusing rather than attaching an uncorroborated revision to the receipt"], ""))
             RunRevisionAdmitted { revision: revision } =>
-              runner_slot_retire_bound_wet(revision: revision)
+              match corroborate_checkout_revision(expected: revision, reading: observe_checkout_revision()) {
+                RevisionCorroborationRefused { cause: c } =>
+                  exit_failure(reason: join(["runner_slot_retire: CheckoutRevisionRefused -- ", c], ""))
+                RevisionCorroborated { revision: checked_out } =>
+                  runner_slot_retire_bound_wet(revision: checked_out, run_id: run.run_id)
+              }
           }
       }
   }
 }
 
-fn runner_slot_retire_bound_wet(revision: String) -> ProcessExit
+fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
   uses net: Network
 {
   match actions_variable_read(name: runner_retirement_executor_env_name) {
@@ -571,11 +672,13 @@ fn runner_slot_retire_bound_wet(revision: String) -> ProcessExit
                     method_subjects: retirement_route_graceful_subjects(run: run),
                     method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
                     planner: retirement_route_planner_disposition(run: run),
+                    basis: host_retirement_obligation_basis(host: subject.target),
+                    extra: [build_provenance_blocker(run_id: run_id)],
                     estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
                   )
                   let body = join([
                     "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
-                    "revision=", revision, "\n",
+                    "revision=", revision, " run_id=", run_id, "\n",
                     context_receipt,
                     retirement_route_text(run: run),
                     assessment_verdict_text(v: verdict),

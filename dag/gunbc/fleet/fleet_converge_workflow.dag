@@ -419,7 +419,7 @@ data fleet_converge_reset_subject_mutation_concurrency_group_expression: String 
   "')[github.event.inputs.reset_observer] }}",
 ], "")
 
-data fleet_converge_reset_observer_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.reset_observer)) }}"
+data fleet_converge_reset_observer_runner_expression: String = label_pinned_runner_expression(input_name: "reset_observer")
 
 fn fleet_converge_reset_observer_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_reset_observer_runner_expression }
@@ -548,7 +548,21 @@ fn fleet_converge_retirement_target_description() -> String {
 // lists above were both repaired for.
 data fleet_converge_retirement_target_options: List<String> = map(declared_host_retirements, r => r.host as String)
 
-data fleet_converge_retirement_executor_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.retirement_executor)) }}"
+// ONE LABEL-PINNED RUNNER EXPRESSION, SPELLED ONCE. Three declarations here rendered the same GHA
+// `fromJSON(format(...))` label array and differed only in which dispatch input they interpolated --
+// and this PR refuses exactly that shape two declarations above, where the retirement target options
+// are DERIVED from the retirement roster rather than spelled a second time. A rule applied to a data
+// row and not to the expression beside it is the same fork with better manners; the two copies
+// already on main are debt, not precedent, so the producer takes all three.
+fn label_pinned_runner_expression(input_name: String) -> String {
+  join([
+    "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.",
+    input_name,
+    ")) }}",
+  ], "")
+}
+
+data fleet_converge_retirement_executor_runner_expression: String = label_pinned_runner_expression(input_name: "retirement_executor")
 
 fn fleet_converge_retirement_executor_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_retirement_executor_runner_expression }
@@ -635,7 +649,7 @@ fn fleet_converge_runner_slot_retire_receipt_upload_step() -> Step {
   }
 }
 
-data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
+data fleet_converge_host_runner_expression: String = label_pinned_runner_expression(input_name: "host")
 
 // THE BACKSTOP NOW DERIVES FROM THE STEPS IT GUARDS, rather than restating their budgets in a
 // hand-kept sum. It was such a sum, and review 61958 found what that costs: this change inserted a

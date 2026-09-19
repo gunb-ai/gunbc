@@ -950,6 +950,59 @@ fn transition_baseline_rows(host: HostIdentity) -> List<String> {
 }
 
 
+// ── ONE AUTHORITATIVE READING PER SUBJECT, SHARED BY EVERY CONSUMER ──────────────────────────
+//
+// Two consumers were resolving duplicate readings for one unit, differently and both wrongly. The
+// closure's `retiree_blockers` filtered to the COMPLETED standings and asked whether each required
+// identity appeared among them -- "any success exists" -- so `[Complete(u), Unobserved(u)]` produced
+// no blocker at all, in either list order. The route's `standing_for_required` folded with
+// last-matching-wins, so the same pair resolved to whichever reading happened to be later.
+//
+// Neither is a decision. A subject with two disagreeing readings has not been read twice; it has been
+// read inconsistently, and no rule for picking one of them makes the pair consistent. The join is
+// here, once, and it REFUSES rather than selecting.
+//
+// A DUPLICATE THAT AGREES IS STILL A DUPLICATE, and it is admitted: two identical readings carry one
+// fact. What is refused is disagreement, which is the state a selection rule was silently resolving.
+type AuthoritativeStanding
+  = StandingUnique { standing: RunnerRetirementStanding }
+  | StandingAbsent { unit: String }
+  | StandingConflicting { unit: String, readings: Int }
+
+fn authoritative_standing_for(
+  standings: List<RunnerRetirementStanding>,
+  unit: String,
+) -> AuthoritativeStanding {
+  let mine = standing_for_unit(standings: standings, unit: unit)
+  if list_length(items: mine) == 0 {
+    StandingAbsent { unit: unit }
+  } else {
+    let first = mine |> fold(init: mine.first(), f: (acc, s) => acc)
+    if all(mine, s => retirement_standing_wire(s: s) == retirement_standing_wire(s: first)) {
+      StandingUnique { standing: first }
+    } else {
+      StandingConflicting { unit: unit, readings: list_length(items: mine) }
+    }
+  }
+}
+
+fn authoritative_standing_is_complete(a: AuthoritativeStanding) -> Bool {
+  match a {
+    StandingUnique { standing: s } => retirement_is_complete(s: s)
+    StandingAbsent { unit: _ } => false
+    StandingConflicting { unit: _, readings: _ } => false
+  }
+}
+
+fn authoritative_standing_cause(a: AuthoritativeStanding) -> String {
+  match a {
+    StandingUnique { standing: s } => retirement_standing_wire(s: s)
+    StandingAbsent { unit: u } => join(["no standing for ", u, " in this assessment"], "")
+    StandingConflicting { unit: u, readings: n } =>
+      join([to_string(n), " disagreeing readings for ", u, " in this assessment; no rule for picking one of them makes the pair consistent"], "")
+  }
+}
+
 // ── THE INVOCATION DISPOSITION: OBSERVING A SATISFIED POSTCONDITION NEEDS NO PERMISSION ───────
 //
 // `slot_removal_realization` above asks about a TEARDOWN -- may this tree be deleted -- and it is
