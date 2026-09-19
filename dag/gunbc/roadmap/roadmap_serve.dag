@@ -10,10 +10,7 @@ import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
 }
-import gunbc.auth.approval_broker_cutover {
-  RoadmapApprovalMount, RoadmapStillMountsApprovalRoutes, RoadmapApprovalRoutesRetired,
-  roadmap_approval_mount,
-}
+import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
@@ -478,27 +475,26 @@ fn serve_publish_handler_response_for_instance(
 // worse than the co-tenancy it repairs, and the reason the plan is staged rather than atomic.
 //
 // THE DISSOLUTION IS ONE ROW AND NOTHING ELSE, which is what makes it a mechanism rather than a
-// plan someone remembers. gunbc.auth.approval_broker_cutover roadmap_approval_mount decides whether
-// this projection yields the four rows at all, and the SAME row decides which port the deploy may
-// bind the broker to -- so while these rows are mounted the broker cannot be placed anywhere the
-// front door reaches, and the two-writer state has no spelling (review 68050 caught the earlier
-// arrangement, where an ordinary apply produced it and only prose forbade it).
+// plan someone remembers. gunbc.auth.approval_broker_cutover approval_route_ownership decides who
+// the approval paths are routed to, and every derived fact reads it: whether this table projects
+// the four rows, which port the deploy binds the broker to, and whether the front door carries the
+// two approval mounts. At most one party is routed at every value of that row, which is the
+// property an earlier arrangement asserted in prose and a later one tried to get from the port
+// alone (reviews 68050 and 68075).
 //
-// Flipping that row retires these rows and moves the broker onto the serving port in one motion,
-// and the plan refuses to admit the flip until the front door is repointed and all four route
-// classes have been probed. The arm below survives the flip as dead code for exactly one change and
-// is deleted with it; what stays is the regression control that this table answers nothing for the
-// four approval pairs.
+// This projection stops at ApprovalPathsOwnedByBroker. The arm below survives that flip as dead
+// code for exactly one change and is deleted with it; what stays is the regression control that
+// this table answers nothing for the four approval pairs.
 
 fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
-  match roadmap_approval_mount {
-    RoadmapApprovalRoutesRetired => []
-    RoadmapStillMountsApprovalRoutes =>
-      map(approval_broker_route_specs(), spec => ServedRouteSpec {
-        method: spec.method,
-        raw: spec.raw,
-        handler: ApprovalBrokerCutoverHandler { route: spec.handler },
-      })
+  if roadmap_still_mounts_approval_routes() {
+    map(approval_broker_route_specs(), spec => ServedRouteSpec {
+      method: spec.method,
+      raw: spec.raw,
+      handler: ApprovalBrokerCutoverHandler { route: spec.handler },
+    })
+  } else {
+    []
   }
 }
 

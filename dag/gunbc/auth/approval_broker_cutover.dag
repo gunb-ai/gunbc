@@ -43,56 +43,87 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_
 // that could both decide and act would be able to report success for an effect nobody observed,
 // which is the fabricated-plausible-output arm DESIGN section 5 forbids at exactly this boundary.
 
-// ── THE SWITCH THAT MAKES TWO WRITERS UNWRITABLE ────────────────────────────────────────────
-// REVIEW 68050 CAUGHT A FREEZE STANDING WHERE A CONSTRUCTION WAS AVAILABLE, and it was right. The
-// ordinary release deploy spliced the broker unit in on the SERVING port and started it, while the
-// roadmap table unconditionally kept the four approval routes -- so an ordinary `dashboard-srv1`
-// apply produced exactly the state dark_deployment_admission refuses by name, skipping the release
-// readback and the demand measurement on the way. The only thing standing between the deploy and
-// that state was a sentence in three annotations saying roadmap redeploys were frozen. A prose
-// freeze is not a wall (DESIGN section 5; section 6's tells name it directly).
+// ── WHO THE APPROVAL PATHS ARE ROUTED TO, AS ONE THREE-VALUED FACT ──────────────────────────
+// TWO EARLIER CUTS OF THIS ROW WERE BOTH WRONG, IN OPPOSITE DIRECTIONS, AND THE SECOND ERROR IS
+// INSTRUCTIVE. First there was no row at all and an ordinary apply could put the broker where the
+// front door reaches it while the roadmap still served those paths -- two routed writers, forbidden
+// only by prose (review 68050). The repair introduced a two-valued switch and used the broker's
+// PORT as the lever: dark while the roadmap still mounted the rows, serving afterwards.
 //
-// ONE DECLARATION NOW DECIDES BOTH HALVES, because they were never two facts. "The roadmap still
-// mounts the approval routes" and "the broker must not bind the port the front door reaches" are
-// the same statement about who may write the store, and holding them in two places is what let
-// them disagree. This row is read by gunbc.roadmap_serve, which projects the four rows only while
-// it says StillMounted, and by gunbc.live_deploy.spec, which derives the broker's deploy port from
-// it -- so while the roadmap is a writer the deploy CANNOT put the broker anywhere the front door
-// can reach, and no apply path, ordinary or staged, has a spelling that does.
+// THAT LEVER WAS A PROXY FOR THE WRONG FACT, and review 68075 found what it cost. The front-door
+// mounts kept naming the SERVING port, so stage 4 would have repointed /approve and /approvals at
+// 127.0.0.1:8085 while the broker was bound to 18085 -- every approval link on a phone dying at
+// that instant, the roadmap no longer routed to paths it was still serving, and stage 5's probes
+// then refusing forever so the plan could never reach stage 6. A staged transaction that deadlocks
+// in its worst state is worse than the atomic cut it was chosen over.
 //
-// STAGE 6 IS THEREFORE ONE EDIT WITH TWO CONSEQUENCES THAT CANNOT SEPARATE: flipping this row
-// retires the roadmap's rows and moves the broker onto the serving port in the same motion. That is
-// the atomic authority transition DESIGN section 3's replacement-migration rule asks for, rather
-// than two edits someone could land half of.
+// THE REAL QUANTITY HAS THREE VALUES, NOT TWO, and every earlier cut failed by forcing it into two.
+// Between repointing the front door and retiring the roadmap's rows there is a legitimate middle
+// state -- the broker is routed, the roadmap still HOLDS the rows but nothing reaches them -- and a
+// two-valued row cannot express it, so it collapsed either into an outage or into two writers.
 //
-// THE ORDER IT MUST BE FLIPPED IN is still the plan's to enforce, and it does: flipping before the
-// front door is repointed would leave the approval paths proxied to a process that no longer serves
-// them, so approval_broker_cutover_admission refuses RetireRoadmapRoutes until the front door
-// evidence and all four probes are in.
-type RoadmapApprovalMount
-  = RoadmapStillMountsApprovalRoutes
-  | RoadmapApprovalRoutesRetired
+//   ApprovalPathsRoutedToRoadmap  stages 1-3: the roadmap answers; the broker is deployed on the
+//                                 dark port with no front-door mount. Unreachable twice over.
+//   ApprovalPathsRoutedToBroker   stages 4-5: the broker answers on the serving port behind the
+//                                 two mounts; the roadmap's rows exist and nothing routes to them.
+//   ApprovalPathsOwnedByBroker    stage 6+: the roadmap's rows are gone.
+//
+// EVERY DERIVED FACT READS THIS ONE ROW -- the broker's deploy port, whether the front-door mounts
+// are installed, and whether the roadmap projects its four rows -- so they cannot disagree about
+// who may write the store, and AT MOST ONE PARTY IS ROUTED AT EVERY VALUE. That is the property the
+// port proxy was reaching for, stated over routing, which is what actually decides it.
+//
+// EACH ADVANCE IS ONE ROW EDIT WITH ITS CONSEQUENCES BOUND TOGETHER: stage 4 moves the broker onto
+// the serving port AND installs the mounts pointing at it, in one motion, so the front door can
+// never name a port nothing is bound to. Stage 6 deletes the roadmap's rows and changes nothing
+// about routing. The plan still refuses each advance until the prior stage is discharged.
+type ApprovalRouteOwnership
+  = ApprovalPathsRoutedToRoadmap
+  | ApprovalPathsRoutedToBroker
+  | ApprovalPathsOwnedByBroker
 
-data roadmap_approval_mount: RoadmapApprovalMount = RoadmapStillMountsApprovalRoutes
+data approval_route_ownership: ApprovalRouteOwnership = ApprovalPathsRoutedToRoadmap
 
-// THE PORT THE DEPLOY MAY BIND THE BROKER TO, derived rather than chosen. While the roadmap still
-// answers the approval paths, the only admissible port is the dark one: a broker on the serving
-// port would be a second writer against a single-writer store, and the deploy would have created it
-// without any stage of this plan running. There is no argument and no override -- the two-writer
-// state has no spelling in the deploy, which is the difference between this and the freeze it
-// replaces.
+// THE PORT THE DEPLOY BINDS THE BROKER TO, derived rather than chosen. While the roadmap is the
+// routed answerer the only admissible port is the dark one; from the moment the front door names
+// the broker, the two must agree, so they are read from the same row.
 fn approval_broker_deploy_port() -> Port {
-  match roadmap_approval_mount {
-    RoadmapStillMountsApprovalRoutes => approval_broker_dark_listen_port
-    RoadmapApprovalRoutesRetired => approval_broker_listen_port
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => approval_broker_dark_listen_port
+    ApprovalPathsRoutedToBroker => approval_broker_listen_port
+    ApprovalPathsOwnedByBroker => approval_broker_listen_port
+  }
+}
+
+// WHETHER THE FRONT DOOR CARRIES THE TWO APPROVAL MOUNTS AT ALL. This is the half the port proxy
+// could not express: a mount that exists must name the port the broker is on, and while the roadmap
+// answers there must be no mount.
+fn approval_front_door_mounts_installed() -> Bool {
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => false
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => true
   }
 }
 
 fn roadmap_still_mounts_approval_routes() -> Bool {
-  match roadmap_approval_mount {
-    RoadmapStillMountsApprovalRoutes => true
-    RoadmapApprovalRoutesRetired => false
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => true
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => false
   }
+}
+
+// THE ONE INVARIANT EVERY ARM MUST SATISFY: exactly one party is routed to the approval paths.
+// The roadmap is routed when it holds the rows and no mount diverts them; the broker is routed when
+// a mount names it. Neither two nor zero is admissible, and this is the projection a claim asserts
+// over every arm rather than over the one the row happens to hold.
+fn roadmap_is_routed_for_approvals() -> Bool {
+  roadmap_still_mounts_approval_routes() && !approval_front_door_mounts_installed()
+}
+
+fn broker_is_routed_for_approvals() -> Bool {
+  approval_front_door_mounts_installed()
 }
 
 type ApprovalBrokerCutoverStage
@@ -534,9 +565,12 @@ fn approval_broker_front_door_endpoints(https_port: Port, backend_port: Port) ->
   ]
 }
 
+// THE BACKEND IS approval_broker_deploy_port(), NOT A LITERAL. Naming the serving port here while
+// the broker was bound to the dark one is the defect review 68075 found: the mounts and the unit
+// read the same row now, so the front door cannot name a port nothing is listening on.
 fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>> {
   map(
-    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_listen_port),
+    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_deploy_port()),
     e => tailscale_serve_enable_argv(endpoint: e),
   )
 }

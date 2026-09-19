@@ -29,8 +29,11 @@ import gunbc.auth.approval_broker_cutover {
   DarkUnitNotStarted,
   approval_broker_cutover_position,
   approval_broker_cutover_complete,
-  RoadmapApprovalMount, RoadmapStillMountsApprovalRoutes, RoadmapApprovalRoutesRetired,
-  roadmap_approval_mount, approval_broker_deploy_port, roadmap_still_mounts_approval_routes,
+  ApprovalRouteOwnership,
+  ApprovalPathsRoutedToRoadmap, ApprovalPathsRoutedToBroker, ApprovalPathsOwnedByBroker,
+  approval_route_ownership, approval_broker_deploy_port, roadmap_still_mounts_approval_routes,
+  approval_front_door_mounts_installed, roadmap_is_routed_for_approvals, broker_is_routed_for_approvals,
+  approval_broker_front_door_enable_argv,
   approval_broker_cutover_stages,
   approval_broker_front_door_enable_argv,
 }
@@ -233,32 +236,79 @@ test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> B
     && !approval_broker_cutover_complete(e: everything_observed())
 }
 
-// ── THE TWO-WRITER STATE HAS NO SPELLING IN THE DEPLOY ──────────────────────────────────────
-// THIS IS THE WALL REVIEW 68050 ASKED FOR, and it is the one that matters most in this PR: while
-// the roadmap still answers the approval paths, the port the deploy binds the broker to is the DARK
-// one, so no apply path -- ordinary release apply or staged dark install -- can place a second
-// writer where the front door reaches it. Before this, the only thing forbidding it was prose in
-// three annotations saying roadmap redeploys were frozen.
+// ── EXACTLY ONE PARTY IS ROUTED, AT EVERY VALUE OF THE ROW ──────────────────────────────────
+// TWO EARLIER ARRANGEMENTS FAILED HERE IN OPPOSITE DIRECTIONS. The first let an ordinary apply
+// produce two routed writers, forbidden only by prose (review 68050). Its repair used the broker's
+// PORT as the lever, which could not express the middle state -- broker routed, roadmap holding
+// rows nothing reaches -- so stage 4 would have repointed the front door at a port nothing was
+// bound to, killing every live approval link and deadlocking the plan short of stage 6
+// (review 68075).
 //
-// THE RED IS THE EDIT THAT WOULD REOPEN IT: make approval_broker_deploy_port answer the serving
-// port, or flip roadmap_approval_mount while the roadmap rows are still projected, and the two
-// conjuncts stop agreeing.
-test fn while_the_roadmap_mounts_the_routes_the_deploy_port_is_dark() -> Bool {
-  match roadmap_approval_mount {
-    RoadmapStillMountsApprovalRoutes =>
+// THIS CLAIM IS OVER EVERY ARM, NOT OVER THE ONE THE ROW HOLDS TODAY, which is the difference
+// between asserting an invariant and observing a configuration. Zero routed is the outage; two
+// routed is the store hazard; each arm must be exactly one.
+fn exactly_one_routed(o: ApprovalRouteOwnership) -> Bool {
+  let roadmap = match o {
+    ApprovalPathsRoutedToRoadmap => true
+    ApprovalPathsRoutedToBroker => false
+    ApprovalPathsOwnedByBroker => false
+  }
+  let broker = match o {
+    ApprovalPathsRoutedToRoadmap => false
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => true
+  }
+  (roadmap || broker) && !(roadmap && broker)
+}
+
+test fn exactly_one_party_is_routed_at_every_ownership_value() -> Bool {
+  exactly_one_routed(o: ApprovalPathsRoutedToRoadmap)
+    && exactly_one_routed(o: ApprovalPathsRoutedToBroker)
+    && exactly_one_routed(o: ApprovalPathsOwnedByBroker)
+    && (roadmap_is_routed_for_approvals() || broker_is_routed_for_approvals())
+    && !(roadmap_is_routed_for_approvals() && broker_is_routed_for_approvals())
+}
+
+// ── THE FRONT DOOR CANNOT NAME A PORT NOTHING IS BOUND TO ───────────────────────────────────
+// THE DEADLOCK REVIEW 68075 FOUND, AS A CLAIM. The mounts and the broker unit read the same row, so
+// a mount that exists names the port the deploy binds. The RED is the exact edit that caused it:
+// hardcode approval_broker_listen_port as the front-door backend while the deploy port is dark.
+test fn the_front_door_backend_is_the_port_the_broker_is_deployed_on() -> Bool {
+  let lines = map(approval_broker_front_door_enable_argv(https_port: 443), argv => join(argv, " "))
+  let expected = to_string(approval_broker_deploy_port())
+  count(lines) == 2
+    && count(filter(lines, l => string_contains(s: l, pattern: expected))) == 2
+}
+
+// WHILE THE ROADMAP ANSWERS, THE BROKER IS UNREACHABLE TWICE OVER: no front-door mount names it,
+// and it is not even bound to the port a mount would name. Either alone would do; both is what
+// makes an accidental repoint during stages 1-3 a no-op rather than an outage.
+test fn while_the_roadmap_answers_the_broker_is_dark_and_unmounted() -> Bool {
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap =>
       approval_broker_deploy_port() == approval_broker_dark_listen_port
-        && !(approval_broker_deploy_port() == approval_broker_listen_port)
-    RoadmapApprovalRoutesRetired =>
+        && !approval_front_door_mounts_installed()
+        && roadmap_still_mounts_approval_routes()
+    ApprovalPathsRoutedToBroker =>
       approval_broker_deploy_port() == approval_broker_listen_port
+        && approval_front_door_mounts_installed()
+    ApprovalPathsOwnedByBroker =>
+      approval_broker_deploy_port() == approval_broker_listen_port
+        && approval_front_door_mounts_installed()
+        && !roadmap_still_mounts_approval_routes()
   }
 }
 
-// ONE ROW DECIDES BOTH HALVES, which is what makes stage 6 atomic rather than two edits someone
-// could land half of. The port and the mount are projections of the same declaration, so they
-// cannot disagree about who may write the store.
-test fn the_mount_switch_and_the_deploy_port_are_one_fact() -> Bool {
-  roadmap_still_mounts_approval_routes()
-    == (approval_broker_deploy_port() == approval_broker_dark_listen_port)
+// THE PATHS ARE NEVER UNSERVED. At every arm, whoever is routed also has the routes: the roadmap
+// only counts as routed while it still projects them, and the broker only while a mount names it.
+// A row value where neither holds is the outage the staging exists to prevent, and there isn't one.
+test fn no_ownership_value_leaves_the_approval_paths_unserved() -> Bool {
+  let unserved = match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => !roadmap_still_mounts_approval_routes()
+    ApprovalPathsRoutedToBroker => !approval_front_door_mounts_installed()
+    ApprovalPathsOwnedByBroker => !approval_front_door_mounts_installed()
+  }
+  !unserved
 }
 
 // ── THE FRONT DOOR STAGE CARRIES ITS OWN ARGV ────────────────────────────────────────────────
