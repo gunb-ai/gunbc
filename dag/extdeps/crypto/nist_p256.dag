@@ -195,9 +195,10 @@ fn p256_ecdsa_verify_octets(key: List<UInt8>, signature: List<UInt8>, message: L
   }
 }
 
+// e = SHA-256(message) as an integer; 256 bits is the bit length of n, so there is no truncation
+// (§6.4.2 step 3). e may exceed n; one reduction suffices because e < 2^256 < 2n. Likewise the final
+// v = x mod n needs one reduction, because x < p < 2n.
 fn p256_verify_checked(qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, message: List<UInt8>) -> Bool {
-  // e = SHA-256(message) as an integer; 256 bits = the bit length of n, so no truncation (§6.4.2
-  // step 3). e may exceed n; reducing once suffices because e < 2^256 < 2n.
   let e = montgomery_reduce_once(ctx: p256_order, a: bignat_from_octets(octets: sha256(message: message)))
   let sm = montgomery_to(ctx: p256_order, a: s)
   let w = montgomery_inverse_prime(ctx: p256_order, a: sm)
@@ -207,7 +208,6 @@ fn p256_verify_checked(qx: BigNat, qy: BigNat, r: BigNat, s: BigNat, message: Li
   if p256_is_infinity(p: point) { false } else {
     let zinv = montgomery_inverse_prime(ctx: p256_field, a: point.z)
     let x = montgomery_from(ctx: p256_field, a: fmul(a: point.x, b: fsqr(a: zinv)))
-    // v = x mod n; x < p < 2n, so once.
     bignat_compare(a: montgomery_reduce_once(ctx: p256_order, a: x), b: r) == 0
   }
 }
