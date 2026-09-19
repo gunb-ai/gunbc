@@ -26,7 +26,6 @@ import gunbc.runner_host_retirement {
   OwnershipForeign,
   UnresolvedCandidate,
   CanonicalOwnershipUnresolved,
-  CaptureStanding,
   host_retirement_discovery_subjects,
   registration_ownership,
   ownership_is_established,
@@ -42,9 +41,6 @@ import gunbc.runner_host_retirement {
   ObligationFromSearchBound,
   ObligationAbsent,
   retiree_obligation_ungrounded_cause,
-  CaptureComplete,
-  CapturePartial,
-  CaptureUnavailable,
   host_retirement_obligation_basis,
   host_retirement_obligation_basis_of,
   ReconcileMechanismReading,
@@ -68,6 +64,15 @@ import gunbc.runner_host_retirement {
 }
 import gunbc.runner_slot_retirement { transition_required_retiring }
 import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner_registration_capture {
+  CaptureProvenance,
+  RunnerRegistrationBinding,
+  CaptureCensus,
+  CaptureCensusComplete,
+  CaptureCensusPartial,
+  CaptureCensusUnavailable,
+}
+import extdeps.github.actions_runner { ActionsRunnerRegistrationEphemeral }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -139,17 +144,44 @@ fn registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration {
   }
 }
 
-fn owned_capture(names: List<NonEmptyStr>) -> CaptureStanding {
-  CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: names }
+data witness_org: NonEmptyStr = "https://github.com/gunb-ai" as NonEmptyStr
+
+fn witness_binding(slot: String, agent_id: Int, name: String) -> RunnerRegistrationBinding {
+  RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: slot as NonEmptyStr,
+    capture_path: join(["/opt/actions-runner/", slot, "/.runner"], "") as NonEmptyStr,
+    organization: witness_org,
+    agent_id: agent_id,
+    agent_name: name as NonEmptyStr,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: CaptureProvenance {
+      observed_on: "2026-09-19" as NonEmptyStr,
+      method: "witness-supplied" as NonEmptyStr,
+    },
+  }
 }
 
-fn disposition_of(host: HostIdentity, reg: GitHubSelfHostedRunnerRegistration) -> SurplusIdentityDisposition {
+fn owned_capture(bindings: List<RunnerRegistrationBinding>) -> CaptureCensus {
+  CaptureCensusComplete { observed_on: "2026-09-19" as NonEmptyStr, bindings: bindings, unresolved: [] }
+}
+
+// THE CAPTURE BINDS THE REGISTRATION'S ID TO A SLOT, which is what ownership now consults. The slot
+// is supplied by the fixture rather than parsed out of the name, exactly as a real capture supplies
+// it from the directory the file was found under.
+fn disposition_bound(host: HostIdentity, reg: GitHubSelfHostedRunnerRegistration, slot: String) -> SurplusIdentityDisposition {
   surplus_identity_disposition(
     host: host,
     decoding: decode_registration_slot(reg: reg),
     name: reg.name,
-    capture: owned_capture(names: [reg.name]),
+    organization: witness_org,
+    agent_id: reg.id as Int,
+    capture: owned_capture(bindings: [witness_binding(slot: slot, agent_id: reg.id as Int, name: reg.name as String)]),
   )
+}
+
+fn disposition_of(host: HostIdentity, reg: GitHubSelfHostedRunnerRegistration) -> SurplusIdentityDisposition {
+  disposition_bound(host: host, reg: reg, slot: reg.name as String)
 }
 
 fn disposition_without_capture(host: HostIdentity, reg: GitHubSelfHostedRunnerRegistration) -> SurplusIdentityDisposition {
@@ -157,7 +189,9 @@ fn disposition_without_capture(host: HostIdentity, reg: GitHubSelfHostedRunnerRe
     host: host,
     decoding: decode_registration_slot(reg: reg),
     name: reg.name,
-    capture: CaptureUnavailable { cause: "no snapshot has been taken" },
+    organization: witness_org,
+    agent_id: reg.id as Int,
+    capture: CaptureCensusUnavailable { cause: "no capture census has been taken" },
   )
 }
 
@@ -268,16 +302,16 @@ test fn an_unowned_registration_blocks_without_entering_scope() -> Bool {
 }
 
 test fn ownership_is_read_off_the_registration_naming_authority() -> Bool {
-  ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "srv2-01" as NonEmptyStr, capture: owned_capture(names: ["srv2-01" as NonEmptyStr])))
-    && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "srv4-01" as NonEmptyStr, capture: owned_capture(names: ["srv4-01" as NonEmptyStr])))
-    && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "actions-runner@srv2-01.service" as NonEmptyStr, capture: owned_capture(names: [])))
+  ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "srv2-01" as NonEmptyStr, organization: witness_org, agent_id: 11, capture: owned_capture(bindings: [witness_binding(slot: "srv2-01", agent_id: 11, name: "srv2-01")])))
+    && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "srv4-01" as NonEmptyStr, organization: witness_org, agent_id: 12, capture: owned_capture(bindings: [witness_binding(slot: "srv4-01", agent_id: 12, name: "srv4-01")])))
+    && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: "actions-runner@srv2-01.service" as NonEmptyStr, organization: witness_org, agent_id: 13, capture: owned_capture(bindings: [])))
 }
 
 // THE REQUIRED DISCRIMINATOR: a name inside srv2's namespace that names no canonical slot must NOT
 // establish ownership. Under the previous prefix test both of these were OwnershipEstablished, and a
 // registration nobody in this estate issued would have become an owned retiree.
 test fn a_namespace_shaped_name_that_names_no_slot_is_not_owned() -> Bool {
-  match registration_ownership(host: operator_host_srv2, name: "srv2-not-a-slot" as NonEmptyStr, capture: owned_capture(names: [])) {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-not-a-slot" as NonEmptyStr, organization: witness_org, agent_id: 14, capture: owned_capture(bindings: [])) {
     OwnershipCandidateUnresolved { name: _, cause: _ } => true
     OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false
     OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
@@ -286,7 +320,7 @@ test fn a_namespace_shaped_name_that_names_no_slot_is_not_owned() -> Bool {
 }
 
 test fn a_bare_host_prefix_is_not_owned() -> Bool {
-  match registration_ownership(host: operator_host_srv2, name: "srv2-" as NonEmptyStr, capture: owned_capture(names: [])) {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-" as NonEmptyStr, organization: witness_org, agent_id: 15, capture: owned_capture(bindings: [])) {
     OwnershipCandidateUnresolved { name: _, cause: _ } => true
     OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false
     OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
@@ -310,7 +344,7 @@ test fn an_unresolved_candidate_blocks_without_entering_scope() -> Bool {
 
 // THE CANONICAL INDEX IS CARRIED, which is what makes this an identity rather than a shape match.
 test fn an_owned_registration_carries_its_canonical_slot_index() -> Bool {
-  match registration_ownership(host: operator_host_srv2, name: "srv2-07" as NonEmptyStr, capture: owned_capture(names: ["srv2-07" as NonEmptyStr])) {
+  match registration_ownership(host: operator_host_srv2, name: "srv2-07" as NonEmptyStr, organization: witness_org, agent_id: 707, capture: owned_capture(bindings: [witness_binding(slot: "srv2-07", agent_id: 707, name: "srv2-07")])) {
     OwnershipEstablished { host: _, slot_index: i, observed_on: _, basis: _ } => (i as Int) == 7
     OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
     OwnershipCandidateUnresolved { name: _, cause: _ } => false
@@ -601,7 +635,7 @@ test fn an_unavailable_capture_yields_an_ungrounded_cause() -> Bool {
 // express, and the direction the repair must not break.
 test fn a_complete_but_empty_capture_is_grounded() -> Bool {
   match host_retirement_obligation_basis_of(
-    capture: CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: [] },
+    capture: CaptureCensusComplete { observed_on: "2026-09-19" as NonEmptyStr, bindings: [], unresolved: [] },
     host: operator_host_srv2,
     bound: 21,
   ) {
@@ -615,9 +649,10 @@ test fn a_complete_but_empty_capture_is_grounded() -> Bool {
 // are exactly the ones an assessment would stop looking for.
 test fn a_partial_capture_is_not_grounded() -> Bool {
   match host_retirement_obligation_basis_of(
-    capture: CapturePartial {
+    capture: CaptureCensusPartial {
       observed_on: "2026-09-19" as NonEmptyStr,
-      members: ["srv2-01" as NonEmptyStr, "srv2-02" as NonEmptyStr],
+      bindings: [witness_binding(slot: "srv2-01", agent_id: 11, name: "srv2-01")],
+      unresolved: [],
       cause: "page 1 of 3",
     },
     host: operator_host_srv2,
@@ -638,7 +673,9 @@ test fn a_canonical_name_without_capture_is_recognized_but_unresolved() -> Bool 
   match registration_ownership(
     host: operator_host_srv2,
     name: "srv2-07" as NonEmptyStr,
-    capture: CaptureUnavailable { cause: "no snapshot has been taken" },
+    organization: witness_org,
+    agent_id: 707,
+    capture: CaptureCensusUnavailable { cause: "no capture census has been taken" },
   ) {
     OwnershipCanonicalUnresolved { name: _, slot_index: i, cause: _ } => (i as Int) == 7
     OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false
@@ -647,15 +684,45 @@ test fn a_canonical_name_without_capture_is_recognized_but_unresolved() -> Bool 
   }
 }
 
-// A PARTIAL CAPTURE CANNOT ESTABLISH OWNERSHIP EITHER, even when it lists the name: the members it
-// missed are the ones a consumer would stop looking for, so a hit inside a prefix is not the world.
-test fn a_partial_capture_does_not_establish_ownership() -> Bool {
+// A PARTIAL CENSUS STILL ESTABLISHES A MEMBER IT DID OBSERVE, and this claim previously asserted the
+// opposite. The earlier rule refused ownership from ANY partial capture on the reasoning that a hit
+// inside a prefix reads the prefix as the world. That is true of the POPULATION claim and false of
+// the MEMBER claim: a binding the census actually took is sound whether or not other captures went
+// unread, and refusing it would make an incomplete scan unable to establish anything at all.
+//
+// The population question is asked separately and still refuses -- see the basis controls below.
+test fn a_partial_census_establishes_a_member_it_observed() -> Bool {
   match registration_ownership(
     host: operator_host_srv2,
     name: "srv2-07" as NonEmptyStr,
-    capture: CapturePartial {
+    organization: witness_org,
+    agent_id: 707,
+    capture: CaptureCensusPartial {
       observed_on: "2026-09-19" as NonEmptyStr,
-      members: ["srv2-07" as NonEmptyStr],
+      bindings: [witness_binding(slot: "srv2-07", agent_id: 707, name: "srv2-07")],
+      unresolved: [],
+      cause: "page 1 of 3",
+    },
+  ) {
+    OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => true
+    OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
+    OwnershipCandidateUnresolved { name: _, cause: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+// AND A MEMBER THE PARTIAL CENSUS DID NOT OBSERVE STAYS UNRESOLVED, so admitting from a partial
+// census did not become admitting anything.
+test fn a_partial_census_leaves_an_unobserved_member_unresolved() -> Bool {
+  match registration_ownership(
+    host: operator_host_srv2,
+    name: "srv2-07" as NonEmptyStr,
+    organization: witness_org,
+    agent_id: 707,
+    capture: CaptureCensusPartial {
+      observed_on: "2026-09-19" as NonEmptyStr,
+      bindings: [witness_binding(slot: "srv2-01", agent_id: 11, name: "srv2-01")],
+      unresolved: [],
       cause: "page 1 of 3",
     },
   ) {
@@ -672,7 +739,9 @@ test fn a_complete_capture_that_omits_the_name_leaves_it_unresolved() -> Bool {
   match registration_ownership(
     host: operator_host_srv2,
     name: "srv2-07" as NonEmptyStr,
-    capture: CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: ["srv2-01" as NonEmptyStr] },
+    organization: witness_org,
+    agent_id: 707,
+    capture: owned_capture(bindings: [witness_binding(slot: "srv2-01", agent_id: 11, name: "srv2-01")]),
   ) {
     OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => true
     OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false

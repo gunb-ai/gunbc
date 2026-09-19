@@ -127,9 +127,15 @@ fn roster_blockers(roster: OrganizationRunnerRosterEvidence) -> List<ClosureBloc
 //
 // One observed roster is now the single source of both answers, so an omission has nowhere to happen:
 // there is no second list a caller could shorten.
+// THE ROSTER SCAN IS THE LEGACY NAME DECODER'S SECOND CONSUMER, and what it produces is a CANDIDATE
+// rather than ownership: a registration with no local capture has only its name to go on, which is
+// how owned surplus beyond the captured files is found and is never by itself evidence that this
+// estate issued it. The org is the scan's own scope and is carried in so the id is addressed within
+// it -- a bare numeric id names nothing.
 fn roster_surplus_dispositions(
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
+  roster_organization: NonEmptyStr,
 ) -> List<SurplusIdentityDisposition> {
   match roster {
     RosterReadUnavailable { reason: _ } => []
@@ -139,6 +145,8 @@ fn roster_surplus_dispositions(
         host: host,
         decoding: decode_registration_slot(reg: r),
         name: r.name,
+        organization: roster_organization,
+        agent_id: r.id as Int,
         capture: host_retirement_capture(host: host),
       ))
   }
@@ -329,6 +337,7 @@ fn retirement_assessment_verdict(
   revision: NonEmptyStr,
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
+  roster_organization: NonEmptyStr,
   required: List<NonEmptyStr>,
   standings: List<RunnerRetirementStanding>,
   method_subjects: List<String>,
@@ -343,7 +352,7 @@ fn retirement_assessment_verdict(
     concat(
       concat(
         roster_blockers(roster: roster),
-        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster)),
+        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster, roster_organization: roster_organization)),
       ),
       concat(
         retiree_blockers(required: required, standings: standings),

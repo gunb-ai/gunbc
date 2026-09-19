@@ -18,9 +18,15 @@ import gunbc.runner_host_retirement {
   OwnershipCandidateUnresolved,
   OwnershipForeign,
   registration_ownership,
-  CaptureComplete,
-  CaptureUnavailable,
 }
+
+import gunbc.runner_registration_capture {
+  CaptureProvenance,
+  RunnerRegistrationBinding,
+  CaptureCensusComplete,
+  CaptureCensusUnavailable,
+}
+import extdeps.github.actions_runner { ActionsRunnerRegistrationEphemeral }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -31,6 +37,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // every earlier control used `srv2-07`, produced by calling the producer, so it agreed with the model
 // by construction and said nothing about what the host emits.
 data srv2_live_agent_name: NonEmptyStr = "srv2-02-1789774588-3693107" as NonEmptyStr
+
+data srv2_live_agent_id: Int = 251463
+data srv2_live_org: NonEmptyStr = "https://github.com/gunb-ai" as NonEmptyStr
+
+fn live_binding() -> RunnerRegistrationBinding {
+  RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    organization: srv2_live_org,
+    agent_id: srv2_live_agent_id,
+    agent_name: srv2_live_agent_name,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: CaptureProvenance {
+      observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+      method: "operator-authorized read-only census" as NonEmptyStr,
+    },
+  }
+}
 
 test fn the_live_census_name_decodes_to_its_slot_epoch_and_pid() -> Bool {
   match match_registration_name_to_slot(name: srv2_live_agent_name, slot_instance: "srv2-02") {
@@ -48,7 +73,9 @@ test fn a_captured_live_name_establishes_ownership() -> Bool {
   match registration_ownership(
     host: operator_host_srv2,
     name: srv2_live_agent_name,
-    capture: CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: [srv2_live_agent_name] },
+    organization: srv2_live_org,
+    agent_id: srv2_live_agent_id,
+    capture: CaptureCensusComplete { observed_on: "2026-09-19" as NonEmptyStr, bindings: [live_binding()], unresolved: [] },
   ) {
     OwnershipEstablished { host: _, slot_index: i, observed_on: _, basis: _ } => (i as Int) == 2
     OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
@@ -63,7 +90,9 @@ test fn a_live_name_without_capture_is_recognized_but_unresolved() -> Bool {
   match registration_ownership(
     host: operator_host_srv2,
     name: srv2_live_agent_name,
-    capture: CaptureUnavailable { cause: "no snapshot" },
+    organization: srv2_live_org,
+    agent_id: srv2_live_agent_id,
+    capture: CaptureCensusUnavailable { cause: "no snapshot" },
   ) {
     OwnershipCanonicalUnresolved { name: _, slot_index: i, cause: _ } => (i as Int) == 2
     OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false

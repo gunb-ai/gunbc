@@ -6,6 +6,18 @@ import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner_registration_capture {
+  CaptureCensus,
+  CaptureCensusComplete,
+  CaptureCensusPartial,
+  CaptureCensusUnavailable,
+  RunnerRegistrationBinding,
+  CapturePopulationKnown,
+  CapturePopulationIncomplete,
+  capture_population_standing,
+  census_binding_for_agent,
+  local_unit_obligations,
+}
 import std.nat { Nat, nat_range_inclusive }
 import gunbc.legacy_slot_incarnation_name {
   RegistrationNameMatch,
@@ -105,27 +117,23 @@ import gunbc.fleet_runner_connectivity {
 // was never created would be an effect performed to satisfy a number somebody authored.
 //
 // SO A NEVER-CREATED IDENTITY IS AN EXPLICIT ANSWER rather than an accident of the fold, below.
-// CAPTURE AVAILABILITY AND CAPTURED MEMBERS ARE TWO FACTS, AND A BARE LIST COULD ONLY CARRY ONE.
+// THE CAPTURE IS THE ONE IN `gunbc.runner_registration_capture`, NOT A SECOND SHAPE BESIDE IT.
 //
-// The previous field was `captured_owned: List<NonEmptyStr>` and the basis was selected by asking
-// whether it was non-empty. That conflates in both directions at once. A COMPLETE capture that
-// legitimately found zero owned identities -- the host really has nothing left -- was
-// indistinguishable from NO CAPTURE HAVING HAPPENED, so the honest answer "we looked and it is empty"
-// fell through to the search bound. And non-emptiness ALONE selected the grounded arm, so a partial
-// or stale capture with two members would have been treated as authoritative.
+// This module carried its own `CaptureStanding` whose members were registration NAMES, and two
+// defects followed from that shape rather than from any logic here. The obligation projection mapped
+// each captured name through the unit projection, which for a real suffixed name yields
+// `actions-runner@srv2-02-1789774588-3693107.service` -- a unit that exists nowhere. And a name list
+// cannot carry the org-scoped id the remote half of a retirement is addressed by, so half the subject
+// was unrepresentable.
 //
-// Availability is therefore its own coproduct and the members ride on the arm that has them.
-type CaptureStanding
-  = CaptureComplete { observed_on: NonEmptyStr, members: List<NonEmptyStr> }
-  | CapturePartial { observed_on: NonEmptyStr, members: List<NonEmptyStr>, cause: String }
-  | CaptureUnavailable { cause: String }
-
+// A second capture type beside the real one is also the §3 fork: two answers to "what did the census
+// observe", free to disagree. `CaptureCensus` is that authority and this module consumes it.
 type HostRetirement sole_constructor {
   retirement_id: NonEmptyStr
   host: HostIdentity
   spec: RunnerHostSpec
   search_bound: Int
-  capture: CaptureStanding
+  capture: CaptureCensus
   operator_reason: NonEmptyStr
 }
 
@@ -138,8 +146,8 @@ data srv2_host_retirement: HostRetirement = HostRetirement {
   host: operator_host_srv2,
   spec: srv2_runner_host_spec,
   search_bound: 21,
-  capture: CaptureUnavailable {
-    cause: "no owned-identity snapshot has been taken for srv2 through any route in this repository: the retirement assessment holds no GitHub App credential and reads no census, so the population is UNGROUNDED rather than empty. L3's App-credentialed roster read is the named producer that resolves it",
+  capture: CaptureCensusUnavailable {
+    cause: "no capture census has been admitted for srv2 in this repository: the retirement assessment holds no GitHub App credential and performs no host capture read, so the population is UNGROUNDED rather than empty. The operator-authorized census of 2026-09-19T10:34Z observed four .runner files; admitting that observation as a declared census is a separate change from modelling the shape it produces",
   },
   operator_reason: "srv2 leaves the runner estate: its session denominator is unestablished, so gunbc.runner_host_deploy refuses to derive any admitted width for it and it carries no width transition. The retirement is declared here as its own decision rather than read off that refusal -- a capacity refusal states that the model cannot say what this host should run, and is not an instruction to delete what it is running. The search bound of 21 is the provisioning template srv2 was built from; it is where to LOOK and is not evidence that 21 slots were created" as NonEmptyStr,
 }
@@ -194,23 +202,17 @@ type RetireeObligationBasis
 // which is the supplied-inputs obligation DESIGN states: the boundary is the capture standing, and
 // the claims about it supply that value instead of computing it from a roster lookup.
 fn host_retirement_obligation_basis_of(
-  capture: CaptureStanding,
+  capture: CaptureCensus,
   host: HostIdentity,
   bound: Int,
 ) -> RetireeObligationBasis {
-  match capture {
-    CaptureComplete { observed_on: on, members: ms } =>
+  match capture_population_standing(c: capture) {
+    CapturePopulationKnown { observed_on: on, bindings: bs } =>
       ObligationFromCapturedSnapshot {
         observed_on: on,
-        units: ms |> map(n => unit_name_for_owned_registration(name: n)),
+        units: local_unit_obligations(bindings: bs),
       }
-    CapturePartial { observed_on: _, members: _, cause: c } =>
-      ObligationFromSearchBound {
-        units: desired_unit_names_range(host: host, slot: 1, limit: bound) |> map(u => u as NonEmptyStr),
-        bound: bound,
-        cause: join(["the owned-identity capture for ", host as String, " is PARTIAL (", c, "), so it cannot ground the population however many members it carries"], ""),
-      }
-    CaptureUnavailable { cause: c } =>
+    CapturePopulationIncomplete { cause: c } =>
       ObligationFromSearchBound {
         units: desired_unit_names_range(host: host, slot: 1, limit: bound) |> map(u => u as NonEmptyStr),
         bound: bound,
@@ -297,12 +299,12 @@ fn host_retirement_discovery_subjects(host: HostIdentity) -> List<NonEmptyStr> {
 
 // THE DECLARED CAPTURE FOR A HOST, so a consumer classifying that host's registrations reads the
 // same standing the obligation basis is derived from rather than being handed a second one.
-fn host_retirement_capture(host: HostIdentity) -> CaptureStanding {
+fn host_retirement_capture(host: HostIdentity) -> CaptureCensus {
   match host_retirement_standing(host: host) {
     HostRetirementDeclared { retirement: r } => r.capture
     HostNotRetiring { host: h, cause: _ } =>
-      CaptureUnavailable {
-        cause: join([h as String, " carries no declared retirement, so no owned-identity capture is declared for it"], ""),
+      CaptureCensusUnavailable {
+        cause: join([h as String, " carries no declared retirement, so no capture census is declared for it"], ""),
       }
   }
 }
@@ -418,76 +420,75 @@ fn host_registration_namespace_prefix(host: HostIdentity) -> String {
   join([host as String, "-"], "")
 }
 
-// A COMPLETE CAPTURE IS THE ONLY BASIS THAT ANSWERS YES TODAY. A partial one cannot: the members it
-// missed are exactly the ones a consumer would stop looking for, so a hit inside a partial capture
-// establishes ownership of that name and a miss establishes nothing at all -- and a fold that
-// returned Established on the hit would be reading a prefix of the world as the world.
-fn capture_establishes_ownership(capture: CaptureStanding, name: NonEmptyStr) -> Bool {
-  match capture {
-    CaptureComplete { observed_on: _, members: ms } => any(ms, m => (m as String) == (name as String))
-    CapturePartial { observed_on: _, members: _, cause: _ } => false
-    CaptureUnavailable { cause: _ } => false
-  }
+// OWNERSHIP IS ESTABLISHED BY A BINDING, FOUND BY THE REGISTRATION'S OWN IDENTITY.
+//
+// This searched a list of captured NAMES for the candidate name. A name is the wrong key twice over:
+// it is not unique across the successive incarnations of one slot, and it is not what addresses the
+// remote object. The census is now searched by ORG-SCOPED ID, which is what the `.runner` record
+// actually binds, and the binding it returns carries the slot the file was found under -- so
+// ownership and the local unit come from one piece of evidence instead of two readings of a string.
+//
+// AND A PARTIAL CENSUS CAN ESTABLISH THIS MEMBER, which the previous fold refused. Its reasoning was
+// that a hit inside a prefix reads the prefix as the world; that is true of the POPULATION claim and
+// false of the member claim. A binding the census did observe is sound whether or not other captures
+// went unread. `capture_population_standing` keeps the population question, and it still refuses.
+fn capture_binding_for(
+  capture: CaptureCensus,
+  organization: NonEmptyStr,
+  agent_id: Int,
+) -> RunnerRegistrationBinding? {
+  census_binding_for_agent(c: capture, organization: organization, agent_id: agent_id)
 }
 
-fn capture_observed_on(capture: CaptureStanding) -> NonEmptyStr? {
+fn capture_unresolved_cause(capture: CaptureCensus) -> String {
   match capture {
-    CaptureComplete { observed_on: on, members: _ } => Present { value: on }
-    CapturePartial { observed_on: on, members: _, cause: _ } => Present { value: on }
-    CaptureUnavailable { cause: _ } => none
-  }
-}
-
-fn capture_unresolved_cause(capture: CaptureStanding) -> String {
-  match capture {
-    CaptureComplete { observed_on: _, members: _ } =>
-      "the owned-identity capture is complete and does not list this name, so this estate does not own it"
-    CapturePartial { observed_on: _, members: _, cause: c } =>
-      join(["the owned-identity capture is PARTIAL (", c, "), so a name absent from it may simply be in the part that was not read"], "")
-    CaptureUnavailable { cause: c } =>
-      join(["no owned-identity capture is available (", c, ")"], "")
+    CaptureCensusComplete { observed_on: _, bindings: _, unresolved: _ } =>
+      "the capture census is complete and holds no binding for this registration id, so this estate does not own it"
+    CaptureCensusPartial { observed_on: _, bindings: _, unresolved: _, cause: c } =>
+      join(["the capture census is PARTIAL (", c, "), so a registration absent from it may be in the part that was not read"], "")
+    CaptureCensusUnavailable { cause: c } =>
+      join(["no capture census is available (", c, ")"], "")
   }
 }
 
 fn registration_ownership(
   host: HostIdentity,
   name: NonEmptyStr,
-  capture: CaptureStanding,
+  organization: NonEmptyStr,
+  agent_id: Int,
+  capture: CaptureCensus,
 ) -> RegistrationOwnership {
   match canonical_slot_index_of(host: host, name: name) {
     Present { value: i } =>
-      if capture_establishes_ownership(capture: capture, name: name) {
-        match capture_observed_on(capture: capture) {
-          Present { value: on } =>
-            OwnershipEstablished {
-              host: host,
-              slot_index: i,
-              observed_on: on,
-              basis: join(["this name denotes ", host as String, "'s canonical slot ", to_string(i), " (", registration_name_match_wire(m: canonical_slot_match_of(host: host, name: name)), "), AND an owned-identity capture taken on ", on as String, " lists it"], ""),
-            }
-          Absent =>
-            OwnershipCanonicalUnresolved {
-              name: name,
-              slot_index: i,
-              cause: "a capture established this name without recording when it was observed, so it cannot be relied on",
-            }
-        }
-      } else {
-        OwnershipCanonicalUnresolved {
-          name: name,
-          slot_index: i,
-          cause: join([
-            name as String, " denotes ", host as String, "'s canonical slot ", to_string(i),
-            ", which says what the name DENOTES and not that this estate issued the registration: ",
-            capture_unresolved_cause(capture: capture),
-          ], ""),
-        }
+      match capture_binding_for(capture: capture, organization: organization, agent_id: agent_id) {
+        Present { value: b } =>
+          OwnershipEstablished {
+            host: host,
+            slot_index: i,
+            observed_on: b.provenance.observed_on,
+            basis: join([
+              "this name denotes ", host as String, "'s canonical slot ", to_string(i),
+              " (", registration_name_match_wire(m: canonical_slot_match_of(host: host, name: name)),
+              "), AND a capture taken on ", b.provenance.observed_on as String,
+              " binds registration id ", to_string(agent_id), " to ", b.slot_instance as String,
+            ], ""),
+          }
+        Absent =>
+          OwnershipCanonicalUnresolved {
+            name: name,
+            slot_index: i,
+            cause: join([
+              name as String, " denotes ", host as String, "'s canonical slot ", to_string(i),
+              ", which says what the name DENOTES and not that this estate issued the registration: ",
+              capture_unresolved_cause(capture: capture),
+            ], ""),
+          }
       }
     Absent =>
       if starts_with(s: name as String, prefix: host_registration_namespace_prefix(host: host)) {
         OwnershipCandidateUnresolved {
           name: name,
-          cause: join([name as String, " sits in ", host as String, "'s namespace but equals no canonical registration name this estate issues within the discovery range; sitting in a namespace is not evidence that we created it, and it may be neither deleted nor dropped from the assessment"], ""),
+          cause: join([name as String, " sits in ", host as String, "'s namespace but decodes to no canonical slot incarnation within the discovery range; sitting in a namespace is not evidence that we created it, and it may be neither deleted nor dropped from the assessment"], ""),
         }
       } else {
         OwnershipForeign {
@@ -532,12 +533,14 @@ fn surplus_identity_disposition(
   host: HostIdentity,
   decoding: RegistrationSlotDecoding,
   name: NonEmptyStr,
-  capture: CaptureStanding,
+  organization: NonEmptyStr,
+  agent_id: Int,
+  capture: CaptureCensus,
 ) -> SurplusIdentityDisposition {
   match decoding {
     RegistrationNamesCommittedSlot { slot: _ } => CommittedSlotIdentity { name: name }
     RegistrationNamesNoCommittedSlot { registration_name: rn } =>
-      match registration_ownership(host: host, name: rn, capture: capture) {
+      match registration_ownership(host: host, name: rn, organization: organization, agent_id: agent_id, capture: capture) {
         OwnershipEstablished { host: h, slot_index: _, observed_on: _, basis: _ } => SurplusOwnedRetiree { name: rn, host: h }
         OwnershipCanonicalUnresolved { name: n, slot_index: i, cause: c } =>
           CanonicalOwnershipUnresolved { name: n, slot_index: i, cause: c }

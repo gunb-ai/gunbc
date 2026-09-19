@@ -446,6 +446,12 @@ fn retirement_route_estate_standings(run: RetirementRouteRun) -> List<EstateObli
 // DECLARED FRONTIER. The producer that replaces this is the App-credentialed roster read; when it
 // lands, this function's caller passes the real evidence and `surplus_identity_disposition` gets the
 // non-empty population it is written for. Until then the blocker is visible on every receipt.
+// THE ORGANIZATION THE ROSTER WOULD BE SCANNED IN. Carried even while the scan is unavailable,
+// because a registration id is meaningless outside a scope and a consumer must not have to guess one.
+fn retirement_route_roster_organization() -> NonEmptyStr {
+  "https://github.com/gunb-ai" as NonEmptyStr
+}
+
 fn retirement_route_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterReadUnavailable {
     reason: "the runner slot retirement route holds no GitHub App credential and performs no organization roster read; the remote registrations for this host are therefore unobserved from this invocation",
@@ -736,6 +742,7 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     revision: revision as NonEmptyStr,
                     host: subject.target,
                     roster: retirement_route_roster_evidence(),
+                    roster_organization: retirement_route_roster_organization(),
                     required: run.required,
                     standings: run.standings,
                     method_subjects: retirement_route_graceful_subjects(run: run),
