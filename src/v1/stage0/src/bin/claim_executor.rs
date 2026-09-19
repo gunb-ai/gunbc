@@ -2402,6 +2402,17 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
+    // ATTRIBUTE THE TEARDOWN INSTEAD OF LEAVING IT SILENT. `main` returns an `ExitCode` and calls
+    // `process::exit` nowhere, so everything still alive is dropped after this function returns --
+    // off the end of the log, where no instrument can see it. Measured on run 35365418267: 167.8
+    // seconds between this step's last output and the next step's first, against 0.0-1.3s for every
+    // other inter-step gap in the same job. This call moves the thread-local drops inside the
+    // timed region so the cost is attributed per cache rather than inferred from a hole.
+    //
+    // IT IS NOT THE REPAIR AND DOES NOT CLAIM TO BE. It makes the quantity visible so a repair can
+    // be chosen against it; whatever `main`'s return still drops after this line remains unmeasured
+    // and is reported as a residue rather than assumed to be zero.
+    v1_compiler::cli_run::drop_process_caches_with_attribution();
     emit_worker_terminal_before_return(code)
 }
 
