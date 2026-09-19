@@ -64,7 +64,6 @@ import product.fan_policy_standing {
   OutlivedPostTransitionWindow,
   WithinPostTransitionWindow,
   FanDutySteadyCurveOverCeiling,
-  duty_verdict_is_over_ceiling,
   FanDutyWithinCeiling,
   FanPolicyAuthority,
   FanPolicySample,
@@ -751,7 +750,10 @@ test fn witness_residence_datasheet_route_is_executed() -> Bool {
 // pre-POST failsafe at 100% came back as a plain curve violation. Both halves are asserted here,
 // because getting either one wrong is a different wrong answer about the operator's own room:
 // SteadyCurve at 100% is a converge obligation, the pre-POST failsafe at the same duty is an
-// excursion carrying its window, and duty_verdict_is_over_ceiling answers true for BOTH.
+// excursion carrying its bound, and BOTH are over -- the two arms separate the remedy, not the
+// fact. The claim asserts the arms directly rather than through a Bool helper: an earlier revision
+// carried duty_verdict_is_over_ceiling for that question and nothing in production ever asked it,
+// which made it a §3c dangling declaration whose only callers were these assertions.
 test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
   let curve = residence_duty_verdict(standing: witness_standing(duty_count: 80, post: HostPosted, elapsed: 90))
   let prepost = residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0))
@@ -764,9 +766,7 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
       _ => false
     }
     _ => false
-  } && duty_verdict_is_over_ceiling(verdict: curve)
-    && duty_verdict_is_over_ceiling(verdict: prepost)
-    && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 90)) {
+  } && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 90)) {
       FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
         OutlivedPostTransitionWindow { elapsed: e, window: w } => second_count(s: e) == 90 && second_count(s: w) == 60
         _ => false
@@ -780,5 +780,8 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
       }
       _ => false
     }
-    && !duty_verdict_is_over_ceiling(verdict: residence_duty_verdict(standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90)))
+    && match residence_duty_verdict(standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90)) {
+      FanDutyWithinCeiling { duty: _, ceiling: _ } => true
+      _ => false
+    }
 }

@@ -504,17 +504,6 @@ type FanDutyCeilingVerdict
   | FanDutyExcursionOverCeiling { duty: Percent, ceiling: Percent, bound: ExcursionBound }
   | FanDutyNotReported { cause: NonEmptyStr }
 
-// EVERY ARM THAT IS OVER, WHICHEVER KIND. Offered because the two over-arms exist to separate the
-// REMEDY, not to let a consumer asking "is the room over the ceiling" have to know the difference.
-fn duty_verdict_is_over_ceiling(verdict: FanDutyCeilingVerdict) -> Bool {
-  match verdict {
-    FanDutyWithinCeiling { duty: _, ceiling: _ } => false
-    FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => true
-    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: _ } => true
-    FanDutyNotReported { cause: _ } => false
-  }
-}
-
 // THE BARE-READING FORM KEEPS ITS OWN NAME AND ITS OWN MEANING: given a duty and a ceiling and no
 // standing, the only honest over-arm is the steady one, because nothing here knows whether an
 // excursion is in progress. It is used where the caller genuinely has no standing - the tach
@@ -548,13 +537,16 @@ fn duty_against_ceiling_in_excursion(
 }
 
 // THE STANDING DECIDES WHICH OVER-ARM, WHICH IS THE WHOLE REASON THIS FUNCTION TAKES ONE. A curve
-// above the ceiling is a converge obligation; a failsafe above it is an excursion whose bound is its
-// duration. FailsafeHeldAfterPost is the excursion arm too, and deliberately: it IS an excursion,
-// the finding is that it has outlived its window, and the window it carries is what says so.
+// above the ceiling is a converge obligation; a failsafe above it is an excursion, and which KIND
+// of excursion is carried by ExcursionBound rather than by this paragraph - pre-POST bounded only
+// by power-off, inside its post-transition window, or outlived it. FailsafeHeldAfterPost maps to
+// the outlived arm, which carries the elapsed beside the window so a reader can see the overrun.
 //
-// THE PRE-POST WINDOW IS ZERO, meaning no post-transition window applies - the same reading the
-// acoustic fold takes. What bounds that excursion is the operator powering the machine off, which
-// is a decision and not a controller fact.
+// THIS PARAGRAPH PREVIOUSLY SAID THE PRE-POST WINDOW WAS ZERO, and it kept saying so after the
+// change that deleted that sentinel. An annotation orphaned by its own repair is the §4c defect
+// this module has now hit four times, and it is the one that is hardest to catch by reading the
+// diff: the code under review was correct and the sentence above it was describing the version
+// before.
 fn fan_policy_against_duty_ceiling(standing: FanPolicyStanding, ceiling: Percent) -> FanDutyCeilingVerdict {
   match standing {
     RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } => FanDutyNotReported {
