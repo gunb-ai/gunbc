@@ -382,9 +382,10 @@ fn uses_line_spells_a_uses_key(line: String) -> Bool {
 }
 
 // A QUOTED KEY WITH AN ESCAPE CAN SPELL `uses` WITHOUT CONTAINING IT (`"us\u0065s":`), and this
-// projection does not decode escapes, so it cannot know what such a key names. It refuses a line
-// whose quoted KEY -- a leading double-quoted span closed by `":` -- carries a backslash, rather than
-// guessing what the key is. Quoted text with no `":` (a script argument) is not a key and passes.
+// projection does not decode escapes, so it cannot know what such a key names. It refuses a line on
+// whose body OPENS with a double-quoted key whose closing `":` is preceded by a backslash, rather
+// than guessing what the key is. Quoted text with no `":` (a script argument), and a value carrying
+// escaped quotes, are not keys and pass; see the boundary note on the function below.
 fn uses_line_has_escaped_quoted_key(line: String) -> Bool {
   if !string_contains(s: line, pattern: "\":") {
     false
@@ -399,10 +400,24 @@ fn uses_line_has_escaped_quoted_key(line: String) -> Bool {
 // interpreter evaluates both operands of `&&` (gunbc.recurring_failure_mode
 // realization_arms_diverge_on_whether_the_program_refuses), which would run this split on every
 // line. Only a line carrying both a `":` and a backslash is split.
+// ONLY A KEY AT THE HEAD OF THE LINE, AND THE BOUNDARY IS MEASURED RATHER THAN ASSUMED. A wider
+// rule was tried -- refuse wherever a backslash precedes a `":` on the line, so a flow-style
+// `[{"us\u0065s": ...}]` would be caught too -- and it refused two committed workflow lines that
+// are VALUES, not keys: fleet-converge's `group: "...{\"srv1\": ...}"`, and a witnesses.yml `run:`
+// line whose shell script prints literal JSON (`{"version": 1, "receipt": {...}}`). Restricting the
+// opening quote to a key position (`{"` / `,"`) does not separate them either: that JSON is
+// spelled exactly so. A line projection cannot tell a YAML key from JSON inside a script string
+// without the structure it declines to parse, so the refusal stays at the head of the line, and the
+// flow-style escaped key is declared UNSEEN on the failure-mode row rather than claimed.
 fn uses_line_quoted_key_has_escape(line: String) -> Bool {
   let text = substring(s: line, start: yaml_indent_of(line: line), end: line.length())
   let body = if starts_with(s: text, prefix: "- ") { substring(s: text, start: 2, end: text.length()) } else { text }
-  starts_with(s: body, prefix: "\"") && string_contains(s: body, pattern: "\":") && string_contains(s: fold(split(s: body, delimiter: "\":"), init: "", f: fn(acc, part) { if acc == "" { part } else { acc } }), pattern: "\\")
+  if !starts_with(s: body, prefix: "\"") {
+    false
+  } else {
+    let parts = split(s: body, delimiter: "\":")
+    string_contains(s: join(parts.take(n: parts.length() - 1), "\":"), pattern: "\\")
+  }
 }
 
 type UsesScan {
