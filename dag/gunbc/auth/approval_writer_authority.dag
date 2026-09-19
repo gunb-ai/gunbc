@@ -1,6 +1,10 @@
 module gunbc.auth.approval_writer_authority
 
 import std.types { NonEmptyStr, String, Bool }
+import gunbc.auth.approval_cutover_posture {
+  ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
+  approval_cutover_posture,
+}
 
 // ── WHICH PROCESS MAY MUTATE THE APPROVAL STORE ─────────────────────────────────────────────
 // PORT IDENTITY IS NOT WRITER AUTHORITY, and an earlier cut of this change confused them (side-chat
@@ -29,11 +33,24 @@ type ApprovalWriterAuthority
   = RoadmapWriter
   | BrokerWriter
 
-// THE LIVE VALUE. It is RoadmapWriter because the roadmap process is what has been writing this
-// store, and it stays RoadmapWriter until the writer transition is executed as one modeled
-// transaction. Flipping it is not a tidy-up: it is the cut, and gunbc.auth.approval_broker_cutover
-// refuses to admit the flip until the broker's release, identity and demand have been observed.
-data approval_writer_authority: ApprovalWriterAuthority = RoadmapWriter
+// THE LIVE VALUE IS DERIVED FROM THE CUT, NOT DECLARED BESIDE IT. It used to be its own row, which
+// made moving the store and moving the front door two edits somebody had to make together -- and
+// the cut is one transaction or it is an outage (side-chat HOLD, stage E). It reads
+// gunbc.auth.approval_cutover_posture, so an authority that disagrees with the routing has no
+// spelling.
+//
+// gunbc.auth.approval_broker_cutover still refuses to admit the posture move until the broker's
+// release, identity and demand have been observed; this derivation says what the move MEANS, and
+// that plan says when it may happen.
+fn approval_writer_authority_for(posture: ApprovalCutoverPosture) -> ApprovalWriterAuthority {
+  match posture {
+    RoadmapServesAndWrites => RoadmapWriter
+    BrokerServesAndWrites => BrokerWriter
+    BrokerOwnsAlone => BrokerWriter
+  }
+}
+
+data approval_writer_authority: ApprovalWriterAuthority = approval_writer_authority_for(posture: approval_cutover_posture)
 
 // WHO IS ASKING. The two serving processes run the SAME four handler folds -- that is the point of
 // the extraction -- so the fold cannot tell which process it is in. The entry can: an entry is

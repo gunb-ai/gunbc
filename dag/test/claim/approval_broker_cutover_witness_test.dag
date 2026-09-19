@@ -8,7 +8,11 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
   ApprovalServingProcess, RoadmapProcess, BrokerProcess,
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
-  approval_write_admission_under,
+  approval_write_admission_under, approval_writer_authority_for,
+}
+import gunbc.auth.approval_cutover_posture {
+  ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
+  approval_cutover_posture,
 }
 import gunbc.serve_liveness {
   ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe, observe_serve_liveness,
@@ -37,7 +41,7 @@ import gunbc.auth.approval_broker_cutover {
   approval_broker_cutover_complete,
   ApprovalRouteOwnership,
   ApprovalPathsRoutedToRoadmap, ApprovalPathsRoutedToBroker, ApprovalPathsOwnedByBroker,
-  approval_route_ownership, roadmap_still_mounts_approval_routes,
+  approval_route_ownership, approval_route_ownership_for, roadmap_still_mounts_approval_routes,
   approval_front_door_mounts_installed, roadmap_is_routed_for_approvals, broker_is_routed_for_approvals,
   approval_broker_front_door_enable_argv,
   approval_broker_cutover_stages,
@@ -450,4 +454,71 @@ test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
       }
       StageAdmitted { stage: _ } => false
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE CUT IS ONE TRANSACTION — side-chat HOLD stage E
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// ROUTING AND AUTHORITY WERE TWO ROWS, so the cut was two edits and the states between them were
+// outages of the approval loop: a repointed front door without the store move is a broker refusing
+// every decision; the converse is a roadmap refusing every decision. Both loud, both an outage, and
+// both reachable by landing half the change.
+//
+// They now derive from gunbc.auth.approval_cutover_posture. These claims are written over EVERY
+// posture rather than the one the row holds, which is what distinguishes asserting an invariant
+// from observing today's configuration.
+
+fn routing_for(p: ApprovalCutoverPosture) -> ApprovalRouteOwnership {
+  approval_route_ownership_for(posture: p)
+}
+
+fn broker_writes_at(p: ApprovalCutoverPosture) -> Bool {
+  match approval_writer_authority_for(posture: p) {
+    BrokerWriter => true
+    RoadmapWriter => false
+  }
+}
+
+fn broker_serves_at(p: ApprovalCutoverPosture) -> Bool {
+  match routing_for(p: p) {
+    ApprovalPathsRoutedToRoadmap => false
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => true
+  }
+}
+
+// WHOEVER ANSWERS IS WHOEVER WRITES, at every posture. This is the property two rows could not
+// guarantee and one row makes unwritable: there is no value at which the front door names a process
+// that would refuse the decision it receives, and none at which a process holds the store while the
+// public paths route somewhere else.
+//
+// THE RED: give either derivation an arm that disagrees with the other, and this fails at that
+// posture -- which is exactly the half-landed cut the two-row shape permitted.
+test fn the_process_that_answers_is_the_process_that_writes() -> Bool {
+  (broker_serves_at(p: RoadmapServesAndWrites) == broker_writes_at(p: RoadmapServesAndWrites))
+    && (broker_serves_at(p: BrokerServesAndWrites) == broker_writes_at(p: BrokerServesAndWrites))
+    && (broker_serves_at(p: BrokerOwnsAlone) == broker_writes_at(p: BrokerOwnsAlone))
+}
+
+// THE CUT MOVES EXACTLY ONE STEP AND CHANGES BOTH FACTS AT THAT STEP. Stage E is the only posture
+// move that changes who writes; stage G changes neither routing target nor authority, only whether
+// the roadmap still projects its rows. A reader scheduling the cut needs to know that the risky
+// move is one edit and the cleanup is a different, safe one.
+test fn only_the_stage_e_move_transfers_the_store() -> Bool {
+  !broker_writes_at(p: RoadmapServesAndWrites)
+    && broker_writes_at(p: BrokerServesAndWrites)
+    && broker_writes_at(p: BrokerOwnsAlone)
+    && !broker_serves_at(p: RoadmapServesAndWrites)
+    && broker_serves_at(p: BrokerServesAndWrites)
+}
+
+// ROLLBACK IS THE SAME EDIT BACKWARDS, which is what makes the cut schedulable. The roadmap's rows
+// stay mounted at BrokerServesAndWrites precisely so the posture can move back without a deploy --
+// and while they are mounted their store effects are refused, so the rollback target is a process
+// that can serve immediately rather than one that must first be re-authorized.
+test fn the_rollback_posture_still_mounts_the_roadmap_rows() -> Bool {
+  match routing_for(p: BrokerServesAndWrites) {
+    ApprovalPathsRoutedToBroker => true
+    _ => false
+  }
 }

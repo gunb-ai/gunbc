@@ -21,6 +21,10 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_
 import gunbc.auth.approval_writer_authority {
   ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
 }
+import gunbc.auth.approval_cutover_posture {
+  ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
+  approval_cutover_posture, approval_cutover_posture_label,
+}
 
 // ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
 // THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a
@@ -79,20 +83,32 @@ import gunbc.auth.approval_writer_authority {
 // graph with no path to its own last stage. The port is now fixed for the process's whole life
 // (gunbc.auth.approval_broker_endpoint approval_broker_listen_port).
 //
-// AND ROUTING IS NOT AUTHORITY EITHER. Who may MUTATE the store is a separate declared fact,
-// gunbc.auth.approval_writer_authority, consulted by both processes before any store effect --
-// because a client on the host reaches loopback whatever the front door says, so an unrouted
-// process was never an unable-to-write one. This row answers who ANSWERS the public paths; that row
-// answers who may WRITE. Stage D/E of the ordered sequence moves them together as one transaction,
-// and the two are separate declarations because they fail independently: a front door repointed
-// without the authority move is a broker refusing every decision, and an authority move without the
-// repoint is a roadmap refusing every decision. Both are loud, and neither is two writers.
+// AND ROUTING IS NOT AUTHORITY EITHER -- they are two DERIVATIONS of one intent. Who may MUTATE the
+// store is gunbc.auth.approval_writer_authority, consulted by both processes before any store
+// effect, because a client on the host reaches loopback whatever the front door says and an
+// unrouted process was never an unable-to-write one. Both this row and that one now read
+// gunbc.auth.approval_cutover_posture.
+//
+// AN EARLIER CUT DECLARED THEM SEPARATELY and argued that their mismatches were LOUD -- a repointed
+// front door without the authority move is a broker refusing every decision, and the converse is a
+// roadmap refusing every decision. That was true and it was not good enough: both are an outage of
+// the approval loop sitting between two edits somebody has to remember to make together, and the
+// cut was ordered as ONE transaction. Deriving both makes the mismatched states unwritable rather
+// than merely audible.
 type ApprovalRouteOwnership
   = ApprovalPathsRoutedToRoadmap
   | ApprovalPathsRoutedToBroker
   | ApprovalPathsOwnedByBroker
 
-data approval_route_ownership: ApprovalRouteOwnership = ApprovalPathsRoutedToRoadmap
+fn approval_route_ownership_for(posture: ApprovalCutoverPosture) -> ApprovalRouteOwnership {
+  match posture {
+    RoadmapServesAndWrites => ApprovalPathsRoutedToRoadmap
+    BrokerServesAndWrites => ApprovalPathsRoutedToBroker
+    BrokerOwnsAlone => ApprovalPathsOwnedByBroker
+  }
+}
+
+data approval_route_ownership: ApprovalRouteOwnership = approval_route_ownership_for(posture: approval_cutover_posture)
 
 // WHETHER THE FRONT DOOR CARRIES THE TWO APPROVAL MOUNTS AT ALL. This is the half the port proxy
 // could not express: a mount that exists must name the port the broker is on, and while the roadmap
