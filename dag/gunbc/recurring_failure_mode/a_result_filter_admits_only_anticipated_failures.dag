@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_result_filter_admits_only_anticipated_failures
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_result_filter_admits_only_anticipated_failures: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_result_filter_admits_only_anticipated_failures" as NonEmptyStr,
+
+  receipts: [
+    "a result filter admits only anticipated failures: a reader runs a tool through a grep, sed or head written to match the failure shapes the reader EXPECTED, and treats the filtered output as the tool's verdict. A failure in any other shape is filtered out and reads as silence -- and silence reads as success. The filter is written by the same person who is hoping the run is green, which is exactly the wrong author for a completeness question.",
+
+    "SPECIMEN A, 2026-09-17: a five-module compile sweep piped through `grep -E \"^error|blocking error\"` reported five clean compiles. Every one had failed. The compiler had refused before typechecking with `module index refused: 1 unparseable .dag source(s)` -- a line matching neither alternative -- because an edit had left a stray `/` on `/fn gunbc_ci_heal_publication_publish_invoke`. A HARD PARSE FAILURE OF THE WHOLE CORPUS read as five successes, and would have been committed as such had the next command not happened to run one compile unfiltered.",
+
+    "SPECIMEN B, the same afternoon, same reader, different costume: a 117-claim witness run piped through a filter ending in `head -10`. Each module printed its banner lines and the first three PASS results, then the stream was cut. The output looked like five green modules; it established only that the first three claims of each module passed and said NOTHING about the remaining hundred-odd, including any FAIL. The tell is that the transcript shows exactly three PASS lines per module -- a suspiciously round shape that is a property of the FILTER, not of the corpus.",
+
+    "WHY head IS THE SHARPEST FORM: it cannot flush and it cannot know. A grep at least fails open on lines it does not recognise; `head -N` truncates unconditionally at a boundary chosen before the run, so the probability that it cuts before a failure grows with the number of subjects. It is the one filter whose omission is guaranteed rather than incidental, and it is the one most often reached for to keep output short.",
+
+    "THE RULE: A FILTER OVER A VERDICT MUST BE WRITTEN AS AN INVERSE -- everything that is not a known-good line -- rather than as a list of known-bad ones. `grep -viE '^PASS|^ok|^[[:space:]]*$'` is admissible where `grep -E '^FAIL|^error'` is not, because the first is wrong only when a new SUCCESS shape appears and the second is wrong whenever a new FAILURE shape appears. Better still, consume the EXIT CODE, which the tool computed from everything it saw rather than from what the reader anticipated; a count of passes beside a count of failures beside the status is three independent readings of one run.",
+
+    "THIS IS THE ABSORBING FALLBACK INVERTED, AND THE INVERSION IS WHAT HIDES IT. absorbing_fallback widens an ANSWER until it cannot be wrong; this narrows the EVIDENCE until it cannot be red. Both end at a green that means nothing, and both are authored by someone with a local reason that sounds like tidiness -- there the reason is robustness, here it is keeping the transcript short. DESIGN section 5's specification-without-execution names the same defect one layer up: a typecheck and a grep are not consumers. A grep is not a verdict either.",
+
+    "RECOGNITION RULE, MECHANICAL: for any command of the form `<runner> | grep ... | head`, ask what the runner prints when it fails in a way the author did not have in mind -- a refusal before the phase that emits the expected lines, a panic, a timeout, an OOM kill, a usage error. If that output contains none of the matched alternatives, the pipeline reports success for it. The cheap repair is to add the exit code to whatever is reported, because no filter can suppress a status.",
+  ],
+
+  evidence: [],
+}
