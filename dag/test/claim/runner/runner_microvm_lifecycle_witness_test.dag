@@ -22,6 +22,7 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
   CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
   WriteRefusedAttemptMismatch, WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted,
+  WriteRefusedRecoveryOwed, WriteUnattributedResidue,
   cell_incarnation_admission, apply_cell_readiness_write,
   InFlightAttempt, CellBoundAttempt, AttemptBoundToCell, bind_attempt_to_cell,
 }
@@ -543,6 +544,44 @@ test fn a_clean_readback_of_one_attempt_cannot_settle_another() -> Bool {
                   }
               }
           }
+      }
+  }
+}
+
+// AN IN-FLIGHT RECORD IS NOT OVERWRITTEN BY ANYTHING BUT ITS OWN SETTLEMENT (review 68576). A clean
+// readback of a later generation's attempt, and an unattributed-residue quarantine, both refuse over
+// "cleanup owed"; the lost attempt's own settlement at its generation is accepted.
+test fn an_in_flight_record_is_discharged_only_by_its_own_attempts_settlement() -> Bool {
+  match identity(generation: 1, invocation: "inv-lost") {
+    Absent => false
+    Present { value: lost } =>
+      match identity(generation: 2, invocation: "inv-later") {
+        Absent => false
+        Present { value: later } => {
+          let owed = [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: lost) }]
+          let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
+          let later_refused = match settle(id: later, trigger: StopRequested, facts: clean) {
+            Present { value: st } =>
+              match apply_cell_readiness_write(records: owed, write: st.record) {
+                WriteRefusedRecoveryOwed { cell: _, in_flight_generation: 1, in_flight_attempt: _ } => true
+                _ => false
+              }
+            Absent => false
+          }
+          let residue_refused = match apply_cell_readiness_write(records: owed, write: WriteUnattributedResidue { cell: cell, generation: 2 }) {
+            WriteRefusedRecoveryOwed { cell: _, in_flight_generation: 1, in_flight_attempt: _ } => true
+            _ => false
+          }
+          let own_accepted = match settle(id: lost, trigger: ControllerLost, facts: clean) {
+            Present { value: st } =>
+              match apply_cell_readiness_write(records: owed, write: st.record) {
+                WriteAccepted { records: _ } => true
+                _ => false
+              }
+            Absent => false
+          }
+          later_refused && residue_refused && own_accepted
+        }
       }
   }
 }

@@ -289,6 +289,7 @@ type CellReadinessWriteResult
   | WriteRefusedAttemptAlreadyRecorded { cell: CellId, generation: Int }
   | WriteRefusedNotAdmitted { cell: CellId, admission: CellIncarnationAdmission }
   | WriteRefusedStoreUnsound { withdrawal: HostWithdrawal }
+  | WriteRefusedRecoveryOwed { cell: CellId, in_flight_generation: Int, in_flight_attempt: NonEmptyStr }
   | WriteRefusedIncoherent { withdrawal: HostWithdrawal }
 
 fn write_cell(write: CellReadinessWrite) -> CellId {
@@ -335,6 +336,18 @@ fn apply_cell_readiness_write(
   }
 }
 
+// AN IN-FLIGHT RECORD IS DISCHARGED ONLY BY ITS OWN ATTEMPT'S SETTLEMENT (same generation, same
+// attempt; same_generation_settle). Any other write over it -- a readback at a higher generation, an
+// unattributed-residue quarantine -- would replace "cleanup owed for this attempt" with a record that
+// no longer names the attempt whose VMM may still be running, so it is refused (review 68576).
+fn recovery_owed(stored: CellReadinessRecord) -> CellReadinessWriteResult? {
+  match stored {
+    CellAttemptInFlight { cell: c, generation: g, attempt: a } =>
+      Present { value: WriteRefusedRecoveryOwed { cell: c, in_flight_generation: g, in_flight_attempt: in_flight_attempt_unit(attempt: a) } }
+    CellSettled { cell: _, generation: _, readiness: _ } => none
+  }
+}
+
 fn apply_indexed_write(
   records: List<CellReadinessRecord>,
   index: CellReadinessIndex,
@@ -353,10 +366,14 @@ fn apply_indexed_write(
       match indexed_record(index: index, cell: c) {
         Absent => WriteAccepted { records: replaced }
         Present { value: stored } =>
-          if g < record_generation(record: stored) {
-            WriteRefusedStale { cell: c, stored: record_generation(record: stored), offered: g }
-          } else {
-            WriteAccepted { records: replaced }
+          match recovery_owed(stored: stored) {
+            Present { value: owed } => owed
+            Absent =>
+              if g < record_generation(record: stored) {
+                WriteRefusedStale { cell: c, stored: record_generation(record: stored), offered: g }
+              } else {
+                WriteAccepted { records: replaced }
+              }
           }
       }
     WriteReadbackSettled { bound: b, readiness: r } =>
@@ -367,7 +384,10 @@ fn apply_indexed_write(
           if b.generation < held {
             WriteRefusedStale { cell: b.cell, stored: held, offered: b.generation }
           } else if b.generation > held {
-            WriteAccepted { records: replaced }
+            match recovery_owed(stored: stored) {
+              Present { value: owed } => owed
+              Absent => WriteAccepted { records: replaced }
+            }
           } else {
             same_generation_settle(stored: stored, bound: b, readiness: r, replaced: replaced)
           }
