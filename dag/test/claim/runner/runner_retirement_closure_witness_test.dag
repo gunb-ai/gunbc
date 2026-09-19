@@ -96,7 +96,7 @@ fn live_slot() -> RunnerRetirementObservation {
     unit: "actions-runner@srv4-13.service",
     replacement_inhibited: false,
     service_running: true,
-    occupancy: CgroupObservedPopulated { count: 3 },
+    occupancy: CgroupObservedPopulated,
   }
 }
 
