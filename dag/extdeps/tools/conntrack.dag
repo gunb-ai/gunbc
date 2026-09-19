@@ -1,0 +1,46 @@
+module extdeps.tools.conntrack
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/bookworm/conntrack/conntrack.8.en.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.conntrack",
+      decl_name: "conntrack_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// conntrack(8) from conntrack-tools, the userspace reader and writer of the kernel's connection
+// tracking table. Only the two operations a table keyed by ORIGINAL SOURCE needs are modeled: delete
+// the flows a source opened, and list them. `-s` filters on the original-direction source, which for
+// a masqueraded guest is the guest's own address -- the translated address appears only on the
+// reply tuple, so filtering on it would miss every flow a guest opened.
+data conntrack_program: NonEmptyStr = "conntrack"
+
+// `-D` WITH NO MATCHING ENTRY EXITS NONZERO ("0 flow entries have been deleted"), so its exit status
+// is not a success signal a caller may gate on. The deletion's outcome is established by the list
+// that follows it, never by this command's exit.
+fn conntrack_delete_by_source_command(source: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-D", "-s", source])
+}
+
+// `-L` prints one line per flow on stdout and a summary on stderr, so the count of stdout lines is
+// the number of surviving flows and an empty stdout with exit zero is the empty reading.
+fn conntrack_list_by_source_command(source: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-L", "-s", source])
+}

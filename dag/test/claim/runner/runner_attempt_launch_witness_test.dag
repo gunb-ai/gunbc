@@ -42,6 +42,11 @@ import gunbc.runner_attempt_launch {
   reported_attempt_launch_rung,
   host_boot_cutover_frontier, jit_mint_http_realization_frontier, jail_jit_device_staging_frontier,
   jail_workspace_path,
+  WorkspaceStagingObservation, WorkspaceSuperblockRead, WorkspaceReadbackFailed,
+  AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedWorkspace, StagingNotAuthorized,
+  WorkspaceStanding, WorkspaceReady, WorkspaceCreateFailed, WorkspaceFormatFailed,
+  WorkspaceNotExtFilesystem, WorkspaceSizeMismatch, WorkspaceUnreadable,
+  staging_verdict, runner_attempt_workspace_bytes,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -333,3 +338,69 @@ test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
   }
 }
 
+
+fn good_workspace() -> WorkspaceStagingObservation {
+  WorkspaceStagingObservation {
+    create_exit: 0,
+    format_exit: 0,
+    readback: WorkspaceSuperblockRead { ext_magic: true, bytes: runner_attempt_workspace_bytes() },
+  }
+}
+
+fn staging_label(v: AttemptStagingVerdict) -> String {
+  match v {
+    StagingAdmitsJailer { jailer: _ } => "admit"
+    StagingNotAuthorized => "unauthorized"
+    StagingRefusedWorkspace { standing: s } => match s {
+      WorkspaceReady => "ready-refused"
+      WorkspaceCreateFailed { exit: _ } => "create"
+      WorkspaceFormatFailed { exit: _ } => "format"
+      WorkspaceNotExtFilesystem => "not-ext"
+      WorkspaceSizeMismatch { observed: _, expected: _ } => "size"
+      WorkspaceUnreadable { reason: _ } => "unreadable"
+    }
+  }
+}
+
+fn staging_for(obs: WorkspaceStagingObservation, ground: AttemptGround) -> String {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 2, id: "ws1") {
+        Cons { head: a, tail: _ } => staging_label(v: staging_verdict(
+          plan: plan_for(pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: ground),
+          obs: obs,
+        ))
+        Empty {} => "no-attempt"
+      }
+    Empty {} => "no-grant"
+  }
+}
+
+// THE JAILER IS REACHED ONLY THROUGH A READ-BACK WORKSPACE. The positive control admits; each
+// failure refuses under its own name, and the earliest failure is the one named -- a failed create
+// with a failed format reports the create. The red is any arm that launches onto a workspace the
+// host did not read back as an ext filesystem of the planned size.
+test fn the_jailer_is_admitted_only_onto_a_read_back_workspace() -> Bool {
+  staging_for(obs: good_workspace(), ground: GroundClear) == "admit"
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 1, format_exit: 1, readback: WorkspaceReadbackFailed { reason: "absent" as NonEmptyStr },
+    }, ground: GroundClear) == "create"
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 0, format_exit: 1, readback: WorkspaceSuperblockRead { ext_magic: true, bytes: runner_attempt_workspace_bytes() },
+    }, ground: GroundClear) == "format"
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { ext_magic: false, bytes: runner_attempt_workspace_bytes() },
+    }, ground: GroundClear) == "not-ext"
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { ext_magic: true, bytes: byte_size(count: 1048576) },
+    }, ground: GroundClear) == "size"
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 0, format_exit: 0, readback: WorkspaceReadbackFailed { reason: "dumpe2fs exited 1" as NonEmptyStr },
+    }, ground: GroundClear) == "unreadable"
+}
+
+// A GOOD WORKSPACE CANNOT BUY A LAUNCH THE PLAN REFUSED. The red is a staging gate that reads only
+// the observation: occupied ground would then launch because the image happened to format.
+test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
+  staging_for(obs: good_workspace(), ground: GroundOccupied) == "unauthorized"
+}

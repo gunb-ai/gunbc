@@ -3,9 +3,9 @@ module gunbc.runner_attempt_launch
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second, ByteSize, byte_size, measure_le, Mebibyte, mebibyte }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, Mebibyte, mebibyte, mebibyte_to_byte_size }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
+import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command, dumpe2fs_superblock_command }
 import extdeps.tools.gnu_coreutils { timeout_command, cp_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.busybox { busybox_dd_sparse_image_command }
@@ -461,4 +461,106 @@ type WorkNotEstablished {
 
 fn work_standing_from_vmm_exit(exit_code: Int) -> WorkNotEstablished {
   WorkNotEstablished { vmm_exit: exit_code }
+}
+
+// --- the workspace readback: staging admits the jailer or refuses it ---
+
+// THE PLAN SAYS WHAT TO RUN; THIS SAYS WHETHER WHAT RAN LEFT A WORKSPACE. They are separate
+// because they are separated in time: plan_attempt_launch is decided before any host mutation, and
+// the dd and mke2fs it plans can fail after it has answered LaunchAuthorized. A guest launched onto
+// a workspace that failed to format boots, mounts nothing, and fails the job far from its cause --
+// so the jailer is gated on a reading of the image, not on the plan that asked for it.
+//
+// THE READING IS INDEPENDENT OF THE EXIT CODES. mke2fs exiting zero is the formatter's claim; the
+// superblock read back from the image is the host's observation of the result. Both are required,
+// and the readback also carries the size, because a sparse `seek` onto a full disk can leave a file
+// shorter than asked without dd failing.
+//
+// The image lives under the attempt's jail root (runner_microvm_attempt_jail_base), so teardown's
+// one subtree to prove absent already contains it; nothing here adds a second location.
+type WorkspaceReadback
+  = WorkspaceSuperblockRead { ext_magic: Bool, bytes: ByteSize }
+  | WorkspaceReadbackFailed { reason: NonEmptyStr }
+
+type WorkspaceStagingObservation {
+  create_exit: Int
+  format_exit: Int
+  readback: WorkspaceReadback
+}
+
+type WorkspaceStanding
+  = WorkspaceReady
+  | WorkspaceCreateFailed { exit: Int }
+  | WorkspaceFormatFailed { exit: Int }
+  | WorkspaceNotExtFilesystem
+  | WorkspaceSizeMismatch { observed: ByteSize, expected: ByteSize }
+  | WorkspaceUnreadable { reason: NonEmptyStr }
+
+fn runner_attempt_workspace_bytes() -> ByteSize {
+  mebibyte_to_byte_size(m: runner_attempt_workspace_size)
+}
+
+// THE ORDER IS CAUSAL: a failed create makes the format's exit meaningless, and a failed format
+// makes the superblock reading meaningless, so the earliest failure is the one reported.
+fn workspace_standing(obs: WorkspaceStagingObservation) -> WorkspaceStanding {
+  if obs.create_exit != 0 {
+    WorkspaceCreateFailed { exit: obs.create_exit }
+  } else if obs.format_exit != 0 {
+    WorkspaceFormatFailed { exit: obs.format_exit }
+  } else {
+    match obs.readback {
+      WorkspaceReadbackFailed { reason: r } => WorkspaceUnreadable { reason: r }
+      WorkspaceSuperblockRead { ext_magic: m, bytes: b } =>
+        if !m {
+          WorkspaceNotExtFilesystem
+        } else if byte_size_count(b: b) != byte_size_count(b: runner_attempt_workspace_bytes()) {
+          WorkspaceSizeMismatch { observed: b, expected: runner_attempt_workspace_bytes() }
+        } else {
+          WorkspaceReady
+        }
+    }
+  }
+}
+
+type AttemptStagingVerdict
+  = StagingAdmitsJailer { jailer: ArgvCommand }
+  | StagingRefusedWorkspace { standing: WorkspaceStanding }
+  | StagingNotAuthorized
+
+// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING. A refused plan has no jailer to admit, and a
+// workspace that is anything but WorkspaceReady refuses -- there is no arm that launches anyway.
+fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) -> AttemptStagingVerdict {
+  match plan {
+    LaunchAuthorized {
+      authorization: _,
+      tap_device: _,
+      guest_ip_boot_arg: _,
+      nft_ruleset: _,
+      slice: _,
+      jail_root: _,
+      stage_jail_root: _,
+      stage_kernel: _,
+      stage_rootfs: _,
+      workspace_path: _,
+      workspace_create: _,
+      workspace_format: _,
+      kvm_device: _,
+      vm_config: _,
+      jailer: j,
+    } => match workspace_standing(obs: obs) {
+      WorkspaceReady => StagingAdmitsJailer { jailer: j }
+      WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+      WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+      WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+      WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+      WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+    }
+    LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
+    LaunchRefusedEnvelope { standing: _ } => StagingNotAuthorized
+    LaunchRefusedPriorResources => StagingNotAuthorized
+  }
+}
+
+fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
+  dumpe2fs_superblock_command(image_path: workspace_path)
 }

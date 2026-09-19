@@ -3,6 +3,7 @@ module gunbc.runner_microvm_network
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
+import std.content_hash { Sha256Digest }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
@@ -17,6 +18,12 @@ import extdeps.nftables.ruleset {
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
   NftConnectionTrackingEstablished, nft_table_wire,
+  NftDestinationAddressPrefix, NftTransportDestinationPort, NftNetworkProtocolIpv6,
+  NftTransport, NftTcp, NftUdp, nft_list_table_command,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.conntrack {
+  conntrack_delete_by_source_command, conntrack_list_by_source_command,
 }
 
 data runner_microvm_network_disposition: Disposition = SingleAuthority
@@ -233,16 +240,89 @@ fn runner_microvm_forward_chain() -> NftChain {
     hook: NftForward,
     priority: NftPriorityFilter,
     policy: NftPolicyAccept,
-    rules: [
-      NftRule {
-        matches: [
-          NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
-          NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
-        ],
-        verdict: NftDrop,
-      },
-    ],
+    rules: concat(
+      [
+        NftRule {
+          matches: [
+            NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+            NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+          ],
+          verdict: NftDrop,
+        },
+      ],
+      runner_microvm_guest_egress_rules(),
+    ),
   }
+}
+
+// --- guest egress: default-deny at TAP grain, not host grain ---
+
+// THIS IS WHERE gunbc.runner.runner_host_filtered_egress's DefaultDrop STANCE IS HONOURED, AND ITS
+// GRAIN IS THE TAP. That module states forward: DefaultDrop for a host this fleet owns entirely.
+// srvN is not that host (dockerd's tables, see the chain policy above), so the chain policy stays
+// accept and the default-deny is the LAST RULE OF A TAP-SCOPED LIST: every packet a guest sends
+// matches a rule written for it or reaches the final drop. Traffic that did not enter through a
+// gunbc tap matches none of these rows and keeps whatever verdict the host's other tables give it.
+// So the stance holds for guests -- the only principal it was ever about -- and not for the host.
+//
+// THE ORDER IS THE POLICY. Established first, so replies to admitted flows are never re-judged. The
+// v6 refusal before any v4 grant, because in the inet family an `ip daddr` match is false on a v6
+// packet and a v6 flow would otherwise reach the port grants. The private-range denials ABOVE the
+// port grants, because the 443 grant is a destination class and 192.168.x.y:443 is in it -- the
+// Mt. Collins run (gunbc.runner.runner_filtered_egress_receipt denied_paths) is the receipt that
+// this ordering is what stopped a guest reaching its own BMC. The grants are the ones that run
+// admitted: name resolution, and TCP 443 for github.com and the Actions endpoints.
+//
+// The resolver the guest uses must therefore be PUBLIC: a private resolver is denied by the rows
+// above the DNS grant, and that is the intended reading of "guest to the selected resolver", not an
+// accident of ordering.
+data runner_microvm_guest_denied_destinations: List<NonEmptyStr> = [
+  "10.0.0.0/8" as NonEmptyStr,
+  "172.16.0.0/12" as NonEmptyStr,
+  "192.168.0.0/16" as NonEmptyStr,
+  "100.64.0.0/10" as NonEmptyStr,
+  "169.254.0.0/16" as NonEmptyStr,
+  "127.0.0.0/8" as NonEmptyStr,
+  "224.0.0.0/4" as NonEmptyStr,
+]
+
+data runner_microvm_guest_dns_port: Int = 53
+
+data runner_microvm_guest_tls_port: Int = 443
+
+fn from_guest_tap(m: List<NftMatch>, verdict: NftVerdict) -> NftRule {
+  NftRule {
+    matches: concat([NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix }], m),
+    verdict: verdict,
+  }
+}
+
+fn runner_microvm_guest_egress_rules() -> List<NftRule> {
+  concat(
+    concat(
+      [
+        from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept),
+        from_guest_tap(m: [NftNetworkProtocolIpv6], verdict: NftDrop),
+      ],
+      map(runner_microvm_guest_denied_destinations, c =>
+        from_guest_tap(m: [NftDestinationAddressPrefix { cidr: c }], verdict: NftDrop)),
+    ),
+    [
+      from_guest_tap(
+        m: [NftTransportDestinationPort { transport: NftUdp, port: runner_microvm_guest_dns_port }],
+        verdict: NftAccept,
+      ),
+      from_guest_tap(
+        m: [NftTransportDestinationPort { transport: NftTcp, port: runner_microvm_guest_dns_port }],
+        verdict: NftAccept,
+      ),
+      from_guest_tap(
+        m: [NftTransportDestinationPort { transport: NftTcp, port: runner_microvm_guest_tls_port }],
+        verdict: NftAccept,
+      ),
+      from_guest_tap(m: [], verdict: NftDrop),
+    ],
+  )
 }
 
 // THE MASQUERADE MATCHES ON SOURCE AND NOT ON OUTPUT INTERFACE, which removes an observation this
@@ -378,4 +458,157 @@ fn runner_slot_network_install_operations(
     },
     SystemdReloadUnit { unit: runner_microvm_networkd_unit },
   ]
+}
+
+// --- the slot network readback: what sanitation reads after an attempt ---
+
+// THE TAP AND THE RULESET OUTLIVE THE ATTEMPT BY DESIGN, SO SANITATION CANNOT PROVE THEM ABSENT.
+// They are slot and host state (the .netdev block above; parent ruling on the microVM program,
+// 2026-09-19), and what an attempt can leave behind in them is not their existence but their USE:
+// a process still holding the tap, a connection-tracking flow still keyed to the guest address the
+// NEXT attempt in this slot will reuse, and a ruleset some process edited during the attempt. Those
+// three facts are what this readback reads, and gunbc.runner_microvm_lifecycle consumes it as the
+// network fact of its host teardown readback, mapped onto product.fabric.sanitation.
+//
+// CONNTRACK IS FLUSHED BEFORE IT IS READ, AND THE FLUSH IS NOT THE EVIDENCE. The flush is teardown's
+// mutation; the reading after it is the fact. A flush that exited zero while a flow survived -- a
+// packet from a still-running guest re-creates one -- is exactly the case the read exists to catch.
+//
+// THE RULESET DIGEST IS OF `nft list table`, NOT OF THE FILE WE APPLIED. nft normalizes what it is
+// given, so the text above and the kernel's listing differ in bytes while agreeing in meaning. The
+// converged digest is therefore the listing captured by the converge that installed the table, and
+// it is supplied here from that receipt rather than recomputed from the rule rows.
+type SlotNetworkFact
+  = TapUnheldFact
+  | GuestConntrackEmptyFact
+  | RulesetMatchesConvergedFact
+
+type TapHolderObservation
+  = TapPresentUnheld
+  | TapHeld { holders: Int }
+  | TapMissing
+  | TapHoldersUnreadable { reason: NonEmptyStr }
+
+type GuestConntrackObservation
+  = GuestConntrackEmptyAfterFlush
+  | GuestConntrackResidue { entries: Int }
+  | GuestConntrackUnreadable { reason: NonEmptyStr }
+
+type RulesetObservation
+  = RulesetListed { digest: Sha256Digest }
+  | RulesetUnreadable { reason: NonEmptyStr }
+
+// "COULD NOT READ" IS NOT "REFUTED", and the two arms stay separate because they call for different
+// operators: a refutation is a fact about the host that needs remedying, an unobservable reading is
+// a fact about the instrument. Both quarantine the cell -- neither is CellReady -- but collapsing
+// them would send someone to clean a host that may be clean, or to fix a probe on a host that is not.
+type SlotNetworkReadback
+  = SlotNetworkConfirmed
+  | SlotNetworkRefuted { fact: SlotNetworkFact, detail: NonEmptyStr }
+  | SlotNetworkUnobservable { fact: SlotNetworkFact, reason: NonEmptyStr }
+
+fn tap_readback(o: TapHolderObservation) -> SlotNetworkReadback {
+  match o {
+    TapPresentUnheld => SlotNetworkConfirmed
+    TapHeld { holders: n } => SlotNetworkRefuted {
+      fact: TapUnheldFact,
+      detail: join([to_string(n), " process(es) still hold the slot tap after the attempt"], "") as NonEmptyStr,
+    }
+    TapMissing => SlotNetworkRefuted {
+      fact: TapUnheldFact,
+      detail: "the slot tap is absent, so the converged network state no longer holds" as NonEmptyStr,
+    }
+    TapHoldersUnreadable { reason: r } => SlotNetworkUnobservable { fact: TapUnheldFact, reason: r }
+  }
+}
+
+fn conntrack_readback(o: GuestConntrackObservation) -> SlotNetworkReadback {
+  match o {
+    GuestConntrackEmptyAfterFlush => SlotNetworkConfirmed
+    GuestConntrackResidue { entries: n } => SlotNetworkRefuted {
+      fact: GuestConntrackEmptyFact,
+      detail: join([to_string(n), " flow(s) keyed to the guest address survived the flush"], "") as NonEmptyStr,
+    }
+    GuestConntrackUnreadable { reason: r } => SlotNetworkUnobservable { fact: GuestConntrackEmptyFact, reason: r }
+  }
+}
+
+fn ruleset_readback(o: RulesetObservation, converged: Sha256Digest) -> SlotNetworkReadback {
+  match o {
+    RulesetListed { digest: d } =>
+      if (d.hex as String) == (converged.hex as String) {
+        SlotNetworkConfirmed
+      } else {
+        SlotNetworkRefuted {
+          fact: RulesetMatchesConvergedFact,
+          detail: join(["listed ruleset digest ", d.hex as String, " differs from converged ", converged.hex as String], "") as NonEmptyStr,
+        }
+      }
+    RulesetUnreadable { reason: r } => SlotNetworkUnobservable { fact: RulesetMatchesConvergedFact, reason: r }
+  }
+}
+
+// A REFUTATION ANYWHERE OUTRANKS AN UNREADABLE FACT ELSEWHERE: it is the stronger statement about
+// the host, and reporting the probe failure instead would hide a known defect behind an unknown one.
+fn first_refuted(rs: List<SlotNetworkReadback>) -> List<SlotNetworkReadback> {
+  fold(rs, init: [], f: (acc, r) =>
+    match acc {
+      Cons { head: _, tail: _ } => acc
+      Empty {} => match r {
+        SlotNetworkRefuted { fact: _, detail: _ } => [r]
+        SlotNetworkConfirmed => acc
+        SlotNetworkUnobservable { fact: _, reason: _ } => acc
+      }
+    }
+  )
+}
+
+fn first_unobservable(rs: List<SlotNetworkReadback>) -> List<SlotNetworkReadback> {
+  fold(rs, init: [], f: (acc, r) =>
+    match acc {
+      Cons { head: _, tail: _ } => acc
+      Empty {} => match r {
+        SlotNetworkUnobservable { fact: _, reason: _ } => [r]
+        SlotNetworkConfirmed => acc
+        SlotNetworkRefuted { fact: _, detail: _ } => acc
+      }
+    }
+  )
+}
+
+fn slot_network_readback(
+  tap: TapHolderObservation,
+  conntrack: GuestConntrackObservation,
+  ruleset: RulesetObservation,
+  converged_ruleset: Sha256Digest,
+) -> SlotNetworkReadback {
+  let facts = [
+    tap_readback(o: tap),
+    conntrack_readback(o: conntrack),
+    ruleset_readback(o: ruleset, converged: converged_ruleset),
+  ]
+  match first_refuted(rs: facts) {
+    Cons { head: r, tail: _ } => r
+    Empty {} => match first_unobservable(rs: facts) {
+      Cons { head: u, tail: _ } => u
+      Empty {} => SlotNetworkConfirmed
+    }
+  }
+}
+
+// --- the commands that produce the readback's observations ---
+
+// TEARDOWN FLUSHES; THE LIFECYCLE CONTROLLER READS. The flush is a mutation and belongs to the
+// teardown step, which runs it before the list. Its exit status is not the evidence -- see
+// extdeps.tools.conntrack -- the list is.
+fn runner_slot_conntrack_flush_command(net: RunnerSlotNetwork) -> ArgvCommand {
+  conntrack_delete_by_source_command(source: render_ipv4_address(addr: net.guest_address) as String)
+}
+
+fn runner_slot_conntrack_list_command(net: RunnerSlotNetwork) -> ArgvCommand {
+  conntrack_list_by_source_command(source: render_ipv4_address(addr: net.guest_address) as String)
+}
+
+fn runner_microvm_nft_list_command() -> ArgvCommand {
+  nft_list_table_command(family: NftInet, name: runner_microvm_nft_table_name)
 }

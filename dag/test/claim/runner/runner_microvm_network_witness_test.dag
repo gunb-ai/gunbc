@@ -15,7 +15,15 @@ import gunbc.runner_microvm_network {
   runner_slot_netdev_path, runner_slot_network_file_path,
   netmask_of_prefix, runner_microvm_network_supernet,
   runner_microvm_network_prefix_length, runner_microvm_network_supernet_prefix,
+  SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted, SlotNetworkUnobservable,
+  SlotNetworkFact, TapUnheldFact, GuestConntrackEmptyFact, RulesetMatchesConvergedFact,
+  TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
+  GuestConntrackEmptyAfterFlush, GuestConntrackResidue, GuestConntrackUnreadable,
+  RulesetListed, RulesetUnreadable, slot_network_readback,
+  runner_slot_conntrack_flush_command, runner_slot_conntrack_list_command,
 }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.exec.command { argv_words }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -175,4 +183,127 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
   string_contains(s: text, pattern: "type nat hook postrouting")
     && string_contains(s: text, pattern: "type filter hook forward")
     && !string_contains(s: text, pattern: "type filter hook postrouting")
+}
+
+// THE GUEST EGRESS ORDER IS THE POLICY, so the control is the ORDER and not the presence of words.
+// Two adjacencies are pinned. The head: established before anything, and the v6 refusal before any
+// v4 grant, because an `ip daddr` match is false on a v6 packet in the inet family. The tail: the
+// private-range denials end immediately above the port grants and the list ends in a tap-scoped
+// drop. The reds are a 443 grant moved above the private denials -- a guest reaches its own BMC on
+// 443, the ordering the Mt. Collins receipt showed holding -- and a missing final drop, which turns
+// default-deny into default-accept for every port nobody named.
+test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
+  let text = runner_microvm_nft_ruleset_text()
+  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
+    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" udp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: text, pattern: "policy accept")
+    && !string_contains(s: text, pattern: "policy drop")
+}
+
+data converged_digest: Sha256Digest = Sha256Digest {
+  hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex,
+}
+
+data drifted_digest: Sha256Digest = Sha256Digest {
+  hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex,
+}
+
+fn refuted_fact(r: SlotNetworkReadback) -> String {
+  match r {
+    SlotNetworkRefuted { fact: f, detail: _ } => match f {
+      TapUnheldFact => "tap"
+      GuestConntrackEmptyFact => "conntrack"
+      RulesetMatchesConvergedFact => "ruleset"
+    }
+    SlotNetworkConfirmed => "confirmed"
+    SlotNetworkUnobservable { fact: _, reason: _ } => "unobservable"
+  }
+}
+
+fn unobservable_fact(r: SlotNetworkReadback) -> String {
+  match r {
+    SlotNetworkUnobservable { fact: f, reason: _ } => match f {
+      TapUnheldFact => "tap"
+      GuestConntrackEmptyFact => "conntrack"
+      RulesetMatchesConvergedFact => "ruleset"
+    }
+    SlotNetworkConfirmed => "confirmed"
+    SlotNetworkRefuted { fact: _, detail: _ } => "refuted"
+  }
+}
+
+// THE POSITIVE CONTROL: all three facts hold, and only then is the readback confirmed.
+test fn a_clean_slot_network_is_confirmed_only_when_all_three_facts_hold() -> Bool {
+  refuted_fact(r: slot_network_readback(
+    tap: TapPresentUnheld,
+    conntrack: GuestConntrackEmptyAfterFlush,
+    ruleset: RulesetListed { digest: converged_digest },
+    converged_ruleset: converged_digest,
+  )) == "confirmed"
+}
+
+// EACH FACT REFUTES ON ITS OWN, AND THE REFUTATION NAMES IT. A VMM fd still on the tap, a flow that
+// survived the flush (the next attempt reuses this guest address), and a ruleset some process edited
+// are three different remedies, so the fact is carried rather than a bare false.
+test fn each_fact_refutes_alone_and_names_itself() -> Bool {
+  refuted_fact(r: slot_network_readback(
+    tap: TapHeld { holders: 1 },
+    conntrack: GuestConntrackEmptyAfterFlush,
+    ruleset: RulesetListed { digest: converged_digest },
+    converged_ruleset: converged_digest,
+  )) == "tap"
+    && refuted_fact(r: slot_network_readback(
+      tap: TapMissing,
+      conntrack: GuestConntrackEmptyAfterFlush,
+      ruleset: RulesetListed { digest: converged_digest },
+      converged_ruleset: converged_digest,
+    )) == "tap"
+    && refuted_fact(r: slot_network_readback(
+      tap: TapPresentUnheld,
+      conntrack: GuestConntrackResidue { entries: 2 },
+      ruleset: RulesetListed { digest: converged_digest },
+      converged_ruleset: converged_digest,
+    )) == "conntrack"
+    && refuted_fact(r: slot_network_readback(
+      tap: TapPresentUnheld,
+      conntrack: GuestConntrackEmptyAfterFlush,
+      ruleset: RulesetListed { digest: drifted_digest },
+      converged_ruleset: converged_digest,
+    )) == "ruleset"
+}
+
+// "COULD NOT READ" IS NOT "REFUTED" -- and a refutation elsewhere outranks it. The red for the first
+// half is an unreadable conntrack table reported as residue; for the second, a drifted ruleset
+// hidden behind a probe failure on another fact.
+test fn an_unreadable_fact_is_unobservable_and_a_refutation_elsewhere_outranks_it() -> Bool {
+  unobservable_fact(r: slot_network_readback(
+    tap: TapPresentUnheld,
+    conntrack: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr },
+    ruleset: RulesetListed { digest: converged_digest },
+    converged_ruleset: converged_digest,
+  )) == "conntrack"
+    && unobservable_fact(r: slot_network_readback(
+      tap: TapHoldersUnreadable { reason: "fd scan refused" as NonEmptyStr },
+      conntrack: GuestConntrackEmptyAfterFlush,
+      ruleset: RulesetUnreadable { reason: "nft list refused" as NonEmptyStr },
+      converged_ruleset: converged_digest,
+    )) == "tap"
+    && refuted_fact(r: slot_network_readback(
+      tap: TapPresentUnheld,
+      conntrack: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr },
+      ruleset: RulesetListed { digest: drifted_digest },
+      converged_ruleset: converged_digest,
+    )) == "ruleset"
+}
+
+// THE FLUSH AND THE LIST ARE KEYED BY THE GUEST'S ORIGINAL SOURCE. A masqueraded flow carries the
+// host's address only on its reply tuple, so a flush keyed any other way leaves every flow the guest
+// opened -- and the next attempt in this slot inherits them. The red is a slot's commands naming a
+// different slot's guest address.
+test fn conntrack_commands_are_keyed_by_this_slots_guest_source() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 6))
+  let guest = render_ipv4_address(addr: net.guest_address) as String
+  argv_words(command: runner_slot_conntrack_flush_command(net: net)) == ["conntrack", "-D", "-s", guest]
+    && argv_words(command: runner_slot_conntrack_list_command(net: net)) == ["conntrack", "-L", "-s", guest]
+    && guest == "172.30.6.2"
 }
