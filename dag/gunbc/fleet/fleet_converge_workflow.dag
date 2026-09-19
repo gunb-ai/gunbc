@@ -46,6 +46,7 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_unpack_verify_step,
   ci_fleet_wif_auth_step,
   ci_fleet_key_agent_step,
+  ci_fleet_key_agent_step_when,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
@@ -128,7 +129,7 @@ import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConver
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int, list_length }
+import std.types { NonEmptyStr, List, String, Int, Bool, list_length }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -297,6 +298,54 @@ fn fleet_converge_mode_step_if(mode: FleetConvergeWorkflowMode) -> String {
 fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> String {
   join(map(modes, m => fleet_converge_mode_step_if(mode: m)), " || ")
 }
+
+// WHICH MODES CONSUME HOST SSH AUTHORITY is declared per mode, exhaustively, so a new mode cannot
+// inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
+// dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
+// roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
+// authority it never uses. Only those two modes are established API-only by this declaration;
+// every other mode keeps the key it held before, which is the status quo rather than a finding
+// that it needs it.
+type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
+
+fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
+  match mode {
+    OrgActionsObserve => FleetSshKeyNotConsumed
+    OrgRunnerRosterObserve => FleetSshKeyNotConsumed
+    FullHostPlan => FleetSshKeyConsumed
+    LaunchEnvironmentPlan => FleetSshKeyConsumed
+    AllocationStorePlan => FleetSshKeyConsumed
+    FleetApply => FleetSshKeyConsumed
+    AppControlPlaneObserve => FleetSshKeyConsumed
+    MicrovmHostConverge => FleetSshKeyConsumed
+    GuestImageObserve => FleetSshKeyConsumed
+    GuestImageConverge => FleetSshKeyConsumed
+    MicrovmBootProbe => FleetSshKeyConsumed
+    SparkGrants => FleetSshKeyConsumed
+    SparkBootstrap => FleetSshKeyConsumed
+    SparkServingApply => FleetSshKeyConsumed
+    SparkRuntimeImageProbe => FleetSshKeyConsumed
+    DashboardDeploy => FleetSshKeyConsumed
+    RlmLaunchDeploymentReceipt => FleetSshKeyConsumed
+    HostResetReturn => FleetSshKeyConsumed
+    RunnerHostFileObserve => FleetSshKeyConsumed
+    RunnerHostFileConverge => FleetSshKeyConsumed
+    RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
+    R2MintPreflight => FleetSshKeyConsumed
+    R2ObjectWriteMint => FleetSshKeyConsumed
+  }
+}
+
+fn fleet_ssh_key_demand_consumed(d: FleetSshKeyDemand) -> Bool {
+  match d {
+    FleetSshKeyConsumed => true
+    FleetSshKeyNotConsumed => false
+  }
+}
+
+data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filter(fleet_converge_workflow_modes, m => fleet_ssh_key_demand_consumed(d: fleet_converge_mode_fleet_ssh_key_demand(mode: m)))
+
+data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
 
 data fleet_converge_mode_options: List<String> = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
 
@@ -1566,7 +1615,7 @@ fn fleet_converge_job() -> Job {
           ci_release_bins_download_step(),
           ci_release_bins_unpack_verify_step(),
           ci_fleet_wif_auth_step(),
-          ci_fleet_key_agent_step(),
+          ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
         ]
       ),
       [
