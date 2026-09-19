@@ -7,7 +7,7 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
   RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
@@ -32,14 +32,14 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 import gunbc.spark.rendezvous_participation {
-  rendezvous_epoch, GroupHostsNotAllConnected, GroupHostsAllConnected, GroupRendezvousReachUnobserved,
+  rendezvous_epoch, RendezvousEpoch, GroupHostsNotAllConnected, GroupHostsAllConnected, GroupRendezvousReachUnobserved,
   DeclaredRankHostNotConnected, DeclaredRankHostConnected,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
   ServingObserved,
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
-  ServiceRanksAdriftFromTheRendezvous,
+  ServiceRanksAdriftFromTheRendezvous, ServiceRendezvousEvidenceFromAnotherEpoch,
   ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
   spark_serving_route_hosts_unreadable_obligation, spark_serving_route_service_identity_obligation,
@@ -177,6 +177,7 @@ fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizat
     ServiceDeclaredUnitDigestUnavailable { obligation: _ } => none
     ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => none
     ServiceRanksAdriftFromTheRendezvous { detail: _ } => none
+    ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: _, answering_invocation: _ } => none
     ServiceConfigurationDisagrees { configuration: _ } => none
   }
 }
@@ -538,6 +539,7 @@ test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Boo
         ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
         ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
         ServiceRanksAdriftFromTheRendezvous { detail: _ } => false
+        ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: _, answering_invocation: _ } => false
         ServiceConfigurationDisagrees { configuration: _ } => false
       }
     ServingRouteObserved { route: _ } => false
@@ -831,7 +833,7 @@ test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
 // realization reaches ServiceConfigurationDisagrees or a match, so this assertion is discriminating
 // on the roster alone and not on any other fixture change.
 test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
-  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-epoch" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
   let adrift = GroupHostsNotAllConnected {
     epoch: epoch,
     adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
@@ -866,7 +868,7 @@ test fn a_roster_that_could_not_be_read_refuses() -> Bool {
 // GREEN -- A FULLY ATTACHED ROSTER DOES NOT BLOCK ANYTHING. Without this the gate could be a wall that
 // refuses every arm, which would pass the two reds above and break production.
 test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check() -> Bool {
-  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-epoch" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
   let attached = GroupHostsAllConnected {
     epoch: epoch,
     ranks: [
@@ -879,6 +881,83 @@ test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_ch
     declared_unit: t_declared(), participation: Present { value: attached },
   )) {
     Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
+    _ => false
+  }
+}
+
+// ================= PARTICIPATION IS READ AT ONE EPOCH =================
+//
+// The harness mints participation once per bind and a bind spans placement rounds, between which the
+// head can restart. These rows drive the PRODUCTION route (gunbc.harness.harness_seat
+// harness_serving_route, the call both the incarnation-memo hit and miss arms of
+// harness_add_serving_candidate make with the roster's value) with a reading from epoch E1 against a
+// candidate answering from E2. The same-epoch controls are the rows above, whose fixture epoch is the
+// answering incarnation's own invocation (fixture-invocation-1): they still reach the adrift refusal and
+// the configuration check, so the refusals below are discriminating on the epoch alone.
+
+fn t_epoch_one() -> RendezvousEpoch {
+  rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-0" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+}
+
+fn t_is_epoch_mismatch(route: SparkServingRoute) -> Bool {
+  match t_cause(route: route) {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: e, answering_head: _, answering_invocation: i } } =>
+      (e.head_invocation as String) == "fixture-invocation-0" && (i as String) == "fixture-invocation-1"
+    _ => false
+  }
+}
+
+// (a) RED -- E1 ALL-CONNECTED DOES NOT CLEAR AN E2 CANDIDATE. With a matching readback, the same-epoch
+// reading would reach ServingRouteOperatorAsserted (the_production_route_consumes_an_observed_incarnation).
+test fn an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: t_epoch_one(),
+    ranks: [
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
+    ],
+  }
+  t_is_epoch_mismatch(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached }))
+}
+
+// (b) RED -- E1 DETACHED DOES NOT DIAGNOSE E2'S RANKS. The refusal is the epoch mismatch, never
+// ServiceRanksAdriftFromTheRendezvous naming hosts from a store the candidate is not attached to.
+test fn an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation() -> Bool {
+  let adrift = GroupHostsNotAllConnected {
+    epoch: t_epoch_one(),
+    adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
+    attached: 1,
+    expected: 2,
+  }
+  t_is_epoch_mismatch(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: adrift }))
+}
+
+// (c) GREEN CONTROL ON THE PRODUCTION ROUTE -- the same attached reading at the candidate's own epoch
+// admits, so (a) is discriminating on the epoch and not on the roster shape.
+test fn a_same_epoch_attached_reading_admits_on_the_production_route() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
+    ranks: [
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
+    ],
+  }
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached }) {
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => true
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
+    ServingRouteObserved { route: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+// RED -- SAME INVOCATION STRING, DIFFERENT HEAD. The epoch is (head, invocation), not the string alone.
+test fn a_reading_from_another_head_is_another_epoch() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: rendezvous_epoch(head: operator_host_srv6, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
+    ranks: [DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 0, connections: 1 }],
+  }
+  match t_cause(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached })) {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: h, answering_invocation: _ } } => host_identity_eq(a: h, b: operator_host_srv5)
     _ => false
   }
 }

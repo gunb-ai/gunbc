@@ -26,7 +26,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationObservation,
+  EndpointIncarnationObservation, VllmServingLaunch,
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance, launch_wire,
@@ -37,7 +37,7 @@ import gunbc.spark.pair_serving_realization {
 }
 import gunbc.spark.rendezvous_participation {
   ServingGroupRendezvousReach, GroupHostsAllConnected, GroupHostsNotAllConnected, GroupRendezvousReachUnobserved,
-  serving_group_rendezvous_reach_line,
+  RendezvousEpoch, serving_group_rendezvous_reach_line,
 }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
@@ -339,6 +339,7 @@ type SparkServiceIdentityCause
   | ServiceDeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
   | ServiceRanksAdriftFromTheRendezvous { detail: NonEmptyStr }
+  | ServiceRendezvousEvidenceFromAnotherEpoch { evidence: RendezvousEpoch, answering_head: HostIdentity, answering_invocation: NonEmptyStr }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
 // THE DECLARED SIDE OF THE UNIT COMPARISON IS SEALED DIGEST EVIDENCE
@@ -390,6 +391,12 @@ fn spark_service_identity_cause_text(cause: SparkServiceIdentityCause, realizati
     ServiceDeclaredUnitDigestUnavailable { obligation: o } => o as String
     ServiceIncarnationNotFromDeclaredUnit { provenance: p } => spark_launch_unit_provenance_text(provenance: p)
     ServiceRanksAdriftFromTheRendezvous { detail: d } => d as String
+    ServiceRendezvousEvidenceFromAnotherEpoch { evidence: e, answering_head: h, answering_invocation: i } =>
+      join([
+        "the rendezvous participation reading is about the store opened by invocation ", e.head_invocation as String,
+        " of head ", e.head as String, ", but the answering incarnation is invocation ", i as String, " of head ", h as String,
+        "; evidence about one epoch neither clears nor condemns another, so this candidate needs a fresh bind that reads participation for its own epoch",
+      ], "")
     ServiceConfigurationDisagrees { configuration: _ } =>
       join(["the incarnation is observed and was launched from the declared unit, but the readback disagrees: ", spark_realization_identity_cause(realization: realization) as String], "")
   }
@@ -432,12 +439,47 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
       LaunchUnitDigestsIncomparable =>
         spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
       LaunchedFromDeclaredUnit { declared: _ } =>
-        match spark_ranks_adrift_detail(participation: participation) {
-          Present { value: detail } =>
-            spark_service_unidentified(realization: realization, cause: ServiceRanksAdriftFromTheRendezvous { detail: detail })
-          Absent => spark_service_after_rendezvous(realization: realization, observation: observation)
+        match spark_rendezvous_epoch_mismatch(participation: participation, launch: observation.launch) {
+          Present { value: stale } => spark_service_unidentified(realization: realization, cause: stale)
+          Absent =>
+            match spark_ranks_adrift_detail(participation: participation) {
+              Present { value: detail } =>
+                spark_service_unidentified(realization: realization, cause: ServiceRanksAdriftFromTheRendezvous { detail: detail })
+              Absent => spark_service_after_rendezvous(realization: realization, observation: observation)
+            }
         }
     }
+  }
+}
+
+// PARTICIPATION IS A FACT ABOUT ONE EPOCH, AND THIS IS THE ONE PLACE THE EPOCH MEETS THE CANDIDATE.
+// The harness reads participation once per bind (gunbc.harness.harness_seat
+// harness_group_participation_roster) and a bind runs several placement rounds; between them the head
+// can restart, so the candidate admitted here may answer from an invocation the reading never saw.
+// The comparison lives in this fold rather than in the harness because this is the only function that
+// holds BOTH the participation value and the answering incarnation's observed launch -- every route,
+// memo hit or miss, harness or otherwise, passes through it -- so a stale reading is unconsumable by
+// construction rather than by each caller remembering to compare. A mismatched epoch refuses with its
+// own typed cause: treating it as all-connected would let E1's assembly clear E2, and treating it as
+// adrift would blame E2's ranks for E1's detachment. An unobserved reading carries no epoch and is
+// left to spark_ranks_adrift_detail, which already refuses it.
+fn spark_rendezvous_epoch_mismatch(participation: ServingGroupRendezvousReach?, launch: VllmServingLaunch) -> SparkServiceIdentityCause? {
+  match participation {
+    Absent => none
+    Present { value: p } =>
+      match p {
+        GroupHostsAllConnected { epoch: e, ranks: _ } => spark_epoch_mismatch_cause(epoch: e, launch: launch)
+        GroupHostsNotAllConnected { epoch: e, adrift: _, attached: _, expected: _ } => spark_epoch_mismatch_cause(epoch: e, launch: launch)
+        GroupRendezvousReachUnobserved { cause: _ } => none
+      }
+  }
+}
+
+fn spark_epoch_mismatch_cause(epoch: RendezvousEpoch, launch: VllmServingLaunch) -> SparkServiceIdentityCause? {
+  if host_identity_eq(a: epoch.head, b: launch.head) && (epoch.head_invocation as String) == (launch.systemd_invocation as String) {
+    none
+  } else {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: epoch, answering_head: launch.head, answering_invocation: launch.systemd_invocation } }
   }
 }
 
