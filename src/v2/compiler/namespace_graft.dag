@@ -243,13 +243,6 @@ fn namespace_graft_node_is_top_level_item_unit(node: Node, unit_ids: List<Symbol
   }
 }
 
-fn namespace_graft_collect_unit_nodes(node: Node, productions: List<GrammarProduction>) -> List<Node> {
-  namespace_graft_collect_unit_nodes_against(
-    node: node,
-    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids(productions: productions)
-  )
-}
-
 fn namespace_graft_collect_unit_nodes_against(node: Node, unit_ids: List<Symbol>) -> List<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -375,17 +368,9 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
   }
 }
 
-fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
-  namespace_graft_kw_ident_named_edge(unit: unit)
-}
-
-fn namespace_graft_fn_decl_named_edge(unit: Node) -> Edge? {
-  namespace_graft_kw_ident_named_edge(unit: unit)
-}
-
 fn namespace_graft_test_fn_named_edge(unit: Node) -> Edge? {
   match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_fn_decl) {
-    Present { value: fn_unit } => namespace_graft_fn_decl_named_edge(unit: fn_unit)
+    Present { value: fn_unit } => namespace_graft_kw_ident_named_edge(unit: fn_unit)
     Absent => optional_absent()
   }
 }
@@ -441,10 +426,10 @@ fn namespace_graft_unit_disposition(unit: Node, id: Symbol) -> NamespaceGraftUni
         true => namespace_graft_disposition_from_named_opt(named: namespace_graft_type_decl_named_edge(unit: unit))
         false =>
           match id == ^dag_surface_data_decl {
-            true => namespace_graft_disposition_from_named_opt(named: namespace_graft_data_decl_named_edge(unit: unit))
+            true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
             false =>
               match id == ^dag_surface_fn_decl {
-                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_fn_decl_named_edge(unit: unit))
+                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
                 false =>
                   match id == ^dag_surface_test_fn_decl {
                     true => namespace_graft_disposition_from_named_opt(named: namespace_graft_test_fn_named_edge(unit: unit))

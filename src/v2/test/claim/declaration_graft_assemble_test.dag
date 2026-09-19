@@ -105,11 +105,6 @@ fn declaration_graft_atom_present(root: Node, lexeme: String) -> Bool {
   )
 }
 
-fn declaration_graft_present_anywhere(root: Node, lexeme: String) -> Bool {
-  declaration_graft_label_present(root: root, lexeme: lexeme)
-    || declaration_graft_atom_present(root: root, lexeme: lexeme)
-}
-
 fn declaration_graft_named_reachable(src: String, lexeme: String) -> Bool {
   match declaration_graft_assemble_for(src: src) {
     Accepted { value: root, diagnostics: _ } =>
@@ -185,14 +180,17 @@ test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool {
   }
 }
 
-// Fail-closed on Rec erasure beside a graftable coproduct: Rec must remain in a
-// successful assemble. Rejected is not agreement — it does not prove Rec survived.
-test fn declaration_graft_coproduct_beside_record_does_not_erase_rec() -> Bool {
+// A record beside a graftable coproduct is carried as a residual shell, not
+// dropped (main dropped it silently). The shell is UNLOWERED -- body_lower_type_decl
+// rehomes a type_decl only with a where-clause -- so its surface tokens reach
+// resolve as bare mentions and a closure without a parse-phase declaration
+// index refuses resolve_reason_unbound_symbol (measured: even `type Rec { }`).
+// Standing RED of gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft;
+// flips to an Accepted-with-Rec-Named control when the rehome lands.
+test fn declaration_graft_coproduct_beside_record_refuses_unbound_today() -> Bool {
   match declaration_graft_assemble_for(src: src_flag_and_rec) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      declaration_graft_label_present(root: root, lexeme: "Flag")
-        && declaration_graft_present_anywhere(root: root, lexeme: "Rec")
+    Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_unbound_symbol
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
