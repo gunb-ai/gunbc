@@ -217,13 +217,6 @@ fn live_census(scope: CensusScope) -> LiveCensus {
   }
 }
 
-fn live_census_standing(scope: CensusScope) -> CensusStanding {
-  match live_census(scope: scope) {
-    LiveCensusRefused { cause: c } => CensusRefused { cause: c }
-    LiveCensusObserved { census: c, entries_resolved: _ } => census_standing(c: c)
-  }
-}
-
 // THE INSTRUMENT ENTRY. Prints the machine-readable receipt (one JSON object per line) and exits
 // by the census standing: 0 held, 1 did not hold (a located census finding), 2 refused (the
 // population could not be established). Identities are the authority; every count in the
