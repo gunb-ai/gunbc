@@ -1,7 +1,17 @@
 module gunbc.auth.approval_broker_cutover
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
+import std.measure { ByteSize }
+import gunbc.serve_liveness {
+  serve_liveness_path,
+  ServeLivenessRead,
+  ServeLivenessObserved, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
+  ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
+  ServeLivenessRevisionMalformed,
+  observe_serve_liveness, serve_liveness_read_reason,
+}
 import gunbc.auth.approval_broker_endpoint {
+  approval_broker_loopback_base_url,
   approval_broker_listen_port, approval_broker_dark_listen_port,
   approval_broker_confirm_path_template, approval_broker_submit_path,
   approval_broker_status_path_template,
@@ -95,22 +105,66 @@ type DarkDeploymentStanding
   = DarkUnitNotStarted { detail: NonEmptyStr }
   | DarkUnitListening { port: Port }
 
+// THE RELEASE READBACK IS DERIVED FROM THE BYTES THE PROCESS ANSWERED, NOT DECLARED (review 68036).
+// It used to be a free-standing pair an operator could construct either way, which made the one
+// stage whose whole job is "prove this process is the build you deployed" satisfiable by saying so.
+// It is now produced by release_readback_from_livez below, which parses the liveness document
+// through gunbc.serve_liveness -- so the arm this evidence carries is decided by the process, and
+// the detail on the refusing arm is that module's located reason rather than prose someone typed.
 type ReleaseReadback
   = ReleaseNotReadBack { detail: NonEmptyStr }
   | ReleaseReadBack { revision: NonEmptyStr }
 
+// THE URL STAGE 2 PROBES. It is loopback and it names the liveness path from its authority, so a
+// rename of either moves the probe with it. The PORT is the argument because stage 2 runs against
+// the DARK broker: probing the serving port would be probing whatever is already there.
+fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
+  join([
+    approval_broker_loopback_base_url(port: port) as String,
+    serve_liveness_path as String,
+  ], "") as NonEmptyStr
+}
+
+// THE ONLY WAY TO BUILD THE ADMITTING ARM. Every refusing arm of the read maps to
+// ReleaseNotReadBack carrying that read's own reason; only an observed, 40-hex-validated revision
+// produces ReleaseReadBack. So a stage cannot be advanced past "prove release" by a body that
+// answered 200 with nothing useful in it -- a 200 is the caller's observation, and what the process
+// SAID is what this decides on.
+fn release_readback_from_livez(body: String) -> ReleaseReadback {
+  let read = observe_serve_liveness(body: body)
+  match read {
+    ServeLivenessObserved { revision: rev } => ReleaseReadBack { revision: rev as String as NonEmptyStr }
+    ServeLivenessBodyUnparseable => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessBodyNotAnObject => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionAbsent => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionDuplicated { count: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionNotAString => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionMalformed { text: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+  }
+}
+
 // THE SIX READINGS ARE ONE VALUE BECAUSE THEY ARE ONE QUESTION. A bound derived from five of them
 // is a bound with an unmeasured peak in it, and the peak that is missing is the one that will be
 // hit. Absence is not zero, so the unmeasured state is its own arm rather than a reading of 0.
+// THE READINGS ARE ByteSize, NOT Int, AND THE REASON IS THIS STAGE'S OWN PRODUCT (review 68036).
+// Stage 3 exists to TIGHTEN gunbc.live_deploy.emit approval_broker_slice_memory_max and
+// approval_broker_slice_memory_high from these numbers, and those two rows are ByteSize. A bare Int
+// here would have put the measurement and the bound it feeds in two different unit systems at the
+// one seam where they are compared -- so a reading could be handed to a bound without anything
+// establishing they were the same quantity. std.measure already owns this, and the same PR consumes
+// it correctly one module away; a second unit system for bytes is the section 3 fork.
+//
+// declared_concurrency stays an Int because it is a COUNT of in-flight requests, not a quantity of
+// memory -- and that is the distinction ByteSize exists to keep, not an exception to it.
 type BrokerDemandReading
   = DemandUnmeasured { missing: NonEmptyStr }
   | DemandMeasured {
-      cold_load_peak_bytes: Int
-      idle_resident_bytes: Int
-      submission_peak_bytes: Int
-      confirm_page_peak_bytes: Int
-      redemption_peak_bytes: Int
-      status_poll_peak_bytes: Int
+      cold_load_peak: ByteSize
+      idle_resident: ByteSize
+      submission_peak: ByteSize
+      confirm_page_peak: ByteSize
+      redemption_peak: ByteSize
+      status_poll_peak: ByteSize
       declared_concurrency: Int
     }
 
@@ -210,8 +264,8 @@ fn demand_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.demand {
     DemandUnmeasured { missing: m } => Present { value: DemandNotMeasured { missing: m } }
     DemandMeasured {
-      cold_load_peak_bytes: _, idle_resident_bytes: _, submission_peak_bytes: _,
-      confirm_page_peak_bytes: _, redemption_peak_bytes: _, status_poll_peak_bytes: _,
+      cold_load_peak: _, idle_resident: _, submission_peak: _,
+      confirm_page_peak: _, redemption_peak: _, status_poll_peak: _,
       declared_concurrency: _,
     } => Absent
   }

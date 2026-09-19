@@ -19928,11 +19928,24 @@ fn release_revision_text_valid(text: &str) -> bool {
 ///
 /// Seed realization of `gunbc.serve_liveness` `serve_liveness_path`. It is a constant here rather
 /// than a value read from the graph for the reason the endpoint exists at all: a path resolved by
-/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on. The `.dag`
-/// declaration is the authority for what the path and the document are; this is the one place that
-/// authority is realized at a boundary no fold can occupy, the same two-boundary arrangement
-/// `release_revision_text_valid` already carries.
+/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on.
 const SERVE_LIVENESS_PATH: &str = "/livez";
+
+/// The member name the liveness document publishes its release revision under.
+///
+/// THIS PROCESS IS THE ONLY PRODUCER OF THAT DOCUMENT, and that is a correction rather than a
+/// convenience (review 68036). The first cut also declared the document in `.dag` and called that
+/// declaration its authority, which gave one document two producers that could drift while the
+/// `.dag` one had no consumer and the claim over it asserted against bytes nobody served. The
+/// `.dag` side is now the READER — `gunbc.serve_liveness` `observe_serve_liveness` — so the
+/// producer here has exactly one counterpart and the counterpart executes over what this writes.
+///
+/// The NAME is `gunbc.running_release_identity` `running_release_revision_key`, the same member
+/// `/healthz` publishes its revision under, because "which release is this process" is one fact and
+/// a second spelling of it would be a nickname that drifts. It is duplicated here for the same
+/// reason the path is — no fold can run at this seam — and `release_revision_text_valid` already
+/// carries the precedent of one rule realized at two boundaries.
+const SERVE_LIVENESS_REVISION_KEY: &str = "revision";
 
 /// The process-wide evaluation budget this serve process enforces.
 ///
@@ -20271,7 +20284,8 @@ pub fn handle_serve(
                         200,
                         "application/json; charset=utf-8",
                         &format!(
-                            "{{\"live\":\"true\",\"release_revision\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
+                            "{{\"live\":true,\"{}\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
+                            SERVE_LIVENESS_REVISION_KEY,
                             serve_json_string(&release_revision),
                             serve_json_string(serve_budget_refusal::serve_contract_entry(
                                 &armed_contract

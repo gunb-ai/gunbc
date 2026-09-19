@@ -2,6 +2,8 @@ module test.claim.approval_broker_cutover_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, Int, Port }
+import std.measure { ByteSize, byte_size }
+import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port, approval_broker_dark_listen_port,
 }
@@ -11,6 +13,7 @@ import gunbc.auth.approval_broker_cutover {
   ApprovalBrokerCutoverEvidence,
   DarkDeploymentStanding, DarkUnitNotStarted, DarkUnitListening,
   ReleaseReadback, ReleaseNotReadBack, ReleaseReadBack,
+  release_readback_from_livez,
   BrokerDemandReading, DemandUnmeasured, DemandMeasured,
   FrontDoorStanding, FrontDoorPointsAtRoadmap, FrontDoorPointsAtBroker,
   RouteClassProbe, RouteClassUnprobed, RouteClassRefused, RouteClassAnswered,
@@ -26,10 +29,19 @@ import gunbc.auth.approval_broker_cutover {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// THE RELEASE EVIDENCE IS BUILT BY THE READER, NOT BY THIS FIXTURE, which is what keeps these
+// claims about a plan whose stages are decided by observations rather than by assertions: the
+// admitting arm is reachable only through a liveness document that parsed and validated
+// (review 68036). The empty-body call below is the refusing direction for the same reason.
+data cutover_fixture_liveness_body: String = join([
+  "{\"live\":true,\"", running_release_revision_key,
+  "\":\"0123456789abcdef0123456789abcdef01234567\",\"bound_port\":18085}",
+], "")
+
 fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitNotStarted { detail: "no unit installed" as NonEmptyStr },
-    release_readback: ReleaseNotReadBack { detail: "not probed" as NonEmptyStr },
+    release_readback: release_readback_from_livez(body: ""),
     demand: DemandUnmeasured { missing: "all six readings" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
     confirm_probe: RouteClassUnprobed,
@@ -43,14 +55,14 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_dark_listen_port },
-    release_readback: ReleaseReadBack { revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr },
+    release_readback: release_readback_from_livez(body: cutover_fixture_liveness_body),
     demand: DemandMeasured {
-      cold_load_peak_bytes: 900000000,
-      idle_resident_bytes: 300000000,
-      submission_peak_bytes: 950000000,
-      confirm_page_peak_bytes: 400000000,
-      redemption_peak_bytes: 950000000,
-      status_poll_peak_bytes: 350000000,
+      cold_load_peak: byte_size(900000000),
+      idle_resident: byte_size(300000000),
+      submission_peak: byte_size(950000000),
+      confirm_page_peak: byte_size(400000000),
+      redemption_peak: byte_size(950000000),
+      status_poll_peak: byte_size(350000000),
       declared_concurrency: 1,
     },
     front_door: FrontDoorPointsAtBroker { port: approval_broker_listen_port },

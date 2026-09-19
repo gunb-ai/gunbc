@@ -1,7 +1,15 @@
 module gunbc.serve_liveness
 
-import std.types { NonEmptyStr, String, Int, Bool, CommitSha, HttpStatus }
-import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_int }
+import std.types { NonEmptyStr, String, Int, Bool, CommitSha }
+import extdeps.languages.json.parse {
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_object_unique_member, parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+}
+import gunbc.running_release_identity {
+  running_release_revision_key,
+  running_release_member_string,
+  release_revision_text_valid,
+}
 
 // ── A HEALTH ANSWER THAT DOES NOT DEPEND ON THE THING BEING ASKED ABOUT ──────────────────────
 // WHAT /healthz CANNOT ANSWER, AND WHY THAT IS NOT A DEFECT IN IT. The roadmap's /healthz publishes
@@ -18,50 +26,98 @@ import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, jso
 // "healthy" or nothing, and "nothing" is indistinguishable from a network fault, a dead host or a
 // process that never started.
 //
-// SO THIS ONE IS ANSWERED BEFORE THE EVALUATOR IS ENTERED. The serve seam recognizes this path and
-// writes the body from values it already holds -- the release revision it validated before binding,
-// the entry it armed, and the address it actually bound -- without calling any `.dag` function and
-// without arming an evaluation budget. That is not a shortcut around the model: it is the only
-// construction under which the answer is available in the state it exists to report.
-//
-// IT IS NOT A SECOND NAME FOR /healthz. They answer different questions: /healthz answers WHAT this
-// process is serving and can therefore be wrong in ways only an evaluation can detect; this answers
-// THAT this process is alive, listening, and which release it is. A deployment reads both -- this
-// one to know the process exists, that one to know it is serving the tree that was deployed -- and
-// a reader that could only reach the second would have no way to distinguish a broken surface from
-// a dead process.
-//
-// BOTH SERVED PROCESSES GET IT WITHOUT EITHER ROUTE TABLE CARRYING IT, which is the property the
-// split needs: the broker's table is exactly its four approval routes, the roadmap's is its own,
-// and neither owns a liveness row that the other would have to copy.
+// SO THIS ONE IS ANSWERED BEFORE THE EVALUATOR IS ENTERED, by the serve seam, from values it
+// already holds. Both served processes get it without either route table carrying it, which is the
+// property the approval-broker split needs: the broker's table is exactly its four approval routes.
 data serve_liveness_path: NonEmptyStr = "/livez"
 
-// THE BODY IS MODELED HERE EVEN THOUGH THE SEED WRITES IT, and the two are not a fork. This module
-// is the AUTHORITY for what the document says; the seed is its realization at a boundary no `.dag`
-// fold can occupy, exactly as gunbc.running_release_identity and the seed's own
-// release_revision_text_valid are one rule realized at two boundaries. What that buys is a
-// discriminating claim: a reader can assert the document's shape against this fold without a
-// running process, and a change to the shape is a change to one declaration rather than to a string
-// literal inside a Rust match.
-fn serve_liveness_body(
-  release_revision: CommitSha,
-  entry_function: NonEmptyStr,
-  bound_host: NonEmptyStr,
-  bound_port: Int,
-) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "live", value: json_string(s: "true")),
-    json_kv(key: "release_revision", value: json_string(s: release_revision as String)),
-    json_kv(key: "entry_function", value: json_string(s: entry_function as String)),
-    json_kv(key: "bound_host", value: json_string(s: bound_host as String)),
-    json_kv(key: "bound_port", value: json_int(n: bound_port)),
-  ]))
+// ── THIS MODULE IS A READER. IT IS DELIBERATELY NOT A SECOND PRODUCER ───────────────────────
+// THE FIRST CUT OF THIS MODULE DECLARED THE DOCUMENT AND CALLED ITSELF ITS AUTHORITY, and review
+// 68036 was right to refuse it. No `.dag` fold can run where this document is written -- that is
+// the whole point of the endpoint -- so the seed wrote the bytes with a `format!` and the
+// declaration had ZERO production consumers. Two producers for one document, able to drift
+// independently (DESIGN section 3 meaning fork, section 2 redundancy), and the only claim over the
+// shape asserted against the copy that is NOT served: it stayed green if the served bytes dropped
+// the release member, which is precisely the failure it claimed to catch (section 5,
+// specification-without-execution).
+//
+// IT ALSO FORKED THE MEMBER NAME. It spelled `release_revision` while
+// gunbc.running_release_identity -- the authority for reading a running process's revision off a
+// served document -- has spelled that member `revision` since it was written. One meaning, two
+// names, in a corpus where the whole purpose of the second name was to be read back.
+//
+// So the producer is deleted and what remains is the READER, which is the half that can execute
+// here. The member name and the 40-hex validation are CONSUMED from
+// gunbc.running_release_identity rather than restated: there is one name for this fact and one
+// predicate that decides whether wire bytes carry it.
+//
+// WHY NOT observe_running_release_identity ITSELF. That fold reads BOTH members of the /healthz
+// document -- the revision and the surface bundle identity -- and refuses a document missing
+// either. The liveness document has no surface bundle: the broker renders no site, and the point of
+// the endpoint is that it renders nothing. Reusing it would have meant either teaching it an
+// optional member (weakening the /healthz contract that a surface identity is mandatory) or
+// synthesising a digest, so this reads the ONE member it has, through that module's name and that
+// module's predicate.
+
+type ServeLivenessRead
+  = ServeLivenessBodyUnparseable
+  | ServeLivenessBodyNotAnObject
+  | ServeLivenessRevisionAbsent
+  | ServeLivenessRevisionDuplicated { count: Int }
+  | ServeLivenessRevisionNotAString
+  | ServeLivenessRevisionMalformed { text: String }
+  | ServeLivenessObserved { revision: CommitSha }
+
+// THE ARMS STAY DISTINCT for the reason running_release_identity's do, and the reason is sharper
+// here because this endpoint is what an operator reaches for during an incident. "Nothing answered"
+// is the caller's observation, not a value this fold returns; everything below is a process that
+// DID answer and what was wrong with what it said. A body that is not an object is the wrong
+// process on the port; an absent member is a build older than the liveness channel; a malformed
+// revision is a launch argument that was a branch name or an empty string and reached the wire.
+// Collapsing them into one Unknown leaves the remedy unlocatable.
+fn observe_serve_liveness(body: String) -> ServeLivenessRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ServeLivenessBodyUnparseable
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: running_release_revision_key) {
+        JsonMemberNotAnObject => ServeLivenessBodyNotAnObject
+        JsonMemberAbsent => ServeLivenessRevisionAbsent
+        JsonMemberDuplicated { count: n } => ServeLivenessRevisionDuplicated { count: n }
+        JsonMemberFound { value: v } =>
+          match running_release_member_string(lookup: JsonMemberFound { value: v }) {
+            Absent => ServeLivenessRevisionNotAString
+            Present { value: text } =>
+              if release_revision_text_valid(text: text) {
+                ServeLivenessObserved { revision: text as CommitSha }
+              } else {
+                ServeLivenessRevisionMalformed { text: text }
+              }
+          }
+      }
+  }
 }
 
-// 200 AND NOTHING ELSE. This endpoint has exactly one honest answer, because it is answered from
-// values the process validated before it bound the listener: if the process can write a response at
-// all, every field is present and correct. An endpoint that could answer 503 would be asserting
-// something about a subsystem it does not consult, and a reader that saw one would have no way to
-// know what was actually wrong. The failure mode this instrument reports is the CONNECTION not
-// completing, which is the observation the caller makes rather than a status this process writes.
-data serve_liveness_status: HttpStatus = 200
+fn serve_liveness_read_reason(r: ServeLivenessRead) -> NonEmptyStr {
+  match r {
+    ServeLivenessBodyUnparseable =>
+      "the liveness endpoint answered bytes that are not JSON" as NonEmptyStr
+    ServeLivenessBodyNotAnObject =>
+      "the liveness endpoint answered a JSON value that is not an object -- most likely a different process on that port" as NonEmptyStr
+    ServeLivenessRevisionAbsent =>
+      join([
+        "the liveness document carries no '", running_release_revision_key,
+        "' member: the process is older than the liveness channel, so which release is listening cannot be read",
+      ], "") as NonEmptyStr
+    ServeLivenessRevisionDuplicated { count: n } =>
+      join(["the liveness document carries ", to_string(n), " revision members -- two writers"], "") as NonEmptyStr
+    ServeLivenessRevisionNotAString =>
+      "the liveness document's revision member is not a string" as NonEmptyStr
+    ServeLivenessRevisionMalformed { text: t } =>
+      join([
+        "the liveness document's revision is not 40 lowercase hex digits: ", t,
+        " -- a branch name, an abbreviated sha or an empty launch argument reached the wire",
+      ], "") as NonEmptyStr
+    ServeLivenessObserved { revision: rev } =>
+      join(["the liveness endpoint reported release ", rev as String], "") as NonEmptyStr
+  }
+}

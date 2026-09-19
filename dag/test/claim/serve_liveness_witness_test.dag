@@ -2,57 +2,114 @@ module test.claim.serve_liveness_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, CommitSha }
-import gunbc.serve_liveness { serve_liveness_path, serve_liveness_body, serve_liveness_status }
+import gunbc.serve_liveness {
+  serve_liveness_path,
+  ServeLivenessRead,
+  ServeLivenessObserved, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
+  ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
+  ServeLivenessRevisionMalformed,
+  observe_serve_liveness,
+}
+import gunbc.running_release_identity { running_release_revision_key }
+import gunbc.auth.approval_broker_cutover {
+  ReleaseReadback, ReleaseReadBack, ReleaseNotReadBack,
+  release_readback_from_livez,
+  approval_broker_liveness_url,
+}
+import gunbc.auth.approval_broker_endpoint { approval_broker_dark_listen_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data liveness_fixture_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+data liveness_fixture_revision: String = "0123456789abcdef0123456789abcdef01234567"
 
-// THE DOCUMENT CARRIES THE RELEASE IDENTITY, which is the whole reason a deployment reads this
-// endpoint rather than merely opening a socket. A connection that completes says a process is
-// listening; only the body says WHICH release is listening, and a readback that could not
-// distinguish the deployed revision from the previous one would let a failed deploy look converged.
+// ── THE FIXTURE IS A TRANSCRIPTION OF WHAT THE SEED WRITES, AND IT IS LABELLED AS ONE ────────
+// The producer is `gunbc serve`'s liveness branch in v1_compiler.cli_run, which answers this path
+// before entering the evaluator -- so no fold in this corpus can produce these bytes and no claim
+// here can execute the producer. What this module owns is the READER, and these are the bytes it
+// reads (review 68036 corrected the inverse arrangement, where a `.dag` producer was declared, the
+// seed forked it, and the claim asserted against the copy nobody served).
 //
-// THE RED: drop the release_revision member from serve_liveness_body and this claim fails while the
-// endpoint still answers 200 -- which is exactly the failure a status-only check cannot see.
-test fn serve_liveness_body_publishes_the_release_identity() -> Bool {
-  let body = serve_liveness_body(
-    release_revision: liveness_fixture_revision,
-    entry_function: "approval_broker_handle" as NonEmptyStr,
-    bound_host: "127.0.0.1" as NonEmptyStr,
-    bound_port: 8085,
-  )
-  string_contains(s: body, pattern: liveness_fixture_revision as String)
-    && string_contains(s: body, pattern: "approval_broker_handle")
-    && string_contains(s: body, pattern: "8085")
+// WHAT THAT MEANS FOR THIS CLAIM, stated rather than glossed: it establishes that the reader
+// accepts the document shape the seed writes TODAY, and it would not notice the seed changing that
+// shape. The execution against the real producer is stage 2 of gunbc.auth.approval_broker_cutover,
+// which probes the live dark broker and hands the bytes to the same fold; the RED direction below
+// is what makes that stage's refusal real rather than decorative.
+data seed_liveness_body: String = join([
+  "{\"live\":true,\"", running_release_revision_key, "\":\"", liveness_fixture_revision,
+  "\",\"entry_function\":\"approval_broker_handle\",\"bound_host\":\"0.0.0.0\",\"bound_port\":8085}",
+], "")
+
+// THE MEMBER NAME IS THE ONE /healthz ALREADY USES. The first cut spelled it `release_revision`
+// while gunbc.running_release_identity had spelled the same fact `revision` since it was written --
+// one meaning, two names, and the second existed only to be read back. This claim is what keeps
+// them one: the fixture builds its member from that authority, so a rename there reds here rather
+// than silently producing a document this reader cannot parse.
+test fn the_liveness_reader_accepts_the_served_document() -> Bool {
+  match observe_serve_liveness(body: seed_liveness_body) {
+    ServeLivenessObserved { revision: rev } => rev as String == liveness_fixture_revision
+    _ => false
+  }
 }
 
-// THE ENTRY FUNCTION IS IN THE DOCUMENT because after the approval-broker split there are two
-// served gunbc processes on one host running the same binary out of the same tree. A liveness
-// answer that did not say which entry it was armed for would be ambiguous exactly where the split
-// matters: an operator probing during an incident needs to know whether the roadmap or the broker
-// answered, and the ports alone will not say so once anything proxies them.
-test fn serve_liveness_body_distinguishes_the_two_served_entries() -> Bool {
-  let roadmap = serve_liveness_body(
-    release_revision: liveness_fixture_revision,
-    entry_function: "roadmap_serve_handle" as NonEmptyStr,
-    bound_host: "0.0.0.0" as NonEmptyStr,
-    bound_port: 8080,
-  )
-  let broker = serve_liveness_body(
-    release_revision: liveness_fixture_revision,
-    entry_function: "approval_broker_handle" as NonEmptyStr,
-    bound_host: "0.0.0.0" as NonEmptyStr,
-    bound_port: 8085,
-  )
-  !(roadmap == broker)
+// ── THE RED THE OLD CLAIM COULD NOT REACH ───────────────────────────────────────────────────
+// A process answering 200 with a well-formed JSON object carrying no revision member is the exact
+// state the old arrangement stayed green on: the `.dag` producer still had the field, so the claim
+// passed while the served bytes had lost it. The reader refuses it, and that refusal is what stage
+// 2 reports.
+test fn a_liveness_document_without_the_revision_refuses() -> Bool {
+  match observe_serve_liveness(body: "{\"live\":true,\"bound_port\":8085}") {
+    ServeLivenessRevisionAbsent => true
+    _ => false
+  }
 }
 
-// THE PATH IS NOT /healthz, and the claim is here because the two would be trivially merged by
-// anyone who read only one of them. They answer different questions -- what this process is SERVING
-// versus THAT it is alive and which release -- and the whole value of this one is that answering it
-// costs no evaluation. Pointing it at the roadmap's health path would put it back inside the
-// evaluator it exists to stay out of.
-test fn serve_liveness_path_is_not_the_served_surface_health_path() -> Bool {
-  !(serve_liveness_path as String == "/healthz") && serve_liveness_status == 200
+// A REVISION THAT IS NOT 40 LOWERCASE HEX IS REFUSED, through the SAME predicate
+// gunbc.running_release_identity uses for /healthz rather than a second one. A branch name, an
+// abbreviated sha or an empty launch argument reaching the wire are all this arm, and every stage
+// after "prove release" would otherwise be reasoning about a build nobody can name.
+test fn a_liveness_document_with_a_branch_name_refuses() -> Bool {
+  let body = join(["{\"", running_release_revision_key, "\":\"main\"}"], "")
+  match observe_serve_liveness(body: body) {
+    ServeLivenessRevisionMalformed { text: t } => t == "main"
+    _ => false
+  }
+}
+
+// THE WRONG PROCESS ON THE PORT IS ITS OWN ARM, not a parse failure. During the cutover two gunbc
+// processes are listening on one host and a third thing may hold a port; "answered something that
+// is not an object" and "answered nothing readable" send an operator to different places.
+test fn a_non_object_liveness_body_is_distinguished_from_unparseable_bytes() -> Bool {
+  let not_object = match observe_serve_liveness(body: "[1,2,3]") {
+    ServeLivenessBodyNotAnObject => true
+    _ => false
+  }
+  let unparseable = match observe_serve_liveness(body: "not json at all") {
+    ServeLivenessBodyUnparseable => true
+    _ => false
+  }
+  not_object && unparseable
+}
+
+// ── THE CUTOVER CONSUMES THE READER, WHICH IS WHAT MAKES IT A CONSUMER AT ALL ────────────────
+// Stage 2's evidence is no longer something an operator can assert either way: the admitting arm is
+// reachable only through a document that parsed and validated. This is the claim that the plan and
+// the reader are joined -- delete the call in release_readback_from_livez and both directions fail.
+test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool {
+  let good = match release_readback_from_livez(body: seed_liveness_body) {
+    ReleaseReadBack { revision: rev } => rev as String == liveness_fixture_revision
+    ReleaseNotReadBack { detail: _ } => false
+  }
+  let bad = match release_readback_from_livez(body: "{\"live\":true}") {
+    ReleaseNotReadBack { detail: _ } => true
+    ReleaseReadBack { revision: _ } => false
+  }
+  good && bad
+}
+
+// THE PROBE URL IS THE LIVENESS PATH ON THE DARK PORT. Stage 2 runs before anything is repointed,
+// so a probe that reached the serving port would be measuring whatever is already there.
+test fn the_stage_two_probe_targets_the_liveness_path_on_the_dark_port() -> Bool {
+  let url = approval_broker_liveness_url(port: approval_broker_dark_listen_port) as String
+  string_contains(s: url, pattern: serve_liveness_path as String)
+    && string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_dark_listen_port)], ""))
 }
