@@ -1,0 +1,104 @@
+module test.claim.durable_cas_event_log_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, cas_attempt, cas_generation_count,
+}
+import gunbc.durable_cas_file_store { CasAttemptAdmitted, admit_cas_attempt, VerifiedCasAttempt }
+import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
+import gunbc.durable_cas_event_log { event_log_compare_and_set, event_log_observe_cas_slot }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COMPARE-AND-SET OVER A PARTITION, BY REAL EXECUTION against a bare remote in a temporary
+// directory, from TWO mirrors of it -- the shape two executors have. Established here and nowhere
+// hermetic: an absent slot reads absent from both; a create-if-absent commits generation 1 and
+// the other mirror reads it back at that generation with those bytes; a second create-if-absent
+// from the other mirror is a precondition failure carrying the committed version, not a second
+// generation 1; an update expecting generation 1 commits generation 2; an update expecting the
+// stale generation 1 after that fails naming generation 2.
+
+fn dcel_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn dcel_layout(dir: FilePath, root: String) -> EventLogLayout {
+  event_log_layout(root: join([dir as String, "/", root], "") as FilePath, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
+}
+
+fn dcel_remote_ready(dir: FilePath) -> Bool {
+  git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+}
+
+fn dcel_verified(key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr) -> VerifiedCasAttempt? {
+  let expected = if expected_generation == 0 { ExpectSlotAbsent } else { ExpectSlotGeneration { generation: expected_generation } }
+  match admit_cas_attempt(attempt: cas_attempt(key: key, expected: expected, proposed: value, proposed_content: content_hash_of_value(value: value))) {
+    CasAttemptAdmitted { verified: v } => Present { value: v }
+    _ => none
+  }
+}
+
+fn dcel_commits_at(layout: EventLogLayout, key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr, generation: Int) -> Bool {
+  match dcel_verified(key: key, expected_generation: expected_generation, value: value) {
+    Absent => false
+    Present { value: v } =>
+      match event_log_compare_and_set(layout: layout, verified: v, actor: "witness" as NonEmptyStr, at: 1000) {
+        CasCommitted { committed: c } => cas_generation_count(g: c.generation) == generation && (c.value as String) == (value as String)
+        _ => false
+      }
+  }
+}
+
+fn dcel_fails_seeing(layout: EventLogLayout, key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr, observed_generation: Int) -> Bool {
+  match dcel_verified(key: key, expected_generation: expected_generation, value: value) {
+    Absent => false
+    Present { value: v } =>
+      match event_log_compare_and_set(layout: layout, verified: v, actor: "witness" as NonEmptyStr, at: 1000) {
+        CasPreconditionFailed { expected: _, observed: CasReadablePresent { version: o } } => cas_generation_count(g: o.generation) == observed_generation
+        _ => false
+      }
+  }
+}
+
+fn dcel_reads(layout: EventLogLayout, key: NonEmptyStr, generation: Int, value: String) -> Bool {
+  match event_log_observe_cas_slot(layout: layout, key: key) {
+    CasObservedReadable { readable: CasReadablePresent { version: v } } => cas_generation_count(g: v.generation) == generation && (v.value as String) == value
+    _ => false
+  }
+}
+
+fn dcel_reads_absent(layout: EventLogLayout, key: NonEmptyStr) -> Bool {
+  match event_log_observe_cas_slot(layout: layout, key: key) {
+    CasObservedReadable { readable: CasReadableAbsent } => true
+    _ => false
+  }
+}
+
+test fn one_slot_is_one_partition_and_two_mirrors_see_one_generation_by_real_execution() -> Bool {
+  dcel_with_temp_dir(scenario: fn(dir) {
+    let e1 = dcel_layout(dir: dir, root: "e1")
+    let e2 = dcel_layout(dir: dir, root: "e2")
+    let key = "witness-slot" as NonEmptyStr
+    dcel_remote_ready(dir: dir)
+      && dcel_reads_absent(layout: e1, key: key)
+      && dcel_reads_absent(layout: e2, key: key)
+      && dcel_commits_at(layout: e1, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
+      && dcel_reads(layout: e2, key: key, generation: 1, value: "first")
+      && dcel_fails_seeing(layout: e2, key: key, expected_generation: 0, value: "second-create" as NonEmptyStr, observed_generation: 1)
+      && dcel_commits_at(layout: e2, key: key, expected_generation: 1, value: "second" as NonEmptyStr, generation: 2)
+      && dcel_fails_seeing(layout: e1, key: key, expected_generation: 1, value: "stale" as NonEmptyStr, observed_generation: 2)
+      && dcel_reads(layout: e1, key: key, generation: 2, value: "second")
+      && dcel_reads_absent(layout: e1, key: "another-slot" as NonEmptyStr)
+  })
+}

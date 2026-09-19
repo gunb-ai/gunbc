@@ -5,8 +5,11 @@ import std.algebra { trim }
 import extdeps.clock { Clock }
 import product.placement_supply { HostIdentity }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host, dashboard_instance_event_log_root }
-import gunbc.fabric_event_log { fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout }
+import gunbc.fabric_event_log { fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout, fabric_event_log_event_refs_backfill_over }
 import v2.std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 
 // WHERE THE EVENT LOG IS FROM THE EXECUTING HOST'S POINT OF VIEW: the dashboard instance declared
 // for the host supplies the executor's root (the mirror lives under it) and the identity the
@@ -33,5 +36,23 @@ fn now_epoch_seconds() -> EpochSecs? {
   match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
     Present { value: n } => if n < 0 { none } else { Present { value: n } }
     Absent => none
+  }
+}
+
+// THE OPERATOR'S DOOR FOR THE EVENT-REF BACKFILL, on the placed host (gunbc.fabric_event_log
+// fabric_event_log_event_refs_backfill_over is the transaction; this resolves the executor's
+// layout and refuses off the placed host through the layout's remote kind):
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fabric/fabric_event_log_host.dag \
+//     --function fabric_event_log_event_refs_backfill_wet
+fn fabric_event_log_event_refs_backfill_wet() -> ProcessExit
+  uses net: Network
+{
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric event log backfill: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_layout_for_host(short_hostname: executor) {
+        HostLayoutRefused { detail: d } => exit_failure(reason: join(["fabric event log backfill: ", d], ""))
+        HostLayoutResolved { layout: layout, executor: _ } => fabric_event_log_event_refs_backfill_over(layout: layout)
+      }
   }
 }

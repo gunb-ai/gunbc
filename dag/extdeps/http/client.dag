@@ -1,6 +1,6 @@
 module extdeps.http.client
 
-import std.types { NonEmptyStr, Bool, List, Unit }
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
 import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -57,6 +57,22 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // 5 rules that a bounded "forever" is not an "unknown" error. Measured on this deployment, a wedged
 // backend held one harness POST open for over thirty minutes while the router answered an unrelated
 // probe in 0.15ms -- so the turn was neither progressing nor failing, and no arm existed to say so.
+// StatusWithin -- A STATUS IS AN ANSWER; ONLY NO STATUS IS SILENCE. Every GET carries -f, which
+// turns a 4xx or 5xx into a failed operation -- right for a caller that wants a body, wrong for a
+// caller asking whether anything is THERE: a front door returning 401 or 500 answered. That
+// operation asks only for the status line, within the caller's deadline, and fails only when no
+// HTTP response was received at all -- and WHY is carried as curl's exit code, because "no
+// response" is not one fact: a failed connect (curl 7) and a deadline (curl 28) are different
+// readings for a caller asking whether anything is THERE, and neither proves absence on its own.
+// The consumer maps the code; the transport reports it. curl_exit_connect_failed /
+// curl_exit_deadline below are the cited codes.
+// curl's exit codes for the two arms a presence reading must tell apart (curl(1) EXIT CODES):
+// 7 "Failed to connect to host or proxy" -- connect() did not complete, for ANY reason (refused,
+// unreachable, proxy), which is why the row is not named "refused"; 28 "Operation timeout" -- the
+// deadline passed. Every other nonzero code is a transport the caller could not read.
+data curl_exit_connect_failed: Int = 7
+data curl_exit_deadline: Int = 28
+
 service http.Client {
   operation Get {
     input { url: NonEmptyStr }
@@ -132,6 +148,22 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation StatusWithin {
+    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%\{http_code}", "--max-time", "{max_seconds}", "{url}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client status GET within a caller deadline received no response"
+    }
+    mock_response {
+      0 => { status: "", success: false, exit_code: 28 } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
     }
   }
 

@@ -14,13 +14,16 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
+import product.capacity.event_json { chain_envelope_decode }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
+  EventDecode, EventDecoded, EventUndecodable,
 }
 import product.capacity.pool_events {
-  PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
+  PoolEvent, pool_event_wire_text, pool_event_decode,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
@@ -81,6 +84,23 @@ fn event_log_remote_word(remote: EventLogRemote) -> String? {
 
 fn partition_ref(partition: PartitionId) -> String {
   join(["refs/fabric/", partition as String], "")
+}
+
+// EVERY EVENT IS ALSO PUBLISHED UNDER ITS OWN REF, AND THIS IS TRANSPORT, NOT A SECOND HEAD. A
+// partition's head ref names one blob, and git's fetch transfers the objects a ref reaches --
+// which for a blob is that blob alone: the parent an event names is text inside it, not a git
+// edge. A mirror that did not write the earlier events therefore fetched the head and could not
+// walk past it (the second executor of the D0 controls: "cat-file <parent> refused"). So the
+// append first publishes the object under refs/fabric-events/<partition>/<oid> -- idempotent,
+// force-pushed, carrying no lease and deciding nothing -- and a read fetches that namespace before
+// it walks. The head ref remains the only linearization point; these refs are how a reader
+// obtains bytes it did not write.
+fn event_ref(partition: PartitionId, oid: String) -> String {
+  join(["refs/fabric-events/", partition as String, "/", oid], "")
+}
+
+fn event_refs_fetch_refspec(partition: PartitionId) -> String {
+  join(["refs/fabric-events/", partition as String, "/*:refs/fabric-events/", partition as String, "/*"], "")
 }
 
 // The leased push: the refspec publishes the object to the partition ref, and the lease names the
@@ -172,17 +192,25 @@ fn event_log_observe_head_from_mirror(layout: EventLogLayout, partition: Partiti
 // READING A PARTITION: fetch the head's objects into the mirror, then read each event by its
 // address following parents, bounded, and hand the collected envelopes to the pure walk so the
 // chain's shape is decided by one authority.
-type PartitionRead
-  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<PoolEvent> }
+// THE LOG IS GENERIC IN ITS PAYLOAD, AND THE CODEC IS THE PAYLOAD'S. One object per event, one ref
+// per partition, one compare-and-set on the head -- none of that is about seats. The pool events
+// were the first partition kind and the read and append were written against their codec, which
+// made a second partition kind (the pair-serving authority, gunbc.spark.pair_serving_authority_log)
+// need a second read and a second append: the §2 duplication, with the linearization law copied
+// twice. So the read walks and the append publishes for ANY payload, taking the payload's encode
+// and decode, and event_log_read_partition / event_log_append below are those two with the pool
+// codec supplied -- specializations of one root, not a second spelling of it.
+type PartitionRead<P>
+  = PartitionReadOk { head: HeadExpectation, walk: ChainWalk<P> }
   | PartitionReadRefused { step: String, reason: String }
 
-type CollectState {
+type CollectState<P> {
   current: HeadExpectation
-  collected: List<ChainEnvelope<PoolEvent>>
+  collected: List<ChainEnvelope<P>>
   refused: String?
 }
 
-fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
+fn collect_step<P>(layout: EventLogLayout, st: CollectState<P>, decode: fn(String) -> EventDecode<P>) -> CollectState<P> {
   match st.refused {
     Present { value: _ } => st
     Absent =>
@@ -191,11 +219,11 @@ fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
         HeadAt { id: h } => {
           let r = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: h as String)
           if !r.success {
-            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
+            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused: the event is not in this mirror; an event written before per-event refs existed is fetchable only after event_log_backfill_event_refs has run on the placed host for this partition"], "") } }
           } else {
-            match pool_event_decode(text: r.content) {
-              PoolEventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
-              PoolEventDecoded { event: e } => CollectState {
+            match decode(r.content) {
+              EventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
+              EventDecoded { event: e } => CollectState {
                 current: event_parent_expectation(e: e),
                 collected: concat(st.collected, [ChainEnvelope { id: h, event: e }]),
                 refused: none,
@@ -207,7 +235,7 @@ fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
   }
 }
 
-fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budget: Nat) -> PartitionRead {
+fn event_log_read_partition_with<P>(layout: EventLogLayout, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
   match event_log_ensure_mirror(layout: layout) {
     MirrorRefused { step: s, reason: why } => PartitionReadRefused { step: s, reason: why }
     MirrorReady =>
@@ -219,12 +247,16 @@ fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budg
             Absent => PartitionReadRefused { step: "remote", reason: "the event log is unplaced" }
             Present { value: remote } => {
               let f = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: join([partition_ref(partition: partition), ":", partition_ref(partition: partition)], ""))
+              let fe = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: event_refs_fetch_refspec(partition: partition))
               if f.exit_code != 0 {
                 PartitionReadRefused { step: "fetch", reason: join(["exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") }
+              } else if fe.exit_code != 0 {
+                PartitionReadRefused { step: "fetch-events", reason: join(["exit ", to_string(fe.exit_code), ": ", trim(s: fe.stderr)], "") }
               } else {
-                let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc))
+                let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc, decode: decode))
                 match st.refused {
-                  Present { value: why } => PartitionReadRefused { step: "read", reason: why }
+                  Present { value: why } =>
+                    PartitionReadRefused { step: "read", reason: join([why, "; backfill receipt for this partition: ", match event_log_backfill_receipt(layout: layout, partition: partition) { BackfillReceiptAt { head: rh } => join(["present at head ", rh, " -- every event at or before it carries a ref, so this is a missing object, not a legacy chain"], "")  BackfillReceiptAbsent => "absent -- run fabric_event_log_event_refs_backfill_wet on the placed host"  BackfillReceiptUnread { reason: rr } => join(["unread: ", rr], "") }], "") }
                   Absent => PartitionReadOk { head: HeadAt { id: h }, walk: chain_from_head(envs: st.collected, head: HeadAt { id: h }, budget: budget) }
                 }
               }
@@ -232,6 +264,10 @@ fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budg
           }
       }
   }
+}
+
+fn event_log_read_partition(layout: EventLogLayout, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
+  event_log_read_partition_with(layout: layout, partition: partition, budget: budget, decode: fn(text) { pool_event_decode(text: text) })
 }
 
 // APPEND: publish the bytes as an object in the mirror, then advance the partition ref at the
@@ -249,7 +285,7 @@ type EventAppend
 // and a completed foreign write published another writer's event under this writer's admitted
 // append. The lease guards the head, not the object's content. The enrolled evidence is
 // test.claim.fabric_event_log_append_real_execution.
-fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+fn event_log_append_with<P>(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { step: "parent", reason: "the event's parent is not the head the append expects" }
   } else {
@@ -259,11 +295,15 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
         match event_log_remote_word(remote: layout.remote) {
           Absent => EventAppendRefused { step: "remote", reason: "the event log is unplaced" }
           Present { value: remote } => {
-            let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
+            let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: encode(event))
             if h.exit_code != 0 {
               EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
             } else {
               let oid = trim(s: h.oid)
+              let pe = git.Core.PushForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: join([oid, ":", event_ref(partition: partition, oid: oid)], ""))
+              if pe.exit_code != 0 {
+                EventAppendRefused { step: "publish-event", reason: join(["exit ", to_string(pe.exit_code), ": ", trim(s: pe.stderr)], "") }
+              } else {
               let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: remote, refspec: partition_push_refspec(oid: oid, partition: partition), lease: partition_push_lease(partition: partition, expected: expected))
               if p.exit_code == 0 {
                 EventAppended { id: oid as EventId }
@@ -278,11 +318,16 @@ fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: Chain
                     }
                 }
               }
+              }
             }
           }
         }
     }
   }
+}
+
+fn event_log_append(layout: EventLogLayout, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+  event_log_append_with(layout: layout, partition: partition, event: event, expected: expected, encode: fn(e) { pool_event_wire_text(event: e) })
 }
 
 // THE SEAT TRANSACTION, WET AND BOUNDED: read, fold, propose, append; a stale append re-reads and
@@ -441,5 +486,191 @@ fn fabric_event_log_placement_ensure_wet() -> ProcessExit {
   match event_log_placement_ensure(placement: fabric_event_log_placement) {
     MirrorReady => ExitSuccess
     MirrorRefused { step: s, reason: why } => exit_failure(reason: join(["fabric event log placement ensure refused at ", s, ": ", why], ""))
+  }
+}
+
+// ── BACKFILL: EVENT REFS FOR CHAINS WRITTEN BEFORE THEY EXISTED ────────────────────────────────
+//
+// Every event appended since the per-event refs landed is published under one; every event
+// appended BEFORE is reachable only through its partition head, and only the writer's own mirror
+// holds its parents' blobs. A fresh mirror walking such a chain fails at the first historical
+// parent (event_log_read_partition_with reports it, naming this obligation). The backfill runs
+// WHERE THE BLOBS ARE -- on the placed host, against the bare repository by its local path -- and
+// walks each partition from its head through the blobs' textual parents, creating the missing
+// event ref for each one in the bare repository directly (no push, no lease: the refs decide
+// nothing, they only make bytes fetchable). The receipt counts what it created and what already
+// existed; a chain it cannot walk to its origin is a refusal naming the event, never a partial
+// success. A layout whose remote is not a local path cannot backfill (the blobs are not here),
+// and says so.
+type EventRefBackfill
+  = EventRefsBackfilled { partition: PartitionId, created: Nat, present: Nat }
+  | EventRefBackfillRefused { partition: PartitionId, step: String, reason: String }
+
+fn event_ref_names_in(raw: String) -> List<String> {
+  flat_map(split(s: raw, delimiter: "\n"), line => match first(split(s: line, delimiter: "\0")) { Present { value: r } => if r == "" { [] as List<String> } else { [r] }  Absent => [] as List<String> })
+}
+
+type BackfillWalk {
+  current: HeadExpectation
+  created: Nat
+  present: Nat
+  refused: String?
+}
+
+fn backfill_step<P>(bare: FilePath, partition: PartitionId, existing: List<String>, st: BackfillWalk, decode: fn(String) -> EventDecode<P>) -> BackfillWalk {
+  match st.refused {
+    Present { value: _ } => st
+    Absent =>
+      match st.current {
+        HeadAbsent => st
+        HeadAt { id: h } => {
+          let r = git.Core.CatFileBlobInRepo(repo: bare, oid: h as String)
+          if !r.success {
+            BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["cat-file ", h as String, " refused in the placed repository"], "") } }
+          } else {
+            match decode(r.content) {
+              EventUndecodable { reason: why } => BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
+              EventDecoded { event: e } => {
+                let ref = event_ref(partition: partition, oid: h as String)
+                if any(existing, x => x == ref) {
+                  BackfillWalk { current: event_parent_expectation(e: e), created: st.created, present: st.present + 1, refused: none }
+                } else {
+                  let u = git.Core.UpdateRefCompareAndSwapInRepo(repo: bare, ref: ref, new_value: h as String, expected_old: "")
+                  if u.exit_code != 0 {
+                    BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["update-ref ", ref, " exit ", to_string(u.exit_code), ": ", trim(s: u.stderr)], "") } }
+                  } else {
+                    BackfillWalk { current: event_parent_expectation(e: e), created: st.created + 1, present: st.present, refused: none }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn event_log_backfill_event_refs<P>(layout: EventLogLayout, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> EventRefBackfill {
+  match layout.remote {
+    RemoteOverFleetSsh { url: _ } => EventRefBackfillRefused { partition: partition, step: "remote", reason: "the backfill walks the placed repository's own blobs, so it runs on the placed host over a local path, not over ssh" }
+    RemoteUnplaced => EventRefBackfillRefused { partition: partition, step: "remote", reason: "the event log is unplaced" }
+    RemoteLocalPath { path: bare } =>
+      match event_log_observe_head(layout: layout, partition: partition) {
+        HeadObservationRefused { step: s, reason: why } => EventRefBackfillRefused { partition: partition, step: s, reason: why }
+        HeadObserved { head: head } => {
+          let refs = git.Core.ForEachRefIn(repository_path: bare as String)
+          if refs.exit_code != 0 {
+            EventRefBackfillRefused { partition: partition, step: "for-each-ref", reason: join(["exit ", to_string(refs.exit_code), ": ", trim(s: refs.stderr)], "") }
+          } else {
+            let existing = event_ref_names_in(raw: refs.raw)
+            let final = fold(nat_range_inclusive(lo: 1, hi: budget), init: BackfillWalk { current: head, created: 0, present: 0, refused: none }, f: (acc, _i) => backfill_step(bare: bare, partition: partition, existing: existing, st: acc, decode: decode))
+            match final.refused {
+              Present { value: why } => EventRefBackfillRefused { partition: partition, step: "walk", reason: why }
+              Absent =>
+                match final.current {
+                  HeadAt { id: h } => EventRefBackfillRefused { partition: partition, step: "budget", reason: join(["the chain exceeded the backfill budget at ", h as String], "") }
+                  HeadAbsent => EventRefsBackfilled { partition: partition, created: final.created, present: final.present }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+// ── THE MIGRATION ENTRY: EVERY LIVE PARTITION, ON THE PLACED HOST, WITH A RECEIPT PER PARTITION ─
+//
+// The operator's one production route for the backfill (DESIGN §6: a hand-run script is
+// out-of-band actuation; this is the modeled door). It runs where the blobs are -- the layout's
+// remote must be the placed repository's local path, so an executor that is not the placed host
+// refuses before touching anything -- enumerates every partition head under refs/fabric/ in that
+// repository, walks each through the ENVELOPE decoder (chain_envelope_decode: the parent links
+// are all the backfill needs, and it does not select a payload family it would then have to
+// trust), and records a durable receipt per partition: refs/fabric-events-backfilled/<partition>
+// naming the head the backfill covered. The receipt is the cutover gate a reader consults when
+// it hits an unfetchable parent: with a receipt at or behind the head, every earlier event has a
+// ref and the missing object is a real fault; without one, the refusal names this entry. Exit 0
+// only when every live partition is receipted.
+fn backfill_receipt_ref(partition: PartitionId) -> String {
+  join(["refs/fabric-events-backfilled/", partition as String], "")
+}
+
+fn fabric_partitions_in(raw: String) -> List<PartitionId> {
+  flat_map(event_ref_names_in(raw: raw), r => if starts_with(s: r, prefix: "refs/fabric/") { [r.substring(start: 12, end: r.length()) as PartitionId] } else { [] as List<PartitionId> })
+}
+
+type PartitionBackfillReceipt
+  = PartitionBackfilled { partition: PartitionId, created: Nat, present: Nat, head: String }
+  | PartitionBackfillRefused { partition: PartitionId, step: String, reason: String }
+
+fn backfill_partition_with_receipt(layout: EventLogLayout, bare: FilePath, partition: PartitionId) -> PartitionBackfillReceipt {
+  match event_log_backfill_event_refs(layout: layout, partition: partition, budget: pair_backfill_budget, decode: fn(text) { chain_envelope_decode(text: text) }) {
+    EventRefBackfillRefused { partition: _, step: s, reason: why } => PartitionBackfillRefused { partition: partition, step: s, reason: why }
+    EventRefsBackfilled { partition: _, created: c, present: p } =>
+      match event_log_observe_head(layout: layout, partition: partition) {
+        HeadObservationRefused { step: s, reason: why } => PartitionBackfillRefused { partition: partition, step: join(["receipt/", s], ""), reason: why }
+        HeadObserved { head: HeadAbsent } => PartitionBackfilled { partition: partition, created: c, present: p, head: "" }
+        HeadObserved { head: HeadAt { id: h } } => {
+          let u = git.Core.UpdateRefCompareAndSwapInRepo(repo: bare, ref: backfill_receipt_ref(partition: partition), new_value: h as String, expected_old: "")
+          if u.exit_code == 0 {
+            PartitionBackfilled { partition: partition, created: c, present: p, head: h as String }
+          } else {
+            let f = git.Core.PushForcedRefInRepo(repo: layout.mirror, remote: bare as String, refspec: join([h as String, ":", backfill_receipt_ref(partition: partition)], ""))
+            if f.exit_code == 0 { PartitionBackfilled { partition: partition, created: c, present: p, head: h as String } } else { PartitionBackfillRefused { partition: partition, step: "receipt", reason: join(["update-ref exit ", to_string(u.exit_code), ": ", trim(s: u.stderr), "; push exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") } }
+          }
+        }
+      }
+  }
+}
+
+data pair_backfill_budget: Nat = 4096
+
+fn backfill_receipt_line(r: PartitionBackfillReceipt) -> String {
+  match r {
+    PartitionBackfilled { partition: p, created: c, present: n, head: h } => join([p as String, ": backfilled created=", to_string(c), " present=", to_string(n), " head=", h], "")
+    PartitionBackfillRefused { partition: p, step: s, reason: why } => join([p as String, ": REFUSED at ", s, ": ", why], "")
+  }
+}
+
+fn fabric_event_log_event_refs_backfill_over(layout: EventLogLayout) -> ProcessExit {
+  match layout.remote {
+    RemoteUnplaced => exit_failure(reason: "fabric event log backfill: the event log is unplaced")
+    RemoteOverFleetSsh { url: _ } => exit_failure(reason: "fabric event log backfill: this executor is not the placed host; the backfill walks the placed repository's own blobs and runs there")
+    RemoteLocalPath { path: bare } => {
+      let refs = git.Core.ForEachRefIn(repository_path: bare as String)
+      if refs.exit_code != 0 {
+        exit_failure(reason: join(["fabric event log backfill: for-each-ref exit ", to_string(refs.exit_code), ": ", trim(s: refs.stderr)], ""))
+      } else {
+        let receipts = map(fabric_partitions_in(raw: refs.raw), p => backfill_partition_with_receipt(layout: layout, bare: bare, partition: p))
+        let body = join(map(receipts, r => backfill_receipt_line(r: r)), "\n")
+        if all(receipts, r => match r { PartitionBackfilled { partition: _, created: _, present: _, head: _ } => true  PartitionBackfillRefused { partition: _, step: _, reason: _ } => false }) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: join(["fabric event log backfill: not every live partition is receipted:\n", body], ""))
+        }
+      }
+    }
+  }
+}
+
+
+// The receipt as a reader consults it: present with the head it covered, or absent.
+type BackfillReceiptRead
+  = BackfillReceiptAt { head: String }
+  | BackfillReceiptAbsent
+  | BackfillReceiptUnread { reason: String }
+
+fn event_log_backfill_receipt(layout: EventLogLayout, partition: PartitionId) -> BackfillReceiptRead {
+  match event_log_remote_word(remote: layout.remote) {
+    Absent => BackfillReceiptUnread { reason: "the event log is unplaced" }
+    Present { value: remote } => {
+      let r = git.Core.LsRemoteRefInRepo(repo: layout.mirror, remote: remote, ref_name: backfill_receipt_ref(partition: partition))
+      let oid = advertised_oid(advertised: r.advertised)
+      if r.exit_code != 0 {
+        BackfillReceiptUnread { reason: join(["ls-remote exit ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+      } else {
+        if oid == "" { BackfillReceiptAbsent } else { BackfillReceiptAt { head: oid } }
+      }
+    }
   }
 }
