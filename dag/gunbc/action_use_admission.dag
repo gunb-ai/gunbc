@@ -7,7 +7,7 @@ import extdeps.github.actions { Workflow, Job, Step, UsesStep, RunStep }
 import extdeps.github.action_release {
   ActionRelease, ActionExecutionMechanism, ActionManifestReading,
   JavaScriptAction, CompositeAction, DockerAction,
-  action_release_same_producer, action_release_uses_text, action_execution_mechanism_text,
+  action_release_same_producer, action_release_uses_text, action_execution_mechanism_text, action_manifest_of,
 }
 import extdeps.github.action_runtime_policy {
   PlatformActionExecutionDisposition,
@@ -241,6 +241,7 @@ fn action_use_admission_reason(a: ActionUseAdmission) -> String {
     AdmittedExact { action_release: r, declared: _ } => concat("admitted ", action_release_uses_text(action_release: r))
     RefusedForcedSubstitution { action_release: r, declared: d, realized: z, policy_authority: _ } =>
       join([action_release_uses_text(action_release: r), " (", r.tag as String, ") declares ", action_execution_mechanism_text(m: d),
+        " in ", action_manifest_of(action_release: r).uri.locator,
         " and GitHub executes it as ", action_execution_mechanism_text(m: z),
         ". Select a release whose own action.yml declares the mechanism the platform executes."], "")
     RefusedByPlatform { action_release: r, declared: d, reason: why } =>

@@ -19,7 +19,7 @@ import gunbc.action_use_admission {
   ActionUseSite, StepActionUse, JobReusableWorkflowUse,
   RealizedActionUse, RealizedWorkflowReading, RealizedWorkflowUses, RealizedWorkflowUnreadable,
   WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
-  action_use_admitted, admit_action_release, admit_action_release_against, admit_realized_action_use,
+  action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_action_uses,
   upload_artifact_action, checkout_action, github_script_action,
   realized_use_is_a_repository_selection,
@@ -356,4 +356,14 @@ test fn scan_reads_quoted_and_commented_values_and_classifies_by_shape() -> Bool
         && any(us, u => u.uses_text == "actions/checkout@v4" && match u.site { StepActionUse => true  JobReusableWorkflowUse => false })
         && any(us, u => u.uses_text == "org/repo/.github/workflows/w.yml@v1" && match u.site { JobReusableWorkflowUse => true  StepActionUse => false })
   }
+}
+
+// A REFUSAL CITES THE PRODUCER MANIFEST ITS DECLARATION WAS READ FROM, derived from the release
+// (extdeps.github.action_release action_manifest_of): the forced-substitution reason for
+// upload-artifact v4.6.2 names that exact commit's action.yml, so a reader can re-read the producer.
+test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -> Bool {
+  string_contains(
+    s: action_use_admission_reason(a: admit_action_release(action_release: upload_artifact_v4_6_2)),
+    pattern: "github.com/actions/upload-artifact/blob/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml",
+  )
 }
