@@ -12,8 +12,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // STANDING OF THAT CHECK, honestly (DESIGN 4b(1)): the XCTest is AUTHORED and UN-ENROLLED. No lane
 // in this repository compiles Swift, so it executes only when an operator runs it on a MacBook, and
 // nothing on the merge path has ever compiled the Swift under apps/approve-ios. The equivalence is
-// therefore a claim at the mitigation rung with operator-executed evidence, not an established
-// hold; approve_ios_vector_check_unenrolled_frontier names what would enrol it.
+// therefore a claim at the mitigation rung whose only evidence is operator-executed, not an
+// established hold; approve_ios_vector_check_unenrolled_frontier names what would enrol it. One
+// section the suite reads, stored_request, is emitted by
+// gunbc.auth.approval_device_redemption_fixtures stored_request_specimens and lands with that
+// change; the suite isolates it so a fixture without it fails only the stored-request test.
 //
 // WHY HAND-AUTHORED, stated as the §7 frontier row requires: extdeps.languages.swift carries a
 // subject citation and no emit transforms, so the substrate cannot emit this program today. The

@@ -76,7 +76,10 @@ struct Vectors: Decodable {
     /// surface: the header names and route paths, by name.
     var surface: [Surface]
     /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
-    var stored_request: [StoredRequest]
+    /// Optional in the Codable so that a fixture predating the section (it is emitted by
+    /// gunbc.auth.approval_device_redemption_fixtures stored_request_specimens) fails ONLY the test
+    /// that reads it, never the whole suite; that test refuses nil loudly.
+    var stored_request: [StoredRequest]?
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -91,7 +94,6 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
         XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
         XCTAssertFalse(v.surface.isEmpty, "no surface vectors")
-        XCTAssertFalse(v.stored_request.isEmpty, "no stored_request vectors")
         return v
     }
 
@@ -197,7 +199,10 @@ final class ProtocolVectorTests: XCTestCase {
     /// vector (stored_request_json over the witness's input) decodes to exactly that input. No
     /// rendering is typed here.
     func testStoredRequestReadMatchesEveryVector() throws {
-        for v in try load().stored_request {
+        let vectors = try XCTUnwrap(try load().stored_request,
+                                    "vectors.json has no stored_request section — the witness (stored_request_specimens) has not emitted it")
+        XCTAssertFalse(vectors.isEmpty, "no stored_request vectors")
+        for v in vectors {
             let s = try WireDecode.storedRequest(v.json)
             XCTAssertEqual(s, StoredRequestSummary(requester: v.input.requester, purpose: v.input.purpose,
                                                    destructive: v.input.destructive, expires_at: v.input.expires_at), v.name)

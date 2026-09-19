@@ -33,8 +33,10 @@ fixes on first build.
 3. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
 4. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
    entitlements file declares `aps-environment` and `com.apple.developer.devicecheck.appattest-environment`).
-5. Run `ApproveTests` (⌘U). `testRedemptionSigningInputMatchesEveryVector` and
-   `testEnrolmentTranscriptMatchesEveryVector` are the equivalence evidence with the `.dag` folds.
+5. Run `ApproveTests` (⌘U). The vector tests are the only equivalence evidence with the `.dag`
+   folds, and they are executed nowhere else (see `gunbc.approve_ios_app`). `testStoredRequestReadMatchesEveryVector`
+   needs the fixture's `stored_request` section (emitted by `stored_request_specimens`); a fixture
+   without it fails that one test and no other.
 6. Run on a PHYSICAL device: App Attest `isSupported` is false in the Simulator and the app refuses
    enrolment there by design (`app_attest_unavailable_in_simulator_note`).
 7. For a distribution (TestFlight) build set `APNS_ENVIRONMENT = production` and
