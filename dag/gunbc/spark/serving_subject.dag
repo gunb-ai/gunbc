@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
-import gunbc.spark.serving_arm_placement { glm_canary_host_claim }
+import gunbc.spark.serving_arm_placement { glm_group_b_serving_arm }
 
 // WHO CAN HOLD A DGX SPARK UNIT FOR SERVING, AND WHAT A RULING HAS RESERVED FOR WHOM.
 //
@@ -21,10 +21,12 @@ import gunbc.spark.serving_arm_placement { glm_canary_host_claim }
 //     key, and spark_pair_serving_desired is a map over spark_pair_serving_groups. The pair deployment
 //     on group A has NO identity distinct from the group it claims: the group stands in for it.
 //   - gunbc.spark.serving_arm_placement's ServingArmHostClaim carries `arm: DeclarationRef`, a real
-//     per-arm identity (gunbc.spark.glm_canary_converge glm_canary_arm). The pair claim on group B was
-//     WITHDRAWN (gunbc.serving.serving_enrollment records why), so GLM holds srv9 as an ARM and not as
-//     group B. Keying both subjects by FabricGroup would therefore be WRONG for GLM, not merely a
-//     nickname.
+//     holder identity. For group B that reference is the group's ASSIGNMENT ROW
+//     (gunbc.spark.fabric_serving_assignment glm_group_b_serving_assignment), not the declaration of
+//     whichever arm is running. The pair claim on group B was WITHDRAWN
+//     (gunbc.serving.serving_enrollment records why), so GLM does not hold group B as a pair unit, and
+//     keying it by PairServingUnitOn would be WRONG, not merely a nickname -- the pair variant names a
+//     launch mechanism, and group B's is a different one.
 // So the subject is the coproduct of the two identities the corpus already has. The two neighbours
 // that were checked and are not the home: gunbc.spark.first_party_serving's SparkRealizationIdentity
 // is a readback-match verdict, and gunbc.spark.dgx_procurement's DgxSparkDeployment is procurement.
@@ -54,9 +56,13 @@ fn serving_subject_eq(a: ServingSubject, b: ServingSubject) -> Bool {
   (serving_subject_wire(s: a) as String) == (serving_subject_wire(s: b) as String)
 }
 
-// THE GLM CANARY'S SUBJECT, NAMED ONCE. Its identity is the arm the placement claim already names;
-// spelling `glm_canary_arm` a second time here would be a second citation of one declaration.
-data glm_canary_serving_subject: ServingSubject = PlacedServingArm { arm: glm_canary_host_claim.arm }
+// GROUP B'S SUBJECT, NAMED ONCE, AND ANCHORED ON THE FABRIC. Its identity is the reference the group's
+// placement claims already carry -- the group's assignment row -- so it means "whatever serving arm is
+// assigned to group B" rather than one engine. It replaced glm_canary_serving_subject, which named the
+// exl3 canary's own declaration: after the canary stopped serving, the reservation, the claims and
+// serving selection's GLM fleet snapshot all still named it, and the snapshot admitted no hosts to the
+// arm actually running there.
+data glm_group_b_serving_subject: ServingSubject = PlacedServingArm { arm: glm_group_b_serving_arm }
 
 // ── A RULING IS A CITED FACT, AND IT IS TYPED SO IT CAN NEVER BE READ AS A STANDING ON A HOST ─
 //
@@ -129,7 +135,7 @@ type SparkServingReservation {
 }
 
 data glm_group_b_serving_reservation: SparkServingReservation = SparkServingReservation {
-  subject: glm_canary_serving_subject,
+  subject: glm_group_b_serving_subject,
   hosts: fabric_group_hosts(g: FabricGroupB),
   basis: serving_ruling_2026_09_12_group_b_is_glm,
 }
