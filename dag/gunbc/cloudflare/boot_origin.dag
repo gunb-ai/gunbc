@@ -1,0 +1,383 @@
+module gunbc.cloudflare.boot_origin
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash, Sha256Digest, content_hash_eq_cryptographic }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+import extdeps.external_authority { FactCitation }
+import extdeps.cloudflare.r2 { r2_custom_domain_citation }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.uri { Uri, uri_https }
+import gunbc.network_boot_delivery {
+  FleetBootServiceReceipt,
+  BootBundleMember,
+  BootBundleKernel,
+  BootBundleInitrd,
+  BootBundleRoot,
+  BootBundleAvailabilityReceipt,
+  BootBundleAvailabilityStanding,
+  BootBundleAvailable,
+  BootBundleRefused,
+  BootBundleUnobserved,
+  BootBundleObservedRefusal,
+  BootBundleReadBackServedOtherBytes,
+  BootBundleKeyOccupiedByOtherBytes,
+  BootBundleMemberInWrongSlot,
+}
+import gunbc.cloudflare.r2_origin {
+  FabricDurableOrigin,
+  FabricBootOrigin,
+  allocated_bucket_name,
+  bucket_purpose_admits_public_read,
+}
+
+// THE BOOT ORIGIN: one R2 bucket, public only through a custom domain, holding immutable
+// digest-keyed boot artifacts. Its separation from the durable origin is consumed, not restated:
+// gunbc.cloudflare.r2_origin allocates the two purposes two buckets and admits public read to
+// exactly one.
+
+// THE ARM64 BUNDLE IS KERNEL + INITRD + ROOT IMAGE (parent lane ruling). The member vocabulary is
+// gunbc.network_boot_delivery BootBundleMember, consumed rather than restated. The chainloader is not
+// a member: it lives at the site edge and only its digest is on the signed manifest.
+type BootBundleObject {
+  member: BootBundleMember
+  digest: Sha256Digest
+}
+
+// THE BUCKET IS PUBLIC, SO WHAT A PRODUCER HANDS THE PUBLISHER IS CLASSIFIED BEFORE A KEY IS MINTED.
+// A host credential, a cloud token or an install secret named for publication refuses here, typed,
+// and never reaches a PUT: anything under a digest key is world-readable through the custom domain.
+// The residual is the image's CONTENT -- a rootfs that embeds a secret is a producer fact this fold
+// cannot see, and that obligation stays with the image producer.
+type BootPublicationCandidate
+  = CandidateBootArtifact { object: BootBundleObject }
+  | CandidateHostCredential
+  | CandidateCloudToken
+  | CandidateInstallSecret
+
+type BootPublicationAdmission
+  = BootPublicationAdmitted { object: BootBundleObject }
+  | BootPublicationRefusedSecretMaterial {}
+
+fn admit_boot_publication(candidate: BootPublicationCandidate) -> BootPublicationAdmission {
+  match candidate {
+    CandidateBootArtifact { object: o } => BootPublicationAdmitted { object: o }
+    CandidateHostCredential => BootPublicationRefusedSecretMaterial {}
+    CandidateCloudToken => BootPublicationRefusedSecretMaterial {}
+    CandidateInstallSecret => BootPublicationRefusedSecretMaterial {}
+  }
+}
+
+// A KEY IS THE DIGEST AND NOTHING ELSE. There is no mutable name ("latest", an arch alias) because a
+// key that can be re-pointed makes the object at it a different fact over time, and the signed
+// manifest names bytes, not pointers. Only SHA-256 is admitted: any other family refuses rather than
+// minting a key a verifier would check under the wrong algorithm.
+data boot_origin_key_prefix: String = "sha256/"
+
+fn boot_object_key(digest: Sha256Digest) -> NonEmptyStr {
+  join([boot_origin_key_prefix, digest.hex as String], "") as NonEmptyStr
+}
+
+type BootObjectKeyAdmission
+  = BootObjectKeyAdmitted { key: NonEmptyStr }
+  | BootObjectKeyRefusedHashFamily {}
+
+fn admit_boot_object_key(hash: ContentHash) -> BootObjectKeyAdmission {
+  match hash {
+    Sha256Hash(d) => BootObjectKeyAdmitted { key: boot_object_key(digest: d) }
+    Fnv1a64(_) => BootObjectKeyRefusedHashFamily {}
+    Sha1Hash(_) => BootObjectKeyRefusedHashFamily {}
+    Sha512Hash(_) => BootObjectKeyRefusedHashFamily {}
+  }
+}
+
+// WHAT A CREATE-ONLY PUT MEANS. The transport sends If-None-Match: * (extdeps.tools.curl), so an
+// occupied key answers 412 rather than being overwritten. A 412 is not yet a verdict: the occupant
+// is read back and its digest compared. Identical bytes are the idempotent re-publish; different
+// bytes are a refusal, never an overwrite and never a success.
+type BootPutAnswer
+  = BootPutCreated {}
+  | BootPutKeyOccupied { occupant_digest: Sha256Digest }
+  | BootPutFailed { cause: NonEmptyStr }
+
+type BootPublishVerdict
+  = BootObjectPublished { key: NonEmptyStr }
+  | BootObjectAlreadyIdentical { key: NonEmptyStr }
+  | BootObjectOccupiedByDifferentBytes { key: NonEmptyStr, occupant: Sha256Digest }
+  | BootObjectPublishFailed { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn classify_boot_publish(object: BootBundleObject, answer: BootPutAnswer) -> BootPublishVerdict {
+  let key = boot_object_key(digest: object.digest)
+  match answer {
+    BootPutCreated {} => BootObjectPublished { key: key }
+    BootPutKeyOccupied { occupant_digest: o } =>
+      if content_hash_eq_cryptographic(left: o, right: object.digest) {
+        BootObjectAlreadyIdentical { key: key }
+      } else {
+        BootObjectOccupiedByDifferentBytes { key: key, occupant: o }
+      }
+    BootPutFailed { cause: c } => BootObjectPublishFailed { key: key, cause: c }
+  }
+}
+
+// THE HOSTNAME IS UNALLOCATED, AND THAT IS AN ARM. Which Cloudflare zone and FQDN serve the boot
+// origin is an operator decision this repository cannot derive; until it is recorded every readback
+// refuses rather than addressing a guessed host. Same shape as gunbc.cloudflare.r2_origin
+// CloudflareAccountUnallocated.
+type BootOriginHostnameStanding
+  = BootOriginHostnameAllocated { fqdn: HostName }
+  | BootOriginHostnameUnallocated { intervention: HumanIntervention }
+
+data boot_origin_hostname_intervention_identity: String = "cloudflare-r2-boot-origin-hostname"
+
+fn boot_origin_hostname_standing() -> BootOriginHostnameStanding {
+  BootOriginHostnameUnallocated {
+    intervention: HumanIntervention {
+      identity: boot_origin_hostname_intervention_identity as HumanInterventionIdentity,
+      frequency: FleetOnce,
+      subject: "the boot origin's production custom-domain hostname" as NonEmptyStr,
+      instruction: "Choose the Cloudflare zone on the fleet account and the FQDN that will serve the gunbai-fabric-boot bucket, then record the FQDN (its zone is its parent domain) as the BootOriginHostnameAllocated arm of boot_origin_hostname_standing. An r2.dev hostname is refused: it is rate-limited and development-only." as NonEmptyStr,
+      completion_evidence: NoDischargeSiteModeled
+    }
+  }
+}
+
+// THE MACHINE-FACING ENDPOINT IS THE RECEIPT'S, NOT A SECOND SPELLING. Readback addresses
+// FleetBootServiceReceipt.origin_custom_domain, and an r2.dev host is refused as a production origin
+// (extdeps.cloudflare.r2 r2_custom_domain_reading).
+// THE HOST IS PARSED BY THE DNS AUTHORITY (extdeps.dns.domain_name parse_host_name), not re-validated
+// here. A locator carrying a port, a path or a trailing slash is not a host name and refuses with that
+// module's typed cause; labels arrive case-folded, so r2.dev is a comparison of the last two labels.
+fn host_is_r2_dev(host: HostName) -> Bool {
+  let rev = reverse(host.name.labels)
+  match rev.first() {
+    Absent => false
+    Present { value: tld } =>
+      match (rev |> skip(n: 1)).first() {
+        Absent => false
+        Present { value: second } => (tld as String) == "dev" && (second as String) == "r2"
+      }
+  }
+}
+
+type BootReadbackLocator
+  = BootReadbackAt { url: Uri }
+  | BootReadbackRefusedR2Dev { locator: NonEmptyStr, ground: FactCitation }
+  | BootReadbackRefusedNotHttps {}
+  | BootReadbackRefusedNotAHostName { locator: NonEmptyStr, cause: DomainNameParseError }
+
+fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> BootReadbackLocator {
+  let domain = receipt.origin_custom_domain
+  if domain.scheme != extdeps.uri.Https {
+    BootReadbackRefusedNotHttps {}
+  } else {
+    match parse_host_name(raw: domain.locator as String) {
+      Err { value: cause } => BootReadbackRefusedNotAHostName { locator: domain.locator, cause: cause }
+      Ok { value: host } =>
+        if host_is_r2_dev(host: host) {
+          BootReadbackRefusedR2Dev { locator: domain.locator, ground: r2_custom_domain_citation }
+        } else {
+          BootReadbackAt {
+            url: uri_https(locator: join([domain_name_wire(name: host.name), "/", key as String], "") as NonEmptyStr)
+          }
+        }
+    }
+  }
+}
+
+// A READBACK CONFIRMS ONLY THE DIGEST IT WAS PUBLISHED UNDER. Served bytes hashing to anything else
+// (a stale edge, a wrong object) are a mismatch, and an unreadable object is not a confirmation.
+type BootReadbackObservation
+  = BootReadbackServed { served_digest: Sha256Digest, served_from: Uri }
+  | BootReadbackUnserved { cause: NonEmptyStr }
+
+type BootReadbackVerdict
+  = BootObjectReadBackConfirmed { key: NonEmptyStr, served_from: Uri }
+  | BootObjectReadBackMismatch { key: NonEmptyStr, served: Sha256Digest }
+  | BootObjectReadBackUnavailable { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn classify_boot_readback(object: BootBundleObject, observation: BootReadbackObservation) -> BootReadbackVerdict {
+  let key = boot_object_key(digest: object.digest)
+  match observation {
+    BootReadbackServed { served_digest: s, served_from: origin } =>
+      if content_hash_eq_cryptographic(left: s, right: object.digest) {
+        BootObjectReadBackConfirmed { key: key, served_from: origin }
+      } else {
+        BootObjectReadBackMismatch { key: key, served: s }
+      }
+    BootReadbackUnserved { cause: c } => BootObjectReadBackUnavailable { key: key, cause: c }
+  }
+}
+
+// THE SEPARATION, AS ONE FOLD. Distinct buckets, and public read admitted to the boot purpose only.
+fn boot_origin_is_separate_from_durable_origin() -> Bool {
+  let names_distinct = match allocated_bucket_name(purpose: FabricBootOrigin {}) {
+    Absent => false
+    Present { value: boot } =>
+      match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
+        Absent => true
+        Present { value: durable } => (boot as String) != (durable as String)
+      }
+  }
+  names_distinct
+    && bucket_purpose_admits_public_read(purpose: FabricBootOrigin {})
+    && !bucket_purpose_admits_public_read(purpose: FabricDurableOrigin {})
+}
+
+// THE AVAILABILITY RECEIPT IS PRODUCED HERE AND DECLARED IN 0A (gunbc.network_boot_delivery
+// BootBundleAvailabilityReceipt). A member counts only when its create-only PUT published it or found
+// the same bytes already there, AND its readback through the custom domain served that digest, AND it
+// sits in the slot it claims. served_from is the origin the readbacks were observed at. A member
+// observed wrong is refused, and a member never observed leaves the bundle Unobserved; see below.
+type BootBundleMemberEvidence {
+  object: BootBundleObject
+  publish: BootPublishVerdict
+  readback: BootReadbackVerdict
+}
+
+// AN OBSERVATION THAT REFUSES IS NOT AN ABSENT ONE (review 68011). A member whose key holds other
+// bytes, whose readback served another digest, or which sits in another member's slot was observed and
+// found wrong, and becomes gunbc.network_boot_delivery BootBundleRefused naming the member, the cause
+// and the observation that saw it. Only a failed PUT or an unserved readback is absence (Unobserved).
+type BootMemberVerdict
+  = BootMemberHolds { served_from: Uri }
+  | BootMemberAbsent
+  | BootMemberRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
+
+fn classify_boot_member(
+  evidence: BootBundleMemberEvidence,
+  slot: BootBundleMember,
+  publication_observation: DeclarationRef,
+  readback_observation: DeclarationRef,
+) -> BootMemberVerdict {
+  if evidence.object.member != slot {
+    BootMemberRefused { member: slot, cause: BootBundleMemberInWrongSlot, observation: publication_observation }
+  } else {
+    match evidence.publish {
+      BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } =>
+        BootMemberRefused { member: slot, cause: BootBundleKeyOccupiedByOtherBytes, observation: publication_observation }
+      BootObjectPublishFailed { key: _, cause: _ } => BootMemberAbsent
+      BootObjectPublished { key: _ } => classify_boot_member_readback(verdict: evidence.readback, slot: slot, readback_observation: readback_observation)
+      BootObjectAlreadyIdentical { key: _ } => classify_boot_member_readback(verdict: evidence.readback, slot: slot, readback_observation: readback_observation)
+    }
+  }
+}
+
+fn classify_boot_member_readback(verdict: BootReadbackVerdict, slot: BootBundleMember, readback_observation: DeclarationRef) -> BootMemberVerdict {
+  match verdict {
+    BootObjectReadBackConfirmed { key: _, served_from: origin } => BootMemberHolds { served_from: origin }
+    BootObjectReadBackMismatch { key: _, served: _ } =>
+      BootMemberRefused { member: slot, cause: BootBundleReadBackServedOtherBytes, observation: readback_observation }
+    BootObjectReadBackUnavailable { key: _, cause: _ } => BootMemberAbsent
+  }
+}
+
+fn boot_member_holds(verdict: BootMemberVerdict) -> Bool {
+  match verdict {
+    BootMemberHolds { served_from: _ } => true
+    BootMemberAbsent => false
+    BootMemberRefused { member: _, cause: _, observation: _ } => false
+  }
+}
+
+// THE ROUTE IS THE ONE THE READBACKS OBSERVED, never the fleet receipt's expectation (review 68098).
+// When every holding member was served from the fleet's custom domain that is the answer; otherwise
+// the first member origin that differs from it is reported, so gunbc.network_boot_delivery's
+// RouteBundleServedFrom comparison is over an observed fact and can go red.
+fn observed_bundle_origin(verdicts: List<BootMemberVerdict>, expected: Uri) -> Uri {
+  fold(verdicts, init: expected, f: (acc, v) =>
+    if acc != expected {
+      acc
+    } else {
+      match v {
+        BootMemberHolds { served_from: origin } => origin
+        BootMemberAbsent => acc
+        BootMemberRefused { member: _, cause: _, observation: _ } => acc
+      }
+    })
+}
+
+// A refusal on any member wins, in kernel, initrd, root order so the first located cause is reported;
+// then any absence leaves the bundle Unobserved; only three holding members mint the receipt.
+fn first_boot_member_refusal(verdicts: List<BootMemberVerdict>) -> BootBundleAvailabilityStanding? {
+  fold(verdicts, init: none, f: (acc, v) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match v {
+          BootMemberRefused { member: m, cause: c, observation: o } =>
+            Present { value: BootBundleRefused { member: m, cause: c, observation: o } }
+          BootMemberHolds { served_from: _ } => none
+          BootMemberAbsent => none
+        }
+    })
+}
+
+fn boot_bundle_availability(
+  fleet: FleetBootServiceReceipt,
+  kernel: BootBundleMemberEvidence,
+  initrd: BootBundleMemberEvidence,
+  root: BootBundleMemberEvidence,
+  publication_observation: DeclarationRef,
+  readback_observation: DeclarationRef,
+) -> BootBundleAvailabilityStanding {
+  let verdicts = [
+    classify_boot_member(evidence: kernel, slot: BootBundleKernel, publication_observation: publication_observation, readback_observation: readback_observation),
+    classify_boot_member(evidence: initrd, slot: BootBundleInitrd, publication_observation: publication_observation, readback_observation: readback_observation),
+    classify_boot_member(evidence: root, slot: BootBundleRoot, publication_observation: publication_observation, readback_observation: readback_observation),
+  ]
+  match first_boot_member_refusal(verdicts: verdicts) {
+    Present { value: refused } => refused
+    Absent =>
+      if all(verdicts, v => boot_member_holds(verdict: v)) {
+        BootBundleAvailable {
+          receipt: BootBundleAvailabilityReceipt {
+            kernel_digest: Sha256Hash(kernel.object.digest),
+            initrd_digest: Sha256Hash(initrd.object.digest),
+            root_digest: Sha256Hash(root.object.digest),
+            served_from: observed_bundle_origin(verdicts: verdicts, expected: fleet.origin_custom_domain),
+            publication_observation: publication_observation,
+            readback_observation: readback_observation,
+          }
+        }
+      } else {
+        BootBundleUnobserved
+      }
+  }
+}
+
+// NO EXECUTOR REACHES THESE FOLDS YET, and that is a declared frontier rather than silence (DESIGN
+// section 3c). The PUT/GET route is gunbc.cloudflare.r2_origin_object put_origin_object and
+// fetch_origin_object, bound to the durable bucket today; the boot route is the same executor
+// parameterized by BucketPurpose. It cannot run until the boot write credential is minted and a named
+// intake-Linux producer yields ARM64 kernel/initrd/root bytes.
+data cloudflare_boot_origin_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.boot_origin", decl_name: "classify_boot_publish"),
+    reason: "publish folds (admit_boot_publication, admit_boot_object_key, classify_boot_publish) have no executing PUT route for the boot bucket",
+    dissolution: unbound_dissolution(
+      description: "dissolves when put_origin_object is parameterized by BucketPurpose and a boot publish entry calls admit_boot_publication, admit_boot_object_key and classify_boot_publish on real ARM64 bundle bytes from a named producer; a witness over supplied answers does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.boot_origin", decl_name: "boot_readback_locator"),
+    reason: "readback folds (boot_readback_locator, classify_boot_readback, boot_bundle_availability) have no executing GET over the custom domain; the hostname standing is Unallocated",
+    dissolution: unbound_dissolution(
+      description: "dissolves when boot_origin_hostname_standing is Allocated and a boot readback entry fetches every published key through boot_readback_locator and classifies it with classify_boot_readback, then mints boot_bundle_availability from those verdicts"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_standing"),
+    reason: "both boot-origin credentials stand OriginCredentialMintEntryUnbuilt: gunbc.cloudflare.r2_token_mint_run mints only for the durable origin, so no entry mints the boot read or write token",
+    dissolution: unbound_dissolution(
+      description: "dissolves when gunbc.cloudflare.r2_token_mint_run is parameterized by BucketPurpose and a boot mint entry has executed, stored each token under its fabric_boot_origin secret id, and fabric_boot_origin_standing names that entry as OriginCredentialUnminted or pins the stored version as OriginCredentialPinned"
+    )
+  ),
+]

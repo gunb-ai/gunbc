@@ -1,0 +1,172 @@
+module test.claim.heal_publication_workflow_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping, yaml_string, yaml_bool, kv }
+import extdeps.github.actions {
+  Step, UsesStep, RunStep,
+  WorkflowPermissions, PermRead, PermWrite
+}
+import gunbc.action_use_admission { checkout_action }
+import gunbc.heal_workflow { job_permissions_carry_write }
+import gunbc.heal_publisher_workflow { checkout_step_names_another_subject }
+
+// ── WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM ────────────────────────────────────────────
+
+// EVERY CLAIM ABOVE SUPPLIES ITS OWN INPUT, AND NONE OF THEM PROJECTS THE REAL WORKFLOW. That is a
+// departure from the pairing obligation in DESIGN section 3, so it is stated here rather than left
+// for a reader to notice.
+//
+// WHAT WAS TRIED. Eight claims each projected the real publisher job to read one field -- the exact
+// shape section 3 names, a claim dominated by ONE call whose result shape is all it inspects. The
+// required floor refused all eight at enrolment: 103,093 and 92,218 eval steps against a 72,300
+// budget, measured in the same run where this module's supplied-fixture claims came in at 0-15ms, so
+// the cost was the reach and not the runner. Consolidating them into ONE claim that projects once and
+// asserts every binding together made it WORSE, not better: 1,011,136 eval steps and 2,185ms, because
+// the projection is re-evaluated per traversal rather than shared across them. There is no
+// arrangement of these assertions over the real job that fits the budget.
+//
+// WHY THAT IS TOLERABLE HERE, AND IT IS A PROPERTY OF THIS SUBJECT RATHER THAN A GENERAL EXCUSE. Both
+// facts those claims asserted are walled at EMISSION, one rung above a witness: gunbc.heal_workflow
+// refuses to emit a candidate job that holds a publication credential, and
+// gunbc.heal_publisher_workflow refuses to emit at all unless heal_publication_phases_isolated()
+// holds. Those refusals execute on every regeneration, and the generated-artifact drift gate makes
+// the committed yaml equal to what the model emits. A violating workflow is therefore not merely
+// caught -- it cannot be produced. The predicates those gates consult are witnessed for
+// DISCRIMINATION, cheaply and over supplied values, in test.claim.heal_publication_boundary_witness
+// (witness_isolated_phases_are_admitted and the two violation claims beside it).
+//
+// THE RESIDUAL, NAMED HONESTLY: nothing here fails if someone DELETES the isolation check from the
+// emission gate. The predicates would still discriminate, the fixtures would still pass, and the
+// wall would be gone. That is the half of the pairing obligation this module does not discharge, and
+// no cheap claim discharges it -- the only witness that would costs an order of magnitude more than
+// the budget allows. It is recorded rather than papered over, and it is not retired by moving this
+// file or by a debt row.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE PREDICATE, NOT THE JOB. Each claim below hands a constructed permissions record
+// or checkout step to the predicate that classifies it, so what is established is that the predicate
+// DISCRIMINATES -- a write grant is a credential, a read grant is not, an absent grant is not a
+// restriction. Projecting the real job to read one field is what the earlier revision did and what
+// the floor refused; the closing note records why nothing here does it any more.
+
+// ── what a publication credential is, over supplied grants ──────────────────────────────────
+
+
+fn a_write_grant() -> WorkflowPermissions {
+  WorkflowPermissions {
+    contents: Present { value: PermWrite },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: none
+  }
+}
+
+fn a_read_grant() -> WorkflowPermissions {
+  WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: none
+  }
+}
+
+fn checkout_with(rows: List<YamlKeyValue>) -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: rows },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn step_name_of(s: Step) -> String {
+  match s {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn yaml_scalar_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => s
+    YamlNull => ""
+    YamlBool { value: _ } => ""
+    YamlInt { lexeme: _ } => ""
+    YamlFloat { lexeme: _ } => ""
+    YamlSequence { elements: _ } => ""
+    YamlMapping { entries: _ } => ""
+  }
+}
+
+fn step_with_value(step: Step, key: String) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Absent => ""
+        Present { value: rows } =>
+          fold(rows, init: "", f: fn(acc, row) {
+            if (row.key as String) == key { yaml_scalar_text(v: row.value) } else { acc }
+          })
+      }
+  }
+}
+
+fn step_if_condition(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// THE RED FOR THE CREDENTIAL HALF. If this ever answered false, the candidate-phase check above
+// would be satisfied by a predicate that admits a write grant.
+test fn witness_a_write_grant_is_a_publication_credential() -> Bool {
+  job_permissions_carry_write(permissions: Present { value: a_write_grant() })
+    && !job_permissions_carry_write(permissions: Present { value: a_read_grant() })
+}
+
+// AN ID-TOKEN GRANT IS ALSO ONE, because it is the capability to federate to a cloud identity that
+// holds the key -- which is exactly how gunbc#10887 reached the App private key from a PR job.
+test fn witness_an_id_token_grant_is_a_publication_credential() -> Bool {
+  job_permissions_carry_write(permissions: Present { value: WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: none,
+    issues: none,
+    actions: none,
+    id_token: Present { value: PermWrite }
+  } })
+}
+
+// AN ABSENT GRANT IS TREATED AS WRITE-CAPABLE, not as none: a job that declares no permissions
+// inherits the workflow's, so silence is not a restriction.
+test fn witness_an_undeclared_grant_is_not_read_only() -> Bool {
+  job_permissions_carry_write(permissions: none)
+}
+
+// THE RED FOR THE EXECUTION HALF. A checkout naming a ref is fetching something other than this
+// workflow's own commit, and for the publisher the only thing it could name is the branch under
+// review; the control beside it is the checkout the publisher actually emits.
+test fn witness_a_checkout_naming_a_ref_is_another_subject() -> Bool {
+  checkout_step_names_another_subject(step: checkout_with(rows: [
+    kv(key: "ref", value: yaml_string(s: "${{ github.event.workflow_run.head_sha }}"))
+  ]))
+    && checkout_step_names_another_subject(step: checkout_with(rows: [
+      kv(key: "repository", value: yaml_string(s: "someone/fork"))
+    ]))
+    && !checkout_step_names_another_subject(step: checkout_with(rows: [
+      kv(key: "persist-credentials", value: yaml_bool(b: false))
+    ]))
+}

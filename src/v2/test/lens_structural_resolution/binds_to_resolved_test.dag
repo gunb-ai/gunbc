@@ -75,4 +75,3 @@ test fn binds_to_resolved_claim_holds() -> Bool {
   }
 }
 
-data binds_to_resolved_claim_passes: Bool = binds_to_resolved_claim_holds()

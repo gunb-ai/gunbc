@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.an_absent_reading_assigned_an_extent_conclusion
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_absent_reading_assigned_an_extent_conclusion: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_absent_reading_assigned_an_extent_conclusion" as NonEmptyStr,
+
+  receipts: [
+    "**a read whose SCOPE is one observer is assigned a conclusion about the WORLD, and the two are indistinguishable in the response** (INVALID STATE: a query answers successfully and empty, the producer assigns that result a meaning the query could not carry -- no such thing exists, rather than this observer saw none -- and the distinction is recorded nowhere, so every consumer downstream inherits the stronger reading.",
+
+    "The response is well-formed and complete. Nothing failed. That is exactly why no refusal fires and why the defect survives review: the only thing wrong is the SENTENCE ASSIGNED TO A CORRECT ANSWER.",
+
+    "HARM: the empty result is the one answer that authorizes creation, adoption and overwriting, so the weakest possible evidence unlocks the least reversible actions. A converge reports success, adopts or mints one subject, and the real one -- which the observer could not see -- goes dark while every later run agrees with the mistake.",
+
+    "DISTINGUISHING FACT, and it is what separates this from its neighbours: the instrument was aimed correctly and answered correctly. The error is at the JOIN between a reading and the fact it is taken to establish, and that join usually lives inside effectful routing where no type records it.",
+
+    "RECOGNITION RULE: for every read that can answer empty, write the sentence the read actually licenses -- 'this client received no matching rows', 'this page contained none', 'this credential's scope covered none' -- and then ask whether the consumer needs a STRONGER sentence. Where it does, the difference is a second fact that must be supplied and typed, never inferred from the same response.",
+
+    "**DISTINCT FROM ITS NEIGHBOURS, all of which are about the instrument rather than the join.** [[absent_reads_identically_to_never_looked]] is an instrument that MISSED its subject -- wrong path, wrong window, wrong directory -- and is repaired by recording the looked-at set; here the instrument reached exactly its subject and the looked-at set would be faithfully recorded and still insufficient. [[empty_observation_narrow]] asks whether an empty result was admissible; this class is about a result that was entirely admissible and still could not carry the weight placed on it.",
+
+    "**SPECIMEN (zesty-crane-846, gunbc#11596, 2026-09-19), and it is the whole reason that PR was recut.** The setting is a RELOCATED IDENTITY -- the review sheet's marker moved from Drive's appProperties to properties -- but the relocation is not the defect and naming it as one sends a reader to the wrong repair. The subject never moved: the file stayed where it was, carrying the marker it always had, visible to whoever wrote it. What moved was the READER. Google Drive appProperties are private to the OAuth client that wrote them. A search for the review sheet's superseded marker, issued by the recurring writer rather than the client that created the file, answers 200 with an empty list against a drive that HOLDS that file. The producer assigned SheetAbsent, the fold read absence as a settled legacy extent, and the converge adopted a current-marked duplicate while the original data-bearing sheet went invisible to every later run -- success reported throughout.",
+
+    "**THE REPAIR IS ORDERING, NOT A GUARD, and that is the transferable part.** Ten review rounds of patching the effectful converge each fixed one arm and opened another, because the meaning of each reading was being decided inside the routing that consumed it. The repair was to land the SEMANTICS FIRST and alone: gunbc.review_sheet_identity carries the subject in content, keeps evidence provenance separate from extent conclusion (an operator's declaration that no legacy file exists is not evidence that this client could see one), and derives the standing from the join -- with CurrentMarkerObservedLegacyExtentUnresolved as a distinct arm for the state that used to collapse into converged. The producers are then written against that contract rather than inventing it again.",
+
+    "RUNG FOUND AT: 1, mitigatable, and only because a human noticed two spreadsheets. CEILING: 3, structurally guaranteed. Whether a reading licenses a conclusion is decidable from the reading's own scope once that scope is modelled -- the visibility of a marker field is a documented property of the upstream API, not an unknowable. NEXT TRIGGER: an observation carrier whose type names the OBSERVER SCOPE alongside the result, so a fold cannot consume an empty result without matching on what that emptiness covered; at that point the collapse is unwritable rather than merely walled."
+  ],
+
+  evidence: [],
+}
