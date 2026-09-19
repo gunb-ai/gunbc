@@ -105,6 +105,7 @@ import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.runner_slot_allocation { runner_host_label }
 import gunbc.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -146,8 +147,11 @@ import std.types { NonEmptyStr, List, String, Int, list_length }
 // fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
 // state in which a fork is cheap to remove. It is now the same list its consumers fold as the
 // eligible executor set, so enrolling or retiring an executor host moves this input with it and
-// nobody can dispatch against a host the fleet does not think it has.
-data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => h as String)
+// nobody can dispatch against a host the fleet does not think it has. Each option is the host's
+// runner label (gunbc.runner_slot_allocation runner_host_label), the same projection its runners
+// register under, because fleet_converge_host_runner_expression interpolates the chosen option into
+// runs-on verbatim.
+data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => runner_host_label(host: h))
 
 // THE TARGET CHOICES ARE THE ROSTERED SPARKS, DERIVED, NOT SPELLED. The literal pair here refused the
 // first bootstrap dispatch against srv7 with an HTTP 422 from GitHub -- the workflow admitted two of

@@ -6,7 +6,6 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.action_release {
   ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
-  action_manifest_at_commit,
 }
 import extdeps.github.action.rust_cache { rust_cache_v2_9_1 }
 
@@ -38,12 +37,11 @@ data setup_rust_toolchain_v1_16_0: ActionRelease = ActionRelease {
   owner: "actions-rust-lang", repo: "setup-rust-toolchain", tag: "v1.16.0", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7"
 }
 
-// Each declaration below was read from the action.yml blob at the release's commit (the
-// manifest citation on the row), 2026-09-18.
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-09-18.
 data setup_rust_toolchain_manifest_readings: List<ActionManifestReading> = [
   ActionManifestReading {
     action_release: setup_rust_toolchain_v1_16_0,
     declared: CompositeAction { nested: [rust_cache_v2_9_1] },
-    manifest: action_manifest_at_commit(owner: "actions-rust-lang", repo: "setup-rust-toolchain", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7"),
   },
 ]
