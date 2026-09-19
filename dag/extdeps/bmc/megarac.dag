@@ -406,7 +406,13 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // exit, including refusals — an operation that failed still allocated the session that carried it.
 //
 // THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
-// password@FILE keeps the secret out of argv; every later call carries only the cookie.
+// password@FILE keeps the secret out of argv; every later call carries only the cookie. THE FILE IS
+// THE PASSWORD BYTES EXACTLY: curl(1) documents name@file as URL-encoding the file's content
+// INCLUDING any newline, so a file ending in \n posts password=...%0A and the controller refuses the
+// login as a wrong password with no hint (review 68456). The caller's prelude writes the Secret
+// Manager payload bytes verbatim (base64-decoded, no trailer), so the contract lives on the stored
+// payload: it is minted without a trailing newline, and boot 22 (run 35447067113) is the executed
+// positive control that the stored bytes log in.
 //
 // StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
 // on the operation row above records that omitting it makes the firmware refuse with codes
