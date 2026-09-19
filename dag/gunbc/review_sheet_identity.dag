@@ -1,7 +1,6 @@
 module gunbc.review_sheet_identity
 
 import std.types { NonEmptyStr, String, List, Bool }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -81,71 +80,43 @@ type ReviewSheetIdentitySubject {
 // forward as a standing claim that later empty answers from the same client are meaningful: a
 // different file may have been marked by a different application, so visibility is not a property
 // the client acquires once.
-// THE COMPATIBLE ARM IS MINTED FROM A COMPARISON, NEVER WRITTEN. An earlier cut gave it a free-text
-// basis: `ClientIdentityObservedCompatible { basis: NonEmptyStr }`. That arm flips this module's
-// entire hinge -- an empty legacy search becomes a SETTLED-EMPTY extent, which is the verdict that
-// authorizes adopt and create -- so a producer could mint the state that lost data in gunbc#11596
-// BY WRITING A SENTENCE. It was named ...Observed and carried no observation.
+// THERE IS NO COMPATIBLE-EMPTY ARM, AND ITS ABSENCE IS THE POINT. Two revisions tried to build one
+// and both were wrong in the same direction -- claiming an observation the corpus cannot make.
 //
-// That is the same laundering this module forbids one type below, arriving from the other side. The
-// rule there is that an operator's statement about the WORLD may not become a statement about what
-// this CREDENTIAL CAN SEE; keeping LegacyExtentAbsentByOperator out of the visibility channel is
-// worth nothing if the visibility channel itself accepts prose.
+// The first carried `basis: NonEmptyStr`, so a producer could mint the settled-empty verdict that
+// authorizes adopt and create by writing a sentence. The second compared two ServiceAccountEmail
+// values, which is the WRONG IDENTITY GRAIN: Google scopes appProperties to the requesting
+// APPLICATION -- the OAuth client id the access token was obtained with -- and a service-account
+// principal is not that subject. ServiceAccountEmail is also a bare String alias, so the comparison
+// was two freely supplied strings; a caller passing the same one twice minted compatibility, which
+// is exactly what my own witness did.
 //
-// THE FACT IS DECIDABLE AND THE CORPUS ALREADY NAMES IT. extdeps.google.drive records the
-// discriminator exactly: which OAuth principal WROTE the marker against which one is SEARCHING --
-// the bootstrap under an operator's Cloud SDK credential, the recurrence under review-sheet-writer@.
-// So the arm carries both principals in a sealed record that only this file can construct, and
-// observed_client_visibility is the only thing that constructs it, from comparing them.
-type ObservedClientMatch sole_constructor {
-  marker_writer: ServiceAccountEmail
-  searching_client: ServiceAccountEmail
-}
-
+// SO THE ARM IS GONE RATHER THAN WEAKENED. An empty appProperties search is ALWAYS unresolved here,
+// because nothing in this corpus observes the OAuth application identity of the token it holds, and
+// a carrier that cannot be filled honestly is modelled as unfillable rather than filled with the
+// nearest available string. Nothing is lost that was real: a positive find is still self-proving, a
+// subject-bound operator declaration still establishes an absent extent, and LegacyFileSelection
+// still carries a chosen file for a later admission.
+//
+// WHAT WOULD REINTRODUCE IT is a genuine observation of both application identities --
+// ObservedMarkerWriterOAuthClient against ObservedSearchingTokenOAuthClient -- grounded in
+// credential provenance or token configuration. That is a capability, not a field, and it is not
+// this cut's.
 type LegacySearchVisibilityBasis
-  = ClientIdentityObservedCompatible { observed: ObservedClientMatch }
-  | PositiveFindEstablishesVisibility
+  = PositiveFindEstablishesVisibility
   | SearchVisibilityUnresolved { cause: NonEmptyStr }
-
-// TWO PRINCIPALS IN, A VERDICT OUT. A producer that cannot name the client that wrote the marker
-// cannot reach the compatible arm at all, which is the correct outcome: not knowing who wrote it is
-// precisely the state in which an empty search establishes nothing.
-fn observed_client_visibility(
-  marker_writer: ServiceAccountEmail,
-  searching_client: ServiceAccountEmail,
-) -> LegacySearchVisibilityBasis {
-  if (marker_writer as String) == (searching_client as String) {
-    ClientIdentityObservedCompatible {
-      observed: ObservedClientMatch { marker_writer: marker_writer, searching_client: searching_client },
-    }
-  } else {
-    SearchVisibilityUnresolved {
-      cause: join(
-        [
-          "the superseded marker was written by ",
-          marker_writer as String,
-          " and this search is issued by ",
-          searching_client as String,
-          "; an app-private property is invisible across OAuth clients, so an empty result from this client establishes nothing about the extent",
-        ],
-        "",
-      ) as NonEmptyStr,
-    }
-  }
-}
 
 // AN OPERATOR'S CHOICE OF FILE IS NOT EVIDENCE ABOUT THE EXTENT, AND IT LIVES OUTSIDE THE EVIDENCE
 // CARRIER FOR THAT REASON. Selecting file A establishes WHICH FILE THE OPERATOR SELECTED. It does
 // not establish that an invisible file B does not exist, and selecting B does not establish that B
-// is the only legacy lineage. An earlier revision of this cut put the selection inside
-// LegacyExtentEvidence and derived SingleLineage(A) and LegacyOnlyLineage(B) from it -- which is the
-// same defect this module exists to close, an extent conclusion drawn from evidence that does not
-// cover the extent, arriving through a declaration instead of through an empty search.
+// is the only legacy lineage. An earlier revision put the selection inside LegacyExtentEvidence and
+// derived SingleLineage(A) and LegacyOnlyLineage(B) from it -- the same defect this module exists to
+// close, an extent conclusion drawn from evidence that does not cover the extent, arriving through a
+// declaration instead of through an empty search.
 //
 // The selection is therefore carried, not consumed here. Reconciling it against a standing -- and
 // against a contradicting observation, an exact file-by-id preflight and the intended subject -- is
-// an ADMISSION, and admission is a later cut with its own refusals. Until it runs, a selected A
-// beside an unresolved legacy extent stays UNRESOLVED.
+// an ADMISSION, and admission is a later cut with its own refusals.
 type LegacyFileSelection {
   subject: ReviewSheetIdentitySubject
   file_id: NonEmptyStr
@@ -332,8 +303,7 @@ fn legacy_extent_verdict(evidence: LegacyExtentEvidence) -> LegacyExtentVerdict 
           }
         SheetAbsent =>
           match v {
-            ClientIdentityObservedCompatible { observed: _ } => LegacyExtentSettledEmpty
-            PositiveFindEstablishesVisibility =>
+                PositiveFindEstablishesVisibility =>
               LegacyExtentUnsettled {
                 cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,
               }

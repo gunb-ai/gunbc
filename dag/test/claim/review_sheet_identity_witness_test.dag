@@ -1,7 +1,6 @@
 module test.claim.review_sheet_identity_witness
 
 import std.types { NonEmptyStr, String, List, Bool }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.review_sheet_drive_converge {
   ReviewSpreadsheetObservation,
   SheetObservedOne,
@@ -14,9 +13,6 @@ import gunbc.review_sheet_drive_converge {
 import gunbc.review_sheet_identity {
   ReviewSheetIdentitySubject,
   LegacySearchVisibilityBasis,
-  ClientIdentityObservedCompatible,
-  ObservedClientMatch,
-  observed_client_visibility,
   PositiveFindEstablishesVisibility,
   SearchVisibilityUnresolved,
   LegacyExtentEvidence,
@@ -70,13 +66,15 @@ fn w_search(o: ReviewSpreadsheetObservation, v: LegacySearchVisibilityBasis) -> 
   LegacySearchObserved { subject: w_subject(), observation: o, visibility_basis: v }
 }
 
-// THE FIXTURE GOES THROUGH THE PRODUCTION CONSTRUCTOR, so these claims exercise the comparison the
-// producers will call rather than an arm authored to be convenient. Deleting that fold reds them.
-fn w_visible() -> LegacySearchVisibilityBasis {
-  observed_client_visibility(
-    marker_writer: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
-    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
-  )
+// THE ONLY REMAINING ROUTE TO A SETTLED-EMPTY EXTENT IS AN OPERATOR DECLARATION. The
+// compatible-empty visibility arm is gone: nothing in this corpus observes the OAuth application
+// identity of its own token, so an empty appProperties search can never settle the extent by
+// itself. A human who can see the drive still can.
+fn w_operator_says_empty() -> LegacyExtentEvidence {
+  LegacyExtentAbsentByOperator {
+    subject: w_subject(),
+    basis: "fixture: an operator declared this drive holds no superseded-marked review sheet" as NonEmptyStr,
+  }
 }
 
 fn w_unknown_visibility() -> LegacySearchVisibilityBasis {
@@ -107,11 +105,11 @@ test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unreso
 // THE CONTROL, without which the wall above would have closed the ordinary steady state. With a
 // visibility basis that IS established, the same empty search is a real absence and the found file
 // is the single lineage.
-test fn an_empty_legacy_search_under_established_visibility_is_a_single_lineage() -> Bool {
+test fn a_current_hit_with_an_operator_absence_declaration_is_a_single_lineage() -> Bool {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
-    legacy: w_search(o: SheetAbsent, v: w_visible()),
+    legacy: w_operator_says_empty(),
   ) {
     ReviewSheetSingleLineage { file_id: f } => (f as String) == "current-A"
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
@@ -341,8 +339,8 @@ test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
 // current-hit fold, again in the current-absence fold, and partially a third time in a file-id
 // extractor that dropped the visibility basis -- so a later edit could tighten one path and not the
 // other, with no claim positioned to catch the divergence.
-test fn an_empty_legacy_search_is_settled_only_under_an_established_visibility() -> Bool {
-  match legacy_extent_verdict(evidence: w_search(o: SheetAbsent, v: w_visible())) {
+test fn an_operator_absence_declaration_settles_the_extent() -> Bool {
+  match legacy_extent_verdict(evidence: w_operator_says_empty()) {
     LegacyExtentSettledEmpty => true
     LegacyExtentUnsettled { cause: _ } => false
     LegacyExtentFound { file_ids: _ } => false
@@ -400,7 +398,7 @@ test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_inste
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetDuplicated { file_ids: ["dup-A", "dup-B"] },
-    legacy: w_search(o: SheetAbsent, v: w_visible()),
+    legacy: w_operator_says_empty(),
   ) {
     ReviewSheetConflictingLineages { current_file_ids: _, legacy: l } =>
       match l {
@@ -413,37 +411,5 @@ test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_inste
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
-  }
-}
-
-
-// TWO DIFFERENT CLIENTS CANNOT ESTABLISH VISIBILITY, which is the whole discriminator
-// extdeps.google.drive records: the bootstrap create ran under an operator Cloud SDK credential and
-// the recurrence runs as review-sheet-writer@, so an app-private property written by the first is
-// invisible to the second. This is the case that produced the incident.
-test fn a_search_by_a_different_client_than_the_marker_writer_is_unresolved() -> Bool {
-  match observed_client_visibility(
-    marker_writer: "operator-cloud-sdk@example.iam.gserviceaccount.com" as ServiceAccountEmail,
-    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
-  ) {
-    SearchVisibilityUnresolved { cause: c } =>
-      string_contains(s: c as String, pattern: "invisible across OAuth clients")
-    ClientIdentityObservedCompatible { observed: _ } => false
-    PositiveFindEstablishesVisibility => false
-  }
-}
-
-// THE CONTROL: the same client on both sides DOES establish it, so the wall has not made the
-// compatible arm unreachable -- which would close the steady state once a producer can name the
-// writer.
-test fn a_search_by_the_marker_writer_itself_is_compatible() -> Bool {
-  match observed_client_visibility(
-    marker_writer: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
-    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
-  ) {
-    ClientIdentityObservedCompatible { observed: o } =>
-      (o.marker_writer as String) == (o.searching_client as String)
-    SearchVisibilityUnresolved { cause: _ } => false
-    PositiveFindEstablishesVisibility => false
   }
 }
