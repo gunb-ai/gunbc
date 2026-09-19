@@ -1730,6 +1730,10 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
   )
 }
 
+// The carried set is the atom set of grammar_to_node, read off that projection rather than
+// re-derived per GrammarExpr arm, so the two cannot disagree. The walk threads one Map through
+// the tree instead of using fold_node: fold_node returns a value per subtree, and std.collection
+// has no Map union to join sibling results.
 fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
   grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
 }
