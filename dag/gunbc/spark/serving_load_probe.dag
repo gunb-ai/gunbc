@@ -514,15 +514,6 @@ fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
   }
 }
 
-data arrival_skew_comparison_bound_millis: Millisecond = millisecond(count: 250)
-
-fn arrival_admits_rate_comparison(s: ArrivalSkew) -> Bool {
-  match s {
-    ArrivalSkewUnread { cause: _ } => false
-    ArrivalSkewObserved { max_stagger_millis: n } => millisecond_count(m: n) <= millisecond_count(m: arrival_skew_comparison_bound_millis)
-  }
-}
-
 type OccupancySample {
   running: Nat
   waiting: Nat
@@ -706,15 +697,15 @@ type DecodeCorroboration
   = CorroborationNotApplicable { because: NonEmptyStr }
   | CorroborationUnread { because: NonEmptyStr }
 
-// The 49 ms/token single-stream bound is TRANSCRIBED, NOT A READING: parent measured 48.9 ms
-// single-stream in a quieter window, against a contended client c=1 TPOT of ~81 ms. The gap is
-// observed; its cause is unestablished until an overlapping lease or engine-population join attributes it.
+// A single-stream decode figure is produced by glm_native_serving_load_wet run with a
+// max_concurrency=1 protocol; this module holds no such figure. A multi-stream observation can
+// neither corroborate nor falsify one, and a single-stream observation has not yet been captured here.
 fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorroboration {
   match req.max_concurrency {
     Present { value: 1 } =>
-      CorroborationUnread { because: "a single-stream run can be compared to the transcribed 49 ms/token bound; this observation has not yet produced that figure" as NonEmptyStr }
+      CorroborationUnread { because: "a single-stream run is the producer of a decode figure; this observation has not yet produced one" as NonEmptyStr }
     Present { value: _ } =>
-      CorroborationNotApplicable { because: "the holistic protocol is not a single-stream measurement, so it cannot corroborate or falsify the 49 ms/token bound" as NonEmptyStr }
+      CorroborationNotApplicable { because: "a multi-stream protocol is not a single-stream measurement, so it cannot corroborate or falsify a single-stream decode figure" as NonEmptyStr }
     Absent =>
       CorroborationNotApplicable { because: "unbounded concurrency is not a single-stream measurement" as NonEmptyStr }
   }
