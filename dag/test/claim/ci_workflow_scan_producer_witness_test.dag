@@ -211,6 +211,19 @@ test fn no_pages_read_leaves_the_size_unobserved() -> Bool {
 
 // THE THREE-WAY GATE. A population may be read only when the walk exhausted AND the query was
 // enumerable; each of the next three claims removes one leg and expects a refusal.
+// THIS PAIR AND THE ONE BELOW ARE THE JUDGEMENT'S WALL AND CONTROL, AND THEY TEST THE JUDGEMENT
+// RATHER THAN THE CARRIER -- deliberately, which is the point of the ScanOutcome repair. ScanOutcome
+// is sole_constructor and is minted only inside scan_partition, where the receipt and the hits both
+// come from one walk state. A claim able to construct ScanDeclaredPopulation could pair a green
+// receipt for one population with hits from another, which is exactly the invalid state the carrier
+// exists to make unwritable; being unable to mint it here is the wall working, not a coverage gap.
+//
+// An earlier revision of this PR added two NEW claims here and called them that wall and control.
+// They were byte-identical in subject, inputs and expectation to this pair -- two names for one
+// fact, run twice -- and neither reached ScanOutcome or scan_partition at all, so they discriminated
+// nothing the branch did not already discriminate while being cited as coverage for the repair.
+// They are deleted; what is freely testable is scan_is_a_declared_population over a supplied
+// receipt, and these two already establish it.
 test fn an_exhausted_walk_over_an_enumerable_query_is_a_population() -> Bool {
   scan_is_a_declared_population(receipt: w_receipt(
     stop: StoppedExhausted { pages_read: 3 },
@@ -234,37 +247,6 @@ test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
       cause: "fixture" as NonEmptyStr,
     },
   )) == false
-}
-
-// THE PRODUCT OF THIS MODULE IS A GATED POPULATION, AND THESE CLAIMS TEST THE JUDGEMENT RATHER THAN
-// THE CARRIER -- deliberately, and the reason is the point of the repair. ScanOutcome is
-// sole_constructor and is minted only inside scan_partition, where the receipt and the hits both
-// come from one walk state. A claim that could construct ScanDeclaredPopulation would be able to
-// pair a green receipt for one population with hits from another, which is exactly the invalid state
-// the carrier exists to make unwritable; being unable to mint it here is the wall working, not a
-// coverage gap.
-//
-// So what is freely testable is scan_is_a_declared_population over a supplied receipt, which is the
-// ordinary judgement the mint consults. The claims below are its wall and its control, and the two
-// population claims further down exercise the same fold through the walk-shaped receipts.
-test fn a_saturated_walk_is_not_a_declared_population() -> Bool {
-  scan_is_a_declared_population(receipt: w_receipt(
-    stop: StoppedExhausted { pages_read: 10 },
-    enumerability: PartitionSaturated {
-      total_count: 5000,
-      ceiling: retrievable_result_ceiling,
-      cause: "fixture" as NonEmptyStr,
-    },
-  )) == false
-}
-
-// The control: a walk that exhausted an enumerable partition IS a population, so the judgement has
-// not been made unconditionally false.
-test fn an_exhausted_enumerable_walk_is_a_declared_population() -> Bool {
-  scan_is_a_declared_population(receipt: w_receipt(
-    stop: StoppedExhausted { pages_read: 3 },
-    enumerability: PartitionFullyEnumerable { total_count: 250 },
-  ))
 }
 
 // THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
