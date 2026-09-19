@@ -814,12 +814,14 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
 /// 2026-09-19). The `.dag` shows the base, tokenizes both declarations, decides whether the edit
 /// is a pure conjunct removal and selects the tier and its budget. THE HOST'S SHARE ENDS AT TWO
 /// READS the fold cannot perform from here: the head file's bytes, and which comparison base the
-/// floor already resolved. Returns the model's edit label (for the receipt) and the budget in steps.
+/// floor already resolved -- plus the floor's own discovered test-fn identities, which the model
+/// resolves a removed call against. Returns the model's edit label (for the receipt) and the budget in steps.
 pub(crate) fn cost_debt_changed_witness_ceiling(
     base: &str,
     rel_path: &str,
     function: &str,
     head_source: &str,
+    test_fn_identities: &[String],
 ) -> Result<(String, u64), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
@@ -832,6 +834,10 @@ pub(crate) fn cost_debt_changed_witness_ceiling(
         (Some("path".to_string()), str_value(rel_path)),
         (Some("function".to_string()), str_value(function)),
         (Some("head_source".to_string()), str_value(head_source)),
+        (
+            Some("test_fn_identities".to_string()),
+            list_value_from_vec(test_fn_identities.iter().map(str_value).collect()),
+        ),
     ];
     let result = v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -6708,6 +6714,25 @@ pub fn run_required_floor(
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
+    // THE TEST-FN POPULATION a changed cost-debt witness's removed calls are resolved against
+    // (`v2.workflow.floor_cost_debt_edit` `removed_call_is_test_fn`): the discovery's own
+    // identities, taken before the loop consumes `files`. Built only when some changed witness is
+    // on the cost-debt roster, since only that arm reads it.
+    let discovered_test_fn_identities: Vec<String> = if changed_witness_set
+        .iter()
+        .any(|identity| cost_debt_roster.contains(identity))
+    {
+        files
+            .iter()
+            .flat_map(|f| {
+                f.functions
+                    .iter()
+                    .map(move |function| format!("{}.{}", f.module_path, function))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     for file in files {
         let matched_prefix = long_home_prefixes
             .iter()
@@ -6835,14 +6860,19 @@ pub fn run_required_floor(
                             file.path
                         )
                     })?;
-                    let (edit, budget) =
-                        cost_debt_changed_witness_ceiling(&base, &rel_path, function, &head_source)
-                            .map_err(|e| {
-                                format!(
-                                    "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved \
+                    let (edit, budget) = cost_debt_changed_witness_ceiling(
+                        &base,
+                        &rel_path,
+                        function,
+                        &head_source,
+                        &discovered_test_fn_identities,
+                    )
+                    .map_err(|e| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved \
                                      identity={identity} — {e}"
-                                )
-                            })?;
+                        )
+                    })?;
                     eprintln!(
                         "[floor-cost-debt-edit] identity={identity} base={base} edit={edit} \
                          eval_step_budget={budget}"

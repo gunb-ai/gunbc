@@ -4,7 +4,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { LexRules, Token, token_stream_all }
 import v2.std.collection { List }
-import v2.std.algebra { Cons, Empty, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail, list_reverse }
+import v2.std.algebra { Cons, Empty, any, contains, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail, list_reverse }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -65,16 +65,16 @@ import v2.workflow.required_floor {
 //
 // DISSOLVES WHEN parsing a single `test fn` declaration at base and head fits inside the new-witness
 // ceiling with room for its tree walk -- a served prepared grammar, or a declaration-grain parse
-// entry. Then this module compares parsed conjunct lists, and the allowlists and `decl_scan_step`
-// are deleted rather than kept beside the parse.
+// entry. Then this module compares parsed conjunct lists and resolves callees through the resolved
+// namespace, and the allowlists, `decl_scan_step` and the import scan are deleted rather than kept
+// beside the parse.
 //
-// THE CALLEE'S KIND IS NOT RESOLVED HERE. The ruling names test-fn references; this rule admits the
-// deletion of any call conjunct. Deleting a conjunct can only weaken what the body asserts, and
-// never adds work, which is the property the tier keeps; resolving the callee would need the
-// namespace the host has not prepared at planning time. A reviewer who needs the narrower reading
-// should know it is not what this function decides.
+// THE CALLEE MUST BE A TEST FN, as the ruling says. Every removed call is resolved lexically against
+// the base file and must name an identity in the floor's own discovered test-fn population; a call
+// that resolves to anything else, or to nothing, re-judges (see `removed_call_is_test_fn`).
 //
-// THE HOST'S SHARE IS READING THE HEAD FILE AND KNOWING WHICH WITNESS SITES ARE CHANGED DEBT ROWS.
+// THE HOST'S SHARE IS READING THE HEAD FILE, KNOWING WHICH WITNESS SITES ARE CHANGED DEBT ROWS, AND
+// PASSING THE FLOOR'S DISCOVERED TEST-FN IDENTITIES, which it already holds.
 // The base is read here (`git.Core.Show` at the floor's resolved comparison base, the same read
 // `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census` performs), and the decision and
 // the tier are this module's.
@@ -85,6 +85,7 @@ type CostDebtEditReJudgeCause =
   | WitnessSourceDidNotTokenize
   | WitnessTokensUnchanged
   | EditIsNotAConjunctRemoval
+  | RemovedCallIsNotATestFn
 
 type CostDebtWitnessEdit =
     PureConjunctRemoval { removed_conjuncts: Int }
@@ -120,6 +121,7 @@ fn cost_debt_edit_cause_label(cause: CostDebtEditReJudgeCause) -> String {
     WitnessSourceDidNotTokenize => "witness_source_did_not_tokenize"
     WitnessTokensUnchanged => "witness_tokens_unchanged"
     EditIsNotAConjunctRemoval => "edit_is_not_a_conjunct_removal"
+    RemovedCallIsNotATestFn => "removed_call_is_not_a_test_fn"
   }
 }
 
@@ -238,6 +240,16 @@ type RemovalWalk {
   removed: Int
   prev_kept: Optional<Symbol>
   follower_pending: Bool
+  call_path: String
+  call_dotted: Bool
+  removed_calls: List<RemovedCall>
+}
+
+// One deleted call, as authored. A dotted path names its module in full; a bare name is resolved
+// against the base file (its own module, then its import blocks) by `removed_call_candidates`.
+type RemovedCall {
+  path: String
+  dotted: Bool
 }
 
 fn removal_tokens_equal(a: Token, b: Token) -> Bool {
@@ -274,7 +286,20 @@ fn removal_operand_opener(prev: Optional<Symbol>) -> Bool {
 }
 
 fn removal_walk_with_phase(w: RemovalWalk, phase: RemovalPhase) -> RemovalWalk {
-  RemovalWalk { head: w.head, phase: phase, removed: w.removed, prev_kept: w.prev_kept, follower_pending: w.follower_pending }
+  RemovalWalk { head: w.head, phase: phase, removed: w.removed, prev_kept: w.prev_kept, follower_pending: w.follower_pending, call_path: w.call_path, call_dotted: w.call_dotted, removed_calls: w.removed_calls }
+}
+
+// The removed call's path, as authored: one identifier, or dotted identifiers.
+fn removal_walk_start_call(w: RemovalWalk, form: ConjunctForm, name: String) -> RemovalWalk {
+  RemovalWalk { head: w.head, phase: WalkCallName { form: form }, removed: w.removed, prev_kept: w.prev_kept, follower_pending: w.follower_pending, call_path: name, call_dotted: false, removed_calls: w.removed_calls }
+}
+
+fn removal_walk_extend_call(w: RemovalWalk, form: ConjunctForm, name: String) -> RemovalWalk {
+  RemovalWalk { head: w.head, phase: WalkCallName { form: form }, removed: w.removed, prev_kept: w.prev_kept, follower_pending: w.follower_pending, call_path: join([w.call_path, ".", name], ""), call_dotted: true, removed_calls: w.removed_calls }
+}
+
+fn removal_walk_commit_call(w: RemovalWalk, follower_pending: Bool) -> RemovalWalk {
+  RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed + 1, prev_kept: w.prev_kept, follower_pending: follower_pending, call_path: "", call_dotted: false, removed_calls: Cons { head: RemovedCall { path: w.call_path, dotted: w.call_dotted }, tail: w.removed_calls } }
 }
 
 fn removal_walk_broken(w: RemovalWalk) -> RemovalWalk {
@@ -285,7 +310,7 @@ fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
   if w.follower_pending && !removal_safe_follower(class: b.class) {
     removal_walk_broken(w: w)
   } else {
-    let cleared = RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed, prev_kept: w.prev_kept, follower_pending: false }
+    let cleared = RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed, prev_kept: w.prev_kept, follower_pending: false, call_path: w.call_path, call_dotted: w.call_dotted, removed_calls: w.removed_calls }
     let head_matches = match list_head(xs: cleared.head) {
       HeadAbsent => false
       HeadFound { value: h } => removal_tokens_equal(a: h, b: b)
@@ -295,11 +320,11 @@ fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
         TailAbsent => []
         TailFound { tail: t } => t
       }
-      RemovalWalk { head: rest, phase: WalkAligned {}, removed: cleared.removed, prev_kept: optional_present(value: b.class), follower_pending: false }
+      RemovalWalk { head: rest, phase: WalkAligned {}, removed: cleared.removed, prev_kept: optional_present(value: b.class), follower_pending: false, call_path: cleared.call_path, call_dotted: cleared.call_dotted, removed_calls: cleared.removed_calls }
     } else if b.class == ^dag_token_and_and {
       removal_walk_with_phase(w: cleared, phase: WalkAfterAndAnd {})
     } else if b.class == ^dag_token_ident && removal_operand_opener(prev: cleared.prev_kept) {
-      removal_walk_with_phase(w: cleared, phase: WalkCallName { form: LeadingConjunct {} })
+      removal_walk_start_call(w: cleared, form: LeadingConjunct {}, name: b.lexeme)
     } else {
       removal_walk_broken(w: cleared)
     }
@@ -309,7 +334,7 @@ fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
 fn removal_walk_call_closed(w: RemovalWalk, form: ConjunctForm) -> RemovalWalk {
   match form {
     TrailingConjunct =>
-      RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed + 1, prev_kept: w.prev_kept, follower_pending: true }
+      removal_walk_commit_call(w: w, follower_pending: true)
     LeadingConjunct => removal_walk_with_phase(w: w, phase: WalkLeadingNeedsAndAnd {})
   }
 }
@@ -320,7 +345,7 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
     WalkAligned => removal_walk_aligned_step(w: w, b: b)
     WalkAfterAndAnd =>
       if b.class == ^dag_token_ident {
-        removal_walk_with_phase(w: w, phase: WalkCallName { form: TrailingConjunct {} })
+        removal_walk_start_call(w: w, form: TrailingConjunct {}, name: b.lexeme)
       } else {
         removal_walk_broken(w: w)
       }
@@ -334,7 +359,7 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
       }
     WalkCallDot { form: f } =>
       if b.class == ^dag_token_ident {
-        removal_walk_with_phase(w: w, phase: WalkCallName { form: f })
+        removal_walk_extend_call(w: w, form: f, name: b.lexeme)
       } else {
         removal_walk_broken(w: w)
       }
@@ -352,7 +377,7 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
       }
     WalkLeadingNeedsAndAnd =>
       if b.class == ^dag_token_and_and {
-        RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed + 1, prev_kept: w.prev_kept, follower_pending: false }
+        removal_walk_commit_call(w: w, follower_pending: false)
       } else {
         removal_walk_broken(w: w)
       }
@@ -361,8 +386,13 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
 
 // THE DECISION OVER TWO TOKEN STREAMS. The claim-grain interface: witnesses supply the streams'
 // sources directly (DESIGN section 3, a witness discriminates at one interface).
-fn cost_debt_edit_from_decl_tokens(base: List<Token>, head: List<Token>) -> CostDebtWitnessEdit {
-  let walk = fold(base, init: RemovalWalk { head: head, phase: WalkAligned {}, removed: 0, prev_kept: optional_absent(), follower_pending: false }, f: fn(acc, b) {
+fn cost_debt_edit_from_decl_tokens(
+  base: List<Token>,
+  head: List<Token>,
+  resolution: BaseResolution,
+  test_fn_identities: List<String>
+) -> CostDebtWitnessEdit {
+  let walk = fold(base, init: RemovalWalk { head: head, phase: WalkAligned {}, removed: 0, prev_kept: optional_absent(), follower_pending: false, call_path: "", call_dotted: false, removed_calls: [] }, f: fn(acc, b) {
     removal_walk_step(w: acc, b: b)
   })
   let head_exhausted = match list_head(xs: walk.head) {
@@ -382,15 +412,152 @@ fn cost_debt_edit_from_decl_tokens(base: List<Token>, head: List<Token>) -> Cost
     ReJudgedAsNewWitness { cause: EditIsNotAConjunctRemoval {} }
   } else if walk.removed == 0 {
     ReJudgedAsNewWitness { cause: WitnessTokensUnchanged {} }
+  } else if any(xs: walk.removed_calls, predicate: fn(c) {
+    !removed_call_is_test_fn(call: c, resolution: resolution, test_fn_identities: test_fn_identities)
+  }) {
+    ReJudgedAsNewWitness { cause: RemovedCallIsNotATestFn {} }
   } else {
     PureConjunctRemoval { removed_conjuncts: walk.removed }
+  }
+}
+
+// ---- resolving a removed call against the base file ----
+//
+// THE RULING NAMES TEST-FN REFERENCES, AND THIS IS WHERE THAT NARROWING IS ENFORCED (snappy-koi-46,
+// 2026-09-19). A removed call qualifies only when it resolves to an identity in the floor's own
+// discovered test-fn population, which the host passes in unchanged. Resolution is lexical over the
+// base file: a dotted path is taken as fully qualified; a bare name is tried as a test fn of the
+// witness's own module, then through every `import M { name }` block. An aliased import (`as`) is
+// dropped rather than followed, so its callee resolves to nothing and the edit re-judges. Anything
+// that does not resolve re-judges: the failure direction is always the stricter tier.
+
+type ImportedName {
+  local: String
+  qualified: String
+}
+
+type BaseResolution {
+  module_path: String
+  imports: List<ImportedName>
+}
+
+type ImportScanPhase =
+    ImportIdle
+  | ImportModulePath { path: String, expect_segment: Bool }
+  | ImportItems { module_path: String, pending: Optional<String>, aliasing: Bool }
+
+type ImportScan {
+  phase: ImportScanPhase
+  names: List<ImportedName>
+}
+
+fn import_scan_commit(names: List<ImportedName>, module_path: String, pending: Optional<String>) -> List<ImportedName> {
+  match pending {
+    Absent => names
+    Present { value: local } => Cons { head: ImportedName { local: local, qualified: join([module_path, ".", local], "") }, tail: names }
+  }
+}
+
+fn import_scan_step(acc: ImportScan, tok: Token) -> ImportScan {
+  match acc.phase {
+    ImportIdle =>
+      if tok.class == ^dag_token_kw_import {
+        ImportScan { phase: ImportModulePath { path: "", expect_segment: true }, names: acc.names }
+      } else {
+        acc
+      }
+    ImportModulePath { path: path, expect_segment: expect_segment } =>
+      if tok.class == ^dag_token_ident && expect_segment {
+        let next = if path == "" { tok.lexeme } else { join([path, ".", tok.lexeme], "") }
+        ImportScan { phase: ImportModulePath { path: next, expect_segment: false }, names: acc.names }
+      } else if tok.class == ^dag_token_dot && !expect_segment {
+        ImportScan { phase: ImportModulePath { path: path, expect_segment: true }, names: acc.names }
+      } else if tok.class == ^dag_token_lbrace && !expect_segment {
+        ImportScan { phase: ImportItems { module_path: path, pending: optional_absent(), aliasing: false }, names: acc.names }
+      } else if tok.class == ^dag_token_kw_import {
+        ImportScan { phase: ImportModulePath { path: "", expect_segment: true }, names: acc.names }
+      } else {
+        ImportScan { phase: ImportIdle {}, names: acc.names }
+      }
+    ImportItems { module_path: m, pending: pending, aliasing: aliasing } =>
+      if tok.class == ^dag_token_ident {
+        if aliasing {
+          ImportScan { phase: ImportItems { module_path: m, pending: optional_absent(), aliasing: false }, names: acc.names }
+        } else {
+          ImportScan { phase: ImportItems { module_path: m, pending: optional_present(value: tok.lexeme), aliasing: false }, names: import_scan_commit(names: acc.names, module_path: m, pending: pending) }
+        }
+      } else if tok.class == ^dag_token_kw_as {
+        ImportScan { phase: ImportItems { module_path: m, pending: optional_absent(), aliasing: true }, names: acc.names }
+      } else if tok.class == ^dag_token_comma {
+        ImportScan { phase: ImportItems { module_path: m, pending: optional_absent(), aliasing: false }, names: import_scan_commit(names: acc.names, module_path: m, pending: pending) }
+      } else if tok.class == ^dag_token_rbrace {
+        ImportScan { phase: ImportIdle {}, names: import_scan_commit(names: acc.names, module_path: m, pending: pending) }
+      } else {
+        acc
+      }
+  }
+}
+
+// A dotted path is identifiers SEPARATED BY DOTS: `expect_segment` is true at the start and after a
+// dot, so an identifier arriving where a dot was due ends the path rather than joining it (the
+// header `module m` followed by `test fn` is the module `m`, not `m.test`).
+type ModuleScan =
+    ModuleSeeking
+  | ModuleReading { path: String, expect_segment: Bool }
+  | ModuleRead { path: String }
+
+fn module_scan_step(acc: ModuleScan, tok: Token) -> ModuleScan {
+  match acc {
+    ModuleRead { path: _ } => acc
+    ModuleSeeking =>
+      if tok.class == ^dag_token_kw_module {
+        ModuleReading { path: "", expect_segment: true }
+      } else {
+        acc
+      }
+    ModuleReading { path: path, expect_segment: expect_segment } =>
+      if tok.class == ^dag_token_ident && expect_segment {
+        if path == "" { ModuleReading { path: tok.lexeme, expect_segment: false } } else { ModuleReading { path: join([path, ".", tok.lexeme], ""), expect_segment: false } }
+      } else if tok.class == ^dag_token_dot && !expect_segment {
+        ModuleReading { path: path, expect_segment: true }
+      } else {
+        ModuleRead { path: path }
+      }
+  }
+}
+
+fn cost_debt_edit_base_resolution(tokens: List<Token>) -> BaseResolution {
+  let module_path = match fold(tokens, init: ModuleSeeking {}, f: fn(acc, tok) { module_scan_step(acc: acc, tok: tok) }) {
+    ModuleSeeking => ""
+    ModuleReading { path: p, expect_segment: _ } => p
+    ModuleRead { path: p } => p
+  }
+  let imports = fold(tokens, init: ImportScan { phase: ImportIdle {}, names: [] }, f: fn(acc, tok) {
+    import_scan_step(acc: acc, tok: tok)
+  })
+  BaseResolution { module_path: module_path, imports: imports.names }
+}
+
+fn identity_is_test_fn(identity: String, test_fn_identities: List<String>) -> Bool {
+  contains(xs: test_fn_identities, item: identity, eq: fn(a, b) { a == b })
+}
+
+fn removed_call_is_test_fn(call: RemovedCall, resolution: BaseResolution, test_fn_identities: List<String>) -> Bool {
+  if call.dotted {
+    identity_is_test_fn(identity: call.path, test_fn_identities: test_fn_identities)
+  } else if resolution.module_path != "" && identity_is_test_fn(identity: join([resolution.module_path, ".", call.path], ""), test_fn_identities: test_fn_identities) {
+    true
+  } else {
+    any(xs: resolution.imports, predicate: fn(imported) {
+      imported.local == call.path && identity_is_test_fn(identity: imported.qualified, test_fn_identities: test_fn_identities)
+    })
   }
 }
 
 type DeclReading =
     DeclSourceUntokenizable
   | DeclNotFound
-  | DeclFound { tokens: List<Token> }
+  | DeclFound { tokens: List<Token>, file_tokens: List<Token> }
 
 fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> DeclReading {
   match cost_debt_edit_source_tokens(source: source, rules: rules) {
@@ -398,7 +565,7 @@ fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> 
     Present { value: tokens } =>
       match cost_debt_edit_decl_tokens(tokens: tokens, function: function) {
         Absent => DeclNotFound {}
-        Present { value: decl } => DeclFound { tokens: decl }
+        Present { value: decl } => DeclFound { tokens: decl, file_tokens: tokens }
       }
   }
 }
@@ -406,17 +573,27 @@ fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> 
 // THE DECISION OVER TWO FILE SOURCES, which is what the witnesses exercise and what the wet entry
 // below calls once the base is read.
 // The language model is built ONCE per decision and lent to both sides.
-fn cost_debt_edit_from_sources(base_source: String, head_source: String, function: String) -> CostDebtWitnessEdit {
+fn cost_debt_edit_from_sources(
+  base_source: String,
+  head_source: String,
+  function: String,
+  test_fn_identities: List<String>
+) -> CostDebtWitnessEdit {
   let rules = dag_language_model().lex
   match cost_debt_edit_decl_of(source: base_source, function: function, rules: rules) {
     DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
     DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
-    DeclFound { tokens: base_decl } =>
+    DeclFound { tokens: base_decl, file_tokens: base_file } =>
       match cost_debt_edit_decl_of(source: head_source, function: function, rules: rules) {
         DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
         DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
-        DeclFound { tokens: head_decl } =>
-          cost_debt_edit_from_decl_tokens(base: base_decl, head: head_decl)
+        DeclFound { tokens: head_decl, file_tokens: _ } =>
+          cost_debt_edit_from_decl_tokens(
+            base: base_decl,
+            head: head_decl,
+            resolution: cost_debt_edit_base_resolution(tokens: base_file),
+            test_fn_identities: test_fn_identities
+          )
       }
   }
 }
@@ -428,14 +605,15 @@ fn cost_debt_changed_witness_ceiling_at_base(
   base: String,
   path: String,
   function: String,
-  head_source: String
+  head_source: String,
+  test_fn_identities: List<String>
 ) -> CostDebtChangedWitnessCeiling {
   let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
   if !shown.success {
     cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
   } else {
     cost_debt_changed_witness_ceiling(
-      edit: cost_debt_edit_from_sources(base_source: shown.content, head_source: head_source, function: function)
+      edit: cost_debt_edit_from_sources(base_source: shown.content, head_source: head_source, function: function, test_fn_identities: test_fn_identities)
     )
   }
 }

@@ -3,7 +3,8 @@ module v2.test.floor_cost_debt_edit
 import v2.workflow.floor_cost_debt_edit {
   CostDebtWitnessEdit, PureConjunctRemoval, ReJudgedAsNewWitness,
   CostDebtEditReJudgeCause, WitnessNotDeclaredAtBase, WitnessNotDeclaredAtHead,
-  WitnessSourceDidNotTokenize, WitnessTokensUnchanged, EditIsNotAConjunctRemoval,
+  WitnessSourceDidNotTokenize, WitnessTokensUnchanged, EditIsNotAConjunctRemoval, RemovedCallIsNotATestFn,
+  cost_debt_edit_cause_label,
   CostDebtChangedWitnessCeiling,
   cost_debt_edit_from_sources,
   cost_debt_changed_witness_ceiling,
@@ -17,6 +18,7 @@ import v2.workflow.required_floor {
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
+import v2.std.collection { List }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -67,45 +69,10 @@ fn edit_is_pure_removal_of(edit: CostDebtWitnessEdit, expected: Int) -> Bool {
   }
 }
 
-fn edit_is_not_a_conjunct_removal(edit: CostDebtWitnessEdit) -> Bool {
+fn edit_rejudged_for(edit: CostDebtWitnessEdit, cause: CostDebtEditReJudgeCause) -> Bool {
   match edit {
     PureConjunctRemoval { removed_conjuncts: _ } => false
-    ReJudgedAsNewWitness { cause: c } =>
-      match c {
-        EditIsNotAConjunctRemoval => true
-        WitnessNotDeclaredAtBase => false
-        WitnessNotDeclaredAtHead => false
-        WitnessSourceDidNotTokenize => false
-        WitnessTokensUnchanged => false
-      }
-  }
-}
-
-fn edit_is_unchanged(edit: CostDebtWitnessEdit) -> Bool {
-  match edit {
-    PureConjunctRemoval { removed_conjuncts: _ } => false
-    ReJudgedAsNewWitness { cause: c } =>
-      match c {
-        WitnessTokensUnchanged => true
-        EditIsNotAConjunctRemoval => false
-        WitnessNotDeclaredAtBase => false
-        WitnessNotDeclaredAtHead => false
-        WitnessSourceDidNotTokenize => false
-      }
-  }
-}
-
-fn edit_not_declared_at_head(edit: CostDebtWitnessEdit) -> Bool {
-  match edit {
-    PureConjunctRemoval { removed_conjuncts: _ } => false
-    ReJudgedAsNewWitness { cause: c } =>
-      match c {
-        WitnessNotDeclaredAtHead => true
-        WitnessTokensUnchanged => false
-        EditIsNotAConjunctRemoval => false
-        WitnessNotDeclaredAtBase => false
-        WitnessSourceDidNotTokenize => false
-      }
+    ReJudgedAsNewWitness { cause: c } => cost_debt_edit_cause_label(cause: c) == cost_debt_edit_cause_label(cause: cause)
   }
 }
 
@@ -123,76 +90,135 @@ fn rejudged_and_refused(edit: CostDebtWitnessEdit) -> Bool {
 }
 
 // ---- fixtures ----
+//
+// Each source carries a module header and an import block, because a removed call qualifies only
+// when it resolves -- through the witness's own module or an import -- to an identity in the test-fn
+// population the host passes. `fixture_test_fns` is that population here.
 
-fn src_two_conjuncts() -> String { "  test fn w() -> Bool { a() && t() }" }
-fn src_one_conjunct() -> String { "  test fn w() -> Bool { a() }" }
-fn src_swapped_call() -> String { "  test fn w() -> Bool { a() && u() }" }
-fn src_literal_base() -> String { "  test fn w() -> Bool { a(x: 1) && t() }" }
-fn src_literal_head() -> String { "  test fn w() -> Bool { a(x: 2) }" }
-fn src_precedence_base() -> String { "  test fn w() -> Bool { a() && t() == b() }" }
-fn src_precedence_head() -> String { "  test fn w() -> Bool { a() == b() }" }
-fn src_leading_base() -> String { "  test fn w() -> Bool { t() && a() }" }
-fn src_negated_base() -> String { "  test fn w() -> Bool { !t() && a() }" }
-fn src_negated_head() -> String { "  test fn w() -> Bool { !a() }" }
-fn src_signature_head() -> String { "  test fn w() -> Int { a() }" }
-fn src_renamed_head() -> String { "  test fn w2() -> Bool { a() }" }
+fn fixture_test_fns() -> List<String> {
+  ["m.t", "lib.t2", "lib.e"]
+}
+
+// Each fixture carries only the header its case needs: the lexer's cost is per character and is
+// paid twice per claim, so a shared header of every import would be paid by every claim.
+fn src(body: String) -> String {
+  join(["module m ", body], "")
+}
+
+fn src_importing(items: String, body: String) -> String {
+  join(["module m import lib { ", items, " } ", body], "")
+}
+
+fn src_two_conjuncts() -> String { src(body: "test fn w() -> Bool { a() && t() }") }
+fn src_one_conjunct() -> String { src(body: "test fn w() -> Bool { a() }") }
+fn src_swapped_call() -> String { src(body: "test fn w() -> Bool { a() && u() }") }
+fn src_literal_base() -> String { src(body: "test fn w() -> Bool { a(x: 1) && t() }") }
+fn src_literal_head() -> String { src(body: "test fn w() -> Bool { a(x: 2) }") }
+fn src_precedence_base() -> String { src(body: "test fn w() -> Bool { a() && t() == b() }") }
+fn src_precedence_head() -> String { src(body: "test fn w() -> Bool { a() == b() }") }
+fn src_leading_base() -> String { src(body: "test fn w() -> Bool { t() && a() }") }
+fn src_negated_base() -> String { src(body: "test fn w() -> Bool { !t() && a() }") }
+fn src_negated_head() -> String { src(body: "test fn w() -> Bool { !a() }") }
+fn src_signature_head() -> String { src(body: "test fn w() -> Int { a() }") }
+fn src_renamed_head() -> String { src(body: "test fn w2() -> Bool { a() }") }
+fn src_imported_test_fn_base() -> String { src_importing(items: "t2", body: "test fn w() -> Bool { a() && t2() }") }
+fn src_helper_base() -> String { src_importing(items: "helper", body: "test fn w() -> Bool { a() && helper() }") }
+fn src_aliased_base() -> String { src_importing(items: "t2 as tt", body: "test fn w() -> Bool { a() && tt() }") }
+fn src_untokenizable_base() -> String { src(body: "test fn w() -> Bool { a() && t() } #") }
+fn src_other_witness_only() -> String { src(body: "test fn other() -> Bool { a() && t() }") }
 
 // The shape gunbc#11593 makes to `v2.test.manual.cross_language_add_python_to_typescript`
-// `cross_language_add_python_to_typescript_chain_status_holds`: one trailing test-fn conjunct
-// deleted from a match arm whose next token opens the following arm.
-fn src_chain_status_base() -> String { "  test fn h() -> Bool { match p { A => c() && ts_effect_io_emit_holds() R => false } }" }
-fn src_chain_status_head() -> String { "  test fn h() -> Bool { match p { A => c() R => false } }" }
+// `cross_language_add_python_to_typescript_chain_status_holds` (there `ts_effect_io_emit_holds`,
+// imported from `v2.test.manual.typescript_effect_io_emit`; here `e` from `lib`): one trailing IMPORTED test-fn
+// conjunct deleted from a match arm whose next token opens the following arm.
+fn src_chain_status_base() -> String { src_importing(items: "e", body: "test fn h() -> Bool { match p { A => c() && e() R => false } }") }
+fn src_chain_status_head() -> String { src_importing(items: "e", body: "test fn h() -> Bool { match p { A => c() R => false } }") }
 
-// ---- CONTROLS: a pure removal keeps the grandfathered budget ----
+fn decide(base: String, head: String, function: String) -> CostDebtWitnessEdit {
+  cost_debt_edit_from_sources(base_source: base, head_source: head, function: function, test_fn_identities: fixture_test_fns())
+}
+
+// ---- CONTROLS: a pure test-fn removal keeps the grandfathered budget ----
 
 test fn cost_debt_edit_trailing_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_two_conjuncts(), head_source: src_one_conjunct(), function: "w")
+  let edit = decide(base: src_two_conjuncts(), head: src_one_conjunct(), function: "w")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
 test fn cost_debt_edit_leading_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_leading_base(), head_source: src_one_conjunct(), function: "w")
+  let edit = decide(base: src_leading_base(), head: src_one_conjunct(), function: "w")
+  edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
+}
+
+test fn cost_debt_edit_imported_test_fn_removal_keeps_the_grandfathered_budget() -> Bool {
+  let edit = decide(base: src_imported_test_fn_base(), head: src_one_conjunct(), function: "w")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
 test fn cost_debt_edit_the_11593_chain_status_removal_keeps_the_grandfathered_budget() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_chain_status_base(), head_source: src_chain_status_head(), function: "h")
+  let edit = decide(base: src_chain_status_base(), head: src_chain_status_head(), function: "h")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
 // ---- DISCRIMINATING REDS: any other edit is judged at the new-witness budget ----
 
 test fn cost_debt_edit_removed_conjunct_plus_added_call_is_rejudged_at_the_new_witness_budget() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_two_conjuncts(), head_source: src_swapped_call(), function: "w")
-  edit_is_not_a_conjunct_removal(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_two_conjuncts(), head: src_swapped_call(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_changed_literal_is_rejudged_at_the_new_witness_budget() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_literal_base(), head_source: src_literal_head(), function: "w")
-  edit_is_not_a_conjunct_removal(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_literal_base(), head: src_literal_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_removal_that_rebinds_precedence_is_rejudged() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_precedence_base(), head_source: src_precedence_head(), function: "w")
-  edit_is_not_a_conjunct_removal(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_precedence_base(), head: src_precedence_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_removal_under_a_negation_is_rejudged() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_negated_base(), head_source: src_negated_head(), function: "w")
-  edit_is_not_a_conjunct_removal(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_negated_base(), head: src_negated_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_signature_change_with_a_removal_is_rejudged() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_two_conjuncts(), head_source: src_signature_head(), function: "w")
-  edit_is_not_a_conjunct_removal(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_two_conjuncts(), head: src_signature_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_with_no_token_change_is_not_a_removal() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_two_conjuncts(), head_source: src_two_conjuncts(), function: "w")
-  edit_is_unchanged(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_two_conjuncts(), head: src_two_conjuncts(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessTokensUnchanged {}) && rejudged_and_refused(edit: edit)
 }
 
 test fn cost_debt_edit_renamed_witness_is_rejudged() -> Bool {
-  let edit = cost_debt_edit_from_sources(base_source: src_two_conjuncts(), head_source: src_renamed_head(), function: "w")
-  edit_not_declared_at_head(edit: edit) && rejudged_and_refused(edit: edit)
+  let edit = decide(base: src_two_conjuncts(), head: src_renamed_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtHead {}) && rejudged_and_refused(edit: edit)
+}
+
+// The ruling is NARROW: removing a call that is not a test fn -- here an imported helper -- must not
+// keep the tier, even though it is otherwise a clean conjunct deletion.
+test fn cost_debt_edit_removing_a_non_test_fn_call_is_rejudged() -> Bool {
+  let edit = decide(base: src_helper_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
+}
+
+// An aliased import is not followed, so a call through the alias cannot be shown to be a test fn --
+// even though `t2` IS one -- and the edit re-judges rather than keeping the tier on a guess.
+test fn cost_debt_edit_removing_a_call_through_an_alias_is_rejudged() -> Bool {
+  let edit = decide(base: src_aliased_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
+}
+
+// UNCLASSIFIABLE BODIES TAKE THE STRICTER TIER. A base the lexer refuses, and a witness the base does
+// not declare, are not pure removals.
+test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool {
+  let edit = decide(base: src_untokenizable_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessSourceDidNotTokenize {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
+  let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
 }
