@@ -1,0 +1,309 @@
+module gunbc.fleet.org_actions_inspection
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.cardinality { Never }
+import v2.std.algebra { non_empty_to_list }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalInspection, GoalInspected, GoalObservationRefused,
+  inspect_goal,
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.shell.credentials { env_credential }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.fleet.org_actions_standing {
+  ObservedGroupAccess,
+  OrgActionsGoal,
+  OrgActionsAgreement,
+  OrgActionsDeviation,
+  desired_org_actions_goal,
+  assess_org_actions,
+  org_actions_deviation_text
+}
+
+// THE ORGANIZATION'S ACTIONS RUNNER-GROUP ACCESS, INSPECTED -- NOT CONVERGED.
+//
+// This module replaced gunbc.fleet.org_actions_converge's read path, which called itself
+// convergence while every GitHub operation it made was a GET: no plan, no admission, no apply, no
+// readback. gunbc.host_convergence_census had already classified it RenameOutOfConvergence onto
+// std.goal_assessment; this is that rename carried out as a REBIND, so the verdict is minted by
+// inspect_goal and not by a local Converged/Diverged/Refused coproduct.
+//
+// The three facts are kept apart the way inspect_goal requires: the SUBJECT is the organization,
+// the GOAL is gunbc.fleet.org_actions_standing desired_org_actions_goal, and the REQUEST names the
+// credential channel the read runs as. The observer receives the first and third and never the
+// second, so nothing it decodes can be shaped by what was hoped for.
+//
+// WRITE AUTHORITY IS NOT HERE. It is gunbc.fleet.org_actions_standing org_converge_binding_trigger,
+// and it stays there: every call below is a GET.
+
+data org_admin_token_env_name: NonEmptyStr = "GUNBC_ORG_ADMIN_TOKEN"
+data org_actions_validation_receipt_path: String = "target/org-actions-credential-validation-receipt.txt"
+data org_actions_organization: NonEmptyStr = "gunb-ai"
+
+type OrgActionsReadRequest { credential_env: NonEmptyStr }
+
+// Every way the read can fail to produce a snapshot, kept apart by owner: a refused request is an
+// access or transport fact, an undecodable body is a contract fact about GitHub's response. The
+// shape this replaced folded a group's refused request and its undecodable body into one string.
+type OrgActionsReadRefusal
+  = RunnerGroupsReadRefused { stderr: String }
+  | RunnerGroupsUndecodable { reason: NonEmptyStr }
+  | GroupRepositoriesReadRefused { group: NonEmptyStr, stderr: String }
+  | GroupRepositoriesUndecodable { group: NonEmptyStr, reason: NonEmptyStr }
+
+fn render_org_actions_read_refusal(cause: OrgActionsReadRefusal) -> String {
+  match cause {
+    RunnerGroupsReadRefused { stderr } => concat("OrgActionsRunnerGroupsReadRefused: ", stderr)
+    RunnerGroupsUndecodable { reason } => concat("OrgActionsRunnerGroupsUndecodable: ", reason as String)
+    GroupRepositoriesReadRefused { group, stderr } =>
+      join(["OrgActionsGroupRepositoriesReadRefused group=", group as String, ": ", stderr], "")
+    GroupRepositoriesUndecodable { group, reason } =>
+      join(["OrgActionsGroupRepositoriesUndecodable group=", group as String, ": ", reason as String], "")
+  }
+}
+
+type RunnerGroupIdentity { id: Int, name: NonEmptyStr, allows_public_repositories: Bool }
+
+type RunnerGroupListDecode
+  = RunnerGroupListDecoded { groups: List<RunnerGroupIdentity> }
+  | RunnerGroupListDecodeRefused { reason: NonEmptyStr }
+
+type RepositoryListDecode
+  = RepositoryListDecoded { repositories: List<NonEmptyStr> }
+  | RepositoryListDecodeRefused { reason: NonEmptyStr }
+
+fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value } } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
+    _ => none
+  }
+}
+
+fn json_member_int(v: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
+    _ => none
+  }
+}
+
+fn json_member_bool(v: JsonValue, key: String) -> Bool? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonBool { value } } => Present { value: value }
+    _ => none
+  }
+}
+
+fn decode_runner_group(v: JsonValue) -> RunnerGroupIdentity? {
+  match json_member_int(v: v, key: "id") {
+    Absent => none
+    Present { value: id } => match json_member_string(v: v, key: "name") {
+      Absent => none
+      Present { value: name } => match json_member_bool(v: v, key: "allows_public_repositories") {
+        Absent => none
+        Present { value: allows_public } => Present { value: RunnerGroupIdentity {
+          id: id,
+          name: name,
+          allows_public_repositories: allows_public
+        } }
+      }
+    }
+  }
+}
+
+fn decode_runner_groups_json(body: String) -> RunnerGroupListDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => RunnerGroupListDecodeRefused {
+      reason: concat("runner-groups response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "runner_groups") {
+      JsonMemberFound { value: JsonArray { elements } } => {
+        let decoded = map(elements, v => decode_runner_group(v: v))
+        if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+          RunnerGroupListDecodeRefused { reason: "runner_groups contains an element without exact id/name/allows_public_repositories fields" }
+        } else {
+          RunnerGroupListDecoded { groups: flat_map(decoded, d => match d {
+            Present { value } => [value]
+            Absent => []
+          }) }
+        }
+      }
+      JsonMemberFound { value: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is not a JSON array" }
+      JsonMemberAbsent => RunnerGroupListDecodeRefused { reason: "runner_groups is absent" }
+      JsonMemberDuplicated { count: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is duplicated" }
+      JsonMemberNotAnObject => RunnerGroupListDecodeRefused { reason: "runner-groups response is not a JSON object" }
+    }
+  }
+}
+
+fn decode_repository_names_json(body: String) -> RepositoryListDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => RepositoryListDecodeRefused {
+      reason: concat("runner-group repositories response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "repositories") {
+      JsonMemberFound { value: JsonArray { elements } } => {
+        let names = map(elements, v => json_member_string(v: v, key: "full_name"))
+        if any(names, n => match n { Absent => true, Present { value: _ } => false }) {
+          RepositoryListDecodeRefused { reason: "repositories contains an element without exact full_name" }
+        } else {
+          RepositoryListDecoded { repositories: flat_map(names, n => match n {
+            Present { value } => [value]
+            Absent => []
+          }) }
+        }
+      }
+      JsonMemberFound { value: _ } => RepositoryListDecodeRefused { reason: "repositories is not a JSON array" }
+      JsonMemberAbsent => RepositoryListDecodeRefused { reason: "repositories is absent" }
+      JsonMemberDuplicated { count: _ } => RepositoryListDecodeRefused { reason: "repositories is duplicated" }
+      JsonMemberNotAnObject => RepositoryListDecodeRefused { reason: "runner-group repositories response is not a JSON object" }
+    }
+  }
+}
+
+type GroupRead
+  = GroupReadCompleted { group: ObservedGroupAccess }
+  | GroupReadRefused { cause: OrgActionsReadRefusal }
+
+fn read_observed_group(organization: NonEmptyStr, group: RunnerGroupIdentity) -> GroupRead {
+  let response = github.CliOrgRunnerGroups.ListRunnerGroupRepositoriesJson(
+    org: organization,
+    runner_group_id: group.id
+  )
+  if !response.success {
+    GroupReadRefused { cause: GroupRepositoriesReadRefused { group: group.name, stderr: response.stderr } }
+  } else {
+    match decode_repository_names_json(body: response.stdout) {
+      RepositoryListDecodeRefused { reason } =>
+        GroupReadRefused { cause: GroupRepositoriesUndecodable { group: group.name, reason: reason } }
+      RepositoryListDecoded { repositories } => GroupReadCompleted { group: ObservedGroupAccess {
+        group_name: group.name,
+        allows_public_repositories: group.allows_public_repositories,
+        repositories: repositories
+      } }
+    }
+  }
+}
+
+fn first_group_read_refusal(reads: List<GroupRead>) -> OrgActionsReadRefusal? {
+  fold(reads, init: none, f: fn(found, r) { match found {
+    Present { value } => Present { value: value }
+    Absent => match r {
+      GroupReadRefused { cause } => Present { value: cause }
+      GroupReadCompleted { group: _ } => none
+    }
+  } })
+}
+
+fn completed_groups(reads: List<GroupRead>) -> List<ObservedGroupAccess> {
+  fold(reads, init: [], f: fn(acc, r) { match r {
+    GroupReadCompleted { group } => list_push(acc, group)
+    GroupReadRefused { cause: _ } => acc
+  } })
+}
+
+// THE OBSERVER. Goal-blind: it reads the organization it is handed and returns the group rows as
+// seen. An organization with no runner groups is an ESTABLISHED empty list, not a refusal -- the
+// assessor then reports every must-reach repository as not admitted, which is what is true. The
+// joined repository reads are all-or-nothing: a snapshot missing one group's repositories would let
+// that group's admissions read as absent, which is a fabricated divergence.
+fn observe_org_actions(
+  organization: NonEmptyStr,
+  request: OrgActionsReadRequest,
+) -> ObservationAttempt<List<ObservedGroupAccess>, OrgActionsReadRefusal> {
+  let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: organization)
+  if !listed.success {
+    ObservationRefused { cause: RunnerGroupsReadRefused { stderr: listed.stderr } }
+  } else {
+    match decode_runner_groups_json(body: listed.stdout) {
+      RunnerGroupListDecodeRefused { reason } => ObservationRefused { cause: RunnerGroupsUndecodable { reason: reason } }
+      RunnerGroupListDecoded { groups } => {
+        let reads = map(groups, g => read_observed_group(organization: organization, group: g))
+        match first_group_read_refusal(reads: reads) {
+          Present { value: cause } => ObservationRefused { cause: cause }
+          Absent => ObservationEstablished { observed: completed_groups(reads: reads) }
+        }
+      }
+    }
+  }
+}
+
+type OrgActionsInspection = GoalInspection<NonEmptyStr, OrgActionsGoal, OrgActionsReadRequest, List<ObservedGroupAccess>, OrgActionsAgreement, OrgActionsDeviation, Never, OrgActionsReadRefusal, Never>
+
+fn org_actions_standing_wire(a: GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never>) -> String {
+  match a {
+    GoalSatisfied { evidence } => join(["satisfied:", to_string(evidence.repositories_checked)], "")
+    GoalDiverged { deviations } =>
+      join(["diverged:", join(map(non_empty_to_list(xs: deviations), d => org_actions_deviation_text(d: d)), ",")], "")
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => "indeterminate"
+    GoalAssessmentRefused { cause: _ } => "assessment_refused"
+  }
+}
+
+fn org_actions_receipt_text(organization: NonEmptyStr, assessment: GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never>, observed_on: NonEmptyStr) -> String {
+  join([
+    "credential=github-org-admin endpoint=GET-/orgs/\{org\}/actions/runner-groups organization=",
+    organization as String,
+    " standing=", org_actions_standing_wire(a: assessment),
+    " validated_at=", observed_on as String, "\n"
+  ], "")
+}
+
+// THE CLI EDGE. The credential's absence is refused before the join because without it no request
+// can be formed at all -- it is not an observation of the organization. After that, every verdict is
+// inspect_goal's; ProcessExit is only its projection onto a process status, as in gunbc.ensure.
+// The receipt is written for every completed read, before the projection, so a divergent run
+// leaves the same evidence a satisfied one does.
+fn org_actions_inspect_wet() -> ProcessExit {
+  let credential = env_credential(env_var: org_admin_token_env_name)
+  match credential.token {
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
+    Present { value: _ } => {
+      let inspection: OrgActionsInspection = inspect_goal(
+        subject: org_actions_organization,
+        goal: desired_org_actions_goal,
+        request: OrgActionsReadRequest { credential_env: org_admin_token_env_name },
+        observe: observe_org_actions,
+        assess: assess_org_actions,
+      )
+      match inspection {
+        GoalObservationRefused { subject: _, goal: _, request: _, cause } =>
+          exit_failure(reason: render_org_actions_read_refusal(cause: cause))
+        GoalInspected { subject, goal: _, request: _, observed: _, assessment } => {
+          let observed_on = clock_now_probed_at_or_unknown()
+          let wrote = Filesystem.Write(
+            path: org_actions_validation_receipt_path,
+            content: org_actions_receipt_text(organization: subject, assessment: assessment, observed_on: observed_on)
+          )
+          if !wrote.success {
+            exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
+          } else {
+            match assessment {
+              GoalSatisfied { evidence: _ } => ExitSuccess
+              GoalDiverged { deviations: _ } =>
+                exit_failure(reason: concat("OrgActionsSettingsDiverged ", org_actions_standing_wire(a: assessment)))
+              GoalIndeterminate { known_deviations: _, unknowns: _ } =>
+                exit_failure(reason: "OrgActionsSettingsIndeterminate: unreachable for this binding, whose UnknownFact is Never")
+              GoalAssessmentRefused { cause: _ } =>
+                exit_failure(reason: "OrgActionsAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never")
+            }
+          }
+        }
+      }
+    }
+  }
+}
