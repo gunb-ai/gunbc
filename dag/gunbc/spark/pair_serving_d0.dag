@@ -557,7 +557,7 @@ type RankOccupancyReading {
 // or an unread table is a possible incumbent the route did not reach, and fences.
 type HeadEndpointReading
   = HeadEndpointQuiet
-  | HeadEndpointListening { port: Int, rows: List<TcpSocketRow> }
+  | HeadEndpointListening { port: Port, rows: List<TcpSocketRow> }
   | HeadEndpointEngineProcess { listing: String }
   | HeadEndpointUnread { cause: NonEmptyStr }
 

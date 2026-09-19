@@ -118,7 +118,7 @@ fn d0fd_endpoint_at(address: String, port: Int) -> ServingRouteEndpoint {
 // The head's endpoint reading over the LOCAL host: the kernel's socket tables for a LISTEN on
 // the port. (The engine-process scan half runs over the fleet ssh leg and is not driven here.)
 fn d0fd_head_endpoint(port: Int) -> HeadEndpointReading {
-  match read_endpoint_listener(transport: LocalShell, port: port) {
+  match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: port)) {
     EndpointNoListener { port: _ } => HeadEndpointQuiet
     EndpointListening { port: p, rows: rs } => HeadEndpointListening { port: p, rows: rs }
     EndpointListenerUnread { port: _, cause: c } => HeadEndpointUnread { cause: c as NonEmptyStr }
@@ -387,7 +387,7 @@ test fn a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_rea
       let layout = d0fd_witness_layout(dir: dir)
       d0fd_witness_remote_ready(dir: dir)
         && d0fd_with_listener(dir: dir, status: "200", scenario: fn(l) {
-          (match read_endpoint_listener(transport: LocalShell, port: l.port) { EndpointListening { port: p, rows: rs } => p == l.port && length(rs) >= 1  _ => false })
+          (match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: l.port)) { EndpointListening { port: p, rows: rs } => (p as Int) == l.port && length(rs) >= 1  _ => false })
             && (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint_at(address: "127.0.0.2", port: l.port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
             && (match d0fd_w_admitted(layout: layout, successor: h) {
                   Absent => false
@@ -410,7 +410,7 @@ test fn a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_rea
         })
         && (match d0fd_vacated_port(dir: dir) {
               Absent => false
-              Present { value: port } => match read_endpoint_listener(transport: LocalShell, port: port) { EndpointNoListener { port: _ } => true  _ => false }
+              Present { value: port } => match read_endpoint_listener(transport: LocalShell, port: d0fd_port(n: port)) { EndpointNoListener { port: _ } => true  _ => false }
             })
     })
   })

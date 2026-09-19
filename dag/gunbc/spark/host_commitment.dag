@@ -1,6 +1,6 @@
 module gunbc.spark.host_commitment
 
-import std.types { Bool, List, String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr, EpochSecs }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { declaration_ref_display_key }
@@ -16,9 +16,17 @@ import gunbc.spark.cell_role {
   spark_cell_role_in,
   spark_cell_role_assignments,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts, pair_serving_authority_for }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_pair_serving_authority,
+  HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, pair_serving_host_effect_admit, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused, pair_serving_host_effect_release,
+}
+import gunbc.fabric_event_log { EventLogLayout }
+import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host }
+import product.capacity.event_chain { EventId }
+import std.measure { Second, second_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
@@ -722,8 +730,19 @@ fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
 // concurrent runs against one target, dispatched through different executors, cannot both be
 // admitted. Until then an admitted answer means "nothing has placed work on it as of this read", and
 // the name says so rather than implying a hold.
+// AN ADMITTED HOST CARRIES THE CLAIM THAT FENCES IT. For a host of a claimed serving group the
+// admission is a claim event on that group's authority partition (pair_serving_host_effect_admit),
+// appended against the head the standings were read from -- the linearization point the
+// standings read alone is not. A host in no claimed group has no partition to claim on and no
+// pair-serving transaction can ever reach it, so its claim is Absent by construction, not by
+// omission. The resting projection admits with no claim (it places nothing).
+type HostEffectHandle {
+  group: FabricGroup
+  claim: EventId
+}
+
 type SparkHostAdmission
-  = SparkHostAdmitted { host: HostIdentity }
+  = SparkHostAdmitted { host: HostIdentity, claim: HostEffectHandle? }
   | SparkHostRefused { cause: NonEmptyStr }
 
 fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
@@ -758,7 +777,7 @@ fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<Spa
       ], "") as NonEmptyStr,
     }
   } else {
-    SparkHostAdmitted { host: host }
+    SparkHostAdmitted { host: host, claim: none }
   }
 }
 
@@ -768,9 +787,88 @@ fn admit_unplaced_host_resting(raw: String, purpose: NonEmptyStr) -> SparkHostAd
   admit_unplaced_host_in(raw: raw, purpose: purpose, standings: spark_host_standings)
 }
 
-fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
-  match spark_host_standings_live() {
+// THE EFFECT'S ADMISSION: the current standings admit, then the claim lands on the host's group
+// partition against the head that was read, or refuses -- stale when the authority moved in
+// between, committed when the state read already holds the host. `term` is the effect's own
+// bound on its duration: a claim it never releases expires then and no later.
+fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> SparkHostAdmission {
+  let current = map(spark_pair_serving_authorities, a => current_pair_serving_authority(layout: layout, group: pair_serving_authority_group(a: a), at: at))
+  match spark_host_standings_current(current: current) {
     CurrentStandingsUnread { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c as String], "") as NonEmptyStr }
-    CurrentStandingsRead { standings: st } => admit_unplaced_host_in(raw: raw, purpose: purpose, standings: st)
+    CurrentStandingsRead { standings: st } =>
+      match admit_unplaced_host_in(raw: raw, purpose: purpose, standings: st) {
+        SparkHostRefused { cause: c } => SparkHostRefused { cause: c }
+        SparkHostAdmitted { host: host, claim: _ } =>
+          match fabric_group_of_host(host: host) {
+            Absent => SparkHostAdmitted { host: host, claim: none }
+            Present { value: g } =>
+              match pair_serving_authority_for(group: g) {
+                Absent => SparkHostAdmitted { host: host, claim: none }
+                Present { value: _ } =>
+                  match pair_serving_host_effect_admit(layout: layout, group: g, host: host, purpose: purpose, executor: executor, term_seconds: second_count(s: term), at: at) {
+                    HostEffectClaimed { id: id, generation: _ } => SparkHostAdmitted { host: host, claim: Present { value: HostEffectHandle { group: g, claim: id } } }
+                    HostEffectClaimRefused { group: _, step: st2, reason: why } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the host-effect claim did not land at ", st2, ": ", why], "") as NonEmptyStr }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second) -> SparkHostAdmission {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the executor could not be identified: ", c], "") as NonEmptyStr }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match event_log_layout_for_host(short_hostname: executor) {
+        HostLayoutRefused { detail: d } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", d], "") as NonEmptyStr }
+        HostLayoutResolved { layout: layout, executor: _ } =>
+          match now_epoch_seconds() {
+            Absent => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the clock could not be read as epoch seconds"], "") as NonEmptyStr }
+            Present { value: at } => admit_unplaced_host_over(raw: raw, purpose: purpose, term: term, layout: layout, executor: executor as NonEmptyStr, at: at)
+          }
+      }
+  }
+}
+
+// THE RELEASE AT THE EFFECT'S TERMINAL, whatever the terminal was: the claim is released with the
+// exit's own text as the receipt and the exit is returned -- a release that did not land is
+// appended to the reason, never hidden, because the group stays fenced until the term expires.
+fn release_host_effect_over(handle: HostEffectHandle?, receipt: String, layout: EventLogLayout, executor: NonEmptyStr, at: EpochSecs) -> String? {
+  match handle {
+    Absent => none
+    Present { value: h } =>
+      match pair_serving_host_effect_release(layout: layout, group: h.group, claim: h.claim, receipt: receipt, executor: executor, at: at) {
+        HostEffectReleasedAt { id: _ } => none
+        HostEffectReleaseRefused { group: _, step: st, reason: why } => Present { value: join(["the host-effect claim ", h.claim as String, " was not released at ", st, ": ", why, "; the group stays fenced until the claim's term expires"], "") }
+      }
+  }
+}
+
+fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> ProcessExit {
+  match handle {
+    Absent => exit
+    Present { value: _ } => {
+      let receipt = match exit { ExitSuccess => "exit 0"  ExitFailure { code: c, reason: r } => join(["exit ", to_string(c), ": ", r], "") }
+      let unreleased = match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => Present { value: join(["the executor could not be identified for the release: ", c], "") }
+        ExecutorReachKnown { short_hostname: executor, path: _ } =>
+          match event_log_layout_for_host(short_hostname: executor) {
+            HostLayoutRefused { detail: d } => Present { value: d }
+            HostLayoutResolved { layout: layout, executor: _ } =>
+              match now_epoch_seconds() {
+                Absent => Present { value: "the clock could not be read as epoch seconds for the release" }
+                Present { value: at } => release_host_effect_over(handle: handle, receipt: receipt, layout: layout, executor: executor as NonEmptyStr, at: at)
+              }
+          }
+      }
+      match unreleased {
+        Absent => exit
+        Present { value: why } =>
+          match exit {
+            ExitSuccess => exit_failure(reason: why)
+            ExitFailure { code: _, reason: r } => exit_failure(reason: join([r, "\n", why], ""))
+          }
+      }
+    }
   }
 }

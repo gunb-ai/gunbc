@@ -3,6 +3,7 @@ module test.claim.spark.pair_serving_authority_log_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
@@ -14,7 +15,7 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.pair_serving_authority_log {
-  PairAuthorityEvent, AuthorityTransitioned, EntryStateRecorded, pair_authority_partition,
+  PairAuthorityEvent, AuthorityTransitioned, EntryStateRecorded, HostEffectAdmitted, HostEffectReleased, pair_authority_partition,
   pair_authority_event_wire_text, pair_authority_event_decode, authority_eq, authority_wire,
   AuthorityFold, AuthorityFolded, AuthorityFoldRefused, authority_fold, AuthorityTransitionRecord, transitions_by,
 }
@@ -75,7 +76,7 @@ fn alw_round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAu
         AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: _, grant: _, entry_state: _ } =>
           authority_eq(a: p, b: previous) && authority_eq(a: n, b: next) && (t as String) == "tx-1"
             && back.recorded_at == 1000 && (back.partition as String) == (pair_authority_partition(group: FabricGroupA) as String)
-        EntryStateRecorded { transaction: _, body: _ } => false
+        _ => false
       }
   }
 }
@@ -215,26 +216,42 @@ test fn a_transition_to_another_groups_authority_refuses() -> Bool {
 }
 
 
-// THE LIFECYCLE RIDES THE WIRE. A transition carrying a lifecycle identity decodes to the same
-// hash; one without decodes to none; a member that is not a content-hash wire refuses the document.
+// THE LIFECYCLE RIDES THE WIRE: a transition carrying a lifecycle identity decodes to the same hash.
+fn alw_w_with_lifecycle(h: ContentHash) -> ChainEvent<PairAuthorityEvent> {
+  let resting = alw_w_active_unestablished()
+  let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: pending, transaction: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none } }
+}
+
 test fn the_lifecycle_identity_round_trips_through_the_wire() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_with_lifecycle(h: h))) {
+      EventDecoded { event: back } =>
+        match back.payload {
+          AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: Present { value: l }, grant: _, entry_state: _ } => content_hash_equal(left: l, right: h)
+          _ => false
+        }
+      EventUndecodable { reason: _ } => false
+    }
+  })
+}
+
+// A transition without a lifecycle decodes to none.
+test fn a_transition_without_a_lifecycle_decodes_to_none() -> Bool {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
-    let with = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: pending, transaction: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none } }
-    (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: with)) {
-       EventDecoded { event: back } =>
-         match back.payload {
-           AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: Present { value: l }, grant: _, entry_state: _ } => content_hash_equal(left: l, right: h)
-           _ => false
-         }
-       EventUndecodable { reason: _ } => false
-     })
-      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_event(previous: resting, next: pending, parent: none))) {
-            EventDecoded { event: back } => match back.payload { AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: Absent, grant: _, entry_state: _ } => true  _ => false }
-            EventUndecodable { reason: _ } => false
-          })
-      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: with).replace(from: "sha256:", to: "sha256x:")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+    match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_event(previous: resting, next: pending, parent: none))) {
+      EventDecoded { event: back } => match back.payload { AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: Absent, grant: _, entry_state: _ } => true  _ => false }
+      EventUndecodable { reason: _ } => false
+    }
+  })
+}
+
+// RED -- a lifecycle member that is not a content-hash wire refuses the document.
+test fn an_incoherent_lifecycle_member_refuses_the_document() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_w_with_lifecycle(h: h)).replace(from: "sha256:", to: "sha256x:")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false }
   })
 }
 
@@ -252,5 +269,90 @@ test fn the_fold_records_each_transitions_lifecycle() -> Bool {
           && (match last(recs) { Present { value: r } => (r.id as String) == "e2" && (match r.lifecycle { Absent => true  Present { value: _ } => false })  Absent => false })
       AuthorityFoldRefused { at_event: _, reason: _ } => false
     }
+  })
+}
+
+// ── THE HOSTS WIRE IS INJECTIVE ─────────────────────────────────────────────────────────────────
+//
+// HostIdentity admits any non-empty string, so the population's wire must be one that every
+// distinct list decodes back from: a JSON array. ["a,b","c"] and ["a","b","c"] are different
+// authorities; an element that is empty, or not a string, refuses the document.
+fn alw_fenced_over(hs: List<HostIdentity>) -> PairServingGroupAuthority {
+  FencedRefusal { group: FabricGroupA, hosts: hs, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }
+}
+
+fn alw_host(s: String) -> HostIdentity {
+  s as HostIdentity
+}
+
+test fn the_hosts_wire_distinguishes_every_population() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let joined = alw_fenced_over(hs: [alw_host(s: "a,b"), alw_host(s: "c")])
+    let flat = alw_fenced_over(hs: [alw_host(s: "a"), alw_host(s: "b"), alw_host(s: "c")])
+    let wire_joined = pair_authority_event_wire_text(event: alw_w_event(previous: resting, next: joined, parent: none))
+    let wire_flat = pair_authority_event_wire_text(event: alw_w_event(previous: resting, next: flat, parent: none))
+    wire_joined != wire_flat
+      && !authority_eq(a: joined, b: flat)
+      && (match pair_authority_event_decode(text: wire_joined) {
+            EventDecoded { event: back } => match back.payload { AuthorityTransitioned { previous: _, next: n, transaction: _, lifecycle: _, grant: _, entry_state: _ } => authority_eq(a: n, b: joined) && !authority_eq(a: n, b: flat)  _ => false }
+            EventUndecodable { reason: _ } => false
+          })
+  })
+}
+
+test fn a_malformed_hosts_member_refuses_rather_than_normalizing() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let wire = pair_authority_event_wire_text(event: alw_w_event(previous: resting, next: alw_fenced_over(hs: [alw_host(s: "srv5"), alw_host(s: "srv6")]), parent: none))
+    (match pair_authority_event_decode(text: wire.replace(from: "[\"srv5\", \"srv6\"]", to: "[\"srv5\", \"\", \"srv6\"]")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+      && (match pair_authority_event_decode(text: wire.replace(from: "[\"srv5\", \"srv6\"]", to: "\"srv5,srv6\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+      && (match pair_authority_event_decode(text: wire.replace(from: "[\"srv5\", \"srv6\"]", to: "[\"srv5\", 6]")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+      && wire.contains("[\"srv5\", \"srv6\"]")
+  })
+}
+
+// ── HOST EFFECTS ON THE PARTITION ──────────────────────────────────────────────────────────────
+
+fn alw_effect(parent: EventId?, host: HostIdentity, at: Int) -> ChainEvent<PairAuthorityEvent> {
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: host, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 100 } }
+}
+
+fn alw_release(parent: EventId?, admitted_by: String, at: Int) -> ChainEvent<PairAuthorityEvent> {
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectReleased { admitted_by: (admitted_by as NonEmptyStr) as EventId, receipt: "exit 0" } }
+}
+
+// Both host-effect events round-trip.
+test fn host_effect_events_round_trip_through_the_wire() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_effect(parent: none, host: alw_host(s: "srv10"), at: 1000))) {
+       EventDecoded { event: back } => match back.payload { HostEffectAdmitted { host: hs, purpose: p, executor: x, term_seconds: t } => (hs as String) == "srv10" && (p as String) == "a build" && (x as String) == "executor-1" && t == 100  _ => false }
+       EventUndecodable { reason: _ } => false
+     })
+      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001))) {
+            EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: a, receipt: r } => (a as String) == "e1" && r == "exit 0"  _ => false }
+            EventUndecodable { reason: _ } => false
+          })
+  })
+}
+
+// THE FOLD: a claim on a host the current authority commits refuses at that event; a release of
+// a claim that is not live refuses; a live claim keeps a transition that would commit its host
+// from folding (refused at the transition); after the release, or after the term, the same
+// transition folds.
+test fn the_fold_fences_transitions_under_a_live_host_effect() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+    let resting = alw_w_active_unestablished()
+    let srv5 = alw_host(s: "srv5")
+    let to_released = alw_w_event(previous: resting, next: released, parent: none)
+    let claim = alw_effect(parent: Present { value: "e1" as EventId }, host: srv5, at: 1000)
+    let back_to_active = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e2" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
+    let back_to_active_late = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e2" as EventId }, recorded_at: 1200, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
+    (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_effect(parent: none, host: srv5, at: 1000))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"  _ => false })
+      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: alw_release(parent: Present { value: "e1" as EventId }, admitted_by: "nope", at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e2"  _ => false })
+      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active)]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e3"  _ => false })
+      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: alw_release(parent: Present { value: "e2" as EventId }, admitted_by: "e2", at: 1010)), alw_env(id: "e4", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e3" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } })]) { AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: resting)  _ => false })
+      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active_late)]) { AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: resting)  _ => false })
   })
 }

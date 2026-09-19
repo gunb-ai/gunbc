@@ -1,7 +1,7 @@
 module test.claim.spark.pair_serving_d0_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Int, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { second }
@@ -325,6 +325,10 @@ test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
   }
 }
 
+fn d0w_port(n: Int) -> Port {
+  n
+}
+
 fn d0w_with_four_hosts(scenario: fn(HostIdentity, HostIdentity, HostIdentity, HostIdentity) -> Bool) -> Bool {
   let current = fabric_group_hosts(g: FabricGroupA)
   if length(current) != 4 { false } else {
@@ -525,7 +529,7 @@ test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
             D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } } => length(ds) == 4
             _ => false
           })
-      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: 8000, rows: [TcpSocketRow { local_address: "00000000:1F40", local_port: 8000, state: "0A" }] } }, ranks: quiet_ranks, h: c) {
+      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: d0w_port(n: 8000), rows: [TcpSocketRow { local_address: "00000000:1F40", local_port: 8000, state: "0A" }] } }, ranks: quiet_ranks, h: c) {
             D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } } => true
             _ => false
           })
