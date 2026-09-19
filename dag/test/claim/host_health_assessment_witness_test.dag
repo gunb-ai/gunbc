@@ -13,7 +13,12 @@ import product.host_health {
   BmcEventsObserved,
   CorrectedMemoryErrorEvent,
   UnclassifiedEvent,
-  MemoryErrorEventLogged,
+  MemoryErrorEventsLogged,
+  DimmThermalAsserted,
+  DimmThermalEvent,
+  SensorThresholdAsserted,
+  SensorThresholdEvent,
+  MemoryErrorDetailEvent,
   HistoricalEventResidueUndispositioned,
   BmcEventUnclassified,
   BmcEventLogContinuityUnestablished,
@@ -402,9 +407,40 @@ test fn event_history_is_residue_appended_ecc_diverges_and_the_rest_is_unknown()
   )
   match assess_host_health(goal: srv2_goal(baseline: no_baseline()), observed: observed) {
     GoalIndeterminate { known_deviations, unknowns } =>
-      any(known_deviations, d => match d { MemoryErrorEventLogged { corrected, message: _ } => corrected _ => false })
+      any(known_deviations, d => match d { MemoryErrorEventsLogged { corrected, events } => corrected && events == 1 _ => false })
         && any(non_empty_to_list(unknowns), u => match u { HistoricalEventResidueUndispositioned { entries } => entries == 1200 _ => false })
         && any(non_empty_to_list(unknowns), u => match u { BmcEventUnclassified { entry: _ } => true _ => false })
+    _ => false
+  }
+}
+
+// An assert diverges and its deassert is the recovery; a flapping sensor is one aggregated deviation
+// with a count; the ECC detail record adds nothing to the error it accompanies.
+test fn asserts_aggregate_per_subject_and_deasserts_and_details_add_nothing() -> Bool {
+  let observed = host_health_observed(
+    host: operator_host_srv2,
+    memory: SignalObserved { observed: window(host: operator_host_srv2, open_ce: 0, close_ce: 0) },
+    processor_platform: SignalObserved { observed: no_records },
+    fans: SignalObserved { observed: srv2_windows },
+    temperatures: SignalObserved { observed: srv2_soc_ok },
+    bmc_events: SignalObserved { observed: BmcEventsObserved { history_count: 0, appended: [
+      BmcEventRecord { id: 1, kind: SensorThresholdEvent { sensor: "FAN4", critical: true, asserted: true }, message: "FAN4 critical low threshold assert." },
+      BmcEventRecord { id: 2, kind: SensorThresholdEvent { sensor: "FAN4", critical: true, asserted: false }, message: "FAN4 critical low threshold deassert." },
+      BmcEventRecord { id: 3, kind: SensorThresholdEvent { sensor: "FAN4", critical: true, asserted: true }, message: "FAN4 critical low threshold assert." },
+      BmcEventRecord { id: 4, kind: DimmThermalEvent { subject: "DIMM0 of channel 2 of Socket 0", asserted: true }, message: "DIMM_HOT asserted" },
+      BmcEventRecord { id: 5, kind: DimmThermalEvent { subject: "DIMM0 of channel 2 of Socket 0", asserted: false }, message: "DIMM_HOT deasserted" },
+      BmcEventRecord { id: 6, kind: CorrectedMemoryErrorEvent, message: "ecc" },
+      BmcEventRecord { id: 7, kind: MemoryErrorDetailEvent, message: "ecc detail" },
+    ] } },
+  )
+  match assess_host_health(goal: srv2_goal(baseline: no_baseline()), observed: observed) {
+    GoalDiverged { deviations } => {
+      let ds = non_empty_to_list(deviations)
+      count(ds) == 3
+        && any(ds, d => match d { SensorThresholdAsserted { sensor, critical, events } => sensor == "FAN4" && critical && events == 2 _ => false })
+        && any(ds, d => match d { DimmThermalAsserted { subject: _, events } => events == 1 _ => false })
+        && any(ds, d => match d { MemoryErrorEventsLogged { corrected, events } => corrected && events == 1 _ => false })
+    }
     _ => false
   }
 }

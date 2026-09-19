@@ -166,15 +166,20 @@ fn observe_rostered_host(host: ComputeHost, token: Secret) -> KeyedHostObservati
   }
 }
 
+// A BMC message can span lines; one receipt line per finding keeps the receipt greppable.
+fn one_line(text: String) -> String {
+  join(map(split(s: text, delimiter: "\n"), l => trim(s: l)), " ")
+}
+
 fn render_receipt(receipt: FleetHealthReceipt) -> String {
   let lines = flat_map(receipt.hosts, i => match i {
     GoalObservationRefused { subject, goal: _, request: _, cause } => [concat(subject as String, ": NOT OBSERVED -- ", cause as String)]
     GoalInspected { subject, goal: _, request: _, observed: _, assessment } => match assessment {
       GoalSatisfied { evidence: _ } => [concat(subject as String, ": HEALTHY")]
-      GoalDiverged { deviations } => concat([concat(subject as String, ": DIVERGED")], map(non_empty_to_list(deviations), d => concat("  deviation: ", to_string(d))))
+      GoalDiverged { deviations } => concat([concat(subject as String, ": DIVERGED")], map(non_empty_to_list(deviations), d => concat("  deviation: ", one_line(text: to_string(d)))))
       GoalIndeterminate { known_deviations, unknowns } => concat(
         [concat(subject as String, ": INDETERMINATE (", to_string(count(known_deviations)), " deviation(s), ", to_string(count(non_empty_to_list(unknowns))), " unknown(s))")],
-        concat(map(known_deviations, d => concat("  deviation: ", to_string(d))), map(non_empty_to_list(unknowns), u => concat("  unknown: ", to_string(u)))),
+        concat(map(known_deviations, d => concat("  deviation: ", one_line(text: to_string(d)))), map(non_empty_to_list(unknowns), u => concat("  unknown: ", one_line(text: to_string(u))))),
       )
       GoalAssessmentRefused { cause } => [concat(subject as String, ": ASSESSMENT REFUSED -- ", to_string(cause))]
     }
@@ -186,6 +191,32 @@ fn render_receipt(receipt: FleetHealthReceipt) -> String {
     GoalAssessmentRefused { cause } => concat("fleet: REFUSED -- ", to_string(cause))
   }
   join(concat(lines, [verdict]), "\n")
+}
+
+// THE EVALUATION REALIZATION THIS ROUTE IS QUALIFIED UNDER: recompute, selected with
+// GUNBC_EVAL_MEMO=0 (extdeps.realization.eval_memo's recompute realization, semantics identical by
+// that provider's contract). The seed's eval-frame memo keys every pure call before admission, and
+// the Redfish decoders thread whole response bodies through recursive pure calls, so under the
+// memo every call re-hashes the document: the 1.08 MB srv3 event log decoded in ~430 s of CPU
+// memo-on against ~27 s memo-off. Qualified 2026-09-19 on the captured OOB responses (full srv3
+// log, Thermal, a Sensor, a refusal): the complete decoded output was byte-identical under both
+// realizations. The general defect is its own lane (work item adhoc-955f2d4f-274); this route does
+// not wait for it. The invocation, and the re-derivation of this route's receipt, is:
+//   GUNBC_EVAL_MEMO=0 GUNBC_GCP_ACCESS_TOKEN_FILE=<token> GUNBC_FLEET_HEALTH_RECEIPT=<path> \
+//     gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_health.dag --function fleet_health_check
+// The receipt's first line discloses which realization actually ran, so a run under the memo is
+// visible as such rather than assumed.
+data fleet_health_realization_env: NonEmptyStr = "GUNBC_EVAL_MEMO" as NonEmptyStr
+
+fn realization_line() -> String {
+  match shell.Env.Get(name: fleet_health_realization_env).value {
+    Present { value: v } => if trim(s: v) == "0" {
+      "evaluation realization: recompute (GUNBC_EVAL_MEMO=0), the qualified realization for this route"
+    } else {
+      concat("evaluation realization: eval-frame memo (GUNBC_EVAL_MEMO=", v, "), NOT the qualified realization for this route")
+    }
+    Absent => "evaluation realization: eval-frame memo (GUNBC_EVAL_MEMO unset), NOT the qualified realization for this route"
+  }
 }
 
 // THE RECEIPT IS AN ARTIFACT, NOT ONLY A MESSAGE. A nonzero exit carries the rendered receipt as its
@@ -215,7 +246,7 @@ fn fleet_health_check() -> ProcessExit
         AccessTokenReady { token: t } => {
           let observations = map(fleet_intent_known_hosts, h => observe_rostered_host(host: h, token: t))
           let receipt = assess_fleet_health(goals: goals, observations: observations)
-          let rendered = render_receipt(receipt: receipt)
+          let rendered = concat(realization_line(), "\n", render_receipt(receipt: receipt))
           let written = write_receipt(rendered: rendered)
           if written == false {
             return exit_failure(reason: concat("fleet health: the receipt could not be written to ", fleet_health_receipt_env as String, "\n", rendered))
