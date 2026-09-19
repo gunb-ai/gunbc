@@ -2,6 +2,7 @@ module gunbc.cli_services
 
 import std.types { FilePath, Unit }
 import std.string_type { String }
+import extdeps.linux.procfs { ProcSelfExe, procfs_path_literal }
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_transport_argv,
   gunbc_run_transport_argv
@@ -13,8 +14,11 @@ import gunbc.cli_invoke {
 // the wrong shape for a provenance join: an assessment that must prove the executable it is
 // running under was built from the selected revision cannot take the executable's identity from
 // a path, because a path is a claim about a file and the join is about a process. This operation
-// therefore takes NO INPUT. Its argv is fixed at the Linux procfs magic link
-// (extdeps.linux.procfs ProcSelfExe): the shell transport forks and execs argv[0] directly
+// therefore takes NO INPUT. Its argv is fixed at the Linux procfs magic link, spelled once by
+// the roster (extdeps.linux.procfs ProcSelfExe through `running_image_path` -- a data binding,
+// because an argv element that is a CALL does not materialize, the residue
+// test.claim.operation_argv_corpus pins, while a module-scope name does): the shell transport
+// forks and execs argv[0] directly
 // (no intermediate shell), and the kernel resolves /proc/self/exe in the forked child before the
 // exec, so the program that answers is the same image the interpreter evaluating the call is
 // running -- not the file at target/release/gunbc, not a binary a caller pointed at, and still
@@ -27,6 +31,8 @@ import gunbc.cli_invoke {
 // NO mock_response, deliberately. A hermetic caller receives a typed refusal rather than an
 // identity that no build produced: a fabricated commit here would be the fabricated plausible
 // output DESIGN section 5 forbids, wearing the name of the wall built to catch it.
+data running_image_path: String = procfs_path_literal(p: ProcSelfExe) as String
+
 service gunbc.Cli {
   operation Run {
     input {
@@ -71,7 +77,7 @@ service gunbc.Cli {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["/proc/self/exe", "--version"] }
+    transport shell { argv: [running_image_path, "--version"] }
     exit {
       0 => Unit
       nonzero => String "the running gunbc did not report its version"
