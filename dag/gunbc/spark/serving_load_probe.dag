@@ -751,7 +751,7 @@ type ProbeProvenance
 
 // ONE REMOTE OPERATION IS ONE EXECUTION. The mint takes SparkRemoteRun whole, so an exit from
 // run A cannot be paired with stdout from run B at this interface.
-type BenchServeExecution sole_constructor
+type BenchServeExecution
   = BenchServeRan { protocol: VllmBenchServeRequest, exit_code: Int, stdout: String, stderr: String }
   | BenchServeUnreachable { protocol: VllmBenchServeRequest, cause: NonEmptyStr }
 
@@ -1277,12 +1277,17 @@ data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
 
 data glm_native_bench_seed: Nat = 20260918
 
+// The loopback base URL both the bench client and the metrics scrape address, from the profile's port.
+fn glm_native_serve_base_url() -> NonEmptyStr {
+  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr
+}
+
 // The live probe's protocol: 256-in/128-out, SendAllImmediately, c=2. SendAllImmediately is wiring,
 // not a comparable rate protocol (arrival skew is unread). The derived rate counts completed output
 // tokens; bench-serve's total token throughput also counts prefill and answers a different question.
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
-  base_url: join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr,
+  base_url: glm_native_serve_base_url(),
   model: glm_native_concurrent_profile.served_alias,
   tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_sweep_dataset,

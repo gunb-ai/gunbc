@@ -21,10 +21,10 @@ import gunbc.spark.serving_rank_observe {
   observed_rank_incarnation, ObservedRankIncarnation,
 }
 import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
-import gunbc.spark.serving_arm { glm_native_concurrent_profile }
 import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_load_probe {
+  glm_native_serve_base_url,
   SamePrincipal,
   glm_native_live_subject_standing,
   glm_native_smoke_protocol,
@@ -52,7 +52,7 @@ data glm_native_serving_load_receipt_path: String = "target/glm-native-serving-l
 data glm_native_serving_load_attempt_raw: String = "glm-native-serving-load"
 
 fn metrics_url() -> String {
-  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port), vllm_route_path(r: vllm_route_metrics) as String], "")
+  join([glm_native_serve_base_url() as String, vllm_route_path(r: vllm_route_metrics) as String], "")
 }
 
 fn curl_metrics_argv() -> List<String> {
