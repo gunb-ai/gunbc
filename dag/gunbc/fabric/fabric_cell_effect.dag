@@ -106,12 +106,27 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // THE QUOTA LINE IS EITHER A CEILING OR AN AFFIRMATIVE UNSET, NEVER ABSENT. CpuQuotaResolved
 // renders `CPUQuota=<threads * 100>%`; SlotCpuQuotaUnbounded renders `CPUQuota=` through
 // slice_cpu_quota_unbounded, which is the empty assignment systemd reads as "no quota". Omitting
-// the line under Unbounded would be the widen DESIGN 5 forbids in the one case that matters: a
-// cell that once carried a quota would keep it while the desired digest said infinity, and the
-// reconcile would report MemberChanged forever. The RunnerSlotCpuQuota that used to carry a
-// refusing arm no longer does (its only refusing producer, a vendor survey, is deleted), so this
-// fold is total and the SliceDirectivesQuotaSurveyRefused / CellCpuQuotaSurveyRefused arms that
-// carried that refusal are deleted with it rather than left as arms nothing can produce.
+// the line under Unbounded would be the widen DESIGN 5 forbids: an ADDED cell would carry
+// whatever quota its slice already had while the desired digest said infinity. The
+// RunnerSlotCpuQuota that used to carry a refusing arm no longer does (its only refusing producer,
+// a vendor survey, is deleted), so this fold is total and the SliceDirectivesQuotaSurveyRefused /
+// CellCpuQuotaSurveyRefused arms that carried that refusal are deleted with it rather than left as
+// arms nothing can produce.
+//
+// WHAT THIS DOES NOT DO, STATED SO THE RESET IS NOT READ AS A REPAIR (review F-R1, 2026-09-19).
+// The six directives are rendered only for MemberAdded. An EXISTING boundary that differs from the
+// desired row only by a finite CPU quota reconciles as MemberChanged, and every MemberChanged at
+// this address is refused as CellChangeNotYetRealizable by fabric_cell_address_realization below --
+// so a previously installed finite quota is DETECTED (the digest compares "infinity" against the
+// host's CPUQuotaPerSecUSec identity and reports drift) and is NOT cleared by this module. That is
+// the inherited change-realization boundary, not a new one: gunbc.change_realization has not
+// declared the staged intermediates for a resource-boundary change, and until it does the plan
+// refuses rather than guessing. EXPLICITLY BLOCKED, with its trigger: the finite-to-unbounded
+// repair on an existing cell lands when change realization admits a bounded resource-boundary
+// change at this address -- the same subject, authorization and readback as the add path, applied
+// through set-property to the existing slice, never by deleting and recreating the cell. The live
+// fabric cell runs with CPUQuota infinity today (srv4 census), so nothing on the fleet sits behind
+// this block; a cell that acquires a finite quota out of band would.
 //
 // WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
 // `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted

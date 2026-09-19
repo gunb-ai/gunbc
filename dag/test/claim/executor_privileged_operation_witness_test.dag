@@ -175,7 +175,10 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
 // committed file, or declare a different quota than the committed projection, and either this
 // or the generated-artifact gate goes false. The unbounded arm asserts the OTHER direction too: no
 // percentage grant may survive in the file, because a 100% quota at one core per slot is the
-// throttle the ruling forbids.
+// throttle the ruling forbids. That negative is a LINE-TERMINAL `%`: a percentage grant is the
+// only sudoers line that ends in one, whereas a `%group` principal line begins with it, so the
+// clause names the CPU grant and not every future row that happens to carry the character
+// (review 68479).
 test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool {
   let ds = fabric_cell_slice_desired_directives()
   let desired_lines = join(map(ds, d => systemd_slice_directive_line(directive: d)), "\n")
@@ -189,7 +192,7 @@ test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool
       let assignment = systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
       string_contains(s: srv3_runner_host_sudoers(), pattern: join([assignment, "\n"], ""))
         && string_contains(s: desired_lines, pattern: assignment)
-        && !string_contains(s: srv3_runner_host_sudoers(), pattern: "%")
+        && !string_contains(s: srv3_runner_host_sudoers(), pattern: join(["%", "\n"], ""))
     }
   }
 }

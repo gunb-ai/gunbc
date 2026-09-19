@@ -640,7 +640,8 @@ test fn witness_drifted_quota_standing_is_not_converged() -> Bool {
 // exactly as fabric_cell_boundary_address_probe does. RED: a desired digest that spelled unbounded
 // as a literal beside the parser's ("" or "unbounded") reads every live cell as drifted; the drift
 // test above is the other half -- a host that reports a one-thread quota against the same row is
-// not converged, which is the throttle the 2026-09-19 ruling forbids showing up as drift-to-repair.
+// reported as drift, which is the throttle the 2026-09-19 ruling forbids being made VISIBLE; its
+// repair on an existing cell is explicitly blocked (gunbc.fabric_cell_effect, review F-R1).
 test fn witness_an_unbounded_host_quota_is_satisfied_under_the_unbounded_row() -> Bool {
   match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "infinity")) {
     Absent => false
