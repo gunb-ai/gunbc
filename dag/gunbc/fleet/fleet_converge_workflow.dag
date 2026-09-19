@@ -64,6 +64,13 @@ import gunbc.fleet_workflow_steps {
   JobTimeoutExceedsCeiling,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.runner_slot_retire_run {
+  runner_retirement_executor_env_name,
+  runner_retirement_target_env_name,
+  runner_slot_retire_dispatch_mode_env,
+  runner_slot_retire_receipt_path,
+}
+import gunbc.runner_host_retirement { declared_host_retirements }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
@@ -79,6 +86,8 @@ import gunbc.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_runner_slot_retire_invoke,
+  gunbc_ci_runner_slot_retire_dispatch_admission_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_grant_install_invoke,
@@ -181,6 +190,7 @@ type FleetConvergeWorkflowMode
   | RunnerHostFileObserve
   | RunnerHostFileConverge
   | RunnerPasswordSessionToolConverge
+  | RunnerSlotRetire
   | R2MintPreflight
   | R2ObjectWriteMint
 
@@ -206,6 +216,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
+    RunnerSlotRetire => "runner_slot_retire"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
   }
@@ -232,7 +243,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, RunnerSlotRetire, R2MintPreflight, R2ObjectWriteMint]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -276,6 +287,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerHostFileObserve => none
     RunnerHostFileConverge => none
     RunnerPasswordSessionToolConverge => none
+    RunnerSlotRetire => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
   }
@@ -489,6 +501,139 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
   }
 }
 
+// ── the runner slot retirement mode ────────────────────────────────────────────────────────────
+
+// THIS MODE CANNOT LIVE IN THE HOST-PINNED JOB EITHER, AND FOR A SHARPER REASON THAN THE RESET ONE.
+//
+// `fleet_converge_job` is pinned to `fleet_converge_host_pinned_runner_spec()`, which resolves the
+// `host` input to a runner label ON that host, and keys its mutation domain to the same input. Both
+// uses are correct while the subject is a host that runs runners. A retirement's subject is a host
+// whose runners are being taken away, so the pin is a circular requirement: the route needs a
+// schedulable runner on the machine whose last schedulable runner it is supposed to remove.
+//
+// THE RESET MODE SOLVED THE SAME SHAPE BY INVERTING ONE FIELD, and that solution does not transfer.
+// There the dispatch carries the OBSERVER and the subject is DERIVED from a modeled pairing, so the
+// invalid combination has no form field. Here both roles are genuinely free -- any retained executor
+// may reach any declared retirement target -- so there is no pairing to derive one from, and the
+// refusal has to be an equality test between two carried values. It lives in the entry
+// (`retirement_route_admission`) rather than in a job-level `if`, because a skipped job is a silent
+// green and the one thing this refusal must not be is quiet.
+//
+// RUNS-ON TAKES THE EXECUTOR. THE CONCURRENCY GROUP TAKES THE TARGET. That split is the second half
+// of the request and it is not decoration: two dispatches naming DIFFERENT retained executors and the
+// SAME target are, to an executor-keyed group, two independent runs -- they would interleave two
+// assessments and, once the actuation route lands, two mutations of one machine. The group below is
+// the SAME `gunbc-host-mutation-<host>` domain `fleet_host_mutation_concurrency_group_expression`
+// derives for every other host-touching job, indexed by the target instead, so a fleet apply on srv2
+// and a retirement assessment of srv2 contend on one domain rather than on two names for it.
+//
+// WHAT THIS DOES NOT ESTABLISH, said plainly because a concurrency group is exactly the artifact a
+// later reader cites as the serialization authority. It serializes the GitHub ingress and nothing
+// else. `gunbc.fleet_workflow_steps` already records that the host-local lease
+// (`gunbc.deploy_transition` `acquire_transition_lease`) exists, is witnessed, and is not yet
+// acquired by this workflow; that residual is unchanged here and is not made worse -- this job adds
+// no ingress that bypasses a fence the others honour. Closing it is the same one change for every
+// mutating mode, not a thing this mode can do for itself.
+fn fleet_converge_retirement_target_description() -> String {
+  join([
+    "runner_slot_retire only: the host being RETIRED, reached over SSH from the executor. Only a host carrying a declared retirement is offered (",
+    join(map(declared_host_retirements, r => r.host as String), ", "),
+    "); a capacity refusal is not a retirement and does not put a host on this list",
+  ], "")
+}
+
+// THE OPTIONS ARE THE DECLARED RETIREMENTS, DERIVED. Spelling the list here would be a second roster
+// beside `gunbc.runner_host_retirement` `declared_host_retirements`, and the two would disagree the
+// first time a host was added to one of them -- the exact decay the enrolled-host and Spark-target
+// lists above were both repaired for.
+data fleet_converge_retirement_target_options: List<String> = map(declared_host_retirements, r => r.host as String)
+
+data fleet_converge_retirement_executor_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.retirement_executor)) }}"
+
+fn fleet_converge_retirement_executor_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_retirement_executor_runner_expression }
+}
+
+data fleet_converge_retirement_target_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.retirement_target }}"
+
+data fleet_converge_runner_slot_retire_step_if: String = fleet_converge_mode_step_if(mode: RunnerSlotRetire)
+
+fn fleet_converge_runner_slot_retire_job() -> Job {
+  Job {
+    id: "runner-slot-retire",
+    name: none,
+    runner: fleet_converge_retirement_executor_runner_spec(),
+    steps: concat(
+      concat(
+        fleet_converge_consumer_prelude_steps(),
+        [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]
+      ),
+      [fleet_converge_runner_slot_retire_step(), fleet_converge_runner_slot_retire_receipt_upload_step()]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_runner_slot_retire_step_if },
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_converge_retirement_target_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: none,
+  }
+}
+
+// BOTH LABELS ARE HANDED TO THE PROCESS, and both have to be, for opposite reasons. The TARGET is
+// what the entry reads and decides about, and it has no other route in -- `gunbc_run_command` carries
+// no --arg. The EXECUTOR is carried so the entry can refuse when the two are equal; deriving it from
+// the runner's own hostname instead would make the label that decided WHERE the job ran and the name
+// the machine answers to one reading, which is the corroboration collapse review 61761 found on the
+// reset route one job above.
+fn fleet_converge_runner_slot_retire_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner slot retirement: assess a declared host retirement from a retained executor over SSH" },
+    id: Present { value: "runner_slot_retire" },
+    run: gunbc_ci_runner_slot_retire_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: runner_retirement_executor_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_executor }}")),
+        kv(key: runner_retirement_target_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_runner_slot_retire_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// UPLOADED ON FAILURE TOO, and here that is the ONLY case that currently exists: srv2 carries no
+// operator interruption authorization, so every required subject reaches the refused arm and the run
+// exits non-zero with the full closure verdict in the receipt. An upload conditioned on success would
+// discard the one artifact the lane is waiting to read.
+fn fleet_converge_runner_slot_retire_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner slot retirement receipt" },
+    id: Present { value: "runner_slot_retire_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-slot-retire")),
+      kv(key: "path", value: yaml_string(s: runner_slot_retire_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_slot_retire_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
 // THE BACKSTOP NOW DERIVES FROM THE STEPS IT GUARDS, rather than restating their budgets in a
@@ -508,6 +653,7 @@ fn fleet_converge_build_job_steps() -> List<Step> {
     [
       ci_release_build_step(),
       fleet_converge_reset_observer_dispatch_admission_step(),
+      fleet_converge_retirement_dispatch_admission_step(),
       ci_release_bins_pack_step(),
       ci_release_bins_upload_step(),
     ],
@@ -547,6 +693,7 @@ fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
         step_name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled",
         role: capability_neutral,
       },
+      CapabilityAnnotatedStep { step_name: "Retirement dispatch admission: refuse an unnamed executor, an unnamed target, or an executor that is its own target", role: capability_neutral },
       CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
       CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
     ],
@@ -598,6 +745,29 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
       value: [
         kv(key: host_reset_dispatch_mode_env as String, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
         kv(key: host_reset_observer_label_env as String, value: yaml_string(s: "${{ github.event.inputs.reset_observer }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE RETIREMENT DISPATCH ADMISSION, BESIDE THE RESET ONE AND FOR THE SAME REASON. Both inputs are
+// optional-and-interpolated-into-runs-on, which is the shape that queues a job against a label no
+// machine carries; `gunbc.runner_slot_retire_run` carries the argument in full.
+fn fleet_converge_retirement_dispatch_admission_step() -> Step {
+  RunStep {
+    name: Present { value: "Retirement dispatch admission: refuse an unnamed executor, an unnamed target, or an executor that is its own target" },
+    id: Present { value: "retirement_dispatch_admission" },
+    run: gunbc_ci_runner_slot_retire_dispatch_admission_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: runner_slot_retire_dispatch_mode_env, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
+        kv(key: runner_retirement_executor_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_executor }}")),
+        kv(key: runner_retirement_target_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_target }}")),
       ]
     },
     working_directory: none,
@@ -1694,7 +1864,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; runner_slot_retire assesses a DECLARED host retirement from a retained executor over SSH, taking retirement_executor and retirement_target rather than host because the machine being retired cannot be relied on to run the job that retires it" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
@@ -1712,6 +1882,20 @@ data fleet_converge_workflow: Workflow = Workflow {
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_reset_observer_options },
+        },
+        DispatchInput {
+          name: "retirement_executor",
+          description: Present { value: "runner_slot_retire only: the RETAINED host whose runner executes the job. It is a different field from the target because retiring a host must not require a runnable runner on the host being retired, and the entry refuses when the two name the same machine" },
+          required: false,
+          default: none,
+          type: InputChoice { options: fleet_converge_enrolled_host_options },
+        },
+        DispatchInput {
+          name: "retirement_target",
+          description: Present { value: fleet_converge_retirement_target_description() },
+          required: false,
+          default: none,
+          type: InputChoice { options: fleet_converge_retirement_target_options },
         },
         DispatchInput {
           name: "plan_artifact_hash",
@@ -1761,7 +1945,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_runner_slot_retire_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome

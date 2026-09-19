@@ -1,0 +1,391 @@
+module gunbc.runner_host_retirement
+
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
+import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
+import gunbc.fleet_runner_connectivity {
+  RegistrationSlotDecoding,
+  RegistrationNamesCommittedSlot,
+  RegistrationNamesNoCommittedSlot,
+}
+
+// RETIRING A HOST IS AN OBLIGATION SOMEBODY DECLARED. IT IS NOT A WIDTH THAT FAILED TO RESOLVE.
+//
+// srv2 is the specimen and it is the reason this module exists beside gunbc.runner_width_transition
+// rather than inside it. A width transition is a host that stays in the fleet at a smaller size: its
+// obligation is PRIOR WIDTH MINUS TARGET WIDTH, and the target is a positive number the model still
+// answers. srv2 has no such target. `runner_host_deploy_for` answers `RunnerHostDeployRefused` for it
+// -- its session denominator is unestablished, so no admitted width can be derived at all -- and
+// `runner_width_transition` deliberately carries no row for it, because a transition needs two widths
+// and srv2 has one.
+//
+// SO THE OBLIGATION WAS UNSAYABLE, AND THE TEMPTING REPAIRS ARE BOTH WRONG IN THE SAME DIRECTION.
+//
+//   1. READ THE CAPACITY REFUSAL AS A DELETION INSTRUCTION. "This host's admitted width resolved to
+//      zero" would become "remove every slot on this host". That is the sentinel encoding
+//      `runner_host_deploy` already removed once, re-created one layer up and with far worse
+//      consequences: a refusal is a statement that the model CANNOT SAY what this host should run,
+//      and deriving a removal from it converts ignorance into an instruction. A host whose
+//      denominator becomes measurable tomorrow would have had its estate deleted today on the
+//      strength of not being understood.
+//
+//   2. CONSTRUCT A ZERO-WIDTH `RunnerHostDeploy`. This is the same move wearing the operational
+//      type, and `runner_host_deploy_of` has no arm that would build it -- the refusal arm carries no
+//      `runner_count` field to fill. Reaching the zero would mean minting the row somewhere else,
+//      which is the second authority that constructor exists to prevent.
+//
+// WHAT A RETIREMENT ACTUALLY IS: a declared decision that a named host leaves the runner estate, with
+// the population it is leaving behind stated as part of the decision. The population is the OWNED
+// identity set -- what srv2 was running -- and it is declared for the same reason
+// `RunnerWidthTransition.prior_width` is declared: it cannot be recovered from a model that has
+// stopped answering for this host, and re-deriving it from a census would shrink the obligation at
+// exactly the moment a member becomes least visible.
+//
+// THE SPEC TRAVELS WITH THE DECISION, and that is not decoration. The retirement has to name an
+// ssh_target to reach the host over, principals to reach it as, and the GitHub app whose
+// registrations are part of the estate. Every one of those is on `RunnerHostSpec`, which
+// `RunnerHostDeployWidthRefused` already carries precisely so a refused host stays fully named. This
+// row consumes that spec rather than re-spelling an address.
+type HostRetirement sole_constructor {
+  retirement_id: NonEmptyStr
+  host: HostIdentity
+  spec: RunnerHostSpec
+  owned_width: Int
+  operator_reason: NonEmptyStr
+}
+
+// THE DECLARED RETIREMENTS. One row, and the width is srv2's owned local population rather than an
+// admitted one -- the distinction the type's note above turns on.
+//
+// WHY 21. srv2 was provisioned on the same 21-slot template as srv3 and srv4 under the 15 GiB
+// ceiling; that is the population whose units and trees are still on the machine and therefore the
+// population this retirement is an obligation over. It is authored rather than derived because
+// nothing in the model still answers a width for srv2 -- which is the whole reason the row exists.
+// AN OVERSTATED WIDTH IS THE SAFE DIRECTION AND AN UNDERSTATED ONE IS NOT. A member named here that
+// the host never carried enters the obligation and reads `RetirementComplete` immediately on a live
+// observation -- masked-absent, no cgroup -- so it costs one reading. A member omitted here is
+// outside every gate: no standing is taken for it, no evidence is required of it, and the closure
+// could claim convergence with it still running.
+data srv2_host_retirement: HostRetirement = HostRetirement {
+  retirement_id: "srv2-runner-estate-retirement" as NonEmptyStr,
+  host: operator_host_srv2,
+  spec: srv2_runner_host_spec,
+  owned_width: 21,
+  operator_reason: "srv2 leaves the runner estate: its session denominator is unestablished, so gunbc.runner_host_deploy refuses to derive any admitted width for it and it carries no width transition. The retirement is declared here as its own decision rather than read off that refusal -- a capacity refusal states that the model cannot say what this host should run, and is not an instruction to delete what it is running" as NonEmptyStr,
+}
+
+data declared_host_retirements: List<HostRetirement> = [srv2_host_retirement]
+
+// A HOST IS RETIRING BECAUSE A ROW SAYS SO, AND FOR NO OTHER REASON.
+//
+// `HostRetirement` is `sole_constructor`, so this roster is the only population that exists: no
+// consumer can mint a retirement from a refusal, a census gap, an empty roster read or an urgency.
+// That is the construction that makes the two failure arms in the type's note unwritable rather than
+// merely discouraged -- there is nowhere else to build the value they would have to produce.
+type HostRetirementStanding
+  = HostRetirementDeclared { retirement: HostRetirement }
+  | HostNotRetiring { host: HostIdentity, cause: String }
+
+fn host_retirement_rows_for(host: HostIdentity) -> List<HostRetirement> {
+  declared_host_retirements |> filter(r => (r.host as String) == (host as String))
+}
+
+fn host_retirement_standing(host: HostIdentity) -> HostRetirementStanding {
+  let rows = host_retirement_rows_for(host: host)
+  if list_length(items: rows) == 0 {
+    HostNotRetiring {
+      host: host,
+      cause: join([host as String, " carries no declared host retirement, so nothing about it may be deleted under one; a host whose admitted width refuses is a host the model cannot size, not a host somebody decided to remove"], ""),
+    }
+  } else {
+    HostRetirementDeclared { retirement: rows |> fold(init: rows.first(), f: (acc, r) => acc) }
+  }
+}
+
+// THE OBLIGATION, IN THE SAME SHAPE THE TRANSITION AUTHORITY PRODUCES. A retiring host owes every one
+// of its owned slot identities, from 1, because it is leaving entirely -- there is no surviving
+// committed population to subtract, which is exactly what distinguishes a retirement from a shrink.
+fn host_retirement_required_retirees(host: HostIdentity) -> List<NonEmptyStr> {
+  match host_retirement_standing(host: host) {
+    HostNotRetiring { host: _, cause: _ } => []
+    HostRetirementDeclared { retirement: r } =>
+      desired_unit_names_range(host: r.host, slot: 1, limit: r.owned_width) |> map(u => u as NonEmptyStr)
+  }
+}
+
+fn host_retirement_spec(host: HostIdentity) -> List<RunnerHostSpec> {
+  match host_retirement_standing(host: host) {
+    HostNotRetiring { host: _, cause: _ } => []
+    HostRetirementDeclared { retirement: r } => [r.spec]
+  }
+}
+
+
+// ── OWNERSHIP IS ESTABLISHED BEFORE ANYTHING IS DELETED, AND A DECODER MISS IS NOT EVIDENCE ───
+//
+// `RegistrationNamesNoCommittedSlot` is the honest answer to ONE question: does this registration's
+// name equal the name of a slot in the currently committed population? For a retiring host the answer
+// is no for every one of its registrations, because the committed population no longer contains it.
+// The decoder is right and it is being asked about the wrong thing.
+//
+// TWO OPPOSITE MISREADINGS OF THAT ANSWER, AND BOTH ARE REACHABLE.
+//
+//   AS A FILTER: "the decoder does not recognize this name, so it is not ours to worry about" -- and
+//   srv2's whole GitHub estate silently leaves the obligation set at the moment its slots stop being
+//   committed. The identities do not stop existing; they stop being counted, which is worse, because
+//   the closure then has nothing to refuse on.
+//
+//   AS A LICENCE: "the decoder does not recognize this name, so it is surplus and may be deleted" --
+//   and a foreign runner somebody else registered in the same organization is destroyed by our
+//   convergence. `SlotConnectivityUnexpectedRegistration` exists because that class is real.
+//
+// SO OWNERSHIP IS ITS OWN EVIDENCE, TAKEN FROM THE NAMING AUTHORITY THAT ISSUED THE NAME. A
+// registration belongs to a host when it carries that host's instance prefix -- the same forward
+// naming rule `unit_is_owned_by_host` applies to units, which is where slot names come from in the
+// first place. That is a positive fact about the name, not the absence of a fact about the roster.
+type OwnedIdentityEvidence
+  = OwnershipEstablished { host: HostIdentity, basis: String }
+  | OwnershipUnestablished { name: NonEmptyStr, cause: String }
+
+fn registration_ownership(host: HostIdentity, name: NonEmptyStr) -> OwnedIdentityEvidence {
+  if unit_is_owned_by_host(host: host, unit: name as String) {
+    OwnershipEstablished {
+      host: host,
+      basis: join(["the registration name carries ", host as String, "'s own instance prefix, which is the naming authority that issued it"], ""),
+    }
+  } else {
+    OwnershipUnestablished {
+      name: name,
+      cause: join(["no declared host in this estate issued the name ", name as String, "; it is a registration in the organization whose owner is unestablished, and an unestablished owner authorizes neither its removal nor its silent omission"], ""),
+    }
+  }
+}
+
+fn ownership_is_established(e: OwnedIdentityEvidence) -> Bool {
+  match e {
+    OwnershipEstablished { host: _, basis: _ } => true
+    OwnershipUnestablished { name: _, cause: _ } => false
+  }
+}
+
+// THE THIRD DISPOSITION IS THE ONE THE DECODER CANNOT EXPRESS. A committed slot is ordinary business.
+// An owned identity outside the committed population is a SURPLUS RETIREE -- it stays in the
+// obligation precisely because the committed-slot decoder no longer recognizes it. An unowned one
+// blocks and is never touched.
+//
+// NOTE WHAT `SurplusOwnedRetiree` DOES NOT CARRY: permission. It says this identity is ours and is
+// owed a retirement, which is the obligation half. Whether it may be DELETED is decided by
+// `surplus_identity_deletable` below, which requires a declared retirement over its host as well --
+// so an owned surplus identity on a host nobody retired is required to be accounted for and is still
+// not deletable.
+type SurplusIdentityDisposition
+  = CommittedSlotIdentity { name: NonEmptyStr }
+  | SurplusOwnedRetiree { name: NonEmptyStr, host: HostIdentity }
+  | UnownedRegistration { name: NonEmptyStr, cause: String }
+
+fn surplus_identity_disposition(
+  host: HostIdentity,
+  decoding: RegistrationSlotDecoding,
+  name: NonEmptyStr,
+) -> SurplusIdentityDisposition {
+  match decoding {
+    RegistrationNamesCommittedSlot { slot: _ } => CommittedSlotIdentity { name: name }
+    RegistrationNamesNoCommittedSlot { registration_name: rn } =>
+      match registration_ownership(host: host, name: rn) {
+        OwnershipEstablished { host: h, basis: _ } => SurplusOwnedRetiree { name: rn, host: h }
+        OwnershipUnestablished { name: n, cause: c } => UnownedRegistration { name: n, cause: c }
+      }
+  }
+}
+
+// DELETION NEEDS BOTH FACTS AND IT IS THE CONJUNCTION THAT IS THE WALL. Ownership says the identity is
+// ours; the declared retirement says somebody decided it should go. Either alone is the misreading
+// this section names -- ownership alone deletes the estate of a host that is merely quiet, and a
+// declared retirement alone deletes whatever happens to be near it.
+fn surplus_identity_deletable(d: SurplusIdentityDisposition) -> Bool {
+  match d {
+    CommittedSlotIdentity { name: _ } => false
+    UnownedRegistration { name: _, cause: _ } => false
+    SurplusOwnedRetiree { name: _, host: h } =>
+      match host_retirement_standing(host: h) {
+        HostRetirementDeclared { retirement: _ } => true
+        HostNotRetiring { host: _, cause: _ } => false
+      }
+  }
+}
+
+// AN IDENTITY THAT MAY NOT BE DELETED IS STILL AN IDENTITY THE CLOSURE MUST ACCOUNT FOR. This is the
+// half the filter reading loses: `surplus_identity_deletable` answering false is not permission to
+// stop looking.
+fn surplus_identity_blocks_closure(d: SurplusIdentityDisposition) -> Bool {
+  match d {
+    CommittedSlotIdentity { name: _ } => false
+    UnownedRegistration { name: _, cause: _ } => true
+    SurplusOwnedRetiree { name: _, host: _ } => true
+  }
+}
+
+fn surplus_identity_name(d: SurplusIdentityDisposition) -> NonEmptyStr {
+  match d {
+    CommittedSlotIdentity { name: n } => n
+    UnownedRegistration { name: n, cause: _ } => n
+    SurplusOwnedRetiree { name: n, host: _ } => n
+  }
+}
+
+
+// ── SLOT RETIREMENT SATISFIED IS NOT ESTATE CLEANUP ───────────────────────────────────────────
+//
+// `RetirementComplete` is a statement about ONE systemd unit: replacement is inhibited, the service
+// is not running, and its workload cgroup is quiescent. Three further things survive that state, each
+// with a different owner and a different remedy, and collapsing them into the slot standing is how a
+// host reports itself retired while its registrations still appear in the organization roster and a
+// timer on the machine is still trying to bring its runners back.
+//
+//   REGISTRATION REMOVAL -- the GitHub side. A masked unit does not delist anything; the org roster
+//   is remote state reached through the App, and its removal is a separate authorized write with its
+//   own readback.
+//
+//   RUNNER TREE REMOVAL -- the on-disk `_work` and runner directories. `slot_removal_realization`
+//   authorizes this per identity and only against an exact `RetirementComplete`, which is the
+//   ordering, not the discharge.
+//
+//   LIVENESS RECONCILE TIMER RETIRED -- the one that undoes the other two. It is modelled below.
+//
+// THE FOLD REQUIRES ALL OF THEM, so `EstateCleanupComplete` has no arm reachable from slot standings
+// alone. That is the point: the invalid state is "a retirement reported satisfied on slot evidence",
+// and it stops being writable rather than being caught by a reviewer noticing the difference.
+type EstateObligation
+  = RegistrationRemoval
+  | RunnerTreeRemoval
+  | LivenessReconcileTimerRetired
+
+fn estate_obligation_wire(o: EstateObligation) -> String {
+  match o {
+    RegistrationRemoval => "registration-removal"
+    RunnerTreeRemoval => "runner-tree-removal"
+    LivenessReconcileTimerRetired => "liveness-reconcile-timer-retired"
+  }
+}
+
+data host_retirement_estate_obligations: List<EstateObligation> = [RegistrationRemoval, RunnerTreeRemoval, LivenessReconcileTimerRetired]
+
+// DISCHARGE IS EVIDENCE-SHAPED AND HAS THREE ANSWERS, NOT TWO. An obligation nobody could observe is
+// not an obligation that is outstanding-because-we-looked; the difference decides whether the remedy
+// is to act or to restore a reading.
+type EstateObligationStanding
+  = EstateObligationDischarged { obligation: EstateObligation, evidence: String }
+  | EstateObligationOutstanding { obligation: EstateObligation, cause: String }
+  | EstateObligationUnobserved { obligation: EstateObligation, cause: String }
+
+fn estate_standing_obligation(s: EstateObligationStanding) -> EstateObligation {
+  match s {
+    EstateObligationDischarged { obligation: o, evidence: _ } => o
+    EstateObligationOutstanding { obligation: o, cause: _ } => o
+    EstateObligationUnobserved { obligation: o, cause: _ } => o
+  }
+}
+
+fn estate_standing_discharged(s: EstateObligationStanding) -> Bool {
+  match s {
+    EstateObligationDischarged { obligation: _, evidence: _ } => true
+    EstateObligationOutstanding { obligation: _, cause: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+type EstateCleanupStanding
+  = EstateCleanupComplete
+  | EstateCleanupOutstanding { outstanding: List<EstateObligation> }
+
+// AN OBLIGATION WITH NO STANDING AT ALL IS OUTSTANDING, NOT ABSENT. The roster is the closed
+// vocabulary above and the standings are whatever a run managed to take, so completeness is an
+// identity join over the roster rather than a count over what arrived.
+fn estate_cleanup_standing(standings: List<EstateObligationStanding>) -> EstateCleanupStanding {
+  let outstanding = host_retirement_estate_obligations
+    |> filter(o => !any(
+        standings |> filter(s => estate_standing_discharged(s: s)),
+        s => estate_obligation_wire(o: estate_standing_obligation(s: s)) == estate_obligation_wire(o: o),
+      ))
+  if list_length(items: outstanding) == 0 {
+    EstateCleanupComplete
+  } else {
+    EstateCleanupOutstanding { outstanding: outstanding }
+  }
+}
+
+
+// ── THE RECONCILE TIMER'S RETIRED INTENT ──────────────────────────────────────────────────────
+//
+// `runner-liveness-reconcile.timer` runs on the runner hosts every two minutes and its service
+// restores runner liveness -- that is its whole job, and on a host that is still in the estate it is
+// doing the right thing. On a RETIRING host it is the mechanism that undoes the retirement: every
+// masked slot it can restart, every registration it can re-mint, it will.
+//
+// DISABLING IT BY HAND IS NOT ENOUGH, AND THE REASON IS THE SECOND HALF OF THIS SECTION'S TITLE. A
+// hand-disabled timer is a fact about the host at one instant; the next convergence pass compares the
+// host to the MODEL, and a model that says nothing about this timer says "active" by inheritance from
+// every other host. So the manual retirement is reverted by a legitimate pass doing exactly what it
+// was asked to do, and the no-change pass that follows reports convergence over a state nobody
+// intended.
+//
+// THE INTENT IS THEREFORE DERIVED FROM THE RETIREMENT ROSTER RATHER THAN AUTHORED BESIDE IT. There is
+// no second list of hosts-whose-timer-is-off to fall out of step with the list of hosts that are
+// retiring: declaring the retirement IS declaring the intent, and a host removed from the roster gets
+// its timer back by the same act.
+data runner_liveness_reconcile_timer_unit: NonEmptyStr = "runner-liveness-reconcile.timer" as NonEmptyStr
+
+type ReconcileTimerIntent
+  = ReconcileTimerActive { host: HostIdentity }
+  | ReconcileTimerRetired { host: HostIdentity, unit: NonEmptyStr, reason: NonEmptyStr }
+
+fn runner_liveness_reconcile_timer_intent(host: HostIdentity) -> ReconcileTimerIntent {
+  match host_retirement_standing(host: host) {
+    HostNotRetiring { host: h, cause: _ } => ReconcileTimerActive { host: h }
+    HostRetirementDeclared { retirement: r } =>
+      ReconcileTimerRetired {
+        host: r.host,
+        unit: runner_liveness_reconcile_timer_unit,
+        reason: r.operator_reason,
+      }
+  }
+}
+
+fn reconcile_timer_intent_wire(i: ReconcileTimerIntent) -> String {
+  match i {
+    ReconcileTimerActive { host: _ } => "active"
+    ReconcileTimerRetired { host: _, unit: _, reason: _ } => "retired"
+  }
+}
+
+// THE OBSERVED SIDE, JOINED TO THE INTENT. A timer that is enabled on a host whose intent is Retired
+// is the exact regression this section exists to catch, and it is reported as an OUTSTANDING estate
+// obligation rather than as a converged difference -- a retirement is not satisfied while the
+// mechanism that reverses it is armed.
+fn reconcile_timer_estate_standing(
+  intent: ReconcileTimerIntent,
+  observed_enabled: Bool,
+  observed: String,
+) -> EstateObligationStanding {
+  match intent {
+    ReconcileTimerActive { host: h } =>
+      EstateObligationOutstanding {
+        obligation: LivenessReconcileTimerRetired,
+        cause: join([h as String, " carries no declared retirement, so its reconcile timer is intended ACTIVE. This fold refuses to discharge rather than answering that the obligation is met, because a discharged reconcile-timer obligation records a RETIRED timer, and recording one against a host still in the estate would be a false fact about a machine that needs its reconciliation running"], ""),
+      }
+    ReconcileTimerRetired { host: h, unit: u, reason: _ } =>
+      if observed_enabled {
+        EstateObligationOutstanding {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join([u as String, " on ", h as String, " reads enabled (", observed, ") while this host's declared intent is retired; the next reconciliation tick can restore the population this retirement is removing"], ""),
+        }
+      } else {
+        EstateObligationDischarged {
+          obligation: LivenessReconcileTimerRetired,
+          evidence: join([u as String, " on ", h as String, " reads ", observed, " against a declared retired intent"], ""),
+        }
+      }
+  }
+}

@@ -6,6 +6,7 @@ import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, Surp
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_host_retirement { host_retirement_required_retirees }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
@@ -347,8 +348,30 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
+// TWO OBLIGATION AUTHORITIES, UNIONED HERE, AND NEITHER MAY SUBSTITUTE FOR THE OTHER.
+//
+// `required_retirees_for_host` answers for a host that STAYS at a smaller width: prior population
+// minus the target the model still computes. It answers the empty list for srv2 and that is correct
+// of it -- a transition needs two widths and srv2's admitted width refuses, so it has no row.
+//
+// `host_retirement_required_retirees` answers for a host that LEAVES. Its obligation is the whole
+// owned population, declared, because there is no surviving target to subtract from.
+//
+// A UNION RATHER THAN A CHOICE, so neither authority has to know whether the other answered. A host
+// can only be in one of the two states today, and a host somehow in both owes the union rather than
+// whichever branch an if-chain reached first -- which is the shape that silently drops obligations
+// when the two disagree.
+//
+// THE DUPLICATE SUPPRESSION IS BY EXACT IDENTITY and not by trusting the two sets to be disjoint,
+// because the consumers downstream are identity joins: a required retiree named twice would demand
+// two standings for one unit and could never be covered.
 fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
-  required_retirees_for_host(host: host)
+  let width_side = required_retirees_for_host(host: host)
+  let retirement_side = host_retirement_required_retirees(host: host)
+  concat(
+    width_side,
+    retirement_side |> filter(r => !any(width_side, w => (w as String) == (r as String))),
+  )
 }
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the
@@ -924,4 +947,137 @@ fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
 // disposition is unchanged.
 fn transition_baseline_rows(host: HostIdentity) -> List<String> {
   transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
+}
+
+
+// ── THE INVOCATION DISPOSITION: OBSERVING A SATISFIED POSTCONDITION NEEDS NO PERMISSION ───────
+//
+// `slot_removal_realization` above asks about a TEARDOWN -- may this tree be deleted -- and it is
+// right to test permission first, because deletion is an effect. The production retirement route asks
+// a different question: given what the host currently reports, what should THIS INVOCATION do? And
+// the answer for an already-retired slot is NOTHING, whatever anybody is or is not authorized to
+// interrupt.
+//
+// THE ORDERING IS THE WHOLE CONTENT OF THIS FOLD. Reusing the removal realization here would test
+// coverage first and answer `RemovalRetirementRefused` for a unit that is masked, stopped and
+// quiescent -- reporting "not permitted to interrupt" about a slot with nothing left to interrupt.
+// That is a refusal standing where a measurement already succeeded, and it has the two costs a
+// refusal is supposed to avoid: the closure can never discharge for a host whose operator never
+// needed to authorize anything, and an operator reading it would reasonably conclude the remedy is to
+// mint an interruption authorization -- permission to destroy running work, issued to satisfy a
+// report about work that is not running.
+//
+// PERMISSION GOVERNS ACTING, MEASUREMENT GOVERNS REPORTING, and the three propositions this module
+// separated at the top of the file are exactly the three arms:
+//
+//   SATISFIED    -- the measurement already holds. No method is selected, no operation is emitted,
+//                   and the receipt carries NO method label, because none ran. This is the arm the
+//                   ruling of 2026-09-18 requires and it is the one an "it is idle anyway" shortcut
+//                   would have reached by the wrong road: the difference is that this arm is entered
+//                   from `RetirementComplete` -- replacement inhibited, service not running, subtree
+//                   quiescent -- and never from a worker count, an ActiveState, or a host being quiet.
+//   ACTUATE      -- the measurement does not hold and an exact operator authorization names this
+//                   unit. The existing disruptive actuation is emitted, to be followed by an
+//                   independent readback. This arm is reachable only through
+//                   `authorized_retirement_actuation`, which is the module's single coverage test.
+//   PENDING      -- the readback is UNOBSERVED. Neither a claim nor an action; a reading is owed.
+//   REFUSED      -- the measurement does not hold and nothing authorizes interrupting this unit.
+//
+// NOTE WHICH ARM AN UNOBSERVED READING TAKES, AND WHY IT IS BEFORE THE COVERAGE TEST. A slot whose
+// cgroup could not be read is not refused for lack of permission -- the permission question has not
+// been reached, because we do not yet know whether anything needs doing. Reporting it as refused
+// would send an operator to mint an authorization when the remedy is to restore a reading.
+type SlotRetirementInvocation
+  = SlotRetirementAlreadySatisfied { unit: String }
+  | SlotRetirementActuate { unit: NonEmptyStr, method_label: String, operation: HostOperation }
+  | SlotRetirementPending { unit: String, cause: String }
+  | SlotRetirementRefused { unit: String, cause: String }
+
+fn slot_retirement_invocation(
+  evidence: SlotRetirementEvidence,
+  unit: NonEmptyStr,
+  standing: RunnerRetirementStanding,
+) -> SlotRetirementInvocation {
+  if retirement_is_complete(s: standing) {
+    SlotRetirementAlreadySatisfied { unit: unit as String }
+  } else if retirement_is_unobserved(s: standing) {
+    SlotRetirementPending {
+      unit: unit as String,
+      cause: join(["the retirement readback for ", unit as String, " is unobserved, so this invocation can neither claim the postcondition nor act on its absence"], ""),
+    }
+  } else {
+    match evidence {
+      SlotRetirementEvidenceAbsent { cause: c } =>
+        SlotRetirementRefused {
+          unit: unit as String,
+          cause: join(["no retirement authorization is bound to this convergence: ", c], ""),
+        }
+      SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
+        match authorized_retirement_actuation(auth: auth, unit: unit) {
+          RetirementActuationRefused { unit: u, cause: c } => SlotRetirementRefused { unit: u, cause: c }
+          RetirementActuationAuthorized { unit: u, operation: op } =>
+            SlotRetirementActuate {
+              unit: u,
+              method_label: retirement_method_label(method: AuthorizedDisruptiveRetirement { authorization: auth }),
+              operation: op,
+            }
+        }
+    }
+  }
+}
+
+// A RECEIPT CANNOT NAME A METHOD THAT DID NOT RUN, BECAUSE THE SATISFIED ARM HAS NO FIELD FOR ONE.
+//
+// This is the shape the ruling asked for, and a `method_label: String` beside a `performed: Bool`
+// would not have been it: that record is writable with a real label and a false flag, and every
+// downstream reader then depends on remembering which field disarms the other. The label exists only
+// on the arm where a method was selected.
+//
+// `MethodNotPerformed` CARRIES ITS OWN REASON rather than being a bare absence, because three
+// different invocations reach it -- satisfied, pending, refused -- and a reader of the receipt needs
+// to tell "nothing was owed" from "nothing was legible" from "nothing was permitted".
+type RetirementMethodPerformance
+  = MethodPerformed { method_label: String }
+  | MethodNotPerformed { reason: String }
+
+fn invocation_method_performance(i: SlotRetirementInvocation) -> RetirementMethodPerformance {
+  match i {
+    SlotRetirementAlreadySatisfied { unit: u } =>
+      MethodNotPerformed {
+        reason: join(["the slot retirement postcondition already held for ", u, " when this invocation observed it; no method was selected and no stop was emitted"], ""),
+      }
+    SlotRetirementPending { unit: _, cause: c } => MethodNotPerformed { reason: c }
+    SlotRetirementRefused { unit: _, cause: c } => MethodNotPerformed { reason: c }
+    SlotRetirementActuate { unit: _, method_label: l, operation: _ } => MethodPerformed { method_label: l }
+  }
+}
+
+fn slot_retirement_invocation_unit(i: SlotRetirementInvocation) -> String {
+  match i {
+    SlotRetirementAlreadySatisfied { unit: u } => u
+    SlotRetirementActuate { unit: u, method_label: _, operation: _ } => u as String
+    SlotRetirementPending { unit: u, cause: _ } => u
+    SlotRetirementRefused { unit: u, cause: _ } => u
+  }
+}
+
+fn slot_retirement_invocation_wire(i: SlotRetirementInvocation) -> String {
+  match i {
+    SlotRetirementAlreadySatisfied { unit: _ } => "already-satisfied"
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => "actuate"
+    SlotRetirementPending { unit: _, cause: _ } => "PENDING"
+    SlotRetirementRefused { unit: _, cause: _ } => "REFUSED"
+  }
+}
+
+// THE INVOCATION IS SETTLED ONLY ON THE SATISFIED ARM. An emitted actuation is not a completed
+// retirement -- the postcondition it is reaching for is established by the independent readback of a
+// later pass, never by the operation that was supposed to bring it about.
+fn slot_retirement_invocation_settled(i: SlotRetirementInvocation) -> Bool {
+  match i {
+    SlotRetirementAlreadySatisfied { unit: _ } => true
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
+    SlotRetirementPending { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+  }
 }

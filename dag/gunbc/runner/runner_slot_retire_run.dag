@@ -1,0 +1,554 @@
+module gunbc.runner_slot_retire_run
+
+import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
+import std.algebra { trim }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd { UnitFileState }
+import product.placement_supply { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterReadUnavailable }
+import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.systemctl_show_read {
+  SystemdPropertyCapture,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+  systemctl_show_property_read,
+}
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  RetirementUnobserved,
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  SlotRetirementInvocation,
+  SlotRetirementAlreadySatisfied,
+  SlotRetirementActuate,
+  SlotRetirementPending,
+  SlotRetirementRefused,
+  RetirementMethodAvailability,
+  MethodAvailable,
+  MethodUnavailable,
+  GracefulRetirement,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
+  interruption_authorization_for_host,
+  transition_retirement_admission,
+  transition_required_retiring,
+  observe_retirement_standings,
+  retirement_method_availability,
+  retirement_unit,
+  retirement_standing_wire,
+  slot_retirement_invocation,
+  slot_retirement_invocation_wire,
+  slot_retirement_invocation_unit,
+  slot_retirement_invocation_settled,
+  invocation_method_performance,
+  MethodPerformed,
+  MethodNotPerformed,
+}
+import gunbc.runner_host_retirement {
+  HostRetirementStanding,
+  HostRetirementDeclared,
+  HostNotRetiring,
+  host_retirement_standing,
+  SurplusIdentityDisposition,
+  EstateObligationStanding,
+  EstateObligationOutstanding,
+  EstateObligationUnobserved,
+  RegistrationRemoval,
+  RunnerTreeRemoval,
+  LivenessReconcileTimerRetired,
+  estate_cleanup_standing,
+  runner_liveness_reconcile_timer_intent,
+  runner_liveness_reconcile_timer_unit,
+  reconcile_timer_intent_wire,
+  reconcile_timer_estate_standing,
+}
+import gunbc.runner_retirement_closure {
+  PlannerDisposition,
+  PlannerSawCompleteSubject,
+  PlannerRefusedAccess,
+  retirement_closure_verdict,
+  closure_verdict_text,
+}
+
+// THE RETIREMENT ROUTE, WHOSE EXECUTOR IS NOT ITS TARGET.
+//
+// Every other host-scoped mode in `gunbc.fleet_converge_workflow` takes ONE host input and uses it
+// three times: as the runner label the job is pinned to, as the Actions concurrency group, and as the
+// subject the entry converges. That collapse is invisible while the subject is a healthy host, and it
+// is fatal here. Retiring srv2 means removing srv2's runners, so a route that requires a runnable
+// srv2 runner to reach srv2 can only ever operate on a host it has not yet finished retiring -- and
+// the last slot it retires is the one it is standing on.
+//
+// SO THE TWO ROLES ARE TWO INPUTS, AND THE REFUSAL IS BETWEEN THEM RATHER THAN INSIDE EITHER.
+//
+//   EXECUTOR -- where this process runs. A retained host with a working runner. The workflow pins
+//               runs-on to this label.
+//   TARGET   -- what this process reads and decides about, reached over the fleet SSH edge.
+//
+// THE RUN MUST NOT SELECT ITS OWN EXECUTION SLOT, and that is checked here as an equality between the
+// two inputs rather than assumed from their being different fields. A form with two boxes admits the
+// same value in both.
+//
+// WHY NOT A HOST LABEL ON A PEER. The obvious way to make srv2 schedulable is to add an `srv2` label
+// to a runner on some retained host, so `runs-on: [self-hosted, srv2]` resolves. That makes the route
+// work and destroys the distinction it exists to carry: a host label denotes WHERE A RUNNER
+// EXECUTES, and lending srv2's name to a peer's runner makes every later reader of that label wrong
+// about which machine is which. The executor/target split is the repair; a borrowed label is the
+// defect wearing the repair's result.
+data runner_retirement_executor_env_name: String = "RUNNER_RETIREMENT_EXECUTOR"
+data runner_retirement_target_env_name: String = "RUNNER_RETIREMENT_TARGET"
+data runner_slot_retire_revision_env_name: String = "GITHUB_SHA"
+data runner_slot_retire_attempt_raw: String = "runner-slot-retire-ci"
+data runner_slot_retire_receipt_path: String = "target/runner-slot-retire-receipt.txt"
+
+// ── THE DISPATCH ADMISSION, WHICH RUNS IN THE BUILD JOB AND NOT IN THIS ONE ──────────────────
+//
+// THE HOLE THIS CLOSES IS ALREADY ON THE RECORD ONE JOB OVER. `retirement_executor` is
+// `required: false`, because it is meaningful for exactly one mode, and its value is interpolated
+// into the retirement job's runs-on. A dispatch of `mode=runner_slot_retire` that omits it -- which
+// an API or `gh workflow run` dispatch does by supplying "" -- passes the job's `if:` gate and asks
+// for labels ["self-hosted","linux","arm64",""]. No runner carries an empty label, so the job QUEUES
+// until the backstop and dies with no diagnostic, no receipt and no upload: the entry's own refusal
+// in `retirement_route_admission` is never reached, because no step of that job ever exists.
+//
+// SO THE REFUSAL HAS TO LAND SOMEWHERE THAT IS ALWAYS SCHEDULABLE, which is the build job -- generic
+// labels, no interpolation, and every host-scoped job needs it. This is the same construction review
+// 61950 required for `reset_observer`, applied to the input that reintroduces its exact failure
+// shape; adding a second interpolated optional input without it would have re-opened a closed class.
+//
+// IT REFUSES WITH A CAUSE RATHER THAN SKIPPING, for the reason the reset gate records: a gate that
+// silently declines to run reads as a pass to anyone looking at the job list. The not-this-mode arm
+// exits SUCCESSFULLY and says so.
+//
+// THE TARGET IS CHECKED HERE TOO, though an empty target would not stall the queue -- it would reach
+// the entry and refuse there. Checking both in one place means an operator fixes one dispatch rather
+// than two.
+data runner_slot_retire_dispatch_mode_env: String = "GUNBC_RUNNER_RETIRE_DISPATCH_MODE"
+data runner_slot_retire_dispatch_mode_wire: String = "runner_slot_retire"
+
+type RetirementDispatchAdmission
+  = RetirementDispatchNotThisMode { mode: String }
+  | RetirementDispatchAdmitted { executor: String, target: String }
+  | RetirementDispatchUnnamed { cause: String }
+
+fn admit_retirement_dispatch(mode: String, executor: String, target: String) -> RetirementDispatchAdmission {
+  if trim(s: mode) != runner_slot_retire_dispatch_mode_wire {
+    RetirementDispatchNotThisMode { mode: trim(s: mode) }
+  } else if trim(s: executor) == "" {
+    RetirementDispatchUnnamed {
+      cause: join([
+        "mode=", runner_slot_retire_dispatch_mode_wire, " was dispatched without ", runner_retirement_executor_env_name,
+        ": the retirement job's runs-on interpolates that label, so an empty value asks for a runner label no machine carries and the job queues until its backstop with no receipt. Re-dispatch naming the RETAINED host whose runner should execute the job -- not the host being retired",
+      ], ""),
+    }
+  } else if trim(s: target) == "" {
+    RetirementDispatchUnnamed {
+      cause: join([
+        "mode=", runner_slot_retire_dispatch_mode_wire, " was dispatched without ", runner_retirement_target_env_name,
+        ": a retirement route with no subject would read whichever host it happened to land on",
+      ], ""),
+    }
+  } else if trim(s: executor) == trim(s: target) {
+    RetirementDispatchUnnamed {
+      cause: join([
+        "mode=", runner_slot_retire_dispatch_mode_wire, " names ", trim(s: target),
+        " as both executor and target: this run would select its own execution slot. Refused before anything is scheduled, because the job would otherwise be pinned to the machine it is retiring",
+      ], ""),
+    }
+  } else {
+    RetirementDispatchAdmitted { executor: trim(s: executor), target: trim(s: target) }
+  }
+}
+
+fn runner_slot_retire_dispatch_admission_wet() -> ProcessExit
+  uses net: Network
+{
+  let mode_raw = match actions_variable_read(name: runner_slot_retire_dispatch_mode_env) {
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+    ActionsVariablePresent { value: v } => v
+  }
+  let executor_raw = match actions_variable_read(name: runner_retirement_executor_env_name) {
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+    ActionsVariablePresent { value: v } => v
+  }
+  let target_raw = match actions_variable_read(name: runner_retirement_target_env_name) {
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+    ActionsVariablePresent { value: v } => v
+  }
+  match admit_retirement_dispatch(mode: mode_raw, executor: executor_raw, target: target_raw) {
+    RetirementDispatchNotThisMode { mode: _ } => ExitSuccess
+    RetirementDispatchAdmitted { executor: _, target: _ } => ExitSuccess
+    RetirementDispatchUnnamed { cause: c } => exit_failure(reason: join(["runner_slot_retire dispatch refused: ", c], ""))
+  }
+}
+
+type RetirementRouteSubject {
+  executor: NonEmptyStr
+  target: HostIdentity
+  ssh_target: SshTarget
+}
+
+type RetirementRouteAdmission
+  = RetirementRouteAdmitted { subject: RetirementRouteSubject }
+  | RetirementRouteRefused { cause: String }
+
+// THE HOST MUST BE DECLARED RETIRING BEFORE THIS ROUTE WILL READ IT, which is the third refusal and
+// the one that keeps this from becoming a general-purpose remote systemctl. A target with no declared
+// retirement has no obligation for this route to assess, and reading one anyway would put a
+// retirement-shaped receipt beside a host nobody retired.
+fn retirement_route_admission(executor_raw: String, target_raw: String) -> RetirementRouteAdmission {
+  let executor = trim(s: executor_raw)
+  let target = trim(s: target_raw)
+  if executor == "" {
+    RetirementRouteRefused {
+      cause: join([runner_retirement_executor_env_name, " is empty; the executor label decides where this process runs and cannot be defaulted to the target"], ""),
+    }
+  } else if target == "" {
+    RetirementRouteRefused {
+      cause: join([runner_retirement_target_env_name, " is empty; a retirement route with no subject would read whichever host it happened to land on"], ""),
+    }
+  } else if executor == target {
+    RetirementRouteRefused {
+      cause: join([
+        "the retirement executor and the retirement target are both ", target,
+        ": this run would select its own execution slot, so the last slot it retired would be the one it is standing on and the readback would die with the runner that was taking it",
+      ], ""),
+    }
+  } else {
+    match host_retirement_standing(host: target as HostIdentity) {
+      HostNotRetiring { host: _, cause: c } => RetirementRouteRefused { cause: c }
+      HostRetirementDeclared { retirement: r } =>
+        RetirementRouteAdmitted {
+          subject: RetirementRouteSubject {
+            executor: executor as NonEmptyStr,
+            target: r.host,
+            ssh_target: SshTarget {
+              endpoint: fleet_probe_endpoint_for(host: r.host as String) as NonEmptyStr,
+              principal: executor_bootstrap_principal.login,
+            },
+          },
+        }
+    }
+  }
+}
+
+// ONE TRANSPORT, ALREADY MODELLED, POINTED AT THE TARGET RATHER THAN AT THIS MACHINE. `FleetSsh` is
+// the arm `gunbc.host_operation_exec` already dispatches, so every observer in
+// `gunbc.runner_slot_retirement` reaches srv2 through the fleet edge without a line of new transport
+// and without anything resident on the subject.
+fn retirement_route_transport(
+  subject: RetirementRouteSubject,
+  context: FleetSshExecutionContext,
+) -> HostEffectTransport {
+  FleetSsh { target: subject.ssh_target, context: context }
+}
+
+// A REQUIRED SUBJECT WITH NO STANDING IS UNOBSERVED, NEVER SKIPPED. `observe_retirement_standings`
+// maps over the obligation, so the lists agree today; joining by identity rather than by position
+// means they keep agreeing when one of them later does not.
+fn standing_for_required(standings: List<RunnerRetirementStanding>, unit: NonEmptyStr) -> RunnerRetirementStanding {
+  fold(
+    standings,
+    init: RetirementUnobserved {
+      unit: unit as String,
+      cause: "this required retiree has no standing in this assessment's readback, so nothing is known about it",
+    },
+    f: (acc, s) => if retirement_unit(s: s) == (unit as String) { s } else { acc },
+  )
+}
+
+fn retirement_evidence_for(target: HostIdentity) -> SlotRetirementEvidence {
+  match interruption_authorization_for_host(host: target) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+    HostInterruptionAuthorizationPresent { authorization: a } =>
+      transition_retirement_admission(host: target, auth: a)
+  }
+}
+
+// ── The reconcile timer reading ──────────────────────────────────────────────────────────────────
+
+type ReconcileTimerReading
+  = ReconcileTimerRead { unit_file_state: String }
+  | ReconcileTimerUnread { cause: String }
+
+// `UnitFileState` IS THE RIGHT PROPERTY AND `ActiveState` IS NOT. A timer that is currently inactive
+// but still ENABLED is armed: the manager starts it at the next boot or the next reload, which is
+// exactly the "manual retirement undone by a legitimate pass" the intent model exists to prevent.
+// Enablement is the fact; whether it happens to be ticking right now is not.
+//
+// A BLANK STATE IS `static` OR ABSENT AND IS READ AS NOT ENABLED. A REFUSED show stays unread, and an
+// unread timer cannot discharge its obligation.
+fn observe_reconcile_timer(transport: HostEffectTransport) -> ReconcileTimerReading
+  uses net: Network
+{
+  match systemctl_show_property_read(
+    transport: transport,
+    unit: runner_liveness_reconcile_timer_unit,
+    property: UnitFileState,
+  ) {
+    SystemdPropertyCaptureRefused { reason: r } => ReconcileTimerUnread { cause: r }
+    SystemdPropertyBlank => ReconcileTimerRead { unit_file_state: "" }
+    SystemdPropertyCaptured { value: v } => ReconcileTimerRead { unit_file_state: trim(s: v) }
+  }
+}
+
+fn reconcile_timer_state_is_enabled(state: String) -> Bool {
+  state == "enabled" || state == "enabled-runtime"
+}
+
+fn reconcile_timer_standing(
+  target: HostIdentity,
+  reading: ReconcileTimerReading,
+) -> EstateObligationStanding {
+  match reading {
+    ReconcileTimerUnread { cause: c } =>
+      EstateObligationUnobserved {
+        obligation: LivenessReconcileTimerRetired,
+        cause: join([runner_liveness_reconcile_timer_unit as String, " on ", target as String, " could not be read: ", c], ""),
+      }
+    ReconcileTimerRead { unit_file_state: s } =>
+      reconcile_timer_estate_standing(
+        intent: runner_liveness_reconcile_timer_intent(host: target),
+        observed_enabled: reconcile_timer_state_is_enabled(state: s),
+        observed: join(["UnitFileState=", if s == "" { "<blank>" } else { s }], ""),
+      )
+  }
+}
+
+// ── The assessment ───────────────────────────────────────────────────────────────────────────────
+
+type RetirementRouteRun {
+  subject: RetirementRouteSubject
+  required: List<NonEmptyStr>
+  standings: List<RunnerRetirementStanding>
+  invocations: List<SlotRetirementInvocation>
+  timer: EstateObligationStanding
+  timer_reading: ReconcileTimerReading
+}
+
+fn run_retirement_route(
+  subject: RetirementRouteSubject,
+  context: FleetSshExecutionContext,
+) -> RetirementRouteRun
+  uses net: Network
+{
+  let transport = retirement_route_transport(subject: subject, context: context)
+  let required = transition_required_retiring(host: subject.target)
+  let standings = observe_retirement_standings(transport: transport, units: required)
+  let evidence = retirement_evidence_for(target: subject.target)
+  let timer_reading = observe_reconcile_timer(transport: transport)
+  RetirementRouteRun {
+    subject: subject,
+    required: required,
+    standings: standings,
+    invocations: map(required, u =>
+      slot_retirement_invocation(
+        evidence: evidence,
+        unit: u,
+        standing: standing_for_required(standings: standings, unit: u),
+      )),
+    timer: reconcile_timer_standing(target: subject.target, reading: timer_reading),
+    timer_reading: timer_reading,
+  }
+}
+
+// THE TWO ESTATE OBLIGATIONS THIS ROUTE CANNOT SEE, DECLARED AS UNOBSERVED RATHER THAN OMITTED.
+//
+// Registration removal is remote GitHub state reached with the App credential, which this job does
+// not hold; tree removal is authorized per identity by `slot_removal_realization` inside the reviewed
+// plan/apply artifact, not here. Both are real obligations of this retirement and neither is
+// discharged by anything above, so they enter the fold as unobserved and the estate standing stays
+// outstanding -- which is the whole content of "slot retirement satisfied is not estate cleanup".
+fn retirement_route_estate_standings(run: RetirementRouteRun) -> List<EstateObligationStanding> {
+  [
+    run.timer,
+    EstateObligationUnobserved {
+      obligation: RegistrationRemoval,
+      cause: "this route holds no GitHub App credential, so the organization's registrations for this host are unobserved from here; the removal and its independent readback are a separate authorized write",
+    },
+    EstateObligationUnobserved {
+      obligation: RunnerTreeRemoval,
+      cause: "runner tree removal is authorized per identity by slot_removal_realization inside the reviewed plan artifact and executed by fleet apply; this route deliberately does not delete trees, so it can report nothing about them",
+    },
+  ]
+}
+
+// THE ROSTER IS UNOBSERVED FROM HERE AND SAYS SO. This is not a placeholder: it is the state the
+// ruling names -- until the complete roster read succeeds the remote registrations are unobserved,
+// not four confirmed registrations and not zero -- and feeding it to the closure fold is what makes
+// the closure REFUSE to converge rather than silently converge over a roster nobody read.
+//
+// DECLARED FRONTIER. The producer that replaces this is the App-credentialed roster read; when it
+// lands, this function's caller passes the real evidence and `surplus_identity_disposition` gets the
+// non-empty population it is written for. Until then the blocker is visible on every receipt.
+fn retirement_route_roster_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterReadUnavailable {
+    reason: "the runner slot retirement route holds no GitHub App credential and performs no organization roster read; the remote registrations for this host are therefore unobserved from this invocation",
+  }
+}
+
+fn retirement_route_surplus_dispositions() -> List<SurplusIdentityDisposition> {
+  []
+}
+
+// THE SUBJECTS WHOSE ONLY REMAINING MODELLED METHOD IS THE UNIMPLEMENTED ONE.
+//
+// When no operator interruption authorization is bound to this convergence, the disruptive method is
+// not available for any subject, and the only other method this module models is
+// `GracefulRetirement` -- which refuses explicitly because it is not implemented. Those subjects are
+// therefore blocked on an UNIMPLEMENTED METHOD, which is a different blocker from "not yet retired"
+// and needs saying: an operator reading only the second would reasonably conclude the remedy is to
+// wait, when the remedy is either an exact authorization or L2b.
+//
+// A SETTLED SUBJECT IS NOT LISTED. A slot whose postcondition already holds needs no method at all,
+// and naming an unavailable one against it would manufacture a blocker over a discharged obligation.
+fn retirement_route_graceful_subjects(run: RetirementRouteRun) -> List<String> {
+  match retirement_evidence_for(target: run.subject.target) {
+    SlotRetirementEvidencePresent { authorization: _, standings: _ } => []
+    SlotRetirementEvidenceAbsent { cause: _ } =>
+      run.invocations
+        |> filter(i => !slot_retirement_invocation_settled(i: i))
+        |> map(i => slot_retirement_invocation_unit(i: i))
+  }
+}
+
+// THE PLANNER'S OWN DISPOSITION, WHICH IS WHAT THE CLOSURE ASKS FOR RATHER THAN AN OPERATION COUNT. A
+// run that could not read every required subject FILTERED them, whatever its operation list looks
+// like, and saying so is the difference between an empty plan that is settled and one that is silent.
+fn retirement_route_planner_disposition(run: RetirementRouteRun) -> PlannerDisposition {
+  if list_length(items: run.required) == 0 {
+    PlannerRefusedAccess {
+      cause: join([run.subject.target as String, " is declared retiring and its obligation set resolved empty, so this assessment has no required subject to be complete over"], ""),
+    }
+  } else {
+    PlannerSawCompleteSubject {
+      operations_emitted: list_length(
+        items: run.invocations |> filter(i => match i {
+          SlotRetirementActuate { unit: _, method_label: _, operation: _ } => true
+          SlotRetirementAlreadySatisfied { unit: _ } => false
+          SlotRetirementPending { unit: _, cause: _ } => false
+          SlotRetirementRefused { unit: _, cause: _ } => false
+        }),
+      ),
+    }
+  }
+}
+
+// EVERY REQUIRED SUBJECT MUST BE SETTLED FOR THIS INVOCATION TO SUCCEED, and settled means the
+// postcondition already held. An emitted actuation is not success: the operation it names is executed
+// by the reviewed plan/apply artifact and established by a LATER pass's independent readback, never
+// by the run that decided it was owed.
+fn retirement_route_succeeded(run: RetirementRouteRun) -> Bool {
+  list_length(items: run.required) > 0
+    && all(run.invocations, i => slot_retirement_invocation_settled(i: i))
+}
+
+fn invocation_line(i: SlotRetirementInvocation) -> String {
+  join([
+    "invocation unit=", slot_retirement_invocation_unit(i: i),
+    " disposition=", slot_retirement_invocation_wire(i: i),
+    " method=", match invocation_method_performance(i: i) {
+      MethodPerformed { method_label: l } => l
+      MethodNotPerformed { reason: r } => join(["<none> ", r], "")
+    },
+    "\n",
+  ], "")
+}
+
+fn retirement_route_text(run: RetirementRouteRun) -> String {
+  join([
+    "executor=", run.subject.executor as String, " target=", run.subject.target as String, "\n",
+    "required-subjects=", to_string(list_length(items: run.required)), "\n",
+    join(map(run.standings, s => join(["standing unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
+    join(map(run.invocations, i => invocation_line(i: i)), ""),
+    "reconcile-timer intent=", reconcile_timer_intent_wire(i: runner_liveness_reconcile_timer_intent(host: run.subject.target)),
+    " reading=", match run.timer_reading {
+      ReconcileTimerRead { unit_file_state: s } => join(["UnitFileState=", if s == "" { "<blank>" } else { s }], "")
+      ReconcileTimerUnread { cause: c } => join(["UNREAD ", c], "")
+    }, "\n",
+    "graceful-method=", match retirement_method_availability(method: GracefulRetirement, unit: run.subject.target as String) {
+      MethodAvailable { method: _ } => "available"
+      MethodUnavailable { method_label: l, cause: c } => join([l, " UNAVAILABLE ", c], "")
+    }, "\n",
+  ], "")
+}
+
+// ── The CI entry ─────────────────────────────────────────────────────────────────────────────────
+
+// THE EXIT STATUS IS ABOUT THIS INVOCATION; THE CLOSURE VERDICT IS ABOUT THE LANE, AND THEY ARE
+// REPORTED SEPARATELY ON PURPOSE.
+//
+// A bounded per-host execution cannot establish the closure -- the contract's package is a plan
+// artifact, authorized apply receipts, an independent readback and a complete second assessment, all
+// at one revision, joined across runs. Letting this process's exit code carry that claim would make
+// the strongest sentence in the lane a property of whichever single job ran last. So the receipt
+// carries the closure verdict in full, named blockers and all, and the exit status answers the
+// narrower question this run can actually answer: is every required subject of THIS host settled.
+//
+// NEITHER MAY BE READ AS THE OTHER, which is why the terminal line prints both words.
+fn runner_slot_retire_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match actions_variable_read(name: runner_retirement_executor_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["runner_slot_retire: ", v, " ", d], ""))
+    ActionsVariablePresent { value: executor_raw } =>
+      match actions_variable_read(name: runner_retirement_target_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: join(["runner_slot_retire: ", v, " ", d], ""))
+        ActionsVariablePresent { value: target_raw } =>
+          match actions_variable_read(name: runner_slot_retire_revision_env_name) {
+            ActionsVariableAbsent { variable: v, detail: d } =>
+              exit_failure(reason: join(["runner_slot_retire: ", v, " ", d, "; a closure verdict that does not name its revision is a claim about whichever tree the reader has"], ""))
+            ActionsVariablePresent { value: revision } =>
+              match retirement_route_admission(executor_raw: executor_raw, target_raw: target_raw) {
+                RetirementRouteRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
+                RetirementRouteAdmitted { subject: subject } =>
+                  match prepare_fleet_ssh_agent_context(attempt_raw: runner_slot_retire_attempt_raw) {
+                    FleetSshContextRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
+                    FleetSshContextReady { context: context, receipt: context_receipt } => {
+                      let run = run_retirement_route(subject: subject, context: context)
+                      let verdict = retirement_closure_verdict(
+                        revision: trim(s: revision) as NonEmptyStr,
+                        host: subject.target,
+                        roster: retirement_route_roster_evidence(),
+                        surplus: retirement_route_surplus_dispositions(),
+                        required: run.required,
+                        standings: run.standings,
+                        method_subjects: retirement_route_graceful_subjects(run: run),
+                        method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
+                        planner: retirement_route_planner_disposition(run: run),
+                        estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
+                      )
+                      let body = join([
+                        "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                        context_receipt,
+                        retirement_route_text(run: run),
+                        closure_verdict_text(v: verdict),
+                        "terminal=", if retirement_route_succeeded(run: run) { "settled" } else { "REFUSED" }, "\n",
+                      ], "")
+                      let w = Filesystem.Write(path: runner_slot_retire_receipt_path, content: body)
+                      if w.success == false {
+                        exit_failure(reason: join(["runner_slot_retire: receipt write failed: ", w.error, "\n", body], ""))
+                      } else if retirement_route_succeeded(run: run) == false {
+                        exit_failure(reason: body)
+                      } else {
+                        ExitSuccess
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

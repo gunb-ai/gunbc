@@ -1,0 +1,300 @@
+module test.claim.runner.runner_host_retirement_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String, list_length }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_runner_connectivity {
+  RegistrationNamesCommittedSlot,
+  RegistrationNamesNoCommittedSlot,
+}
+import gunbc.runner_host_retirement {
+  HostRetirementDeclared,
+  HostNotRetiring,
+  host_retirement_standing,
+  host_retirement_required_retirees,
+  host_retirement_spec,
+  srv2_host_retirement,
+  OwnershipEstablished,
+  OwnershipUnestablished,
+  registration_ownership,
+  ownership_is_established,
+  CommittedSlotIdentity,
+  SurplusOwnedRetiree,
+  UnownedRegistration,
+  surplus_identity_disposition,
+  surplus_identity_deletable,
+  surplus_identity_blocks_closure,
+  EstateObligationDischarged,
+  EstateObligationOutstanding,
+  EstateObligationUnobserved,
+  RegistrationRemoval,
+  RunnerTreeRemoval,
+  LivenessReconcileTimerRetired,
+  EstateCleanupComplete,
+  EstateCleanupOutstanding,
+  estate_cleanup_standing,
+  ReconcileTimerActive,
+  ReconcileTimerRetired,
+  runner_liveness_reconcile_timer_intent,
+  reconcile_timer_estate_standing,
+}
+import gunbc.runner_slot_retirement { transition_required_retiring }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE OBLIGATION EXISTS, AND IT IS NOT THE CAPACITY REFUSAL ────────────────────────────────
+
+// THE POSITIVE CONTROL. srv2 carries a declared retirement, so its obligation is its whole owned
+// population rather than the empty set a width transition answers for it.
+test fn srv2_carries_a_declared_host_retirement() -> Bool {
+  match host_retirement_standing(host: operator_host_srv2) {
+    HostRetirementDeclared { retirement: r } => (r.host as String) == (operator_host_srv2 as String)
+    HostNotRetiring { host: _, cause: _ } => false
+  }
+}
+
+test fn the_declared_retirement_obliges_every_owned_identity() -> Bool {
+  list_length(items: host_retirement_required_retirees(host: operator_host_srv2)) == srv2_host_retirement.owned_width
+}
+
+// THE RETIREMENT CARRIES THE HOST SPEC, which is what a route needs to reach the machine at all --
+// address, principals, app. A retirement that named only a host would leave every consumer
+// reconstructing those or fabricating a deploy row to get at them.
+test fn the_declared_retirement_carries_the_host_spec() -> Bool {
+  list_length(items: host_retirement_spec(host: operator_host_srv2)) == 1
+    && (srv2_host_retirement.spec.host_label as String) == "srv2"
+    && (srv2_host_retirement.spec.ssh_target as String) != ""
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE WHOLE POINT OF THE MODULE. A host nobody declared retiring
+// has no obligation and nothing about it may be deleted -- whatever its admitted width did or did
+// not resolve to. If this ever answers Declared, a retirement has been minted from something other
+// than a declaration.
+test fn a_host_nobody_declared_retiring_owes_nothing() -> Bool {
+  match host_retirement_standing(host: operator_host_srv4) {
+    HostNotRetiring { host: _, cause: _ } =>
+      list_length(items: host_retirement_required_retirees(host: operator_host_srv4)) == 0
+    HostRetirementDeclared { retirement: _ } => false
+  }
+}
+
+// THE UNION IS LIVE ON THE CONSUMED SEAM. `required_retirees_for_host` answers empty for srv2 -- the
+// existing witness beside this one asserts exactly that -- so a non-empty answer here can only have
+// come from the retirement authority, which is what makes this a reading of the union rather than of
+// either half.
+test fn the_consumed_obligation_seam_carries_the_retirement() -> Bool {
+  list_length(items: transition_required_retiring(host: operator_host_srv2)) == srv2_host_retirement.owned_width
+}
+
+// AND THE OTHER DIRECTION, so the union is not satisfied by a function that always returns the
+// retirement side. srv4 has a width transition and no retirement, and its obligation survives.
+test fn the_union_preserves_the_width_transition_side() -> Bool {
+  list_length(items: transition_required_retiring(host: operator_host_srv4)) > 0
+}
+
+
+// ── OWNERSHIP IS ESTABLISHED BEFORE ANYTHING IS DELETED ──────────────────────────────────────
+
+fn srv2_reg(n: String) -> NonEmptyStr {
+  n as NonEmptyStr
+}
+
+// AN OWNED SURPLUS IDENTITY DOES NOT VANISH BECAUSE THE COMMITTED-SLOT DECODER STOPPED RECOGNIZING
+// IT. This is the ruling's exact subject: the decoder answering NoCommittedSlot is a fact about the
+// decoder, and reading it as "not ours" is the filter that empties the obligation set.
+test fn an_owned_identity_outside_the_committed_population_stays_an_obligation() -> Bool {
+  match surplus_identity_disposition(
+    host: operator_host_srv2,
+    decoding: RegistrationNamesNoCommittedSlot { registration_name: srv2_reg(n: "actions-runner@srv2-07.service") },
+    name: srv2_reg(n: "actions-runner@srv2-07.service"),
+  ) {
+    SurplusOwnedRetiree { name: _, host: _ } => true
+    CommittedSlotIdentity { name: _ } => false
+    UnownedRegistration { name: _, cause: _ } => false
+  }
+}
+
+// THE OPPOSITE MISREADING, AND IT IS THE ONE THAT DESTROYS SOMEBODY ELSE'S RUNNER. A name this
+// estate never issued is not surplus to be deleted; its owner is unestablished, which authorizes
+// nothing in either direction.
+test fn a_registration_this_estate_never_issued_is_unowned_rather_than_surplus() -> Bool {
+  match surplus_identity_disposition(
+    host: operator_host_srv2,
+    decoding: RegistrationNamesNoCommittedSlot { registration_name: srv2_reg(n: "someone-elses-runner") },
+    name: srv2_reg(n: "someone-elses-runner"),
+  ) {
+    UnownedRegistration { name: _, cause: _ } => true
+    SurplusOwnedRetiree { name: _, host: _ } => false
+    CommittedSlotIdentity { name: _ } => false
+  }
+}
+
+// DELETION NEEDS BOTH FACTS, and this is the conjunction's red: ownership alone does not delete.
+// srv4 issues its own names, so ownership is established for this identity -- and srv4 carries no
+// declared retirement, so nothing about it may be deleted.
+test fn ownership_without_a_declared_retirement_does_not_authorize_deletion() -> Bool {
+  let d = surplus_identity_disposition(
+    host: operator_host_srv4,
+    decoding: RegistrationNamesNoCommittedSlot { registration_name: srv2_reg(n: "actions-runner@srv4-31.service") },
+    name: srv2_reg(n: "actions-runner@srv4-31.service"),
+  )
+  match d {
+    SurplusOwnedRetiree { name: _, host: _ } => !surplus_identity_deletable(d: d) && surplus_identity_blocks_closure(d: d)
+    CommittedSlotIdentity { name: _ } => false
+    UnownedRegistration { name: _, cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR DELETABILITY, without which every row above is satisfied by a predicate
+// that never authorizes anything.
+test fn ownership_plus_a_declared_retirement_authorizes_deletion() -> Bool {
+  surplus_identity_deletable(
+    d: surplus_identity_disposition(
+      host: operator_host_srv2,
+      decoding: RegistrationNamesNoCommittedSlot { registration_name: srv2_reg(n: "actions-runner@srv2-07.service") },
+      name: srv2_reg(n: "actions-runner@srv2-07.service"),
+    ),
+  )
+}
+
+// AN UNOWNED REGISTRATION IS NEVER DELETABLE AND IS STILL ACCOUNTED FOR -- not deletable is not
+// permission to stop looking, which is the half the filter reading loses.
+test fn an_unowned_registration_blocks_without_becoming_deletable() -> Bool {
+  let d = surplus_identity_disposition(
+    host: operator_host_srv2,
+    decoding: RegistrationNamesNoCommittedSlot { registration_name: srv2_reg(n: "someone-elses-runner") },
+    name: srv2_reg(n: "someone-elses-runner"),
+  )
+  !surplus_identity_deletable(d: d) && surplus_identity_blocks_closure(d: d)
+}
+
+// A COMMITTED SLOT IS ORDINARY BUSINESS and blocks nothing, so the blocker predicate is not simply
+// true everywhere.
+test fn a_committed_slot_identity_blocks_nothing() -> Bool {
+  let d = surplus_identity_disposition(
+    host: operator_host_srv1,
+    decoding: RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 3 } },
+    name: srv2_reg(n: "actions-runner@srv1-03.service"),
+  )
+  !surplus_identity_blocks_closure(d: d) && !surplus_identity_deletable(d: d)
+}
+
+test fn ownership_is_read_off_the_issuing_naming_authority() -> Bool {
+  ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: srv2_reg(n: "actions-runner@srv2-01.service")))
+    && !ownership_is_established(e: registration_ownership(host: operator_host_srv2, name: srv2_reg(n: "actions-runner@srv4-01.service")))
+}
+
+
+// ── SLOT RETIREMENT SATISFIED IS NOT ESTATE CLEANUP ──────────────────────────────────────────
+
+// THE DISCRIMINATING RED. Discharging the timer alone leaves the registration and the tree
+// outstanding; there is no arm of the fold in which slot evidence closes them.
+test fn discharging_one_estate_obligation_does_not_complete_the_estate() -> Bool {
+  match estate_cleanup_standing(standings: [
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+  ]) {
+    EstateCleanupOutstanding { outstanding: os } => list_length(items: os) == 2
+    EstateCleanupComplete => false
+  }
+}
+
+// AN OBLIGATION WITH NO STANDING AT ALL IS OUTSTANDING, NOT ABSENT -- completeness is an identity
+// join over the closed roster rather than a count over whatever standings arrived.
+test fn an_estate_obligation_with_no_standing_is_outstanding() -> Bool {
+  match estate_cleanup_standing(standings: []) {
+    EstateCleanupOutstanding { outstanding: os } => list_length(items: os) == 3
+    EstateCleanupComplete => false
+  }
+}
+
+// AN UNOBSERVED OBLIGATION DOES NOT DISCHARGE, which is the fail-closed direction: a reading nobody
+// could take is not a reading that succeeded.
+test fn an_unobserved_estate_obligation_does_not_discharge() -> Bool {
+  match estate_cleanup_standing(standings: [
+    EstateObligationUnobserved { obligation: RegistrationRemoval, cause: "no app credential" },
+    EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+  ]) {
+    EstateCleanupOutstanding { outstanding: os } => list_length(items: os) == 1
+    EstateCleanupComplete => false
+  }
+}
+
+// THE POSITIVE CONTROL. All three discharged completes, so the rows above are not satisfied by a
+// fold that never completes.
+test fn all_three_estate_obligations_discharged_completes() -> Bool {
+  match estate_cleanup_standing(standings: [
+    EstateObligationDischarged { obligation: RegistrationRemoval, evidence: "delisted" },
+    EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+  ]) {
+    EstateCleanupComplete => true
+    EstateCleanupOutstanding { outstanding: _ } => false
+  }
+}
+
+
+// ── THE RECONCILE TIMER'S RETIRED INTENT ─────────────────────────────────────────────────────
+
+// THE INTENT IS DERIVED FROM THE RETIREMENT ROSTER, so declaring the retirement IS declaring the
+// intent and there is no second list to fall out of step with it.
+test fn a_retiring_host_intends_its_reconcile_timer_retired() -> Bool {
+  match runner_liveness_reconcile_timer_intent(host: operator_host_srv2) {
+    ReconcileTimerRetired { host: _, unit: _, reason: _ } => true
+    ReconcileTimerActive { host: _ } => false
+  }
+}
+
+// AND THE RED: a host still in the estate keeps its timer, so the intent is not simply Retired
+// everywhere. Disabling a reconcile timer on a working runner host would break it.
+test fn a_retained_host_intends_its_reconcile_timer_active() -> Bool {
+  match runner_liveness_reconcile_timer_intent(host: operator_host_srv4) {
+    ReconcileTimerActive { host: _ } => true
+    ReconcileTimerRetired { host: _, unit: _, reason: _ } => false
+  }
+}
+
+// THE REGRESSION THE INTENT EXISTS TO CATCH: an ENABLED timer on a host whose declared intent is
+// retired is an outstanding obligation, because the next reconciliation tick can restore the
+// population this retirement is removing. A hand-disabled timer with no modeled intent is exactly
+// the state a legitimate convergence would undo.
+test fn an_enabled_timer_against_a_retired_intent_is_outstanding() -> Bool {
+  match reconcile_timer_estate_standing(
+    intent: runner_liveness_reconcile_timer_intent(host: operator_host_srv2),
+    observed_enabled: true,
+    observed: "UnitFileState=enabled",
+  ) {
+    EstateObligationOutstanding { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+test fn a_disabled_timer_against_a_retired_intent_discharges() -> Bool {
+  match reconcile_timer_estate_standing(
+    intent: runner_liveness_reconcile_timer_intent(host: operator_host_srv2),
+    observed_enabled: false,
+    observed: "UnitFileState=masked",
+  ) {
+    EstateObligationDischarged { obligation: _, evidence: _ } => true
+    EstateObligationOutstanding { obligation: _, cause: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+// A DISABLED TIMER ON A HOST THAT IS NOT RETIRING DOES NOT DISCHARGE THIS OBLIGATION EITHER.
+// Discharging it there would record a retired timer on a host still in the estate.
+test fn a_disabled_timer_on_a_retained_host_does_not_discharge() -> Bool {
+  match reconcile_timer_estate_standing(
+    intent: runner_liveness_reconcile_timer_intent(host: operator_host_srv4),
+    observed_enabled: false,
+    observed: "UnitFileState=disabled",
+  ) {
+    EstateObligationOutstanding { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
