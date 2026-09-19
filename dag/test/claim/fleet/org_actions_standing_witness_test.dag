@@ -8,7 +8,12 @@ import gunbc.fleet.org_actions_standing {
   standing_from, repo_access_standing, observed_admits,
   PublicForkPolicyStanding, MatchesDesired, DivergesFromDesired, UnobservableUntilSettingsRead,
   public_exposure_standing, desired_allows_public_repositories,
+  OrgActionsAgreement, OrgActionsDeviation, RepoAdmissionDiverges, RepoPublicExposureDiverges,
+  desired_org_actions_goal, assess_org_actions,
 }
+import v2.std.cardinality { Never }
+import v2.std.algebra { non_empty_to_list }
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged }
 
 // THE DISCRIMINATING CLAIMS, every observation arm exercised at group grain. (1) Channel
 // honesty under today's refused read: gunbc-private holds BY BEHAVIOR while unreceipted
@@ -145,4 +150,55 @@ test fn witness_desired_rows_demand_fleet_reach() -> Bool {
   fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
     && observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc-private")
     && !observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc")
+}
+
+// THE ASSESSMENT BOUND TO std.goal_assessment. Each claim supplies group rows at the assessor's
+// interface and asserts the ARM and the located deviation, not a count: the diff this replaced
+// reported two integers, so a repository could drift and the verdict could not say which.
+fn admission_diverges_for(a: GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never>, repository: NonEmptyStr) -> Bool {
+  match a {
+    GoalDiverged { deviations } => any(non_empty_to_list(xs: deviations), d => match d {
+      RepoAdmissionDiverges { repository: r, observed_admitted: seen, desired: wanted } => r == repository && !seen && wanted
+      _ => false
+    })
+    _ => false
+  }
+}
+
+fn exposure_diverges_for(a: GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never>, repository: NonEmptyStr) -> Bool {
+  match a {
+    GoalDiverged { deviations } => any(non_empty_to_list(xs: deviations), d => match d {
+      RepoPublicExposureDiverges { repository: r, exposing_groups } => r == repository && count(exposing_groups) == 1
+      _ => false
+    })
+    _ => false
+  }
+}
+
+data grp_both_closed: ObservedGroupAccess = ObservedGroupAccess {
+  group_name: "fleet",
+  allows_public_repositories: false,
+  repositories: ["gunb-ai/gunbc", "gunb-ai/gunbc-private"],
+}
+
+test fn witness_assessment_satisfied_when_every_desired_repo_is_admitted_privately() -> Bool {
+  match assess_org_actions(goal: desired_org_actions_goal, observed: [grp_both_closed]) {
+    GoalSatisfied { evidence } => evidence.repositories_checked == count(desired_repo_access)
+    _ => false
+  }
+}
+
+test fn witness_assessment_names_the_unadmitted_and_the_exposed_repository() -> Bool {
+  let a = assess_org_actions(goal: desired_org_actions_goal, observed: [grp_private_open])
+  admission_diverges_for(a: a, repository: "gunb-ai/gunbc")
+    && exposure_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
+    && !admission_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
+}
+
+// An organization with no runner groups is an established empty list, and the assessor must
+// convict every must-reach row rather than read nothing as agreement.
+test fn witness_assessment_of_no_groups_diverges_rather_than_agrees() -> Bool {
+  let a = assess_org_actions(goal: desired_org_actions_goal, observed: [])
+  admission_diverges_for(a: a, repository: "gunb-ai/gunbc")
+    && admission_diverges_for(a: a, repository: "gunb-ai/gunbc-private")
 }

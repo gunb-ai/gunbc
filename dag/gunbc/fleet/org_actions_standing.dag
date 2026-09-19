@@ -3,6 +3,8 @@ module gunbc.fleet.org_actions_standing
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.org_actions { org_admin_scope_refusal_fragment }
+import v2.std.cardinality { Never }
+import std.goal_assessment { GoalAssessment, assess_by_deviations }
 
 // ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
 // to connect the org github settings via fleet converge - basically this is all
@@ -139,10 +141,14 @@ type PublicForkPolicyStanding
   | DivergesFromDesired { exposing_groups: List<NonEmptyStr>, observed_on: NonEmptyStr }
   | UnobservableUntilSettingsRead
 
+fn exposing_groups_for(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> List<ObservedGroupAccess> {
+  filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == repository)) >= 1)
+}
+
 fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> PublicForkPolicyStanding {
   match obs {
     SettingsRead { groups, observed_on } =>
-      match filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == r.repository)) >= 1) {
+      match exposing_groups_for(groups: groups, repository: r.repository) {
         exposing =>
           if count(exposing) == 0 || desired_allows_public_repositories {
             MatchesDesired { observed_on: observed_on }
@@ -154,38 +160,75 @@ fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) ->
   }
 }
 
-type OrgActionsSettingsDiff
-  = OrgActionsSettingsConverged { observed_on: NonEmptyStr }
-  | OrgActionsSettingsDiverged {
-      access_divergence_count: Int,
-      public_exposure_divergence_count: Int,
-      observed_on: NonEmptyStr
-    }
-  | OrgActionsSettingsDiffRefused { reason: NonEmptyStr }
+// THE ASSESSMENT, BOUND TO std.goal_assessment. This replaced a local Converged/Diverged/Refused
+// diff whose refused arm answered a question the assessor is never asked: an unread settings
+// surface is an OBSERVATION refusal, owned by gunbc.fleet.org_actions_inspection's observer, and
+// inspect_goal guarantees this function only ever sees a completed read. So the input here is the
+// group rows themselves, not an observation coproduct with an arm this function would have to
+// invent an answer for.
+//
+// Each deviation names its repository and carries both sides, where the diff it replaced carried
+// two counts: a count says that something drifted and not what, and the remedy is per repository.
+type OrgActionsGoal {
+  access: List<RepoRunnerAccess>
+  allows_public_repositories: Bool
+}
 
-fn org_actions_settings_diff(obs: OrgSettingsObservation) -> OrgActionsSettingsDiff {
-  match obs {
-    SettingsReadRefusedTokenScope { refusal_fragment: _, observed_on: _ } =>
-      OrgActionsSettingsDiffRefused { reason: "organization Actions settings were not read" }
-    SettingsRead { groups: _, observed_on } => {
-      let access_divergence_count = count(filter(desired_repo_access, r => match standing_from(obs: obs, r: r) {
-        DivergesBySettingsRead { observed_admitted: _, desired: _, observed_on: _ } => true
-        _ => false
-      }))
-      let public_exposure_divergence_count = count(filter(desired_repo_access, r => match public_exposure_standing(obs: obs, r: r) {
-        DivergesFromDesired { exposing_groups: _, observed_on: _ } => true
-        _ => false
-      }))
-      if access_divergence_count == 0 && public_exposure_divergence_count == 0 {
-        OrgActionsSettingsConverged { observed_on: observed_on }
-      } else {
-        OrgActionsSettingsDiverged {
-          access_divergence_count: access_divergence_count,
-          public_exposure_divergence_count: public_exposure_divergence_count,
-          observed_on: observed_on
-        }
-      }
+data desired_org_actions_goal: OrgActionsGoal = OrgActionsGoal {
+  access: desired_repo_access,
+  allows_public_repositories: desired_allows_public_repositories,
+}
+
+type OrgActionsDeviation
+  = RepoAdmissionDiverges { repository: NonEmptyStr, observed_admitted: Bool, desired: Bool }
+  | RepoPublicExposureDiverges { repository: NonEmptyStr, exposing_groups: List<NonEmptyStr> }
+
+// What agreement was established over: the rows compared. It is the evidence rather than a label,
+// because a satisfied verdict over zero desired rows would be vacuous and this is where it shows.
+type OrgActionsAgreement { repositories_checked: Int }
+
+fn admission_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  flat_map(goal.access, r => {
+    let admitted = observed_admits(groups: groups, repository: r.repository)
+    if admitted == r.must_reach_fleet { [] } else {
+      [RepoAdmissionDiverges { repository: r.repository, observed_admitted: admitted, desired: r.must_reach_fleet }]
     }
+  })
+}
+
+// Exposure is per repository over the group join: only a group that ADMITS the repository can
+// expose it, so a non-serving group's flag neither convicts nor acquits.
+fn exposure_deviations(goal: OrgActionsGoal, groups: List<ObservedGroupAccess>) -> List<OrgActionsDeviation> {
+  if goal.allows_public_repositories { [] } else {
+    flat_map(goal.access, r => {
+      let exposing = exposing_groups_for(groups: groups, repository: r.repository)
+      if count(exposing) == 0 { [] } else {
+        [RepoPublicExposureDiverges { repository: r.repository, exposing_groups: map(exposing, g => g.group_name) }]
+      }
+    })
+  }
+}
+
+fn assess_org_actions(
+  goal: OrgActionsGoal,
+  observed: List<ObservedGroupAccess>,
+) -> GoalAssessment<OrgActionsAgreement, OrgActionsDeviation, Never, Never> {
+  assess_by_deviations(
+    evidence: OrgActionsAgreement { repositories_checked: count(goal.access) },
+    deviations: concat(admission_deviations(goal: goal, groups: observed), exposure_deviations(goal: goal, groups: observed)),
+  )
+}
+
+fn admitted_wire(admitted: Bool) -> String {
+  if admitted { "admitted" } else { "not_admitted" }
+}
+
+fn org_actions_deviation_text(d: OrgActionsDeviation) -> String {
+  match d {
+    RepoAdmissionDiverges { repository, observed_admitted, desired } =>
+      join(["admission:", repository as String, ":observed=", admitted_wire(admitted: observed_admitted), ",desired=", admitted_wire(admitted: desired)], "")
+    RepoPublicExposureDiverges { repository, exposing_groups } =>
+      join(["public_exposure:", repository as String, ":groups=", join(map(exposing_groups, g => g as String), "|")], "")
   }
 }
 
@@ -193,4 +236,4 @@ fn org_actions_settings_diff(obs: OrgSettingsObservation) -> OrgActionsSettingsD
 // than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
 // diff is the deliverable while apply stays gated, because a settings surface converged
 // by silent overwrite would erase an operator's deliberate UI change.
-data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_converge and consumes org_actions_settings_diff through the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_inspection and consumes assess_org_actions through std.goal_assessment inspect_goal in the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")

@@ -1,5 +1,5 @@
 module gunbc.ci_spec
-import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
+import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
@@ -755,9 +755,9 @@ data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "fleet_converge_apply_wet",
 }
 
-data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/org_actions_converge.dag",
-  function: "org_actions_converge_wet",
+data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/org_actions_inspection.dag",
+  function: "org_actions_inspect_wet",
 }
 
 // THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
@@ -995,7 +995,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_launch_environment_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
-    gunbc_ci_org_actions_converge_target,
+    gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
@@ -1732,23 +1732,23 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
   ]
 }
 
-fn gunbc_ci_app_control_plane_converge_invoke() -> String {
+fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_app_jwt_prelude(),
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/fleet/app_control_plane_converge.dag",
-    function: "app_control_plane_converge_wet",
+    entry: "dag/gunbc/fleet/app_control_plane_inspection.dag",
+    function: "app_control_plane_inspect_wet",
     claim_run: false,
     receipt_rel: Present { value: app_control_plane_receipt_path }
   )
 }
 
-fn gunbc_ci_org_actions_converge_invoke() -> String {
+fn gunbc_ci_org_actions_inspect_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_org_actions_converge_target.entry,
-    function: gunbc_ci_org_actions_converge_target.function,
+    entry: gunbc_ci_org_actions_inspect_target.entry,
+    function: gunbc_ci_org_actions_inspect_target.function,
     claim_run: false,
     receipt_rel: none
   )
