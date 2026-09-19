@@ -1,6 +1,7 @@
 module gunbc.runner_host_retirement
 
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
@@ -689,6 +690,65 @@ fn estate_cleanup_standing(standings: List<EstateObligationStanding>) -> EstateC
 }
 
 
+// MASKING A UNIT WHOSE FRAGMENT LIVES IN /etc/systemd/system NEEDS THE FRAGMENT MOVED FIRST.
+//
+// `mask` works by creating a symlink to /dev/null at the unit's name in /etc/systemd/system. If a
+// REAL unit file already occupies that path, systemd refuses rather than replacing it, so the
+// actuation fails on exactly the units most likely to need it -- anything installed by hand or by an
+// out-of-band installer, which is what the reconcile mechanism is.
+//
+// MEASURED ON srv2, 2026-09-19: masking runner-liveness-reconcile.timer and .service refused until
+// the fragments were moved to /var/lib/gunbc-retired/20260919/ with their digests preserved, after
+// which both read masked and `systemctl start` was refused as masked.
+//
+// THIS IS A PRECONDITION OF THE ACTUATION, NOT A SEPARATE DECISION, and it is typed here so a
+// retirement that meets it is distinguishable from one that has not looked. What this module does NOT
+// do is perform the move: relocating a fragment is an effect, and every effect in this lane is
+// executed by the reviewed plan/apply artifact rather than by an observer. A fragment in the
+// managed-unit directory therefore reports RELOCATION REQUIRED with the path that must move, so the
+// plan renders it before the mask instead of the mask failing at apply time.
+data systemd_managed_unit_dir: NonEmptyStr = "/etc/systemd/system" as NonEmptyStr
+
+type MaskFragmentPrecondition
+  = MaskFragmentClear { unit: NonEmptyStr }
+  | MaskFragmentRelocationRequired { unit: NonEmptyStr, fragment_path: NonEmptyStr, cause: String }
+  | MaskFragmentUnobserved { unit: NonEmptyStr, cause: String }
+
+fn mask_fragment_precondition(unit: NonEmptyStr, fragment_path: ReconcilePropertyReading) -> MaskFragmentPrecondition {
+  match fragment_path {
+    ReconcilePropertyUnreadable { cause: c } =>
+      MaskFragmentUnobserved {
+        unit: unit,
+        cause: join(["the FragmentPath of ", unit as String, " could not be read (", c, "), so whether masking it needs a relocation is unknown"], ""),
+      }
+    ReconcilePropertyValue { value: p } =>
+      if trim(s: p) == "" {
+        MaskFragmentClear { unit: unit }
+      } else if starts_with(s: trim(s: p), prefix: join([systemd_managed_unit_dir as String, "/"], "")) {
+        MaskFragmentRelocationRequired {
+          unit: unit,
+          fragment_path: trim(s: p) as NonEmptyStr,
+          cause: join([
+            "mask creates a symlink at this unit's name under ", systemd_managed_unit_dir as String,
+            " and refuses rather than replacing the real file already there (", trim(s: p),
+            "); the fragment must be relocated, with its digest preserved, before the mask can take",
+          ], ""),
+        }
+      } else {
+        MaskFragmentClear { unit: unit }
+      }
+  }
+}
+
+fn mask_fragment_precondition_wire(p: MaskFragmentPrecondition) -> String {
+  match p {
+    MaskFragmentClear { unit: _ } => "clear"
+    MaskFragmentRelocationRequired { unit: _, fragment_path: fp, cause: _ } =>
+      join(["RELOCATION-REQUIRED ", fp as String], "")
+    MaskFragmentUnobserved { unit: _, cause: _ } => "UNOBSERVED"
+  }
+}
+
 // ── THE RECONCILE TIMER'S RETIRED INTENT ──────────────────────────────────────────────────────
 //
 // `runner-liveness-reconcile.timer` runs on the runner hosts every two minutes and its service
@@ -820,13 +880,25 @@ fn reconcile_active_state_is_known(state: String) -> Bool {
 // retirement removed, and a fence the next boot dissolves does not establish it. `UnitMaskedRuntime`
 // is therefore a KNOWN state that does not inhibit -- the reading is legible, it simply is not the
 // answer the obligation needs.
+// ONLY A MASK INHIBITS. `disabled` WAS ACCEPTED HERE AND IS NOT ENOUGH.
+//
+// `disable` removes the [Install] symlinks, so the unit will not be armed at boot -- which is what
+// made it look like inhibition. It does not refuse ACTIVATION: a disabled unit still starts on an
+// explicit `systemctl start`, and still starts when another unit pulls it in through Wants= or
+// Requires=. `mask` links the unit name to /dev/null, which refuses activation whatever requests it.
+//
+// THE OBLIGATION IS NOT "WILL IT COME BACK BY ITSELF", IT IS "CAN IT COME BACK". A reconciler that
+// restores the population this retirement is removing defeats the retirement whether it was armed by
+// a timer, by a dependency, or by a hand at a terminal, so a fence that stops only the first is not
+// the fence this obligation names. Accepting `disabled` let the weaker act discharge the stronger
+// claim -- the shape this lane has been finding all day, one seam further in.
 fn reconcile_unit_file_state_inhibits(state: String) -> Bool {
   match parse_unit_file_state(raw: state) {
     Absent => false
     Present { value: s } =>
       match s {
         UnitMasked => true
-        UnitDisabled => true
+        UnitDisabled => false
         UnitMaskedRuntime => false
         UnitEnabled => false
         UnitEnabledRuntime => false
@@ -974,7 +1046,10 @@ fn reconcile_timer_estate_standing(
       } else if !reconcile_unit_file_state_inhibits(state: file_state) {
         EstateObligationOutstanding {
           obligation: LivenessReconcileTimerRetired,
-          cause: join([u as String, " on ", h as String, " is not persistently inhibited (", reconcile_reading_text(reading: reading), "); the manager can arm it again and the next tick restores the population this retirement removes"], ""),
+          cause: join([
+            u as String, " on ", h as String, " is not masked (", reconcile_reading_text(reading: reading),
+            "). A disabled unit is not inhibited: it still starts on an explicit `systemctl start` and still starts when another unit pulls it in through Wants= or Requires=, and either restores the population this retirement removes",
+          ], ""),
         }
       } else {
         EstateObligationDischarged {

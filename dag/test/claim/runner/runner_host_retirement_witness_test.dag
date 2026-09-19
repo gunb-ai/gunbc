@@ -61,6 +61,10 @@ import gunbc.runner_host_retirement {
   ReconcileTimerRetired,
   runner_liveness_reconcile_timer_intent,
   reconcile_timer_estate_standing,
+  mask_fragment_precondition,
+  MaskFragmentClear,
+  MaskFragmentRelocationRequired,
+  MaskFragmentUnobserved,
 }
 import gunbc.runner_slot_retirement { transition_required_retiring }
 import gunbc.runner_unit { runner_unit_name_of_registration }
@@ -876,4 +880,64 @@ test fn a_masked_load_state_is_known_and_not_absent() -> Bool {
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
   }))
+}
+
+// ── ONLY A MASK INHIBITS ─────────────────────────────────────────────────────────────────────
+
+// A DISABLED RECONCILER IS OUTSTANDING. disable removes the [Install] symlinks so the unit will not
+// be armed at boot, and does not refuse activation: it still starts on an explicit systemctl start
+// and still starts when another unit pulls it in through Wants= or Requires=. Either restores the
+// population this retirement removes, so the weaker act must not discharge the stronger claim.
+// Operator decision 2026-09-19, after srv2's timer was first retired with disable --now.
+test fn a_disabled_reconciler_is_outstanding() -> Bool {
+  is_outstanding(s: srv2_standing(r: reading(file_state: "disabled", timer_active: "inactive", service_active: "inactive")))
+}
+
+// AND THE POSITIVE CONTROL IS NOW A MASK, which is the state srv2 was subsequently put into: both
+// the timer and its service masked, with systemctl start refused as masked.
+test fn a_masked_reconciler_discharges() -> Bool {
+  is_discharged(s: srv2_standing(r: reading(file_state: "masked", timer_active: "inactive", service_active: "inactive")))
+}
+
+// ── MASKING A UNIT IN THE MANAGED DIRECTORY NEEDS THE FRAGMENT MOVED FIRST ───────────────────
+
+// MEASURED ON srv2: mask refused until the fragments were moved out of /etc/systemd/system. The
+// precondition is typed so a plan renders the relocation before the mask, rather than the mask
+// failing at apply time.
+test fn a_fragment_in_the_managed_directory_requires_relocation() -> Bool {
+  match mask_fragment_precondition(
+    unit: "runner-liveness-reconcile.timer" as NonEmptyStr,
+    fragment_path: ReconcilePropertyValue { value: "/etc/systemd/system/runner-liveness-reconcile.timer" },
+  ) {
+    MaskFragmentRelocationRequired { unit: _, fragment_path: fp, cause: _ } =>
+      (fp as String) == "/etc/systemd/system/runner-liveness-reconcile.timer"
+    MaskFragmentClear { unit: _ } => false
+    MaskFragmentUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A FRAGMENT SHIPPED ELSEWHERE NEEDS NO RELOCATION -- /usr/lib is not the directory mask writes into,
+// so the symlink has nothing to collide with.
+test fn a_vendor_fragment_needs_no_relocation() -> Bool {
+  match mask_fragment_precondition(
+    unit: "runner-liveness-reconcile.timer" as NonEmptyStr,
+    fragment_path: ReconcilePropertyValue { value: "/usr/lib/systemd/system/runner-liveness-reconcile.timer" },
+  ) {
+    MaskFragmentClear { unit: _ } => true
+    MaskFragmentRelocationRequired { unit: _, fragment_path: _, cause: _ } => false
+    MaskFragmentUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// AN UNREADABLE FragmentPath IS UNOBSERVED, not clear: a mask planned on an unread precondition is
+// the apply-time failure this carrier exists to move earlier.
+test fn an_unreadable_fragment_path_is_unobserved() -> Bool {
+  match mask_fragment_precondition(
+    unit: "runner-liveness-reconcile.timer" as NonEmptyStr,
+    fragment_path: ReconcilePropertyUnreadable { cause: "ssh refused" },
+  ) {
+    MaskFragmentUnobserved { unit: _, cause: _ } => true
+    MaskFragmentClear { unit: _ } => false
+    MaskFragmentRelocationRequired { unit: _, fragment_path: _, cause: _ } => false
+  }
 }
