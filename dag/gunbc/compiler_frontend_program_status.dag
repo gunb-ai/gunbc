@@ -934,13 +934,14 @@ fn xl2_stage_standing(producer: RehearsalProducerStanding, held: List<StageDeliv
     subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
     outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held)
   )
-  if count(evidence.outstanding) == 0 {
-    Clear { evidence: evidence }
-  } else {
-    match producer {
-      RehearsalProducerUnavailable { why, cause } => NotDerivable { why: why, cause: cause }
-      RehearsalProducerAvailable => Outstanding { evidence: evidence }
-    }
+  match standing_from_evidence(e: evidence) {
+    Clear { evidence: e } => Clear { evidence: e }
+    Outstanding { evidence: e } =>
+      match producer {
+        RehearsalProducerUnavailable { why, cause } => NotDerivable { why: why, cause: cause }
+        RehearsalProducerAvailable => Outstanding { evidence: e }
+      }
+    NotDerivable { why, cause } => NotDerivable { why: why, cause: cause }
   }
 }
 
