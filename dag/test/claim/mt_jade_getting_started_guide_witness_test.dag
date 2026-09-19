@@ -5,7 +5,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_authority,
   mt_jade_gsg_content_digest,
-  mt_jade_gsg_issue,
   mt_jade_gsg_model_scope,
   mt_jade_gsg_operator_drive_mirror_authority,
   mt_jade_gsg_publication_status,
@@ -17,9 +16,14 @@ import gunbc.upstream_document_carriage {
   carriage_permits_facts,
   upstream_fact_carriage,
 }
+import std.content_hash { sha256_digest_wire_form }
 import gunbc.specification_citation_read_provenance {
+  DocumentLocatorFetchedAndTextIngested,
+  DocumentMirrorLocatorFetchedAndTextIngested,
   RecordedReadBytesAgree,
   mt_jade_gsg_citation_read_comparison,
+  mt_jade_gsg_drive_mirror_citation_read_receipt,
+  mt_jade_gsg_publisher_citation_read_receipt,
 }
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
@@ -33,9 +37,22 @@ import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_jade_gsg_identity_is_issue_1_00() -> Bool {
-  (mt_jade_gsg_issue as String) == "1.00"
-    && (mt_jade_gsg_content_digest.hex as String) == "f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f"
+// THE DECLARED DIGEST IS JOINED TO WHAT THE READS OBSERVED, not compared to its own literal. The
+// earlier form copied subject.dag's issue and hex back from subject.dag, which is the change
+// detector DESIGN section 5 names (review 68035). The RED here is real: a read receipt recording
+// a digest the extdeps module does not declare reddens this, which is the case a mirror serving
+// different bytes would produce.
+test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
+  match mt_jade_gsg_publisher_citation_read_receipt.provenance {
+    DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: d, detail: _ } =>
+      d == sha256_digest_wire_form(digest: mt_jade_gsg_content_digest)
+    _ => false
+  }
+    && match mt_jade_gsg_drive_mirror_citation_read_receipt.provenance {
+      DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: d, detail: _ } =>
+        d == sha256_digest_wire_form(digest: mt_jade_gsg_content_digest)
+      _ => false
+    }
 }
 
 test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {

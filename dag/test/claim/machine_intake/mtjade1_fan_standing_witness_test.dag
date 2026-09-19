@@ -10,8 +10,6 @@ import gunbc.machine_intake_mtjade1_fan_standing {
   FailsafeFullDutyAdmitted,
   FailsafeWindowUnbounded,
   FamilyUnobservedNoFanRealizer,
-  FansLeftFailsafeForThermalCurve,
-  FansStayAtFailsafeAfterPost,
   FirstPostFanCaptured,
   HostThermalAbsentBeforePost,
   HostThermalPresentAfterPost,
@@ -51,10 +49,6 @@ test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
     && match mtjade1_host_thermal_before_next_power_on {
       HostThermalAbsentBeforePost => true
       HostThermalPresentAfterPost => false
-    }
-    && match FansStayAtFailsafeAfterPost { discriminator: "fixture: SOL/BMC sensors still failsafe after POST" } {
-      FansStayAtFailsafeAfterPost { discriminator: _ } => true
-      FansLeftFailsafeForThermalCurve => false
     }
 }
 

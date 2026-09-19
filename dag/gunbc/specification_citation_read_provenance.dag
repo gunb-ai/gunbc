@@ -9,9 +9,7 @@ import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
 import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
 import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
-import std.content_hash { sha256_digest_wire_form }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
-  mt_jade_gsg_content_digest,
   mt_jade_gsg_operator_drive_mirror_authority,
 }
 import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
@@ -101,12 +99,21 @@ data mt_jade_getting_started_guide_subject_ref: DeclarationRef = DeclarationRef 
   field: WholeDeclaration,
 }
 
+// EACH READ TRANSCRIBES ITS OWN DIGEST, AND THAT IS NOT THE THREE-SPELLINGS FORK IT LOOKS LIKE.
+// An earlier revision bound both receipts to sha256_digest_wire_form(mt_jade_gsg_content_digest)
+// to remove a duplicated literal (review 67907). That collapsed the wall: the comparison below
+// asks pd == md, so feeding both sides the SAME declaration made RecordedReadBytesAgree true by
+// construction, and the witness cited it as coverage (review 68035). Two independent fetches are
+// two OBSERVATIONS, not two copies of a declared fact -- DESIGN section 3 external upstream
+// decomposition puts our reads in this layer and the document's declared digest in extdeps -- so
+// three rows here are three different facts, and their agreement is the thing worth checking. The
+// Collins pair below has always been written this way.
 data mt_jade_gsg_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: mt_jade_getting_started_guide_subject_ref,
   provenance: DocumentLocatorFetchedAndTextIngested {
     http_status: 200,
     byte_count: byte_size(count: 16317856),
-    content_digest: sha256_digest_wire_form(digest: mt_jade_gsg_content_digest),
+    content_digest: "sha256 f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f",
     detail: "Fetched without credentials from the Ampere publisher locator on 2026-09-18; application/pdf, 18 pages. Table 11 and chassis rows were already modeled from the operator Drive copy; this fetch is the publisher-slot read, not a substitution of that copy for the publisher.",
   },
 }
@@ -118,7 +125,7 @@ data mt_jade_gsg_drive_mirror_citation_read_receipt: SpecificationCitationReadRe
     observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 18 },
     http_status: 200,
     byte_count: byte_size(count: 16317856),
-    content_digest: sha256_digest_wire_form(digest: mt_jade_gsg_content_digest),
+    content_digest: "sha256 f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f",
     detail: "Fetched without credentials from the operator-supplied Google Drive locator on 2026-09-18 and compared with the separately fetched publisher PDF (cmp and SHA-256). Matching bytes. This is a mirror read, not a publisher read.",
   },
 }
