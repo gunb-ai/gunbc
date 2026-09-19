@@ -340,3 +340,17 @@ test fn checklist_surfaces_and_runbook_are_declared() -> Bool {
   bmc_install_debug_checklist_surface_count_is_seven()
     && srv3_os_install_diagnostic_runbook_is_declared()
 }
+
+// A REMOTE BMC PROBE ALONE CANNOT JUDGE THE SERVE. srv3_remote_bmc_probe_observation is what the BMC
+// answers when nothing has observed the actuator host: serve unknown, no SOL, no lease table. The fold
+// must ask for that observation rather than reading the absence as a verdict about the install. This
+// claim replaces a same-named production fn that no caller reached, so the reading now executes.
+test fn a_remote_bmc_probe_alone_needs_the_serve_observation() -> Bool {
+  match diagnose_srv3_install(
+    intent: srv3_diagnostic_intent_fixture,
+    observation: srv3_remote_bmc_probe_observation,
+  ) {
+    InconclusiveNeedsServeObservation => true
+    _ => false
+  }
+}

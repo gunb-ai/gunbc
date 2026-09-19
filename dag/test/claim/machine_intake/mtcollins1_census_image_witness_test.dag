@@ -56,7 +56,7 @@ test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Boo
   let last_section_at = census_program_index(needle: "----SECTION edac-after----")
   let sync_at = census_program_index(needle: "\nsync\n")
   let halt_at = census_program_index(needle: "\npoweroff -f\n")
-  string_contains(s: program, pattern: "exec >/dev/ttyAMA0 2>&1")
+  string_contains(s: program, pattern: concat("exec >", mtcollins1_census_console_device as String, " 2>&1"))
     && last_section_at < end_at
     && end_at < sync_at
     && sync_at < halt_at
@@ -77,10 +77,13 @@ test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() ->
     && string_contains(s: ud, pattern: "identity") == false
 }
 
+// ONE TTY, BOTH SPELLINGS. The device the program writes to and the console the kernel is told to
+// use derive from the same row, so they cannot be edited apart.
 test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> Bool {
   let cmdline = mtcollins1_census_image_input.grub_kernel_cmdline as String
   string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
-    && string_contains(s: cmdline, pattern: "console=ttyAMA0,115200")
+    && string_contains(s: cmdline, pattern: concat("console=", mtcollins1_census_console_tty as String, ","))
+    && (mtcollins1_census_console_device as String) == concat("/dev/", mtcollins1_census_console_tty as String)
     && mtcollins1_census_image_input.seed_files.length() == 1
     && (mtcollins1_census_image_input.volume_id as String).length() <= 32
 }

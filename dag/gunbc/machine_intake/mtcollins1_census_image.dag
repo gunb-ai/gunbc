@@ -42,10 +42,19 @@ import gunbc.machine_intake_host_capture_envelope {
 data mtcollins1_census_machine: NonEmptyStr = "mtcollins1"
 
 // The Altra host's serial console is the PL011 at ttyAMA0 -- the console the BMC's SOL carries and
-// the one attempt=3's envelope arrived on.
-data mtcollins1_census_console_device: NonEmptyStr = "/dev/ttyAMA0"
+// the one attempt=3's envelope arrived on. THE TTY IS ONE ROW because the program writes to the
+// device and the kernel is told to console on the same tty: authored twice, an edit to one spelling
+// sends the census to a device nothing is reading, and the envelope's absence would be reported as a
+// boot failure -- the misattribution this lane exists to end. Both spellings derive from here.
+data mtcollins1_census_console_tty: NonEmptyStr = "ttyAMA0"
 
-data mtcollins1_census_console_arg: NonEmptyStr = "console=ttyAMA0,115200"
+data mtcollins1_census_console_baud: NonEmptyStr = "115200"
+
+data mtcollins1_census_console_device: NonEmptyStr = concat("/dev/", mtcollins1_census_console_tty as String) as NonEmptyStr
+
+data mtcollins1_census_console_arg: NonEmptyStr = concat(
+  "console=", mtcollins1_census_console_tty as String, ",", mtcollins1_census_console_baud as String,
+) as NonEmptyStr
 
 // The seed directory the earlier census booted with (its /proc/cmdline in attempt=3 reads
 // ds=nocloud;s=/cdrom/gunbc-census/), kept so the two captures are comparable.
