@@ -153,14 +153,17 @@ data redundancy_region_budget_marks: List<Disposition> = [
 // discriminates bind-matching from mark-counting — which is the property the original single-mark
 // version could not distinguish.
 
-// THE MODULE MOVED WITH THE ROWS IT GROUNDS (2026-09-18). The two fixed-overhead scaffolds this
-// region tracks were extracted from gunbc.ci_floor_measurement into gunbc.host_memory_observation
-// together with the per-host usable-RAM and overhead rows, because none of them depends on the
-// runner slot shape and their co-location was what forced a cycle. Their successor -- a QUIESCENT
-// /proc/meminfo read -- is a host memory observation too, so it lands beside the rows it would
-// ground rather than back in the CI measurement module, and this locator names that home.
+// THE SCAFFOLDS MOVED AND THIS LOCATOR DELIBERATELY DID NOT (2026-09-19). The two fixed-overhead
+// scaffolds this region tracks were extracted into gunbc.host_memory_observation, and an
+// intermediate revision of that change repointed this locator with them on the reasoning that a
+// QUIESCENT /proc/meminfo read belongs beside the rows it grounds. That was the author's aesthetic
+// judgement, not a decision the corpus had taken, and it was applied by a proximity rewrite rather
+// than chosen. It also broke six declaration findings: the successor is not declared anywhere yet,
+// and the citation debt rows that exempt it (declaration_index.rs PRE_EXISTING_CITATION_DEBT and
+// FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci_floor_measurement as its home. Where the
+// successor lands is those rows' question, not this locator's, so the locator stays put.
 data redundancy_region_budget_per_service_overhead_locator: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.host_memory_observation",
+  module_path: "gunbc.ci_floor_measurement",
   decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
   field: WholeDeclaration
 }

@@ -1639,11 +1639,20 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 // to revisit rather than a standing prohibition.
 //
 // srv2 IS ABSENT AND THAT IS A REFUSAL IT AUTHORED, NOT AN OMISSION HERE. Its committed width is
-// zero because `host_runner_memory_envelope_bytes` has no arm for it, which is the deliberate state
-// recorded at that function: a host whose session charge is unestablished has an envelope of zero.
-// Any index on srv2 would therefore land in SlotOutsideCommittedPopulation, and restoring a
-// special-case arm to make it fit is exactly the bypass that function removed twice. srv2 enters
-// this list when its session charge is measured, and by no other route.
+// zero because host_runner_memory_envelope_resolution answers RunnerMemoryEnvelopeUnestablished for
+// it: the session-slice denominator on that host is unestablished on measured evidence
+// (gunbc.session_reservation_policy srv2_session_aggregate_denominator), so the subtraction cannot
+// be performed at all. Any index on srv2 therefore lands in SlotOutsideCommittedPopulation, and srv2
+// enters this list when its session charge is measured, by no other route.
+//
+// AN EARLIER REVISION OF THIS NOTE DESCRIBED A MECHANISM THIS SAME CHANGE DELETED, which is worth
+// recording rather than silently rewriting. It said the width was zero because
+// host_runner_memory_envelope_bytes "has no arm for it" and warned against "restoring a special-case
+// arm". That was true while the envelope was one authored literal per host with an else arm of zero.
+// This change replaced those literals with a derivation over five authorities, so there are no arms
+// to restore or bypass; the refusal now comes from an input that cannot answer rather than from a
+// table that never named the host. The warning it carried is preserved in the derivation itself,
+// where an unestablished input refuses by name instead of resolving to a number.
 //
 // NO WIDTH FIGURE IS QUOTED HERE ON PURPOSE. An earlier revision of this note said srv3 and srv4
 // "both admit 6 at memory"; the derived widths are 12, memory admits 17 on srv3 and CPU is the

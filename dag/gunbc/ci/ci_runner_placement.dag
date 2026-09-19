@@ -333,6 +333,13 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 // since the first fabric cell landed; at one cell on one host that was a single phantom runner, and
 // widening to two cells on each of srv3 and srv4 makes it four.
 //
+// THE CLASS IS FILED AND COUNTABLE, not left as this comment (review 68086, DESIGN 4b): the row is
+// gunbc.recurring_failure_mode.a_count_field_whose_subject_drifted_from_its_producer, which carries
+// the invalid state, why it grows without an edit, the rung it was found at, and a next-rung trigger
+// naming the capability -- RunnerHostDeployment carrying the deployable Actions population as its own
+// field. A finding recorded only in prose beside the line that widens it is not a deferral, it is an
+// unfiled defect, and DESIGN 6 is explicit that a missing dissolution condition makes it worse.
+//
 // SUBSTITUTING host_github_slot_count HERE WAS TRIED AND REVERTED, and the reason is the useful
 // part. Two witnesses in test.claim.runner_placement_witness assert the CURRENT subject outright --
 // witness_live_effective_runners_derives_declared_count compares this field to

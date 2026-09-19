@@ -34,19 +34,21 @@ import gunbc.fleet_intent_network {
 // argues about them, and a rename would turn every such citation stale in the same commit that
 // moved them. Renaming is its own change, with its own sweep.
 //
-// THREE STRINGS DID CHANGE IN THE MOVE, AND SAYING SO MATTERS BECAUSE AN EARLIER REVISION OF THIS
-// NOTE CLAIMED THE EXTRACTION WAS VERBATIM. It was not: one `provenance` string cited this row's own
-// module by name, and TWO DeclarationRef bind targets named the module a scaffold's successor would
-// land in. All three said "gunbc.ci_floor_measurement" and now say "gunbc.host_memory_observation".
+// ONE STRING CHANGED IN THE MOVE, AND TWO MORE CHANGED AND WERE PUT BACK -- recorded because an
+// earlier revision of this note claimed the extraction was verbatim, and then a later one ratified
+// a change nobody had decided. The `provenance` string on gunbc_ci_managed_host_fixed_overhead cited
+// this row's own module by name and follows the row, which is self-citation and correct.
 //
-// EACH IS CORRECT AFTER THE MOVE and none was decided deliberately at the time -- they were swept up
-// by a proximity rewrite over citations, which is a blunt instrument to point at a bind target. The
-// provenance is self-citation and follows the row. The successors -- a QUIESCENT /proc/meminfo read
-// and the modeled legacy residents -- are host memory observations, so they belong beside the rows
-// they would ground rather than back in the CI measurement module. The retarget is ratified here
-// rather than left as an accident, and v2.test.lens_disposition_redundancy's locator for the managed
-// successor moved with it; without that the lens stops firing and reports zero violations where it
-// should report one.
+// THE TWO DeclarationRef BIND TARGETS ARE BACK AT gunbc.ci_floor_measurement. A proximity rewrite
+// over citations had moved them here with everything else, and the reasoning offered afterwards --
+// that a quiescent /proc/meminfo read belongs beside the rows it grounds -- was the author's
+// judgement rather than a decision the corpus had taken. The corpus had already taken one: the
+// citation debt rows that exempt those successors from refusing (declaration_index.rs
+// PRE_EXISTING_CITATION_DEBT, FIXTURE_CARRIER_CITATION_EXEMPTIONS) name gunbc.ci_floor_measurement
+// as their home, and the required floor reported six declaration findings the moment the bind
+// targets disagreed with them -- three citations that no longer resolved, three debt rows gone
+// stale. Where a successor lands is those rows' question. A bind target is not a citation and a
+// regex aimed at citations should never have reached it.
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }
@@ -162,7 +164,7 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_memory_observation",
+    module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
     field: WholeDeclaration
   }
@@ -171,7 +173,7 @@ data gunbc_ci_managed_host_fixed_overhead_disposition: Disposition = Scaffold {
 data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_memory_observation",
+    module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_legacy_host_modeled_residents",
     field: WholeDeclaration
   }
