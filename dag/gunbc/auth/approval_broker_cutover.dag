@@ -11,7 +11,7 @@ import gunbc.serve_liveness {
   observe_serve_liveness, serve_liveness_read_reason,
 }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_agreement,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_served_token, approval_broker_marker_agreement,
   MarkerAgreement, MarkerAgrees, MarkerDiffers,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
@@ -26,6 +26,7 @@ import gunbc.auth.approval_broker_endpoint {
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
 import gunbc.auth.approval_writer_authority {
   ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
 }
 import gunbc.auth.approval_cutover_posture {
   ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
@@ -344,6 +345,11 @@ type CutoverAdmission
 // the route string. Parsing "which handler should /approvals reach" out of a path literal would
 // re-implement the router in the admission fold -- a second authority for routing, and one that
 // would keep agreeing with the first until a path moved.
+// THE EXPECTED PROCESS IS BrokerProcess AND IS NOT A PARAMETER, because there is exactly one answer
+// this stage accepts. The probe exists to establish that the FRONT DOOR NOW REACHES THE BROKER; a
+// caller able to pass RoadmapProcess could satisfy it with the state it is meant to detect, which
+// is the caller-assertibility the whole marker scheme exists to remove. Fixing it here means the
+// stage cannot be parameterised into agreement.
 fn route_class_admission(
   route: NonEmptyStr,
   expected: ApprovalBrokerMarker,
@@ -356,13 +362,18 @@ fn route_class_admission(
     RouteClassAnswered { status: st, observed: o } =>
       match o {
         NoMarkerInBody => Present { value: RouteClassAnsweredByNoBroker { route: route, status: st } }
-        MarkerObserved { marker: m } =>
-          match approval_broker_marker_agreement(observed: m, expected: expected) {
+        MarkerObserved { process: op, marker: m } =>
+          match approval_broker_marker_agreement(
+            observed_process: op,
+            observed: m,
+            expected_process: BrokerProcess,
+            expected: expected,
+          ) {
             MarkerAgrees => Absent
             MarkerDiffers => Present { value: RouteClassAnsweredByWrongFold {
               route: route,
-              expected: approval_broker_marker_token(m: expected),
-              observed: approval_broker_marker_token(m: m),
+              expected: approval_broker_served_token(p: BrokerProcess, m: expected),
+              observed: approval_broker_served_token(p: op, m: m),
             } }
           }
       }
@@ -617,25 +628,31 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
     RouteClassAnsweredByNoBroker { route: r, status: st } =>
       join([
         "route class ", r as String, " answered ", to_string(st),
-        " through the front door, but the body carries NO approval-broker marker -- so the broker ",
-        "did not produce it. Every response the broker emits is marked by construction ",
+        " through the front door, but the body carries NO approval-broker marker at all -- so ",
+        "NEITHER serving process produced it. Both mark every response by construction ",
         "(gunbc.auth.approval_broker_marker, threaded through the one response constructor), so an ",
-        "unmarked answer means the request never reached this process: the front-door repoint has ",
-        "not taken, or something else is still serving these paths. A 200 here is the dangerous ",
-        "reading and is refused for the same cause as a 404, because during these stages the ",
-        "roadmap is still mounted and answers exactly like a success.",
+        "unmarked answer means something outside this deployment is serving these paths, or the ",
+        "front door reaches nothing. A 200 here is refused for the same cause as a 404. ",
+        "NOTE THE NEIGHBOURING ARM: a body marked roadmap/... is a DIFFERENT and more likely ",
+        "failure -- the repoint not having taken -- and is refused as RouteClassAnsweredByWrongFold ",
+        "rather than here, because something was learned and it named the wrong process.",
       ], "") as NonEmptyStr
     RouteClassAnsweredByWrongFold { route: r, expected: ex, observed: ob } =>
       join([
-        "route class ", r as String, " reached the broker -- the body is marked ", ob as String,
-        " -- but the fold that answered is not the one this route class exists to exercise (",
-        ex as String, "). THE PREFIX-STRIP READING IS THE FIRST TO CHECK when the observed marker ",
-        "is approval-broker/no-route-matched on a path the broker demonstrably routes: a --set-path ",
-        "mount that strips its prefix presents /<capability> to a table matching /approve/",
-        "<capability>, which is exactly the standing ",
+        "route class ", r as String, " was answered by ", ob as String,
+        " and this stage requires ", ex as String,
+        ". READ THE PROCESS SEGMENT FIRST. A roadmap/... marker means the FRONT DOOR STILL REACHES ",
+        "THE ROADMAP: it mounts these same four folds until the last stage, so it answers this path ",
+        "correctly and would look like a success on status alone -- that is the reading this ",
+        "comparison exists to refuse (review 68539, which found it ADMITTED when the marker named ",
+        "only the fold). The repair is the front door, not the broker. ",
+        "A broker/no-route-matched marker on a path the broker demonstrably routes is the OTHER ",
+        "reading: the request reached the broker and its table refused it, which is the prefix ",
+        "strip -- a --set-path mount presenting /<capability> to a table matching /approve/",
+        "<capability>, exactly the standing ",
         "gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation names as ",
-        "unsettled and this probe as the instrument that settles it. Repair it in the model, with ",
-        "the roadmap still able to serve.",
+        "unsettled and this probe as the instrument that settles. Either way the repair is modeled, ",
+        "with the roadmap still able to serve.",
       ], "") as NonEmptyStr
     RouteClassProbeRefused { route: r, status: st, detail: d } =>
       join([

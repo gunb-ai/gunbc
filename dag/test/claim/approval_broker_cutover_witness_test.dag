@@ -23,8 +23,9 @@ import gunbc.auth.approval_broker_endpoint {
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
-  BrokerNoRouteMatched,
+  BrokerNoRouteMatched, approval_broker_served_token,
 }
+import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 import gunbc.auth.approval_broker_cutover {
   ApprovalBrokerCutoverStage,
   DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes,
@@ -95,10 +96,10 @@ fn everything_observed() -> ApprovalBrokerCutoverEvidence {
       declared_concurrency: 1,
     },
     front_door: FrontDoorPointsAtBroker { port: approval_broker_listen_port },
-    confirm_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { marker: ConfirmHandlerObserved } },
-    decide_probe: RouteClassAnswered { status: 400, observed: MarkerObserved { marker: DecisionHandlerObserved } },
-    submit_probe: RouteClassAnswered { status: 403, observed: MarkerObserved { marker: SubmissionHandlerObserved } },
-    status_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { marker: StatusHandlerObserved } },
+    confirm_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { process: BrokerProcess, marker: ConfirmHandlerObserved } },
+    decide_probe: RouteClassAnswered { status: 400, observed: MarkerObserved { process: BrokerProcess, marker: DecisionHandlerObserved } },
+    submit_probe: RouteClassAnswered { status: 403, observed: MarkerObserved { process: BrokerProcess, marker: SubmissionHandlerObserved } },
+    status_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { process: BrokerProcess, marker: StatusHandlerObserved } },
   }
 }
 
@@ -235,7 +236,7 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { marker: BrokerNoRouteMatched } },
+    confirm_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { process: BrokerProcess, marker: BrokerNoRouteMatched } },
     decide_probe: full.decide_probe,
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
@@ -244,6 +245,43 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
     StageRefused { stage: _, cause: c } => match c {
       RouteClassAnsweredByWrongFold { route: _, expected: _, observed: ob } =>
         ob == ("approval-broker/no-route-matched" as NonEmptyStr)
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+// ── A CORRECT 200 FROM THE ROADMAP IS THE STATE THIS STAGE EXISTS TO CATCH ──────────────────
+// THE DEFECT REVIEW 68539 FOUND, AS A CLAIM. Until RetireRoadmapRoutes the roadmap still mounts
+// these four folds, so at ProbeRouteClasses it answers /approve correctly, with a 200, through the
+// right handler. Every weaker reading admits it: the status is a success, the fold is the expected
+// one, and the body is marked. The ONLY thing that separates it from the state the stage is trying
+// to establish is WHICH PROCESS served it -- and when the marker named only the fold, nothing did.
+//
+// The stage was ADMITTED in that state, which is the worst possible direction: the next stage
+// deletes the roadmap's approval routes, so the plan would have removed the only working
+// implementation on evidence that implementation produced.
+test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() -> Bool {
+  let full = everything_observed()
+  let e = ApprovalBrokerCutoverEvidence {
+    dark: full.dark,
+    expected_release: full.expected_release,
+    release_readback: full.release_readback,
+    demand: full.demand,
+    front_door: full.front_door,
+    confirm_probe: RouteClassAnswered {
+      status: 200,
+      observed: MarkerObserved { process: RoadmapProcess, marker: ConfirmHandlerObserved },
+    },
+    decide_probe: full.decide_probe,
+    submit_probe: full.submit_probe,
+    status_probe: full.status_probe,
+  }
+  match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
+    StageRefused { stage: _, cause: c } => match c {
+      RouteClassAnsweredByWrongFold { route: _, expected: ex, observed: ob } =>
+        ob == approval_broker_served_token(p: RoadmapProcess, m: ConfirmHandlerObserved)
+          && ex == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
       _ => false
     }
     StageAdmitted { stage: _ } => false

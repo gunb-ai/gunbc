@@ -2,6 +2,7 @@ module gunbc.auth.approval_broker_marker
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.http.server { MediaType }
+import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
 // ── WHICH FOLD ANSWERED, WRITTEN INTO THE ONLY CHANNEL THE PROBE CAN READ ────────────────────
 // THE CUTOVER'S STAGE-5 PROBE COULD NOT TELL A BROKER 404 FROM A PREFIX-STRIPPED MISS, and that is
@@ -14,11 +15,28 @@ import extdeps.http.server { MediaType }
 // incomplete -- three different repairs, and the operator was being asked to guess which from one
 // integer. That is DESIGN's not-met versus cannot-tell collapsed into a number.
 //
-// SO EVERY RESPONSE NAMES THE FOLD THAT PRODUCED IT. With the marker present, a 404 carrying
-// BrokerNoRouteMatched says the request REACHED the broker and its table refused it -- which, on a
-// path the broker demonstrably routes, is the prefix-strip reading and nothing else -- while a 404
-// carrying no marker at all says the broker never saw it. The discriminator is the presence of a
-// marker, not its status.
+// THE MARKER NAMES THE PROCESS AS WELL AS THE FOLD, AND THE FIRST CUT NAMED ONLY THE FOLD -- WHICH
+// DID NOT DISCRIMINATE WHAT IT CLAIMED TO (review 68539). Until stage 6 the roadmap MOUNTS THESE
+// SAME FOUR FOLDS: gunbc.roadmap.roadmap_serve projects its approval rows from
+// approval_broker_route_specs and invokes approval_broker_invoke with process: RoadmapProcess, so a
+// handler-only token is emitted verbatim by the process the probe exists to rule out. A front-door
+// probe answered by the roadmap carried approval-broker/confirm-page, agreed with the expected
+// marker, and was ADMITTED -- the precise dangerous reading the refusal prose says is refused, and
+// the stage's whole load-bearing inference. The handler arm is a fact about which ROUTE matched; it
+// was never a fact about WHICH PROCESS ANSWERED.
+//
+// THE PROCESS IS AVAILABLE AND WAS SIMPLY NOT CARRIED. Both serving processes already thread an
+// ApprovalServingProcess into approval_broker_invoke, bound by the serve ENTRY -- one entry per
+// process for its life -- so it is the one value in the request path that a response cannot lie
+// about by matching a route. Marking on the pair (process, fold) is what makes the token a
+// statement about the answering process.
+//
+// SO EVERY RESPONSE NAMES THE PROCESS AND THE FOLD THAT PRODUCED IT. A 404 marked
+// broker/no-route-matched says the request REACHED THE BROKER and its table refused it -- which, on
+// a path the broker demonstrably routes, is the prefix-strip reading and nothing else. A 404 marked
+// roadmap/anything says the front door is still pointing at the old process. A body with no marker
+// at all says neither served it. The discriminator is the PROCESS SEGMENT plus the presence of a
+// marker, never the status.
 //
 // A BODY AND NOT A HEADER, because extdeps.http.server ServeHttpResponse carries status, content
 // type and body and no header map. That is not a limitation worked around here: the wire projection
@@ -44,19 +62,30 @@ type ApprovalBrokerMarker
   | BrokerAdapterRefused
   | BrokerStaticRouteServed
 
-// THE TOKEN IS PREFIXED SO A READER CAN TELL IT IS OURS. `approval-broker/` is not decoration: the
-// probe greps a body it did not produce, and a bare word like `status` would match prose in a
-// refusal reason and read as a marker. The prefix is what makes the observation about this corpus.
+// THESE ARE BARE FOLD NAMES AND ARE NEVER MATCHED ON DIRECTLY. `status` or `decision` alone would
+// match prose inside a refusal reason and read as a marker; the `approval-broker/<process>/` prefix
+// that approval_broker_served_token puts in front is what makes the observation about this corpus
+// AND about one process. A reader matching these strings would reproduce review 68539's defect.
+fn approval_serving_process_label(p: ApprovalServingProcess) -> NonEmptyStr {
+  match p {
+    RoadmapProcess => "roadmap" as NonEmptyStr
+    BrokerProcess => "broker" as NonEmptyStr
+  }
+}
+
+// NEITHER LABEL IS A PREFIX OF THE OTHER, which is what keeps the substring reader below from
+// answering `broker` on a roadmap-served body. That is a property of these two spellings and not of
+// the scheme, so it is stated where a third process would be added.
 fn approval_broker_marker_token(m: ApprovalBrokerMarker) -> NonEmptyStr {
   match m {
-    ConfirmHandlerObserved => "approval-broker/confirm-page" as NonEmptyStr
-    DecisionHandlerObserved => "approval-broker/decision" as NonEmptyStr
-    SubmissionHandlerObserved => "approval-broker/submission" as NonEmptyStr
-    StatusHandlerObserved => "approval-broker/status" as NonEmptyStr
-    BrokerNoRouteMatched => "approval-broker/no-route-matched" as NonEmptyStr
-    BrokerMethodNotAllowed => "approval-broker/method-not-allowed" as NonEmptyStr
-    BrokerAdapterRefused => "approval-broker/adapter-refused" as NonEmptyStr
-    BrokerStaticRouteServed => "approval-broker/static-route" as NonEmptyStr
+    ConfirmHandlerObserved => "confirm-page" as NonEmptyStr
+    DecisionHandlerObserved => "decision" as NonEmptyStr
+    SubmissionHandlerObserved => "submission" as NonEmptyStr
+    StatusHandlerObserved => "status" as NonEmptyStr
+    BrokerNoRouteMatched => "no-route-matched" as NonEmptyStr
+    BrokerMethodNotAllowed => "method-not-allowed" as NonEmptyStr
+    BrokerAdapterRefused => "adapter-refused" as NonEmptyStr
+    BrokerStaticRouteServed => "static-route" as NonEmptyStr
   }
 }
 
@@ -65,6 +94,18 @@ data approval_broker_markers: List<ApprovalBrokerMarker> = [
   StatusHandlerObserved, BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused,
   BrokerStaticRouteServed,
 ]
+
+// THE TOKEN THE WIRE CARRIES IS THE PAIR. approval_broker_marker_token alone remains the fold's own
+// name and is NOT what a probe matches on: a reader that matched it would accept either process,
+// which is exactly the defect review 68539 found.
+fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMarker) -> NonEmptyStr {
+  join([
+    "approval-broker/",
+    approval_serving_process_label(p: p) as String,
+    "/",
+    approval_broker_marker_token(m: m) as String,
+  ], "") as NonEmptyStr
+}
 
 // ── HOW IT IS CARRIED, WHICH IS A FACT ABOUT THE MEDIA TYPE AND NOT ABOUT THE HANDLER ───────
 // AN HTML COMMENT IN HTML AND A TRAILING LINE IN TEXT. The confirmation page is read by a person on
@@ -84,8 +125,8 @@ data approval_broker_markers: List<ApprovalBrokerMarker> = [
 // returning nothing would answer the one question the marker exists to settle, and answer it wrong.
 // The cost is a trailing line in a format that may not want one, paid by that format's own consumer
 // and not by the probe.
-fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker) -> String {
-  let token = approval_broker_marker_token(m: m) as String
+fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> String {
+  let token = approval_broker_served_token(p: process, m: m) as String
   if content_type.subtype == "html" {
     join([body, "\n<!-- ", token, " -->\n"], "")
   } else {
@@ -99,20 +140,34 @@ fn approval_broker_marked_body(content_type: MediaType, body: String, m: Approva
 // not fetch, because a fold that fetched would be observing and adjudicating in one place and the
 // cutover's whole shape is that observations are supplied to admission (DESIGN section 3d:
 // selection precedes convergence).
+// IT CARRIES THE PROCESS, and that field is the repair for review 68539 rather than extra detail.
+// An ObservedMarker holding only the fold cannot answer the question the stage asks -- which process
+// served this -- so every consumer would have had to guess, and the one that mattered guessed the
+// answer it wanted.
 type ObservedMarker
   = NoMarkerInBody
-  | MarkerObserved { marker: ApprovalBrokerMarker }
+  | MarkerObserved { process: ApprovalServingProcess, marker: ApprovalBrokerMarker }
 
+data approval_serving_processes: List<ApprovalServingProcess> = [RoadmapProcess, BrokerProcess]
+
+// THE SCAN IS OVER THE PAIR, so a roadmap-served body can only ever produce a MarkerObserved whose
+// process is RoadmapProcess. Scanning the fold names alone is what admitted the roadmap's answer.
 fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
-  fold(approval_broker_markers, init: NoMarkerInBody, f: (acc, m) =>
-    match acc {
-      MarkerObserved { marker: _ } => acc
+  fold(approval_serving_processes, init: NoMarkerInBody, f: (outer, p) =>
+    match outer {
+      MarkerObserved { process: _, marker: _ } => outer
       NoMarkerInBody =>
-        if string_contains(s: body, pattern: approval_broker_marker_token(m: m) as String) {
-          MarkerObserved { marker: m }
-        } else {
-          NoMarkerInBody
-        }
+        fold(approval_broker_markers, init: NoMarkerInBody, f: (acc, m) =>
+          match acc {
+            MarkerObserved { process: _, marker: _ } => acc
+            NoMarkerInBody =>
+              if string_contains(s: body, pattern: approval_broker_served_token(p: p, m: m) as String) {
+                MarkerObserved { process: p, marker: m }
+              } else {
+                NoMarkerInBody
+              }
+          }
+        )
     }
   )
 }
@@ -125,15 +180,22 @@ fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
 // second idiom -- the agreement is decided here, as a value, and the caller's `match` is what
 // produces the Optional.
 //
-// IT COMPARES TOKENS AND NOT ARMS because the token IS the identity that crosses the wire. Two
-// arms are equal exactly when their tokens are, by construction of approval_broker_marker_token,
-// and comparing what the probe actually reads keeps the claim about the observable.
+// IT COMPARES SERVED TOKENS AND NOT ARMS because the served token IS the identity that crosses the
+// wire, and it is the PAIR: comparing fold arms alone is the defect review 68539 found, where the
+// roadmap's own answer agreed with the expected marker because only the route had to match.
+// Comparing what the probe actually reads keeps the claim about the observable.
 type MarkerAgreement
   = MarkerAgrees
   | MarkerDiffers
 
-fn approval_broker_marker_agreement(observed: ApprovalBrokerMarker, expected: ApprovalBrokerMarker) -> MarkerAgreement {
-  if approval_broker_marker_token(m: observed) == approval_broker_marker_token(m: expected) {
+fn approval_broker_marker_agreement(
+  observed_process: ApprovalServingProcess,
+  observed: ApprovalBrokerMarker,
+  expected_process: ApprovalServingProcess,
+  expected: ApprovalBrokerMarker,
+) -> MarkerAgreement {
+  if approval_broker_served_token(p: observed_process, m: observed)
+    == approval_broker_served_token(p: expected_process, m: expected) {
     MarkerAgrees
   } else {
     MarkerDiffers

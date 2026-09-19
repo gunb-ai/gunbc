@@ -13,6 +13,7 @@ import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, BrokerNoRouteMatched,
+  approval_broker_served_token, approval_serving_process_label,
 }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler,
@@ -201,10 +202,58 @@ test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
     tailscale_identity: "",
   )
   match approval_broker_marker_in_body(body: r.body) {
-    MarkerObserved { marker: m } =>
-      approval_broker_marker_token(m: m) == approval_broker_marker_token(m: ConfirmHandlerObserved)
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m)
+        == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
     NoMarkerInBody => false
   }
+}
+
+// ── THE SAME FOLD, SERVED BY THE ROADMAP, IS A DIFFERENT MARKER ─────────────────────────────
+// THE RED THAT REVIEW 68539 SHOWED WAS MISSING, and it is the claim that makes the whole scheme
+// mean what its prose says. Until the last cutover stage the roadmap MOUNTS THESE FOLDS -- it
+// projects its approval rows from approval_broker_route_specs and invokes them with
+// process: RoadmapProcess -- so the marker has to separate the two processes on a route they BOTH
+// serve correctly. With the token naming only the fold, both produced identical bytes here.
+//
+// It runs the real adapter for both, on the same method and path, so the only difference between
+// the two calls is the process the entry binds. DELETE THE PROCESS FROM THE TOKEN AND THIS GOES
+// RED, while every other marker claim in this file stays green -- which is exactly how the defect
+// survived.
+//
+// WHAT IT DOES NOT ESTABLISH, said rather than left to be assumed: it enters this module's adapter
+// with process: RoadmapProcess, not gunbc.roadmap.roadmap_serve's own table. That is the same fold
+// with the same process value -- roadmap_serve's approval arm calls approval_broker_invoke, which is
+// what this reaches -- but it is not evidence about the roadmap's route table, and a claim that
+// entered there would take on that module's whole subject (instance, plan, release) for one fact
+// about marking.
+test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool {
+  let by_broker = approval_broker_respond_as(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+    process: BrokerProcess,
+  )
+  let by_roadmap = approval_broker_respond_as(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+    process: RoadmapProcess,
+  )
+  let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    NoMarkerInBody => "none"
+  }
+  let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    NoMarkerInBody => "none"
+  }
+  by_broker.status == 200 && by_roadmap.status == 200
+    && seen_broker == "broker"
+    && seen_roadmap == "roadmap"
+    && seen_broker != seen_roadmap
 }
 
 // ── THE LOOPBACK ENDPOINT A BOOT RUN IS POINTED AT ──────────────────────────────────────────
