@@ -69,16 +69,26 @@ final class AppState: ObservableObject {
     /// during SubmissionUnknown is forwarded.
     ///
     /// Exit discipline: the loop stops only when the server holds the desired token, when there is
-    /// nothing to converge (not enrolled, no token), or when the request for the STILL-desired token
-    /// failed — a failure for a token that was superseded while in flight continues at once with the
-    /// newer one. After a stop on a failed token, the restart is owned by tokenDelivered: the next
-    /// delivery (a newer token) starts a fresh loop; nothing retries the same failed token.
+    /// nothing to converge (not enrolled, no token), or when the EXACT attempt that failed — this
+    /// enrolment identity AND this token — is still what would be attempted next. A failure whose
+    /// enrolment or token has since changed continues at once with the current pair, so a failed
+    /// update for an old enrolment never suppresses the same token for a newly adopted one. After a
+    /// stop, the restart is owned by tokenDelivered and adopt(): a newer token or a new enrolment
+    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair.
+    private struct PushAttempt: Equatable {
+        var enrollmentId: String
+        var attestKeyId: String
+        var token: String
+    }
+
     func convergePushToken() async {
         guard !converging else { return }
         converging = true
-        var failedToken: String?
+        var failedAttempt: PushAttempt?
         defer { converging = false }
-        while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired, desired != failedToken {
+        while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired,
+              PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != failedAttempt {
+            let attempt = PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired)
             do {
                 let client = try requireClient()
                 let body = WireEncode.pushUpdate(registration(client.config, desired))
@@ -94,8 +104,10 @@ final class AppState: ObservableObject {
                 try transition(.enrolled(now))
             } catch {
                 lastError = "APNs token not forwarded: \(error.localizedDescription)"
-                if apnsToken != desired { continue }   // superseded in flight: go on with the newer
-                failedToken = desired                  // still desired: stop; a newer token restarts
+                // Superseded in flight (token or enrolment changed): go on with the current pair.
+                guard apnsToken == desired, case .enrolled(let now) = state,
+                      now.enrollment_id == attempt.enrollmentId, now.attest_key_id == attempt.attestKeyId else { continue }
+                failedAttempt = attempt                // exactly this pair failed: stop here
             }
         }
     }

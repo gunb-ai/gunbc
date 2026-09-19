@@ -53,9 +53,9 @@ fixes on first build.
   recorded as enrolled only after the server verified it.
 - **Push token**: registered on every enrolled launch; one serialized convergence loop forwards the
   LATEST delivered token via `PUT /approve/device/push` and records success only if that token is
-  still the desired one and the enrolment is still the one the update was made for; a failure for a
-  token superseded in flight continues at once, a failure for the still-desired token stops, and the
-  next token delivery starts a fresh loop. `adopt()` (enrolment or readback) re-registers for APNs and runs the loop, so
+  still the desired one and the enrolment is still the one the update was made for; a failure whose
+  token or enrolment has since changed continues at once, a failure for the exact current
+  (enrolment, token) pair stops, and the next token delivery or enrolment adoption starts a fresh loop. `adopt()` (enrolment or readback) re-registers for APNs and runs the loop, so
   a token buffered during `SubmissionUnknown` is forwarded.
 - **Readback**: `GET /approve/device/enrollments/<enrollment_id>` under the App Attest key just attested, after a lost enrolment answer; the id is `enrollment_id_for_code` over the persisted code, so nothing is asked for.
 - **Wire.swift** is a mechanical mirror of `gunbc.auth.approval_device_wire` "The HTTP wire": an ordered emitter matching `serialize_json` byte for byte, strict readers (unknown/missing/empty member and unadmitted `kind` refuse at their path), path segments spelled `id-` + padded base64url of the identity's UTF-8 bytes (total, injective, never refused) and transported verbatim. `ApproveTests` round-trips every request envelope in `vectors.json` through decoder → encoder and matches the bytes. **Standing of that check:** authored and un-enrolled — no lane here compiles Swift, so it executes only when the operator runs it (`gunbc.approve_ios_app` `approve_ios_vector_check_unenrolled_frontier` names what would enrol it).
