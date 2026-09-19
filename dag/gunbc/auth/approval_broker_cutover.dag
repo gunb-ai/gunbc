@@ -10,6 +10,11 @@ import gunbc.serve_liveness {
   ServeLivenessRevisionMalformed,
   observe_serve_liveness, serve_liveness_read_reason,
 }
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marker_token,
+  ObservedMarker, NoMarkerInBody, MarkerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+}
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_loopback_base_url, approval_broker_liveness_url,
   approval_broker_listen_port,
@@ -277,10 +282,19 @@ type FrontDoorStanding
 // door. A probe that was skipped and a probe that returned a 404 are different facts about the
 // deployment and must not fold together, because the first says nothing was learned and the second
 // says something was learned and it was bad -- DESIGN's not-met versus cannot-tell.
+//
+// AN ANSWER CARRIES WHAT THE BODY SAID ABOUT ITS OWN PRODUCER, because a status alone is
+// CALLER-ASSERTIBLE about the wrong subject (cutover HOLD item 4). RouteClassAnswered used to hold
+// an Int, and a 200 through the front door then established that SOMETHING answered -- which,
+// during the stages when the roadmap is still mounted, is true when the roadmap answered and the
+// repoint never took. A 404 was worse: it folded "the front door did not route this" together with
+// "it routed it and stripped the prefix, so the broker's table saw /<capability>", and those want
+// opposite repairs. The observed marker separates them, and gunbc.auth.approval_broker_marker is
+// where the tokens are declared so the probe and the responder read one spelling.
 type RouteClassProbe
   = RouteClassUnprobed
   | RouteClassRefused { status: Int, detail: NonEmptyStr }
-  | RouteClassAnswered { status: Int }
+  | RouteClassAnswered { status: Int, observed: ObservedMarker }
 
 // THE CANDIDATE THIS DEPLOY INSTALLED, CARRIED SO THE READBACK CAN BE COMPARED RATHER THAN MERELY
 // PARSED (cutover HOLD item 4). Without it, release_admission accepted ANY well-formed 40-hex
@@ -317,18 +331,41 @@ type CutoverRefusal
   | FrontDoorStillAtRoadmap
   | RouteClassNotProbed { route: NonEmptyStr }
   | RouteClassProbeRefused { route: NonEmptyStr, status: Int, detail: NonEmptyStr }
+  | RouteClassAnsweredByNoBroker { route: NonEmptyStr, status: Int }
+  | RouteClassAnsweredByWrongFold { route: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | BothWritersWouldBeLive { detail: NonEmptyStr }
 
 type CutoverAdmission
   = StageAdmitted { stage: ApprovalBrokerCutoverStage }
   | StageRefused { stage: ApprovalBrokerCutoverStage, cause: CutoverRefusal }
 
-fn route_class_admission(route: NonEmptyStr, probe: RouteClassProbe) -> CutoverRefusal? {
+// THE EXPECTED MARKER IS SUPPLIED BY THE CALLER THAT KNOWS THE ROUTE CLASS, not derived here from
+// the route string. Parsing "which handler should /approvals reach" out of a path literal would
+// re-implement the router in the admission fold -- a second authority for routing, and one that
+// would keep agreeing with the first until a path moved.
+fn route_class_admission(
+  route: NonEmptyStr,
+  expected: ApprovalBrokerMarker,
+  probe: RouteClassProbe,
+) -> CutoverRefusal? {
   match probe {
     RouteClassUnprobed => Present { value: RouteClassNotProbed { route: route } }
     RouteClassRefused { status: st, detail: d } =>
       Present { value: RouteClassProbeRefused { route: route, status: st, detail: d } }
-    RouteClassAnswered { status: _ } => Absent
+    RouteClassAnswered { status: st, observed: o } =>
+      match o {
+        NoMarkerInBody => Present { value: RouteClassAnsweredByNoBroker { route: route, status: st } }
+        MarkerObserved { marker: m } =>
+          if approval_broker_marker_token(m: m) == approval_broker_marker_token(m: expected) {
+            Absent
+          } else {
+            Present { value: RouteClassAnsweredByWrongFold {
+              route: route,
+              expected: approval_broker_marker_token(m: expected),
+              observed: approval_broker_marker_token(m: m),
+            } }
+          }
+      }
   }
 }
 
@@ -343,10 +380,10 @@ fn first_refusal(causes: List<CutoverRefusal?>) -> CutoverRefusal? {
 
 fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   first_refusal(causes: [
-    route_class_admission(route: approval_broker_confirm_path_template, probe: e.confirm_probe),
-    route_class_admission(route: "POST \{capability\} decide" as NonEmptyStr, probe: e.decide_probe),
-    route_class_admission(route: approval_broker_submit_path, probe: e.submit_probe),
-    route_class_admission(route: approval_broker_status_path_template, probe: e.status_probe),
+    route_class_admission(route: approval_broker_confirm_path_template, expected: ConfirmHandlerObserved, probe: e.confirm_probe),
+    route_class_admission(route: "POST \{capability\} decide" as NonEmptyStr, expected: DecisionHandlerObserved, probe: e.decide_probe),
+    route_class_admission(route: approval_broker_submit_path, expected: SubmissionHandlerObserved, probe: e.submit_probe),
+    route_class_admission(route: approval_broker_status_path_template, expected: StatusHandlerObserved, probe: e.status_probe),
   ])
 }
 
@@ -577,14 +614,36 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
         "passing: it says nothing was learned, which is exactly the state the roadmap's rows must ",
         "not be removed under.",
       ], "") as NonEmptyStr
+    RouteClassAnsweredByNoBroker { route: r, status: st } =>
+      join([
+        "route class ", r as String, " answered ", to_string(st),
+        " through the front door, but the body carries NO approval-broker marker -- so the broker ",
+        "did not produce it. Every response the broker emits is marked by construction ",
+        "(gunbc.auth.approval_broker_marker, threaded through the one response constructor), so an ",
+        "unmarked answer means the request never reached this process: the front-door repoint has ",
+        "not taken, or something else is still serving these paths. A 200 here is the dangerous ",
+        "reading and is refused for the same cause as a 404, because during these stages the ",
+        "roadmap is still mounted and answers exactly like a success.",
+      ], "") as NonEmptyStr
+    RouteClassAnsweredByWrongFold { route: r, expected: ex, observed: ob } =>
+      join([
+        "route class ", r as String, " reached the broker -- the body is marked ", ob as String,
+        " -- but the fold that answered is not the one this route class exists to exercise (",
+        ex as String, "). THE PREFIX-STRIP READING IS THE FIRST TO CHECK when the observed marker ",
+        "is approval-broker/no-route-matched on a path the broker demonstrably routes: a --set-path ",
+        "mount that strips its prefix presents /<capability> to a table matching /approve/",
+        "<capability>, which is exactly the standing ",
+        "gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation names as ",
+        "unsettled and this probe as the instrument that settles it. Repair it in the model, with ",
+        "the roadmap still able to serve.",
+      ], "") as NonEmptyStr
     RouteClassProbeRefused { route: r, status: st, detail: d } =>
       join([
         "route class ", r as String, " answered ", to_string(st), " through the front door: ",
         d as String,
-        ". If this is a 404 on an /approve path, the discriminator is the one ",
-        "gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation names: a ",
-        "--set-path mount that strips its prefix presents /<capability> to a table matching ",
-        "/approve/<capability>. Repair it in the model, with the roadmap still able to serve.",
+        ". This arm is the probe REFUSING -- no usable answer came back at all -- so there is no ",
+        "body to read a marker from and nothing here discriminates which process was reached. The ",
+        "prefix-strip question is settled by the marker arms above, on a probe that did answer.",
       ], "") as NonEmptyStr
     BothWritersWouldBeLive { detail: d } =>
       join(["refusing: this would leave two processes able to write the approval store -- ", d as String], "") as NonEmptyStr

@@ -9,6 +9,11 @@ import extdeps.http.server {
   serve_select_route,
 }
 import extdeps.uri_path { path_param_value }
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ObservedMarker, NoMarkerInBody, MarkerObserved,
+  ConfirmHandlerObserved, BrokerNoRouteMatched,
+}
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
@@ -139,6 +144,67 @@ test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
     tailscale_identity: "",
   )
   r.status == 404
+}
+
+// ── THE MARKER IS PRODUCED BY THE REAL PATH, WHICH IS WHAT MAKES THE CUTOVER'S PROBE A READING ──
+// THE PAIRING OBLIGATION FOR gunbc.auth.approval_broker_cutover (DESIGN section 3). Those claims
+// SUPPLY an ObservedMarker to admission, which is the right grain for a claim about admission --
+// but a supplied marker is a hypothesis about this boundary until something runs the producer. If
+// no claim executed the real adapter, the entire marker scheme could be inert and every cutover
+// claim would stay green: the plan would refuse and admit exactly as written over values nothing
+// emits, and the stage-5 probe on srv1 would read an unmarked body from a broker that was answering
+// correctly, refuse a sound cutover, and report the front door as broken.
+//
+// So this enters approval_broker_respond -- the fold the serve entry calls -- and asserts the token
+// is in the bytes that come back. DELETE THE INTEGRATION AND THIS GOES RED: drop the marker
+// argument from broker_text_response's body construction and this answers 200 with an unmarked body
+// while every claim in the cutover witness stays green.
+//
+// IT IS THE HTML ARM, which is the one that can break silently in the other direction: the marker is
+// carried as a comment there rather than as a trailing line, so a body that renders correctly on a
+// phone is exactly the body a probe must still be able to read a token out of.
+test fn the_confirm_page_carries_its_own_fold_marker_through_the_real_entry() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: ConfirmHandlerObserved) as String)
+}
+
+// THE ADAPTER'S OWN 404 IS MARKED TOO, and this is the half the cutover's prefix-strip reading rests
+// on. A request that reaches the broker and matches no route must be distinguishable from one that
+// never arrived, and the only channel is the body -- so the not-found path carries
+// approval-broker/no-route-matched and the front-door probe can tell the two apart.
+test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/roadmap",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 404
+    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+}
+
+// AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
+// token is in the bytes; this one runs the fold the probe will actually use over those same bytes,
+// so a token the responder emits and the reader cannot find is a red rather than a silent
+// disagreement between two greps.
+test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  match approval_broker_marker_in_body(body: r.body) {
+    MarkerObserved { marker: m } =>
+      approval_broker_marker_token(m: m) == approval_broker_marker_token(m: ConfirmHandlerObserved)
+    NoMarkerInBody => false
+  }
 }
 
 // ── THE LOOPBACK ENDPOINT A BOOT RUN IS POINTED AT ──────────────────────────────────────────

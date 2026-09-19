@@ -20,6 +20,11 @@ import gunbc.serve_liveness {
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port,
 }
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, ObservedMarker, NoMarkerInBody, MarkerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  BrokerNoRouteMatched,
+}
 import gunbc.auth.approval_broker_cutover {
   ApprovalBrokerCutoverStage,
   DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes,
@@ -33,6 +38,7 @@ import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
   CutoverRefusal, DarkDeploymentNotListening, DarkDeploymentOnUnexpectedPort, ReleaseUnreadable,
   DemandNotMeasured, FrontDoorStillAtRoadmap, RouteClassNotProbed, RouteClassProbeRefused,
+  RouteClassAnsweredByNoBroker, RouteClassAnsweredByWrongFold,
   approval_broker_cutover_admission,
   approval_broker_cutover_stage_discharged,
   dark_install_release_discharged, dark_install_evidence,
@@ -89,10 +95,10 @@ fn everything_observed() -> ApprovalBrokerCutoverEvidence {
       declared_concurrency: 1,
     },
     front_door: FrontDoorPointsAtBroker { port: approval_broker_listen_port },
-    confirm_probe: RouteClassAnswered { status: 200 },
-    decide_probe: RouteClassAnswered { status: 400 },
-    submit_probe: RouteClassAnswered { status: 403 },
-    status_probe: RouteClassAnswered { status: 404 },
+    confirm_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { marker: ConfirmHandlerObserved } },
+    decide_probe: RouteClassAnswered { status: 400, observed: MarkerObserved { marker: DecisionHandlerObserved } },
+    submit_probe: RouteClassAnswered { status: 403, observed: MarkerObserved { marker: SubmissionHandlerObserved } },
+    status_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { marker: StatusHandlerObserved } },
   }
 }
 
@@ -172,6 +178,72 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
   match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
     StageRefused { stage: _, cause: c } => match c {
       RouteClassProbeRefused { route: _, status: st, detail: _ } => st == 404
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+// ── A 200 IS NOT EVIDENCE THE BROKER ANSWERED ───────────────────────────────────────────────
+// THE SHARPEST CONTROL IN THIS FILE, because its red is a SUCCESS STATUS. During every stage before
+// retirement the roadmap is still mounted and still serves these four paths, so a probe that gets
+// 200 back has learned that SOMETHING answered -- and the reading that matters is whether the
+// front-door repoint took. With a bare status there was no way to tell, and the plan would have
+// admitted removing the roadmap's rows on evidence produced by the roadmap itself.
+//
+// The marker is what closes it: every broker response is marked by construction
+// (gunbc.auth.approval_broker_marker threaded through the single response constructor in
+// gunbc.auth.approval_broker_serve), so an unmarked body did not come from the broker.
+test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
+  let full = everything_observed()
+  let e = ApprovalBrokerCutoverEvidence {
+    dark: full.dark,
+    expected_release: full.expected_release,
+    release_readback: full.release_readback,
+    demand: full.demand,
+    front_door: full.front_door,
+    confirm_probe: RouteClassAnswered { status: 200, observed: NoMarkerInBody },
+    decide_probe: full.decide_probe,
+    submit_probe: full.submit_probe,
+    status_probe: full.status_probe,
+  }
+  match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
+    StageRefused { stage: _, cause: c } => match c {
+      RouteClassAnsweredByNoBroker { route: _, status: st } => st == 200
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+// ── A BROKER 404 AND A PREFIX-STRIPPED MISS ARE DIFFERENT FACTS ──────────────────────────────
+// THIS IS THE DISCRIMINATION THE CUTOVER HOLD ASKED FOR. The confirm probe answers 404 and the body
+// IS marked -- so the request reached the broker and its route table refused it. On a path the
+// broker demonstrably routes, that is the prefix-strip reading: a --set-path mount presenting
+// /<capability> to a table matching /approve/<capability>, which
+// gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation carries as an
+// open read obligation and names THIS probe as the instrument that settles.
+//
+// The status is identical to a broker that simply has no such route, so a status-only probe folds
+// them together; the marker is the only thing that separates them, and the refusal names the fold
+// that actually answered rather than the one that should have.
+test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> Bool {
+  let full = everything_observed()
+  let e = ApprovalBrokerCutoverEvidence {
+    dark: full.dark,
+    expected_release: full.expected_release,
+    release_readback: full.release_readback,
+    demand: full.demand,
+    front_door: full.front_door,
+    confirm_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { marker: BrokerNoRouteMatched } },
+    decide_probe: full.decide_probe,
+    submit_probe: full.submit_probe,
+    status_probe: full.status_probe,
+  }
+  match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
+    StageRefused { stage: _, cause: c } => match c {
+      RouteClassAnsweredByWrongFold { route: _, expected: _, observed: ob } =>
+        ob == ("approval-broker/no-route-matched" as NonEmptyStr)
       _ => false
     }
     StageAdmitted { stage: _ } => false

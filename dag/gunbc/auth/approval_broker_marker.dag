@@ -1,0 +1,118 @@
+module gunbc.auth.approval_broker_marker
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.http.server { MediaType }
+
+// ── WHICH FOLD ANSWERED, WRITTEN INTO THE ONLY CHANNEL THE PROBE CAN READ ────────────────────
+// THE CUTOVER'S STAGE-5 PROBE COULD NOT TELL A BROKER 404 FROM A PREFIX-STRIPPED MISS, and that is
+// the one fact the whole staged transaction turns on (cutover HOLD item 4). RouteClassAnswered
+// carried a bare status. A 404 through the front door has at least three causes that a status
+// cannot separate: the front door never routed the path to the broker at all; the front door routed
+// it but presented `/<capability>` with the mount prefix stripped, so the broker's table saw a path
+// it has no route for; or the broker genuinely lacks the route. The first says the repoint did not
+// take, the second says it took and the path contract broke, the third says the extraction is
+// incomplete -- three different repairs, and the operator was being asked to guess which from one
+// integer. That is DESIGN's not-met versus cannot-tell collapsed into a number.
+//
+// SO EVERY RESPONSE NAMES THE FOLD THAT PRODUCED IT. With the marker present, a 404 carrying
+// BrokerNoRouteMatched says the request REACHED the broker and its table refused it -- which, on a
+// path the broker demonstrably routes, is the prefix-strip reading and nothing else -- while a 404
+// carrying no marker at all says the broker never saw it. The discriminator is the presence of a
+// marker, not its status.
+//
+// A BODY AND NOT A HEADER, because extdeps.http.server ServeHttpResponse carries status, content
+// type and body and no header map. That is not a limitation worked around here: the wire projection
+// the seed's accept loop reads back (ServeWireResponse) has the same three fields, so a header
+// would have to be added at both ends before anything could carry it, and the body is the channel
+// that already crosses that seam.
+
+// THE LAST THREE ARMS ARE NOT HANDLERS, and they are here because the invariant is about the
+// PROCESS and not about the four routes. BrokerAdapterRefused covers what the adapter answers
+// before any route is selected (an unparseable method, a route table that refused its own
+// literals); BrokerMethodNotAllowed and BrokerNoRouteMatched cover selection outcomes;
+// BrokerStaticRouteServed covers a static row served straight from the table. Without them the
+// match that must mark every response would have arms with nothing to name, and an unmarked body
+// from any one of them reads to the probe as "the broker never saw this request" -- the one
+// inference the marker exists to make sound, wrong in the direction that refuses a correct cutover.
+type ApprovalBrokerMarker
+  = ConfirmHandlerObserved
+  | DecisionHandlerObserved
+  | SubmissionHandlerObserved
+  | StatusHandlerObserved
+  | BrokerNoRouteMatched
+  | BrokerMethodNotAllowed
+  | BrokerAdapterRefused
+  | BrokerStaticRouteServed
+
+// THE TOKEN IS PREFIXED SO A READER CAN TELL IT IS OURS. `approval-broker/` is not decoration: the
+// probe greps a body it did not produce, and a bare word like `status` would match prose in a
+// refusal reason and read as a marker. The prefix is what makes the observation about this corpus.
+fn approval_broker_marker_token(m: ApprovalBrokerMarker) -> NonEmptyStr {
+  match m {
+    ConfirmHandlerObserved => "approval-broker/confirm-page" as NonEmptyStr
+    DecisionHandlerObserved => "approval-broker/decision" as NonEmptyStr
+    SubmissionHandlerObserved => "approval-broker/submission" as NonEmptyStr
+    StatusHandlerObserved => "approval-broker/status" as NonEmptyStr
+    BrokerNoRouteMatched => "approval-broker/no-route-matched" as NonEmptyStr
+    BrokerMethodNotAllowed => "approval-broker/method-not-allowed" as NonEmptyStr
+    BrokerAdapterRefused => "approval-broker/adapter-refused" as NonEmptyStr
+    BrokerStaticRouteServed => "approval-broker/static-route" as NonEmptyStr
+  }
+}
+
+data approval_broker_markers: List<ApprovalBrokerMarker> = [
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved,
+  StatusHandlerObserved, BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused,
+  BrokerStaticRouteServed,
+]
+
+// ── HOW IT IS CARRIED, WHICH IS A FACT ABOUT THE MEDIA TYPE AND NOT ABOUT THE HANDLER ───────
+// AN HTML COMMENT IN HTML AND A TRAILING LINE IN TEXT. The confirmation page is read by a person on
+// a phone, so the marker must not render; `<!-- ... -->` is invisible there and still a substring of
+// the bytes a probe fetches. A plain-text body is read by a client that already treats it as lines,
+// so one more line at the end is additive rather than corrupting -- and it goes at the END so the
+// existing first line, which several callers read as the reason, keeps its position.
+//
+// IT DISPATCHES ON THE SUBTYPE AND NOT ON THE MediaType VALUE, because MediaType is a RECORD --
+// a top level, a subtype and parameters -- and not a closed variant, so there is nothing to match
+// exhaustively and `text_html_utf8` is one inhabitant rather than an arm. The subtype is the field
+// that decides whether comment syntax exists, which is the actual question.
+//
+// EVERY OTHER SUBTYPE TAKES THE TEXT FORM, and that arm is a marking rather than a refusal on
+// purpose. An unmarked body is precisely what the reading side calls "the request never reached the
+// broker", so a media type this fold has no comment syntax for must still say the broker answered:
+// returning nothing would answer the one question the marker exists to settle, and answer it wrong.
+// The cost is a trailing line in a format that may not want one, paid by that format's own consumer
+// and not by the probe.
+fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker) -> String {
+  let token = approval_broker_marker_token(m: m) as String
+  if content_type.subtype == "html" {
+    join([body, "\n<!-- ", token, " -->\n"], "")
+  } else {
+    join([body, "x-approval-broker: ", token, "\n"], "")
+  }
+}
+
+// ── THE READING SIDE ────────────────────────────────────────────────────────────────────────
+// THE PROBE SUPPLIES WHAT IT SAW AND THIS FOLD SAYS WHAT IT MEANS, so no caller re-implements the
+// substring test and no two callers disagree about it. It takes the body a fetch returned; it does
+// not fetch, because a fold that fetched would be observing and adjudicating in one place and the
+// cutover's whole shape is that observations are supplied to admission (DESIGN section 3d:
+// selection precedes convergence).
+type ObservedMarker
+  = NoMarkerInBody
+  | MarkerObserved { marker: ApprovalBrokerMarker }
+
+fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
+  fold(approval_broker_markers, init: NoMarkerInBody, f: (acc, m) =>
+    match acc {
+      MarkerObserved { marker: _ } => acc
+      NoMarkerInBody =>
+        if string_contains(s: body, pattern: approval_broker_marker_token(m: m) as String) {
+          MarkerObserved { marker: m }
+        } else {
+          NoMarkerInBody
+        }
+    }
+  )
+}

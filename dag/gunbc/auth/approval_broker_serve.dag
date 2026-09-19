@@ -23,6 +23,11 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission, approval_write_refusal_reason,
 }
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marked_body,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
+}
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -119,8 +124,18 @@ fn approval_broker_route_table_build() -> ServedRouteTableBuild<ApprovalBrokerHa
   serve_build_route_table(specs: approval_broker_route_specs())
 }
 
-fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+// EVERY RESPONSE THIS PROCESS EMITS PASSES THROUGH HERE, which is why the marker is a PARAMETER of
+// this fold rather than something each handler remembers to append. A caller cannot construct a
+// broker response without naming which fold produced it -- the marker is not validated afterwards,
+// it is unwritable to omit (DESIGN section 5: construction over validation). That is what makes the
+// cutover's stage-5 reading sound: a body with no marker did not come from this process, and no
+// handler can create the unmarked state that would make that inference false.
+fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker) -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: status,
+    content_type: content_type,
+    body: approval_broker_marked_body(content_type: content_type, body: body, m: marker),
+  }
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason -- never an empty page and
@@ -128,15 +143,16 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
 // already declares: it is a fact about how this corpus reports a rejected HTML emission, not a
 // fact about the roadmap, and a second spelling here would be the fork this extraction exists to
 // avoid rather than one it introduces.
-fn broker_page_response(page: Fragment) -> ServeHttpResponse {
+fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
-      broker_text_response(status: 200, content_type: text_html_utf8, body: h)
+      broker_text_response(status: 200, content_type: text_html_utf8, body: h, marker: marker)
     EmitRejected { reason: r } =>
       broker_text_response(
         status: 500,
         content_type: text_plain_utf8,
         body: page_render_refusal_body(reason: r),
+        marker: marker,
       )
   }
 }
@@ -171,7 +187,7 @@ fn approval_confirm_page_response(
         el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
       ]),
     ]),
-  ]))
+  ]), marker: ConfirmHandlerObserved)
 }
 
 // THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
@@ -209,6 +225,7 @@ fn approval_decide_response(
         status: 400,
         content_type: text_plain_utf8,
         body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+        marker: DecisionHandlerObserved,
       )
     CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } =>
       match approval_write_admission(asker: process) {
@@ -217,6 +234,7 @@ fn approval_decide_response(
             status: 503,
             content_type: text_plain_utf8,
             body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\ncapability: ", segment, "\n"], ""),
+            marker: DecisionHandlerObserved,
           )
         ApprovalWriteAdmitted { writer: _ } =>
           approval_decide_parsed_response(request: request, segment: segment)
@@ -266,6 +284,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
       "identity: ", tailnet_identity_login(i: request.identity), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),
+    marker: DecisionHandlerObserved,
   )
 }
 
@@ -281,6 +300,7 @@ fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingP
         status: 503,
         content_type: text_plain_utf8,
         body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\n"], ""),
+        marker: SubmissionHandlerObserved,
       )
     ApprovalWriteAdmitted { writer: _ } => approval_submit_admitted_response(request: request)
   }
@@ -324,6 +344,7 @@ fn approval_submit_admitted_response(request: ServeHttpRequest) -> ServeHttpResp
     status: status,
     content_type: text_plain_utf8,
     body: join(["approval submission: ", submission_outcome_reason(o: outcome), "\n"], ""),
+    marker: SubmissionHandlerObserved,
   )
 }
 
@@ -334,7 +355,7 @@ fn approval_submit_admitted_response(request: ServeHttpRequest) -> ServeHttpResp
 // carries no guard for the state the router already makes unreachable (review 67057).
 fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   let standing = escalation_status(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr)
-  broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body)
+  broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body, marker: StatusHandlerObserved)
 }
 
 // ── The HTTP adapter ─────────────────────────────────────────────────────────────────────────
@@ -360,15 +381,21 @@ fn approval_broker_selection_response(
     SelectedDynamic { handler: h, params: ps } =>
       approval_broker_invoke(handler: h, params: ps, request: request, process: process)
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      broker_text_response(
+        status: r.status_on_hit,
+        content_type: r.content_type,
+        body: r.body,
+        marker: BrokerStaticRouteServed,
+      )
     MethodNotAllowed { allowed: ms } =>
       broker_text_response(
         status: 405,
         content_type: text_plain_utf8,
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
+        marker: BrokerMethodNotAllowed,
       )
     NoRouteMatched =>
-      broker_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
+      broker_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n", marker: BrokerNoRouteMatched)
   }
 }
 
@@ -431,6 +458,7 @@ fn approval_broker_respond_as(
         status: 501,
         content_type: text_plain_utf8,
         body: join(["unrecognized method: ", l, "\n"], ""),
+        marker: BrokerAdapterRefused,
       )
     KnownMethod { method: m } =>
       match approval_broker_route_table_build() {
@@ -444,6 +472,7 @@ fn approval_broker_respond_as(
               " reason=", why,
               " (fail-closed -- fix the literal in gunbc.auth.approval_broker_endpoint)\n",
             ], ""),
+            marker: BrokerAdapterRefused,
           )
         ServedRouteTableBuilt { table: t } =>
           approval_broker_selection_response(

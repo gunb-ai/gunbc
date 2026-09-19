@@ -151,14 +151,24 @@ fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> Ta
 // deduced what is only inferred, so the standing is carried as a typed bet naming the reading that
 // would close it, rather than as a modeled behaviour some consumer would then trust.
 //
-// IT IS SETTLED BY A PROBE, NOT BY A READ, and the cutover is staged around that: stage 4 probes
-// all four route classes THROUGH the front door against the dark broker before stage 6 removes the
-// roadmap's routes, so the discriminating answer is obtained while the old writer is still serving.
-// A probe that comes back 404 refuses the plan at that stage with the prefix-strip cause named;
-// the repair is then a modeled one (a broker route table mounted at the stripped prefix, or a root
-// mount on a second https listener), never an edit made under an outage.
+// IT IS SETTLED BY A PROBE, NOT BY A READ, and the cutover is staged around that: ProbeRouteClasses
+// -- the FIFTH stage, after RepointFrontDoor and before RetireRoadmapRoutes -- exercises all four
+// route classes THROUGH the front door against the broker, so the discriminating answer is obtained
+// while the roadmap is still serving and still able to take the traffic back.
+//
+// WHAT MAKES THE PROBE DISCRIMINATING IS THE MARKER AND NOT THE STATUS, which is the correction the
+// cutover HOLD's item 4 forced. A 404 alone cannot tell a stripped prefix from a front door that
+// never repointed, and a 200 alone cannot tell the broker from the roadmap, which is still mounted
+// at that stage and answers these paths exactly like a success. Every broker response carries a
+// marker naming the fold that produced it (gunbc.auth.approval_broker_marker), so an ANSWER MARKED
+// approval-broker/no-route-matched is the prefix-strip reading -- the request reached the broker and
+// its table refused it -- while an UNMARKED answer of any status means the broker never saw it.
+//
+// The plan refuses at that stage with the cause named; the repair is then a modeled one (a broker
+// route table mounted at the stripped prefix, or a root mount on a second https listener), never an
+// edit made under an outage.
 data approval_broker_front_door_path_preservation: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Whether `tailscale serve --set-path=/approve --https=443 <backend>` presents `/approve/<rest>` or `/<rest>` to the backend. Close it by reading tailscale.com/kb/1242 on set-path backend rewriting, or by the stage-4 front-door probe in gunbc.auth.approval_broker_cutover, which discriminates it against the dark broker before the roadmap routes are removed." as NonEmptyStr,
+  read_obligation: "Whether `tailscale serve --set-path=/approve --https=443 <backend>` presents `/approve/<rest>` or `/<rest>` to the backend. Close it by reading tailscale.com/kb/1242 on set-path backend rewriting, or by the ProbeRouteClasses front-door probe in gunbc.auth.approval_broker_cutover (the fifth stage), which discriminates it against the broker before the roadmap routes are removed: a body marked approval-broker/no-route-matched on a path the broker routes IS the strip, and gunbc.auth.approval_broker_marker is what makes that readable." as NonEmptyStr,
 }
 
 // ── The link base ────────────────────────────────────────────────────────────────────────────
