@@ -1,0 +1,308 @@
+module extdeps.github.git_database
+
+import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
+import std.credentials { EnvVar }
+
+// GitHub's Git Database API: the object-level surface (blobs, trees, commits, references) that lets
+// a client write a commit without a working tree. Cited per resource page; the shapes below are what
+// the endpoints return, not a projection chosen for a consumer.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/git"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.git_database",
+      decl_name: "github.GitDatabase",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// docs.github.com/en/rest/git/refs -- the object a reference names.
+type GitRefObjectWire {
+  type: String
+  sha: String
+}
+
+type GitRefWire {
+  ref: String
+  object: GitRefObjectWire
+}
+
+// docs.github.com/en/rest/git/commits -- a commit object's tree and parents are each an object
+// carrying a sha; the API does not flatten them.
+type GitShaRefWire {
+  sha: String
+}
+
+type GitCommitWire {
+  sha: String
+  message: String
+  tree: GitShaRefWire
+  parents: List<GitShaRefWire>
+}
+
+// docs.github.com/en/rest/git/trees -- one tree entry. `size` is present for blobs and absent for
+// trees, so it is optional here because the upstream omits it, not because a consumer is lenient.
+type GitTreeItemWire {
+  path: String
+  mode: String
+  type: String
+  sha: String
+  size: Int?
+}
+
+type GitTreeWire {
+  sha: String
+  tree: List<GitTreeItemWire>
+  truncated: Bool
+}
+
+// The request row for Create a tree. `sha` names an existing blob; the `content` alternative the
+// upstream also accepts is not modeled, because a blob this API created and returned an id for is
+// the only thing a consumer here writes into a tree.
+type GitTreeEntryInput {
+  path: String
+  mode: String
+  type: String
+  sha: String
+}
+
+type GitBlobCreatedWire {
+  sha: String
+}
+
+// ENCODING IS THE UPSTREAM'S TWO SPELLINGS, NAMED ONCE. Create a blob accepts `utf-8` and `base64`.
+// Tree-entry modes and object types are NOT spelled here: the API carries git's own vocabulary, whose
+// authority is extdeps.git.object_store (git_decode_tree_mode / git_encode_tree_mode).
+data git_blob_encoding_utf8: NonEmptyStr = "utf-8"
+
+data git_blob_encoding_base64: NonEmptyStr = "base64"
+
+// AN OUTPUT FIELD NAME THAT MATCHES A RESPONSE MEMBER BINDS THAT MEMBER, not the whole body, so the
+// listing's output is `tree_object` rather than `tree`: the body's own `tree` is the ENTRY ARRAY, and
+// a field named after it would decode the array where the object was declared. Measured, not
+// reasoned: the first cut bound `tree` and refused at runtime with `cannot access field 'truncated'
+// on List`.
+//
+// THREE FACTS ABOUT THE OPERATIONS BELOW THAT THEIR SHAPES DO NOT SAY.
+//
+// GetRef and UpdateRefFastForward take `ref` as `heads/<branch>`. The path parameter is substituted
+// raw, so a branch name carrying a URL metacharacter mis-addresses rather than refusing; a consumer
+// that admits arbitrary branch names owes that check before calling.
+//
+// GetTreeRecursive's `truncated` is part of the answer: a truncated listing is not the tree.
+//
+// UPDATE IS FAST-FORWARD ONLY, AND NOT BY ARGUMENT. `force` is a body literal rather than an input,
+// so no caller of UpdateRefFastForward can express a forced update; a moved branch answers 422
+// "Update is not a fast forward" and that refusal IS the compare-and-swap. A forced variant would be
+// a different operation with its own name and its own consumer.
+service github.GitDatabase {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+
+  operation GetRef {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+    }
+    output {
+      reference: GitRefWire
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/git/ref/\{ref\}"
+    }
+    response {
+      200 => GitRefWire
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation GetCommit {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      commit_sha: String
+    }
+    output {
+      commit: GitCommitWire
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/git/commits/\{commit_sha\}"
+    }
+    response {
+      200 => GitCommitWire
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation GetTreeRecursive {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      tree_sha: String
+    }
+    output {
+      tree_object: GitTreeWire
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/git/trees/\{tree_sha\}",
+      query: { recursive: "1" }
+    }
+    response {
+      200 => GitTreeWire
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateBlob {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      content: String
+      encoding: NonEmptyStr
+    }
+    output {
+      blob: GitBlobCreatedWire
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/git/blobs",
+      body: { content: content, encoding: encoding }
+    }
+    response {
+      201 => GitBlobCreatedWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateTree {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      base_tree: String
+      tree: List<GitTreeEntryInput>
+    }
+    output {
+      created: GitTreeWire
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/git/trees",
+      body: { base_tree: base_tree, tree: tree }
+    }
+    response {
+      201 => GitTreeWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateCommit {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      message: String
+      tree: String
+      parents: List<String>
+    }
+    output {
+      commit: GitCommitWire
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/git/commits",
+      body: { message: message, tree: tree, parents: parents }
+    }
+    response {
+      201 => GitCommitWire
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation UpdateRefFastForward {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+      sha: String
+    }
+    output {
+      reference: GitRefWire
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: PATCH,
+      path: "/repos/\{owner\}/\{repo\}/git/refs/\{ref\}",
+      body: { sha: sha, force: false }
+    }
+    response {
+      200 => GitRefWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
