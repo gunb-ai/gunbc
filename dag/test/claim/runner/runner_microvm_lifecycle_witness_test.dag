@@ -6,7 +6,12 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
-import gunbc.runner_microvm_attempt { MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
+  runner_microvm_attempt_dir, runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
+  runner_microvm_attempt_unit_name,
+}
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_attempt_launch { GroundClear, GroundOccupied }
 import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
@@ -18,9 +23,10 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
   WriteRefusedAttemptMismatch, WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted,
   cell_incarnation_admission, apply_cell_readiness_write,
+  InFlightAttempt, CellBoundAttempt, AttemptBoundToCell, bind_attempt_to_cell,
 }
 import gunbc.runner_microvm_lifecycle {
-  AttemptIdentity, attempt_identity_vmm,
+  AttemptIdentity,
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue, StartRefused, StartBindingRefused, controller_start,
   CellBinding, CellBindingRefusedCell,
   BringUpPhase, AttemptPrepared, VmmStarted, GuestBooted, RunnerListening, SlotServing,
@@ -32,7 +38,9 @@ import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
   SlotNetworkQuiescence, SlotNetworkQuiet, SlotNetworkActive,
-  HostTeardownReadback, settle_teardown, settle_recovery,
+  ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, TeardownSettlement,
+  TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSubject,
+  SubjectInvocation, attempt_teardown_readback, settle_teardown,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,7 +57,11 @@ data other_cell: CellId = runner_slot_instance_name(slot: RunnerSlotIdentity { h
 // The identity goes through the sealed microvm_attempt constructor; a refusal there yields no
 // identity, so every test below that needs one fails rather than passing on a fabricated record.
 fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
-  match microvm_attempt(slot: witness_slot, attempt_id: join(["w-", to_string(generation)], "")) {
+  identity_on(slot: witness_slot, generation: generation, invocation: invocation)
+}
+
+fn identity_on(slot: RunnerSlotIdentity, generation: Int, invocation: String) -> AttemptIdentity? {
+  match microvm_attempt(slot: slot, attempt_id: join(["w-", to_string(generation)], "")) {
     MicroVmAttemptAccepted { attempt: a } =>
       Present {
         value: AttemptIdentity {
@@ -64,8 +76,20 @@ fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
   }
 }
 
-fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostTeardownReadback {
-  HostTeardownReadback {
+// WHAT THE HOST READ, WITHOUT ITS SUBJECTS. observed_for attaches the subjects the host would read for
+// a given attempt -- its host, generation, VMM unit, InvocationID, cgroup root, jail, attempt
+// directory and credential drive -- so a test can present one attempt's readback for another.
+type HostFacts {
+  stop: TeardownStop
+  cgroup: CgroupSubtreeReadback
+  mounts: ResourceReadback
+  network: SlotNetworkQuiescence
+  attempt_storage: ResourceReadback
+  credential_disk: ResourceReadback
+}
+
+fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostFacts {
+  HostFacts {
     stop: stop,
     cgroup: cgroup,
     mounts: ResourceAbsent,
@@ -75,10 +99,51 @@ fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostTeardown
   }
 }
 
-fn readiness_after(trigger: TerminalTrigger, host: HostTeardownReadback) -> CellReadiness? {
+fn in_flight(id: AttemptIdentity) -> InFlightAttempt {
+  InFlightAttempt { attempt: id.attempt, invocation_id: id.invocation_id, jit_registration_id: id.jit_registration_id }
+}
+
+fn bound_of(id: AttemptIdentity) -> CellBoundAttempt? {
+  match bind_attempt_to_cell(cell: runner_slot_instance_name(slot: id.attempt.slot) as CellId, generation: id.allocation_generation, attempt: in_flight(id: id)) {
+    AttemptBoundToCell { bound: b } => Present { value: b }
+    _ => none
+  }
+}
+
+fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
+  ObservedTeardown {
+    host: id.attempt.slot.host as String,
+    generation: id.allocation_generation,
+    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: id.invocation_id, outcome: facts.stop },
+    cgroup: ObservedCgroup { root: fabric_cell_slice_name(slot: id.attempt.slot) as NonEmptyStr, readback: facts.cgroup },
+    mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
+    attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
+    credential_disk: ObservedPath { path: runner_microvm_attempt_jit_drive_path(attempt: id.attempt), readback: facts.credential_disk },
+    network: facts.network,
+  }
+}
+
+// Settlement through the real route: bind, join the readback's subjects, settle. Absent if either the
+// binding or the join refuses, so a test expecting a settlement fails rather than passing on a skip.
+fn settle(id: AttemptIdentity, trigger: TerminalTrigger, facts: HostFacts) -> TeardownSettlement? {
+  match bound_of(id: id) {
+    Absent => none
+    Present { value: b } =>
+      match attempt_teardown_readback(bound: b, observed: observed_for(id: id, facts: facts)) {
+        TeardownReadbackBound { readback: r } => Present { value: settle_teardown(readback: r, trigger: trigger) }
+        _ => none
+      }
+  }
+}
+
+fn readiness_after(trigger: TerminalTrigger, host: HostFacts) -> CellReadiness? {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => none
-    Present { value: id } => Present { value: settle_teardown(identity: id, trigger: trigger, host: host).readiness }
+    Present { value: id } =>
+      match settle(id: id, trigger: trigger, facts: host) {
+        Absent => none
+        Present { value: st } => Present { value: st.readiness }
+      }
   }
 }
 
@@ -129,24 +194,30 @@ test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -
 test fn a_failed_cgroup_read_quarantines_and_is_never_released_at_its_generation() -> Bool {
   match identity(generation: 1, invocation: "inv-a") {
     Absent => false
-    Present { value: id } => {
-      let failed = settle_teardown(identity: id, trigger: ControllerLost, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeReadFailed { reason: "cgroup.procs: EIO" as NonEmptyStr }))
-      let clean = settle_teardown(identity: id, trigger: ControllerLost, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty))
-      let started = [CellAttemptInFlight { cell: cell, generation: 1, attempt: attempt_identity_vmm(identity: id) }]
-      match apply_cell_readiness_write(records: started, write: failed.record) {
-        WriteAccepted { records: after_failed } =>
-          !cell_is_ready(readiness: failed.readiness)
-            && match apply_cell_readiness_write(records: after_failed, write: clean.record) {
-              WriteRefusedWouldLoosenQuarantine { cell: _, generation: _ } => true
-              _ => false
+    Present { value: id } =>
+      match settle(id: id, trigger: ControllerLost, facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeReadFailed { reason: "cgroup.procs: EIO" as NonEmptyStr })) {
+        Absent => false
+        Present { value: failed } =>
+          match settle(id: id, trigger: ControllerLost, facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)) {
+            Absent => false
+            Present { value: clean } => {
+              let started = [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: id) }]
+              match apply_cell_readiness_write(records: started, write: failed.record) {
+                WriteAccepted { records: after_failed } =>
+                  !cell_is_ready(readiness: failed.readiness)
+                    && match apply_cell_readiness_write(records: after_failed, write: clean.record) {
+                      WriteRefusedWouldLoosenQuarantine { cell: _, generation: _ } => true
+                      _ => false
+                    }
+                    && match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: after_failed }, cell: cell, allocation_generation: 2) {
+                      CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: _, unproven: _ } } => true
+                      _ => false
+                    }
+                _ => false
+              }
             }
-            && match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: after_failed }, cell: cell, allocation_generation: 2) {
-              CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: _, unproven: _ } } => true
-              _ => false
-            }
-        _ => false
+          }
       }
-    }
   }
 }
 
@@ -162,7 +233,7 @@ test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool 
 test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool {
   is_quarantined(r: readiness_after(
     trigger: RunnerExited { exit_code: 0 },
-    host: HostTeardownReadback {
+    host: HostFacts {
       stop: StoppedGracefully,
       cgroup: CgroupSubtreeEmpty,
       mounts: ResourceAbsent,
@@ -197,9 +268,17 @@ test fn a_stale_incarnation_stop_is_refused() -> Bool {
 // 2 quarantined is refused by the store, not trusted by the controller.
 test fn a_stale_readback_cannot_clear_a_newer_quarantine() -> Bool {
   let newer = [CellSettled { cell: cell, generation: 2, readiness: CellQuarantined { cell: cell, unproven: [] } }]
-  match apply_cell_readiness_write(records: newer, write: WriteReadbackSettled { cell: cell, generation: 1, attempt: "old" as NonEmptyStr, readiness: CellReady { cell: cell } }) {
-    WriteRefusedStale { cell: _, stored: 2, offered: 1 } => true
-    _ => false
+  match identity(generation: 1, invocation: "inv-old") {
+    Absent => false
+    Present { value: old } =>
+      match settle(id: old, trigger: StopRequested, facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)) {
+        Absent => false
+        Present { value: st } =>
+          match apply_cell_readiness_write(records: newer, write: st.record) {
+            WriteRefusedStale { cell: _, stored: 2, offered: 1 } => true
+            _ => false
+          }
+      }
   }
 }
 
@@ -244,26 +323,34 @@ test fn a_never_settled_or_skipped_generation_withdraws_the_cell() -> Bool {
 test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bool {
   match identity(generation: 2, invocation: "inv-c") {
     Absent => false
-    Present { value: next } => {
-      let lost = [CellAttemptInFlight { cell: cell, generation: 1, attempt: "gunbc-microvm-lost" as NonEmptyStr }]
-      let admission = cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: lost }, cell: cell, allocation_generation: 2)
-      match controller_start(admission: admission, ground: GroundClear, identity: next) {
-        StartRecovery { cell: c, generation: g, attempt: a, trigger: ControllerLost } =>
-          match apply_cell_readiness_write(records: lost, write: settle_recovery(cell: c, generation: g, attempt: a, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty))) {
-            WriteAccepted { records: settled } =>
-              match controller_start(
-                admission: cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: settled }, cell: cell, allocation_generation: 2),
-                ground: GroundClear,
-                identity: next,
-              ) {
-                StartAttempt { bound: _, record: _ } => true
+    Present { value: next } =>
+      match identity(generation: 1, invocation: "inv-lost") {
+        Absent => false
+        Present { value: lost_id } => {
+          let lost = [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: lost_id) }]
+          let admission = cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: lost }, cell: cell, allocation_generation: 2)
+          match controller_start(admission: admission, ground: GroundClear, identity: next) {
+            StartRecovery { bound: b, trigger: ControllerLost } =>
+              match attempt_teardown_readback(bound: b, observed: observed_for(id: lost_id, facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty))) {
+                TeardownReadbackBound { readback: r } =>
+                  match apply_cell_readiness_write(records: lost, write: settle_teardown(readback: r, trigger: ControllerLost).record) {
+                    WriteAccepted { records: settled } =>
+                      match controller_start(
+                        admission: cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: settled }, cell: cell, allocation_generation: 2),
+                        ground: GroundClear,
+                        identity: next,
+                      ) {
+                        StartAttempt { bound: _, record: _ } => true
+                        _ => false
+                      }
+                    _ => false
+                  }
                 _ => false
               }
             _ => false
           }
-        _ => false
+        }
       }
-    }
   }
 }
 
@@ -298,9 +385,17 @@ test fn unattributed_residue_quarantines_at_the_admitted_generation_without_an_i
 // AN ATTEMPT START IS REFUSED BY THE STORE OVER A QUARANTINE, whatever generation it names.
 test fn the_store_refuses_to_record_a_start_over_a_quarantine() -> Bool {
   let q = [CellSettled { cell: cell, generation: 1, readiness: CellQuarantined { cell: cell, unproven: [] } }]
-  match apply_cell_readiness_write(records: q, write: WriteAttemptStarted { cell: cell, generation: 2, attempt: "x" as NonEmptyStr }) {
-    WriteRefusedNotAdmitted { cell: _, admission: CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: 1, unproven: _ } } } => true
-    _ => false
+  match identity(generation: 2, invocation: "inv-x") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } =>
+          match apply_cell_readiness_write(records: q, write: WriteAttemptStarted { bound: b }) {
+            WriteRefusedNotAdmitted { cell: _, admission: CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: 1, unproven: _ } } } => true
+            _ => false
+          }
+      }
   }
 }
 
@@ -371,7 +466,7 @@ test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool {
     cell: cell,
     allocation_generation: 1,
   ) {
-    HostWithdrawn { withdrawal: HostStoreRecordIncoherent { record_cell: _, readiness_cell: _ } } => true
+    HostWithdrawn { withdrawal: HostStoreRecordIncoherent { record_cell: _, named_cell: _ } } => true
     _ => false
   }
   let sound = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [mine, theirs] }, cell: cell, allocation_generation: 1) {
@@ -379,4 +474,75 @@ test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool {
     _ => false
   }
   duplicate && incoherent && sound
+}
+
+// A RECOVERY RECORD IS BOUND TO ITS CELL AT READ: an in-flight record keyed for this cell but carrying
+// an attempt built on another slot is an unsound store, never a recovery -- recovering it would tear
+// down and settle the other cell's attempt under this cell's key.
+test fn a_recovery_record_carrying_another_cells_attempt_never_recovers() -> Bool {
+  match identity_on(slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 5 }, generation: 1, invocation: "inv-b") {
+    Absent => false
+    Present { value: foreign } =>
+      match identity(generation: 2, invocation: "inv-next") {
+        Absent => false
+        Present { value: next } => {
+          let admission = cell_incarnation_admission(
+            store: StoreRead { ownership: StoreRootOwned, records: [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: foreign) }] },
+            cell: cell,
+            allocation_generation: 2,
+          )
+          let incoherent = match admission {
+            HostWithdrawn { withdrawal: HostStoreRecordIncoherent { record_cell: rc, named_cell: nc } } =>
+              (rc as String) == (cell as String) && (nc as String) == (other_cell as String)
+            _ => false
+          }
+          let no_recovery = match controller_start(admission: admission, ground: GroundClear, identity: next) {
+            StartRecovery { bound: _, trigger: _ } => false
+            _ => true
+          }
+          incoherent && no_recovery
+        }
+      }
+  }
+}
+
+// TEARDOWN EVIDENCE FOR ONE ATTEMPT CANNOT SETTLE ANOTHER. A clean readback of cell A's attempt
+// presented for cell B's is refused at the join, and so is a clean readback of this cell's attempt
+// taken under a different controller incarnation; only the attempt's own readback binds.
+test fn a_clean_readback_of_one_attempt_cannot_settle_another() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: a } =>
+      match identity_on(slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 5 }, generation: 1, invocation: "inv-a") {
+        Absent => false
+        Present { value: b } =>
+          match identity(generation: 1, invocation: "inv-other") {
+            Absent => false
+            Present { value: a_other_incarnation } =>
+              match bound_of(id: b) {
+                Absent => false
+                Present { value: bound_b } =>
+                  match bound_of(id: a) {
+                    Absent => false
+                    Present { value: bound_a } => {
+                      let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
+                      let cross_cell = match attempt_teardown_readback(bound: bound_b, observed: observed_for(id: a, facts: clean)) {
+                        TeardownReadbackForeignSubject { subject: _, expected: _, observed: _ } => true
+                        _ => false
+                      }
+                      let cross_incarnation = match attempt_teardown_readback(bound: bound_a, observed: observed_for(id: a_other_incarnation, facts: clean)) {
+                        TeardownReadbackForeignSubject { subject: SubjectInvocation, expected: _, observed: _ } => true
+                        _ => false
+                      }
+                      let own = match attempt_teardown_readback(bound: bound_a, observed: observed_for(id: a, facts: clean)) {
+                        TeardownReadbackBound { readback: _ } => true
+                        _ => false
+                      }
+                      cross_cell && cross_incarnation && own
+                    }
+                  }
+              }
+          }
+      }
+  }
 }

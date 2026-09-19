@@ -8,15 +8,18 @@ import product.fabric.sanitation {
   NoSurvivingProcesses, CgroupEmpty, MountsRemoved, SlotNetworkQuiescent, SlotScopedNetwork,
   WritableLayersDeleted, SecretsRemoved, cell_readiness_after,
 }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm { RunnerGuestImage }
 import gunbc.runner_microvm_attempt {
-  MicroVmAttempt, runner_microvm_attempt_unit_name,
+  MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
+  runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
 }
 import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
 import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired,
   CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
+  InFlightAttempt, CellBoundAttempt, AttemptCellBinding, AttemptBoundToCell, AttemptCellMismatch,
+  bind_attempt_to_cell, in_flight_attempt_unit,
 }
 
 data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
@@ -43,7 +46,7 @@ data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
 // MAY ESTABLISH SANITATION. The guest is the tenant. "The runner exited 0" and "the guest powered
 // off" are statements made by the code whose residue sanitation exists to find, so they can start a
 // teardown and can never finish one. That is carried structurally rather than as a rule a caller
-// must remember: sanitation_readback_of_host takes only host readbacks, and there is no type through
+// must remember: sanitation_readback_of_teardown takes only a host-joined teardown readback, and there is no type through
 // which a guest's report could reach it.
 
 // EVERY LIFECYCLE EVENT CARRIES THE ATTEMPT'S WHOLE IDENTITY, because every question this
@@ -58,18 +61,6 @@ type AttemptIdentity {
   invocation_id: NonEmptyStr
   jit_registration_id: NonEmptyStr
   guest_image: RunnerGuestImage
-}
-
-fn attempt_identity_vmm(identity: AttemptIdentity) -> NonEmptyStr {
-  runner_microvm_attempt_unit_name(attempt: identity.attempt)
-}
-
-fn attempt_identity_cell(identity: AttemptIdentity) -> CellId {
-  runner_slot_instance_name(slot: identity.attempt.slot) as CellId
-}
-
-fn attempt_identity_sandbox(identity: AttemptIdentity) -> SandboxId {
-  attempt_identity_vmm(identity: identity) as String as SandboxId
 }
 
 // The guest image is not compared: two incarnations of one attempt id at one generation under one
@@ -89,8 +80,8 @@ fn attempt_identity_same(a: AttemptIdentity, b: AttemptIdentity) -> Bool {
 // supplied values agreeing on one axis. CellBoundIdentity is constructible only by
 // bind_identity_to_admission, which joins BOTH axes, so every consumer that holds one holds the join.
 type CellBoundIdentity sole_constructor {
-  cell: CellId
-  identity: AttemptIdentity
+  attempt: CellBoundAttempt
+  guest_image: RunnerGuestImage
 }
 
 type CellBinding
@@ -98,13 +89,25 @@ type CellBinding
   | CellBindingRefusedCell { admitted: CellId, identity_cell: CellId }
   | CellBindingRefusedGeneration { admitted: Int, identity_generation: Int }
 
+fn in_flight_attempt_of_identity(identity: AttemptIdentity) -> InFlightAttempt {
+  InFlightAttempt {
+    attempt: identity.attempt,
+    invocation_id: identity.invocation_id,
+    jit_registration_id: identity.jit_registration_id,
+  }
+}
+
+// The cell axis is joined by gunbc.runner_microvm_cell_readiness bind_attempt_to_cell, the same
+// binder the store uses at read, so the controller and the store cannot disagree about what "this
+// attempt's cell" means.
 fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptIdentity) -> CellBinding {
-  if (attempt_identity_cell(identity: identity) as String) != (cell as String) {
-    CellBindingRefusedCell { admitted: cell, identity_cell: attempt_identity_cell(identity: identity) }
-  } else if identity.allocation_generation != generation {
+  if identity.allocation_generation != generation {
     CellBindingRefusedGeneration { admitted: generation, identity_generation: identity.allocation_generation }
   } else {
-    CellBound { bound: CellBoundIdentity { cell: cell, identity: identity } }
+    match bind_attempt_to_cell(cell: cell, generation: generation, attempt: in_flight_attempt_of_identity(identity: identity)) {
+      AttemptBoundToCell { bound: b } => CellBound { bound: CellBoundIdentity { attempt: b, guest_image: identity.guest_image } }
+      AttemptCellMismatch { cell: c, attempt_cell: ac } => CellBindingRefusedCell { admitted: c, identity_cell: ac }
+    }
   }
 }
 
@@ -114,7 +117,7 @@ fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptId
 // path for the attempt that never settled, before any new attempt is prepared.
 type ControllerStart
   = StartAttempt { bound: CellBoundIdentity, record: CellReadinessWrite }
-  | StartRecovery { cell: CellId, generation: Int, attempt: NonEmptyStr, trigger: TerminalTrigger }
+  | StartRecovery { bound: CellBoundAttempt, trigger: TerminalTrigger }
   | StartQuarantineUnattributedResidue { trigger: TerminalTrigger, record: CellReadinessWrite }
   | StartRefused { admission: CellIncarnationAdmission }
   | StartBindingRefused { binding: CellBinding }
@@ -137,8 +140,7 @@ fn controller_start(
         CellBound { bound: b } => start_on_bound_cell(bound: b, ground: ground)
         refused => StartBindingRefused { binding: refused }
       }
-    CellRecoveryRequired { cell: c, generation: g, attempt: a } =>
-      StartRecovery { cell: c, generation: g, attempt: a, trigger: ControllerLost }
+    CellRecoveryRequired { bound: b } => StartRecovery { bound: b, trigger: ControllerLost }
     refused => StartRefused { admission: refused }
   }
 }
@@ -148,16 +150,12 @@ fn start_on_bound_cell(bound: CellBoundIdentity, ground: AttemptGround) -> Contr
     GroundOccupied =>
       StartQuarantineUnattributedResidue {
         trigger: ResourcesFoundOnRecovery,
-        record: WriteUnattributedResidue { cell: bound.cell, generation: bound.identity.allocation_generation },
+        record: WriteUnattributedResidue { cell: bound.attempt.cell, generation: bound.attempt.generation },
       }
     GroundClear =>
       StartAttempt {
         bound: bound,
-        record: WriteAttemptStarted {
-          cell: bound.cell,
-          generation: bound.identity.allocation_generation,
-          attempt: attempt_identity_vmm(identity: bound.identity),
-        },
+        record: WriteAttemptStarted { bound: bound.attempt },
       }
   }
 }
@@ -279,13 +277,76 @@ type SlotNetworkQuiescence
   | SlotNetworkActive { detail: NonEmptyStr }
   | SlotNetworkUnreadable { reason: NonEmptyStr }
 
-type HostTeardownReadback {
-  stop: TeardownStop
-  cgroup: CgroupSubtreeReadback
-  mounts: ResourceReadback
+// TEARDOWN EVIDENCE NAMES WHAT IT OBSERVED, AND IT IS JOINED TO THE ATTEMPT BEFORE IT MAY SETTLE ONE.
+//
+// A readback bundle without subjects can be stamped with any identity: clean readbacks of cell A's
+// attempt would settle cell B as Ready (side-chat ruling on #11670). So every fact carries the subject
+// the host actually read -- the host itself, the generation, the VMM unit and the controller's
+// InvocationID the stop was issued under, the cgroup root, the jail root, the attempt directory and
+// the credential drive -- and AttemptTeardownReadback, which is sealed, is constructible only by
+// attempt_teardown_readback, which derives every expected subject from the CellBoundAttempt and
+// refuses on the first disagreement. settle_teardown accepts nothing else.
+type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
+
+type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
+
+type ObservedPath { path: String, readback: ResourceReadback }
+
+type ObservedTeardown {
+  host: String
+  generation: Int
+  stop: ObservedStop
+  cgroup: ObservedCgroup
+  mounts: ObservedPath
+  attempt_storage: ObservedPath
+  credential_disk: ObservedPath
+  // DECLARED GAP, NOT YET JOINED: the slot network result carries no subject here. Its subject is
+  // gunbc.runner_microvm_network SlotNetworkSubject (gunbc#11675, on hold); when that lands this
+  // field becomes that module's subject-bearing readback and gains a SubjectSlotNetwork pair.
   network: SlotNetworkQuiescence
-  attempt_storage: ResourceReadback
-  credential_disk: ResourceReadback
+}
+
+type TeardownSubject
+  = SubjectHost
+  | SubjectGeneration
+  | SubjectVmmUnit
+  | SubjectInvocation
+  | SubjectCgroupRoot
+  | SubjectJailRoot
+  | SubjectAttemptDirectory
+  | SubjectCredentialDrive
+
+type AttemptTeardownReadback sole_constructor {
+  bound: CellBoundAttempt
+  observed: ObservedTeardown
+}
+
+type TeardownReadbackBinding
+  = TeardownReadbackBound { readback: AttemptTeardownReadback }
+  | TeardownReadbackForeignSubject { subject: TeardownSubject, expected: String, observed: String }
+
+type SubjectPair { subject: TeardownSubject, expected: String, observed: String }
+
+fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<SubjectPair> {
+  let a = bound.attempt.attempt
+  [
+    SubjectPair { subject: SubjectHost, expected: a.slot.host as String, observed: o.host },
+    SubjectPair { subject: SubjectGeneration, expected: to_string(bound.generation), observed: to_string(o.generation) },
+    SubjectPair { subject: SubjectVmmUnit, expected: in_flight_attempt_unit(attempt: bound.attempt) as String, observed: o.stop.unit as String },
+    SubjectPair { subject: SubjectInvocation, expected: bound.attempt.invocation_id as String, observed: o.stop.invocation_id as String },
+    SubjectPair { subject: SubjectCgroupRoot, expected: fabric_cell_slice_name(slot: a.slot), observed: o.cgroup.root as String },
+    SubjectPair { subject: SubjectJailRoot, expected: runner_microvm_attempt_jail_base(attempt: a), observed: o.mounts.path },
+    SubjectPair { subject: SubjectAttemptDirectory, expected: runner_microvm_attempt_dir(attempt: a), observed: o.attempt_storage.path },
+    SubjectPair { subject: SubjectCredentialDrive, expected: runner_microvm_attempt_jit_drive_path(attempt: a), observed: o.credential_disk.path },
+  ]
+}
+
+fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
+  match filter(teardown_subject_pairs(bound: bound, o: observed), p => p.expected != p.observed).first() {
+    Absent => TeardownReadbackBound { readback: AttemptTeardownReadback { bound: bound, observed: observed } }
+    Present { value: p } =>
+      TeardownReadbackForeignSubject { subject: p.subject, expected: p.expected, observed: p.observed }
+  }
 }
 
 fn resource_observation(fact: SanitationFact, readback: ResourceReadback) -> SanitationObservation {
@@ -338,26 +399,26 @@ fn process_observation_of_cgroup(cgroup: CgroupSubtreeReadback) -> SanitationObs
   }
 }
 
-fn host_observations(host: HostTeardownReadback) -> List<SanitationObservation> {
+fn teardown_observations(o: ObservedTeardown) -> List<SanitationObservation> {
   [
-    surviving_process_observation(stop: host.stop, cgroup: host.cgroup),
-    cgroup_observation(readback: host.cgroup),
-    resource_observation(fact: MountsRemoved, readback: host.mounts),
-    slot_network_observation(readback: host.network),
-    resource_observation(fact: WritableLayersDeleted, readback: host.attempt_storage),
-    resource_observation(fact: SecretsRemoved, readback: host.credential_disk),
+    surviving_process_observation(stop: o.stop.outcome, cgroup: o.cgroup.readback),
+    cgroup_observation(readback: o.cgroup.readback),
+    resource_observation(fact: MountsRemoved, readback: o.mounts.readback),
+    slot_network_observation(readback: o.network),
+    resource_observation(fact: WritableLayersDeleted, readback: o.attempt_storage.readback),
+    resource_observation(fact: SecretsRemoved, readback: o.credential_disk.readback),
   ]
 }
 
-// THE ONLY ROUTE FROM A TEARDOWN TO A SanitationReadback, AND ITS PARAMETERS ARE ALL HOST
-// READBACKS. The trigger is deliberately absent: it started the teardown and has nothing to say
-// about how it ended.
-fn sanitation_readback_of_host(identity: AttemptIdentity, host: HostTeardownReadback) -> SanitationReadback {
+// THE ONLY ROUTE FROM A TEARDOWN TO A SanitationReadback. Its one parameter is the sealed carrier, so
+// the cell and sandbox it reports are the ones every observation was joined against. The trigger is
+// deliberately absent: it started the teardown and has nothing to say about how it ended.
+fn sanitation_readback_of_teardown(readback: AttemptTeardownReadback) -> SanitationReadback {
   SanitationReadback {
-    cell: attempt_identity_cell(identity: identity),
-    sandbox: attempt_identity_sandbox(identity: identity),
+    cell: readback.bound.cell,
+    sandbox: in_flight_attempt_unit(attempt: readback.bound.attempt) as String as SandboxId,
     network_scope: SlotScopedNetwork,
-    observations: host_observations(host: host),
+    observations: teardown_observations(o: readback.observed),
   }
 }
 
@@ -370,34 +431,14 @@ type TeardownSettlement {
   record: CellReadinessWrite
 }
 
-fn settle_teardown(identity: AttemptIdentity, trigger: TerminalTrigger, host: HostTeardownReadback) -> TeardownSettlement {
-  let readiness = cell_readiness_after(readback: sanitation_readback_of_host(identity: identity, host: host))
+// ONE SETTLEMENT FOR A LIVE TEARDOWN AND A RECOVERED ONE: both are a CellBoundAttempt torn down and
+// read back, and the store write is at that attempt's own generation, so a readback arriving after a
+// newer incarnation's record is refused by the store as stale rather than trusted by the controller.
+fn settle_teardown(readback: AttemptTeardownReadback, trigger: TerminalTrigger) -> TeardownSettlement {
+  let readiness = cell_readiness_after(readback: sanitation_readback_of_teardown(readback: readback))
   TeardownSettlement {
     trigger: trigger,
     readiness: readiness,
-    record: WriteReadbackSettled {
-      cell: attempt_identity_cell(identity: identity),
-      generation: identity.allocation_generation,
-      attempt: attempt_identity_vmm(identity: identity),
-      readiness: readiness,
-    },
+    record: WriteReadbackSettled { bound: readback.bound, readiness: readiness },
   }
-}
-
-// BOOT RECOVERY'S SETTLEMENT. After controller loss the full identity tuple may not be recoverable
-// (the InvocationID died with the unit), so recovery settles by the store's own record -- the cell,
-// generation and attempt the in-flight write named -- which is exactly the key the store checks.
-fn settle_recovery(
-  cell: CellId,
-  generation: Int,
-  attempt: NonEmptyStr,
-  host: HostTeardownReadback,
-) -> CellReadinessWrite {
-  let readiness = cell_readiness_after(readback: SanitationReadback {
-    cell: cell,
-    sandbox: attempt as String as SandboxId,
-    network_scope: SlotScopedNetwork,
-    observations: host_observations(host: host),
-  })
-  WriteReadbackSettled { cell: cell, generation: generation, attempt: attempt, readiness: readiness }
 }

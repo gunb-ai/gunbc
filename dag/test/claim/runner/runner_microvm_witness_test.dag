@@ -9,10 +9,14 @@ import product.fabric.isolation {
 }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_microvm_attempt { MicroVmAttemptAccepted, microvm_attempt }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
 import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned,
   CellSettled, CellAttemptInFlight, CellQuarantinedAt, HostStoreUnreadable, cell_incarnation_admission,
+  InFlightAttempt,
 }
 import extdeps.virtualization.firecracker {
   FirecrackerMachineConfig,
@@ -107,7 +111,7 @@ fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -121,7 +125,7 @@ fn admission_is_credential_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -135,7 +139,7 @@ fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -154,7 +158,7 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -177,7 +181,7 @@ fn admission_refuses_naming_the_missing_reserve(a: RunnerMicroVmAdmission) -> Bo
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -191,7 +195,7 @@ fn admission_is_malformed_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
     RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
-    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -837,20 +841,33 @@ test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
     RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostStoreUnreadable { reason: _ } } => true
     _ => false
   }
-  let recovery = match runner_microvm_admission(
-    cell: cell_incarnation_admission(
-      store: StoreRead { ownership: StoreRootOwned, records: [CellAttemptInFlight { cell: "srv1-01" as CellId, generation: 0, attempt: "lost" as NonEmptyStr }] },
-      cell: "srv1-01" as CellId,
-      allocation_generation: 1,
-    ),
-    topology: VmmUnderLifecycleController,
-    intent: repaired_lifecycle_intent,
-    main_exits_when_incarnation_ends: true,
-    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
-    config: mvp_sized_config(),
-    reserve: witness_reserve,
-  ) {
-    RunnerMicroVmRecoveryRequired { cell: _, generation: 0, attempt: _ } => true
+  let lost_slot = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  let lost_cell = runner_slot_instance_name(slot: lost_slot) as CellId
+  let recovery = match microvm_attempt(slot: lost_slot, attempt_id: "lost-0") {
+    MicroVmAttemptAccepted { attempt: lost } =>
+      match runner_microvm_admission(
+        cell: cell_incarnation_admission(
+          store: StoreRead {
+            ownership: StoreRootOwned,
+            records: [CellAttemptInFlight {
+              cell: lost_cell,
+              generation: 0,
+              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, jit_registration_id: "reg-lost" as NonEmptyStr },
+            }],
+          },
+          cell: lost_cell,
+          allocation_generation: 1,
+        ),
+        topology: VmmUnderLifecycleController,
+        intent: repaired_lifecycle_intent,
+        main_exits_when_incarnation_ends: true,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: mvp_sized_config(),
+        reserve: witness_reserve,
+      ) {
+        RunnerMicroVmRecoveryRequired { bound: _ } => true
+        _ => false
+      }
     _ => false
   }
   host && recovery

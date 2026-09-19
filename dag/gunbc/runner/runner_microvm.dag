@@ -41,7 +41,7 @@ import gunbc.runner_unit {
 import product.fabric.sanitation { CellId }
 import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
-  HostWithdrawn, HostWithdrawal, CellWithdrawal,
+  HostWithdrawn, HostWithdrawal, CellWithdrawal, CellBoundAttempt,
 }
 import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
 import extdeps.virtualization.firecracker {
@@ -450,7 +450,7 @@ type RunnerMicroVmAdmission
   = RunnerMicroVmAdmitted
   | RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostWithdrawal }
   | RunnerMicroVmRefusedCellWithdrawn { cell: CellId, withdrawal: CellWithdrawal }
-  | RunnerMicroVmRecoveryRequired { cell: CellId, generation: Int, attempt: NonEmptyStr }
+  | RunnerMicroVmRecoveryRequired { bound: CellBoundAttempt }
   | RunnerMicroVmRefusedOrphanableUnit { reason: String }
   | RunnerMicroVmRefusedSharedCredential { reason: String }
   | RunnerMicroVmRefusedMalformedVm { reason: String }
@@ -481,8 +481,7 @@ fn runner_microvm_admission(
   match cell {
     HostWithdrawn { withdrawal: w } => RunnerMicroVmRefusedHostWithdrawn { withdrawal: w }
     CellWithdrawn { cell: c, withdrawal: w } => RunnerMicroVmRefusedCellWithdrawn { cell: c, withdrawal: w }
-    CellRecoveryRequired { cell: c, generation: g, attempt: a } =>
-      RunnerMicroVmRecoveryRequired { cell: c, generation: g, attempt: a }
+    CellRecoveryRequired { bound: b } => RunnerMicroVmRecoveryRequired { bound: b }
     CellIncarnationAdmitted { cell: _, generation: _ } =>
       runner_microvm_admission_after_cell(
         topology: topology,
