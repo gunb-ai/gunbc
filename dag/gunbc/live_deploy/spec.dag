@@ -377,9 +377,46 @@ data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_br
 // every other instance -- the same hazard attempt_state_root_member_note and the ensured-directory
 // ruling already caught for host-level resources (operator ruling 2026-08-08: a twin retract must
 // not remove what production owns).
+//
+// AND THAT REASONING COVERED ONLY HALF THE HAZARD, WHICH REVIEW 68094 FOUND. It stopped a twin
+// RETRACT from removing the unit and did nothing about a twin APPLY re-owning it. Every spec that
+// flows through the release-member emitter wrote /etc/systemd/system/gunbc-approval-broker.service
+// and restarted it, and that file's content is instance-derived -- WorkingDirectory, serve_binary
+// and instance_root all come from the instance being applied. gunbc.live_deploy.desired
+// desired_deployment_roster carries srv1_lab beside production ON THE SAME HOST, so a lab apply
+// would have overwritten the host's broker unit to point at the lab tree and restarted it, killing
+// and replacing production's broker on the same port. That is precisely the state the paragraph
+// above claims is unwritable, asserted in prose while the mechanism did not reach it -- the same
+// shape as the freeze review 68050 removed, one layer further in.
+//
+// SO OWNERSHIP IS DECLARED AND THE EMITTER READS IT. One instance per host owns the broker unit;
+// every other spec emits no broker step at all, writes nothing and restarts nothing.
+// THE INSTANCE THAT OWNS THE HOST'S BROKER. It is srv1-live because that is where the approval
+// store is: gunbc.auth.approval_decision_store approval_decision_store_root is one path on one
+// host, and the whole point of a single-writer store is that exactly one process opens it.
+//
+// IT IS A DECLARED OWNER RATHER THAN A DERIVATION FROM THE INSTANCE because "which deployment runs
+// the approval loop" is not recoverable from any field an instance carries -- srv1-live and
+// srv1-lab are the same shape on the same host, and the only thing that distinguishes them for this
+// purpose is that one of them was chosen. Deriving it would mean inventing a rule that happens to
+// select production today.
+//
+// A SECOND HOST SERVING APPROVALS IS WHAT RETIRES THIS ROW, at which point the owner becomes a
+// per-host lookup and the store root becomes host-derived with it. Until then a single row is the
+// honest shape: there is one approval loop, and it has one home.
+data gunbc_approval_broker_owning_instance: NonEmptyStr = "srv1-live"
+
 data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
 
 data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+
+// A SPEC THAT DOES NOT OWN THE BROKER EMITS NO BROKER STEP. This is the predicate the emitter
+// consults; it is not a validation standing beside a write that would otherwise happen, because the
+// steps are CONSTRUCTED from it -- a non-owning apply produces an empty list, so there is nothing to
+// skip and nothing to get wrong.
+fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
+  (spec.instance_id as String) == (gunbc_approval_broker_owning_instance as String)
+}
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_approval_broker_unit_name as String], "") as NonEmptyStr

@@ -65,6 +65,7 @@ import extdeps.crypto.hash { digest_shell_verify_line }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
+  deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
@@ -1523,8 +1524,31 @@ fn deploy_memory_cap_apply_steps(
 // THE SLICE IS WRITTEN BEFORE THE UNIT that joins it, in the same order the roadmap's is: a
 // [Service] carrying Slice= for a slice that does not exist yet starts under the default bound,
 // which is the unbounded state the bound exists to remove.
+// A NON-OWNING SPEC EMITS NOTHING (review 68094). The broker unit is a HOST singleton whose content
+// is instance-derived, and srv1-lab deploys to the same host as production -- so before this, a lab
+// apply overwrote the host's broker unit to point at the lab tree and restarted it, killing
+// production's broker. The steps are now CONSTRUCTED from the ownership predicate rather than
+// guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+  if deployment_owns_the_host_approval_broker(spec: spec) {
+    approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+  } else {
+    []
+  }
+}
+
+// THE LIFECYCLE STEPS FOLLOW THE SAME OWNERSHIP, and they are separate because a restart is the
+// half that actually killed the other instance's process: writing an identical unit is idempotent,
+// restarting one is not. Both are empty for a non-owner.
+fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  if deployment_owns_the_host_approval_broker(spec: spec) {
+    [
+      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+    ]
+  } else {
+    []
+  }
 }
 
 fn approval_broker_unit_write_steps_on(
@@ -1627,10 +1651,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         if !plan_restarts_process(plan: plan) { [] } else { concat([
           deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
           deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
-        ], [
-          deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
-          deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
-        ]) },
+        ], approval_broker_lifecycle_steps(spec: spec)) },
       ),
     )
     UnitManager => []
@@ -1718,13 +1739,11 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), [
+    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
-      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
-    ])
+    ], approval_broker_lifecycle_steps(spec: spec)))
     PublicationHelperTimerUnit => concat(
       apply_publication_spool_steps(spec: spec),
       [
@@ -2174,23 +2193,31 @@ fn approval_broker_dark_install_intent(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
         apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
-      [
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-        deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
-        deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
-      ],
+      concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),
     on_failure: FailFast,
   }
 }
 
+// A NON-OWNING SPEC REACHING THE DARK INSTALL REFUSES LOUDLY RATHER THAN EMITTING A SCRIPT THAT
+// DOES NOTHING. With the ownership predicate constructing the steps, a twin's dark install would
+// otherwise render a well-formed script containing a strict-mode line, a mktemp and a daemon-reload
+// -- a stage that reports success having installed nothing, which is the absorbing fallback DESIGN
+// section 5 forbids at exactly the seam where the operator is being told a stage completed. The
+// marker is not valid shell, so the stage fails and names the owner.
+data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker DARK INSTALL was reached with a deployment that does not own this host's broker unit. gunbc-approval-broker.service is a HOST singleton owned by gunbc.live_deploy.spec gunbc_approval_broker_owning_instance; a twin apply installing it would point the host's broker at the twin's tree and restart it over production's process (review 68094). This marker is not valid deploy shell, so the stage fails loudly rather than emitting a script that installs nothing and reports success. instance="
+
 data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
 
 fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
-  emit_pipeline_or_poison(
-    p: approval_broker_dark_install_intent(spec: spec, revision: revision),
-    refused: approval_broker_dark_install_emit_refused_poison,
-  )
+  if !deployment_owns_the_host_approval_broker(spec: spec) {
+    join([approval_broker_dark_install_not_owner_poison, spec.instance_id as String, "\n"], "")
+  } else {
+    emit_pipeline_or_poison(
+      p: approval_broker_dark_install_intent(spec: spec, revision: revision),
+      refused: approval_broker_dark_install_emit_refused_poison,
+    )
+  }
 }
 
 fn live_deploy_apply_script_for(
