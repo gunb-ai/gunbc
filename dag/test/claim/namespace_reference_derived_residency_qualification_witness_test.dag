@@ -18,7 +18,7 @@ import gunbc.namespace_reference_derived_residency_qualification {
   qualify_bounded_realization,
   admit_bounded_realization,
 }
-import std.types { Bool, Int, List, String }
+import std.types { Bool, List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 // Witnesses for the residency qualification of the reference-derived graph producer. The three RED
@@ -212,17 +212,4 @@ test fn both_evidences_together_admit_the_claim() -> Bool {
     BoundedRealizationSemanticDeliveryOutstanding => false
     BoundedRealizationResourceQualificationOutstanding { failure: _ } => false
   }
-}
-
-// Probe only: the eight claims above as one bitmask, so a verification run pays ONE closure typecheck
-// instead of eight. Asserts nothing and is not enrolled.
-fn rdrq_probe_bits() -> Int {
-  (if a_name_table_pool_with_one_subject_tree_qualifies() { 1 } else { 0 })
-    + (if a_whole_pool_build_that_releases_before_returning_still_refuses() { 2 } else { 0 })
-    + (if retention_moved_into_the_symbol_index_still_refuses() { 4 } else { 0 })
-    + (if a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() { 8 } else { 0 })
-    + (if an_empty_lifecycle_reading_refuses_rather_than_qualifying() { 16 } else { 0 })
-    + (if semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() { 32 } else { 0 })
-    + (if resource_qualification_alone_does_not_admit_either() { 64 } else { 0 })
-    + (if both_evidences_together_admit_the_claim() { 128 } else { 0 })
 }

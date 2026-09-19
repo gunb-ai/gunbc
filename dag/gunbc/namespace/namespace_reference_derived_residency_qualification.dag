@@ -46,11 +46,12 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // reading and either one refuses it.
 
 // The per-key payload a carrier holds. The distinction that matters is whether the payload is SYNTAX
-// -- whose size is the source it came from -- or a bounded per-key record.
+// -- whose size is the source it came from -- or a bounded per-key record. TWO ARMS, because two is
+// what any producer mints: an earlier revision carried a third, ModuleQualifiedNamePerKey, that no
+// fold could produce and that only ever appeared as a `=> false` match arm (review 68699).
 type CarrierPayloadGrain
   = SyntaxNodePerKey
   | IdentityDigestPerKey
-  | ModuleQualifiedNamePerKey
 
 // What the carrier is keyed over. A carrier keyed by the whole pool population scales with the
 // corpus; one keyed by the single subject under production does not.
@@ -90,7 +91,6 @@ fn carrier_holds_whole_corpus_syntax(reading: ProducerCarrierReading) -> Bool {
       match reading.grain {
         SyntaxNodePerKey => true
         IdentityDigestPerKey => false
-        ModuleQualifiedNamePerKey => false
       }
   }
 }
