@@ -215,7 +215,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 // default-deny into default-accept for every port nobody named.
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
   let text = runner_microvm_shared_host_nft_ruleset_text()
-  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
+  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
     && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
@@ -239,7 +239,7 @@ test fn tap_ipv6_is_refused_at_raw_before_conntrack_and_not_in_forward() -> Bool
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "type filter hook prerouting priority -300; policy accept;\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
     && !string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" meta nfproto ipv6")
-    && length(split(s: text, delimiter: "meta nfproto ipv6")) == 2
+    && length(split(s: text, delimiter: "iifname \"gunbc-tap*\" meta nfproto ipv6")) == 2
 }
 
 data converged_digest: Sha256Digest = Sha256Digest {
@@ -563,4 +563,15 @@ test fn a_guest_reaches_nothing_on_the_host_on_either_grain() -> Bool {
   let raw = runner_microvm_nft_ruleset_text_for(host: runner_host_egress_policy.host)
   string_contains(s: shared, pattern: "type filter hook input priority 0; policy accept;\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: raw, pattern: "type filter hook input priority 0; policy drop;\n    iifname \"lo\" accept\n    ct state established,related accept\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" drop\n  }")
+}
+
+// v6 TOWARD A TAP IS DROPPED BY A RULE, IN BOTH PATHS THAT REACH ONE. Routed from another interface it
+// crosses forward; sent by the host itself it crosses output. The rendered shared-host table drops
+// `oifname "gunbc-tap*" meta nfproto ipv6` in each, the forward one directly after the tap-to-tap
+// drop and above every accept. The red is the previous table, where v6 was refused only as it arrived
+// FROM a tap and a tap-bound v6 packet met no rule (review 68618).
+test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool {
+  let text = runner_microvm_shared_host_nft_ruleset_text()
+  string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n")
+    && string_contains(s: text, pattern: "type filter hook output priority 0; policy accept;\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
 }

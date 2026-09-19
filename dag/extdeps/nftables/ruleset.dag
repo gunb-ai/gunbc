@@ -50,6 +50,7 @@ type NftHook
   | NftPostrouting
   | NftPrerouting
   | NftInput
+  | NftOutput
 
 // PRIORITY IS AN INTEGER WITH NAMED LANDMARKS, and the landmarks are the ones nftables itself
 // documents: filter is 0, srcnat is 100, raw is -300. raw runs BEFORE connection tracking (-200), so
@@ -82,6 +83,7 @@ fn nft_hook_wire(h: NftHook) -> String {
     NftPostrouting => "postrouting"
     NftPrerouting => "prerouting"
     NftInput => "input"
+    NftOutput => "output"
   }
 }
 

@@ -15,7 +15,7 @@ import gunbc.executor_privileged_operation {
 }
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
-  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftInput, NftInputInterface, NftPolicy, NftPolicyAccept, NftPolicyDrop,
+  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftInput, NftOutput, NftInputInterface, NftPolicy, NftPolicyAccept, NftPolicyDrop,
   NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
@@ -247,15 +247,18 @@ fn runner_microvm_forward_chain(host: HostEgressGrain) -> NftChain {
     priority: NftPriorityFilter,
     policy: forward_chain_policy(g: host.forward),
     rules: concat(
-      [
-        NftRule {
-          matches: [
-            NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
-            NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
-          ],
-          verdict: NftDrop,
-        },
-      ],
+      concat(
+        [
+          NftRule {
+            matches: [
+              NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+              NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+            ],
+            verdict: NftDrop,
+          },
+        ],
+        tap_bound_ipv6_rules(v: host.ipv6),
+      ),
       guest_egress_rules(p: runner_microvm_guest_egress_policy, host: host),
     ),
   }
@@ -279,7 +282,9 @@ type ForwardDenyGrain
 
 // IPv6 IS AN EXPLICIT STANDING RATHER THAN AN OVERSIGHT. An IPv4-only ruleset on a dual-stack host is
 // a default-allow wearing a default-deny's name. In the inet family an `ip daddr` match is false on
-// a v6 packet, so under DefaultDenyRuleset the v6 drop must precede every v4 grant.
+// a v6 packet, so v4 rows never see v6 at all: under DefaultDenyRuleset v6 is refused by its own
+// rows, in both directions of the tap (raw_ipv6_rules, tap_bound_ipv6_rules), and the tap's
+// disable_ipv6 closes the link underneath them.
 type IpV6Standing
   = IpV6DisabledOnDataPath
   | IpV6DefaultDenyRuleset
@@ -431,16 +436,46 @@ fn guest_egress_rules(p: GuestEgressPolicy, host: HostEgressGrain) -> List<NftRu
   )
 }
 
-// THE v6 REFUSAL RUNS AT RAW PRIORITY IN PREROUTING, BEFORE CONNECTION TRACKING. A drop in forward
-// comes after conntrack has already created the flow's entry, so a reused slot could inherit v6 state
-// the guest opened -- and forward never sees v6 the guest sends to the HOST at all. Refusing it at
-// raw means no v6 conntrack entry keyed to a tap can exist, in any direction, so sanitation has no
-// v6 state to flush or read (sunny-ant-606 ruling on #11675, 2026-09-19).
+// v6 IS REFUSED IN EACH DIRECTION OF THE TAP BY ITS OWN RULE, AND THE LINK IS CLOSED BENEATH THEM.
+// FROM a tap: a raw-priority drop in prerouting, before connection tracking (-300 < -200), so no v6
+// flow a guest opens is ever tracked -- and it covers v6 the guest sends to the host, which forward
+// never sees. TOWARD a tap: an oifname drop in forward (v6 routed from another interface) and in
+// output (v6 the host itself sends), because a prerouting rule matching iifname cannot see either
+// (review 68618). These run after conntrack, so they refuse delivery rather than prevent tracking;
+// what keeps a tap-bound v6 flow from existing at all is the tap's disable_ipv6 -- no v6 address, no
+// v6 route through it -- which the sanitation subject requires and every attempt re-reads. The rules
+// are the second wall, and each names the direction it covers.
 fn raw_ipv6_rules(v: IpV6Standing) -> List<NftRule> {
   match v {
     IpV6DefaultDenyRuleset => [from_guest_tap(m: [NftNetworkProtocolIpv6], verdict: NftDrop)]
     IpV6DisabledOnDataPath => []
     IpV6Unaddressed { risk: _ } => []
+  }
+}
+
+fn tap_bound_ipv6_rules(v: IpV6Standing) -> List<NftRule> {
+  match v {
+    IpV6DefaultDenyRuleset => [
+      NftRule {
+        matches: [NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix }, NftNetworkProtocolIpv6],
+        verdict: NftDrop,
+      },
+    ]
+    IpV6DisabledOnDataPath => []
+    IpV6Unaddressed { risk: _ } => []
+  }
+}
+
+// THE HOST'S OWN TRAFFIC TOWARD A TAP. Output carries only the tap-bound v6 refusal; everything else
+// the host sends keeps whatever the host's other tables decide, so the chain's policy is accept.
+fn runner_microvm_output_chain(host: HostEgressGrain) -> NftChain {
+  NftChain {
+    name: "output" as NonEmptyStr,
+    chain_type: NftTypeFilter,
+    hook: NftOutput,
+    priority: NftPriorityFilter,
+    policy: NftPolicyAccept,
+    rules: tap_bound_ipv6_rules(v: host.ipv6),
   }
 }
 
@@ -512,7 +547,7 @@ fn runner_microvm_nft_table(host: HostEgressGrain) -> NftTable {
   NftTable {
     family: NftInet,
     name: runner_microvm_nft_table_name,
-    chains: [runner_microvm_raw_prerouting_chain(host: host), runner_microvm_input_chain(host: host), runner_microvm_forward_chain(host: host), runner_microvm_postrouting_chain()],
+    chains: [runner_microvm_raw_prerouting_chain(host: host), runner_microvm_input_chain(host: host), runner_microvm_forward_chain(host: host), runner_microvm_output_chain(host: host), runner_microvm_postrouting_chain()],
   }
 }
 
@@ -663,12 +698,11 @@ fn runner_slot_network_install_operations(
 // --- IPv6: disabled structurally on both ends of the link ---
 
 // v6 IS OFF ON THE TAP AND IN THE GUEST, SO THERE IS NO v6 PATH TO FILTER. A drop rule covers only the
-// paths it names: the raw-prerouting drop below sees v6 ARRIVING from a tap, not v6 the host itself
-// sends toward a tap nor v6 routed to a tap from another interface (sunny-ant-606 ruling on #11675).
-// With disable_ipv6=1 on the tap the kernel assigns it no v6 address, installs no v6 route through
-// it, and discards v6 received on it -- every direction at once, as a property of the link. The
-// raw drop stays as the second wall, and the guest boots with ipv6.disable=1 so it never builds a v6
-// stack at all.
+// paths it names (sunny-ant-606 ruling on #11675), so the rules name each direction -- from a tap at
+// raw prerouting, toward a tap in forward and output (raw_ipv6_rules, tap_bound_ipv6_rules). With
+// disable_ipv6=1 on the tap the kernel assigns it no v6 address, installs no v6 route through it, and
+// discards v6 received on it -- every direction at once, as a property of the link. The rules are the
+// second wall, and the guest boots with ipv6.disable=1 so it never builds a v6 stack at all.
 //
 // THE HOST SETTING IS A sysctl.d FILE, not a command. systemd's udev rules re-run systemd-sysctl for
 // each net device as it appears, so a per-device key applies when networkd creates the tap at boot
