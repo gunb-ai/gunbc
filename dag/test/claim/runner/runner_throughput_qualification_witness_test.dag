@@ -44,14 +44,15 @@ import gunbc.runner_throughput_qualification {
   ThroughputDidNotHold, MemoryEnvelopeDidNotHold, SlotWidthDidNotHold,
   HostAdmittedToClass, HostNotAdmittedToClass, HostUnqualified, ReceiptStale, HostBudgetUnreadableRefusal,
   qualify_runner_throughput, qualified_executor_sanction, qualified_supplier_offer, admission_wire,
-  admission_refusals, workspace_backing_is_charged_to_slot,
+  admission_refusals, workspace_bytes_locus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
+  qualification_run_producer_frontier, qualification_admission_consumer_frontier, leg_is_bound,
 }
+import gunbc.fleet_host_budget { runner_slice_cap, oomd_actuation_floor }
 import gunbc.runner_throughput_qualification_route {
   QualificationStage, mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels,
   route_controller_writes_are_gated, route_controller_write_count, route_registers_one_slot,
   route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
-  route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing,
-  workspace_backing_keeps_bytes_on_subject, stage_egress, BootHostUnderApprovalGate,
+  route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing, stage_egress, BootHostUnderApprovalGate,
   RegisterEphemeralRunnerSlot, DispatchFloorToSlot, CollectInstruments, DeregisterRunnerSlot,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire,
 }
@@ -84,6 +85,31 @@ fn specimen_steps() -> EvalStepCount {
   calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)
 }
 
+// THE HOST FIXTURE IS CONTROLLED; THE SLOT SHAPE IS LIVE. So the expected memory width is derived
+// through the same fold and the live memory_max, never written as a number (review 68620).
+fn fixture_host_total() -> Int {
+  268435456000
+}
+
+fn fixture_host_available_idle() -> Int {
+  263066746880
+}
+
+fn expected_memory_width() -> Int {
+  let total = byte_size(count: fixture_host_total())
+  let overhead = byte_size(count: fixture_host_total() - fixture_host_available_idle())
+  let slice = runner_slice_cap(
+    host: total, overhead: overhead, session_slice: byte_size(count: 0),
+    headroom: oomd_actuation_floor(host: total), compile_pool: byte_size(count: 0),
+  )
+  byte_size_count(b: slice) / byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+fn expected_slot_width(cores_per_slot: Int) -> Int {
+  let by_cpu = 160 / cores_per_slot
+  if by_cpu < expected_memory_width() { by_cpu } else { expected_memory_width() }
+}
+
 fn slot_high_bytes() -> Int {
   byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
@@ -108,8 +134,8 @@ fn good_run(revision: String) -> QualificationRun {
     attempt_label: "mtcollins1-qual-1" as NonEmptyStr,
     observed_at: "2026-09-19T12:00:00Z",
     revision: revision,
-    host_memory_total: byte_size(count: 268435456000),
-    host_memory_available_idle: byte_size(count: 263066746880),
+    host_memory_total: byte_size(count: fixture_host_total()),
+    host_memory_available_idle: byte_size(count: fixture_host_available_idle()),
     host_threads: hardware_thread_count(count: 160),
     host_architecture: Aarch64,
     phase_wall: [
@@ -159,11 +185,10 @@ test fn a_run_meeting_every_axis_admits_the_host_to_its_candidate_class() -> Boo
   }
 }
 
-// THE SLOT COUNT IS DERIVED UNDER THE HOST BUDGET, NOT READ OFF THE HOST'S SIZE: 250 GiB minus the
-// 5 GiB idle overhead minus the oomd floor (1/16 of the host) leaves 229.4 GiB, which holds 8 slots
-// of 26 GiB. The CPU axis is 160 threads over the fleet's cores-per-slot, read from its producer
-// rather than transcribed (an earlier draft wrote 6 from stale prose and the producer said
-// otherwise). Memory binds, at 8, for any cores-per-slot up to 20.
+// THE SLOT COUNT IS DERIVED UNDER THE HOST BUDGET, NOT READ OFF THE HOST'S SIZE: the host fixture
+// minus its idle overhead minus the oomd floor, over the live slot memory_max; 160 threads over the
+// fleet's cores-per-slot. Both expectations are derived through the owning folds rather than
+// transcribed (an earlier draft wrote 6 and 8 and each went stale against its producer).
 test fn the_receipt_derives_slot_width_as_the_minimum_over_memory_and_cpu() -> Bool {
   match gunbc_runner_cores_per_slot() {
     CoresPerSlotUnresolved { cause: _ } => false
@@ -172,7 +197,10 @@ test fn the_receipt_derives_slot_width_as_the_minimum_over_memory_and_cpu() -> B
         HostAdmittedToClass { receipt: r, class: _ } =>
           match r.slot_width {
             SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
-              m == 8 && c == 160 / hardware_thread_count_value(t: t) && n == 8
+              m == expected_memory_width()
+                && c == 160 / hardware_thread_count_value(t: t)
+                && n == expected_slot_width(cores_per_slot: hardware_thread_count_value(t: t))
+                && n >= 1
             SlotWidthUnderivable { cause: _ } => false
           }
         _ => false
@@ -274,7 +302,12 @@ test fn the_slowest_reading_at_the_pin_speaks_for_the_host() -> Bool {
 // the workspace to the slot -- so nobody compares it to an NVMe-backed fleet peak as the same fact.
 test fn a_tmpfs_backed_receipt_declares_its_peak_workspace_inclusive() -> Bool {
   match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
-    HostAdmittedToClass { receipt: r, class: _ } => workspace_backing_is_charged_to_slot(backing: r.workspace_backing)
+    HostAdmittedToClass { receipt: r, class: _ } =>
+      match workspace_bytes_locus(backing: r.workspace_backing) {
+        OnSubjectChargedToSlot => true
+        OnSubjectUncharged => false
+        OffSubject { peer: _ } => false
+      }
     _ => false
   }
 }
@@ -381,17 +414,21 @@ fn derived_offer(runs: List<QualificationRun>) -> SupplierOffer<HostIdentity>? {
   )
 }
 
-// THE ROW CARRIES THE RECEIPT'S NUMBERS AND NOTHING MORE: eight slots, the slot's memory as its
-// envelope, and it is fungible for the floor through the fabric's own fold.
+// THE ROW CARRIES THE RECEIPT'S NUMBERS AND NOTHING MORE: the derived slot width as its quantity,
+// the slot's memory as its envelope, and it is fungible for the floor through the fabric's own fold.
 test fn a_qualified_host_enters_the_supply_with_its_measured_envelope() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
   match derived_offer(runs: [good_run(revision: pin_revision)]) {
     Absent => false
     Present { value: o } =>
-      o.quantity_bound == 8
+      o.quantity_bound == expected_slot_width(cores_per_slot: hardware_thread_count_value(t: t))
         && match floor_offer_fungibility(offer: o) {
           Fungible => true
           _ => false
         }
+  }
   }
 }
 
@@ -471,8 +508,23 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
 }
 
 test fn the_workspace_keeps_every_byte_on_the_subject() -> Bool {
-  workspace_backing_keeps_bytes_on_subject(backing: mtcollins1_qualification_workspace_backing)
-    && !workspace_backing_keeps_bytes_on_subject(backing: PeerScratchExport { peer: "srv2" })
+  (match workspace_bytes_locus(backing: mtcollins1_qualification_workspace_backing) {
+    OnSubjectChargedToSlot => true
+    OnSubjectUncharged => false
+    OffSubject { peer: _ } => false
+  })
+    && (match workspace_bytes_locus(backing: PeerScratchExport { peer: "srv2" }) {
+      OffSubject { peer: p } => (p as String) == "srv2"
+      _ => false
+    })
+}
+
+// THE RECEIPT SIDE'S FRONTIER IS DECLARED, NOT CLAIMED, exactly as the route's legs are: nothing
+// on this branch produces a QualificationRun from a real run or consumes an admission at the
+// fabric, and both rows say what lands them. This flips to the regression control when they bind.
+test fn receipt_producer_and_consumer_frontiers_are_declared_not_claimed() -> Bool {
+  !leg_is_bound(leg: qualification_run_producer_frontier)
+    && !leg_is_bound(leg: qualification_admission_consumer_frontier)
 }
 
 // THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority: the

@@ -3,7 +3,7 @@ module gunbc.runner_throughput_qualification_route
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size_count, hardware_thread_count_value }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { CapacityClass, ControlPlaneCapacity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
@@ -15,8 +15,8 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired, runner_host_label, runner_label_set_union,
 }
 import gunbc.runner_throughput_qualification {
-  WorkspaceBacking, RamBackedTmpfs, HostLocalDisk, PeerScratchExport,
-  FloorWorkloadPin,
+  WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
+  RouteLegStanding, LegBoundToAuthority, LegAwaitingAuthority, leg_is_bound,
 }
 
 // THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHETHER IT WRITES A CONTROLLER.
@@ -39,17 +39,6 @@ import gunbc.runner_throughput_qualification {
 // its leg flips to `LegBoundToAuthority` with a resolving DeclarationRef and the fleet-converge
 // mode row below stops being a frontier -- and the witness that reads this route asserts today
 // that no leg claims a binding it does not have.
-
-type RouteLegStanding
-  = LegBoundToAuthority { authority: DeclarationRef }
-  | LegAwaitingAuthority { lands_with: NonEmptyStr, sufficient_for: NonEmptyStr }
-
-fn leg_is_bound(leg: RouteLegStanding) -> Bool {
-  match leg {
-    LegBoundToAuthority { authority: _ } => true
-    LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => false
-  }
-}
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
 
@@ -207,14 +196,6 @@ data qualification_instruments: List<QualificationInstrument> = [
 // workspace-inclusive peak exceeds the slot high, the answer is not-admitted with the number, and
 // the remedy is a disk or a narrower shape, both of which are a different subject.
 data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
-
-fn workspace_backing_keeps_bytes_on_subject(backing: WorkspaceBacking) -> Bool {
-  match backing {
-    RamBackedTmpfs => true
-    HostLocalDisk => true
-    PeerScratchExport { peer: _ } => false
-  }
-}
 
 // THE CANDIDATE CLASS IS CONTROL-PLANE: the floor is our own work, and a host being qualified to
 // carry it is being qualified for the class `gunbc.fabric_witness_run floor_execution_requirements`

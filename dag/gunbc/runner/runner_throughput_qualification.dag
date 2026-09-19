@@ -10,6 +10,7 @@ import std.measure {
   Millisecond, millisecond, millisecond_count, Second,
 }
 import std.realization_width { byte_size_saturating_sub }
+import std.decl_ref { DeclarationRef }
 import product.placement_supply { HostIdentity }
 import product.fabric.work {
   CapacityClass, capacity_class_wire, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
@@ -89,11 +90,19 @@ type WorkspaceBacking
   | HostLocalDisk
   | PeerScratchExport { peer: HostIdentity }
 
-fn workspace_backing_is_charged_to_slot(backing: WorkspaceBacking) -> Bool {
+// WHERE THE WORKSPACE BYTES LAND IS ONE FACT WITH THREE ANSWERS, so it is one carrier rather than a
+// Bool per question. The receipt reader asks whether the peak is workspace-inclusive (charged to
+// the slot); the route reader asks whether the bytes stay on the subject; both are arms of this.
+type WorkspaceBytesLocus
+  = OnSubjectChargedToSlot
+  | OnSubjectUncharged
+  | OffSubject { peer: HostIdentity }
+
+fn workspace_bytes_locus(backing: WorkspaceBacking) -> WorkspaceBytesLocus {
   match backing {
-    RamBackedTmpfs => true
-    HostLocalDisk => false
-    PeerScratchExport { peer: _ } => false
+    RamBackedTmpfs => OnSubjectChargedToSlot
+    HostLocalDisk => OnSubjectUncharged
+    PeerScratchExport { peer: p } => OffSubject { peer: p }
   }
 }
 
@@ -236,6 +245,43 @@ type RunnerThroughputAdmission
   | HostUnqualified { host: HostIdentity, candidate: CapacityClass }
   | ReceiptStale { receipt: RunnerThroughputReceipt, pinned: CommitSha, observed: CommitSha }
   | HostBudgetUnreadableRefusal { host: HostIdentity, run: WorkflowRunId, reason: NonEmptyStr }
+
+// ── WHAT PRODUCES A RUN AND WHAT CONSUMES AN ADMISSION: DECLARED, NOT CLAIMED ─────────────────
+//
+// On this branch the fold below is fed by fixtures and read by its witness, and nothing else. That
+// is a frontier and is carried as one (DESIGN section 3c: a declaration consumed by a named
+// consumer that lands in a named later change is admissible only with the trigger stated beside
+// it). A DeclarationRef to either landing would stop the parse phase today, because the parse
+// phase resolves every production ref against main; so each leg names the capability the landing
+// must be SUFFICIENT FOR (section 4b(3)), and `leg_is_bound` is what a witness reads.
+type RouteLegStanding
+  = LegBoundToAuthority { authority: DeclarationRef }
+  | LegAwaitingAuthority { lands_with: NonEmptyStr, sufficient_for: NonEmptyStr }
+
+fn leg_is_bound(leg: RouteLegStanding) -> Bool {
+  match leg {
+    LegBoundToAuthority { authority: _ } => true
+    LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => false
+  }
+}
+
+// THE PRODUCER: the collect stage's instruments parsed into a QualificationRun. It lands with the
+// fleet-converge mode row, which lands with the boot leg (#11484) and the image leg (#11731), and
+// it reads the run's own [floor-phase], [floor-cgroup] and [witness] rows plus the guest's idle
+// meminfo and nproc -- the producers gunbc.runner_throughput_qualification_route names.
+data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "the fleet-converge mode row for the qualification route, landing with #11484 (boot leg) and #11731 (image leg): the collect stage parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows and the guest's idle meminfo/nproc into a QualificationRun" as NonEmptyStr,
+  sufficient_for: "minting a RunnerThroughputReceipt from a real run of the floor on mtcollins1, so qualify_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
+}
+
+// THE CONSUMER: the sanction onto the fleet roster gunbc.fabric_executor_class reads, and the
+// supply row into product.fabric.selection's candidate field. Neither may be minted before a
+// receipt exists -- a roster row for an unqualified host is exactly the fabricated sanction the
+// executor class refuses -- so this leg binds only after the producer leg does.
+data qualification_admission_consumer_frontier: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "the change that carries mtcollins1's first admitted receipt: qualified_executor_sanction joins the ExecutorSanction roster admit_executor_capacity reads, and qualified_supplier_offer's row enters the floor's candidate field for select_supply" as NonEmptyStr,
+  sufficient_for: "select_supply pricing mtcollins1 against srv3 and srv4 on the same axes, from a row whose shape, quantity and evidence are the receipt's" as NonEmptyStr,
+}
 
 // ── QUALIFYING ONE AXIS AT A TIME ─────────────────────────────────────────────────────────────
 
