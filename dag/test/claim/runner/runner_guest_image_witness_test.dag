@@ -6,7 +6,11 @@ import extdeps.github.actions_runner { ActionsRunnerRelease }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
-import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image, jit_drive_content }
+import gunbc.runner_microvm {
+  RunnerGuestImage, gunbc_runner_guest_image, jit_drive_content, jit_drive_newline_sector,
+}
+import extdeps.virtualization.firecracker { firecracker_block_sector_size }
+import std.measure { byte_size_count }
 import gunbc.runner_guest_image {
   GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
   ArtifactDigestNotPinnable, runner_guest_built_image_artifact,
@@ -177,13 +181,15 @@ test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute
 }
 
 // THE DRIVE BYTES SURVIVE A BLOCK DEVICE. Firecracker drops a partial tail sector, so the contract
-// pads to a 512 multiple; the red is an unpadded content (a real 4,076-byte config would lose its
+// pads to a whole number of extdeps.virtualization.firecracker firecracker_block_sector_size; the red is an unpadded content (a real 4,076-byte config would lose its
 // last 492 bytes). The padding must be newlines, which systemd's parser skips, and the assignment
 // must be upstream's own argument variable.
 test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool {
   let c = jit_drive_content(encoded_jit_config: "eyJhIjoiYiJ9" as NonEmptyStr)
-  string_length(s: c) % 512 == 0
-    && string_length(s: c) == 512
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  string_length(s: c) % sector == 0
+    && string_length(s: c) == sector
+    && string_length(s: jit_drive_newline_sector()) == sector
     && starts_with(s: c, prefix: "ACTIONS_RUNNER_INPUT_jitconfig=eyJhIjoiYiJ9\n\n")
     && !string_contains(s: c, pattern: " ")
 }
