@@ -11,7 +11,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import extdeps.prometheus.client {
-  PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary, prometheus_metric_type_word,
+  PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary, PrometheusUntyped, prometheus_metric_type_word,
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.vllm.metrics {
@@ -309,7 +309,7 @@ fn nat_delta(after: Nat, before: Nat) -> Nat? {
 }
 
 fn histogram_family_refused(t: PrometheusMetricType) -> HistogramDelta {
-  HistogramDeltaUnread { cause: join(["this metric is a ", prometheus_metric_type_word(t: t), " family; only a histogram family's sum/count are read as a histogram delta"], "") as NonEmptyStr }
+  HistogramDeltaUnread { cause: join(["this metric is a ", prometheus_metric_type_word(t: t), " family; this reader takes sum/count as a histogram delta only from a histogram family"], "") as NonEmptyStr }
 }
 
 // The sum is read through the projection's own reader, so its unit is the caller's, never guessed here.
@@ -318,6 +318,7 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
     PrometheusCounter => histogram_family_refused(t: PrometheusCounter)
     PrometheusGauge => histogram_family_refused(t: PrometheusGauge)
     PrometheusSummary => histogram_family_refused(t: PrometheusSummary)
+    PrometheusUntyped => histogram_family_refused(t: PrometheusUntyped)
     PrometheusHistogram => {
     match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramSum) {
       Absent => HistogramDeltaUnread { cause: "histogram sum missing on the first body" as NonEmptyStr }

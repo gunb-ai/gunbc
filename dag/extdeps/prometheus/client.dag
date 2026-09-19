@@ -27,14 +27,16 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE METRIC FAMILY TYPE, as the text exposition format declares it on each family's `# TYPE` line
-// (prometheus.io/docs/instrumenting/exposition_formats). Only a histogram family exports the
-// `_sum` and `_count` series a histogram delta reads; a counter or gauge of the same name does not.
+// THE METRIC FAMILY TYPE of the classic text exposition format's `# TYPE` line
+// (prometheus.io/docs/instrumenting/exposition_formats): counter, gauge, histogram, summary, and
+// untyped, which is also the default when no TYPE line is given. Both histogram and summary families
+// export `_sum` and `_count` series; counters, gauges and untyped families do not.
 type PrometheusMetricType
   = PrometheusCounter
   | PrometheusGauge
   | PrometheusHistogram
   | PrometheusSummary
+  | PrometheusUntyped
 
 fn prometheus_metric_type_word(t: PrometheusMetricType) -> String {
   match t {
@@ -42,6 +44,7 @@ fn prometheus_metric_type_word(t: PrometheusMetricType) -> String {
     PrometheusGauge => "gauge"
     PrometheusHistogram => "histogram"
     PrometheusSummary => "summary"
+    PrometheusUntyped => "untyped"
   }
 }
 

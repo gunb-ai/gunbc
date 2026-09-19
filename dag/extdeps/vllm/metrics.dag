@@ -470,7 +470,8 @@ fn vllm_histogram_series_name(m: VllmServingMetric, s: HistogramStatistic) -> No
   }
 }
 
-// Each family's Prometheus type as vLLM's metrics module registers it (Histogram, Counter or Gauge).
+// Each family's Prometheus type as vLLM's metrics module REGISTERS it (Histogram, Counter or Gauge).
+// A projection from the catalog, not a reading of the running exporter's `# TYPE` line.
 fn vllm_metric_type(m: VllmServingMetric) -> PrometheusMetricType {
   match m {
     InterTokenLatencySeconds => PrometheusHistogram
