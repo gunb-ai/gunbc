@@ -171,11 +171,15 @@ are a lower bound with no ceiling, exactly as its CPU is.
 
 ## Phase 3 — retire the CPU line, or say why it stays
 
-`required_floor_per_subject_cpu_line_ms` exists only because two per-subject gates still
-read a CPU clock. When Phase 2 lands, the enrolment margin is not one of them, and the
-remaining consumer is `v2.workflow.floor_cost_debt_admission`. Phase 3 decides that one:
-either it is denominated too and the symbol is deleted with its own dissolution
-condition discharged, or the symbol survives with a population of exactly one, stated.
+`required_floor_per_subject_cpu_line_ms` exists only because per-subject decisions still
+read a CPU clock. Since gunbc#11700 `v2.workflow.floor_cost_debt_admission` compares nothing
+(a typed admission is identity and reason); the consumers are both in
+`v2.workflow.floor_enrolment_margin`: the margin budget, which must sit below the line, and
+the live Roster ground (`enrolment_declared_measured_standing`), which admits only a reading
+over it. When Phase 2 denominates the margin, the Roster ground is the remaining consumer, and
+Phase 3 decides that one: either it is denominated too and the symbol is deleted with its own
+dissolution condition discharged, or the symbol survives with a population of exactly one,
+stated.
 
 **Only when no per-subject budget reads a run-level figure does the drop's clause (iv)
 retire**, and the drop is retired by its trigger and by nothing else.
