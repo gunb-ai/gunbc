@@ -61,7 +61,7 @@ type QualificationStage
   = BootHostUnderApprovalGate { host: HostIdentity, boot: RouteLegStanding, image: RouteLegStanding }
   | RegisterEphemeralRunnerSlot { unit: NonEmptyStr, labels: List<String>, workspace: WorkspaceBacking }
   | DispatchFloorToSlot { workload: FloorWorkloadPin, selector: List<String> }
-  | CollectInstruments { instruments: List<NonEmptyStr> }
+  | CollectInstruments { instruments: List<QualificationInstrument> }
   | DeregisterRunnerSlot { unit: NonEmptyStr }
 
 fn stage_controller_write(stage: QualificationStage) -> StageControllerWrite {
@@ -161,14 +161,31 @@ fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr 
 
 // ── THE INSTRUMENTS THE COLLECT STAGE OWES ────────────────────────────────────────────────────
 //
-// Each names the producer, so the receipt module's reading has a re-derivation rather than a
-// number. They are the required run's own emissions, not a benchmark added for this route.
-data qualification_instruments: List<NonEmptyStr> = [
-  "[floor-phase] rows of claim_executor --required-ci: wall_ms per gunbc.required_ci_phase_roster phase",
-  "[floor-cgroup] rows of the same run at the slot cgroup level: memory.high as the bound, memory.peak as the peak",
-  "the required-floor-claim-cost artifact: eval_steps summed over the floor phase",
-  "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the producer v2.workflow.floor_eval_step_calibration pinned the rate from",
-  "the guest's idle /proc/meminfo MemTotal and MemAvailable and nproc, read before the job starts",
+// Each arm names a producer the required run already has, so the receipt module's reading has a
+// re-derivation rather than a number. None is a benchmark added for this route.
+type QualificationInstrument
+  = FloorPhaseRows
+  | FloorCgroupRows
+  | ClaimCostArtifactEvalSteps
+  | CalibrationSpecimenWitnessLine
+  | GuestIdleMeminfoAndNproc
+
+fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
+  match i {
+    FloorPhaseRows => "[floor-phase] rows of claim_executor --required-ci: wall_ms per gunbc.required_ci_phase_roster phase" as NonEmptyStr
+    FloorCgroupRows => "[floor-cgroup] rows of the same run at the slot cgroup level: memory.high as the bound, memory.peak as the peak" as NonEmptyStr
+    ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact: eval_steps summed over the floor phase" as NonEmptyStr
+    CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the producer v2.workflow.floor_eval_step_calibration pinned the rate from" as NonEmptyStr
+    GuestIdleMeminfoAndNproc => "the guest's idle /proc/meminfo MemTotal and MemAvailable, nproc and uname -m, read before the job starts" as NonEmptyStr
+  }
+}
+
+data qualification_instruments: List<QualificationInstrument> = [
+  FloorPhaseRows,
+  FloorCgroupRows,
+  ClaimCostArtifactEvalSteps,
+  CalibrationSpecimenWitnessLine,
+  GuestIdleMeminfoAndNproc,
 ]
 
 // ── THE mtcollins1 ROUTE ──────────────────────────────────────────────────────────────────────
