@@ -10,7 +10,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // minimum. What that predecessor explicitly did NOT claim, and what is still not claimed here, is
 // that PRODUCTION reaches RunnerMicroVmAdmitted: on the fleet's own inputs gunbc_runner_microvm_shape
 // evaluates to ShapeRefusedWorkMemoryExceedsCellRemainder. The arithmetic is the module's own:
-// the floor's non-reclaimable demand (gunbc.floor_demand, 2026-09-19 receipt) plus the guest's
+// the floor's resident held-set demand (gunbc.floor_demand, 2026-09-19 receipt) plus the guest's
 // cache allowance derived from the same receipt exceeds MemoryMax less the realization reserve.
 // That is the wall doing its job on real receipts, and the refusal carries all three figures --
 // but a production path on which no guest can be shaped is a class below its ceiling, and
@@ -28,11 +28,11 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // expecting-red probe pinned to TODAY's refusal with today's figures, which reds the day the fit
 // changes and then flips to the regression control that production RESOLVES (DESIGN 4b(4)).
 data runner_microvm_floor_fit_stall: GuaranteeStall = GuaranteeStall {
-  subject: "gunbc.runner_microvm cannot shape a production guest for the floor: the floor's measured non-reclaimable demand plus the guest's cache allowance exceeds the fleet cell's MemoryMax less the realization reserve, so gunbc_runner_microvm_vm_config is MicroVmConfigUnresolved on every production path and RunnerMicroVmAdmitted is reachable only under supplied inputs",
+  subject: "gunbc.runner_microvm cannot shape a production guest for the floor: the floor's measured held-set demand plus the guest's cache allowance exceeds the fleet cell's MemoryMax less the realization reserve, so gunbc_runner_microvm_vm_config is MicroVmConfigUnresolved on every production path and RunnerMicroVmAdmitted is reachable only under supplied inputs",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "which of the two rows moves, and by how much, is an operator decision with a fleet cost: raising gunbc.runner_slot_allocation's per-slot MemoryMax above demand plus allowance plus reserve (28 GiB at the 2026-09-19 figures, which takes cores_per_slot 10 -> 11 and CPU width 12 -> 11 per host) or reducing the floor's demand below the current remainder. The in-guest cold receipt (gunbc.floor_cold_build_receipt) may also move the demand: the host-slot reading is censored on the non-reclaimable axis (anonymous memory being swapped at the line), and a guest that holds its own anonymous set may read differently",
+    grounding: "which of the two rows moves, and by how much, is an operator decision with a fleet cost: raising gunbc.runner_slot_allocation's per-slot MemoryMax above demand plus allowance plus reserve (28 GiB at the 2026-09-19 figures, which takes cores_per_slot 10 -> 11 and CPU width 12 -> 11 per host) or reducing the floor's demand below the current remainder. The in-guest cold receipt (gunbc.floor_cold_build_receipt) may also move the demand: the host-slot reading is censored on the held-set axis (anonymous memory being swapped at the line), and a guest that holds its own anonymous set may read differently",
   },
   population: BoundedPopulation {
     members: [

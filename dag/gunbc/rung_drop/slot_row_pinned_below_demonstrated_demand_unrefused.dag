@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // WHAT THE WALL CANNOT SEE, AND NOW HAS A RECEIPT FOR. `gunbc.floor_demand`
 // `gunbc_floor_throttle_pin_receipt_2026_09_19` is the floor pinned AT the current row's line
 // (peak 26849763328 against high 26843545600, 1928 memory.high events, FloorClean), and the
-// non-reclaimable receipt beside it shows anonymous memory being swapped at that line. Demand has
+// memory.stat receipt beside it shows anonymous memory being swapped at that line. Demand has
 // grown past the declaration -- the case the wall's own note names as one of the two reasons it
 // exists to fail for -- and the wall reports green, because a pin is exactly the input its guard
 // excludes. The class "a row below the floor's demonstrated demand is unwritable" therefore sits

@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute, events_per_minute_count,
-  gibibyte_scale_factor_bytes,
+  gibibyte_scale_factor_bytes, MeasureSubtraction, measure_sub, Memory, One,
 }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.storage.types { Ephemeral }
@@ -200,8 +200,8 @@ fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
 // the 2026-09-19 pin's 1928 high events are the kernel giving that half back. So this figure bounds
 // what the cgroup was CHARGED, which is the fact the throttle-line witnesses want, and sizing a
 // machine to it would consume a bet as a fact (DESIGN 4d; an earlier revision of this module
-// stated it as the Work's minimum and was withdrawn). The Work's minimum is the non-reclaimable
-// partition below, read from memory.stat.
+// stated it as the Work's minimum and was withdrawn). The Work's minimum is the resident held-set
+// lower bound below, derived from raw memory.stat beats.
 fn floor_cgroup_charge_ceiling(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
   byte_size(fold(receipts, init: 0, f: (acc, r) => nat_max(acc, byte_size_count(b: floor_peak_receipt_peak(receipt: r)))))
 }
@@ -210,13 +210,13 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
   floor_cgroup_charge_ceiling(receipts: gunbc_floor_demand_receipts())
 }
 
-// ── the non-reclaimable demand ─────────────────────────────────────────────────────────────────
+// ── the resident held-set demand ─────────────────────────────────────────────────────────────────
 //
 // WHAT A MACHINE HAS TO HOLD is the part of the charge reclaim cannot give back: anonymous pages,
 // unevictable pages, shmem, and the kernel's unreclaimable slab, stacks, page tables, per-cpu and
 // socket memory. The instrument is the floor heartbeat's own `[floor-cgroup] stat_level=` line
-// (v1_compiler cli_run required_floor_runner floor_cgroup_stat_partition), which reads the leaf's
-// memory.stat once per beat and prints that partition beside the reclaimable file figures. A
+// (v1_compiler cli_run required_floor_runner floor_cgroup_stat_beat), which reads the leaf's
+// memory.stat once per beat and prints its counters raw, one flat list, no grouping. A
 // receipt carries the raw beats, and the demand is the MAXIMUM of the held set (beat_held_set,
 // the non-overlapping rule below) over them, with the file bytes of the same beat beside it, so the
 // allowance can be checked against what the cache actually held when the anonymous demand peaked.
@@ -225,7 +225,7 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // ONE BEAT'S memory.stat READINGS, RAW, so a beat cited as evidence is a value a fold can read rather
 // than a sentence, and so the derivation below can be checked against the components it folds.
 // Every field is the kernel's own counter as the heartbeat printed it, in bytes; nothing is summed
-// here. The stall rate is the heartbeat's own stall clause beside the partition line, and it rides
+// here. The stall rate is the heartbeat's own stall clause beside the memory_stat line, and it rides
 // the carrier that clause's producer returns -- gunbc.memory_stall_refusal
 // memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
 // instrument hold one representation of one quantity.
@@ -247,7 +247,7 @@ type FloorMemoryStatBeat {
 
 // THE HELD-SET RULE, STATED ONCE AND EXPLICITLY NON-OVERLAPPING. memory.stat's counters are not a
 // partition: `file` INCLUDES shmem/tmpfs pages, and `unevictable` is an LRU-list state counter
-// over pages that `anon` and `file` already count by type. A sum that took every "non-reclaimable
+// over pages that `anon` and `file` already count by type. A sum that took every "unreclaimable-
 // looking" key would double-count. What a guest with no swap must HOLD is therefore folded from
 // disjoint counters only:
 //
@@ -273,8 +273,13 @@ fn beat_held_set(b: FloorMemoryStatBeat) -> ByteSize {
   )
 }
 
-fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> ByteSize {
-  byte_size(byte_size_count(b: b.file) - byte_size_count(b: b.shmem))
+// THE RECLAIMABLE CACHE IS file LESS shmem, AND THE SUBTRACTION IS TYPED: the kernel's own
+// accounting says shmem is inside file, but this reader carries what a line printed and a line can
+// be torn, so a beat with shmem > file refuses through std.measure's MeasureSubtraction rather
+// than being floored to zero -- a zero cache reads exactly like a run with no cache, which is the
+// fabricated equal-measures difference that authority exists to forbid.
+fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> MeasureSubtraction<Memory, One> {
+  measure_sub(a: b.file, b: b.shmem)
 }
 
 // THE RECEIPT CARRIES THE RAW BEATS, AND ITS TWO DISTINGUISHED BEATS ARE DERIVED, NOT AUTHORED:
@@ -282,7 +287,7 @@ fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> ByteSize {
 // numbered beat before the peak whose stall clause read zero -- the cache the slot still held
 // while it was not thrashing, which the guest's cache allowance is derived from. Both folds refuse
 // (Absent) on an empty or all-stalled list rather than inventing a beat.
-type FloorNonReclaimableReceipt {
+type FloorHeldSetReceipt {
   run_id: NonEmptyStr
   runner_unit: NonEmptyStr
   beat_cadence: Second
@@ -295,7 +300,7 @@ fn larger_held_set(a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemor
   if byte_size_count(b: beat_held_set(b: b)) > byte_size_count(b: beat_held_set(b: a)) { b } else { a }
 }
 
-fn receipt_peak_beat(r: FloorNonReclaimableReceipt) -> FloorMemoryStatBeat? {
+fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
   match r.beats {
     Empty {} => none
     Cons { head: h, tail: t } => Present { value: fold(t, init: h, f: (best, b) => larger_held_set(a: best, b: b)) }
@@ -309,7 +314,7 @@ fn later_unstalled_before(peak: FloorMemoryStatBeat, a: FloorMemoryStatBeat, b: 
 // THE LAST UNSTALLED BEAT: the highest-numbered beat before the peak whose stall clause read zero.
 // The fold seeds with the peak itself, which never qualifies, so a result equal to the peak means
 // no beat qualified and the answer is Absent rather than the peak dressed as evidence.
-fn receipt_last_unstalled_beat(r: FloorNonReclaimableReceipt) -> FloorMemoryStatBeat? {
+fn receipt_last_unstalled_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
   match receipt_peak_beat(r: r) {
     Absent => none
     Present { value: p } => {
@@ -319,16 +324,16 @@ fn receipt_last_unstalled_beat(r: FloorNonReclaimableReceipt) -> FloorMemoryStat
   }
 }
 
-fn receipt_held_set_peak(r: FloorNonReclaimableReceipt) -> ByteSize? {
+fn receipt_held_set_peak(r: FloorHeldSetReceipt) -> ByteSize? {
   match receipt_peak_beat(r: r) {
     Absent => none
     Present { value: p } => Present { value: beat_held_set(b: p) }
   }
 }
 
-type FloorNonReclaimableStanding
-  = NonReclaimableUnmeasured { instrument: NonEmptyStr }
-  | NonReclaimableMeasured { receipt: FloorNonReclaimableReceipt }
+type FloorHeldSetStanding
+  = HeldSetUnmeasured { instrument: NonEmptyStr }
+  | HeldSetMeasured { receipt: FloorHeldSetReceipt }
 
 // THE FIRST RECEIPT, FROM THE FIRST FLOOR RUN CARRYING THE INSTRUMENT (this change's own CI run
 // 35419304682, job 105838037678, srv4-04, 2026-09-19, sixteen beats at sixty seconds; beats 12 to
@@ -346,7 +351,7 @@ type FloorNonReclaimableStanding
 // charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim cannot
 // answer. Beat 13 is the last unstalled beat: 24736395264 bytes anonymous beside 1895120896 bytes
 // of file at zero stall, one minute before the cache squeezed to 13 MiB.
-data gunbc_floor_non_reclaimable_receipt_2026_09_19: FloorNonReclaimableReceipt = FloorNonReclaimableReceipt {
+data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeldSetReceipt {
   run_id: "35419304682",
   runner_unit: "actions-runner@srv4-04.service",
   beat_cadence: second(count: 60),
@@ -389,10 +394,10 @@ data gunbc_floor_non_reclaimable_receipt_2026_09_19: FloorNonReclaimableReceipt 
 // -- and it lives with the guest shape (gunbc.runner_microvm
 // gunbc_runner_microvm_guest_cache_allowance), derived from the receipt's last unstalled beat.
 // Putting it here would make every offer in the fleet answer for a policy about one realization.
-fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding) -> MemoryRequirement? {
+fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirement? {
   match standing {
-    NonReclaimableUnmeasured { instrument: _ } => none
-    NonReclaimableMeasured { receipt: r } =>
+    HeldSetUnmeasured { instrument: _ } => none
+    HeldSetMeasured { receipt: r } =>
       match receipt_held_set_peak(r: r) {
         Absent => none
         Present { value: peak } => Present { value: MemoryRequirement { min_bytes: peak } }
@@ -404,12 +409,12 @@ fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding) -> MemoryR
 // it stays constructible because a fresh corpus without the instrument's receipt is exactly the
 // state it represents; the Work states no memory while it stands, and the guest shape refuses on
 // that absence rather than being sized to the charge ceiling.
-fn gunbc_floor_non_reclaimable_standing() -> FloorNonReclaimableStanding {
-  NonReclaimableMeasured { receipt: gunbc_floor_non_reclaimable_receipt_2026_09_19 }
+fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
+  HeldSetMeasured { receipt: gunbc_floor_memory_stat_receipt_2026_09_19 }
 }
 
 fn floor_memory_requirement() -> MemoryRequirement? {
-  floor_memory_requirement_of(standing: gunbc_floor_non_reclaimable_standing())
+  floor_memory_requirement_of(standing: gunbc_floor_held_set_standing())
 }
 
 // ── storage ────────────────────────────────────────────────────────────────────────────────────

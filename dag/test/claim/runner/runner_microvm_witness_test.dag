@@ -1,6 +1,7 @@
 module test.claim.runner_microvm_witness_test
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
+import std.measure { ByteSize }
 import product.fabric.isolation {
   IsolationProfile,
   DedicatedKernel,
@@ -60,6 +61,8 @@ import gunbc.runner_microvm {
   ShapeRefusedReserveExceedsCell,
   ShapeRefusedWorkMemoryExceedsCellRemainder,
   ShapeRefusedWorkStorageExceedsWorkspace,
+  ShapeRefusedCacheAllowanceUnderivable,
+  GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable,
   runner_microvm_shape,
   gunbc_runner_microvm_shape,
   runner_microvm_workspace_grant,
@@ -92,9 +95,10 @@ import gunbc.runner_guest_image { runner_guest_agent_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.floor_demand {
   floor_storage_requirement, floor_memory_requirement, round_up_to_gibibyte_grain,
-  gunbc_floor_non_reclaimable_standing, NonReclaimableUnmeasured, NonReclaimableMeasured,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
   CoresPerSlotResolved,
@@ -624,7 +628,7 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 // It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
 // nothing; no Firecracker process is involved at any step.
 // PRODUCTION SIZING NOW DERIVES, AND WHAT IT ANSWERS IS DECIDED BY THE FLOOR'S DEMAND STANDING.
-// While the non-reclaimable demand is unmeasured the Work states no memory and the shape must
+// While the held-set demand is unmeasured the Work states no memory and the shape must
 // refuse on exactly that absence -- not on the charge ceiling, which includes reclaimable cache
 // and is a bet. Once a receipt stands, the shape must resolve iff the stated requirement fits the
 // cell's remainder beside the reserve, and refuse with both figures otherwise. Both arms are
@@ -643,7 +647,18 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
           }
       }
     Present { value: need } =>
-      if byte_size_count(b: need.min_bytes) + byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) <= remainder {
+      match gunbc_runner_microvm_guest_cache_allowance() {
+        AllowanceUnderivable { cause: _ } =>
+          match gunbc_runner_microvm_shape() {
+            MicroVmShapeResolved { shape: _ } => false
+            MicroVmShapeRefused { refusal: r } =>
+              match r {
+                ShapeRefusedCacheAllowanceUnderivable { cause: _ } => true
+                _ => false
+              }
+          }
+        AllowanceDerived { bytes: allowance_bytes } =>
+      if byte_size_count(b: need.min_bytes) + byte_size_count(b: allowance_bytes) <= remainder {
         match gunbc_runner_microvm_shape() {
           MicroVmShapeResolved { shape: s } =>
             mebibyte_count(m: s.size.memory) == remainder / (1024 * 1024)
@@ -657,11 +672,12 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
             match r {
               ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
                 byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
-                  && byte_size_count(b: a) == byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
+                  && byte_size_count(b: a) == byte_size_count(b: allowance_bytes)
                   && byte_size_count(b: m) == remainder
               _ => false
             }
         }
+      }
       }
   }
 }
@@ -683,12 +699,19 @@ test fn the_production_shape_refuses_today_on_the_memory_remainder_with_all_thre
           match r {
             ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
               byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
-                && byte_size_count(b: a) == byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
+                && allowance_is(bytes: a)
                 && byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
                 && byte_size_count(b: n) + byte_size_count(b: a) > byte_size_count(b: m)
             _ => false
           }
       }
+  }
+}
+
+fn allowance_is(bytes: ByteSize) -> Bool {
+  match gunbc_runner_microvm_guest_cache_allowance() {
+    AllowanceDerived { bytes: b } => byte_size_count(b: b) == byte_size_count(b: bytes)
+    AllowanceUnderivable { cause: _ } => false
   }
 }
 
@@ -713,20 +736,51 @@ test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
     }
 }
 
-// THE ALLOWANCE IS THE LAST UNSTALLED BEAT'S CACHE AT GIBIBYTE GRAIN, READ FROM THE RECEIPT, and
-// zero while nothing is measured -- so a change to the receipt moves the allowance without anyone
-// editing a literal.
+// THE ALLOWANCE IS THE LAST UNSTALLED BEAT'S RECLAIMABLE CACHE AT GIBIBYTE GRAIN, READ FROM THE
+// RECEIPT, and underivable rather than zero while nothing is measured -- so a change to the receipt
+// moves the allowance without anyone editing a literal, and an absent receipt cannot read as "no
+// cache needed".
 test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat() -> Bool {
-  match gunbc_floor_non_reclaimable_standing() {
-    NonReclaimableUnmeasured { instrument: _ } => byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) == 0
-    NonReclaimableMeasured { receipt: r } =>
+  match gunbc_floor_held_set_standing() {
+    HeldSetUnmeasured { instrument: _ } =>
+      match gunbc_runner_microvm_guest_cache_allowance() {
+        AllowanceUnderivable { cause: _ } => true
+        AllowanceDerived { bytes: _ } => false
+      }
+    HeldSetMeasured { receipt: r } =>
       match receipt_last_unstalled_beat(r: r) {
         Absent => false
         Present { value: b } =>
-          byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
-            == byte_size_count(b: round_up_to_gibibyte_grain(bytes: beat_reclaimable_cache(b: b)))
-            && events_per_minute_count(r: b.stall) == 0
-            && byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) >= byte_size_count(b: beat_reclaimable_cache(b: b))
+          match beat_reclaimable_cache(b: b) {
+            MeasureSubtrahendExceedsMinuend => false
+            MeasureDifference { value: cache } =>
+              allowance_is(bytes: round_up_to_gibibyte_grain(bytes: cache))
+                && events_per_minute_count(r: b.stall) == 0
+          }
+      }
+  }
+}
+
+// THE RED FOR THE TYPED CACHE SUBTRACTION, CARRIED THROUGH TO THE SHAPE: a supplied allowance that
+// refused (as a torn beat with shmem = file + 1 would make it) refuses the shape on its own arm,
+// after the reserve is judged and before any remainder is compared -- a zero here would have
+// admitted a guest with no cache and reported it as a fit.
+test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shape() -> Bool {
+  match runner_microvm_shape(
+    work: floor_like_work(),
+    storage: floor_storage_requirement(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+    cache_allowance: AllowanceUnderivable { cause: "fixture: shmem exceeds file" },
+    task_ceiling: 16384,
+    workspace: runner_microvm_workspace_grant,
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedCacheAllowanceUnderivable { cause: c } => cause_mentions(cause: c, needle: "fixture")
+        _ => false
       }
   }
 }
@@ -846,7 +900,7 @@ fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements 
 
 // A WORK SHAPED LIKE THE FLOOR'S -- eight threads, a 25 GiB memory minimum -- SUPPLIED rather than
 // read from gunbc.fabric_witness_run, because the production Work states memory only once the
-// non-reclaimable receipt stands (gunbc.floor_demand) and these controls are about the fold's
+// memory.stat receipt stands (gunbc.floor_demand) and these controls are about the fold's
 // arms, not about that standing. The production route is judged by
 // the_production_shape_answers_according_to_the_floor_demand_standing.
 fn floor_like_work() -> ExecutionRequirements {
@@ -866,7 +920,7 @@ fn shape_of(
     cpu: cpu,
     envelope: envelope,
     reserve: reserve,
-    cache_allowance: gibibyte_to_byte_size(gibibyte(count: 1)),
+    cache_allowance: AllowanceDerived { bytes: gibibyte_to_byte_size(gibibyte(count: 1)) },
     task_ceiling: 16384,
     workspace: runner_microvm_workspace_grant,
   )

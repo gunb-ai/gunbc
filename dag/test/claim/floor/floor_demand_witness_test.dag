@@ -1,15 +1,15 @@
 module test.claim.floor_demand_witness_test
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
   FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
   floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
   floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
-  FloorNonReclaimableStanding, NonReclaimableUnmeasured, NonReclaimableMeasured, FloorNonReclaimableReceipt, FloorMemoryStatBeat,
+  FloorHeldSetStanding, HeldSetUnmeasured, HeldSetMeasured, FloorHeldSetReceipt, FloorMemoryStatBeat,
   beat_held_set, beat_reclaimable_cache, receipt_peak_beat, receipt_last_unstalled_beat, receipt_held_set_peak,
-  floor_memory_requirement_of, gunbc_floor_non_reclaimable_standing, gunbc_floor_non_reclaimable_receipt_2026_09_19,
+  floor_memory_requirement_of, gunbc_floor_held_set_standing, gunbc_floor_memory_stat_receipt_2026_09_19,
   gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
   gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
   floor_storage_requirement,
@@ -83,24 +83,24 @@ test fn the_charge_ceiling_is_the_pin_and_the_sizing_input_is_the_uncensored_rec
 // UNMEASURED. Both arms driven: an unmeasured standing yields no requirement, a fixture receipt
 // yields its peak exactly, and the Work's envelope carries whatever the production standing
 // yields -- so the route from standing to Work is executed in either state.
-test fn the_work_memory_requirement_is_the_non_reclaimable_peak_or_absent() -> Bool {
-  let unmeasured = match floor_memory_requirement_of(standing: NonReclaimableUnmeasured { instrument: "fixture" }) {
+test fn the_work_memory_requirement_is_the_held_set_peak_or_absent() -> Bool {
+  let unmeasured = match floor_memory_requirement_of(standing: HeldSetUnmeasured { instrument: "fixture" }) {
     Absent => true
     Present { value: _ } => false
   }
   let measured = match floor_memory_requirement_of(
-    standing: NonReclaimableMeasured { receipt: fixture_receipt() },
+    standing: HeldSetMeasured { receipt: fixture_receipt() },
   ) {
     Absent => false
     Present { value: m } => byte_size_count(b: m.min_bytes) == 1000
   }
-  let work_carries_the_standing = match gunbc_floor_non_reclaimable_standing() {
-    NonReclaimableUnmeasured { instrument: _ } =>
+  let work_carries_the_standing = match gunbc_floor_held_set_standing() {
+    HeldSetUnmeasured { instrument: _ } =>
       match floor_execution_requirements().shape.envelope.memory {
         Absent => true
         Present { value: _ } => false
       }
-    NonReclaimableMeasured { receipt: r } =>
+    HeldSetMeasured { receipt: r } =>
       match floor_execution_requirements().shape.envelope.memory {
         Absent => false
         Present { value: m } =>
@@ -125,8 +125,8 @@ fn beat(n: Int, anon: Int, file: Int, shmem: Int, unevictable: Int, stall: Int) 
 
 // A FIXTURE RUN OF THREE BEATS: beat 1 unstalled with a large cache, beat 2 the held-set peak and
 // stalling, beat 3 falling back. Held set at beat 2 = 900 + 90 + 4 + 3 + 2 + 1 + 0 = 1000.
-fn fixture_receipt() -> FloorNonReclaimableReceipt {
-  FloorNonReclaimableReceipt {
+fn fixture_receipt() -> FloorHeldSetReceipt {
+  FloorHeldSetReceipt {
     run_id: "fixture",
     runner_unit: "fixture",
     beat_cadence: second(count: 60),
@@ -146,8 +146,21 @@ fn fixture_receipt() -> FloorNonReclaimableReceipt {
 // less shmem.
 test fn the_held_set_rule_counts_disjoint_terms_only() -> Bool {
   let b2 = beat(n: 2, anon: 900, file: 100, shmem: 90, unevictable: 30, stall: 9)
-  byte_size_count(b: beat_held_set(b: b2)) == 1000
-    && byte_size_count(b: beat_reclaimable_cache(b: b2)) == 10
+  let cache = match beat_reclaimable_cache(b: b2) {
+    MeasureDifference { value: c } => byte_size_count(b: c) == 10
+    MeasureSubtrahendExceedsMinuend => false
+  }
+  byte_size_count(b: beat_held_set(b: b2)) == 1000 && cache
+}
+
+// THE RED FOR THE TYPED SUBTRACTION: a torn line with shmem = file + 1 refuses rather than
+// flooring the cache to zero, and that refusal reaches the shape as its own arm (see
+// runner_microvm_witness_test a_torn_beat_with_more_shmem_than_file_refuses_the_allowance).
+test fn a_beat_with_more_shmem_than_file_refuses_the_cache_subtraction() -> Bool {
+  match beat_reclaimable_cache(b: beat(n: 1, anon: 800, file: 100, shmem: 101, unevictable: 0, stall: 0)) {
+    MeasureSubtrahendExceedsMinuend => true
+    MeasureDifference { value: _ } => false
+  }
 }
 
 // THE DISTINGUISHED BEATS ARE DERIVED FROM THE LIST: the peak is the largest held set, the last
@@ -162,7 +175,7 @@ test fn the_peak_and_last_unstalled_beats_are_derived_from_the_raw_beats() -> Bo
     Absent => false
     Present { value: u } => u.beat == 1
   }
-  let empty = FloorNonReclaimableReceipt {
+  let empty = FloorHeldSetReceipt {
     run_id: "empty", runner_unit: "empty", beat_cadence: second(count: 60), beats_sampled: 0,
     beats: [] as List<FloorMemoryStatBeat>, run_completed: false,
   }
@@ -180,7 +193,7 @@ test fn the_peak_and_last_unstalled_beats_are_derived_from_the_raw_beats() -> Bo
 // run, the held set within the cell's memory_max, and the cache under one percent of the charge
 // at the peak.
 test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readings() -> Bool {
-  let r = gunbc_floor_non_reclaimable_receipt_2026_09_19
+  let r = gunbc_floor_memory_stat_receipt_2026_09_19
   let peak_ok = match receipt_peak_beat(r: r) {
     Absent => false
     Present { value: p } =>

@@ -21,9 +21,10 @@ import product.fabric.envelope { StorageRequirement }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.floor_demand {
   floor_storage_requirement, round_up_to_gibibyte_grain,
-  gunbc_floor_non_reclaimable_standing, NonReclaimableUnmeasured, NonReclaimableMeasured,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,
@@ -378,7 +379,7 @@ data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
 //   memory       the cell's MemoryMax less the realization reserve: everything the cell admits
 //                beside the VMM, admitted only if it is at least the Work's stated minimum PLUS
 //                the guest's cache allowance. The Work's minimum is what it must hold
-//                (gunbc.floor_demand: the non-reclaimable partition); the allowance is what this
+//                (gunbc.floor_demand: the resident held-set lower bound); the allowance is what this
 //                realization grants its kernel for file pages above that, because a guest with
 //                exactly its anonymous demand as RAM thrashes. The guest is granted the whole
 //                REMAINDER rather than the sum because the minimum is a censored lower bound and
@@ -414,6 +415,7 @@ type RunnerMicroVmShapeRefusal
   | ShapeRefusedReserveExceedsCell { reserve: ByteSize, envelope: ByteSize }
   | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, allowance: ByteSize, remainder: ByteSize }
   | ShapeRefusedWorkStorageExceedsWorkspace { required: ByteSize, workspace: ByteSize }
+  | ShapeRefusedCacheAllowanceUnderivable { cause: String }
 
 type RunnerMicroVmShapeResolution
   = MicroVmShapeResolved { shape: RunnerMicroVmShape }
@@ -435,6 +437,8 @@ fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
       join(["the work's memory demand of ", to_string(byte_size_count(b: r)), " bytes plus the guest's cache allowance of ", to_string(byte_size_count(b: a)), " bytes exceeds the ", to_string(byte_size_count(b: m)), " bytes the cell admits beside the realization reserve; raise the cell row, lower the allowance or reduce the demand"], "")
     ShapeRefusedWorkStorageExceedsWorkspace { required: r, workspace: w } =>
       join(["the work's storage demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: w)), " byte workspace grant"], "")
+    ShapeRefusedCacheAllowanceUnderivable { cause: c } =>
+      concat("the guest's cache allowance cannot be derived, so no memory fit can be judged: ", c)
   }
 }
 
@@ -444,7 +448,7 @@ fn runner_microvm_shape(
   cpu: CellCpuEntitlement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
-  cache_allowance: ByteSize,
+  cache_allowance: GuestCacheAllowance,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -483,7 +487,7 @@ fn runner_microvm_shape_after_cpu(
   storage: StorageRequirement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
-  cache_allowance: ByteSize,
+  cache_allowance: GuestCacheAllowance,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -494,55 +498,88 @@ fn runner_microvm_shape_after_cpu(
       if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
         MicroVmShapeRefused { refusal: ShapeRefusedReserveExceedsCell { reserve: r, envelope: envelope.bytes } }
       } else {
-        let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: r)
-        let allowance = cache_allowance
-        if remainder < byte_size_count(b: need) + byte_size_count(b: allowance) {
-          MicroVmShapeRefused {
-            refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
-          }
-        } else {
-          let workspace_bytes = mebibyte_to_byte_size(m: workspace)
-          if byte_size_count(b: storage.min_bytes) > byte_size_count(b: workspace_bytes) {
-            MicroVmShapeRefused {
-              refusal: ShapeRefusedWorkStorageExceedsWorkspace { required: storage.min_bytes, workspace: workspace_bytes },
-            }
-          } else {
-            MicroVmShapeResolved {
-              shape: RunnerMicroVmShape {
-                size: RunnerMicroVmSize {
-                  vcpu_count: vcpus,
-                  memory: mebibyte(count: remainder / mebibyte_scale_factor_bytes()),
-                },
-                workspace: workspace,
-                task_ceiling: task_ceiling,
-              },
-            }
-          }
+        match cache_allowance {
+          AllowanceUnderivable { cause: c } =>
+            MicroVmShapeRefused { refusal: ShapeRefusedCacheAllowanceUnderivable { cause: c } }
+          AllowanceDerived { bytes: allowance } =>
+            runner_microvm_shape_after_allowance(
+              vcpus: vcpus, need: need, storage: storage, envelope: envelope, reserve: r, allowance: allowance,
+              task_ceiling: task_ceiling, workspace: workspace,
+            )
         }
       }
   }
 }
 
+fn runner_microvm_shape_after_allowance(
+  vcpus: HardwareThreadCount,
+  need: ByteSize,
+  storage: StorageRequirement,
+  envelope: CellMemoryEnvelope,
+  reserve: ByteSize,
+  allowance: ByteSize,
+  task_ceiling: Int,
+  workspace: Mebibyte,
+) -> RunnerMicroVmShapeResolution {
+  let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: reserve)
+  if remainder < byte_size_count(b: need) + byte_size_count(b: allowance) {
+    MicroVmShapeRefused {
+      refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
+    }
+  } else {
+    let workspace_bytes = mebibyte_to_byte_size(m: workspace)
+    if byte_size_count(b: storage.min_bytes) > byte_size_count(b: workspace_bytes) {
+      MicroVmShapeRefused {
+        refusal: ShapeRefusedWorkStorageExceedsWorkspace { required: storage.min_bytes, workspace: workspace_bytes },
+      }
+    } else {
+      MicroVmShapeResolved {
+        shape: RunnerMicroVmShape {
+          size: RunnerMicroVmSize {
+            vcpu_count: vcpus,
+            memory: mebibyte(count: remainder / mebibyte_scale_factor_bytes()),
+          },
+          workspace: workspace,
+          task_ceiling: task_ceiling,
+        },
+      }
+    }
+  }
+}
+
 // THE GUEST'S CACHE ALLOWANCE IS DERIVED FROM THE DEMAND RECEIPT, NOT DECLARED BESIDE IT. A guest
-// whose RAM equals the Work's non-reclaimable demand runs the floor with no file cache at all,
-// re-reading every source and object from the workspace image on each touch. The receipt carries
-// the last beat at which the host slot was NOT thrashing (gunbc.floor_demand
-// receipt_last_unstalled_beat: the stall clause at zero, 1895120896 bytes of file beside the
-// anonymous demand on 2026-09-19), and the allowance is that beat's RECLAIMABLE cache -- file less
-// shmem, the part reclaim can give back -- rounded up to the corpus's whole-gibibyte grain: the
-// smallest grain above a cache the run held while it worked.
-// It is a floor on a working operating point rather than a measured optimum, which is the only
-// honest reading of one beat; its revision is the in-guest cold receipt
-// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest. While the
-// demand is unmeasured there is no beat to derive from, and the shape refuses on the unstated
-// Work memory before this is ever read.
-fn gunbc_runner_microvm_guest_cache_allowance() -> ByteSize {
-  match gunbc_floor_non_reclaimable_standing() {
-    NonReclaimableUnmeasured { instrument: _ } => byte_size(0)
-    NonReclaimableMeasured { receipt: r } =>
+// whose RAM equals the Work's held-set demand runs the floor with no file cache at all, re-reading
+// every source and object from the workspace image on each touch. The receipt carries the last
+// beat at which the host slot was NOT thrashing (gunbc.floor_demand receipt_last_unstalled_beat:
+// the stall clause at zero, 1895120896 bytes of file beside the anonymous demand on 2026-09-19),
+// and the allowance is that beat's RECLAIMABLE cache -- file less shmem, the part reclaim can give
+// back -- rounded up to the corpus's whole-gibibyte grain: the smallest grain above a cache the
+// run held while it worked. It is a floor on a working operating point rather than a measured
+// optimum, which is the only honest reading of one beat; its revision is the in-guest cold receipt
+// (gunbc.floor_cold_build_receipt), which reads the same counters inside a guest.
+//
+// THE ALLOWANCE IS A COPRODUCT BECAUSE ITS DERIVATION CAN REFUSE: the subtraction file - shmem is
+// typed (std.measure measure_sub), and a torn line with shmem > file, or a receipt with no beat to
+// derive from, yields AllowanceUnderivable with its cause rather than a zero that reads as "no
+// cache needed". The shape refuses on that arm; the demand being unmeasured refuses earlier, on
+// the Work's absent memory.
+type GuestCacheAllowance
+  = AllowanceDerived { bytes: ByteSize }
+  | AllowanceUnderivable { cause: String }
+
+fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
+  match gunbc_floor_held_set_standing() {
+    HeldSetUnmeasured { instrument: i } =>
+      AllowanceUnderivable { cause: concat("the floor's held-set demand is unmeasured, so there is no beat to read a cache from; instrument: ", i as String) }
+    HeldSetMeasured { receipt: r } =>
       match receipt_last_unstalled_beat(r: r) {
-        Absent => byte_size(0)
-        Present { value: b } => round_up_to_gibibyte_grain(bytes: beat_reclaimable_cache(b: b))
+        Absent => AllowanceUnderivable { cause: "the receipt has no unstalled beat before its peak, so no cache was observed beside the demand while the slot was not thrashing" }
+        Present { value: b } =>
+          match beat_reclaimable_cache(b: b) {
+            MeasureSubtrahendExceedsMinuend =>
+              AllowanceUnderivable { cause: "the last unstalled beat reports more shmem than file, which the kernel's accounting forbids; the line is torn and no cache can be read from it" }
+            MeasureDifference { value: cache } => AllowanceDerived { bytes: round_up_to_gibibyte_grain(bytes: cache) }
+          }
       }
   }
 }
