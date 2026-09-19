@@ -202,6 +202,62 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // had meanwhile cited that module as a strength while it executed nothing, which is exactly why a
 // dead claim is worse than an absent one. The second attempt passes a parameter of the wrong
 // declared type instead, so no value is constructed and no brace is escaped.
+// THE OCTET CARRIER HAS NO WIDTH FIELD, AND THAT ABSENCE IS THE WHOLE POINT.
+//
+// The octet path previously carried QualifiedWord, which proves a value inhabits ITS OWN width --
+// not that the width is eight. Those are different propositions, and the gap was reachable without
+// any forgery: word_qualified(Word { width: Width16, value: 256 }) is a SANCTIONED QualifiedWord,
+// and it reached word_from_octets_realizable (which re-checks nothing), octet_int_values (which
+// projected 256 as an "octet value"), and base64_encode's divergence arm. My annotation claimed
+// that arm was reachable only by forging the carrier. It was false, and a counterexample built
+// entirely from the sanctioned constructor is the worst kind of false: the type looked like a proof
+// and proved a neighbouring fact (review by fierce-seal-607, 2026-09-19).
+//
+// Octet carries a value and NOTHING ELSE. There is no width to disagree with, so "this is an octet"
+// stops being a proof the carrier has to transport correctly and becomes a property of the type.
+// That is section 4b's construction rung rather than a validation one: the invalid state is not
+// refused on inspection, it has no field to be written in.
+type Octet {
+  value: Int
+}
+
+type OctetResult
+  = OctetReady { octet: Octet }
+  | OctetRefused { cause: WordRefusal }
+
+// The ONE producer of Octet. The bound is the Width8 modulus rather than a literal 256, so the
+// octet's range and the Width8 word's range cannot drift apart -- they are the same number read
+// from the same place.
+fn octet_of_int(value: Int) -> OctetResult {
+  match word_modulus(w: Width8) {
+    Absent => OctetRefused { cause: WordWidthUnrealizable { width: Width8 } }
+    Present { value: m } =>
+      if value < 0 || value >= m {
+        OctetRefused { cause: WordValueOutOfRange { width: Width8, value: value } }
+      } else {
+        OctetReady { octet: Octet { value: value } }
+      }
+  }
+}
+
+fn octet_value(o: Octet) -> Int {
+  o.value
+}
+
+// THE ONE HOME FOR WHAT Octet DOES AND DOES NOT ESTABLISH. Consumers with an arm reachable only by
+// a forged octet CITE this paragraph rather than restating it -- std.encoding base64_encode is the
+// current one -- because a fact with two statements is a fact that can disagree with itself, and
+// this pair already did so twice.
+//
+// WHAT IS STRUCTURAL: there is no width field, so "this is eight bits wide" cannot be written
+// wrongly. That is the repair for the defect QualifiedWord had here, where a SANCTIONED
+// Width16 value reached the octet path without any forgery at all.
+//
+// WHAT IS NOT: Octet is a record with a public field and .dag has no module-private construction,
+// so Octet { value: 300 } remains writable. Rung: mitigatable. Trigger, unchanged and shared with
+// the word carrier: sole construction, which makes the forgery unwritable and turns every refusal
+// derived from it into a state with no constructor.
+
 type QualifiedWord {
   word: Word
 }
