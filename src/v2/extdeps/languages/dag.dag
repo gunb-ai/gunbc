@@ -569,6 +569,8 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_nominal_opaque, text: "nominal_opaque"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_sole_constructor, text: "sole_constructor"),
       dag_literal_lex_rule(token_class: ^dag_token_arrow, text: "->"),
       dag_literal_lex_rule(token_class: ^dag_token_fat_arrow, text: "=>"),
       dag_literal_lex_rule(token_class: ^dag_token_eq_eq, text: "=="),
@@ -727,11 +729,11 @@ fn dag_grammar_module_header_expr() -> GrammarExpr {
 
 fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
     right: dag_grammar_repeat(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
-        right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+        right: dag_grammar_ident_or_type_decl_modifier_name()
       )
     )
   )
@@ -741,7 +743,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -822,7 +824,7 @@ fn dag_grammar_where_predicate_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_optional(
         element: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_colon),
@@ -838,7 +840,7 @@ fn dag_grammar_where_predicate_arg_expr() -> GrammarExpr {
 // the authored spelling and does not mint a second table.
 fn dag_grammar_where_predicate_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
     right: dag_grammar_optional(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lparen),
@@ -873,7 +875,7 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
       right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
     )
   )
@@ -898,7 +900,9 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_false,
     ^dag_token_kw_where,
     ^dag_token_kw_as,
-    ^dag_token_kw_return
+    ^dag_token_kw_return,
+    ^dag_token_kw_nominal_opaque,
+    ^dag_token_kw_sole_constructor
   ]
 }
 
@@ -912,6 +916,70 @@ fn dag_grammar_binding_name_terminal() -> GrammarExpr {
         right: dag_grammar_terminal_lexeme(token_class: tok)
       )
     }
+  )
+}
+
+// KeywordPattern is G0's only ident-text match, so the two type-decl modifiers are
+// keywords. v1 still lexes them as ordinary idents (drop_leading_type_modifier /
+// tok_is_ident_text). Every name site that is ident-only in v1 must therefore also
+// admit these two token classes, or `^sole_constructor` and `data sole_constructor`
+// become an undeclared narrowing. The `test` marker stays ident-only: it is not
+// a keyword, and folding these classes into that production would admit
+// `sole_constructor fn` as a marked item.
+fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_nominal_opaque),
+      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_sole_constructor)
+    )
+  )
+}
+
+// The identity-preserving sibling, for the two name sites that were dag_grammar_terminal
+// (StampClass) before the modifier classes were admitted, and that must keep publishing
+// what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
+// referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
+// two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
+// ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
+//
+//   1. StampClass -> StampLexeme. Routing these sites through the lexeme-stamped helper
+//      would make every caret literal and generic parameter carry its own text as the
+//      node's atom identity (v2.compiler.02_parse symbol_intern_lexeme).
+//   2. The token CLASS a class stamp publishes. v2.compiler.02_parse resolves it as
+//      exactly `StampClass => tok.class`. Before promotion these spellings lexed as
+//      ^dag_token_ident, so a class-stamped site published ^dag_token_ident; once they lex
+//      as their own keyword classes, the SAME StampClass publishes
+//      ^dag_token_kw_sole_constructor instead. Holding the mode fixed does not hold the
+//      identity fixed.
+//
+// So THIS HELPER IS NO LONGER UNIFORMLY CLASS-STAMPED, and the arms differ on purpose:
+// the ordinary identifier arm stays StampClass, whose published identity IS
+// ^dag_token_ident; the two promoted keyword arms use a FIXED StampBinding of
+// ^dag_token_ident (v2.std.grammar grammar_expr_terminal_bound, published by
+// v2.compiler.02_parse as `StampBinding { binding: b } => b`). Both arms therefore publish
+// the SAME generic identifier identity and NEITHER publishes authored text, which is the
+// property these sites had before promotion -- reached by two mechanisms rather than one. That keeps
+// v2.lens.identity_captured_navigation.analyze node_source_symbol_note true as the
+// UNIVERSAL grammar property it states -- every caret literal carries the generic
+// ^dag_token_ident and never the particular spelling -- rather than true only of a corpus
+// that happens not to use these spellings as names. This PR deliberately makes
+// `^sole_constructor` legal and authors one in its own witness, so a census-relative
+// reading would not discharge the note (DESIGN section 4b(1): the reported rung must equal
+// the rung established by executed evidence).
+fn dag_grammar_ident_or_type_decl_modifier_generic_ident_identity() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal_bound(
+        token_class: ^dag_token_kw_nominal_opaque,
+        binding: ^dag_token_ident
+      ),
+      right: dag_grammar_terminal_bound(
+        token_class: ^dag_token_kw_sole_constructor,
+        binding: ^dag_token_ident
+      )
+    )
   )
 }
 
@@ -1211,7 +1279,7 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 }
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
-  dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident))
+  dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name())
 }
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
@@ -1277,7 +1345,7 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
 fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
-    right: dag_grammar_terminal(token_class: ^dag_token_ident)
+    right: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()
   )
 }
 
@@ -1297,7 +1365,7 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
@@ -1567,7 +1635,7 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -1576,16 +1644,16 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+        left: dag_grammar_ident_or_type_decl_modifier_name(),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
-            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+            left: dag_grammar_ident_or_type_decl_modifier_name(),
             right: dag_grammar_sequence(
               left: dag_grammar_repeat(
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
-                  right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+                  right: dag_grammar_ident_or_type_decl_modifier_name()
                 )
               ),
               right: dag_grammar_sequence(
@@ -1617,7 +1685,7 @@ fn dag_grammar_alias_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_alias),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
@@ -1650,19 +1718,45 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
   )
 }
 
+// v1.compiler.parse type_body_tokens_after_modifiers drops at most two leading idents after
+// the type name and optional generics: first `nominal_opaque`, then `sole_constructor`
+// (drop_leading_type_modifier). G0 has no ident-text match, so the closed set is encoded as
+// keyword tokens rather than an optional ident — an optional ident would accept any word in
+// that slot and widen past v1. Order is the same two optional drops: reversed or unknown
+// spellings remain tokens-remain refusals.
+//
+// PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
+// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
+// only sole_constructor via parsed_sole_constructor_properties; G0 only consumes
+// the tokens so the native door can continue. nominal_opaque is dropped in v1 and
+// mints nothing.
+fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_optional(
+      element: dag_grammar_terminal(token_class: ^dag_token_kw_nominal_opaque)
+    ),
+    right: dag_grammar_optional(
+      element: dag_grammar_terminal(token_class: ^dag_token_kw_sole_constructor)
+    )
+  )
+}
+
 fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_type),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
-        right: dag_grammar_optional(
-          element: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
-            right: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_eq),
-              right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+        right: dag_grammar_sequence(
+          left: dag_grammar_type_decl_modifiers_expr(),
+          right: dag_grammar_optional(
+            element: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
+              right: dag_grammar_sequence(
+                left: dag_grammar_terminal(token_class: ^dag_token_eq),
+                right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+              )
             )
           )
         )
@@ -1675,7 +1769,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_sequence(
@@ -1694,7 +1788,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
         right: dag_grammar_sequence(
