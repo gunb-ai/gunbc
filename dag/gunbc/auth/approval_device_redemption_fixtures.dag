@@ -1,0 +1,250 @@
+module gunbc.auth.approval_device_redemption_fixtures
+
+import std.types { NonEmptyStr, String, Timestamp, List }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
+import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
+import gunbc.auth.approval_device_wire {
+  DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid, PushRegistration,
+  device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
+  device_read_client_data, approval_device_pending_path, approval_device_request_path_prefix,
+  EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
+  EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive,
+  enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
+  fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
+  device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
+  approval_device_enrollment_header, approval_device_requested_at_header, approval_device_assertion_header,
+  approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
+}
+import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
+import extdeps.apple.apns { ApnsProduction }
+import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest }
+
+// ── The cross-language byte contract ─────────────────────────────────────────────────────────
+// The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
+// them here. The two must agree BYTE FOR BYTE or every signature fails. The contract is not
+// re-typed in Swift tests: this module renders each vector's EXPECTED bytes through the very
+// functions the server verifies against, and the app's XCTest reads the emitted file. The file is
+// gunbc.generated_artifact ApprovalDeviceVectorsArtifact: the required generated-artifact phase
+// refuses a commit that differs from approval_device_vectors_json, the refusing merge driver guards
+// it, and the app's test refuses the new bytes until its builder follows.
+
+type RedemptionVector {
+  name: NonEmptyStr
+  input: DeviceRedemptionSigningInput
+}
+
+type EnrolmentVector {
+  name: NonEmptyStr
+  code: NonEmptyStr
+  platform: MobilePlatform
+  point_b64url: NonEmptyStr
+}
+
+// The stored-request texts are real store renderings in shape, and deliberately carry the
+// characters a hand-built Swift string gets wrong: quotes, a backslash, non-ASCII, and a newline.
+fn redemption_vector(name: NonEmptyStr, decision: ProposedDecision, stored_request_text: NonEmptyStr) -> RedemptionVector {
+  RedemptionVector {
+    name: name,
+    input: DeviceRedemptionSigningInput {
+      audience: approval_device_audience,
+      enrollment_id: "enr-7f3a",
+      challenge: RedemptionChallenge {
+        expires_at: "2026-09-18T12:05:00Z" as Timestamp,
+        nonce_hex: "9c1d2e3f4a5b6c7d8e9fa0b1c2d3e4f5061728394a5b6c7d8e9fa0b1c2d3e4f5",
+      },
+      escalation_id: "esc-mtc1-boot-1",
+      request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+      stored_request_text: stored_request_text,
+      decision: decision,
+      capability_text: join(["gunbc.approval-capability.v1", "gunbc.roadmap_serve", "gunbc.auth.approval_broker"], signing_field_separator) as NonEmptyStr,
+      capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=",
+    },
+  }
+}
+
+data redemption_vectors: List<RedemptionVector> = [
+  redemption_vector(name: "approve-plain", decision: ProposeApprove, stored_request_text: "{\"kind\":\"request\",\"escalation_id\":\"esc-mtc1-boot-1\",\"destructive\":true}"),
+  redemption_vector(name: "deny-plain", decision: ProposeDeny, stored_request_text: "{\"kind\":\"request\",\"escalation_id\":\"esc-mtc1-boot-1\",\"destructive\":true}"),
+  redemption_vector(name: "approve-escapes", decision: ProposeApprove, stored_request_text: "{\"purpose\":\"Boot Mt. Collins \\\\ unit 1 — été\nline two\"}"),
+]
+
+data enrolment_vectors: List<EnrolmentVector> = [
+  EnrolmentVector { name: "ios", code: "482913", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "android", code: "482913", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+]
+
+fn enrolment_expected(v: EnrolmentVector) -> NonEmptyStr {
+  enrolment_transcript(
+    code: v.code,
+    decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: v.point_b64url },
+    platform: v.platform,
+  )
+}
+
+fn redemption_vector_json(v: RedemptionVector) -> JsonValue {
+  let i = v.input
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "audience", value: json_string(s: i.audience as String)),
+      json_kv(key: "enrollment_id", value: json_string(s: i.enrollment_id as String)),
+      json_kv(key: "challenge_expires_at", value: json_string(s: i.challenge.expires_at)),
+      json_kv(key: "nonce_hex", value: json_string(s: i.challenge.nonce_hex as String)),
+      json_kv(key: "escalation_id", value: json_string(s: i.escalation_id as String)),
+      json_kv(key: "request_revision", value: json_string(s: i.request_revision as String)),
+      json_kv(key: "stored_request_text", value: json_string(s: i.stored_request_text as String)),
+      json_kv(key: "decision", value: json_string(s: proposed_decision_name(d: i.decision) as String)),
+      json_kv(key: "capability_text", value: json_string(s: i.capability_text as String)),
+      json_kv(key: "capability_tag_b64url", value: json_string(s: i.capability_tag_b64url as String)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: device_redemption_signing_input(i: i) as String)),
+  ])
+}
+
+fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "code", value: json_string(s: v.code as String)),
+      json_kv(key: "platform", value: json_string(s: platform_wire(p: v.platform) as String)),
+      json_kv(key: "point_b64url", value: json_string(s: v.point_b64url as String)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: enrolment_expected(v: v) as String)),
+  ])
+}
+
+// The read transcript an App Attest assertion covers on the two authenticated GETs.
+type ReadVector {
+  name: NonEmptyStr
+  path: NonEmptyStr
+  enrollment_id: NonEmptyStr
+  requested_at: Timestamp
+}
+
+data read_vectors: List<ReadVector> = [
+  ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "request", path: join([approval_device_request_path_prefix as String, "esc-mtc1-boot-1"], "") as NonEmptyStr, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+]
+
+fn read_vector_json(v: ReadVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "path", value: json_string(s: v.path as String)),
+      json_kv(key: "enrollment_id", value: json_string(s: v.enrollment_id as String)),
+      json_kv(key: "requested_at", value: json_string(s: v.requested_at)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: device_read_client_data(path: v.path, enrollment_id: v.enrollment_id, requested_at: v.requested_at) as String)),
+  ])
+}
+
+// ── Envelopes ────────────────────────────────────────────────────────────────────────────────
+// ONE OF EVERY BODY THE TWO SIDES EXCHANGE, rendered by the wire's own encoders. The app encodes the
+// requests and must produce these bytes; it decodes the responses and must read these values.
+data fx_point: NonEmptyStr = "BHt2Zm9vYmFyYmF6cXV4"
+data fx_push: PushRegistration = ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2c3d4e5f6" }
+
+fn fx_signing_input() -> DeviceRedemptionSigningInput {
+  match first(redemption_vectors) { Present { value: v } => v.input  Absent => redemption_vector(name: "approve-plain", decision: ProposeApprove, stored_request_text: "{}").input }
+}
+
+type EnvelopeVector {
+  name: NonEmptyStr
+  body: String
+}
+
+data envelope_vectors: List<EnvelopeVector> = [
+  EnvelopeVector { name: "enrolment_request", body: enrolment_request_json(r: EnrolmentRequest {
+    code: "482913", platform: MobileIos,
+    decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
+    evidence: IosAppAttestAttestation { attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0" },
+    push: fx_push,
+  }) },
+  EnvelopeVector { name: "signed_redemption", body: signed_redemption_json(r: SignedRedemption {
+    signing_input: fx_signing_input(),
+    signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "c2lnbmF0dXJl" },
+    platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
+  }) },
+  EnvelopeVector { name: "push_update", body: push_update_json(p: fx_push) },
+  EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: "enr-482913" }) },
+  EnvelopeVector { name: "pending_list", body: pending_list_json(rows: [PendingApproval { escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab" }]) },
+  EnvelopeVector { name: "fetched_request", body: fetched_request_json(f: FetchedRequest {
+    escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab", stored_request_text: "{\"kind\":\"request\"}",
+    challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z" as Timestamp, nonce_hex: "9c1d" },
+    approve: VerbCapability { capability_text: "approve-text", capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=" },
+    deny: VerbCapability { capability_text: "deny-text", capability_tag_b64url: "DfEI-CJIvDgDxhGnedEBCKWBrsxopGkEpUqVsl6enGg=" },
+  }) },
+  EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: "enr-482913", standing: EnrolmentStandingActive }) },
+  EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) },
+  EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
+  EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
+  EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
+  EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String },
+  EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
+  EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) as String },
+]
+
+fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "body", value: json_string(s: v.body)),
+  ])
+}
+
+// ── The HTTP surface ─────────────────────────────────────────────────────────────────────────
+// EVERY NAME THE APP SENDS OR ADDRESSES, from the wire's own rows, so Wire.swift restates none of
+// them: the three authenticated-request headers, every fixed route and route prefix, and the path
+// segment encoding over specimens of each character class it must handle.
+type SurfaceVector {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+data surface_vectors: List<SurfaceVector> = [
+  SurfaceVector { name: "header_enrollment", value: approval_device_enrollment_header },
+  SurfaceVector { name: "header_requested_at", value: approval_device_requested_at_header },
+  SurfaceVector { name: "header_assertion", value: approval_device_assertion_header },
+  SurfaceVector { name: "route_enrol", value: approval_device_enrol_path },
+  SurfaceVector { name: "route_pending", value: approval_device_pending_path },
+  SurfaceVector { name: "route_request_prefix", value: approval_device_request_path_prefix },
+  SurfaceVector { name: "route_redeem", value: approval_device_redeem_path },
+  SurfaceVector { name: "route_enrollment_prefix", value: approval_device_enrollment_path_prefix },
+  SurfaceVector { name: "route_push", value: approval_device_push_path },
+]
+
+type SegmentVector {
+  input: NonEmptyStr
+  encoded: NonEmptyStr
+}
+
+data segment_specimens: List<NonEmptyStr> = ["esc-mtc1_boot~1", "482?913", "a%2Fb", "a#b", "a/b", "..", ".", "sp ace", "café", "☃", "🔒"]
+
+fn segment_vector_json(input: NonEmptyStr) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "input", value: json_string(s: input as String)),
+    json_kv(key: "encoded", value: json_string(s: path_segment(s: input) as String)),
+  ])
+}
+
+fn surface_vector_json(v: SurfaceVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "value", value: json_string(s: v.value as String)),
+  ])
+}
+
+fn approval_device_vectors_json() -> String {
+  concat(
+    serialize_json(v: json_object(members: [
+      json_kv(key: "framing", value: json_string(s: "each field as <code point count>:<field>, concatenated")),
+      json_kv(key: "redemption", value: json_array(elements: map(redemption_vectors, v => redemption_vector_json(v: v)))),
+      json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
+      json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
+      json_kv(key: "envelope", value: json_array(elements: map(envelope_vectors, v => envelope_vector_json(v: v)))),
+      json_kv(key: "surface", value: json_array(elements: map(surface_vectors, v => surface_vector_json(v: v)))),
+      json_kv(key: "path_segment", value: json_array(elements: map(segment_specimens, x => segment_vector_json(input: x)))),
+    ])),
+    "\n",
+  )
+}
