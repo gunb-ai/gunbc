@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/iproute2/ip_address.dag",
+  "dag/extdeps/iputils/arping.dag",
   "dag/extdeps/pci/identity.dag",
   "dag/extdeps/github/action_release.dag",
   "dag/extdeps/github/action_runtime_policy.dag",
