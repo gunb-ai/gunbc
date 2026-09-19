@@ -2,17 +2,21 @@ module gunbc.fleet.org_actions_standing
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.github.org_actions { org_admin_scope_refusal_fragment }
 import v2.std.cardinality { Never }
 import std.goal_assessment { GoalAssessment, assess_by_deviations }
 
-// ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
+// ORG ACTIONS SETTINGS AS AN ASSESSED SURFACE (operator direction 2026-08-30: "we need
 // to connect the org github settings via fleet converge - basically this is all
 // unmodeled right now"). The org's runner-group access policy decides which repositories
-// reach the fleet, and until now it lived only in the GitHub settings UI - actuated by
-// hand, observed by nobody. This module declares the DESIRED state, the OBSERVATIONS
-// typed by channel, and the derived standing; the convergence binding is a typed
-// dissolution row below, not prose.
+// reach the fleet, and until then it lived only in the GitHub settings UI - actuated by
+// hand, observed by nobody. This module declares the DESIRED state, the shape of one
+// observed group, and the assessment; the observer is gunbc.fleet.org_actions_inspection,
+// and write authority is a typed dissolution row below, not prose.
+//
+// An earlier per-repository standing (settings read vs behavioral receipt vs unobserved, over a
+// frozen refused-read literal) was deleted with the rebind onto std.goal_assessment: once a live
+// observer existed, it answered the same two questions as the assessment with no production
+// consumer, so it would have stood as a second authority for one fact.
 
 // ---------------------------------------------------------------------------------------------
 // Desired state - fleet policy.
@@ -44,10 +48,7 @@ data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_p
 data desired_allows_public_repositories: Bool = false
 
 // ---------------------------------------------------------------------------------------------
-// Observations - typed by HOW they were seen. A successful settings read carries the
-// JOINED admission data (groups x their repository lists, flattened to the admitted set,
-// plus the public-repositories flag) because that is exactly what per-repo standing
-// needs - a read that carried less could not answer without fabricating.
+// Observation - one row per runner group, as gunbc.fleet.org_actions_inspection reads it.
 // ---------------------------------------------------------------------------------------------
 
 // The read observation preserves the GROUP grain the upstream stores (review 57611: a
@@ -62,102 +63,14 @@ type ObservedGroupAccess {
   repositories: List<NonEmptyStr>
 }
 
-type OrgSettingsObservation
-  = SettingsRead { groups: List<ObservedGroupAccess>, observed_on: NonEmptyStr }
-  | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
-
-// run_id carried as decimal digits verbatim per the standing ruling in
-// extdeps.github.workflow_run_event (identity join, never arithmetic - no decode).
-type BehavioralReceipt {
-  repository: NonEmptyStr
-  runner_name: NonEmptyStr
-  run_id: NonEmptyStr
-  observed_on: NonEmptyStr
-}
-
-data settings_observation_current: OrgSettingsObservation = SettingsReadRefusedTokenScope {
-  refusal_fragment: org_admin_scope_refusal_fragment,
-  observed_on: "2026-08-30",
-}
-
-// A fleet runner EXECUTED a gunbc-private job - behavior proves the access policy admits
-// the repository today, even while the settings surface is unreadable to this credential.
-data receipt_private_on_fleet: BehavioralReceipt = BehavioralReceipt {
-  repository: "gunb-ai/gunbc-private",
-  runner_name: "srv4-01-1788089189-1873877",
-  run_id: "33309109321",
-  observed_on: "2026-08-30",
-}
-
-data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
-
-// ---------------------------------------------------------------------------------------------
-// Standing - derived, honest about the observation channel. The SettingsRead arm CONSULTS
-// its payload: membership admits, absence REFUSES - never a green from the read's mere
-// success. The derivation is pure in its observation so the witness can exercise every
-// arm; the data rows below bind it to the current observation.
-// ---------------------------------------------------------------------------------------------
-
-type OrgAccessStanding
-  = HoldsBySettingsRead { observed_on: NonEmptyStr }
-  | DivergesBySettingsRead { observed_admitted: Bool, desired: Bool, observed_on: NonEmptyStr }
-  | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
-  | Unobserved
-
 fn observed_admits(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> Bool {
   fold(groups, init: false, f: fn(acc, g) {
     acc || count(filter(g.repositories, x => x == repository)) >= 1
   })
 }
 
-// The read arm compares OBSERVED membership against the DESIRED boolean (review 57611:
-// membership alone reported a must_reach_fleet:false row's forbidden state as holding).
-// Agreement in either direction holds - admitted-and-required, or absent-and-forbidden -
-// and any mismatch is a typed divergence carrying both sides.
-fn standing_from(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> OrgAccessStanding {
-  match obs {
-    SettingsRead { groups, observed_on } =>
-      if observed_admits(groups: groups, repository: r.repository) == r.must_reach_fleet {
-        HoldsBySettingsRead { observed_on: observed_on }
-      } else {
-        DivergesBySettingsRead { observed_admitted: observed_admits(groups: groups, repository: r.repository), desired: r.must_reach_fleet, observed_on: observed_on }
-      },
-    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
-      fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
-        if b.repository == r.repository { HoldsByBehavior { run_id: b.run_id, observed_on: b.observed_on } } else { acc }
-      }),
-  }
-}
-
-fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
-  standing_from(obs: settings_observation_current, r: r)
-}
-
-// Public-fork exposure is PER REPOSITORY over the group join: the desired-false policy is
-// violated exactly when some group that ADMITS this repository allows public
-// repositories - a non-serving group's flag can neither convict nor acquit.
-type PublicForkPolicyStanding
-  = MatchesDesired { observed_on: NonEmptyStr }
-  | DivergesFromDesired { exposing_groups: List<NonEmptyStr>, observed_on: NonEmptyStr }
-  | UnobservableUntilSettingsRead
-
 fn exposing_groups_for(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> List<ObservedGroupAccess> {
   filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == repository)) >= 1)
-}
-
-fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> PublicForkPolicyStanding {
-  match obs {
-    SettingsRead { groups, observed_on } =>
-      match exposing_groups_for(groups: groups, repository: r.repository) {
-        exposing =>
-          if count(exposing) == 0 || desired_allows_public_repositories {
-            MatchesDesired { observed_on: observed_on }
-          } else {
-            DivergesFromDesired { exposing_groups: map(exposing, g => g.group_name), observed_on: observed_on }
-          },
-      },
-    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } => UnobservableUntilSettingsRead,
-  }
 }
 
 // THE ASSESSMENT, BOUND TO std.goal_assessment. This replaced a local Converged/Diverged/Refused
