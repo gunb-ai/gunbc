@@ -1,7 +1,7 @@
 module gunbc.site_uefi_arm64_pxe_edge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, Tftp }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -175,7 +175,8 @@ type SiteEdgeRoster {
   site: SiteIdentity
   admitted_architectures: List<Architecture>
   chainloader_digest: ContentHash
-  tftp_root: Uri
+  tftp_server_name: NonEmptyStr
+  tftp_server_address: Ipv4Address
   known_client_macs: List<Eui48Address>
 }
 
@@ -201,6 +202,14 @@ fn client_is_known(roster: SiteEdgeRoster, mac: Eui48Address) -> Bool {
   roster.known_client_macs |> any(m => m == mac)
 }
 
+// THE TFTP ROUTE IDENTITY IS DERIVED FROM THE SERVER THE CONFIG NAMES. The dhcp-boot line renders
+// tftp_server_name and tftp_server_address, and the transport's tftp_root (which the join compares to
+// the manifest) is built from that same address, so the route the model checks is the route the
+// config tells firmware to use.
+fn site_edge_tftp_root(roster: SiteEdgeRoster) -> Uri {
+  Uri { scheme: Tftp, locator: concat(render_ipv4_address(addr: roster.tftp_server_address) as String, "/") }
+}
+
 // THE EDGE'S ONE CHAINLOADER, DERIVED. The architecture and the offered filename are the
 // extdeps.firmware.ipxe build target this edge serves, never authored beside it: the rendered
 // dhcp-boot line and the filename an observed offer is checked against are both this transport.
@@ -209,7 +218,7 @@ fn site_edge_arm64_chainloader_transport(roster: SiteEdgeRoster) -> SiteBootstra
     architecture: Aarch64,
     filename_hint: DhcpFilenameHint { filename: ipxe_arm64_efi_snponly.image },
     chainloader_digest: roster.chainloader_digest,
-    tftp_root: roster.tftp_root,
+    tftp_root: site_edge_tftp_root(roster: roster),
   }
 }
 
@@ -276,7 +285,7 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
     ],
     concat(
       map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
-      [DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String }],
+      [DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String }],
     ),
   )
 }
