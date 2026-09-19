@@ -229,3 +229,4 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/v2-corpus-self-host.md
 /docs/plans/import-namespace-program.md
 /docs/plans/joint-incompatibility-claim-join.md
+/docs/plans/heal-wet-validation-drift-marker.md
