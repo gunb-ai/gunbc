@@ -176,21 +176,30 @@ fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
 // one that is not attached, has no name rather than a guessed one.
 type DriveIndexScan {
   next: Int
-  found: Int
+  found: Int?
 }
 
 data firecracker_guest_block_letters: String = "abcdefghijklmnopqrstuvwxyz"
 
-fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
-  let scan = fold(drives, init: DriveIndexScan { next: 0, found: -1 }, f: fn(acc, d) {
-    let first_match = acc.found < 0 && d.drive_id == drive_id
-    let found = if first_match { acc.next } else { acc.found }
-    DriveIndexScan { next: acc.next + 1, found: found }
-  })
-  if scan.found < 0 || scan.found >= string_length(s: firecracker_guest_block_letters) {
+fn firecracker_guest_block_device_of_index(index: Int) -> String? {
+  if index >= string_length(s: firecracker_guest_block_letters) {
     none
   } else {
-    Present { value: concat("/dev/vd", substring(s: firecracker_guest_block_letters, start: scan.found, end: scan.found + 1)) }
+    Present { value: concat("/dev/vd", substring(s: firecracker_guest_block_letters, start: index, end: index + 1)) }
+  }
+}
+
+fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
+  let scan = fold(drives, init: DriveIndexScan { next: 0, found: none }, f: fn(acc, d) {
+    let found = match acc.found {
+      Present { value: i } => Present { value: i }
+      Absent => if d.drive_id == drive_id { Present { value: acc.next } } else { none }
+    }
+    DriveIndexScan { next: acc.next + 1, found: found }
+  })
+  match scan.found {
+    Absent => none
+    Present { value: i } => firecracker_guest_block_device_of_index(index: i)
   }
 }
 
