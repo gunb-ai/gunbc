@@ -741,7 +741,8 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     method_subjects: retirement_route_graceful_subjects(run: run),
                     method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
                     planner: retirement_route_planner_disposition(run: run),
-                    basis: host_retirement_obligation_basis(host: subject.target),
+                    basis: run.basis,
+                    obligation_population: transition_required_retiring(host: subject.target),
                     extra: [build_provenance_blocker(run_id: run_id)],
                     estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
                   )

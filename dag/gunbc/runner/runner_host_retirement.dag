@@ -7,6 +7,18 @@ import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import std.nat { Nat, nat_range_inclusive }
+import extdeps.systemd {
+  SystemdUnitActiveState,
+  Active, Inactive, Activating, Deactivating, Reloading, Failed,
+  parse_systemd_unit_active_state,
+  systemd_unit_load_state_not_found_wire,
+}
+import extdeps.systemd.systemctl {
+  UnitFileState,
+  UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitMaskedRuntime,
+  UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
+  parse_unit_file_state,
+}
 import gunbc.fleet_runner_connectivity {
   host_registration_name_for_slot,
   RegistrationSlotDecoding,
@@ -728,51 +740,84 @@ type ReconcilePropertyReading
 // THE ADMITTED INHIBITED SPELLINGS ARE ENUMERATED, AND EVERYTHING ELSE IS UNKNOWN. An allowlist of
 // states that mean "will not be armed again" fails closed on a spelling systemd adds later; a denylist
 // of states that mean "armed" fails open on exactly the same change.
+// THE UNIT-STATE VOCABULARY IS UPSTREAM'S AND IS CONSUMED, NOT RE-MINTED.
+//
+// These predicates were bare string comparisons -- "active" || "activating" || "deactivating" ||
+// "reloading" for running, "inactive" || "failed" beside it for known, "not-found" for absence, and a
+// hand-spelled list of enablement words. Every one of those spellings is already declared:
+// `extdeps.systemd` owns `SystemdUnitActiveState` with `parse_systemd_unit_active_state`,
+// `extdeps.systemd.systemctl` owns `UnitFileState` with `parse_unit_file_state`, and the not-found
+// wire word has its own row. A second spelling of a cited upstream is the fork DESIGN section 3
+// forbids, and the tell was in this file already: the route reaches those properties through the
+// modeled `SystemdUnitProperty` for the property NAMES and then dropped to literals for the VALUES.
+//
+// THE PARSERS' ABSENT ARM IS THE THREE-VALUED READING THESE FOLDS HAND-ROLLED. `none` means systemd
+// said a word this model does not know, which is exactly the unknown that must not become a default --
+// so consuming the authority replaces both the spelling list AND the is-known predicate beside it.
+fn reconcile_active_state_is_running(state: String) -> Bool {
+  match parse_systemd_unit_active_state(raw: state) {
+    Absent => false
+    Present { value: s } =>
+      match s {
+        Active => true
+        Activating => true
+        Deactivating => true
+        Reloading => true
+        Inactive => false
+        Failed => false
+      }
+  }
+}
+
+fn reconcile_active_state_is_known(state: String) -> Bool {
+  match parse_systemd_unit_active_state(raw: state) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 // A RUNTIME MASK IS NOT A PERSISTENT INHIBITOR, AND ACCEPTING ONE DISCHARGED THIS OBLIGATION ON A
 // FENCE THAT ENDS AT THE NEXT REBOOT. systemd documents `mask --runtime` as lasting until reboot;
 // this obligation is that the reconcile mechanism cannot come back and restore the population the
-// retirement removed, and a fence the next boot dissolves does not establish it. `masked-runtime` is
-// therefore a KNOWN state that does not inhibit, rather than an unknown one -- the reading is
-// legible, it simply is not the answer the obligation needs.
+// retirement removed, and a fence the next boot dissolves does not establish it. `UnitMaskedRuntime`
+// is therefore a KNOWN state that does not inhibit -- the reading is legible, it simply is not the
+// answer the obligation needs.
 fn reconcile_unit_file_state_inhibits(state: String) -> Bool {
-  state == "masked" || state == "disabled"
+  match parse_unit_file_state(raw: state) {
+    Absent => false
+    Present { value: s } =>
+      match s {
+        UnitMasked => true
+        UnitDisabled => true
+        UnitMaskedRuntime => false
+        UnitEnabled => false
+        UnitEnabledRuntime => false
+        UnitLinked => false
+        UnitStatic => false
+        UnitIndirect => false
+        UnitGenerated => false
+        UnitTransient => false
+        UnitBad => false
+      }
+  }
 }
 
 fn reconcile_unit_file_state_is_known(state: String) -> Bool {
-  reconcile_unit_file_state_inhibits(state: state)
-    || state == "masked-runtime"
-    || state == "enabled"
-    || state == "enabled-runtime"
-    || state == "static"
-    || state == "indirect"
-}
-
-fn reconcile_active_state_is_running(state: String) -> Bool {
-  state == "active" || state == "activating" || state == "deactivating" || state == "reloading"
-}
-
-// BLANK ACTIVITY IS UNOBSERVED, AND ACCEPTING IT AS KNOWN WAS THE SECOND UNSUPPORTED DISCHARGE.
-//
-// The previous version listed `""` as a known activity state while `reconcile_active_state_is_running`
-// answered false for it, so `masked / blank / inactive` and `masked / inactive / blank` both reached
-// the discharged arm. Neither reading positively establishes that anything is stopped: a blank
-// ActiveState is what `systemctl show` returns for a unit the manager does not hold, and that is a
-// statement about the QUERY, not about quiescence. "Not one of the running strings" is not proof of
-// quiescence, which is the absorbing-fallback shape -- the superset substituted for the answer.
-//
-// ABSENCE IS STILL REACHABLE, AND IT IS ESTABLISHED POSITIVELY BY LoadState. A genuinely absent timer
-// reports `not-found`, which is a reading rather than an emptiness, so a host that never had the
-// reconcile mechanism can still discharge -- through evidence instead of through a gap.
-fn reconcile_active_state_is_known(state: String) -> Bool {
-  reconcile_active_state_is_running(state: state)
-    || state == "inactive"
-    || state == "failed"
+  match parse_unit_file_state(raw: state) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn reconcile_load_state_is_absent(state: String) -> Bool {
-  state == "not-found"
+  state == (systemd_unit_load_state_not_found_wire as String)
 }
 
+// LoadState HAS NO COPRODUCT UPSTREAM -- only the not-found word is declared -- so the recognized set
+// is enumerated here against systemd's documented values rather than parsed. Stated rather than left
+// implicit, because the two predicates beside it DO consume a parser and a reader would reasonably
+// expect this one to as well. The next-rung trigger is a LoadState vocabulary in extdeps.systemd
+// beside SystemdUnitActiveState; adding one is not this change's subject.
 fn reconcile_load_state_is_known(state: String) -> Bool {
   reconcile_load_state_is_absent(state: state)
     || state == "loaded"
@@ -815,14 +860,21 @@ fn reconcile_reading_field_text(r: ReconcilePropertyReading) -> String {
 // recognize, because "I do not know what systemd just told me" and "I could not ask" have the same
 // consequence and the opposite of the one a default would give them.
 //
-// THE RECONCILER IS CHECKED BEFORE THE TIMER'S ABSENCE, AND THAT ORDER IS THE SECOND REPAIR HERE. An
+// BOTH UNITS' RUNTIME STANDING IS ESTABLISHED BEFORE ANY ABSENCE BRANCH, AND THAT ORDER IS THE
+// SECOND REPAIR HERE. An
 // earlier cut discharged on `LoadState=not-found` immediately, before looking at either activity
 // value -- so `not-found` beside an ACTIVE reconciler discharged, and so did `not-found` beside a
 // blank one. A timer and the service it activates are distinct units; the absence of the timer
 // answers nothing about the service, and an invocation already in flight goes on restoring runners
-// whatever happened to the thing that started it. Timer absence now discharges the TIMER's half only
-// after the reconciler's own quiescence has been established on its own evidence, and a contradictory
-// positive activity reading is reached first so absence cannot override it.
+// whatever happened to the thing that started it.
+//
+// AND THE SAME ORTHOGONALITY APPLIES TO THE TIMER ITSELF, which a first correction missed by moving
+// only the service checks up. systemd documents `LoadState` and `ActiveState` as independent: a unit
+// whose configuration is not loaded may still be RUNNING. So `not-found` beside `ActiveState=active`
+// discharged, and so did `activating`, `deactivating` and `reloading`. A load state is an observation
+// about configuration, never proof of runtime inactivity. Both units now have their activity
+// established -- known, and not running -- before absence is consulted at all, so no positive
+// activity reading can be overridden by it.
 fn reconcile_timer_estate_standing(
   intent: ReconcileTimerIntent,
   reading: ReconcileMechanismReading,
@@ -860,13 +912,22 @@ fn reconcile_timer_estate_standing(
           obligation: LivenessReconcileTimerRetired,
           cause: join(["the reconcile service on ", h as String, " is still running (", reconcile_reading_text(reading: reading), "); an invocation already in flight goes on restoring runners whatever has happened to the timer that started it"], ""),
         }
+      } else if !reconcile_active_state_is_known(state: timer_active) {
+        EstateObligationUnobserved {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join(["the reconcile TIMER on ", h as String, " reported an activity state this model does not recognize or cannot read (", reconcile_reading_text(reading: reading), "); a configuration that was not found does not make the unit's runtime state known"], ""),
+        }
+      } else if reconcile_active_state_is_running(state: timer_active) {
+        EstateObligationOutstanding {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join([u as String, " on ", h as String, " is still ACTIVE (", reconcile_reading_text(reading: reading), "); LoadState and ActiveState are orthogonal -- a unit whose configuration is not loaded may still be running -- and an armed timer elapses whatever its load or enablement says"], ""),
+        }
       } else if reconcile_load_state_is_absent(state: reconcile_property_value(r: reading.timer_load_state)) {
         EstateObligationDischarged {
           obligation: LivenessReconcileTimerRetired,
-          evidence: join([u as String, " on ", h as String, " is positively absent -- the manager reports not-found -- and its reconcile service is established not running (", reconcile_reading_text(reading: reading), ")"], ""),
+          evidence: join([u as String, " on ", h as String, " has no loaded configuration, is established not running, and its reconcile service is established not running (", reconcile_reading_text(reading: reading), ")"], ""),
         }
-      } else if !reconcile_unit_file_state_is_known(state: file_state)
-        || !reconcile_active_state_is_known(state: timer_active) {
+      } else if !reconcile_unit_file_state_is_known(state: file_state) {
         EstateObligationUnobserved {
           obligation: LivenessReconcileTimerRetired,
           cause: join(["the reconcile mechanism on ", h as String, " reported a state this model does not recognize (", reconcile_reading_text(reading: reading), "); an unrecognized state is unknown, not off"], ""),
@@ -875,11 +936,6 @@ fn reconcile_timer_estate_standing(
         EstateObligationOutstanding {
           obligation: LivenessReconcileTimerRetired,
           cause: join([u as String, " on ", h as String, " is not persistently inhibited (", reconcile_reading_text(reading: reading), "); the manager can arm it again and the next tick restores the population this retirement removes"], ""),
-        }
-      } else if reconcile_active_state_is_running(state: timer_active) {
-        EstateObligationOutstanding {
-          obligation: LivenessReconcileTimerRetired,
-          cause: join([u as String, " on ", h as String, " is still ACTIVE despite being inhibited (", reconcile_reading_text(reading: reading), "); disabling a unit does not stop it, and an armed timer elapses whatever its enablement says"], ""),
         }
       } else {
         EstateObligationDischarged {

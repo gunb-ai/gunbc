@@ -484,7 +484,14 @@ test fn a_blank_enablement_state_is_unobserved() -> Bool {
 
 // AND A SPELLING THIS MODEL DOES NOT RECOGNIZE IS UNKNOWN TOO, rather than falling through to off.
 test fn an_unrecognized_enablement_state_is_unobserved() -> Bool {
-  is_unobserved(s: srv2_standing(r: reading(file_state: "generated", timer_active: "inactive", service_active: "inactive")))
+  is_unobserved(s: srv2_standing(r: reading(file_state: "not-a-systemd-state", timer_active: "inactive", service_active: "inactive")))
+}
+
+// AND A REAL STATE THE OLD LOCAL LITERAL LIST DID NOT CARRY IS NOW KNOWN AND NOT INHIBITING.
+// `generated` read as UNRECOGNIZED against the hand-spelled list this file used to keep; consuming
+// the upstream vocabulary is what makes it legible, which is the drift a second spelling invites.
+test fn a_generated_unit_file_state_is_known_and_not_inhibiting() -> Bool {
+  is_outstanding(s: srv2_standing(r: reading(file_state: "generated", timer_active: "inactive", service_active: "inactive")))
 }
 
 // A REFUSED READ OF ANY OF THE THREE BLOCKS. A property nobody could take cannot discharge the two
@@ -737,4 +744,37 @@ test fn an_ungrounded_host_owes_nothing_and_offers_discovery_subjects() -> Bool 
 // its population is ungrounded.
 test fn the_consumed_seam_carries_no_ungrounded_candidates() -> Bool {
   list_length(items: transition_required_retiring(host: operator_host_srv2)) == 0
+}
+
+// ── R4: THE TIMER'S OWN ACTIVITY IS ORTHOGONAL TO ITS LOAD STATE ─────────────────────────────
+
+// systemd documents LoadState and ActiveState as independent: a unit whose configuration is not
+// loaded may still be RUNNING. The absence branch discharged before reading this value.
+test fn an_absent_but_active_timer_is_outstanding() -> Bool {
+  is_outstanding(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-found" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "" },
+    timer_active_state: ReconcilePropertyValue { value: "active" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
+}
+
+// AND THE TRANSITIONAL SPELLINGS TOO -- a timer mid-stop still owns its runtime.
+test fn an_absent_but_deactivating_timer_is_outstanding() -> Bool {
+  is_outstanding(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-found" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "" },
+    timer_active_state: ReconcilePropertyValue { value: "deactivating" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
+}
+
+// A BLANK TIMER ACTIVITY DOES NOT BECOME QUIESCENT BECAUSE THE CONFIGURATION WAS NOT FOUND.
+test fn an_absent_timer_with_blank_activity_is_unobserved() -> Bool {
+  is_unobserved(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-found" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "" },
+    timer_active_state: ReconcilePropertyValue { value: "" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
 }

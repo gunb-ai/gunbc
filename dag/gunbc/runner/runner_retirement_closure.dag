@@ -33,9 +33,6 @@ import gunbc.runner_host_retirement {
   EstateObligation,
   estate_obligation_wire,
   RetireeObligationBasis,
-  ObligationFromCapturedSnapshot,
-  ObligationFromSearchBound,
-  ObligationAbsent,
   retiree_obligation_ungrounded_cause,
 }
 
@@ -225,37 +222,46 @@ fn grounding_blockers(host: HostIdentity, basis: RetireeObligationBasis) -> List
   }
 }
 
-// THE GROUNDED BASIS AND THE ASSESSED POPULATION MUST COVER EACH OTHER EXACTLY.
+// THE ASSESSED POPULATION IS COMPARED AGAINST THE WHOLE OBLIGATION AUTHORITY, NOT AGAINST ONE ARM.
 //
-// The verdict received both `basis` and `required` and checked only the basis's GROUNDING, never
-// joining its captured identities to the population actually assessed. So a complete capture naming
-// [u, v] against a required set of [u] produced no blocker for v: grounding succeeded because the
-// basis was captured, and `retiree_blockers` inspected only `required`. That is the omitted-member
-// shape rebuilt at the boundary added to prevent it, one layer up.
+// The first version of this fold compared `required` against the host-retirement CAPTURE alone and
+// labelled every identity it did not contain an obligation the evidence does not support. But the
+// production population is the union of two independent authorities -- declared width transitions and
+// grounded host retirements -- and `transition_required_retiring` deduplicates them by exact
+// identity. So an identity contributed by the WIDTH TRANSITION was reported as unsupported, and the
+// check rejected the very union its own producer constructs. A width-transition declaration supports
+// its retirees exactly as a capture supports its members; neither authority may be rewritten to make
+// the other's comparison pass.
 //
-// The join is by exact identity in BOTH directions. A captured identity missing from the assessment
-// is unassessed; an assessed identity absent from a complete capture is an obligation the grounded
-// evidence does not support, and neither is a discrepancy a count would show.
-fn basis_coverage_blockers(basis: RetireeObligationBasis, required: List<NonEmptyStr>) -> List<ClosureBlocker> {
-  match basis {
-    ObligationAbsent { host: _ } => []
-    ObligationFromSearchBound { units: _, bound: _, cause: _ } => []
-    ObligationFromCapturedSnapshot { observed_on: _, units: us } =>
-      concat(
-        us
-          |> filter(u => !any(required, r => (r as String) == (u as String)))
-          |> map(u => ClosureBlocker {
-              subject: u as String,
-              cause: "this identity is in the grounded owned-identity capture and is absent from the population this assessment covered, so nothing was established about it",
-            }),
-        required
-          |> filter(r => !any(us, u => (u as String) == (r as String)))
-          |> map(r => ClosureBlocker {
-              subject: r as String,
-              cause: "this identity was assessed as a required retiree but is absent from the grounded owned-identity capture, so the evidence does not support the obligation claimed for it",
-            }),
-      )
-  }
+// THE EXPECTED POPULATION IS THEREFORE DERIVED ONCE, from the same function production consumes, and
+// the join runs in both directions over it: an identity the authority names and the assessment
+// omitted was never established, and an identity the assessment carries that no authority names is an
+// obligation nothing supports.
+//
+// WHAT THIS DOES AND DOES NOT CATCH, said plainly. The production route derives the assessed
+// population and this expected population from ONE call, so they cannot disagree there -- this fold
+// is not reporting a live divergence and would be dishonest to describe as one. It is the wall
+// against a caller that assembles the assessed set some other way, and it is exercised by claims that
+// supply the two separately. The grounding of the capture is a different question and stays with
+// `grounding_blockers`.
+fn obligation_coverage_blockers(
+  obligation_population: List<NonEmptyStr>,
+  required: List<NonEmptyStr>,
+) -> List<ClosureBlocker> {
+  concat(
+    obligation_population
+      |> filter(o => !any(required, r => (r as String) == (o as String)))
+      |> map(o => ClosureBlocker {
+          subject: o as String,
+          cause: "a declared obligation authority -- a width transition or a grounded host retirement -- names this identity as a required retiree, and this assessment did not cover it, so nothing was established about it",
+        }),
+    required
+      |> filter(r => !any(obligation_population, o => (o as String) == (r as String)))
+      |> map(r => ClosureBlocker {
+          subject: r as String,
+          cause: "this identity was assessed as a required retiree but no declared obligation authority names it -- neither a width transition nor a grounded owned-identity capture -- so nothing supports the obligation claimed for it",
+        }),
+  )
 }
 
 fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
@@ -329,6 +335,7 @@ fn retirement_assessment_verdict(
   method_availability: RetirementMethodAvailability,
   planner: PlannerDisposition,
   basis: RetireeObligationBasis,
+  obligation_population: List<NonEmptyStr>,
   estate: EstateCleanupStanding,
   extra: List<ClosureBlocker>,
 ) -> RetirementAssessmentVerdict {
@@ -346,7 +353,7 @@ fn retirement_assessment_verdict(
     concat(
       concat(
         concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
-        basis_coverage_blockers(basis: basis, required: required),
+        obligation_coverage_blockers(obligation_population: obligation_population, required: required),
       ),
       concat(estate_blockers(host: host, estate: estate), extra),
     ),
