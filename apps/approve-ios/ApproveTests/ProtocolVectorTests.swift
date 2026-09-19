@@ -50,6 +50,10 @@ struct Vectors: Decodable {
         var input: String
         var encoded: String
     }
+    struct Surface: Decodable {
+        var name: String
+        var value: String
+    }
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
@@ -57,6 +61,8 @@ struct Vectors: Decodable {
     var envelope: [Envelope]
     /// path_segment: input -> encoded, emitted by the .dag path_segment fold.
     var path_segment: [PathSegment]
+    /// surface: the header names and route paths, by name.
+    var surface: [Surface]
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -70,6 +76,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.read.isEmpty, "no read vectors")
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
         XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
+        XCTAssertFalse(v.surface.isEmpty, "no surface vectors")
         return v
     }
 
@@ -186,6 +193,23 @@ final class ProtocolVectorTests: XCTestCase {
         let body = try envelope("push_update")
         let got = devicePushUpdateClientData(enrollmentId: read.enrollment_id, requestedAt: read.requested_at, pushBodyJson: body)
         XCTAssertEqual(got, Data(try envelope("push_update_client_data").utf8))
+    }
+
+    /// Every header name and route the app spells is the fixture's; a missing surface row FAILS, so
+    /// a route the wire adds and the app does not spell is caught, not silently absent.
+    func testSurfaceMatchesTheFixture() throws {
+        let rows = Dictionary(uniqueKeysWithValues: try load().surface.map { ($0.name, $0.value) })
+        func surface(_ name: String) throws -> String { try XCTUnwrap(rows[name], "surface row \(name) missing") }
+        XCTAssertEqual(ReadHeader.enrollment, try surface("header_enrollment"))
+        XCTAssertEqual(ReadHeader.requestedAt, try surface("header_requested_at"))
+        XCTAssertEqual(ReadHeader.assertion, try surface("header_assertion"))
+        XCTAssertEqual(Route.enrol, try surface("route_enrol"))
+        XCTAssertEqual(Route.pending, try surface("route_pending"))
+        XCTAssertEqual(Route.requestPrefix, try surface("route_request_prefix"))
+        XCTAssertEqual(Route.redeem, try surface("route_redeem"))
+        XCTAssertEqual(Route.enrollmentPrefix, try surface("route_enrollment_prefix"))
+        XCTAssertEqual(Route.push, try surface("route_push"))
+        XCTAssertEqual(rows.count, 9, "the surface gained a row the app does not spell: \(rows.keys.sorted())")
     }
 
     func testPathsMatchTheFixture() throws {

@@ -371,8 +371,8 @@ enum Route {
     static let pending = "/approve/device/pending"
     static let redeem = "/approve/device/redeem"
     static let push = "/approve/device/push"
-    private static let requestPrefix = "/approve/device/requests/"
-    private static let enrollmentPrefix = "/approve/device/enrollments/"
+    static let requestPrefix = "/approve/device/requests/"
+    static let enrollmentPrefix = "/approve/device/enrollments/"
 
     /// path_segment = "id-" + base64url(UTF-8(identity)), padded URL-safe alphabet (A-Z a-z 0-9 - _
     /// with "=" padding): total and injective, never refused, no percent escape for any layer to
