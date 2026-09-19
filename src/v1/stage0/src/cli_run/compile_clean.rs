@@ -284,8 +284,20 @@ pub(crate) fn compile_clean_pipeline_options_for_sources(
     let census_only = index
         .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
         .unwrap_or_default();
+    // Every compile-clean route knows the corpus: the census is the indexed pool outside the
+    // closure, and an EMPTY census on a whole-tree compile means everything was compiled, not that
+    // nothing is known (review 68429). The corpus claim is only made when an index was consulted.
+    let corpus = if index.is_some() {
+        v1_compiler_compile::CorpusScope::CorpusKnown
+    } else {
+        v1_compiler_compile::CorpusScope::CorpusUnknown
+    };
     if census_only.is_empty() {
-        return v1_compiler_compile::default_compile_pipeline_options();
+        return Rc::new(v1_compiler_compile::CompilePipelineOptions {
+            analyze_complexity: false,
+            census_only_sources: Rc::new(im::Vector::new()),
+            corpus: corpus,
+        });
     }
     eprintln!(
         "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
@@ -294,7 +306,17 @@ pub(crate) fn compile_clean_pipeline_options_for_sources(
     Rc::new(v1_compiler_compile::CompilePipelineOptions {
         analyze_complexity: false,
         census_only_sources: Rc::new(census_only.into()),
+        corpus: corpus,
     })
+}
+
+/// The whole-tree compile-clean routes consult the witness-layer index, so their pipeline states
+/// CorpusKnown and a ledger row naming a deleted module refuses there (review 68429).
+fn compile_clean_whole_tree_options(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
+    let index = build_multi_entry_index_primary_precedence(&witness_layer_roots());
+    compile_clean_pipeline_options_for_sources(Some(&index), sources)
 }
 
 pub(crate) fn compile_clean_scope_plan_from_touched_paths(
@@ -640,7 +662,9 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
         Some(s) => s,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let options = compile_clean_whole_tree_options(&sources);
+    let result =
+        v1_compiler_compile::compile_to_resolved_with_options(Rc::new(sources.into()), options);
     Ok(result
         .diagnostics
         .iter()
@@ -656,9 +680,11 @@ pub(crate) fn compile_clean_whole_tree_resolved(
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
         Some(s) => s,
     };
-    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
-        sources.into(),
-    )))
+    let options = compile_clean_whole_tree_options(&sources);
+    Ok(v1_compiler_compile::compile_to_resolved_with_options(
+        Rc::new(sources.into()),
+        options,
+    ))
 }
 
 fn unlisted_import_rows_from_resolved(

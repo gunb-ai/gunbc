@@ -580,6 +580,73 @@ mod compiler_tests {
         );
     }
 
+    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census
+    // knowledge and scope alone, so the pure function is called directly on synthetic rows.
+    #[test]
+    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {
+        use crate::v1_compiler_compile::{
+            CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope,
+        };
+        let row = |scope: TestReferenceRowScope| {
+            std::rc::Rc::new(TestReferenceDebtRow {
+                module_name: "gone.module".to_string(),
+                referrer: "caller".to_string(),
+                target: "gone.module.leaf".to_string(),
+                occurrences: 1,
+                scope: scope,
+                dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),
+            })
+        };
+        let loaded = |names: &[&str]| {
+            std::rc::Rc::new(CensusKnowledge::CensusLoaded {
+                modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),
+            })
+        };
+        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| {
+            d.iter()
+                .filter(|e| {
+                    matches!(
+                        e.diagnostic.as_ref(),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. }
+                    )
+                })
+                .count()
+        };
+        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);
+        // RED: census loaded, module in neither the closure nor the census.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["other.module"])
+            )),
+            1
+        );
+        // CONTROL: the module exists, only outside this closure.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["gone.module"])
+            )),
+            0
+        );
+        // CONTROL: no census, so absence proves nothing.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                std::rc::Rc::new(CensusKnowledge::CensusAbsent)
+            )),
+            0
+        );
+        // CONTROL: the fixture control row is exempt by its declared scope.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::FixtureControlRow),
+                loaded(&["other.module"])
+            )),
+            0
+        );
+    }
+
     fn tco_slot(name: &str) -> String {
         {
             crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())

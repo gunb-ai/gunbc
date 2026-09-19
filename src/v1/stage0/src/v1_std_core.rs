@@ -654,6 +654,10 @@ pub enum CompilerDiagnostic {
         observed: i64,
         span: Rc<SourceSpan>,
     },
+    TestCodeReferenceRowOrphaned {
+        referrer: String,
+        span: Rc<SourceSpan>,
+    },
     MissingField {
         field: String,
         type_name: String,
@@ -986,6 +990,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenceBudgetMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TestCodeReferenceRowOrphaned { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
@@ -1059,6 +1064,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
     CompilerDiagnostic::TestCodeReferenced { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "': a `test` declaration is entered only by the witness runner, and serving code may not depend on a module that declares tests. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests".to_string()),
     CompilerDiagnostic::TestCodeReferenceAdmitted { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink".to_string()),
+    CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer: r, .. } => v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist".to_string()),
     CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' declares ".to_string()), (d.clone()).to_string()), " reference(s) but ".to_string()), (o.clone()).to_string()), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
@@ -1215,6 +1221,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
