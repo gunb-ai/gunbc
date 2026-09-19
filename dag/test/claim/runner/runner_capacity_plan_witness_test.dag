@@ -601,6 +601,21 @@ test fn a_prefix_holding_none_of_this_hosts_slots_still_refuses() -> Bool {
   }
 }
 
+// THE PAIRED POSITIVE FOR THE PLAN CLAIM BELOW: the SAME registrations read COMPLETELY do not refuse
+// for partialness. Without this, the refusal below is satisfied by a planner that refuses this
+// roster for any reason at all -- an insufficient width, a decode, a host standing -- and the two
+// inputs differ only in whether the read reached the end.
+test fn the_same_roster_read_completely_does_not_refuse_for_partialness() -> Bool {
+  match runner_capacity_plan(
+    srv3_width: 6,
+    srv4_width: 6,
+    roster: roster_of(names: ["srv3-01"]),
+  ) {
+    PlanReady { hosts: _ } => true
+    PlanRefused { reason: _ } => false
+  }
+}
+
 // AND THE PLAN REFUSES ON IT, so the refusal reaches the consumer that acts rather than stopping at
 // the fold.
 test fn a_partial_roster_refuses_the_capacity_plan() -> Bool {
