@@ -272,36 +272,28 @@ type A1RangeTitleDecode
   | A1TitleUnqualified { text: String }
   | A1TitleRefused { refusal: A1SheetTitleRefusal }
 
+type A1TitleScan = A1ScanAt { index: Int } | A1ScanNone
+
 // Index of the closing quote of a quoted title that opened at 0; `''` is an escaped quote.
-fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> Int? {
+fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> A1TitleScan {
   if i >= len {
-    Absent
+    A1ScanNone
   } else if char_at(s, i) != "'" {
     a1_quoted_title_close_from(s: s, i: i + 1, len: len)
   } else if (i + 1 < len) && (char_at(s, i + 1) == "'") {
     a1_quoted_title_close_from(s: s, i: i + 2, len: len)
   } else {
-    Present { value: i }
+    A1ScanAt { index: i }
   }
 }
 
-fn a1_bare_bang_from(s: String, i: Int, len: Int) -> Int? {
-  if i >= len {
-    Absent
-  } else if char_at(s, i) == "!" {
-    Present { value: i }
-  } else {
-    a1_bare_bang_from(s: s, i: i + 1, len: len)
-  }
-}
-
-fn a1_bare_quote_from(s: String, i: Int, end: Int) -> Int? {
+fn a1_char_from(s: String, ch: String, i: Int, end: Int) -> A1TitleScan {
   if i >= end {
-    Absent
-  } else if char_at(s, i) == "'" {
-    Present { value: i }
+    A1ScanNone
+  } else if char_at(s, i) == ch {
+    A1ScanAt { index: i }
   } else {
-    a1_bare_quote_from(s: s, i: i + 1, end: end)
+    a1_char_from(s: s, ch: ch, i: i + 1, end: end)
   }
 }
 
@@ -311,8 +303,8 @@ fn a1_range_title_decode(range: String) -> A1RangeTitleDecode {
     A1TitleRefused { refusal: A1TitleEmpty }
   } else if char_at(range, 0) == "'" {
     match a1_quoted_title_close_from(s: range, i: 1, len: len) {
-      Absent => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
-      Present { value: close } => {
+      A1ScanNone => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
+      A1ScanAt { index: close } => {
         let body = substring(s: range, start: 1, end: close)
         if body == "" {
           A1TitleRefused { refusal: A1TitleEmpty }
@@ -329,19 +321,19 @@ fn a1_range_title_decode(range: String) -> A1RangeTitleDecode {
       }
     }
   } else {
-    match a1_bare_bang_from(s: range, i: 0, len: len) {
-      Absent =>
-        match a1_bare_quote_from(s: range, i: 0, end: len) {
-          Present { value: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
-          Absent => A1TitleUnqualified { text: range }
+    match a1_char_from(s: range, ch: "!", i: 0, end: len) {
+      A1ScanNone =>
+        match a1_char_from(s: range, ch: "'", i: 0, end: len) {
+          A1ScanAt { index: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+          A1ScanNone => A1TitleUnqualified { text: range }
         }
-      Present { value: bang } =>
+      A1ScanAt { index: bang } =>
         if bang == 0 {
           A1TitleRefused { refusal: A1TitleEmpty }
         } else {
-          match a1_bare_quote_from(s: range, i: 0, end: bang) {
-            Present { value: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
-            Absent =>
+          match a1_char_from(s: range, ch: "'", i: 0, end: bang) {
+            A1ScanAt { index: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+            A1ScanNone =>
               A1TitleQualified {
                 title: substring(s: range, start: 0, end: bang) as NonEmptyStr,
                 cells: substring(s: range, start: bang + 1, end: len),
