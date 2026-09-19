@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 70
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
@@ -75,11 +75,11 @@ jobs:
           printf '%s\n' "CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)"
           fi
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
-          rustflags: ''
+          rustflags: -D warnings
         env:
           HOME: ${{ runner.temp }}
       - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
@@ -98,7 +98,7 @@ jobs:
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: |
             ${{ runner.temp }}/cargo/registry/index/
@@ -143,7 +143,7 @@ jobs:
           tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "discover_source_root_ingest" "claim_batch" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness" "cssl_assemble" "namespace_structural_root_exposure_generated_witness" "codex_app_server_stdio_session"
         timeout-minutes: 5
       - name: Upload release-bins artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: release-bins
           path: release-bins.tgz
@@ -164,12 +164,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
         timeout-minutes: 10
@@ -185,7 +185,7 @@ jobs:
         timeout-minutes: 5
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
           service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
@@ -249,7 +249,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload fleet converge plan artifact
         id: plan_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: fleet-converge-plan
           path: /tmp/fleet-converge-plan
@@ -260,7 +260,7 @@ jobs:
         timeout-minutes: 10
       - name: Download fleet converge plan artifact
         id: plan_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
           path: /tmp/fleet-converge-plan
@@ -284,7 +284,7 @@ jobs:
         timeout-minutes: 60
       - name: Upload fleet converge apply receipt
         id: apply_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: fleet-converge-apply-receipt
           path: /tmp/fleet-converge-apply
@@ -336,7 +336,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload org Actions credential validation receipt
         id: org_actions_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: org-actions-credential-validation
           path: target/org-actions-credential-validation-receipt.txt
@@ -386,7 +386,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload GitHub App control plane observation receipt
         id: app_control_plane_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: app-control-plane-observation
           path: target/app-control-plane-observation-receipt.txt
@@ -406,7 +406,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload R2 mint preflight receipt
         id: r2_mint_preflight_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: r2-mint-preflight
           path: target/r2-mint-preflight-permission-groups.txt
@@ -425,7 +425,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload R2 object-write mint receipt (token id + custody version resource; no secret)
         id: r2_object_write_mint_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: r2-object-write-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
@@ -492,7 +492,7 @@ jobs:
         timeout-minutes: 38
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
         id: mtcollins1_boot_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: mtcollins1-boot-receipts
           path: artifacts/mtcollins1-boot-*
@@ -518,7 +518,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload runner micro-VM guest image standing receipt
         id: guest_image_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: runner-guest-image-standing
           path: target/runner-guest-image-standing.txt
@@ -536,7 +536,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload runner micro-VM host standing receipt
         id: microvm_host_standing_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: runner-microvm-host-standing
           path: target/runner-microvm-host-standing.txt
@@ -554,7 +554,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload runner micro-VM boot probe console receipt
         id: microvm_boot_probe_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: runner-microvm-boot-probe
           path: target/runner-microvm-boot-probe.txt
@@ -710,7 +710,7 @@ jobs:
         timeout-minutes: 15
       - name: Upload password-session tool converge receipt
         id: runner_password_session_tool_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: runner-password-session-tool-converge-receipt
           path: target/runner-password-session-tool-converge-receipt.txt
@@ -720,7 +720,7 @@ jobs:
         timeout-minutes: 10
       - name: Upload runner host file converge receipt
         id: runner_host_file_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: runner-host-file-converge-receipt
           path: target/runner-host-file-converge-receipt.txt
@@ -743,12 +743,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
         timeout-minutes: 10
@@ -774,7 +774,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload host reset-return attempt receipt
         id: host_reset_return_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: host-reset-return
           path: target/host-reset-return.txt
@@ -792,12 +792,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
         timeout-minutes: 10
@@ -813,7 +813,7 @@ jobs:
         timeout-minutes: 5
       - name: Download the plan artifact (carries the plan receipt) from the plan run
         id: dashboard_plan_receipt_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
           path: /tmp/fleet-converge-plan
@@ -822,7 +822,7 @@ jobs:
         timeout-minutes: 10
       - name: Download the fleet apply receipt from the apply run
         id: dashboard_apply_receipt_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-apply-receipt
           path: /tmp/fleet-converge-apply
@@ -843,7 +843,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload live-deploy transaction receipt
         id: dashboard_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: live-deploy-srv1-live-receipt
           path: target/live-deploy-srv1-live-receipt
@@ -866,12 +866,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
         timeout-minutes: 10
@@ -887,7 +887,7 @@ jobs:
         timeout-minutes: 5
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
           service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
@@ -924,7 +924,7 @@ jobs:
         timeout-minutes: 5
       - name: Download fleet converge plan artifact (plan run)
         id: rlm_plan_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
           path: /tmp/fleet-converge-plan
@@ -933,7 +933,7 @@ jobs:
         timeout-minutes: 10
       - name: Download fleet converge apply receipt (apply run)
         id: rlm_apply_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-apply-receipt
           path: /tmp/fleet-converge-apply
@@ -942,7 +942,7 @@ jobs:
         timeout-minutes: 10
       - name: Download live-deploy transaction receipt (dashboard run)
         id: rlm_dashboard_download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: live-deploy-srv1-live-receipt
           path: target/live-deploy-srv1-live-receipt
@@ -963,7 +963,7 @@ jobs:
         timeout-minutes: 5
       - name: Upload roadmap launch deployment receipt
         id: rlm_receipt_upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: rlm-launch-deployment-receipt
           path: target/rlm-launch-deployment-receipt

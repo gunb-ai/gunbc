@@ -22,6 +22,7 @@ import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows 
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
 }
+import extdeps.github.app { modeled_webhook_event_vocabulary_frontier_rows }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
   public_workload_census_replay_consumer_frontier_rows,
@@ -47,6 +48,8 @@ import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
+import gunbc.cloudflare.boot_origin { cloudflare_boot_origin_frontier_rows }
+import gunbc.network_boot_delivery { network_boot_delivery_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
@@ -60,6 +63,11 @@ import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
+import gunbc.github_app_acquisition { github_app_human_step_frontier_rows }
+import gunbc.instruments.github_app_acquire {
+  census_app_installation_route_frontier_rows,
+  census_app_custody_handoff_frontier_rows,
+}
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
@@ -84,6 +92,10 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
+    modeled_webhook_event_vocabulary_frontier_rows,
+    census_app_installation_route_frontier_rows,
+    census_app_custody_handoff_frontier_rows,
+    github_app_human_step_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
     public_workload_census_run_attempt_consumer_frontier_rows,
     public_workload_census_declared_runner_frontier_rows,
@@ -100,6 +112,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_token_mint_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
+    cloudflare_boot_origin_frontier_rows,
+    network_boot_delivery_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,

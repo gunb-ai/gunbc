@@ -3,6 +3,8 @@ module test.claim.actions_job_grant_witness
 import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
+import gunbc.action_use_admission { checkout_action, upload_artifact_action }
+import extdeps.github.action_release { ActionRelease }
 import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
@@ -112,7 +114,7 @@ import extdeps.languages.yaml.types {
   yaml_value_kind_token,
   kv, yaml_string, yaml_int, yaml_bool
 }
-import extdeps.github.actions { Step, UsesStep, RunStep, ActionRef, checkout_action, upload_artifact_action }
+import extdeps.github.actions { Step, UsesStep, RunStep }
 import gunbc.repository { gunbc_repository }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

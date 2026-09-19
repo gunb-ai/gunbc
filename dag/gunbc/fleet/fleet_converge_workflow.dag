@@ -4,12 +4,15 @@ import std.measure { minute_count }
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, checkout_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
-  WorkflowPermissions, PermRead, PermWrite,
-  upload_artifact_action, download_artifact_action,
+  WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+}
+import gunbc.action_use_admission {
+  checkout_action, download_artifact_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
@@ -100,6 +103,7 @@ import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.runner_slot_allocation { runner_host_label }
 import gunbc.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -141,8 +145,11 @@ import std.types { NonEmptyStr, List, String, Int, list_length }
 // fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
 // state in which a fork is cheap to remove. It is now the same list its consumers fold as the
 // eligible executor set, so enrolling or retiring an executor host moves this input with it and
-// nobody can dispatch against a host the fleet does not think it has.
-data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => h as String)
+// nobody can dispatch against a host the fleet does not think it has. Each option is the host's
+// runner label (gunbc.runner_slot_allocation runner_host_label), the same projection its runners
+// register under, because fleet_converge_host_runner_expression interpolates the chosen option into
+// runs-on verbatim.
+data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => runner_host_label(host: h))
 
 // THE TARGET CHOICES ARE THE ROSTERED SPARKS, DERIVED, NOT SPELLED. The literal pair here refused the
 // first bootstrap dispatch against srv7 with an HTTP 422 from GitHub -- the workflow admitted two of
@@ -256,8 +263,8 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 //
 // THIS FUNCTION HAS NO PRODUCTION CALLER TODAY. Production dashboard_deploy reaches
 // live_deploy_apply_srv1_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
-// The request coproduct arm that would carry DesiredDeployment waits on C2. A host-only LiveDeploy
-// request has no spelling.
+// Wet observe still cannot mint LiveDeployConverge from a hostname; that arm is constructed
+// from DesiredDeployment.selected_identity plus LiveDeployMemberBasis.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }
@@ -1845,10 +1852,15 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+  match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+      }
   }
 }
 

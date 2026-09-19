@@ -1,0 +1,869 @@
+module gunbc.auth.approval_device_wire
+
+import std.types { NonEmptyStr, String, Timestamp, Int, List }
+import std.measure { Second, second }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth,
+}
+import extdeps.apple.apns { ApnsCustomKey, ApnsEnvironment, ApnsDevelopment, ApnsProduction, ApnsTopic, ApnsDeviceToken }
+import extdeps.apple.app_attest { AttestKeyId }
+import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
+import extdeps.android.key_attestation { AndroidAttestationChain }
+import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
+import std.logic { Bool }
+import std.encoding { base64_encode, base64_decode, UrlSafe, utf8_decode_octets }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.integer { UInt8 }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed,
+}
+
+// ── What this module is ──────────────────────────────────────────────────────────────────────
+// THE BYTE CONTRACT BETWEEN THE SERVER AND THE APP, and nothing else: the platform names, the
+// injective field framing, every signed or MAC'd transcript, the push hint and the route paths. It is
+// its own module because the app and the fixture generator need these facts and must not pay for the
+// store: gunbc.auth.approval_device_redemption (the server's admission and commit, which reads the
+// approval store) imports this, never the reverse.
+
+type MobilePlatform
+  = MobileIos
+  | MobileAndroid
+
+fn platform_wire(p: MobilePlatform) -> NonEmptyStr {
+  match p {
+    MobileIos => "ios" as NonEmptyStr
+    MobileAndroid => "android" as NonEmptyStr
+  }
+}
+
+// ── One injective byte rendering ─────────────────────────────────────────────────────────────
+// EVERY SIGNED OR MAC'D MESSAGE IN THIS PROTOCOL IS LENGTH-FRAMED: each field is rendered
+// "<n>:<field>," where n is the field's length in Unicode code points (string_length here,
+// String.unicodeScalars.count in Swift). A plain separator join is not injective when a field may
+// contain the separator -- and one field here, capability_text, is itself a unit-separator join --
+// so two different field lists could render to the same bytes and one signature would stand for
+// both. Framing makes the rendering injective for ANY field content, with no alphabet restriction to
+// enforce on ids, request text or capability text.
+fn framed_field(f: String) -> String {
+  join([to_string(string_length(s: f)), ":", f, ","], "")
+}
+
+fn framed(fields: List<String>) -> NonEmptyStr {
+  join(map(fields, f => framed_field(f: f)), "") as NonEmptyStr
+}
+
+data approval_enrolment_protocol: NonEmptyStr = "gunbc.approval-enrolment.v1" as NonEmptyStr
+
+// The bytes the platform attestation commits to (App Attest: SHA-256 of these is the
+// clientDataHash; Android: the attestation challenge). It binds the server-issued code (so a
+// replayed attestation cannot enrol under a fresh code) to the decision key (so a leaked code cannot
+// enrol a key the app did not attest alongside it). The login is not here: the server derives it.
+fn enrolment_transcript(code: NonEmptyStr, decision_key: VerifyingKey, platform: MobilePlatform) -> NonEmptyStr {
+  framed(fields: [
+    approval_enrolment_protocol as String,
+    code as String,
+    platform_wire(p: platform) as String,
+    decision_key.point_b64url as String,
+  ])
+}
+
+// ── The push ─────────────────────────────────────────────────────────────────────────────────
+// THE PUSH WAKES; IT DOES NOT CARRY WHAT IS DECIDED. One opaque, non-authorizing locator, carried as
+// a top-level APNs custom key beside aps. The capabilities are bearer credentials that must not
+// transit or rest at APNs or FCM, and anything rendered from the payload would be a second copy of
+// the request. The alert is generic. The app also lists pending approvals on open, so a lost push
+// costs latency, never a decision.
+type ApprovalPushHint {
+  notification_id: NonEmptyStr
+}
+
+data approval_push_alert_title: NonEmptyStr = "Approval requested" as NonEmptyStr
+
+fn approval_push_custom_keys(h: ApprovalPushHint) -> List<ApnsCustomKey> {
+  [ApnsCustomKey { key: "notification_id", value: h.notification_id }]
+}
+
+// ── Authenticated reads ──────────────────────────────────────────────────────────────────────
+// THE FETCH RETURNS BEARER CAPABILITIES, so it is authenticated, not merely hidden behind an opaque
+// push. The app proves it is the enrolled app instance with an App Attest assertion (no Face ID --
+// reading is not deciding) over a framed read request naming the path, the enrolment and the app's
+// claimed time; the server admits it only inside a short skew window and only for an ACTIVE iOS
+// enrolment. Residual, stated: the counter is not stored (see PlatformRedemptionProof), so a
+// captured read request replays inside its window -- over the tailnet's TLS -- and would disclose a
+// capability that, until cutover, the legacy bearer route still honours. Cutover closes it.
+data approval_device_read_protocol: NonEmptyStr = "gunbc.approval-device-read.v1" as NonEmptyStr
+data approval_device_read_skew: Second = second(count: 60)
+
+fn device_read_client_data(path: NonEmptyStr, enrollment_id: NonEmptyStr, requested_at: Timestamp) -> NonEmptyStr {
+  framed(fields: [approval_device_read_protocol as String, path as String, enrollment_id as String, requested_at])
+}
+
+// ── Redemption ───────────────────────────────────────────────────────────────────────────────
+// STATELESS CHALLENGE: nonce_hex is the server's MAC, under the capability key it already holds,
+// over redemption_challenge_message. Nothing is stored to issue it or to check it.
+type RedemptionChallenge {
+  expires_at: Timestamp
+  nonce_hex: NonEmptyStr
+}
+
+data approval_redemption_challenge_protocol: NonEmptyStr = "gunbc.approval-redemption-challenge.v1" as NonEmptyStr
+
+fn redemption_challenge_message(escalation_id: NonEmptyStr, request_revision: NonEmptyStr, enrollment_id: NonEmptyStr, expires_at: Timestamp) -> NonEmptyStr {
+  framed(fields: [
+    approval_redemption_challenge_protocol as String,
+    escalation_id as String,
+    request_revision as String,
+    enrollment_id as String,
+    expires_at,
+  ])
+}
+
+data approval_redemption_protocol: NonEmptyStr = "gunbc.approval-redemption.v1" as NonEmptyStr
+data approval_device_audience: NonEmptyStr = "gunbc.roadmap_serve/device-redemption" as NonEmptyStr
+
+// stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
+// app displayed, byte for byte; capability_text is approval_capability_signing_input of the
+// capability for the chosen verb; capability_tag_b64url is that capability's tag in its canonical
+// wire spelling (gunbc.auth.approval_capability ApprovalCapability tag_b64url), which the server
+// converts through capability_tag_hex before mac_verify -- the one declared inverse. The server re-renders all three from
+// the STORED request and refuses any disagreement, so the device signs no third spelling.
+type DeviceRedemptionSigningInput {
+  audience: NonEmptyStr
+  enrollment_id: NonEmptyStr
+  challenge: RedemptionChallenge
+  escalation_id: NonEmptyStr
+  request_revision: NonEmptyStr
+  stored_request_text: NonEmptyStr
+  decision: ProposedDecision
+  capability_text: NonEmptyStr
+  capability_tag_b64url: NonEmptyStr
+}
+
+fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyStr {
+  framed(fields: [
+    approval_redemption_protocol as String,
+    i.audience as String,
+    i.enrollment_id as String,
+    i.challenge.expires_at,
+    i.challenge.nonce_hex as String,
+    i.escalation_id as String,
+    i.request_revision as String,
+    i.stored_request_text as String,
+    proposed_decision_name(d: i.decision) as String,
+    i.capability_text as String,
+    i.capability_tag_b64url as String,
+  ])
+}
+
+// ── The device routes ────────────────────────────────────────────────────────────────────────
+// ONE SPELLING OF EACH PATH, read by the server's route table and by the app, so neither coins its
+// own. All sit under /approve/device beside the existing /approve route, which they do not touch.
+data approval_device_enrol_path: NonEmptyStr = "/approve/device/enrol" as NonEmptyStr
+data approval_device_pending_path: NonEmptyStr = "/approve/device/pending" as NonEmptyStr
+data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/requests/" as NonEmptyStr
+data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
+
+// ── Request bodies ───────────────────────────────────────────────────────────────────────────
+// The JSON bodies of the device routes. Their encoders and strict decoders are in "The HTTP wire"
+// below; the server's route handlers (approval_device_routes_frontier) are the decoders' consumer
+// in production, and the envelope fixtures and witnesses exercise them now.
+// Push registration is SEPARATE from enrolment: a token rotates (reinstall, restore, APNs 410)
+// without changing who is enrolled or which key decides, and revoking an enrolment must end its
+// authority whatever push tokens still exist.
+type PushRegistration
+  = ApnsRegistration { environment: ApnsEnvironment, topic: ApnsTopic, token: ApnsDeviceToken }
+  | FcmRegistration { project: FcmProjectId, token: FcmRegistrationToken }
+
+// What the app PRESENTS at enrolment: raw, unverified.
+type PresentedEnrollmentEvidence
+  = IosAppAttestAttestation { attest_key_id: AttestKeyId, attestation_b64: NonEmptyStr }
+  | AndroidKeyAttestationChain { chain: AndroidAttestationChain }
+
+// THE ENROLMENT POST BODY. The server reads the code's slot, verifies the evidence over
+// enrolment_transcript, and derives the login from the code; nothing here names a person.
+type EnrolmentRequest {
+  code: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  evidence: PresentedEnrollmentEvidence
+  push: PushRegistration
+}
+
+// Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
+// signing input. THE ASSERTION COUNTER IS NOT STORED, a stated departure from Apple's recommended
+// flow: Apple uses it to refuse replay, and a redemption replay is already refused twice -- the
+// challenge is server-minted, expiring and bound to one escalation revision, and the decision slot
+// admits one decision per escalation. Storing it would add one CAS generation per approval against
+// the store's generation probe bound, for no refusal the route lacks. (Reads are the exception, and
+// their residual is stated at device_read_client_data.)
+type PlatformRedemptionProof
+  = IosAppAttestAssertion { assertion_b64: NonEmptyStr }
+  | AndroidDecisionKeyOnly
+
+// THE REDEEM POST BODY: the wire carrier only. The server turns signature and platform_proof into
+// seam-minted verdicts and hands admission those verdicts with signing_input; admission never reads
+// these raw fields, so there is one representation of each proof on each side of the seam.
+type SignedRedemption {
+  signing_input: DeviceRedemptionSigningInput
+  signature: SignatureBytes
+  platform_proof: PlatformRedemptionProof
+}
+
+
+// ── The HTTP wire ────────────────────────────────────────────────────────────────────────────
+// EVERY BYTE THE APP AND THE SERVER EXCHANGE IS SPELLED HERE, not only the signed ones: request and
+// response bodies, the discriminant of every sum, the crypto carriers, the header names and the
+// path-segment rule. The app is a hand-written mirror of this section, checked against the
+// envelope fixtures gunbc.auth.approval_device_redemption_fixtures emits from these encoders; the
+// server's route handlers decode with the decoders below. Nothing about the exchange is authored
+// in Swift alone.
+//
+// DECODING IS STRICT, because the input is attacker-reachable: every object admits exactly its
+// declared members (an unknown member is refused, not ignored, so two readers cannot disagree about
+// what was sent), a member named twice is refused (extdeps.languages.json.parse
+// json_object_unique_member), and every string member must be non-empty. Each refusal names the
+// path of the member that failed.
+
+type WireDecode<T>
+  = WireDecoded { value: T }
+  | WireRefused { at: NonEmptyStr, cause: NonEmptyStr }
+
+fn wire_refused_at<T>(prefix: String, at: NonEmptyStr, cause: NonEmptyStr) -> WireDecode<T> {
+  WireRefused { at: join([prefix, at as String], "") as NonEmptyStr, cause: cause }
+}
+
+fn json_object_keys(v: JsonValue) -> List<String> {
+  match v {
+    JsonObject { members: ms } => map(ms, m => m.key)
+    _ => []
+  }
+}
+
+// The object must be an object carrying no member outside `allowed`.
+fn wire_object(v: JsonValue, at: NonEmptyStr, allowed: List<String>) -> WireDecode<JsonValue> {
+  match v {
+    JsonObject { members: _ } =>
+      if all(json_object_keys(v: v), k => contains(allowed, k)) { WireDecoded { value: v } }
+      else { WireRefused { at: at, cause: join(["unknown member: ", join(filter(json_object_keys(v: v), k => !contains(allowed, k)), ", ")], "") as NonEmptyStr } }
+    _ => WireRefused { at: at, cause: "not an object" }
+  }
+}
+
+fn wire_member(obj: JsonValue, key: String) -> WireDecode<JsonValue> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => WireDecoded { value: v }
+    FieldAbsent => WireRefused { at: key as NonEmptyStr, cause: "missing" }
+    FieldMalformed { cause: c } => WireRefused { at: key as NonEmptyStr, cause: c as NonEmptyStr }
+  }
+}
+
+fn wire_string(obj: JsonValue, key: String) -> WireDecode<NonEmptyStr> {
+  match wire_member(obj: obj, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } =>
+      match v {
+        JsonString { value: s } => if s == "" { WireRefused { at: key as NonEmptyStr, cause: "empty" } } else { WireDecoded { value: s as NonEmptyStr } }
+        _ => WireRefused { at: key as NonEmptyStr, cause: "not a string" }
+      }
+  }
+}
+
+// A SUM'S MEMBER SET IS ITS ARM'S, NOT THE UNION OF ALL ARMS: the decoder reads "kind" first and
+// then admits exactly that arm's members, so a member belonging to a different arm is refused rather
+// than silently dropped.
+fn wire_kind(v: JsonValue, at: NonEmptyStr) -> WireDecode<NonEmptyStr> {
+  match v {
+    JsonObject { members: _ } =>
+      match wire_string(obj: v, key: "kind") {
+        WireRefused { at: a, cause: c } => wire_refused_at(prefix: join([at as String, "."], ""), at: a, cause: c)
+        WireDecoded { value: k } => WireDecoded { value: k }
+      }
+    _ => WireRefused { at: at, cause: "not an object" }
+  }
+}
+
+// ── Crypto carriers ──────────────────────────────────────────────────────────────────────────
+// THE SUITE AND ENCODINGS TRAVEL EXPLICITLY and the decoder refuses any value but the one this
+// protocol admits, so a key or signature cannot be read under an encoding the sender did not use.
+fn signature_suite_wire(s: SignatureSuite) -> NonEmptyStr {
+  match s {
+    EcdsaP256Sha256 => "ECDSA-P256-SHA256" as NonEmptyStr
+  }
+}
+
+fn public_key_encoding_wire(e: PublicKeyEncoding) -> NonEmptyStr {
+  match e {
+    Sec1Uncompressed => "SEC1-uncompressed" as NonEmptyStr
+  }
+}
+
+fn signature_encoding_wire(e: SignatureEncoding) -> NonEmptyStr {
+  match e {
+    P1363FixedWidth => "P1363-fixed-width" as NonEmptyStr
+  }
+}
+
+fn verifying_key_json(k: VerifyingKey) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "suite", value: json_string(s: signature_suite_wire(s: k.suite) as String)),
+    json_kv(key: "encoding", value: json_string(s: public_key_encoding_wire(e: k.encoding) as String)),
+    json_kv(key: "point_b64url", value: json_string(s: k.point_b64url as String)),
+  ])
+}
+
+fn signature_bytes_json(b: SignatureBytes) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "suite", value: json_string(s: signature_suite_wire(s: b.suite) as String)),
+    json_kv(key: "encoding", value: json_string(s: signature_encoding_wire(e: b.encoding) as String)),
+    json_kv(key: "b64url", value: json_string(s: b.b64url as String)),
+  ])
+}
+
+fn decode_verifying_key(v: JsonValue) -> WireDecode<VerifyingKey> {
+  match wire_object(v: v, at: "decision_key", allowed: ["suite", "encoding", "point_b64url"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "suite") {
+        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "decision_key.", at: a, cause: c)
+        WireDecoded { value: suite } =>
+          if suite != signature_suite_wire(s: EcdsaP256Sha256) { WireRefused { at: "decision_key.suite", cause: "not the admitted suite" } }
+          else {
+            match wire_string(obj: o, key: "encoding") {
+              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "decision_key.", at: a, cause: c)
+              WireDecoded { value: enc } =>
+                if enc != public_key_encoding_wire(e: Sec1Uncompressed) { WireRefused { at: "decision_key.encoding", cause: "not the admitted encoding" } }
+                else {
+                  match wire_string(obj: o, key: "point_b64url") {
+                    WireRefused { at: a, cause: c } => wire_refused_at(prefix: "decision_key.", at: a, cause: c)
+                    WireDecoded { value: p } => WireDecoded { value: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: p } }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn decode_signature_bytes(v: JsonValue) -> WireDecode<SignatureBytes> {
+  match wire_object(v: v, at: "signature", allowed: ["suite", "encoding", "b64url"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "suite") {
+        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signature.", at: a, cause: c)
+        WireDecoded { value: suite } =>
+          if suite != signature_suite_wire(s: EcdsaP256Sha256) { WireRefused { at: "signature.suite", cause: "not the admitted suite" } }
+          else {
+            match wire_string(obj: o, key: "encoding") {
+              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signature.", at: a, cause: c)
+              WireDecoded { value: enc } =>
+                if enc != signature_encoding_wire(e: P1363FixedWidth) { WireRefused { at: "signature.encoding", cause: "not the admitted encoding" } }
+                else {
+                  match wire_string(obj: o, key: "b64url") {
+                    WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signature.", at: a, cause: c)
+                    WireDecoded { value: b } => WireDecoded { value: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: b } }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── Sums on the wire ─────────────────────────────────────────────────────────────────────────
+// EVERY SUM CARRIES A "kind" DISCRIMINANT naming its arm; an unknown kind is refused.
+fn apns_environment_wire(e: ApnsEnvironment) -> NonEmptyStr {
+  match e {
+    ApnsDevelopment => "development" as NonEmptyStr
+    ApnsProduction => "production" as NonEmptyStr
+  }
+}
+
+fn push_registration_json(p: PushRegistration) -> JsonValue {
+  match p {
+    ApnsRegistration { environment: e, topic: t, token: k } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "apns")),
+      json_kv(key: "environment", value: json_string(s: apns_environment_wire(e: e) as String)),
+      json_kv(key: "topic", value: json_string(s: t as String)),
+      json_kv(key: "token", value: json_string(s: k as String)),
+    ])
+    FcmRegistration { project: pr, token: k } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "fcm")),
+      json_kv(key: "project", value: json_string(s: pr as String)),
+      json_kv(key: "token", value: json_string(s: k as String)),
+    ])
+  }
+}
+
+// Android is unrealized: its push arm is modeled and encodable, and its decoder refuses rather
+// than admitting an arm no server route can act on.
+fn decode_push_registration(v: JsonValue) -> WireDecode<PushRegistration> {
+  match wire_kind(v: v, at: "push") {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: kind } =>
+      if (kind as String) != "apns" { WireRefused { at: "push.kind", cause: "not an admitted push provider" } }
+      else {
+        match wire_object(v: v, at: "push", allowed: ["kind", "environment", "topic", "token"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
+            match wire_string(obj: o, key: "environment") {
+              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "push.", at: a, cause: c)
+              WireDecoded { value: env } =>
+                match wire_string(obj: o, key: "topic") {
+                  WireRefused { at: a, cause: c } => wire_refused_at(prefix: "push.", at: a, cause: c)
+                  WireDecoded { value: topic } =>
+                    match wire_string(obj: o, key: "token") {
+                      WireRefused { at: a, cause: c } => wire_refused_at(prefix: "push.", at: a, cause: c)
+                      WireDecoded { value: token } =>
+                        if env == apns_environment_wire(e: ApnsProduction) { WireDecoded { value: ApnsRegistration { environment: ApnsProduction, topic: topic as ApnsTopic, token: token as ApnsDeviceToken } } }
+                        else if env == apns_environment_wire(e: ApnsDevelopment) { WireDecoded { value: ApnsRegistration { environment: ApnsDevelopment, topic: topic as ApnsTopic, token: token as ApnsDeviceToken } } }
+                        else { WireRefused { at: "push.environment", cause: "not an APNs environment" } }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn presented_evidence_json(e: PresentedEnrollmentEvidence) -> JsonValue {
+  match e {
+    IosAppAttestAttestation { attest_key_id: k, attestation_b64: a } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "ios_app_attest")),
+      json_kv(key: "attest_key_id", value: json_string(s: k as String)),
+      json_kv(key: "attestation_b64", value: json_string(s: a as String)),
+    ])
+    AndroidKeyAttestationChain { chain: c } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "android_key_attestation")),
+      json_kv(key: "certificates_der_b64", value: json_array(elements: map(c.certificates_der_b64, x => json_string(s: x as String)))),
+    ])
+  }
+}
+
+fn decode_presented_evidence(v: JsonValue) -> WireDecode<PresentedEnrollmentEvidence> {
+  match wire_kind(v: v, at: "evidence") {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: kind } =>
+      if (kind as String) != "ios_app_attest" { WireRefused { at: "evidence.kind", cause: "not an admitted evidence kind" } }
+      else {
+        match wire_object(v: v, at: "evidence", allowed: ["kind", "attest_key_id", "attestation_b64"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
+            match wire_string(obj: o, key: "attest_key_id") {
+              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
+              WireDecoded { value: k } =>
+                match wire_string(obj: o, key: "attestation_b64") {
+                  WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
+                  WireDecoded { value: att } => WireDecoded { value: IosAppAttestAttestation { attest_key_id: k as AttestKeyId, attestation_b64: att } }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn platform_proof_json(p: PlatformRedemptionProof) -> JsonValue {
+  match p {
+    IosAppAttestAssertion { assertion_b64: a } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "ios_app_attest_assertion")),
+      json_kv(key: "assertion_b64", value: json_string(s: a as String)),
+    ])
+    AndroidDecisionKeyOnly => json_object(members: [json_kv(key: "kind", value: json_string(s: "android_decision_key_only"))])
+  }
+}
+
+fn decode_platform_proof(v: JsonValue) -> WireDecode<PlatformRedemptionProof> {
+  match wire_kind(v: v, at: "platform_proof") {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: kind } =>
+      if (kind as String) != "ios_app_attest_assertion" { WireRefused { at: "platform_proof.kind", cause: "not an admitted proof kind" } }
+      else {
+        match wire_object(v: v, at: "platform_proof", allowed: ["kind", "assertion_b64"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
+            match wire_string(obj: o, key: "assertion_b64") {
+              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "platform_proof.", at: a, cause: c)
+              WireDecoded { value: a } => WireDecoded { value: IosAppAttestAssertion { assertion_b64: a } }
+            }
+        }
+      }
+  }
+}
+
+// ── Request bodies on the wire ───────────────────────────────────────────────────────────────
+fn enrolment_request_json(r: EnrolmentRequest) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "code", value: json_string(s: r.code as String)),
+    json_kv(key: "platform", value: json_string(s: platform_wire(p: r.platform) as String)),
+    json_kv(key: "decision_key", value: verifying_key_json(k: r.decision_key)),
+    json_kv(key: "evidence", value: presented_evidence_json(e: r.evidence)),
+    json_kv(key: "push", value: push_registration_json(p: r.push)),
+  ]))
+}
+
+// The member named `key` of `o`, decoded as one carrier; a missing member refuses at its name.
+fn decode_verifying_key_in(o: JsonValue, key: String) -> WireDecode<VerifyingKey> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_verifying_key(v: v)
+  }
+}
+
+fn decode_presented_evidence_in(o: JsonValue, key: String) -> WireDecode<PresentedEnrollmentEvidence> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_presented_evidence(v: v)
+  }
+}
+
+fn decode_push_registration_in(o: JsonValue, key: String) -> WireDecode<PushRegistration> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_push_registration(v: v)
+  }
+}
+
+fn decode_redemption_challenge_in(o: JsonValue, key: String) -> WireDecode<RedemptionChallenge> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_redemption_challenge(v: v)
+  }
+}
+
+fn decode_signing_input_in(o: JsonValue, key: String) -> WireDecode<DeviceRedemptionSigningInput> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_signing_input(v: v)
+  }
+}
+
+fn decode_signature_bytes_in(o: JsonValue, key: String) -> WireDecode<SignatureBytes> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_signature_bytes(v: v)
+  }
+}
+
+fn decode_platform_proof_in(o: JsonValue, key: String) -> WireDecode<PlatformRedemptionProof> {
+  match wire_member(obj: o, key: key) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: v } => decode_platform_proof(v: v)
+  }
+}
+
+fn decode_enrolment_request(text: String) -> WireDecode<EnrolmentRequest> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      match wire_object(v: v, at: "$", allowed: ["code", "platform", "decision_key", "evidence", "push"]) {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: o } =>
+          match wire_string(obj: o, key: "code") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: code } =>
+              match wire_string(obj: o, key: "platform") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: platform } =>
+                  if platform != platform_wire(p: MobileIos) { WireRefused { at: "platform", cause: "not an admitted platform" } }
+                  else {
+                    match decode_verifying_key_in(o: o, key: "decision_key") {
+                      WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                      WireDecoded { value: key } =>
+                        match decode_presented_evidence_in(o: o, key: "evidence") {
+                          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                          WireDecoded { value: evidence } =>
+                            match decode_push_registration_in(o: o, key: "push") {
+                              WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                              WireDecoded { value: push } =>
+                                WireDecoded { value: EnrolmentRequest { code: code, platform: MobileIos, decision_key: key, evidence: evidence, push: push } }
+                            }
+                        }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn signing_input_json(i: DeviceRedemptionSigningInput) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "audience", value: json_string(s: i.audience as String)),
+    json_kv(key: "enrollment_id", value: json_string(s: i.enrollment_id as String)),
+    json_kv(key: "challenge", value: redemption_challenge_json(c: i.challenge)),
+    json_kv(key: "escalation_id", value: json_string(s: i.escalation_id as String)),
+    json_kv(key: "request_revision", value: json_string(s: i.request_revision as String)),
+    json_kv(key: "stored_request_text", value: json_string(s: i.stored_request_text as String)),
+    json_kv(key: "decision", value: json_string(s: proposed_decision_name(d: i.decision) as String)),
+    json_kv(key: "capability_text", value: json_string(s: i.capability_text as String)),
+    json_kv(key: "capability_tag_b64url", value: json_string(s: i.capability_tag_b64url as String)),
+  ])
+}
+
+fn redemption_challenge_json(c: RedemptionChallenge) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "expires_at", value: json_string(s: c.expires_at)),
+    json_kv(key: "nonce_hex", value: json_string(s: c.nonce_hex as String)),
+  ])
+}
+
+fn decode_redemption_challenge(v: JsonValue) -> WireDecode<RedemptionChallenge> {
+  match wire_object(v: v, at: "challenge", allowed: ["expires_at", "nonce_hex"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "expires_at") {
+        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "challenge.", at: a, cause: c)
+        WireDecoded { value: exp } =>
+          match wire_string(obj: o, key: "nonce_hex") {
+            WireRefused { at: a, cause: c } => wire_refused_at(prefix: "challenge.", at: a, cause: c)
+            WireDecoded { value: n } => WireDecoded { value: RedemptionChallenge { expires_at: exp as String, nonce_hex: n } }
+          }
+      }
+  }
+}
+
+fn decision_of_wire(s: NonEmptyStr) -> ProposedDecision? {
+  if s == proposed_decision_name(d: ProposeApprove) { Present { value: ProposeApprove } }
+  else if s == proposed_decision_name(d: ProposeDeny) { Present { value: ProposeDeny } }
+  else { none }
+}
+
+fn decode_signing_input(v: JsonValue) -> WireDecode<DeviceRedemptionSigningInput> {
+  match wire_object(v: v, at: "signing_input", allowed: ["audience", "enrollment_id", "challenge", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"]) {
+    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+    WireDecoded { value: o } =>
+      match wire_string(obj: o, key: "audience") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: audience } =>
+      match wire_string(obj: o, key: "enrollment_id") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: enrollment_id } =>
+      match decode_redemption_challenge_in(o: o, key: "challenge") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: challenge } =>
+      match wire_string(obj: o, key: "escalation_id") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: escalation_id } =>
+      match wire_string(obj: o, key: "request_revision") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: request_revision } =>
+      match wire_string(obj: o, key: "stored_request_text") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: stored_request_text } =>
+      match wire_string(obj: o, key: "decision") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: decision_text } =>
+      match decision_of_wire(s: decision_text) { Absent => WireRefused { at: "signing_input.decision", cause: "not approve or deny" }  Present { value: decision } =>
+      match wire_string(obj: o, key: "capability_text") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: capability_text } =>
+      match wire_string(obj: o, key: "capability_tag_b64url") { WireRefused { at: a, cause: c } => wire_refused_at(prefix: "signing_input.", at: a, cause: c)  WireDecoded { value: tag } =>
+        WireDecoded { value: DeviceRedemptionSigningInput {
+          audience: audience, enrollment_id: enrollment_id, challenge: challenge, escalation_id: escalation_id,
+          request_revision: request_revision, stored_request_text: stored_request_text, decision: decision,
+          capability_text: capability_text, capability_tag_b64url: tag,
+        } }
+      } } } } } } } } } }
+  }
+}
+
+fn signed_redemption_json(r: SignedRedemption) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "signing_input", value: signing_input_json(i: r.signing_input)),
+    json_kv(key: "signature", value: signature_bytes_json(b: r.signature)),
+    json_kv(key: "platform_proof", value: platform_proof_json(p: r.platform_proof)),
+  ]))
+}
+
+fn decode_signed_redemption(text: String) -> WireDecode<SignedRedemption> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      match wire_object(v: v, at: "$", allowed: ["signing_input", "signature", "platform_proof"]) {
+        WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+        WireDecoded { value: o } =>
+          match decode_signing_input_in(o: o, key: "signing_input") {
+            WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+            WireDecoded { value: si } =>
+              match decode_signature_bytes_in(o: o, key: "signature") {
+                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                WireDecoded { value: sig } =>
+                  match decode_platform_proof_in(o: o, key: "platform_proof") {
+                    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                    WireDecoded { value: proof } => WireDecoded { value: SignedRedemption { signing_input: si, signature: sig, platform_proof: proof } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn push_update_json(p: PushRegistration) -> String {
+  serialize_json(v: push_registration_json(p: p))
+}
+
+fn decode_push_update(text: String) -> WireDecode<PushRegistration> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
+    JsonDocumentParsed { value: v } => decode_push_registration(v: v)
+  }
+}
+
+// ── Responses on the wire ────────────────────────────────────────────────────────────────────
+// The server ENCODES these and the app decodes them; the envelope fixtures carry one of each.
+type EnrolmentGrant {
+  enrollment_id: NonEmptyStr
+}
+
+type PendingApproval {
+  escalation_id: NonEmptyStr
+  request_revision: NonEmptyStr
+}
+
+type VerbCapability {
+  capability_text: NonEmptyStr
+  capability_tag_b64url: NonEmptyStr
+}
+
+// WHAT A FETCH RETURNS: the stored request exactly as the store renders it, a fresh challenge, and
+// the capability for EACH verb, because the operator chooses the verb after reading.
+type FetchedRequest {
+  escalation_id: NonEmptyStr
+  request_revision: NonEmptyStr
+  stored_request_text: NonEmptyStr
+  challenge: RedemptionChallenge
+  approve: VerbCapability
+  deny: VerbCapability
+}
+
+type EnrolmentStandingWire
+  = EnrolmentStandingActive
+  | EnrolmentStandingRevoked
+
+type EnrolmentReadback {
+  enrollment_id: NonEmptyStr
+  standing: EnrolmentStandingWire
+}
+
+// The redeem answer names its outcome by gunbc.auth.approval_device_redemption
+// device_redemption_outcome_wire and carries the operator-facing reason (redemption_response_of builds
+// it); the app renders the reason and branches only on the name.
+type RedemptionResponse {
+  outcome: NonEmptyStr
+  message: NonEmptyStr
+}
+
+fn enrolment_grant_json(g: EnrolmentGrant) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "enrollment_id", value: json_string(s: g.enrollment_id as String))]))
+}
+
+fn pending_list_json(rows: List<PendingApproval>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "pending", value: json_array(elements: map(rows, r => json_object(members: [
+      json_kv(key: "escalation_id", value: json_string(s: r.escalation_id as String)),
+      json_kv(key: "request_revision", value: json_string(s: r.request_revision as String)),
+    ])))),
+  ]))
+}
+
+fn verb_capability_json(c: VerbCapability) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "capability_text", value: json_string(s: c.capability_text as String)),
+    json_kv(key: "capability_tag_b64url", value: json_string(s: c.capability_tag_b64url as String)),
+  ])
+}
+
+fn fetched_request_json(f: FetchedRequest) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "escalation_id", value: json_string(s: f.escalation_id as String)),
+    json_kv(key: "request_revision", value: json_string(s: f.request_revision as String)),
+    json_kv(key: "stored_request_text", value: json_string(s: f.stored_request_text as String)),
+    json_kv(key: "challenge", value: redemption_challenge_json(c: f.challenge)),
+    json_kv(key: "approve", value: verb_capability_json(c: f.approve)),
+    json_kv(key: "deny", value: verb_capability_json(c: f.deny)),
+  ]))
+}
+
+fn enrolment_standing_wire(s: EnrolmentStandingWire) -> NonEmptyStr {
+  match s {
+    EnrolmentStandingActive => "active" as NonEmptyStr
+    EnrolmentStandingRevoked => "revoked" as NonEmptyStr
+  }
+}
+
+fn enrolment_readback_json(r: EnrolmentReadback) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "enrollment_id", value: json_string(s: r.enrollment_id as String)),
+    json_kv(key: "standing", value: json_string(s: enrolment_standing_wire(s: r.standing) as String)),
+  ]))
+}
+
+fn redemption_response_json(r: RedemptionResponse) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "outcome", value: json_string(s: r.outcome as String)),
+    json_kv(key: "message", value: json_string(s: r.message as String)),
+  ]))
+}
+
+// ── Headers, paths and the two further routes ────────────────────────────────────────────────
+// The three headers an authenticated GET or PUT carries: the enrolment it speaks for, the app's
+// claimed time, and the App Attest assertion over the route's framed client data.
+data approval_device_enrollment_header: NonEmptyStr = "X-Approval-Enrollment" as NonEmptyStr
+data approval_device_requested_at_header: NonEmptyStr = "X-Approval-Requested-At" as NonEmptyStr
+data approval_device_assertion_header: NonEmptyStr = "X-Approval-Assertion" as NonEmptyStr
+
+// THE ENROLMENT ID IS DERIVED FROM THE CODE, so the app knows the id of the enrolment its code
+// produced even when the POST's answer was lost -- the readback needs nothing the operator must type.
+fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
+  join(["enr-", code as String], "") as NonEmptyStr
+}
+
+// READBACK: after an enrolment POST whose answer was lost, the app asks whether its enrolment
+// exists before generating anything new. It authenticates with an assertion under the App Attest
+// key it just attested, which the server holds only if the enrolment committed.
+data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enrollments/" as NonEmptyStr
+
+// PUSH UPDATE: APNs rotates tokens; the app re-registers on every launch and PUTs the token here,
+// without a new enrolment. The token is inside the assertion's client data, so an assertion made
+// for one token cannot carry another.
+data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
+data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
+
+fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Timestamp, push: PushRegistration) -> NonEmptyStr {
+  framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])
+}
+
+// A PATH SEGMENT IS "id-" + base64url(UTF-8(identity)), TOTAL AND INJECTIVE, and never refused: every
+// identity the store admits has a route. The output is drawn only from the base64url alphabet, "="
+// padding and the "id-" prefix, so it carries no percent escape for any layer to decode, cannot be a
+// dot segment (it always starts "id-"), and has no case-equivalent alternate spelling. Percent
+// encoding was rejected: a URL parser treats %2E%2E as ".." and collapses the path, so an encoded
+// dot is not a stable transport spelling. ENCODING uses the standard codecs only: std.bytes
+// utf8_encode_bytes / bytes_octets for UTF-8 and std.encoding base64_encode for base64url.
+data path_segment_prefix: String = "id-"
+
+fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
+  join([path_segment_prefix, base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s as String)), variant: UrlSafe)], "") as NonEmptyStr
+}
+
+// THE SERVER'S INVERSE, typed and consuming the raw route suffix exactly once. The route takes the
+// suffix as received and does not percent-decode it first. Admitted only when re-encoding the decoded
+// identity reproduces the presented segment byte for byte, so each identity has exactly one
+// accepted spelling in both directions.
+type PathSegmentDecode
+  = PathSegmentDecoded { identity: NonEmptyStr }
+  | PathSegmentMalformed { cause: NonEmptyStr }
+  | PathSegmentNonCanonical { presented: NonEmptyStr, canonical: NonEmptyStr }
+
+fn decode_path_segment(presented: String) -> PathSegmentDecode {
+  if !starts_with(s: presented, prefix: path_segment_prefix) { PathSegmentMalformed { cause: "segment lacks the id- prefix" } }
+  else {
+    match base64_decode(s: substring(s: presented, start: string_length(s: path_segment_prefix), end: string_length(s: presented)), variant: UrlSafe) {
+      Absent => PathSegmentMalformed { cause: "segment body is not base64url" }
+      Present { value: octets } =>
+        match utf8_decode_octets(octets: octets) {
+          Absent => PathSegmentMalformed { cause: "segment body is not UTF-8" }
+          Present { value: cps } =>
+            if cps == [] { PathSegmentMalformed { cause: "segment names an empty identity" } }
+            else {
+              let identity = join(map(cps, cp => from_code_point(cp: cp)), "") as NonEmptyStr
+              let canonical = path_segment(s: identity)
+              if (canonical as String) == presented { PathSegmentDecoded { identity: identity } }
+              else { PathSegmentNonCanonical { presented: presented as NonEmptyStr, canonical: canonical } }
+            }
+        }
+    }
+  }
+}
+
+fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  join([approval_device_request_path_prefix as String, path_segment(s: escalation_id) as String], "") as NonEmptyStr
+}
+
+fn device_enrollment_path(enrollment_id: NonEmptyStr) -> NonEmptyStr {
+  join([approval_device_enrollment_path_prefix as String, path_segment(s: enrollment_id) as String], "") as NonEmptyStr
+}
