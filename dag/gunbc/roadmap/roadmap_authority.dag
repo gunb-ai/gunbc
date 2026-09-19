@@ -3486,9 +3486,20 @@ fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
 // of a frontier state — it has no history to preserve, it exists exactly while its target lacks a
 // contract, and if the target's slug changes it is honestly a different task.
 
-fn node_is_startable_for_accepted(n: RoadmapNode, accepted: List<RoadmapNodeId>) -> Bool {
+// THE EDGE LIST IS A PARAMETER BECAUSE THIS PREDICATE RUNS UNDER A PER-NODE FOLD. It used to call
+// declared_roadmap_edges() in its own body, so a caller filtering N nodes re-derived the whole
+// corpus edge list N times -- the quadratic fold DESIGN section 6 fixes at any n, measured here as
+// 148,262 eval steps for the filter against 1,693 for one edge derivation (probe over
+// startable_nodes_missing_closing_contract_for_accepted, claim_batch on this tree). The edges are a
+// fact the caller establishes once and carries in; re-deriving them inside the lambda was the
+// undeclared assumption that this predicate is called once.
+fn node_is_startable_for_accepted(
+  n: RoadmapNode,
+  accepted: List<RoadmapNodeId>,
+  edges: List<RoadmapEdge>,
+) -> Bool {
   all(
-    roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
+    roadmap_parent_ids(edges: edges, node: n.node),
     p => accepted |> any(a => a == (p as String)),
   )
 }
@@ -3545,16 +3556,37 @@ fn node_dispatch_is_declared(n: RoadmapNode) -> Bool {
 // Dispatchable closing-contract task that sat in Ready, so parking a node by clearing its binding
 // moved the node out of Ready and put a task for it straight back in (operator observation,
 // 2026-09-04).
-fn startable_nodes_missing_closing_contract_for_accepted(
+// THE GRAPH IS A PARAMETER ON THE _over FORM, AND THE LIVE FORM IS THE ONE CALL THAT SUPPLIES IT.
+// The selection rule below is a fact about a NODE SET -- which nodes in a graph still owe a closing
+// contract -- and nothing in it is a fact about the declared roadmap in particular. Splitting the
+// graph out is what lets a claim discriminate this rule at ONE INTERFACE over a three-node fixture
+// (DESIGN section 3) instead of deriving the whole live projection to read one node's disposition.
+// The live wrapper below is retained as the caller every production consumer already names, so the
+// split adds a seam and moves no authority.
+fn startable_nodes_missing_closing_contract_over(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapNode> {
-  declared_roadmap_nodes()
+  nodes
     |> filter(n => !(accepted |> any(a => a == n.node)))
     |> filter(n => !(withheld |> any(w => w == n.node)))
     |> filter(n => node_dispatch_is_declared(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
-    |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
+    |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted, edges: edges))
+}
+
+fn startable_nodes_missing_closing_contract_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapNode> {
+  startable_nodes_missing_closing_contract_over(
+    nodes: declared_roadmap_nodes(),
+    edges: declared_roadmap_edges(),
+    accepted: accepted,
+    withheld: withheld,
+  )
 }
 
 // THE DERIVED BRIEF NAMES ITS MECHANISM, because the first one dispatched did not and the worker spent

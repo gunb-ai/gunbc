@@ -1,12 +1,48 @@
 module test.claim.roadmap.roadmap_closing_contract_task_witness_test
 
-import std.types { Bool, String, List }
-import gunbc.roadmap_authority { startable_nodes_missing_closing_contract_for_accepted, declared_roadmap_nodes }
-import gunbc.roadmap_spawner { node_is_dispatchable }
-import gunbc.roadmap_model { RoadmapNode }
+import std.types { Bool, List }
+import gunbc.roadmap_authority { startable_nodes_missing_closing_contract_over, authored, authored_wi }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+
+// THE SUBJECT IS THE SELECTION RULE, NOT THE LIVE ROADMAP (DESIGN section 3 -- a witness
+// discriminates at ONE INTERFACE). This claim used to call the live
+// startable_nodes_missing_closing_contract_for_accepted and then re-scan declared_roadmap_nodes()
+// to prove the population it filtered was non-trivial, so reading one node's disposition derived
+// the entire projection twice: 113,011 eval steps, of which the assertions were a rounding error.
+// It now supplies the graph at the _over seam, where the rule actually lives.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY AN EXISTING CLAIM, NOT REMOVED. The real live path stays
+// executed by roadmap_authority_test witness_withheld_sized_subject_does_not_mint_closing_contract_task,
+// which calls the live for_accepted wrapper over the declared graph twice; deleting that integration
+// reds it. This claim is a reading of the rule, that one is the evidence the rule runs for real.
+
+// A node with NO dispatch binding. It lacks a closing contract exactly as the dispatchable one does,
+// so the ONLY fact separating them is the binding -- which is what makes the pair discriminating.
+fn undispatchable_node() -> RoadmapNode {
+  authored(identity: "rnfx_CCTW00000000000000UD", id: "cct-undispatchable", done: false, content: "observe-only")
+}
+
+// A dispatchable node with ExecutionContractUnspecified: it OWES a closing contract, so the rule
+// must mint a task for it. Without this arm the claim would pass on a fold that mints nothing at all.
+fn dispatchable_node() -> RoadmapNode {
+  authored_wi(identity: "rnfx_CCTW00000000000000DP", id: "cct-dispatchable", done: false, content: "dispatch-me", repo: "gunbc")
+}
+
+fn fixture_nodes() -> List<RoadmapNode> { [undispatchable_node(), dispatchable_node()] }
+
+fn no_edges() -> List<RoadmapEdge> { [] }
+
+fn candidates() -> List<RoadmapNode> {
+  startable_nodes_missing_closing_contract_over(
+    nodes: fixture_nodes(),
+    edges: no_edges(),
+    accepted: [],
+    withheld: [],
+  )
+}
 
 test fn an_undispatchable_node_mints_no_closing_contract_task() -> Bool {
-  let candidates = startable_nodes_missing_closing_contract_for_accepted(accepted: [], withheld: [])
-  let has_undispatchable_declared = any(declared_roadmap_nodes(), n => !node_is_dispatchable(n: n))
-  has_undispatchable_declared && all(candidates, n => node_is_dispatchable(n: n))
+  let cs = candidates()
+  !(cs |> any(c => c.node == undispatchable_node().node))
+    && (cs |> any(c => c.node == dispatchable_node().node))
 }
