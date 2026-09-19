@@ -90,11 +90,14 @@ type ChainStance = DefaultDrop | DefaultAccept
 // This host is NOT a fleet-converge target of the srvN microVM program: its grain has no installer in
 // this tree, and the one that would install it is its host image (runner_attempt_launch
 // host_boot_cutover_frontier), not the srvN converge named by host_ruleset_installer_frontier.
+// THE DENIALS ARE NOT LISTED HERE BECAUSE THEY ARE ALREADY RULES. The BMC and management LAN fall in
+// the guest policy's private-range rows (the BMC measured on the filtered-egress run is 192.168.1.228),
+// and tap to tap is the forward chain's first rule in gunbc.runner_microvm_network; a prose list here
+// would be a third spelling of both (review 68294).
 type EgressPolicyShape {
   host_input: ChainStance
   host: HostEgressGrain
   guest: GuestEgressPolicy
-  explicit_denials: List<NonEmptyStr>
   nat: NonEmptyStr
 }
 
@@ -102,10 +105,6 @@ data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
   host_input: DefaultDrop,
   host: HostEgressGrain { forward: HostChainDefaultDrop, ipv6: IpV6DisabledOnDataPath },
   guest: runner_microvm_guest_egress_policy,
-  explicit_denials: [
-    "guest to the BMC and any management address",
-    "tap to tap -- no attempt may reach another attempt",
-  ],
   nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
 }
 
