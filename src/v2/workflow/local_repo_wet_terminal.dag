@@ -998,6 +998,96 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "an_absent_slot_acquires_at_generation_one_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "an_absent_slot_acquires_at_generation_one_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_held_slot_refuses_another_owner_without_writing_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_held_slot_refuses_another_owner_without_writing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "refused_releases_do_not_free_the_slot_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "refused_releases_do_not_free_the_slot_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "a_cell_held_by_another_reservation_is_not_released_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "a_cell_held_by_another_reservation_is_not_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "an_already_free_slot_has_no_hold_to_release_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "an_already_free_slot_has_no_hold_to_release_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "the_right_reservation_at_another_acquisition_generation_is_not_released_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "the_right_reservation_at_another_acquisition_generation_is_not_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "a_superseded_lease_generation_refuses_at_the_budget_fence_and_the_cell_stays_held_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "a_superseded_lease_generation_refuses_at_the_budget_fence_and_the_cell_stays_held_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "commit_then_read_back_by_real_execution" },
       entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
       function: "commit_then_read_back_by_real_execution",

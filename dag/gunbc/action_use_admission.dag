@@ -2,20 +2,17 @@ module gunbc.action_use_admission
 
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
-}
-import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+import extdeps.languages.yaml.ingest { yaml_indent_of }
 import extdeps.github.actions { Workflow, Job, Step, UsesStep, RunStep }
 import extdeps.github.action_release {
   ActionRelease, ActionExecutionMechanism, ActionManifestReading,
   JavaScriptAction, CompositeAction, DockerAction,
-  action_release_same_producer, action_release_uses_text, action_execution_mechanism_text,
+  action_release_same_producer, action_release_uses_text, action_execution_mechanism_text, action_manifest_of,
 }
 import extdeps.github.action_runtime_policy {
   PlatformActionExecutionDisposition,
   PlatformExecutesExact, PlatformForcedSubstitution, PlatformRefusesDeclaration, PlatformDispositionUnmodeled,
-  github_actions_execution_disposition,
+  github_actions_execution_disposition, NodeRuntimePolicyEpoch, node24_default_epoch,
 }
 import extdeps.github.action.upload_artifact { upload_artifact_manifest_readings, upload_artifact_v6_0_0 }
 import extdeps.github.action.download_artifact { download_artifact_manifest_readings, download_artifact_v7_0_0 }
@@ -94,6 +91,12 @@ fn realized_use_is_a_repository_selection(uses_text: String) -> Bool {
   any(repository_action_selections, r => action_release_uses_text(action_release: r) == uses_text)
 }
 
+// WHICH PLATFORM EPOCH THIS REPOSITORY'S RUNNERS ARE IN. Choosing it is a repository fact: every
+// runner this repository registers runs actions/runner 2.337.0 (gunbc.runner_first_job_receipt),
+// past the epoch's 2.328.0 minimum. When GitHub moves to a new epoch this row moves to its new cited
+// row, and every release that epoch no longer executes exactly refuses at once, by name.
+data repository_node_runtime_epoch: NodeRuntimePolicyEpoch = node24_default_epoch
+
 // ---------------------------------------------------------------------------------------------
 // ADMISSION
 // ---------------------------------------------------------------------------------------------
@@ -117,6 +120,7 @@ type ActionUseAdmission
   | RefusedUnobservedDeclaration { action_release: ActionRelease }
   | RefusedConflictingDeclarations { action_release: ActionRelease, readings: Int }
   | RefusedNestedActionUse { action_release: ActionRelease, nested: ActionUseAdmission }
+  | RefusedUnselectedRelease { action_release: ActionRelease }
   | RefusedUnmodeledUse { uses_text: String, site: ActionUseSite, cause: NonEmptyStr }
   | RefusedUnresolvedProducer { uses_text: String, cause: NonEmptyStr }
 
@@ -129,6 +133,7 @@ fn action_use_admitted(a: ActionUseAdmission) -> Bool {
     RefusedUnobservedDeclaration { action_release: _ } => false
     RefusedConflictingDeclarations { action_release: _, readings: _ } => false
     RefusedNestedActionUse { action_release: _, nested: _ } => false
+    RefusedUnselectedRelease { action_release: _ } => false
     RefusedUnmodeledUse { uses_text: _, site: _, cause: _ } => false
     RefusedUnresolvedProducer { uses_text: _, cause: _ } => false
   }
@@ -154,7 +159,7 @@ fn admit_nested_action_uses(readings: List<ActionManifestReading>, action_releas
 }
 
 fn admit_declared_mechanism(readings: List<ActionManifestReading>, action_release: ActionRelease, declared: ActionExecutionMechanism) -> ActionUseAdmission {
-  match github_actions_execution_disposition(declared: declared) {
+  match github_actions_execution_disposition(epoch: repository_node_runtime_epoch, declared: declared) {
     PlatformForcedSubstitution { declared: d, realized: r, policy_authority: p } =>
       RefusedForcedSubstitution { action_release: action_release, declared: d, realized: r, policy_authority: p }
     PlatformRefusesDeclaration { declared: d, reason: why } =>
@@ -190,6 +195,18 @@ fn admit_action_release(action_release: ActionRelease) -> ActionUseAdmission {
   admit_action_release_against(readings: action_manifest_readings, action_release: action_release)
 }
 
+// THE ONE ADMISSION BOTH ROUTES USE FOR A WORKFLOW'S OWN `uses:`: executed exactly AND a repository
+// selection. Nested releases inside a composite are admitted on runtime alone -- the composite's
+// producer chose them, not this repository.
+fn admit_selected_action_use(action_release: ActionRelease) -> ActionUseAdmission {
+  let a = admit_action_release(action_release: action_release)
+  if action_use_admitted(a: a) && !realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: action_release)) {
+    RefusedUnselectedRelease { action_release: action_release }
+  } else {
+    a
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // ROUTE 1: A MODELED WORKFLOW, BEFORE IT IS EMITTED
 // ---------------------------------------------------------------------------------------------
@@ -207,7 +224,7 @@ fn step_action_use_refusals(job_id: String, step: Step) -> List<WorkflowActionUs
   match step {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => []
     UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      let a = admit_action_release(action_release: u)
+      let a = admit_selected_action_use(action_release: u)
       if action_use_admitted(a: a) { [] } else { [WorkflowActionUseRefusal { job_id: job_id, admission: a }] }
   }
 }
@@ -224,6 +241,7 @@ fn action_use_admission_reason(a: ActionUseAdmission) -> String {
     AdmittedExact { action_release: r, declared: _ } => concat("admitted ", action_release_uses_text(action_release: r))
     RefusedForcedSubstitution { action_release: r, declared: d, realized: z, policy_authority: _ } =>
       join([action_release_uses_text(action_release: r), " (", r.tag as String, ") declares ", action_execution_mechanism_text(m: d),
+        " in ", action_manifest_of(action_release: r).uri.locator,
         " and GitHub executes it as ", action_execution_mechanism_text(m: z),
         ". Select a release whose own action.yml declares the mechanism the platform executes."], "")
     RefusedByPlatform { action_release: r, declared: d, reason: why } =>
@@ -237,6 +255,8 @@ fn action_use_admission_reason(a: ActionUseAdmission) -> String {
       join([action_release_uses_text(action_release: r), " has ", to_string(n), " manifest readings; one producer commit has one action.yml."], "")
     RefusedNestedActionUse { action_release: r, nested: inner } =>
       join(["composite ", action_release_uses_text(action_release: r), " runs a nested action that is refused: ", action_use_admission_reason(a: inner)], "")
+    RefusedUnselectedRelease { action_release: r } =>
+      join([action_release_uses_text(action_release: r), " (", r.tag as String, ") is executed exactly, but no row of gunbc.action_use_admission repository_action_selections selects it"], "")
     RefusedUnmodeledUse { uses_text: t, site: _, cause: c } => join(["`uses: ", t, "` is not a modeled action release: ", c as String], "")
     RefusedUnresolvedProducer { uses_text: t, cause: c } => join(["`uses: ", t, "` does not identify a producer revision: ", c as String], "")
   }
@@ -264,104 +284,112 @@ type RealizedWorkflowReading
   = RealizedWorkflowUses { workflow_path: String, uses: List<RealizedActionUse> }
   | RealizedWorkflowUnreadable { workflow_path: String, reason: String }
 
-fn yaml_entry_values(entries: List<YamlKeyValue>, key: String) -> List<YamlValue> {
-  fold(entries, init: [], f: fn(acc, e) { if e.key == key { concat(acc, [e.value]) } else { acc } })
-}
-
-// A `uses:` whose value is not a plain string is not one GitHub can resolve, so it is carried
-// through with a spelling that no admission accepts rather than being dropped.
-fn realized_uses_text(v: YamlValue) -> String {
-  match v {
-    YamlString { value: s } => s
-    YamlNull => "<null>"
-    YamlBool { value: _ } => "<bool>"
-    YamlInt { lexeme: l } => l
-    YamlFloat { lexeme: l } => l
-    YamlSequence { elements: _ } => "<sequence>"
-    YamlMapping { entries: _ } => "<mapping>"
+// THE REALIZED-FILE PROJECTION EXAMINES ONLY THE LINES THAT CAN CARRY A USE. The census must cover
+// every file GitHub executes, generated ones included, and neither a full YAML parse nor a scan
+// that interprets every line fits one claim's eval-step budget (claim_batch re-derives the cost on
+// test.claim.action_use_admission_witness). Admission needs two things per use, and neither needs
+// the surrounding structure:
+//   - the value, from the line's own `uses:` key; and
+//   - the SITE, from the value's own shape: GitHub resolves a job-level `uses:` only as a reusable
+//     workflow, which is spelled `<owner>/<repo>/.github/workflows/<file>@<ref>` or
+//     `./.github/workflows/<file>`, and a step-level one never names a workflow file. A job-level
+//     `uses:` naming a plain action is a workflow GitHub itself rejects, so no substituted runtime
+//     can run from it.
+// Every line that names `uses` is examined, including lines inside script bodies: a script line
+// spelled exactly as a `uses:` key is treated as a use and must be admitted, which fails closed.
+// Unmodeled spellings refuse rather than pass: a quoted or flow-mapping `uses` key, an anchor or
+// alias value, and an empty value. Whole-file facts are read once: exactly one top-level `jobs`, and
+// no runner override that makes GitHub execute node20 as declared
+// (repository_node_runtime_epoch override_variable). A refusal quotes the offending line.
+fn uses_value_text(value: String) -> String {
+  let bare = if string_contains(s: value, pattern: " #") { fold(split(s: value, delimiter: " #"), init: "", f: fn(acc, part) { if acc == "" { part } else { acc } }) } else { value }
+  if (bare.length() >= 2) && ((starts_with(s: bare, prefix: "\"") && ends_with(s: bare, suffix: "\"")) || (starts_with(s: bare, prefix: "'") && ends_with(s: bare, suffix: "'"))) {
+    substring(s: bare, start: 1, end: bare.length() - 1)
+  } else {
+    bare
   }
 }
 
-fn step_realized_uses(path: String, job_id: String, step: YamlValue) -> List<RealizedActionUse> {
-  match step {
-    YamlMapping { entries: es } =>
-      fold(yaml_entry_values(entries: es, key: "uses"), init: [], f: fn(acc, v) {
-        concat(acc, [RealizedActionUse { workflow_path: path, job_id: job_id, site: StepActionUse, uses_text: realized_uses_text(v: v) }])
-      })
-    YamlNull => []
-    YamlBool { value: _ } => []
-    YamlInt { lexeme: _ } => []
-    YamlFloat { lexeme: _ } => []
-    YamlString { value: _ } => []
-    YamlSequence { elements: _ } => []
+fn uses_site_of(value: String) -> ActionUseSite {
+  if string_contains(s: value, pattern: ".github/workflows/") { JobReusableWorkflowUse } else { StepActionUse }
+}
+
+type UsesLineReading
+  = UsesLineNotAUse
+  | UsesLineUse { use: RealizedActionUse }
+  | UsesLineRefused { reason: String }
+
+fn uses_line_reading(path: String, line: String) -> UsesLineReading {
+  let text = substring(s: line, start: yaml_indent_of(line: line), end: line.length())
+  let body = if starts_with(s: text, prefix: "- ") { substring(s: text, start: 2, end: text.length()) } else { text }
+  let why = if starts_with(s: body, prefix: "{") {
+    "a flow-mapping step that names `uses` is not modeled"
+  } else if starts_with(s: body, prefix: "\"uses\":") || starts_with(s: body, prefix: "'uses':") {
+    "a quoted `uses` key is not modeled"
+  } else { "" }
+  if why != "" {
+    UsesLineRefused { reason: join([why, " -- at `", line, "`"], "") }
+  } else if (body == "uses:") || starts_with(s: body, prefix: "uses: ") {
+    let v = uses_value_text(value: if body == "uses:" { "" } else { substring(s: body, start: 6, end: body.length()) })
+    if v == "" {
+      UsesLineRefused { reason: join(["a `uses:` with no value -- at `", line, "`"], "") }
+    } else if starts_with(s: v, prefix: "*") || starts_with(s: v, prefix: "&") {
+      UsesLineRefused { reason: join(["a YAML anchor or alias as a `uses` value is not modeled -- at `", line, "`"], "") }
+    } else {
+      UsesLineUse { use: RealizedActionUse { workflow_path: path, job_id: "", site: uses_site_of(value: v), uses_text: v } }
+    }
+  } else {
+    UsesLineNotAUse
   }
 }
 
-fn job_realized_uses(path: String, job_id: String, job: YamlValue) -> List<RealizedActionUse> {
-  match job {
-    YamlMapping { entries: es } =>
-      let job_level = fold(yaml_entry_values(entries: es, key: "uses"), init: [], f: fn(acc, v) {
-        concat(acc, [RealizedActionUse { workflow_path: path, job_id: job_id, site: JobReusableWorkflowUse, uses_text: realized_uses_text(v: v) }])
-      })
-      fold(yaml_entry_values(entries: es, key: "steps"), init: job_level, f: fn(acc, steps) {
-        match steps {
-          YamlSequence { elements: xs } => fold(xs, init: acc, f: fn(acc2, s) { concat(acc2, step_realized_uses(path: path, job_id: job_id, step: s)) })
-          YamlNull => acc
-          YamlBool { value: _ } => acc
-          YamlInt { lexeme: _ } => acc
-          YamlFloat { lexeme: _ } => acc
-          YamlString { value: _ } => acc
-          YamlMapping { entries: _ } => acc
-        }
-      })
-    YamlNull => []
-    YamlBool { value: _ } => []
-    YamlInt { lexeme: _ } => []
-    YamlFloat { lexeme: _ } => []
-    YamlString { value: _ } => []
-    YamlSequence { elements: _ } => []
-  }
+// ANY `uses` FOLLOWED BY A COLON IS A KEY SPELLING UNTIL PROVEN OTHERWISE. The projection reads a
+// use only in the shapes it models; every other line that spells a `uses` key -- a flow sequence or
+// mapping anywhere on the line, a tab separator, a space before the colon -- refuses rather than
+// reading as "no use here", which would be the silent narrow DESIGN section 5 forbids. Comment lines
+// are the only exemption, and prose that says "uses" with no colon is not a key.
+fn uses_line_is_comment(line: String) -> Bool {
+  starts_with(s: substring(s: line, start: yaml_indent_of(line: line), end: line.length()), prefix: "#")
 }
 
-fn jobs_realized_uses(path: String, jobs: YamlValue) -> RealizedWorkflowReading {
-  match jobs {
-    YamlMapping { entries: es } =>
-      RealizedWorkflowUses {
-        workflow_path: path,
-        uses: fold(es, init: [], f: fn(acc, e) { concat(acc, job_realized_uses(path: path, job_id: e.key, job: e.value)) }),
-      }
-    YamlNull => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is null" }
-    YamlBool { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is not a mapping" }
-    YamlInt { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is not a mapping" }
-    YamlFloat { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is not a mapping" }
-    YamlString { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is not a mapping" }
-    YamlSequence { elements: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "`jobs` is not a mapping" }
-  }
+fn uses_line_spells_a_uses_key(line: String) -> Bool {
+  string_contains(s: line, pattern: "uses:") || string_contains(s: line, pattern: "uses :") || string_contains(s: line, pattern: "uses\t")
 }
 
-// THE WORKFLOW IS PARSED, NOT SCANNED FOR THE SUBSTRING `uses:`. GitHub reads `uses` at exactly two
-// places: a job, and a step inside that job's `steps`. Reading those two places structurally is
-// what lets a job-level reusable-workflow call be classified apart from a step action, and it means
-// a file this parser cannot read is refused as unreadable instead of being reported as having no uses.
+type UsesScan {
+  uses: List<RealizedActionUse>
+  refusal: String
+}
+
+// `job_id` is left empty: the projection does not build the job mapping, and a refusal carries the
+// offending line's own text as its locus.
 fn realized_workflow_action_uses(path: String, source: String) -> RealizedWorkflowReading {
-  match ingest_yaml_source(src: source) {
-    YamlIngestRejected { reason: r } => RealizedWorkflowUnreadable { workflow_path: path, reason: r }
-    IngestedYaml { value: v } =>
-      match v {
-        YamlMapping { entries: es } =>
-          let jobs = yaml_entry_values(entries: es, key: "jobs")
-          if (jobs |> count) != 1 {
-            RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow does not carry exactly one `jobs` key" }
-          } else {
-            fold(jobs, init: RealizedWorkflowUnreadable { workflow_path: path, reason: "unreachable" }, f: fn(_, j) { jobs_realized_uses(path: path, jobs: j) })
-          }
-        YamlNull => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
-        YamlBool { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
-        YamlInt { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
-        YamlFloat { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
-        YamlString { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
-        YamlSequence { elements: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the document is not a mapping" }
+  if string_contains(s: source, pattern: repository_node_runtime_epoch.override_variable as String) {
+    RealizedWorkflowUnreadable { workflow_path: path, reason: join(["`", repository_node_runtime_epoch.override_variable as String, "` makes the runner execute node20 as declared; a workflow may not set it, in any scope or script"], "") }
+  } else if ((split(s: concat("\n", source), delimiter: "\njobs:") |> count) != 2) {
+    RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow does not carry exactly one top-level `jobs` key" }
+  } else {
+    let scan = fold(split(s: source, delimiter: "\n"), init: UsesScan { uses: [], refusal: "" }, f: fn(acc, line) {
+      if (acc.refusal != "") || !string_contains(s: line, pattern: "uses") {
+        acc
+      } else {
+        match uses_line_reading(path: path, line: line) {
+          UsesLineNotAUse =>
+            if uses_line_is_comment(line: line) || !uses_line_spells_a_uses_key(line: line) {
+              acc
+            } else {
+              UsesScan { uses: acc.uses, refusal: join(["a `uses` key this projection cannot classify (flow style, a tab, or a key not at the head of the line) -- at `", line, "`"], "") }
+            }
+          UsesLineUse { use: u } => UsesScan { uses: concat(acc.uses, [u]), refusal: acc.refusal }
+          UsesLineRefused { reason: r } => UsesScan { uses: acc.uses, refusal: r }
+        }
       }
+    })
+    if scan.refusal != "" {
+      RealizedWorkflowUnreadable { workflow_path: path, reason: scan.refusal }
+    } else {
+      RealizedWorkflowUses { workflow_path: path, uses: scan.uses }
+    }
   }
 }
 
@@ -420,7 +448,7 @@ fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
               RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "no producer manifest reading exists for that repository at that commit" }
             } else {
               fold(found, init: RefusedUnmodeledUse { uses_text: u.uses_text, site: StepActionUse, cause: "unreachable" }, f: fn(_, r) {
-                admit_action_release(action_release: r.action_release)
+                admit_selected_action_use(action_release: r.action_release)
               })
             }
           }
