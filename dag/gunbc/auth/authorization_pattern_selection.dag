@@ -537,7 +537,7 @@ fn constraint_dispositions(cs: List<HardConstraint>) -> List<ConstraintDispositi
       constraint: id,
       evidence: join([
         "hard constraint ", declaration_ref_display_key(ref: id),
-        " excluded its candidates before dominance",
+        " is a gate at 1 applied to every candidate before dominance",
       ], "") as NonEmptyStr,
     })
 }

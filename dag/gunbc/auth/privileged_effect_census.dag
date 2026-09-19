@@ -11,7 +11,7 @@ import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_inter
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
-  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential,
+  MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
@@ -445,7 +445,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       reversibility: IrreversibleEffect { what_is_lost: "the value is shown once" as NonEmptyStr },
       surface: HumanSurfaceOnly { step: cloudflare_account_token_bootstrap_intervention() },
       workload_identity: WorkloadIdentityUnbindable { cause: "no API creates an account-owned token without an existing one" as NonEmptyStr },
-      minted_reach: MintsProjectWideCredential,
+      minted_reach: MintsAccountWideCredential,
       billing: NoBillingConsequence,
     },
     realized: RealizedHumanStep,
