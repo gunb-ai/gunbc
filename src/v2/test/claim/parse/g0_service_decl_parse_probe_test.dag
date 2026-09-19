@@ -133,3 +133,49 @@ test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
 test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
   refuses(src: mock_entry_without_expr_red_source)
 }
+
+// COST RULER, NOT EVIDENCE. The cost_ruler_* rows below are a one-run cost-shape measurement
+// (does the parse cost of the real access.PosixEffectivePrincipal service scale linearly with its
+// blocks and operations?). They exist for exactly one floor run and are deleted in the next commit;
+// they are not coverage and must not be in the merged diff.
+data cost_ruler_empty_src: String = "module m\nfn f() -> Int { 1 }\n"
+
+test fn cost_ruler_empty_holds() -> Bool {
+  parses(src: cost_ruler_empty_src)
+}
+
+data cost_ruler_full_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
+
+test fn cost_ruler_full_holds() -> Bool {
+  parses(src: cost_ruler_full_src)
+}
+
+data cost_ruler_no_mock_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n  }\n}\n"
+
+test fn cost_ruler_no_mock_holds() -> Bool {
+  parses(src: cost_ruler_no_mock_src)
+}
+
+data cost_ruler_no_exit_no_mock_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n  }\n}\n"
+
+test fn cost_ruler_no_exit_no_mock_holds() -> Bool {
+  parses(src: cost_ruler_no_exit_no_mock_src)
+}
+
+data cost_ruler_two_ops_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n  operation Read2 {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
+
+test fn cost_ruler_two_ops_holds() -> Bool {
+  parses(src: cost_ruler_two_ops_src)
+}
+
+data cost_ruler_mock_only_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"hermetic effective-principal observation unavailable\" } \"hermetic access.PosixEffectivePrincipal.Read refuses external identity observation\"\n    }\n  }\n}\n"
+
+test fn cost_ruler_mock_only_holds() -> Bool {
+  parses(src: cost_ruler_mock_only_src)
+}
+
+data cost_ruler_exit_only_src: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n  }\n}\n"
+
+test fn cost_ruler_exit_only_holds() -> Bool {
+  parses(src: cost_ruler_exit_only_src)
+}
