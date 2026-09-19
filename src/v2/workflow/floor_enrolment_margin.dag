@@ -190,15 +190,11 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
 // TYPED COST-DEBT IDENTITIES THIS GATE MAY HONOUR AS ROSTER GROUND. Decoded by the host
 // the same way `floor_cost_debt_roster` is decoded -- never a Rust-empty HashSet.
 //
-// REACHABLE, UNEXERCISED UNTIL THE FIRST AUTHORED ATTEMPT; THAT FIRST ATTEMPT IS THE RED.
-// The Roster arm is reachable by construction (`enrolment_expensiveness_declaration` given
-// typed_admission_holds). End-to-end execution of this nullary list waits on the first
-// `FloorCostDebtReadingAttempt` in `floor_cost_debt_typed_admission_attempts`. That
-// authoring is the discriminating evidence; emptiness of today's list is not coverage.
+// A typed admission carries an identity and a reason, never a reading: whether the identity is
+// still expensive is decided by THIS run's live reading in `enrolment_declared_measured_standing`,
+// so an admission cannot outlive the cost that justified it.
 fn enrolment_typed_cost_debt_identities() -> List<String> {
-  floor_cost_debt_typed_admitted_identities(
-    ceiling_ms: required_floor_per_subject_cpu_line_ms(),
-  )
+  floor_cost_debt_typed_admitted_identities()
 }
 
 type EnrolmentExpensivenessGround =
@@ -211,13 +207,13 @@ type EnrolmentExpensivenessDeclaration =
 
 // STATED DIVERGENCE FROM `v2.workflow.required_floor`
 // `changed_witness_expensiveness_is_declared`. That function is string-roster OR long home
-// and still decides changed-witness CPU policy. This function is typed `floor_cost_debt_row`
-// admission OR long home. String roster ALONE never declares here (review 65637). Long
+// and still decides changed-witness CPU policy. This function is typed
+// `floor_cost_debt_typed_admissions` membership (live-conditioned) OR long home. String roster ALONE never declares here (review 65637). Long
 // home declares regardless of a string-roster line: the home is the file's location, and an
 // append cannot subtract a structural declaration.
 //
-// RE-CONVERGENCE TRIGGER: when half two's typed attempts replace the string roster --
-// `floor_cost_debt_typed_admission_attempts` is non-empty and the string chunks are deleted --
+// RE-CONVERGENCE TRIGGER: when the typed admissions replace the string roster --
+// `floor_cost_debt_typed_admissions` carries every row and the string chunks are deleted --
 // the two predicates collapse into one. Until then this is a narrower fork with a named
 // dissolution.
 fn enrolment_expensiveness_declaration(
@@ -268,6 +264,59 @@ type EnrolmentMarginStanding =
       ground: EnrolmentExpensivenessGround
       reading: EnrolmentCostReading
     }
+  | EnrolmentRosterGroundStale { witness_identity: String, observed_cpu_ms: Millisecond, line_ms: Millisecond }
+
+// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row carries
+// an identity and a reason, never a reading, so the only cost that can justify it is THIS run's:
+// it stays declared only while the live observed CPU is strictly above the per-subject line, and
+// at or under the line it is stale and blocks, naming that the row must delete. Absence is handled
+// in `enrolment_margin_standing`: a Roster identity with no cost row is EnrolmentNotMeasured,
+// exactly as an undeclared planned identity is, or the declaration would buy an exemption from
+// being measured at all. LongHome is unchanged -- reported, never decided -- which is the declared
+// drop `gunbc.rung_drop` `long_home_enrolment_margin_observed_only`. A lower bound (with or
+// without a ceiling) establishes expensiveness only if the bound ITSELF is above the line; a bound
+// at or under it proves nothing, so on the Roster ground it blocks under the same bound or censored
+// arm an undeclared identity would get, whose remedy is to produce a reading that decides.
+fn enrolment_declared_measured_standing(
+  witness_identity: String,
+  ground: EnrolmentExpensivenessGround,
+  reading: ClaimCostReading,
+  per_subject_line_ms: Millisecond,
+) -> EnrolmentMarginStanding {
+  let declared = EnrolmentExpensivenessDeclared {
+    witness_identity: witness_identity,
+    ground: ground,
+    reading: EnrolmentCostMeasured { reading: reading },
+  }
+  match ground {
+    EnrolmentExpensivenessLongHome => declared
+    EnrolmentExpensivenessRoster =>
+      match reading {
+        ObservedCpuReading { cpu_ms: c, eval_steps: _ } =>
+          if millisecond_count(m: c) > millisecond_count(m: per_subject_line_ms) {
+            declared
+          } else {
+            EnrolmentRosterGroundStale {
+              witness_identity: witness_identity,
+              observed_cpu_ms: c,
+              line_ms: per_subject_line_ms,
+            }
+          }
+        CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
+          if millisecond_count(m: b) > millisecond_count(m: per_subject_line_ms) {
+            declared
+          } else {
+            EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: b }
+          }
+        RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling, eval_steps_before_censor: _ } =>
+          if millisecond_count(m: b) > millisecond_count(m: per_subject_line_ms) {
+            declared
+          } else {
+            EnrolmentCeilingCensored { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling }
+          }
+      }
+  }
+}
 
 // A BOUND WITH NO CEILING IS NOT MEASURED, AND IS NOT A CENSORED READING EITHER. Since gunbc#11195
 // the floor arms no CPU deadline, so a preempted row's CPU is a lower bound that nothing on this
@@ -299,6 +348,7 @@ type EnrolmentMarginStanding =
 fn enrolment_margin_standing(
   reading: EnrolmentCostReading,
   budget_ms: Millisecond,
+  per_subject_line_ms: Millisecond,
   declaration: EnrolmentExpensivenessDeclaration,
 ) -> EnrolmentMarginStanding {
   match reading {
@@ -307,10 +357,14 @@ fn enrolment_margin_standing(
     EnrolmentCostAbsent { witness_identity: i, cause: k } =>
       match declaration {
         EnrolmentExpensivenessIsDeclared { witness_identity: id, ground: g } =>
-          EnrolmentExpensivenessDeclared {
-            witness_identity: id,
-            ground: g,
-            reading: EnrolmentCostAbsent { witness_identity: i, cause: k },
+          match g {
+            EnrolmentExpensivenessRoster => EnrolmentNotMeasured { witness_identity: i, cause: k }
+            EnrolmentExpensivenessLongHome =>
+              EnrolmentExpensivenessDeclared {
+                witness_identity: id,
+                ground: g,
+                reading: EnrolmentCostAbsent { witness_identity: i, cause: k },
+              }
           }
         EnrolmentExpensivenessNotDeclared =>
           EnrolmentNotMeasured { witness_identity: i, cause: k }
@@ -318,11 +372,12 @@ fn enrolment_margin_standing(
     EnrolmentCostMeasured { reading: r } =>
       match declaration {
         EnrolmentExpensivenessIsDeclared { witness_identity: id, ground: g } =>
-          EnrolmentExpensivenessDeclared {
+          enrolment_declared_measured_standing(
             witness_identity: id,
             ground: g,
-            reading: EnrolmentCostMeasured { reading: r },
-          }
+            reading: r,
+            per_subject_line_ms: per_subject_line_ms,
+          )
         EnrolmentExpensivenessNotDeclared =>
           match r {
             ObservedCpuReading { cpu_ms: c, eval_steps: _ } =>
@@ -364,6 +419,7 @@ fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => false
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => true
   }
 }
 
@@ -391,6 +447,7 @@ fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String 
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => ""
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "enrolment_roster_ground_stale"
   }
 }
 
@@ -406,6 +463,7 @@ fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness_declared"
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "roster_ground_stale"
   }
 }
 
@@ -429,6 +487,8 @@ fn enrolment_unpaired_pairing_hole(standing: EnrolmentMarginStanding) -> Enrolme
       EnrolmentPairingHoleOutsideExecution
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } =>
       EnrolmentPairingHoleDeclared
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } =>
+      EnrolmentPairingHoleNone
   }
 }
 

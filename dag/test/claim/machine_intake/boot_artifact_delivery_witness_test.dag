@@ -4,7 +4,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, Https }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
+import extdeps.crypto.mac { MacKeyId }
+import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
@@ -117,9 +120,17 @@ import gunbc.install_transport_qualification {
   UsbGadgetFrameworkPresent,
   target_bound_reinstall_path,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, SiteIdentity }
 import gunbc.network_boot_delivery {
+  ArchitectureChainloader,
+  ControlledNetworkTrustObservation,
+  BootBundleAvailabilityReceipt,
+  EstablishedControlledNetwork,
+  DhcpFilenameHint,
+  FleetBootServiceReceipt,
+  GlobalHttpsEndpointReachable,
   NetworkBootBootArtifacts,
+  NetworkBootBootControlReceipt,
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
   NetworkBootDeliveryEstablished,
@@ -127,8 +138,15 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryUnestablished,
   NetworkBootRequirement,
-  NetworkBootRequirementEvidence,
   NetworkBootServingInfrastructure,
+  ObservedClientBootModeReceipt,
+  ObservedDhcpPxeClient,
+  SignedBootManifestIdentity,
+  SignedBootManifestReceipt,
+  SiteAnsweredDhcp,
+  SitePxeEdge,
+  SitePxeEdgeReceipt,
+  first_slice_admitted_architectures,
   network_boot_requirements_all,
 }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
@@ -1103,27 +1121,90 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
 // Network boot: every axis observed AND the establishment naming the
 // requested digest selects PXE; the same establishment naming another digest
 // is a staged-artifact mismatch, never a plan.
-fn control_network_boot_axis(requirement: NetworkBootRequirement) -> NetworkBootRequirementEvidence {
-  NetworkBootRequirementEvidence {
-    requirement: requirement,
-    observation: DeclarationRef {
-      module_path: "test.claim.boot_artifact_delivery_witness_test",
-      decl_name: "established_network_boot_for",
-      field: WholeDeclaration,
-    },
-    observed_at: 1788000000000,
-  }
-}
-
 fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
+  let obs = DeclarationRef {
+    module_path: "test.claim.boot_artifact_delivery_witness_test",
+    decl_name: "established_network_boot_for",
+    field: WholeDeclaration,
+  }
+  let site = "onboarding-segment" as SiteIdentity
   NetworkBootDeliveryEstablished {
     evidence: NetworkBootDeliveryEstablishment {
       target: t,
-      boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
-      client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
-      serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
-      boot_artifacts: control_network_boot_axis(requirement: NetworkBootBootArtifacts),
-      artifact_digest: digest,
+      fleet: FleetBootServiceReceipt {
+        https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+        origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      site: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: site,
+          admitted_architectures: first_slice_admitted_architectures,
+          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Aarch64,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: digest,
+            tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" },
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable {
+            broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+            artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" },
+            observation: obs,
+            observed_at: 1788000000000,
+          },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      client: ObservedClientBootModeReceipt {
+        target: t,
+        site: site,
+        client: ObservedDhcpPxeClient {
+          vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+          arch: UefiArm64,
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      boot_control: NetworkBootBootControlReceipt {
+        target: t,
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      manifest: SignedBootManifestReceipt {
+          identity: SignedBootManifestIdentity {
+          target_unit: t.subject.subject.unit_key,
+          attempt_id: t.subject.attempt_id,
+          nonce: "nonce-boot-artifact",
+          architecture: Aarch64,
+          boot_mode: UefiPxe { tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" } },
+          chainloader_digest: digest,
+          kernel_digest: digest,
+          initrd_digest: digest,
+          root_digest: digest,
+          kernel_cmdline: "console=ttyAMA0",
+          not_before: 1788000000000,
+          expiry: 1788003600000,
+          signing_key_identity: "boot-manifest-key-0" as MacKeyId,
+          callback_identity: "intake-callback-0",
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      bundle: BootBundleAvailabilityReceipt {
+        kernel_digest: digest,
+        initrd_digest: digest,
+        root_digest: digest,
+        served_from: Uri { scheme: Https, locator: "boot-origin.example.test" },
+        publication_observation: obs,
+        readback_observation: obs,
+      },
+      trust: EstablishedControlledNetwork {
+        evidence: ControlledNetworkTrustObservation { site: site, observation: obs, observed_at: 1788000000000 },
+      },
     },
   }
 }

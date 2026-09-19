@@ -306,6 +306,79 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
   }
 }
 
+// THE FALLIBLE, PURE UTF-8 DECODER, beside utf8_decode_bytes and for a different question:
+// utf8_decode_bytes is a total host seam and so cannot refuse, while a consumer reading attacker
+// input (first: gunbc.auth.approval_device_wire decode_path_segment) must tell "no text was decoded"
+// apart from "text". Pure .dag, so it answers the same on every realization.
+// UTF-8 per RFC 3629, from octets; a malformed sequence is Absent, never a replacement character.
+// Each completed scalar is checked against its sequence length, so overlong forms (a value encodable
+// in fewer bytes), UTF-16 surrogates (U+D800..U+DFFF) and values above U+10FFFF are malformed here --
+// no valid identity was decoded -- rather than reaching the canonical check as an alternate spelling.
+// THE DECODER'S STATE IS A CLOSED SUM, as base64's Base64EncodeBuf is beside it: each arm carries
+// exactly what it owns, so "refused but still waiting" or a length no lead byte produces cannot be
+// written. Pending arms name how many continuation bytes remain; the sequence length they carry is
+// only the lengths possible at that point (three remaining can only be a four-byte sequence).
+type Utf8SequenceLength = Utf8TwoByte | Utf8ThreeByte | Utf8FourByte
+
+// Two continuations remain only in a three- or four-byte sequence, so that arm's length cannot be
+// two bytes.
+type Utf8TwoRemainingLength = Utf8ThreeOfThree | Utf8FourOfFour
+
+fn utf8_two_remaining_length(l: Utf8TwoRemainingLength) -> Utf8SequenceLength {
+  match l {
+    Utf8ThreeOfThree => Utf8ThreeByte
+    Utf8FourOfFour => Utf8FourByte
+  }
+}
+
+type Utf8DecodeState
+  = Utf8Ready { out: List<Int> }
+  | Utf8NeedOne { out: List<Int>, length: Utf8SequenceLength, acc: Int }
+  | Utf8NeedTwo { out: List<Int>, length: Utf8TwoRemainingLength, acc: Int }
+  | Utf8NeedThree { out: List<Int>, acc: Int }
+  | Utf8Refused
+
+fn utf8_scalar_admissible(cp: Int, length: Utf8SequenceLength) -> Bool {
+  match length {
+    Utf8TwoByte => cp >= 128
+    Utf8ThreeByte => cp >= 2048 && !(cp >= 55296 && cp <= 57343)
+    Utf8FourByte => cp >= 65536 && cp <= 1114111
+  }
+}
+
+fn utf8_is_continuation(o: Int) -> Bool {
+  o >= 128 && o < 192
+}
+
+fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
+  match d {
+    Utf8Refused => Utf8Refused
+    Utf8Ready { out: out } =>
+      if o < 128 { Utf8Ready { out: concat(out, [o]) } }
+      else if o >= 194 && o < 224 { Utf8NeedOne { out: out, length: Utf8TwoByte, acc: o - 192 } }
+      else if o >= 224 && o < 240 { Utf8NeedTwo { out: out, length: Utf8ThreeOfThree, acc: o - 224 } }
+      else if o >= 240 && o < 245 { Utf8NeedThree { out: out, acc: o - 240 } }
+      else { Utf8Refused }
+    Utf8NeedThree { out: out, acc: acc } =>
+      if utf8_is_continuation(o: o) { Utf8NeedTwo { out: out, length: Utf8FourOfFour, acc: acc * 64 + (o - 128) } } else { Utf8Refused }
+    Utf8NeedTwo { out: out, length: len, acc: acc } =>
+      if utf8_is_continuation(o: o) { Utf8NeedOne { out: out, length: utf8_two_remaining_length(l: len), acc: acc * 64 + (o - 128) } } else { Utf8Refused }
+    Utf8NeedOne { out: out, length: len, acc: acc } =>
+      if !utf8_is_continuation(o: o) { Utf8Refused }
+      else {
+        let cp = acc * 64 + (o - 128)
+        if utf8_scalar_admissible(cp: cp, length: len) { Utf8Ready { out: concat(out, [cp]) } } else { Utf8Refused }
+      }
+  }
+}
+
+fn utf8_decode_octets(octets: List<UInt8>) -> List<Int>? {
+  match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_step(d: d, o: base64_octet_int(b: octet))) {
+    Utf8Ready { out: out } => Present { value: out }
+    _ => none
+  }
+}
+
 data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

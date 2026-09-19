@@ -97,7 +97,7 @@ fn generated_artifact_merge_driver_config_value() -> String {
 }
 
 // THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW
-// RATHER THAN TASTE. Its single authority is gunbc.ci_spec ci_heal_author_commit_regen_command, and
+// RATHER THAN TASTE. Its single authority is gunbc.ci_spec generated_artifact_author_regen_command, and
 // importing it here would close a real cycle: gunbc.generated_artifact reads this module for the
 // artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the
 // consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and
@@ -197,7 +197,7 @@ fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
     generated_artifact_merge_driver_dark_row_set_difference_step(),
     "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
     "4. finish the authority merge and push the branch; do not regenerate this projection locally",
-    "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",
+    "5. the heal workflow derives it from the merged authorities and uploads it as a sealed candidate, and heal-publish commits that candidate onto the branch as the publishing App; the generated-artifact gate must then agree on that exact head",
   ]
 }
 
