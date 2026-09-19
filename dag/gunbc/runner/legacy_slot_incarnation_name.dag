@@ -1,6 +1,6 @@
 module gunbc.legacy_slot_incarnation_name
 
-import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, List, String, NonEmptyStr, Int, EpochSecs, list_length }
 import std.algebra { trim }
 
 // THE NAMING AUTHORITY FOR THE LEGACY SHARED-HOST SLOT INCARNATION GRAMMAR.
@@ -77,9 +77,28 @@ import std.algebra { trim }
 // so `srv2-02-notanumber` and `srv2-021` both fail.
 type RegistrationNameMatch
   = MatchedBareSlotName { slot_instance: String }
-  | MatchedJitInstance { slot_instance: String, epoch_seconds: Int, pid: Int }
+  | MatchedJitInstance { slot_instance: String, epoch_seconds: EpochSecs, pid: Int }
   | RegistrationNameNoMatch { name: String, slot_instance: String, cause: String }
 
+// THE EPOCH FIELD CARRIES `EpochSecs`, WHICH IS THE ESTATE'S CARRIER FOR THIS FACT. `std.types`
+// declares it and `extdeps.linux.proc_stat`, `extdeps.clock` and the appropriation-period model all
+// consume it; a bare `Int` here would be a second spelling of a fact that already has a home. `pid`
+// keeps `Int` deliberately -- no carrier for a process id exists in this tree, and minting one for a
+// single field would be the re-invention the same rule forbids in the other direction.
+//
+// THE NON-NEGATIVITY CHECK BELOW IS NOT A SECOND REPRESENTATION OF `range(min: 0)`, AND THE
+// DISTINCTION IS MEASURED RATHER THAN ASSERTED. `where` refinements are decided only where the value
+// is a LITERAL -- `gunbc.recurring_failure_mode` `refinement_predicate_enforced_only_where_the_value
+// _is_a_literal` censuses that across interpretation, the fixture harness and emission, and every
+// non-literal seam is advisory or silent. A value coming out of `parse_int` is computed, so the
+// refinement refuses nothing about it and this check is the only wall a negative epoch ever meets.
+// Deleting it on the strength of the declared type would replace a real refusal with a comment.
+//
+// THE ESTATE'S OTHER `EpochSecs` PRODUCER DOES EXACTLY THE SAME THING, which is the corroboration
+// rather than my reading of the rule: `extdeps.linux.proc_stat` parses btime, tests `n < 0` and
+// answers `BootTimeBeforeEpoch` on the negative, then assigns the raw Int into an `EpochSecs` field
+// with NO cast. Both halves are load-bearing -- an explicit `as EpochSecs` on a computed value is
+// refused by the interpreter outright, and the runtime guard is what the refinement does not do.
 fn parse_nonneg_int_field(text: String) -> Int? {
   if trim(s: text) == "" {
     none
