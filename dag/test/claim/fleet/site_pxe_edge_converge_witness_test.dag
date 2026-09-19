@@ -9,7 +9,7 @@ import gunbc.network_boot_delivery { ArchitectureChainloader, DhcpFilenameHint }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
 import extdeps.uri { Uri, Tftp }
-import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
+import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
@@ -33,6 +33,7 @@ import gunbc.site_pxe_edge_converge {
   TftpServerAddressUnparseable,
   SegmentNetworkUnparseable,
   site_pxe_edge_segment_network,
+  site_pxe_edge_tftp_server_address,
   KnownClientMacUnparseable,
   ChainloaderUnpinned,
   ChainloaderUnobservable,
@@ -86,6 +87,8 @@ fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
 
 test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
   length(site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -98,6 +101,8 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
 // file present and every other probe held.
 test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
   let causes = site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: site_pxe_edge_chainloader_pin,
     chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -122,6 +127,8 @@ test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
 
 test fn mismatched_digest_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_b },
@@ -132,6 +139,8 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
 
 test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -142,6 +151,8 @@ test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
   site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
@@ -198,6 +209,8 @@ test fn only_srv4_is_the_edge_host() -> Bool {
 
 test fn an_unparseable_roster_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } },
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -210,6 +223,8 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
 // that cause is gone. Paired with a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate.
 test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
   let refused = site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
     roster: first_onboarding_known_client_mac,
     pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -222,6 +237,8 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
       match c {
         ChainloaderNotTheIpxeArm64Build { pinned: _, expected: e } =>
           length(site_pxe_edge_gate_causes(
+            tftp_server: site_pxe_edge_tftp_server_address,
+            segment: site_pxe_edge_segment_network,
             roster: first_onboarding_known_client_mac,
             pin: pinned_as(filename: e, digest: digest_a),
             chainloader: ChainloaderDigestObserved { digest: digest_a },
@@ -230,7 +247,6 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
           )) == 0
         TftpServerAddressUnparseable { error: _ } => false
         SegmentNetworkUnparseable { error: _ } => false
-      SegmentNetworkUnparseable { error: _ } => false
         KnownClientMacUnparseable { error: _ } => false
         ChainloaderUnpinned { obligation: _ } => false
         ChainloaderUnobservable { reason: _ } => false
@@ -275,4 +291,30 @@ test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool {
       }
     }
   }
+}
+
+// A FAILED TFTP-SERVER PARSE SUPPLIED AT THE GATE CLOSES IT WITH EXACTLY THAT TYPED CAUSE.
+test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
+  site_pxe_edge_gate_causes(
+    tftp_server: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 3 } },
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == [TftpServerAddressUnparseable { error: Ipv4WrongOctetCount { observed_count: 3 } }]
+}
+
+// A FAILED SEGMENT PARSE SUPPLIED AT THE GATE CLOSES IT WITH EXACTLY THAT TYPED CAUSE.
+test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
+  site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 1 } },
+    roster: first_onboarding_known_client_mac,
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == [SegmentNetworkUnparseable { error: Ipv4WrongOctetCount { observed_count: 1 } }]
 }

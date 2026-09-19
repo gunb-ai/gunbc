@@ -239,16 +239,18 @@ type SitePxeEdgeGateCause
   | AdministratorPrivilegeRefused { reason: String }
 
 fn site_pxe_edge_gate_causes(
+  tftp_server: Ipv4ParseResult,
+  segment: Ipv4ParseResult,
   roster: MacParseResult,
   pin: SitePxeEdgeChainloaderPin,
   chainloader: SitePxeEdgeChainloaderObservation,
   dnsmasq_binary: SitePxeEdgeProbe,
   privilege: SitePxeEdgeProbe,
 ) -> List<SitePxeEdgeGateCause> {
-  (match site_pxe_edge_tftp_server_address {
+  (match tftp_server {
     Ipv4Parsed { address: _ } => []
     Ipv4ParseFailed { error: e } => [TftpServerAddressUnparseable { error: e }]
-  }) + (match site_pxe_edge_segment_network {
+  }) + (match segment {
     Ipv4Parsed { address: _ } => []
     Ipv4ParseFailed { error: e } => [SegmentNetworkUnparseable { error: e }]
   }) + (match roster {
@@ -544,7 +546,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
-  let causes = site_pxe_edge_gate_causes(roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
+  let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
   let files = match site_pxe_edge_chainloader_target(pin: pin) {
     Absent => [site_pxe_edge_unit_file()]
     Present { value: c } =>
