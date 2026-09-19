@@ -181,6 +181,18 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
   },
   WitnessDeleted {
+    identity: "v2.test.lens_application.sg_claims.lens_application_introspect_advisory_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_application.apply_lens_introspect_rejection_is_advisory.apply_lens_introspect_rejection_is_advisory_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_application.sg_claims.lens_application_synthesis_gap_polynomial_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_idempotency.sg_claims.lens_idempotency_write_effect_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_idempotency.write_effect.idempotency_write_effect_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.generated_conformance_floor.generated_lbe_conj_snapshot_passes" as NonEmptyStr,
     deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass; the fact stays enrolled at its declaration" as NonEmptyStr,
   },

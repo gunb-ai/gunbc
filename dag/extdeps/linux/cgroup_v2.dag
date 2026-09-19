@@ -1,7 +1,8 @@
 module extdeps.linux.cgroup_v2
 
-import std.types { Bool, NonEmptyStr, Unit }
+import std.types { Bool, NonEmptyStr, Unit, Int }
 import std.string_type { String }
+import std.algebra { trim }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -48,6 +49,17 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // question: the first says the host hosts nothing of this kind, the second says we are blind.
 // `test -d` is the discriminator the kernel's filesystem representation already affords, and it
 // is total: 0 for a directory, 1 for anything else, with no output to parse.
+//
+// ReadEvents: `cgroup.events` IS THE KERNEL'S OWN ANSWER TO "IS ANYTHING ALIVE UNDER HERE", AND IT IS THE
+// ONLY INTERFACE FILE THAT ANSWERS FOR THE SUBTREE. The admin guide documents the file as
+// "A read-only flat-keyed file which exists on non-root cgroups", with the key `populated`:
+// "1 if the cgroup or its descendants contains any live processes; otherwise, 0." That last
+// clause is what `cgroup.procs` cannot say -- procs lists the PIDs attached to THIS cgroup and
+// is empty for an inner node whose every process sits in a child, which is exactly how systemd
+// lays out a service that has spawned scoped children. So this is a distinct operation, not a
+// second spelling of ReadInterfaceFile: it takes the events file's own path and its hermetic
+// response is the kernel's documented `populated 0` form, which is what a consumer's
+// inhabitance claim over the real route needs to reach a positive verdict without a host.
 service linux.CgroupV2 {
   operation ListChildCgroups {
     input { cgroup_path: NonEmptyStr }
@@ -91,6 +103,134 @@ service linux.CgroupV2 {
       0 => Unit
       nonzero => String "path is not a directory"
     }
+    mock_response {
+      0 => { value: "", success: true } "hermetic linux.CgroupV2.PathIsDirectory"
+    }
+  }
+
+  operation ReadEvents {
+    input { events_path: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: ["cat", "{events_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "cgroup.events read failed"
+    }
+    mock_response {
+      0 => { value: "populated 0\nfrozen 0\n", success: true } "hermetic linux.CgroupV2.ReadEvents"
+    }
+  }
+}
+
+// THE FILE AND ITS KEY BY THEIR UPSTREAM NAMES. The kernel spells the file `cgroup.events` and the
+// key `populated`; a consumer that spelled either itself would be a second authority for a
+// string the kernel owns.
+data cgroup_v2_events_interface_file: NonEmptyStr = "cgroup.events"
+data cgroup_v2_events_populated_key: NonEmptyStr = "populated"
+
+// THE POPULATED KEY, DECODED, OR A TYPED REASON IT COULD NOT BE. `populated` is documented as
+// exactly 0 or 1, so the reading is a Bool and any other body -- a missing key, a third value, a
+// key that appears TWICE (the kernel writes each key once; a second occurrence, agreeing or not,
+// is a body this file's documented form does not produce), or text that is not the flat-keyed
+// form at all -- is `CgroupEventsUnparseable`, never a default. The fail-closed direction matters
+// here more than for most files: this key is what a consumer uses to release something (a
+// capacity ceiling, a directory), and a body it could not read is evidence of nothing.
+//
+// `frozen` (the file's other documented key) is not decoded: nothing consumes it, and a decoded
+// field with no reader is dangling modeling (DESIGN 3c). It is a row to add when a consumer
+// exists, not a field to carry now.
+type CgroupEventsDecoding
+  = CgroupEventsDecoded { populated: Bool }
+  | CgroupEventsUnparseable { cause: String }
+
+// ONE FLAT-KEYED LINE IS `KEY VALUE`, SPACE-SEPARATED, and a line is read into one of THREE
+// answers rather than a `String?`: not a `populated` line at all; a `populated` line with exactly
+// one value; or a `populated` line that is malformed -- the key with no value, or the key with
+// more than one token after it. An optional collapsed the first and the third into one arm, so a
+// bare `populated` never reached the duplicate check and a trailing token on a valid line was
+// silently dropped: both are bodies the kernel does not write, and both then read as EMPTY.
+type CgroupEventsLineReading
+  = CgroupEventsLineNotPopulated
+  | CgroupEventsLinePopulated { value: String }
+  | CgroupEventsLineMalformed { cause: String }
+
+type CgroupEventsLineScan {
+  seen: Int
+  key_matches: Bool
+  value: String
+}
+
+// `value` IS ONLY MEANINGFUL AT `seen == 2` UNDER A MATCHING KEY, and the reading below reads it
+// only there -- so it is a plain String, not an optional: an optional would add an `Absent` arm
+// at the read that the scan can never produce, a decoration standing where exhaustiveness was.
+fn cgroup_events_populated_line(line: String) -> CgroupEventsLineReading {
+  let scan = fold(split(s: trim(s: line), delimiter: " "), init: CgroupEventsLineScan { seen: 0, key_matches: false, value: "" }, f: (acc, w) =>
+    if w == "" {
+      acc
+    } else if acc.seen == 0 {
+      CgroupEventsLineScan { seen: 1, key_matches: w == (cgroup_v2_events_populated_key as String), value: "" }
+    } else if acc.seen == 1 && acc.key_matches {
+      CgroupEventsLineScan { seen: 2, key_matches: true, value: w }
+    } else {
+      CgroupEventsLineScan { seen: acc.seen + 1, key_matches: acc.key_matches, value: acc.value }
+    })
+  if !scan.key_matches {
+    CgroupEventsLineNotPopulated
+  } else if scan.seen == 1 {
+    CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` key with no value" }
+  } else if scan.seen > 2 {
+    CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` line with more than one value" }
+  } else {
+    CgroupEventsLinePopulated { value: scan.value }
+  }
+}
+
+// THE SCAN IS THREE-STATE AND A REFUSAL IS STICKY. A two-state fold that flipped from "unparseable
+// so far" to "decoded" on a later line would read `populated 2` followed by `populated 0` as empty,
+// which is the duplicate case above dressed as recovery. A malformed occurrence enters the refusal
+// whether or not a valid one was seen before it, so a duplicate never disappears for lacking a value.
+type CgroupEventsPopulatedScan
+  = CgroupEventsPopulatedNotSeen
+  | CgroupEventsPopulatedSeen { populated: Bool }
+  | CgroupEventsPopulatedRefused { cause: String }
+
+fn cgroup_events_populated_scan_step(acc: CgroupEventsPopulatedScan, line: String) -> CgroupEventsPopulatedScan {
+  match cgroup_events_populated_line(line: line) {
+    CgroupEventsLineNotPopulated => acc
+    CgroupEventsLineMalformed { cause: m } =>
+      match acc {
+        CgroupEventsPopulatedRefused { cause: c } => CgroupEventsPopulatedRefused { cause: c }
+        CgroupEventsPopulatedSeen { populated: _ } => CgroupEventsPopulatedRefused { cause: m }
+        CgroupEventsPopulatedNotSeen => CgroupEventsPopulatedRefused { cause: m }
+      }
+    CgroupEventsLinePopulated { value: v } =>
+      match acc {
+        CgroupEventsPopulatedRefused { cause: c } => CgroupEventsPopulatedRefused { cause: c }
+        CgroupEventsPopulatedSeen { populated: _ } =>
+          CgroupEventsPopulatedRefused { cause: "cgroup.events carried the `populated` key more than once" }
+        CgroupEventsPopulatedNotSeen =>
+          if v == "0" {
+            CgroupEventsPopulatedSeen { populated: false }
+          } else if v == "1" {
+            CgroupEventsPopulatedSeen { populated: true }
+          } else {
+            CgroupEventsPopulatedRefused { cause: concat("cgroup.events `populated` is documented as 0 or 1 and read as: ", v) }
+          }
+      }
+  }
+}
+
+fn decode_cgroup_events_populated(body: String) -> CgroupEventsDecoding {
+  match fold(split(s: body, delimiter: "\n"), init: CgroupEventsPopulatedNotSeen, f: (acc, line) => cgroup_events_populated_scan_step(acc: acc, line: line)) {
+    CgroupEventsPopulatedNotSeen => CgroupEventsUnparseable { cause: "cgroup.events carried no `populated` key" }
+    CgroupEventsPopulatedSeen { populated: p } => CgroupEventsDecoded { populated: p }
+    CgroupEventsPopulatedRefused { cause: c } => CgroupEventsUnparseable { cause: c }
   }
 }
 
@@ -107,6 +247,10 @@ fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr 
 
 fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
+}
+
+fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
 }
 
 // WHICH KERNELS PROVIDE THIS MECHANISM AT ALL, homed here for the same reason and by the same

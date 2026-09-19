@@ -51,19 +51,19 @@ type ActionExecutionMechanism
   | CompositeAction { nested: List<ActionRelease> }
   | DockerAction { image: NonEmptyStr }
 
-// ONE READING OF ONE PRODUCER MANIFEST. `manifest` is the action.yml blob at `release.commit`: the
-// declaration is read from the producer, never from a release note, a README or a runner warning.
+// ONE READING OF ONE PRODUCER MANIFEST: what the action.yml blob at `action_release.commit` declares.
+// The manifest a reading cites is DERIVED from the release (action_manifest_of), never authored
+// beside it, so a reading cannot cite a different repository or commit from the one it describes.
 type ActionManifestReading {
   action_release: ActionRelease
   declared: ActionExecutionMechanism
-  manifest: ExternalAuthority
 }
 
-fn action_manifest_at_commit(owner: String, repo: String, commit: String) -> ExternalAuthority {
+fn action_manifest_of(action_release: ActionRelease) -> ExternalAuthority {
   ExternalAuthority {
     uri: Uri {
       scheme: Https
-      locator: join(["github.com/", owner, "/", repo, "/blob/", commit, "/action.yml"], "")
+      locator: join(["github.com/", action_release.owner as String, "/", action_release.repo as String, "/blob/", action_release.commit as String, "/action.yml"], "")
     }
   }
 }

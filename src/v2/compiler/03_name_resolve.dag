@@ -20,7 +20,6 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  dag_language_model_canonical_symbols,
   dag_surface_module_header_metadata_edge,
   namespace_graft_already_grafted,
   namespace_graft_spine_segment_edge_optional,
@@ -32,7 +31,7 @@ import v2.compiler.namespace_graft {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, List, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, List, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -562,10 +561,10 @@ fn admit_imports(
   )
 }
 
-fn admission_namespace_base(lm: LanguageModel) -> Namespace {
+fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namespace {
   Namespace {
     bindings: empty_map(),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
+    canonical_symbols: canonical_symbols,
     symbol_index: empty_symbol_index(),
     module_qn: Empty
   }
@@ -585,11 +584,11 @@ fn subject_module_root_for_name(
 
 fn namespace_admission_initial_state(
   policy: NameResolutionPolicy,
-  lm: LanguageModel,
+  canonical_symbols: PointwisePower<Symbol>,
   subject_module_root: NormalizedTree,
   subject_qn: QualifiedName
 ) -> AdmissionState {
-  let base = admission_namespace_base(lm: lm)
+  let base = admission_namespace_base(canonical_symbols: canonical_symbols)
   match policy {
     NamespaceOnlyY =>
       admission_initial(base: base)
@@ -666,13 +665,12 @@ fn namespace_for_subject_root(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
-  let lm = shared.lm
   let validated_roots = shared.roots
   if well_formed(n: subject_module_root.root) {
-    let base = admission_namespace_base(lm: lm)
+    let base = admission_namespace_base(canonical_symbols: shared.lm.canonical_symbols)
     let initial = namespace_admission_initial_state(
       policy: policy,
-      lm: lm,
+      canonical_symbols: shared.lm.canonical_symbols,
       subject_module_root: subject_module_root,
       subject_qn: admission.subject.name
     )
