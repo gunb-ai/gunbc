@@ -19,7 +19,7 @@ import gunbc.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image,
   RunnerMicroVmNetworking, GuestNetworkAbsent,
   RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
-  gunbc_runner_microvm_vm_config,
+  gunbc_runner_microvm_vm_config, jit_drive_without_credential,
 }
 import gunbc.runner_guest_image {
   runner_guest_image_root, runner_guest_image_path,
@@ -98,14 +98,16 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
   ]
 }
 
-// THE JIT DRIVE IS THE ROOT DRIVE'S OWN PATH TODAY, AND THAT IS A GAP RATHER THAN A DESIGN.
-// gunbc.runner_microvm's configuration builder attaches a second, read-only drive carrying the
-// registration credential, because that carrier is the whole reason a microVM closes the shared-
-// credential class. No credential is minted yet -- that is the JIT slice -- so there is nothing to
-// put on it. A drive pointing at a file that does not exist makes Firecracker refuse at device
-// setup, which would render as an image defect; pointing it at the rootfs copy attaches a real file
-// the guest ignores. The moment a credential exists this argument is the credential's path and this
-// paragraph deletes.
+// THE JIT DRIVE CARRIES NO CREDENTIAL, BY THE CONTRACT RATHER THAN BY ACCIDENT. The guest agent reads
+// that device as a systemd environment file (gunbc.runner_microvm jit_drive_content), so the
+// earlier stand-in -- the rootfs copy's own path -- would now hand systemd an 8 GiB ext4 image to
+// parse. The probe instead writes gunbc.runner_microvm jit_drive_without_credential: whole sectors
+// of blank lines. The guest boots, prints its runner version and GuestBooted, the listener refuses as
+// unconfigured, and the manager powers the VM off -- a boot probe spends no registration.
+fn runner_microvm_boot_probe_jit_drive(root: String) -> String {
+  join([runner_microvm_boot_probe_dir(root: root), "/probe-jit.img"], "")
+}
+
 // NO IMAGE IDENTITY IS TAKEN HERE, AND THAT IS THE POINT: the probe boots a FIXED path, and the
 // identity is spent upstream by runner_microvm_boot_probe_stage_commands, which copies
 // runner_guest_image_path(root, image) onto it. Taking an identity this function could not honour
@@ -114,7 +116,7 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
 fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResolution {
   gunbc_runner_microvm_vm_config(
     rootfs_path: runner_microvm_boot_probe_rootfs(root: root),
-    jit_config_path: runner_microvm_boot_probe_rootfs(root: root),
+    jit_config_path: runner_microvm_boot_probe_jit_drive(root: root),
     kernel_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact),
     net: runner_microvm_boot_probe_networking(),
   )
@@ -122,7 +124,7 @@ fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResoluti
 
 // THE DEADLINE IS THE HOST'S, AND IT MUST NOT DEPEND ON THE GUEST AGREEING TO IT.
 //
-// The guest agent powers the machine off on ExecStopPost=, which runs on both arms of the job -- and
+// The guest agent powers the machine off by SuccessAction=/FailureAction=, which cover every way the agent unit ends -- and
 // that only ever covers the case where the agent STARTED. It does not cover an agent systemd never
 // pulled in (the exact defect this module's sibling just carried), a kernel that panics before
 // userspace, an init that hangs, or a guest that never reaches its target at all. In every one of
@@ -254,11 +256,21 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
           MicroVmConfigResolved { config: cfg } =>
             match run_shell_commands(commands: runner_microvm_boot_probe_stage_commands(root: root, image: image), transport: LocalExec) {
               ExitSuccess => {
+                let j = Filesystem.Write(
+                  path: runner_microvm_boot_probe_jit_drive(root: root),
+                  content: jit_drive_without_credential(),
+                )
                 let w = Filesystem.Write(
                   path: runner_microvm_boot_probe_config_path(root: root),
                   content: firecracker_vm_config_document(config: cfg),
                 )
-                if !w.success {
+                if !j.success {
+                  runner_microvm_boot_probe_receipt_wet(
+                    verdict: BootNotAttempted {
+                      cause: join(["the credential-free JIT drive could not be written: ", j.error], ""),
+                    },
+                  )
+                } else if !w.success {
                   runner_microvm_boot_probe_receipt_wet(
                     verdict: BootNotAttempted {
                       cause: join(["the VM configuration document could not be written: ", w.error], ""),

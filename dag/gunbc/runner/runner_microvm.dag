@@ -38,7 +38,9 @@ import gunbc.runner_unit {
   lifecycle_intent_stops_finished_incarnation,
   gunbc_runner_main_exits_when_incarnation_ends,
 }
-import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
+import extdeps.github.actions_runner {
+  ActionsRunnerRelease, actions_runner_release_2_337_0, actions_runner_jitconfig_env_name,
+}
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig,
   FirecrackerBootSource,
@@ -110,6 +112,58 @@ type JitCredentialTransport
 
 data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDrive {
   drive_id: "jitcfg",
+}
+
+// WHAT THE CREDENTIAL DRIVE CONTAINS, AS THE ONE CONTRACT BOTH ENDS DERIVE FROM. The host writes
+// these bytes and the guest reads them; a format stated on only one side is a fork the other side
+// discovers at boot, inside a VM nobody is watching.
+//
+// THE CONTENT IS ONE systemd ENVIRONMENT-FILE ASSIGNMENT, because that makes the guest's reader a
+// directive rather than a program. The guest agent names the device in `EnvironmentFile=`, systemd
+// parses it, and the listener takes the value from its environment under upstream's own argument
+// convention (extdeps.github.actions_runner actions_runner_jitconfig_env_name) and unsets it once
+// read. No shell, no `cat`, and the secret never appears on a command line where `ps` would show it.
+//
+// THE PADDING IS NEWLINES BECAUSE A BLOCK DEVICE HAS NO LENGTH OF ITS OWN. Firecracker exposes a
+// backing file as whole 512-byte sectors and drops any partial tail sector, so an unpadded 4,076-byte
+// config would reach the guest truncated to 3,584 bytes. Padding to the sector boundary with blank
+// lines keeps every byte, and blank lines are what systemd's environment-file parser skips -- a NUL
+// fill would not be.
+data jit_drive_sector_bytes: Int = 512
+
+// THE GUEST NAME FOLLOWS FROM THE DRIVE ORDER IN runner_microvm_vm_config BELOW: virtio-blk devices
+// enumerate in configuration order, the root drive is first (`root=/dev/vda`), and the credential
+// drive is second. Moving the credential drive in that list moves this name, and the two sit in one
+// module so that edit is made once.
+data jit_drive_guest_device: NonEmptyStr = "/dev/vdb"
+
+fn jit_drive_assignment(encoded_jit_config: NonEmptyStr) -> String {
+  join([actions_runner_jitconfig_env_name(), "=", encoded_jit_config as String, "\n"], "")
+}
+
+fn jit_drive_newlines_512() -> String {
+  let n2 = "\n\n"
+  let n8 = concat(concat(n2, n2), concat(n2, n2))
+  let n32 = concat(concat(n8, n8), concat(n8, n8))
+  let n128 = concat(concat(n32, n32), concat(n32, n32))
+  concat(concat(n128, n128), concat(n128, n128))
+}
+
+// A DRIVE THAT HONESTLY CARRIES NO CREDENTIAL: one sector of blank lines, which the guest's
+// environment-file read accepts and assigns nothing from. A VM booted with it reaches the listener,
+// which refuses as unconfigured -- the boot-only probe's arm, where no registration may be spent.
+fn jit_drive_without_credential() -> String {
+  jit_drive_newlines_512()
+}
+
+fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
+  let body = jit_drive_assignment(encoded_jit_config: encoded_jit_config)
+  let tail = string_length(s: body) % jit_drive_sector_bytes
+  if tail == 0 {
+    body
+  } else {
+    concat(body, substring(s: jit_drive_newlines_512(), start: 0, end: jit_drive_sector_bytes - tail))
+  }
 }
 
 // WHAT ONE RUNNER VM IS SIZED AT, IN GROUNDED MAGNITUDES RATHER THAN BARE INTEGERS.

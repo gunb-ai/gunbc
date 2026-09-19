@@ -125,11 +125,27 @@ type SystemdUnitDirective
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
+  | SuccessAction { action: SystemdUnitStateAction }
+  | FailureAction { action: SystemdUnitStateAction }
+
+// systemd.unit(5), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops cleanly
+// or enters the failed state. Only the arm a consumer uses is modeled; upstream's none, reboot,
+// poweroff, exit, halt and kexec families (each with -force/-immediate strengths) are one row each
+// when a consumer needs one. `poweroff-force` skips the orderly unit shutdown but still kills every
+// process and unmounts before powering off.
+type SystemdUnitStateAction = UnitActionPoweroffForce
+
+fn systemd_unit_state_action_wire(action: SystemdUnitStateAction) -> String {
+  match action {
+    UnitActionPoweroffForce => "poweroff-force"
+  }
+}
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
+  | ExecStartPost { command: NonEmptyStr }
   | ExecStop { command: NonEmptyStr }
   | ExecStopPost { command: NonEmptyStr }
   | ServiceStandardOutput { stream: SystemdOutputStream }
@@ -532,6 +548,8 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
+    SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
+    FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
 }
 
@@ -540,6 +558,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceType { mode: v } => join(["Type=", v as String], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    ExecStartPost { command: v } => join(["ExecStartPost=", v as String], "")
     ExecStop { command: v } => join(["ExecStop=", v as String], "")
     ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
     ServiceStandardOutput { stream: v } =>

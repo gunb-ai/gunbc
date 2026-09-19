@@ -17,7 +17,7 @@ import extdeps.toolchain.types {
   Riscv64,
   Wasm32,
 }
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Int }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -173,6 +173,32 @@ data actions_runner_jit_settings_disable_update_member: String = "DisableUpdate"
 data actions_runner_jit_settings_ephemeral_member: String = "Ephemeral"
 
 data actions_runner_base_dir: String = "/opt/actions-runner"
+
+// THE LISTENER TAKES ANY COMMAND-LINE ARGUMENT FROM ITS ENVIRONMENT, AND DELETES IT ONCE READ.
+// src/Runner.Listener/CommandSettings.cs (v2.337.0) scans the process environment for variables
+// prefixed `ACTIONS_RUNNER_INPUT_`, records each suffix as the argument of that name, and calls
+// SetEnvironmentVariable(fullKey, null) on it -- so a job the listener spawns does not inherit it.
+// GetJitConfig() reads the argument named `jitconfig` through that same lookup. These are upstream
+// spellings, cited rather than chosen.
+data actions_runner_input_env_prefix: String = "ACTIONS_RUNNER_INPUT_"
+data actions_runner_jitconfig_argument: String = "jitconfig"
+
+fn actions_runner_jitconfig_env_name() -> String {
+  concat(actions_runner_input_env_prefix, "JITCONFIG")
+}
+
+// `run.sh` is a LOOP AROUND THE LISTENER, NOT THE LISTENER. src/Misc/layoutroot/run.sh (v2.337.0)
+// re-executes run-helper.sh whenever it returns 2 (Constants.Runner.ReturnCode.RetryableError) and
+// exits otherwise. The listener itself is `bin/Runner.Listener run`, which is what run-helper.sh
+// execs; a consumer that invokes the listener directly has no relaunch loop at all.
+data actions_runner_listener_relative_path: String = "/bin/Runner.Listener"
+data actions_runner_listener_run_verb: String = "run"
+data actions_runner_retryable_error_return_code: Int = 2
+
+// THE LISTENER'S OWN READINESS LINE. src/Runner.Listener/Runner.cs writes
+// `{DateTime.UtcNow:u}: Listening for Jobs` to its terminal once its session is established. The
+// timestamp prefix varies, so the stable part is this suffix.
+data actions_runner_listening_line_suffix: String = "Listening for Jobs"
 
 // `config.sh` writes `.runner` beside the binaries when a runner registers with GitHub, and
 // `config.sh remove` deletes it; the file's presence is the runner's own record that this tree is
