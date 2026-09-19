@@ -464,6 +464,22 @@ fn production_trust_admission(
   }
 }
 
+// THE MANIFEST VALIDITY WINDOW, adjudicated once. The broker refuses a stale ticket at
+// redemption and the join refuses it at the instant its manifest was observed; both ask this
+// function, so a boundary convention (>= vs >, a grace window) cannot differ between them. It
+// lives here rather than in gunbc.network_boot_manifest_broker because the broker imports this
+// module and the join cannot import the broker.
+fn signed_boot_manifest_window_refusal(identity: SignedBootManifestIdentity, at: EpochMs) -> NetworkBootManifestVerificationClass? {
+  match at < identity.not_before {
+    true => Present { value: ManifestVerificationNotYetValid }
+    false =>
+      match at >= identity.expiry {
+        true => Present { value: ManifestVerificationExpired }
+        false => none
+      }
+  }
+}
+
 // BOOT BUNDLE AVAILABILITY: the kernel, initrd and root objects a verified manifest names, as
 // published to and read back from the boot origin. A signed manifest naming objects that were
 // never published would otherwise establish delivery of nothing. 0B produces this receipt; the
@@ -654,16 +670,20 @@ fn join_verified_ticket_after_trust(
                 if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
                   NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
                 } else {
-                  if manifest_at < id.not_before {
-                    NetworkBootDeliveryManifestRefused {
-                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
-                    }
-                  } else {
-                    if manifest_at >= id.expiry {
+                  match signed_boot_manifest_window_refusal(identity: id, at: manifest_at) {
+                    Present { value: ManifestVerificationNotYetValid } =>
+                      NetworkBootDeliveryManifestRefused {
+                        cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
+                      }
+                    Present { value: ManifestVerificationExpired } =>
                       NetworkBootDeliveryManifestRefused {
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
-                    } else {
+                    Present { value: other } =>
+                      NetworkBootDeliveryManifestRefused {
+                        cause: ManifestVerificationRefused { class: other, observation: manifest_obs },
+                      }
+                    Absent =>
                       if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
@@ -689,7 +709,6 @@ fn join_verified_ticket_after_trust(
                               }
                           }
                         }
-                      }
                     }
                   }
                 }
