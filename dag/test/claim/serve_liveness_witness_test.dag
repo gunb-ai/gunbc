@@ -13,7 +13,7 @@ import gunbc.serve_liveness {
 import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.auth.approval_broker_cutover {
   ReleaseReadback, ReleaseReadBack, ReleaseNotReadBack,
-  release_readback_from_livez,
+  release_readback_from_read,
   approval_broker_liveness_url,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_dark_listen_port }
@@ -91,15 +91,24 @@ test fn a_non_object_liveness_body_is_distinguished_from_unparseable_bytes() -> 
 }
 
 // ── THE CUTOVER CONSUMES THE READER, WHICH IS WHAT MAKES IT A CONSUMER AT ALL ────────────────
-// Stage 2's evidence is no longer something an operator can assert either way: the admitting arm is
-// reachable only through a document that parsed and validated. This is the claim that the plan and
-// the reader are joined -- delete the call in release_readback_from_livez and both directions fail.
+// Stage 2's evidence is not something an operator can assert either way: the admitting arm is
+// reachable only through a document that parsed and validated.
+//
+// IT COMPOSES THE SAME TWO FOLDS THE PRODUCTION ROUTE COMPOSES, and that is the correction review
+// 68172 forced. A third fold used to exist -- release_readback_from_livez(body) -- restating
+// release_readback_from_read over observe_serve_liveness arm for arm, and these claims called IT
+// while gunbc.live_deploy.apply called the other. A claim asserting a join through a route nobody
+// serves is the defect review 68036 caught on this same document; the repair for review 68058
+// reintroduced it one layer out. The third fold is deleted.
+//
+// THE RED: change release_readback_from_read so any refusing reading still yields ReleaseReadBack,
+// and the `bad` direction fails; break observe_serve_liveness's validation and `good` fails.
 test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool {
-  let good = match release_readback_from_livez(body: seed_liveness_body) {
+  let good = match release_readback_from_read(read: observe_serve_liveness(body: seed_liveness_body)) {
     ReleaseReadBack { revision: rev } => rev as String == liveness_fixture_revision
     ReleaseNotReadBack { detail: _ } => false
   }
-  let bad = match release_readback_from_livez(body: "{\"live\":true}") {
+  let bad = match release_readback_from_read(read: observe_serve_liveness(body: "{\"live\":true}")) {
     ReleaseNotReadBack { detail: _ } => true
     ReleaseReadBack { revision: _ } => false
   }

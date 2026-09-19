@@ -5,7 +5,7 @@ import std.types { Bool, String, NonEmptyStr, Int, Port }
 import std.measure { ByteSize, byte_size }
 import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.serve_liveness {
-  ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
+  ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe, observe_serve_liveness,
 }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port, approval_broker_dark_listen_port,
@@ -16,7 +16,7 @@ import gunbc.auth.approval_broker_cutover {
   ApprovalBrokerCutoverEvidence,
   DarkDeploymentStanding, DarkUnitNotStarted, DarkUnitListening,
   ReleaseReadback, ReleaseNotReadBack, ReleaseReadBack,
-  release_readback_from_livez,
+  release_readback_from_read,
   BrokerDemandReading, DemandUnmeasured, DemandMeasured,
   FrontDoorStanding, FrontDoorPointsAtRoadmap, FrontDoorPointsAtBroker,
   RouteClassProbe, RouteClassUnprobed, RouteClassRefused, RouteClassAnswered,
@@ -52,7 +52,7 @@ data cutover_fixture_liveness_body: String = join([
 fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitNotStarted { detail: "no unit installed" as NonEmptyStr },
-    release_readback: release_readback_from_livez(body: ""),
+    release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "all six readings" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
     confirm_probe: RouteClassUnprobed,
@@ -65,7 +65,7 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_dark_listen_port },
-    release_readback: release_readback_from_livez(body: cutover_fixture_liveness_body),
+    release_readback: release_readback_from_read(read: observe_serve_liveness(body: cutover_fixture_liveness_body)),
     demand: DemandMeasured {
       cold_load_peak: byte_size(900000000),
       idle_resident: byte_size(300000000),
@@ -406,7 +406,7 @@ test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
-    release_readback: release_readback_from_livez(body: ""),
+    release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "not taken" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
     confirm_probe: RouteClassUnprobed,

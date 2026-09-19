@@ -193,9 +193,9 @@ type DarkDeploymentStanding
 // THE RELEASE READBACK IS DERIVED FROM THE BYTES THE PROCESS ANSWERED, NOT DECLARED (review 68036).
 // It used to be a free-standing pair an operator could construct either way, which made the one
 // stage whose whole job is "prove this process is the build you deployed" satisfiable by saying so.
-// It is now produced by release_readback_from_livez below, which parses the liveness document
-// through gunbc.serve_liveness -- so the arm this evidence carries is decided by the process, and
-// the detail on the refusing arm is that module's located reason rather than prose someone typed.
+// It is now produced by release_readback_from_read below over a gunbc.serve_liveness reading -- so
+// the arm this evidence carries is decided by what the process answered, and the detail on the
+// refusing arm is that module's located reason rather than prose someone typed.
 type ReleaseReadback
   = ReleaseNotReadBack { detail: NonEmptyStr }
   | ReleaseReadBack { revision: NonEmptyStr }
@@ -215,23 +215,21 @@ fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
 // produces ReleaseReadBack. So a stage cannot be advanced past "prove release" by a body that
 // answered 200 with nothing useful in it -- a 200 is the caller's observation, and what the process
 // SAID is what this decides on.
+// ONE FOLD, AND THE SECOND ONE IS DELETED (review 68172). A `release_readback_from_livez(body)`
+// stood beside this arm for arm -- same seven refusals, same reasons, same admitting arm -- because
+// the body-taking spelling was written first and this reading-taking one was added when the
+// production route needed to fold a probe outcome. Production moved here and nothing moved the
+// other, so the corpus carried two folds answering one question and the WITNESSES asserted the join
+// through the one production does not call. That is exactly the defect review 68036 caught on this
+// same document, reintroduced by the repair for review 68058: a claim over a route nobody serves.
+//
+// Callers that hold BYTES compose: release_readback_from_read(read: observe_serve_liveness(body: b)).
+// The composition is two named folds and needs no third name (DESIGN section 2: net concepts must
+// not grow by re-invention).
 fn release_readback_from_read(read: ServeLivenessRead) -> ReleaseReadback {
   match read {
     ServeLivenessObserved { revision: rev } => ReleaseReadBack { revision: rev as String as NonEmptyStr }
     ServeLivenessUnreachable { detail: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessBodyUnparseable => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessBodyNotAnObject => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessRevisionAbsent => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessRevisionDuplicated { count: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessRevisionNotAString => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-    ServeLivenessRevisionMalformed { text: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
-  }
-}
-
-fn release_readback_from_livez(body: String) -> ReleaseReadback {
-  let read = observe_serve_liveness(body: body)
-  match read {
-    ServeLivenessObserved { revision: rev } => ReleaseReadBack { revision: rev as String as NonEmptyStr }
     ServeLivenessBodyUnparseable => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
     ServeLivenessBodyNotAnObject => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
     ServeLivenessRevisionAbsent => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
