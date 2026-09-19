@@ -1,0 +1,193 @@
+module v2.test.claim.native_census.whole_tree_census_resolve
+
+import v2.compiler.compile {
+  NativeCensusModule,
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeCensusModuleOutcome,
+  native_census_module_resolution,
+  native_census_modules,
+  native_census_residual_rows,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL, which is the split DESIGN section 3 asks for: the
+// boundary this claim discriminates is native_census_module_resolution, so its INPUT -- source bytes
+// -- is constructed rather than read off a disk this substrate cannot reach, and everything above
+// that boundary is the production fold. native_test_context_from_ingest is the same whole-ingest
+// context the driver's census assembles, and native_test_resolve_module underneath the verdict is
+// the same resolver the adjudicating lane runs. Nothing here is a hand-built Node tree: the
+// discriminator gunbc#11202 lost was one that never reached the production fold at all, and the
+// three specimens below reach it through tokenize, parse, normalize and resolve in order.
+//
+// THREE SPECIMENS, BECAUSE A CONTROL SATISFIED BY ANY REFUSAL IS GREEN ON A CAUSE IT NEVER SAW.
+// The census exists to report RESOLVE refusals, and the two states that would counterfeit one are a
+// module the context already refused before the resolver was reached, and a module that resolves.
+// So the roster carries one of each and the claims below assert which arm each lands in -- a census
+// that reported the poison file as a resolve refusal would be inventing a residual, and one that
+// reported the unbound reference as a file refusal would be losing the one it exists to find.
+
+// THE SPECIMENS ARE ONE LINE OF SOURCE EACH, and each imports what it legitimately uses, so the
+// only unbound name in the tree is the one the middle specimen exists to carry. A probe whose
+// return type were also unbound would still be reported resolve_refused and would stop telling you
+// WHICH absence the census saw.
+data census_clean_source: String = "module v2.census_probe_clean\n\nimport v2.std.logic { Bool }\n\nfn census_probe_clean_value(p: Bool) -> Bool { p }\n"
+
+// THE UNBOUND REFERENCE IS THE SUBJECT, and it is shaped like what an XL-2 rehearsal actually
+// leaves behind: the module parses and normalizes cleanly -- so the context admits the file and
+// mints no file refusal for it -- and refuses at NAME RESOLUTION, because the declaration its
+// reference named is no longer reachable. That is a stripped import's residual, one site of it.
+data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport v2.std.logic { Bool }\n\nfn census_probe_unbound_value(p: Bool) -> Bool { census_probe_absent_callee }\n"
+
+// THE POISON SPECIMEN REFUSES IN THE FRONT END, before the resolver is entered at all. The bytes
+// are the same shape as the lane's committed malformed control (fixtures/native_lane_malformed):
+// a string that never terminates, which any honest front end refuses at tokenize.
+data census_poison_source: String = "module v2.census_probe_poison\n\ndata census_probe_broken: String = \"this string never terminates\n"
+
+fn census_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data census_probe_ingest: SourceRootIngest = Cons {
+  head: census_probe_read(
+    source: census_clean_source,
+    id: ^census_probe_clean_artifact,
+    unit: ^census_probe_clean_cu,
+    path: "dag/census_probe_clean.dag"
+  ),
+  tail: Cons {
+    head: census_probe_read(
+      source: census_unbound_source,
+      id: ^census_probe_unbound_artifact,
+      unit: ^census_probe_unbound_cu,
+      path: "dag/census_probe_unbound.dag"
+    ),
+    tail: Cons {
+      head: census_probe_read(
+        source: census_poison_source,
+        id: ^census_probe_poison_artifact,
+        unit: ^census_probe_poison_cu,
+        path: "dag/census_probe_poison.dag"
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn census_probe_outcome_for(module_name: String) -> Optional<NativeCensusModuleOutcome> {
+  match native_test_context_from_ingest(ingest: census_probe_ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      fold_list(
+        xs: native_census_modules(ingest: census_probe_ingest),
+        empty: optional_absent(),
+        cons: fn(acc, entry) {
+          if entry.module == module_name {
+            optional_present(
+              value: native_census_module_resolution(
+                context: context,
+                refusal_index: index,
+                entry: entry
+              )
+            )
+          } else {
+            acc
+          }
+        }
+      )
+    }
+  }
+}
+
+// THE ROSTER IS READ FROM THE INGEST AND IT IS TOTAL. A census whose module roster silently dropped
+// a file would under-report by exactly the files it dropped, and no per-module claim below could
+// see it: each of them asks about a module the roster already produced.
+test fn census_roster_carries_every_declared_module_holds() -> Bool {
+  length(xs: native_census_modules(ingest: census_probe_ingest)) == 3
+}
+
+test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
+  match census_probe_outcome_for(module_name: "v2.census_probe_unbound") {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        NativeCensusModuleResolveRefused { diagnostics: _ } => true
+        NativeCensusModuleFileRefused => false
+        NativeCensusModuleResolved => false
+      }
+  }
+}
+
+// THE RESIDUAL IS AT OCCURRENCE GRAIN, and this is the claim that keeps it there. The rows carry the
+// resolver's own Diagnostic, each with the locus a downstream occurrence rewrite joins on; a census
+// that folded a module's diagnostics to one reason would still satisfy the claim above it and would
+// be useless to the wave that consumes it.
+test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bool {
+  match census_probe_outcome_for(module_name: "v2.census_probe_unbound") {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        NativeCensusModuleResolveRefused { diagnostics: d } =>
+          length(xs: native_census_residual_rows(
+            entry: NativeCensusModule {
+              module: "v2.census_probe_unbound",
+              path: ^census_probe_unbound_cu
+            },
+            diagnostics: d
+          )) == length(xs: d.tail) + 1
+        NativeCensusModuleFileRefused => false
+        NativeCensusModuleResolved => false
+      }
+  }
+}
+
+// THE DISCRIMINATOR AGAINST "ANY REFUSAL IS A RESIDUAL". The poison file refuses in the front end,
+// so the census must attribute it to the CONTEXT and not to the resolver it never entered.
+test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool {
+  match census_probe_outcome_for(module_name: "v2.census_probe_poison") {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        NativeCensusModuleFileRefused => true
+        NativeCensusModuleResolveRefused { diagnostics: _ } => false
+        NativeCensusModuleResolved => false
+      }
+  }
+}
+
+// THE DENOMINATOR IS NOT EMPTY AND IT IS NOT ALL REFUSALS. Without this arm every claim above is
+// satisfied by a census that refuses everything, which is the failure gunbc#11582 landed and
+// withdrew: a discriminator that turned out to agree with its subject for the wrong reason.
+test fn census_clean_module_resolves_holds() -> Bool {
+  match census_probe_outcome_for(module_name: "v2.census_probe_clean") {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        NativeCensusModuleResolved => true
+        NativeCensusModuleFileRefused => false
+        NativeCensusModuleResolveRefused { diagnostics: _ } => false
+      }
+  }
+}
