@@ -1,0 +1,52 @@
+module gunbc.spark.serving_group_launch
+
+import std.types { String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.pair_serving_realization {
+  spark_pair_head_unit_name, spark_pair_container_name, spark_pair_model_path_in_container,
+  spark_pair_desired_snapshot,
+}
+import gunbc.spark.native_serving_realization {
+  glm_native_head_unit_name, glm_native_container_name, glm_native_engine_binary,
+  glm_native_model_path_in_container,
+}
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
+
+// ── WHICH LAUNCH A GROUP'S ROUTE IS ABOUT ──────────────────────────────────────────────────────
+//
+// THE GROUP-KEYED FACTS THE SERVICE-IDENTITY CHAIN READS, IN ONE PLACE. The chain that answers
+// "which deployment answered this group's route" needs four names per group: the head unit whose
+// fragment digest the declared side is compared against, the container the inspect grant names, the
+// engine binary the process scan matches, and the model path the readback is compared to. Group A's
+// answers belong to the pair-serving realization (DeepSeek, Ray, the sparkrun image); group B's
+// belong to the native four-rank arm (GLM, mp backend, the stock vLLM image). Both sets are
+// imported from their owning modules -- this row adds no fifth fact, it only keys the four by group.
+//
+// THE DISPATCH IS REALIZATION, SO IT SITS HERE AND NOT IN THE INTERFACES (DESIGN section 3):
+// serving_enrollment already keys the route's endpoint, port and ceiling by group; this module keys
+// the launch the route is ABOUT by group. A consumer matches the group once and reads fields;
+// nothing downstream branches on the group again.
+type ServingGroupLaunch {
+  head_unit_name: NonEmptyStr
+  container_name: NonEmptyStr
+  engine_binary: NonEmptyStr
+  declared_model_path: String?
+}
+
+fn serving_group_launch(group: FabricGroup) -> ServingGroupLaunch {
+  match group {
+    FabricGroupA => ServingGroupLaunch {
+      head_unit_name: spark_pair_head_unit_name,
+      container_name: spark_pair_container_name,
+      engine_binary: sparkrun_vllm_ds4_gb10_vllm_binary,
+      declared_model_path: spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot),
+    }
+    FabricGroupB => ServingGroupLaunch {
+      head_unit_name: glm_native_head_unit_name,
+      container_name: glm_native_container_name,
+      engine_binary: glm_native_engine_binary,
+      declared_model_path: glm_native_model_path_in_container(),
+    }
+  }
+}

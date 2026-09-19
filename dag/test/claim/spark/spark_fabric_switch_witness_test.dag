@@ -18,6 +18,7 @@ import product.cable_plant_assessment { CableLegReading, LegReadingTaken, LegNev
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
+  fabric_forced_100g_attempts, fabric_forced_100g_ever_trained,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
 }
 
@@ -59,12 +60,28 @@ test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool
     && (match fabric_group_of_host(host: operator_host_srv1) { Absent => true  Present { value: _ } => false })
 }
 
-// THE 50G CEILING IS THE CABLE'S CODING, RECORDED WITH ITS CAUSE, and the switch lane speed the
-// desired state carries is the one the leg actually linked at.
-test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required() -> Bool {
+// THE LINK STILL RUNS AT 50G. Before the 2026-09-16 re-flash the coding capped the mode and the leg
+// linked at the cap; the re-flash cleared the coding blocker and the link still trains at 50G, which
+// is what makes the residual a link-training question rather than a coding one. The NIC's admitted
+// mode set is no longer carried on this row (gunbc.spark.fabric_switch_observed deleted the leaf
+// rather than re-value a String); the in-corpus evidence for "admitted but not trained" is the
+// forced-mode attempt roster witnessed below.
+test fn the_link_runs_at_50g_while_the_nic_now_admits_more() -> Bool {
   fabric_leg_cable_observed.linked_speed_gbps == 50
     && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
     && crs812_passive_dac_requires_forced_mode
+}
+
+// AND FORCING THE MODE WAS TRIED AND FAILED, which is the evidence that keeps the sentence above
+// honest. Every recorded attempt reports trained: false, so nothing in this corpus may claim the
+// fabric runs at 100G; and the roster is non-empty, so the claim rests on attempts rather than on
+// nobody having looked. If a later attempt DOES train, this reds -- which is the correct outcome:
+// the 50G rows above become stale in the same change.
+test fn forcing_100gbase_cr2_has_never_trained_on_this_plant() -> Bool {
+  length(fabric_forced_100g_attempts) == 4
+    && fabric_forced_100g_ever_trained() == false
+    && any(fabric_forced_100g_attempts, a => (a.nic_forced_modes as String) == "100G_2X" && a.nic_status_opcode == 2)
+    && any(fabric_forced_100g_attempts, a => (a.switch_fec as String) == "auto")
 }
 
 

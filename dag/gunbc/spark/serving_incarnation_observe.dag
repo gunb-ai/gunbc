@@ -16,9 +16,8 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   launch_wire,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_unit_name }
+import gunbc.spark.serving_group_launch { ServingGroupLaunch, serving_group_launch }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv, spark_managed_grant_wire }
-import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.docker.cli {
   DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
@@ -298,22 +297,23 @@ fn incarnation_after_container(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   container_id: NonEmptyStr,
   started_at: EpochSecs,
 ) -> ServingIncarnationReading {
-  let grant = InspectServingContainer { container: spark_pair_container_name }
+  let grant = InspectServingContainer { container: names.container_name }
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: spark_managed_grant_argv(grant: grant)) {
     TypedArgvExecRefused { reason: why } =>
-      IncarnationRefused { refusal: InspectLegDidNotRun { container: spark_pair_container_name, cause: why } }
+      IncarnationRefused { refusal: InspectLegDidNotRun { container: names.container_name, cause: why } }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
-        IncarnationRefused { refusal: InspectCommandFailed { container: spark_pair_container_name, exit_code: r.exit_code, stderr: r.stderr } }
+        IncarnationRefused { refusal: InspectCommandFailed { container: names.container_name, exit_code: r.exit_code, stderr: r.stderr } }
       } else {
         match docker_container_inspect_identity_from_stdout(stdout: r.stdout) {
           DockerContainerInspectIdentityUnreadable { cause: c } =>
-            IncarnationRefused { refusal: InspectIdentityUnreadable { container: spark_pair_container_name, cause: c } }
+            IncarnationRefused { refusal: InspectIdentityUnreadable { container: names.container_name, cause: c } }
           DockerContainerInspectIdentity { id: by_name, image: image_id } =>
             if (by_name as String) != (container_id as String) {
               IncarnationRefused { refusal: InspectedContainerIsNotTheAnsweringOne { by_name: by_name, answering: container_id } }
@@ -354,6 +354,7 @@ fn incarnation_after_process(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   pid: Int,
@@ -378,7 +379,7 @@ fn incarnation_after_process(
               } else {
                 incarnation_after_container(
                   target: target, context: context, group: group, head: head, endpoint: endpoint,
-                  invocation: invocation, unit_digest: unit_digest, container_id: id, started_at: seconds,
+                  names: names, invocation: invocation, unit_digest: unit_digest, container_id: id, started_at: seconds,
                 )
               }
             }
@@ -418,13 +419,14 @@ fn incarnation_after_host_facts(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
   exported: ExactDecimal,
   boot: EpochSecs,
   ticks: Hertz,
 ) -> ServingIncarnationReading {
-  let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
+  let pattern = names.engine_binary
   match scan_engine_processes(target: target, context: context, pattern: pattern) {
     EngineScanLegDidNotRun { cause: why } =>
       IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["the pgrep leg did not run: ", why], "") } }
@@ -452,7 +454,7 @@ fn incarnation_after_host_facts(
                   let bound = scan.matched.first()
                   incarnation_after_process(
                     transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                    invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
+                    names: names, invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
                   )
                 }
             }
@@ -468,6 +470,7 @@ fn incarnation_after_unit(
   group: FabricGroup,
   head: HostIdentity,
   endpoint: VllmEndpointProcessLaunch,
+  names: ServingGroupLaunch,
   invocation: NonEmptyStr,
   unit_digest: ContentHash,
 ) -> ServingIncarnationReading {
@@ -495,7 +498,7 @@ fn incarnation_after_unit(
                     BootTimeObserved { epoch_seconds: boot } =>
                       incarnation_after_host_facts(
                         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                        invocation: invocation, unit_digest: unit_digest, exported: exported, boot: boot, ticks: ticks,
+                        names: names, invocation: invocation, unit_digest: unit_digest, exported: exported, boot: boot, ticks: ticks,
                       )
                   }
               }
@@ -550,8 +553,11 @@ fn read_unit_identity(transport: HostEffectTransport, unit: NonEmptyStr) -> Unit
 }
 
 // THE ENTRY. One head host, one group, the endpoint launch the harness just read from that group's
-// route, and the sealed fleet context; everything else is derived. The unit is the pair-serving head
-// unit, because that is the unit whose engine exports the endpoint; a worker unit exports nothing.
+// route, and the sealed fleet context; everything else is derived. The unit, container and engine
+// binary are the GROUP'S, read from gunbc.spark.serving_group_launch: group A's launch is the
+// pair-serving realization's, group B's is the native arm's (gunbc.spark.native_serving_realization).
+// It is the head unit in both cases, because that is the unit whose engine exports the endpoint; a
+// worker or rank unit exports nothing.
 fn observe_endpoint_incarnation(
   context: FleetSshExecutionContext,
   group: FabricGroup,
@@ -560,13 +566,14 @@ fn observe_endpoint_incarnation(
 ) -> ServingIncarnationReading {
   let target = fleet_locus_ssh_target(host: head)
   let transport = FleetSsh { target: target, context: context }
-  let unit = spark_pair_head_unit_name
+  let names = serving_group_launch(group: group)
+  let unit = names.head_unit_name
   match read_unit_identity(transport: transport, unit: unit) {
     UnitIdentityRefused { refusal: r } => IncarnationRefused { refusal: r }
     UnitIdentityObserved { invocation: invocation, unit_digest: digest } =>
       incarnation_after_unit(
         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-        invocation: invocation, unit_digest: digest,
+        names: names, invocation: invocation, unit_digest: digest,
       )
   }
 }

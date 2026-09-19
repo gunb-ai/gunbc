@@ -1,0 +1,177 @@
+module gunbc.spark.native_serving_apply
+
+import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
+import std.algebra { trim }
+import v2.std.algebra { zip_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { shell_quote }
+import gunbc.fleet_bootstrap_principal_session {
+  exec_as_fleet_principal_trusting_with_stdin,
+  BootstrapCredentialFileHeld,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
+}
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+  SshTarget, portable_remote_words,
+}
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
+import gunbc.spark.pair_serving_apply {
+  SparkPairHostApplyPlan, SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed,
+  spark_pair_privileged_leg, spark_pair_host_apply_outcome_line, spark_pair_apply_all_applied,
+  spark_pair_apply_receipt_body,
+}
+import gunbc.spark.native_serving_realization {
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
+  glm_native_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name,
+  glm_native_container_name, glm_native_head_log_path, glm_native_rank_log_path,
+}
+
+// THE NATIVE ARM'S FIRST CONVERGENCE, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Group B ran from
+// 2026-09-10 as a bare `docker run` per host written by the cutover transaction: supervised by
+// nothing, invisible to the harness's declared-unit check, and pinned to the launch policy's
+// max_num_seqs 1. This entry installs the rendered units from
+// gunbc.spark.native_serving_realization on the four cage-2 hosts and brings the arm under systemd,
+// workers before the head so the head's first engine start finds its ranks.
+//
+// THE PRIVILEGED LEG AND THE RECEIPT ARE THE PAIR'S. spark_pair_privileged_leg,
+// SparkPairHostApplyPlan and the outcome vocabulary are generic over host, unit name and script;
+// they live in pair_serving_apply because that module landed first, and moving them to a shared
+// home is a consolidation this change deliberately does not also do. The pair's apply script is
+// NOT reused: it writes the runtime Dockerfile and rescues the JIT cache, both pair-specific.
+//
+// THE RESTART IS UNCONDITIONAL ON THIS ARM. The pair's apply is conditional because bouncing a
+// converged DeepSeek engine pays a model load for no rendezvous reason. The native arm is four
+// ranks joining one TCPStore: a unit that is already active with a container from an earlier
+// join is not ready to receive a new head -- measured 2026-09-16, workers stayed on the first
+// apply while the head crash-looped, and the store timed out 1/4. Every apply therefore starts
+// a new rendezvous epoch. Re-applying a bit-identical roster still restarts; that is the cost
+// of the epoch, not a defect in the conditional the pair still uses.
+//
+// THE WAIT GREPS A FRESH LOG. The unit appends, so a line from an earlier epoch would satisfy the
+// rendezvous grep immediately; the script truncates the log before restarting, and the grep can
+// only match the epoch this apply started.
+//
+// AND "THE CONTAINER EXISTS" IS NOT "THE RANK IS AT THE RENDEZVOUS". docker run creates the
+// container before the engine has read its config, so the first version of this wait returned
+// while the rank was still in warmup and the head was started into an empty store -- the same
+// 1/4 timeout, one epoch later (measured 2026-09-16, head restart at 22:32 with the ranks still
+// on the 22:19 start). The wait is therefore for the rank's own log line naming the store it is
+// about to join, which is the earliest point the head's start cannot strand it.
+data spark_native_apply_receipt_path: String = "target/spark-native-apply-receipt.txt"
+
+data spark_native_apply_attempt_raw: String = "spark-native-apply"
+
+fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String) -> String {
+  let ctr = glm_native_container_name as String
+  join([
+    "set -e\n",
+    "install -d -m 755 /var/log/gunbc\n",
+    "printf '%s' ", shell_quote(arg: unit_text), " > /etc/systemd/system/", unit_name as String, ".next\n",
+    "if cmp -s /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "; then changed=0; else changed=1; fi\n",
+    "mv -f /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "\n",
+    "systemctl daemon-reload\n",
+    "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker update --restart=no ", ctr, " >/dev/null 2>&1 || true; fi\n",
+    "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
+    ": > ", log_path as String, "\n",
+    "systemctl restart ", unit_name as String, "; echo restarted\n",
+    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do if grep -q \"distributed_init_method=tcp\" ", log_path as String, " 2>/dev/null; then echo rendezvous-entered; break; fi; sleep 5; done\n",
+    "grep -q \"distributed_init_method=tcp\" ", log_path as String, "\n",
+    "systemctl is-active ", unit_name as String, "\n",
+  ], "")
+}
+
+fn spark_native_host_plan(host: HostIdentity, render: GlmNativeUnitRender) -> SparkPairHostApplyPlan? {
+  match render {
+    GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
+    GlmNativeUnitRendered { unit_name: name, text: text } =>
+      Present { value: SparkPairHostApplyPlan {
+        host: host,
+        unit_name: name,
+        script: spark_native_host_apply_script(
+          unit_name: name,
+          log_path: if (name as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
+          unit_text: text,
+        ),
+      } }
+  }
+}
+
+// WORKERS BEFORE THE HEAD. glm_native_all_unit_renders returns the head first (it is rank 0), so
+// the plan order is the tail followed by the head -- the head's engine starts last and finds its
+// ranks already waiting at the rendezvous.
+fn spark_native_apply_plans() -> List<SparkPairHostApplyPlan>? {
+  let hosts = glm_native_ranked_hosts()
+  let renders = glm_native_all_unit_renders()
+  let plans = zip_map(a: hosts, b: renders, f: fn(h, r) { spark_native_host_plan(host: h, render: r) })
+  if any(plans, p => match p { Absent => true  Present { value: _ } => false }) {
+    none
+  } else {
+    let present = flat_map(plans, p => match p { Absent => [] as List<SparkPairHostApplyPlan>  Present { value: v } => [v] })
+    match list_head(xs: present) {
+      HeadAbsent => none
+      HeadFound { value: head_plan } =>
+        match list_tail(xs: present) {
+          TailAbsent => none
+          TailFound { tail: workers } => Present { value: concat(workers, [head_plan]) }
+        }
+    }
+  }
+}
+
+fn spark_native_serving_apply_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_native_apply_plans() {
+    Absent => exit_failure(reason: "spark_native_serving_apply: a native arm unit did not render; no host was touched")
+    Present { value: plans } =>
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_native_serving_apply: ", c], ""))
+        ExecutorReachKnown { short_hostname: executor, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: spark_native_apply_attempt_raw) {
+                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                Present { value: attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-spark-native-apply-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          map(plans, p => spark_pair_privileged_leg(trust: trust, path: path, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
+                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: outcomes)
+                          let wr = Filesystem.Write(path: spark_native_apply_receipt_path, content: body)
+                          if !wr.success {
+                            exit_failure(reason: join(["spark native apply receipt write failed: ", wr.error], ""))
+                          } else if spark_pair_apply_all_applied(outcomes: outcomes) {
+                            ExitSuccess
+                          } else {
+                            exit_failure(reason: join(["spark native serving apply did not converge:\n", body], ""))
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}

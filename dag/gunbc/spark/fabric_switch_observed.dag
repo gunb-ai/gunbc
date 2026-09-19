@@ -137,6 +137,65 @@ data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved 
   linked_speed_gbps: 50,
 }
 
+type ForcedModeTrainingAttempt {
+  lane_interface: NonEmptyStr
+  switch_speed: NonEmptyStr
+  switch_fec: NonEmptyStr
+  nic_forced_modes: NonEmptyStr
+  trained: Bool
+  nic_status_opcode: Nat
+  nic_recommendation: NonEmptyStr
+}
+
+// ONE ROW PER COMBINATION DRIVEN, so "we tried 100G and it failed" cannot stand in for which pairing
+// failed. Each row is a receipt of a live attempt on 2026-09-16 against lane qsfp56-dd-2-1 (the
+// spark-3336 leg), chosen so a failure cost one host rather than the group. `trained: false` with
+// opcode 2 is the discriminating result; the first row is separate because it did not fail to
+// train, it never attempted to -- a NIC in auto-negotiation opposite a forced lane keeps the rate it
+// already holds, which is why the switch-side change alone looked like a no-op.
+data fabric_forced_100g_attempts: List<ForcedModeTrainingAttempt> = [
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "none, auto-negotiation left on" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 0,
+    nic_recommendation: "No issue was observed (the NIC held 50G_2X and never re-trained)" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "100G_1X, 100G_2X, 100G_4X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "fec91" as NonEmptyStr,
+    nic_forced_modes: "100G_2X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+  ForcedModeTrainingAttempt {
+    lane_interface: "qsfp56-dd-2-1" as NonEmptyStr,
+    switch_speed: "100G-baseCR2" as NonEmptyStr,
+    switch_fec: "auto" as NonEmptyStr,
+    nic_forced_modes: "100G_2X" as NonEmptyStr,
+    trained: false,
+    nic_status_opcode: 2,
+    nic_recommendation: "Negotiation failure" as NonEmptyStr,
+  },
+]
+
+fn fabric_forced_100g_ever_trained() -> Bool {
+  any(fabric_forced_100g_attempts, a => a.trained)
+}
+
 type FabricLaneObserved {
   cage: Nat
   lane: Nat

@@ -56,11 +56,11 @@ import gunbc.spark.serving_offer {
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
 import gunbc.spark.pair_serving_realization {
   DeclaredUnitDigestStanding, DeclaredUnitDigestUnavailable,
-  spark_pair_declared_head_digest,
+  spark_pair_declared_head_digest, glm_native_declared_head_digest,
 }
-import gunbc.spark.glm_canary_converge { glm_canary_declared_unit_artifact_obligation }
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
-import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.serving_group_launch { serving_group_launch }
 import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -586,6 +586,7 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
     readback: readback,
     endpoint: launch,
     incarnation: incarnation,
+    declared_model_path: serving_group_launch(group: group).declared_model_path,
   }
 }
 
@@ -600,12 +601,15 @@ fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, 
 // BIND. Group A renders the pair head unit and DigestStdins those exact bytes
 // (gunbc.spark.pair_serving_realization spark_pair_declared_head_digest), refusing typed
 // (DeclaredUnitDigestUnavailable) when the render or the digest leg fails. GROUP B NEVER INHERITS
-// THE PAIR UNIT: the canary arm is a native argv launch with no rendered unit, which is its own
-// typed obligation, not a missing lookup against somebody else's bytes.
+// THE PAIR UNIT: group B is served by the native four-rank arm, whose head unit renders pure from
+// gunbc.spark.native_serving_realization's desired declaration, and
+// gunbc.spark.pair_serving_realization glm_native_declared_head_digest digests those bytes under
+// the same seal, so a group B route with an observed incarnation reaches the provenance join rather
+// than stopping at ServiceDeclaredUnitDigestUnavailable.
 fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {
     FabricGroupA => spark_pair_declared_head_digest(group: group)
-    FabricGroupB => DeclaredUnitDigestUnavailable { obligation: glm_canary_declared_unit_artifact_obligation }
+    FabricGroupB => glm_native_declared_head_digest()
   }
 }
 
@@ -643,12 +647,7 @@ fn harness_incarnation_standing(access: FleetSshContextPreparation, group: Fabri
     FleetSshContextRefused { cause: c } =>
       EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      match spark_pair_group_head_host(group: group) {
-        Absent =>
-          EndpointIncarnationUnobserved { obligation: join(["gunbc.spark.pair_serving_desired names no ready head host for ", fabric_group_wire(g: group) as String, ", so there is no host to observe the incarnation on"], "") as NonEmptyStr }
-        Present { value: head } =>
-          endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch))
-      }
+      endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: spark_pair_serving_head(group: group), endpoint: launch))
   }
 }
 

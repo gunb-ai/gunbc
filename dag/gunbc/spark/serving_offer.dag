@@ -17,7 +17,7 @@ import gunbc.spark.first_party_serving {
   spark_fleet_site_allocation, spark_site_uncovered_units, spark_first_party_route,
   SparkServingRealization,
   spark_realization_identity, SparkRealizationIdentity,
-  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
@@ -300,7 +300,7 @@ data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark
 // renderer.
 fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
   match spark_realization_identity(realization: realization) {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } =>
+    RealizationMatchesDeclaredConfiguration { configured_model_path: p } =>
       join([
         "the engine reports the model path this launch is declared to serve (", p as String,
         "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
@@ -383,7 +383,7 @@ fn spark_service_unidentified(realization: SparkServingRealization, cause: Spark
 
 fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
   match identity {
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => true
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => true
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false

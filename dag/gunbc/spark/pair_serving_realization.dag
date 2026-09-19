@@ -52,6 +52,9 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingParticipant, spark_pair_serving_desired,
 }
 import gunbc.spark.pair_serving_observed { first_pair_ray_head, first_pair_vllm_serve }
+import gunbc.spark.native_serving_realization {
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused, glm_native_head_unit_render,
+}
 
 // THE PAIR'S REALIZATION IS TWO SYSTEM UNITS AND ONE CONTAINER PER HOST, RENDERED FROM THE DESIRED
 // ROW. This replaces the hand-authored spark-vllm-head.sh, spark-ray-worker.sh and
@@ -420,6 +423,9 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // EGRESS CLOSURE, BY ENUMERATION. Every exported declaration whose return type contains
 // DeclaredUnitDigestEvidence, and what it accepts:
 //   - spark_pair_declared_head_digest(group: FabricGroup)         -- a MODELED GROUP, nothing else
+//   - glm_native_declared_head_digest()                           -- nullary; the bytes are the
+//     NATIVE ARM'S production declaration for group B
+//     (gunbc.spark.native_serving_realization glm_native_head_unit_render), nothing else
 //   - gunbc.harness.harness_seat harness_declared_unit_digest(group: FabricGroup)   -- likewise
 //   - gunbc.harness.harness_seat harness_declared_unit_roster()   -- nullary
 //   - gunbc.harness.harness_seat harness_declared_unit_from_roster(roster, group)   -- REQUIRES the
@@ -670,6 +676,26 @@ fn spark_pair_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStan
       DeclaredUnitDigestUnavailable { obligation: o }
     RenderedUnitDigested { unit_name: _, digest: d } =>
       DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: d } }
+  }
+}
+
+// PROPOSITION (2) FOR GROUP B, UNDER THE SAME SEAL. Group B is served by the native four-rank arm,
+// whose head unit renders pure from gunbc.spark.native_serving_realization's desired declaration;
+// those exact bytes are digested through the same unsealed byte-level leg as group A's and sealed
+// here. The mint is nullary, so the egress discipline above is unchanged: a caller cannot supply
+// bytes, a digest or a render. Any leg that cannot produce the digest degrades to
+// DeclaredUnitDigestUnavailable carrying the located cause, never a guess.
+fn glm_native_declared_head_digest() -> DeclaredUnitDigestStanding {
+  match glm_native_head_unit_render() {
+    GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+      DeclaredUnitDigestUnavailable { obligation: join(["the native arm's declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
+    GlmNativeUnitRendered { unit_name: n, text: t } =>
+      match spark_pair_rendered_unit_digest(render: SparkPairUnitRendered { unit_name: n, text: t }) {
+        RenderedUnitDigestUnavailable { obligation: o } =>
+          DeclaredUnitDigestUnavailable { obligation: o }
+        RenderedUnitDigested { unit_name: _, digest: d } =>
+          DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: d } }
+      }
   }
 }
 

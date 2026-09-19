@@ -63,17 +63,17 @@ data srv6_listing_after: String = "User gunbc-automation may run the following c
 // AUTHORED, NOT MEASURED. No host holds the container-inspect grant yet (measured 2026-09-13: srv5 and
 // srv6 hold linger only), so this listing is the shape sudo would render once the operator installs
 // it, spelled independently of the model rather than rendered from spark_managed_grant_sudoers_command.
-data srv6_listing_with_inspect: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n    (root) NOPASSWD: /usr/bin/docker container inspect gunbc-spark-pair\n    (root) NOPASSWD: /usr/sbin/ethtool -m enp1s0f1np1 raw on\n"
+data srv6_listing_with_inspect: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n    (root) NOPASSWD: /usr/bin/docker container inspect gunbc-spark-pair\n    (root) NOPASSWD: /usr/sbin/ethtool -m enp1s0f1np1 raw on\n    (root) NOPASSWD: /usr/bin/docker container inspect glm-native-tp4\n"
 
 // THE COUNT MOVED WHEN THE DESIRED SET GREW, AND THAT IS THE ASSERTION, NOT A BREAKAGE. The listing
 // is a MEASURED fixture -- srv6 holding linger and nothing else -- so it is not edited to keep an old
-// number true. Adding ReadFabricModuleEeprom to the population means this host is now missing reboot,
-// inspect and the EEPROM read, and a test that still said "1" would be asserting the population had
+// number true. The population now carries FIVE grants, so this host is missing reboot, BOTH inspect
+// grants and the EEPROM read, and a test that still said "1" would be asserting the population had
 // not changed while it had. What stays discriminating is the same thing it always was: linger is held,
 // so linger is never in the install set.
 test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   let missing = spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_before })
-  missing.length() == 3
+  missing.length() == 4
     && any(missing, m => match m {
          RebootThisHost => true
          EnableLingerForOwnAccount { subject: _ } => false
@@ -90,6 +90,18 @@ test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
          RebootThisHost => false
          EnableLingerForOwnAccount { subject: _ } => true
          InspectServingContainer { container: _ } => false
+         ReadFabricModuleEeprom { device: _ } => false
+       })
+    && all(filter(missing, m => match m {
+         InspectServingContainer { container: _ } => true
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => false
+         ReadFabricModuleEeprom { device: _ } => false
+       }), m => match m {
+         InspectServingContainer { container: c } =>
+           c as String == "gunbc-spark-pair" || c as String == "glm-native-tp4"
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => false
          ReadFabricModuleEeprom { device: _ } => false
        })
 }
@@ -122,13 +134,17 @@ test fn the_measured_hosts_are_missing_inspect_and_the_eeprom_read() -> Bool {
 }
 
 // Sudo demanding a password IS the answer "none", successfully obtained, so every desired grant is
-// missing and the remedy is to install them.
+// missing and the remedy is to install them. The install set alone no longer accounts for the
+// population now that inspect grants are basis-gated: under a fixture basis naming only the pair
+// container, the native arm's inspect grant is missing AND withheld, so installed + withheld -- not
+// installed alone -- is the whole population.
 test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
   spark_managed_grants_to_install_under(
     outcome: o,
     basis: fixture_accepted_risk(),
-  ).length() == spark_managed_grant_population.length()
+  ).length() + spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length()
+      == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
 
@@ -324,13 +340,13 @@ data srv6_listing_wider_than_desired: String = "User gunbc-automation may run th
 // join left the test GREEN, so it was measuring the reboot grant's absence and nothing about the
 // change it was written for. Counting the install set isolates the one grant whose standing the
 // two joins disagree about. The figures move with the population and are stated at its CURRENT size
-// rather than left at the pair they were written for: the population is four grants, this listing
-// holds none of them, so the entry-grained join answers 4 and the substring join answers 3 -- linger
+// rather than left at the pair they were written for: the population is five grants, this listing
+// holds none of them, so the entry-grained join answers 5 and the substring join answers 4 -- linger
 // wrongly held because the desired command is a proper prefix of the installed one. What matters is
 // that the two answers still DIFFER by exactly the grant under test; the absolute numbers are a
 // consequence of how many grants the population carries and carry no meaning of their own.
 test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool {
-  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 4
+  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 5
 }
 
 // A BANNER LINE CONTRIBUTES NOTHING RATHER THAN A NEGATIVE VOTE. The listing's prose header names
@@ -404,12 +420,12 @@ test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
 }
 
 // A FIXTURE DECISION, never a real one: it exists only to show the accepted-risk arm admits.
-fn fixture_accepted_risk() -> SparkGrantInstallBasis {
-  OperatorAcceptedUnresolvedDisclosureRisk {
+fn fixture_accepted_risk() -> List<SparkGrantInstallBasis> {
+  [OperatorAcceptedUnresolvedDisclosureRisk {
     actor: "fixture" as NonEmptyStr,
     decided_on: "1970-01-01" as NonEmptyStr,
     accepted_for: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
-  }
+  }]
 }
 
 // THE RED: WITH NO PRECONDITION, THE INSPECT GRANT IS NOT IN THE INSTALL SET, over the measured
@@ -426,14 +442,14 @@ fn fixture_accepted_risk() -> SparkGrantInstallBasis {
 // enrolled per DESIGN 4b(4) rather than leaving it specification-without-execution (review 66129).
 test fn without_an_install_basis_inspect_is_withheld_while_the_spec_bounded_read_installs() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_after }
-  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 1
-    && all(spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent), g => match g {
+  spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]).length() == 1
+    && all(spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]), g => match g {
          ReadFabricModuleEeprom { device: d } => d as String == spark_fabric_leg_netdev as String
          InspectServingContainer { container: _ } => false
          RebootThisHost => false
          EnableLingerForOwnAccount { subject: _ } => false
        })
-    && all(spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent), w => match w {
+    && all(spark_managed_grants_withheld_under(outcome: o, basis: [InstallBasisAbsent]), w => match w {
          GrantInstallWithheld { grant: g, obligation: ob } =>
            ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
              && match g {
@@ -447,41 +463,52 @@ test fn without_an_install_basis_inspect_is_withheld_while_the_spec_bounded_read
          GrantInstallStandingUnobserved { grant: _, cause: _ } => false
          GrantInstallNotNeeded => false
        })
-    && spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent).length() == 1
+    && spark_managed_grants_withheld_under(outcome: o, basis: [InstallBasisAbsent]).length() == 2
     && !spark_managed_grants_converged(outcome: o)
     && any(
-         flat_map(spark_grant_install_admissions_under(outcome: o, basis: InstallBasisAbsent), a => spark_grant_install_admission_wire(a: a)),
+         flat_map(spark_grant_install_admissions_under(outcome: o, basis: [InstallBasisAbsent]), a => spark_grant_install_admission_wire(a: a)),
          line => string_contains(line, "install=withheld disclosure=unestablished cause="),
        )
 }
 
-// THE PRODUCTION ROW AFTER THE OPERATOR'S 2026-09-14 ACCEPTANCE. Over the measured listing the inspect
-// grant is now IN the install set through the production basis, admitted on accepted risk with the
-// disclosure obligation still attached, and nothing is withheld. The actor is the operator's fleet
-// login and the decision names the pinned pair container, so the row is attributable and scoped.
+// THE PRODUCTION ROWS AFTER THE OPERATOR'S ACCEPTANCES. Over the measured listing both inspect grants
+// are now IN the install set through the production basis -- the pair container's on the 2026-09-14
+// acceptance, the native arm's on the 2026-09-16 acceptance -- each admitted on accepted risk with the
+// disclosure obligation still attached, and nothing is withheld. The spec-bounded EEPROM read needs no
+// acceptance and installs beside them. The actor is the operator's fleet
+// login and each decision names its container, so the rows are attributable and scoped.
 test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_after }
   let installing = spark_managed_grants_to_install(outcome: o)
-  installing.length() == 2
+  installing.length() == 3
     && all(installing, g => match g {
-         InspectServingContainer { container: c } => c as String == "gunbc-spark-pair"
+         InspectServingContainer { container: c } =>
+           c as String == "gunbc-spark-pair" || c as String == "glm-native-tp4"
          ReadFabricModuleEeprom { device: d } => d as String == spark_fabric_leg_netdev as String
          RebootThisHost => false
          EnableLingerForOwnAccount { subject: _ } => false
        })
     && spark_managed_grants_withheld(outcome: o).length() == 0
-    && any(spark_grant_install_admissions_under(outcome: o, basis: spark_managed_grant_install_basis), a => match a {
+    && all(spark_grant_install_admissions_under(outcome: o, basis: spark_managed_grant_install_basis), a => match a {
          GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: b } =>
            ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
              && match b {
-                  OperatorAcceptedUnresolvedDisclosureRisk { actor: who, decided_on: when, accepted_for: _ } =>
-                    who as String == fleet_bootstrap_principal_login() as String && when as String == "2026-09-14"
+                  OperatorAcceptedUnresolvedDisclosureRisk { actor: who, decided_on: _, accepted_for: _ } =>
+                    who as String == fleet_bootstrap_principal_login() as String
                   InstallBasisAbsent => false
                 }
-         GrantInstallAdmitted { grant: _ } => false
+         GrantInstallAdmitted { grant: _ } => true
          GrantInstallWithheld { grant: _, obligation: _ } => false
          GrantInstallStandingUnobserved { grant: _, cause: _ } => false
-         GrantInstallNotNeeded => false
+         GrantInstallNotNeeded => true
+       })
+    && any(spark_grant_install_admissions_under(outcome: o, basis: spark_managed_grant_install_basis), a => match a {
+         GrantInstallAdmittedOnAcceptedRisk { grant: InspectServingContainer { container: c }, obligation: _, basis: b } =>
+           c as String == "glm-native-tp4" && match b {
+             OperatorAcceptedUnresolvedDisclosureRisk { actor: _, decided_on: when, accepted_for: _ } => when as String == "2026-09-16"
+             InstallBasisAbsent => false
+           }
+         _ => false
        })
     && string_contains(spark_managed_grant_report(host: "srv6", outcome: o), "install=admitted-on-accepted-risk")
 }
@@ -504,7 +531,7 @@ test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool {
 // same listing, an operator acceptance admits inspect, while reboot is admitted either way.
 test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_before }
-  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 2
+  spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]).length() == 2
     && spark_managed_grants_to_install_under(
          outcome: o,
          basis: fixture_accepted_risk(),
@@ -524,7 +551,7 @@ test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() 
     GrantInstallStandingUnobserved { grant: _, cause: _ } => false
     GrantInstallNotNeeded => false
   })
-    && spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length() == 0
+    && spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length() == 1
 }
 
 // ACCEPTANCE IS SCOPED TO THE GRANT IT NAMES. A basis naming a different container admits nothing.
@@ -537,11 +564,11 @@ test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() 
 test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
   let installing = spark_managed_grants_to_install_under(
     outcome: GrantEnumerated { listing: srv6_listing_after },
-    basis: OperatorAcceptedUnresolvedDisclosureRisk {
+    basis: [OperatorAcceptedUnresolvedDisclosureRisk {
       actor: "fixture" as NonEmptyStr,
       decided_on: "1970-01-01" as NonEmptyStr,
       accepted_for: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
-    },
+    }],
   )
   !any(installing, g => match g {
     InspectServingContainer { container: _ } => true

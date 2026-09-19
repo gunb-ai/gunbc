@@ -10,7 +10,7 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
-  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import v2.std.optional { Present, Absent }
@@ -85,7 +85,7 @@ fn t_declared_path() -> String {
 // THE REALIZATION WHOSE REPORTED CONFIGURATION MATCHES, which is NOT the same as one whose service
 // is established -- an earlier spelling of this comment said it was, and that sentence is the defect
 // in one line. The engine reports exactly the path the pair-serving launch is declared to serve, so
-// the identity join answers RealizationMatchesPairServingConfiguration; that is configuration agreement, and a second
+// the identity join answers RealizationMatchesDeclaredConfiguration; that is configuration agreement, and a second
 // deployment configured the same way reports the same string. This fixture therefore drives the
 // MOTIVATING case rather than a happy path: the one where everything a consumer might mistake for
 // identity is present and the service still may not be named.
@@ -100,6 +100,7 @@ fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -118,6 +119,7 @@ fn t_foreign_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -130,6 +132,7 @@ fn t_unreadable_realization(hosts: List<HostIdentity>) -> SparkServingRealizatio
     readback: ModelsRouteDocumentUnreadable { cause: "the fixture supplies an undecodable models document, which is the case the service half must refuse on" as NonEmptyStr },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -329,7 +332,7 @@ fn t_cause_is_matched_configuration(cause: SparkServiceIdentityCause) -> Bool {
   match t_unobserved_configuration(cause: cause) {
     Absent => false
     Present { value: identity } => match identity {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
+    RealizationMatchesDeclaredConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
@@ -342,7 +345,7 @@ fn t_cause_is_unresolved_readback(cause: SparkServiceIdentityCause) -> Bool {
     Absent => false
     Present { value: identity } => match identity {
     RealizationReadbackUnresolved => true
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => false
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
   }
@@ -355,7 +358,7 @@ fn t_cause_is_reported_path_differs(cause: SparkServiceIdentityCause) -> Bool {
     Present { value: identity } => match identity {
     RealizationReportedPathDiffers { reported: rep, declared: dec } =>
       (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
   }
@@ -634,7 +637,7 @@ fn t_observed(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch) ->
 }
 
 fn t_with_incarnation(base: SparkServingRealization, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
-  SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation }
+  SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation, declared_model_path: base.declared_model_path }
 }
 
 fn t_cause(route: SparkServingRoute) -> SparkServiceIdentityCause? {

@@ -123,6 +123,7 @@ fn t_pair_realization() -> SparkServingRealization {
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -135,6 +136,7 @@ fn t_foreign_realization() -> SparkServingRealization {
     readback: t_readback(path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -414,6 +416,7 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -436,6 +439,7 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -457,6 +461,7 @@ test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
     readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => true
     TelemetryDeclaredPathUnpinned => false
