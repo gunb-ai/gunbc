@@ -27,6 +27,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.namespace_graft {
+  namespace_graft_parse_projection_edge,
   namespace_graft_strip_provenance_marker
 }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -350,10 +351,15 @@ fn module_root_find(
   }
 }
 
+// Parse-projection edges (identity / captured projections, sequence spines) are
+// machinery, not exports -- the same rule symbol_index_fill_containment_edge
+// applies. The body's identity projection reaches this fold as a direct child.
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
       if dag_surface_module_header_metadata_edge(name: b.name) {
+        optional_absent()
+      } else if namespace_graft_parse_projection_edge(name: b.name) {
         optional_absent()
       } else {
         optional_present(value: b)

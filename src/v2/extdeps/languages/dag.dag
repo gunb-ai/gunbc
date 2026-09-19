@@ -5164,10 +5164,32 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
   }
 }
 
+// THE GRAFT BODY IS MARKED BY ITS PRODUCER, NOT INFERRED BY ITS READERS. The
+// containment spine is a chain of single-Named-edge Conj wrappers, and a module
+// body with exactly one Named member whose target is a Conj is the same shape as
+// one more segment: `p { Flag: Conj }` read as `p.Flag`. Every spine consumer
+// (this QN reader, symbol_index_fill, name_resolve export admission, the
+// reference-site collector) inherited that ambiguity. The graft therefore stamps
+// the body Conj with the same provenance vocabulary the module shell already uses
+// -- grammar_production_identity_node_projection -> Atom(identity) -- so the
+// spine ends where the producer says it ends. The captured projection is
+// deliberately NOT emitted: the members are the body, and a captured wrapper
+// would re-create the one-Named-Conj level the fill misreads.
+data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
+
+fn namespace_graft_node_is_module_body(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == namespace_graft_module_body_identity
+    Absent => false
+  }
+}
+
 fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
   match node.kind {
     TypeNode { connective: Conj } =>
-      if count(node.children) != 1 {
+      if namespace_graft_node_is_module_body(node: node) {
+        optional_absent()
+      } else if count(node.children) != 1 {
         optional_absent()
       } else {
         match list_at_optional(xs: node.children, index: 0) {

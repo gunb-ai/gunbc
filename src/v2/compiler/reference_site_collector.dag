@@ -144,6 +144,11 @@ fn reference_sites_in_edge(
     Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
         acc
+      } else if sym == ^grammar_production_identity_node_projection {
+        // A production identity is what a node IS, never a mention it makes
+        // (the graft body's namespace_graft_module_body marker reaches here as a
+        // direct child). Same rule as symbol_index_fill and export admission.
+        acc
       } else {
         reference_sites_in_node(
           acc: acc,
