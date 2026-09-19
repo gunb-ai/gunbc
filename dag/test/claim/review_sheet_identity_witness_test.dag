@@ -30,6 +30,11 @@ import gunbc.review_sheet_identity {
   CurrentMarkerObservedLegacyExtentUnresolved,
   ReviewSheetIdentityUnreadable,
   review_sheet_identity_standing,
+  LegacyExtentVerdict,
+  LegacyExtentSettledEmpty,
+  LegacyExtentFound,
+  LegacyExtentUnsettled,
+  legacy_extent_verdict,
   review_sheet_identity_subject_matches,
 }
 
@@ -321,4 +326,41 @@ test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
   )
   (standing.subject.drive_id as String) == "drive-1"
     && (standing.subject.superseded_marker_field as String) == "appProperties"
+}
+
+
+// THE HINGE RULE NOW HAS ITS OWN WALL, BECAUSE IT IS NOW ONE FACT. It used to be authored in the
+// current-hit fold, again in the current-absence fold, and partially a third time in a file-id
+// extractor that dropped the visibility basis -- so a later edit could tighten one path and not the
+// other, re-creating this module's own failure class inside the module filed to prevent it, with no
+// claim positioned to catch the divergence because each arm was covered on only one path.
+//
+// These three claims sit on legacy_extent_verdict itself, which both dispositions now consume, so a
+// divergence is no longer AUTHORABLE rather than merely uncovered.
+test fn an_empty_legacy_search_is_settled_only_under_an_established_visibility() -> Bool {
+  match legacy_extent_verdict(evidence: w_search(o: SheetAbsent, v: w_visible())) {
+    LegacyExtentSettledEmpty => true
+    LegacyExtentUnsettled { cause: _ } => false
+    LegacyExtentFound { file_ids: _ } => false
+  }
+}
+
+test fn an_empty_legacy_search_under_unknown_visibility_is_unsettled() -> Bool {
+  match legacy_extent_verdict(evidence: w_search(o: SheetAbsent, v: w_unknown_visibility())) {
+    LegacyExtentUnsettled { cause: _ } => true
+    LegacyExtentSettledEmpty => false
+    LegacyExtentFound { file_ids: _ } => false
+  }
+}
+
+// A POSITIVE FIND NEEDS NO VISIBILITY ARGUMENT AT ALL -- seeing the file IS the proof it was
+// visible -- so the verdict reports it found regardless of the basis offered.
+test fn a_legacy_find_is_found_whatever_basis_is_offered() -> Bool {
+  match legacy_extent_verdict(
+    evidence: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: w_unknown_visibility()),
+  ) {
+    LegacyExtentFound { file_ids: ids } => any(ids, i => i == "legacy-B")
+    LegacyExtentSettledEmpty => false
+    LegacyExtentUnsettled { cause: _ } => false
+  }
 }

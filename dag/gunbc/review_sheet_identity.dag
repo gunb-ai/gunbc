@@ -226,7 +226,7 @@ fn internal_disposition_over_matching_subject(
     SheetDuplicated { file_ids: ids } =>
       ReviewSheetConflictingLineages {
         current_file_ids: ids,
-        legacy_file_ids: legacy_file_ids_of(evidence: legacy),
+        legacy_file_ids: legacy_extent_found_ids(verdict: legacy_extent_verdict(evidence: legacy)),
       }
     SheetObservedOne { file_id: current_id } =>
       internal_disposition_over_current_hit(current_id: current_id, legacy: legacy)
@@ -234,120 +234,98 @@ fn internal_disposition_over_matching_subject(
   }
 }
 
-// A CURRENT HIT SETTLES NOTHING ON ITS OWN. The legacy extent decides whether the found file is the
+// THE LEGACY-EXTENT VERDICT IS DECIDED ONCE, AND AN EARLIER REVISION DECIDED IT THREE TIMES. The
+// hinge rule of this whole module -- an empty legacy search is a real absence ONLY under an
+// established visibility basis -- was authored in the current-hit fold, authored again in the
+// current-absence fold, and partially re-derived a third time in a file-id extractor that dropped
+// the visibility basis entirely. Three sites, one fact.
+//
+// THAT IS NOT MERELY REDUNDANT, IT IS THE MODULE'S OWN FAILURE CLASS AIMED AT ITSELF. A later edit
+// tightening the rule on one path and not the other re-creates
+// an_absent_reading_assigned_an_extent_conclusion INSIDE the module filed to prevent it, and no
+// claim would catch the divergence because each arm was covered on only one of the two paths.
+//
+// So the observation and its visibility collapse to one verdict here, and the two dispositions
+// differ only in what they NAME that verdict when a current-marked file was or was not found --
+// which is the only thing that actually differs between them.
+type LegacyExtentVerdict
+  = LegacyExtentSettledEmpty
+  | LegacyExtentFound { file_ids: List<String> }
+  | LegacyExtentUnsettled { cause: NonEmptyStr }
+
+fn legacy_extent_verdict(evidence: LegacyExtentEvidence) -> LegacyExtentVerdict {
+  match evidence {
+    LegacyExtentAbsentByOperator { subject: _, basis: _ } => LegacyExtentSettledEmpty
+    LegacyExtentUnresolved { subject: _, cause: c } => LegacyExtentUnsettled { cause: c }
+    LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
+      match o {
+        SheetObservedOne { file_id: f } => LegacyExtentFound { file_ids: [f as String] }
+        SheetDuplicated { file_ids: ids } => LegacyExtentFound { file_ids: ids }
+        SheetSearchUnreadable { reason: r } => LegacyExtentUnsettled { cause: r }
+        SheetSearchIncomplete =>
+          LegacyExtentUnsettled {
+            cause: "Drive reported incompleteSearch for the superseded marker, so the legacy extent is not established" as NonEmptyStr,
+          }
+        SheetPageIncomplete { next_page_token: _ } =>
+          LegacyExtentUnsettled {
+            cause: "the superseded-marker listing is one page of several, so the legacy extent is not established" as NonEmptyStr,
+          }
+        SheetAbsent =>
+          match v {
+            ClientIdentityObservedCompatible { basis: _ } => LegacyExtentSettledEmpty
+            PositiveFindEstablishesVisibility =>
+              LegacyExtentUnsettled {
+                cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,
+              }
+            SearchVisibilityUnresolved { cause: c } => LegacyExtentUnsettled { cause: c }
+          }
+      }
+  }
+}
+
+// A CURRENT HIT SETTLES NOTHING ON ITS OWN. The legacy verdict decides whether the found file is the
 // single lineage, one of two, or a lineage whose sibling cannot be ruled out.
 fn internal_disposition_over_current_hit(
   current_id: NonEmptyStr,
   legacy: LegacyExtentEvidence,
 ) -> ReviewSheetIdentityDisposition {
-  match legacy {
-    LegacyExtentAbsentByOperator { subject: _, basis: _ } =>
-      ReviewSheetSingleLineage { file_id: current_id }
-    LegacyExtentUnresolved { subject: _, cause: c } =>
+  match legacy_extent_verdict(evidence: legacy) {
+    LegacyExtentSettledEmpty => ReviewSheetSingleLineage { file_id: current_id }
+    LegacyExtentUnsettled { cause: c } =>
       CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: c }
-    LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
-      internal_disposition_over_current_hit_and_search(current_id: current_id, observation: o, visibility: v)
-  }
-}
-
-// AN EMPTY LEGACY SEARCH IS ONLY ABSENCE WHEN SOMETHING ESTABLISHED THAT THIS CLIENT COULD HAVE SEEN
-// IT. Otherwise the extent is UNRESOLVED -- not absent -- which is the distinction the original
-// incident turned on.
-fn internal_disposition_over_current_hit_and_search(
-  current_id: NonEmptyStr,
-  observation: ReviewSpreadsheetObservation,
-  visibility: LegacySearchVisibilityBasis,
-) -> ReviewSheetIdentityDisposition {
-  match observation {
-    SheetObservedOne { file_id: legacy_id } =>
-      if (legacy_id as String) == (current_id as String) {
+    LegacyExtentFound { file_ids: ids } =>
+      if ids == [current_id as String] {
         ReviewSheetSingleLineage { file_id: current_id }
       } else {
-        ReviewSheetConflictingLineages {
-          current_file_ids: [current_id as String],
-          legacy_file_ids: [legacy_id as String],
-        }
-      }
-    SheetDuplicated { file_ids: ids } =>
-      ReviewSheetConflictingLineages { current_file_ids: [current_id as String], legacy_file_ids: ids }
-    SheetAbsent =>
-      match visibility {
-        ClientIdentityObservedCompatible { basis: _ } => ReviewSheetSingleLineage { file_id: current_id }
-        PositiveFindEstablishesVisibility =>
-          CurrentMarkerObservedLegacyExtentUnresolved {
-            file_id: current_id,
-            cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,
-          }
-        SearchVisibilityUnresolved { cause: c } =>
-          CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: c }
-      }
-    SheetSearchUnreadable { reason: r } =>
-      CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: r }
-    SheetSearchIncomplete =>
-      CurrentMarkerObservedLegacyExtentUnresolved {
-        file_id: current_id,
-        cause: "Drive reported incompleteSearch for the superseded marker" as NonEmptyStr,
-      }
-    SheetPageIncomplete { next_page_token: _ } =>
-      CurrentMarkerObservedLegacyExtentUnresolved {
-        file_id: current_id,
-        cause: "the superseded-marker listing is one page of several" as NonEmptyStr,
+        ReviewSheetConflictingLineages { current_file_ids: [current_id as String], legacy_file_ids: ids }
       }
   }
 }
 
-// NO CURRENT-MARKED FILE. A legacy file found here is the sheet, carrying only the old marker; a
-// legacy extent that cannot be settled is UNREADABLE rather than absent, because creating on it is
-// how the duplicate was minted.
+// NO CURRENT-MARKED FILE. The same verdict, named differently because there is nothing to adopt: a
+// legacy file found here IS the sheet carrying only the old marker, and an unsettled extent is
+// UNREADABLE rather than absent, because creating on it is how the duplicate was minted.
 fn internal_disposition_over_current_absence(
   legacy: LegacyExtentEvidence,
 ) -> ReviewSheetIdentityDisposition {
-  match legacy {
-    LegacyExtentAbsentByOperator { subject: _, basis: _ } => ReviewSheetIdentityAbsent
-    LegacyExtentUnresolved { subject: _, cause: c } => ReviewSheetIdentityUnreadable { cause: c }
-    LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
-      match o {
-        SheetObservedOne { file_id: legacy_id } => ReviewSheetLegacyOnlyLineage { file_id: legacy_id }
-        SheetDuplicated { file_ids: ids } =>
-          ReviewSheetConflictingLineages { current_file_ids: [], legacy_file_ids: ids }
-        SheetAbsent =>
-          match v {
-            ClientIdentityObservedCompatible { basis: _ } => ReviewSheetIdentityAbsent
-            PositiveFindEstablishesVisibility =>
-              ReviewSheetIdentityUnreadable {
-                cause: "neither marker found a file, and the only visibility basis on offer was a positive find this observation did not make, so absence is not established" as NonEmptyStr,
-              }
-            SearchVisibilityUnresolved { cause: c } => ReviewSheetIdentityUnreadable { cause: c }
+  match legacy_extent_verdict(evidence: legacy) {
+    LegacyExtentSettledEmpty => ReviewSheetIdentityAbsent
+    LegacyExtentUnsettled { cause: c } => ReviewSheetIdentityUnreadable { cause: c }
+    LegacyExtentFound { file_ids: ids } =>
+      match first(ids) {
+        Present { value: only } =>
+          if ids == [only] {
+            ReviewSheetLegacyOnlyLineage { file_id: only as NonEmptyStr }
+          } else {
+            ReviewSheetConflictingLineages { current_file_ids: [], legacy_file_ids: ids }
           }
-        SheetSearchUnreadable { reason: r } => ReviewSheetIdentityUnreadable { cause: r }
-        SheetSearchIncomplete =>
+        Absent =>
           ReviewSheetIdentityUnreadable {
-            cause: "Drive reported incompleteSearch for the superseded marker, so absence is not established" as NonEmptyStr,
-          }
-        SheetPageIncomplete { next_page_token: _ } =>
-          ReviewSheetIdentityUnreadable {
-            cause: "the superseded-marker listing is one page of several, so absence is not established" as NonEmptyStr,
+            cause: "the legacy extent reported a find with no file ids, which no producer should emit" as NonEmptyStr,
           }
       }
   }
 }
-
-fn legacy_file_ids_of(evidence: LegacyExtentEvidence) -> List<String> {
-  match evidence {
-    LegacyExtentAbsentByOperator { subject: _, basis: _ } => []
-    LegacyExtentUnresolved { subject: _, cause: _ } => []
-    LegacySearchObserved { subject: _, observation: o, visibility_basis: _ } =>
-      match o {
-        SheetObservedOne { file_id: f } => [f as String]
-        SheetDuplicated { file_ids: ids } => ids
-        SheetAbsent => []
-        SheetSearchUnreadable { reason: _ } => []
-        SheetSearchIncomplete => []
-        SheetPageIncomplete { next_page_token: _ } => []
-      }
-  }
-}
-
 
 // THE CONSUMER FRONTIER, ENROLLED SO THE DISSOLUTION CENSUS CAN SEE IT. Nothing in the corpus reads
 // these declarations yet, and that is deliberate rather than incidental: the semantics land first so
@@ -376,3 +354,11 @@ data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "dissolves when the declared-id admission executes: a selection reconciled against a review_sheet_identity_standing and an exact file-by-id read, producing a typed admission or refusal on the production route"),
   ),
 ]
+
+fn legacy_extent_found_ids(verdict: LegacyExtentVerdict) -> List<String> {
+  match verdict {
+    LegacyExtentFound { file_ids: ids } => ids
+    LegacyExtentSettledEmpty => []
+    LegacyExtentUnsettled { cause: _ } => []
+  }
+}
