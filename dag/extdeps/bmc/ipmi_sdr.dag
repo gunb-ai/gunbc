@@ -162,17 +162,39 @@ fn sdr_reading_words(reading_text: NonEmptyStr) -> List<String> {
   split(s: trim(reading_text as String), delimiter: " ") |> filter(w => trim(w) != "")
 }
 
+// THE SENSOR SAYING NOTHING IS A LITERAL THIS TOOL PRINTS, NOT A PARSE FAILURE, and conflating the
+// two put a decoder gap on the controller's side of the ledger. An earlier revision sent every
+// unparseable magnitude to SdrFanNoReading / SdrTemperatureNoReading -- "the sensor answered
+// nothing" -- when the fact was "this decoder does not understand what the controller printed".
+//
+// MEASURED CONSEQUENCE, not a hypothetical: a build printing a fractional temperature
+// (`45.5 degrees C`) failed parse_int, decoded as NoReading, made sdr_any_temperature_reading
+// answer false on a SUCCESSFUL read, and so produced HostPoweredOnPrePost and then
+// FailsafeBeforeHostTelemetry -- the arm whose header says it is the contract working rather than a
+// finding. A decoder gap silently disabled FailsafeHeldAfterPost, which is the identical
+// widen-to-benign path gunbc.machine_intake_bmc_fan_observation condemns at length for the
+// unreadable thermal read. Third instance of that one path in this lane.
+//
+// So the sentinel is matched as the LITERAL TEXT the tool documents for an unavailable sensor, and
+// everything else that will not parse is this decoder's gap and says so.
+fn sdr_reading_is_absent_sentinel(reading_text: NonEmptyStr) -> Bool {
+  let t = trim(reading_text as String)
+  t == "No Reading" || t == "Disabled" || t == "ns"
+}
+
 fn sdr_fan_reading(reading_text: NonEmptyStr) -> SdrFanReading {
   let words = sdr_reading_words(reading_text: reading_text)
-  if words.length() < 2 {
+  if sdr_reading_is_absent_sentinel(reading_text: reading_text) {
     SdrFanNoReading
+  } else if words.length() < 2 {
+    SdrFanReadingUnrecognised { text: reading_text as String }
   } else {
     match words.first() {
-      Absent => SdrFanNoReading
+      Absent => SdrFanReadingUnrecognised { text: reading_text as String }
       Present { value: magnitude } => match sdr_field_at(fields: words, index: 1) {
         Absent => SdrFanReadingUnrecognised { text: reading_text as String }
         Present { value: unit } => match parse_int(s: trim(magnitude)) {
-          Absent => SdrFanNoReading
+          Absent => SdrFanReadingUnrecognised { text: reading_text as String }
           Present { value: n } => if n < 0 {
             SdrFanReadingUnrecognised { text: reading_text as String }
           } else if unit == "RPM" {
@@ -202,13 +224,15 @@ type SdrTemperatureReading
 
 fn sdr_temperature_reading(reading_text: NonEmptyStr) -> SdrTemperatureReading {
   let words = sdr_reading_words(reading_text: reading_text)
-  if words.length() < 2 {
+  if sdr_reading_is_absent_sentinel(reading_text: reading_text) {
     SdrTemperatureNoReading
+  } else if words.length() < 2 {
+    SdrTemperatureUnrecognised { text: reading_text as String }
   } else {
     match words.first() {
-      Absent => SdrTemperatureNoReading
+      Absent => SdrTemperatureUnrecognised { text: reading_text as String }
       Present { value: magnitude } => match parse_int(s: trim(magnitude)) {
-        Absent => SdrTemperatureNoReading
+        Absent => SdrTemperatureUnrecognised { text: reading_text as String }
         Present { value: n } => match sdr_field_at(fields: words, index: 1) {
           Absent => SdrTemperatureUnrecognised { text: reading_text as String }
           Present { value: unit } => if unit == "degrees" {

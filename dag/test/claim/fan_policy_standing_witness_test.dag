@@ -228,6 +228,42 @@ test fn witness_fan_reading_arms_stay_distinct() -> Bool {
     }
 }
 
+// A DECODER GAP MUST NOT BE FILED AS THE SENSOR SAYING NOTHING, and this claim carries the exact
+// failure that made it matter. A fractional temperature is unparseable by parse_int; filed as
+// SdrTemperatureNoReading it made sdr_any_temperature_reading answer false on a SUCCESSFUL read,
+// which produced HostPoweredOnPrePost and then FailsafeBeforeHostTelemetry -- silently disabling
+// FailsafeHeldAfterPost. The end-to-end assertion is the point: a posted host whose thermals are
+// merely UNDECODABLE must not read as a host that has not posted.
+//
+// "Device Present" is here because Mt. Collins really prints it -- its FANn_Presence sensors are
+// discrete, and fleet-converge run 35402673990 returned it on 48 lines. It is this decoder's gap,
+// not a silent fan.
+test fn witness_unparseable_reading_is_a_decoder_gap_not_a_silent_sensor() -> Bool {
+  match sdr_temperature_reading(reading_text: "45.5 degrees C") {
+    SdrTemperatureUnrecognised { text: _ } => true
+    _ => false
+  } && match sdr_fan_reading(reading_text: "Device Present") {
+    SdrFanReadingUnrecognised { text: _ } => true
+    _ => false
+  } && match sdr_temperature_reading(reading_text: "No Reading") {
+    SdrTemperatureNoReading => true
+    _ => false
+  } && sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(
+    stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
+  ))) == false
+}
+
+// AN EMPTY READING FIELD DECODES AS UNSTRUCTURED, AND MT. COLLINS REALLY PRINTS ONE. Its eight
+// FANn_Failure discrete sensors emit a blank fifth field; before the refusal landed, the decoder
+// substituted the literal text "SdrFieldEmpty" and it reached the operator's artifact on 48 lines
+// of fleet-converge run 35402673990. The line is the controller's output being unstructured, and
+// the count is what carries it.
+test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> Bool {
+  let results = sdr_decode_lines(stdout: "FAN0_Failure     | 4Ah | ok  |  7.1 | \nFAN1_0_Speed     | 41h | ok  |  7.1 | 5802 RPM\n")
+  sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: results)) == 1
+    && sdr_decoded_lines(results: results).length() == 1
+}
+
 test fn witness_temperature_publication_discriminates_post() -> Bool {
   sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted)))
     && !sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost)))
