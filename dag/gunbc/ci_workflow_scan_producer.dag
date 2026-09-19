@@ -322,9 +322,9 @@ fn scan_partition(
     records: walked.records,
   }
   if scan_is_a_declared_population(receipt: receipt) {
-    ScanDeclaredPopulation { receipt: receipt, hits: walked.hits }
+    ScanOutcome { receipt: receipt, disposition: ScanDeclaredPopulation { hits: walked.hits } }
   } else {
-    ScanNotAPopulation { receipt: receipt }
+    ScanOutcome { receipt: receipt, disposition: ScanNotAPopulation }
   }
 }
 
@@ -343,6 +343,25 @@ fn scan_partition(
 // receipt, which is what the hermetic claims exercise; what they can no longer do is mint the
 // production-positive carrier, which is correct, because the live route that would justify one is
 // still missing and says so.
-type ScanOutcome sole_constructor
-  = ScanDeclaredPopulation { receipt: ScanReceipt, hits: List<CodeSearchHit> }
-  | ScanNotAPopulation { receipt: ScanReceipt }
+// TWO TYPES, BECAUSE sole_constructor SEALS A RECORD AND IS DISCARDED ON A COPRODUCT. An earlier cut
+// wrote `type ScanOutcome sole_constructor = <coproduct>` and claimed the cross-population pairing
+// was unwritable. It was not: v1.02_parse threads the modifier into the anonymous-record arm and
+// drops it on every other `=` right-hand side -- a documented hole with its own probe and an
+// expected-red row -- so an outside module could still author ScanDeclaredPopulation { receipt:
+// from_population_A, hits: from_population_B } directly, which is the exact invalid state the seal
+// was supposed to remove. The honest production path was correct; the dishonest construction stayed
+// available, and green CI could not discharge it because it is a compiler behaviour rather than a
+// test failure.
+//
+// THE RECORD IS WHAT THE LANGUAGE ACTUALLY SEALS: infer's sole_constructor_construction_diags
+// refuses a construction whose span.file differs from the declaring type's. So the judgement is an
+// ordinary coproduct anyone may build, and the AUTHORITY binding a receipt to the hits it came from
+// is a sealed record minted only inside scan_partition, where both come from one walked state.
+type ScanDisposition
+  = ScanDeclaredPopulation { hits: List<CodeSearchHit> }
+  | ScanNotAPopulation
+
+type ScanOutcome sole_constructor {
+  receipt: ScanReceipt
+  disposition: ScanDisposition
+}
