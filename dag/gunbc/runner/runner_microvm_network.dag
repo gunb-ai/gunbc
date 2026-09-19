@@ -1028,7 +1028,7 @@ fn first_readback_where(rs: List<SlotNetworkReadback>, pick: fn(SlotNetworkReadb
   )
 }
 
-fn slot_network_readback(s: SlotNetworkSanitationSubject, readings: SlotNetworkReadings) -> SlotNetworkReadback {
+fn slot_network_verdict(s: SlotNetworkSanitationSubject, readings: SlotNetworkReadings) -> SlotNetworkReadback {
   let facts = [
     tap_readback(s: s, r: readings.tap),
     tap_ipv6_readback(s: s, r: readings.tap_ipv6),
@@ -1045,6 +1045,29 @@ fn slot_network_readback(s: SlotNetworkSanitationSubject, readings: SlotNetworkR
       Absent => SlotNetworkConfirmed
     }
   }
+}
+
+// THE RESULT CARRIES THE SUBJECT IT WAS TAKEN FOR. A bare verdict leaves the subject on the input
+// side, so a consumer holding a Confirmed would have to re-derive or re-assert which slot it is about
+// -- a second authority for that join. The lifecycle controller's teardown readback compares
+// bound_slot_network_readback_slot against its CellBoundAttempt's slot instead (tidy-wolf-685 on
+// #11670). The record has one constructor, this fold, so its subject and result cannot be paired
+// by hand.
+type BoundSlotNetworkReadback sole_constructor {
+  subject: SlotNetworkSanitationSubject
+  result: SlotNetworkReadback
+}
+
+fn slot_network_readback(s: SlotNetworkSanitationSubject, readings: SlotNetworkReadings) -> BoundSlotNetworkReadback {
+  BoundSlotNetworkReadback { subject: s, result: slot_network_verdict(s: s, readings: readings) }
+}
+
+fn bound_slot_network_readback_slot(b: BoundSlotNetworkReadback) -> RunnerSlotIdentity {
+  b.subject.subject.slot
+}
+
+fn bound_slot_network_readback_result(b: BoundSlotNetworkReadback) -> SlotNetworkReadback {
+  b.result
 }
 
 // --- the commands that produce the readback's observations ---

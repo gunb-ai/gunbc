@@ -5,7 +5,7 @@ import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_scope, render_mac_address }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv1 }
 import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_tap_device_name, runner_slot_guest_mac,
@@ -25,6 +25,7 @@ import gunbc.runner_microvm_network {
   SanitationSubjectResult, SanitationSubjectAdmitted, SanitationSubjectRefused,
   ReceiptForDifferentHost, SlotNotInConvergedPopulation, ConvergedSlotDisagreesWithDerivation,
   TapIpv6NotEstablishedDisabled, HelpersNotExcluded, slot_network_sanitation_subject,
+  bound_slot_network_readback_slot, bound_slot_network_readback_result,
   TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading, SlotNetworkReadings,
   ResidueObservation, ResidueAbsent, ResiduePresent, ResidueUnreadable,
   TapIpv6DisabledFact, GuestNeighbourAbsentFact, ExpectationTableEmptyFact,
@@ -350,7 +351,7 @@ fn clean_readings(i: Nat) -> SlotNetworkReadings {
 // fold being skipped.
 fn readback_slot_1(r: SlotNetworkReadings) -> SlotNetworkReadback? {
   match slot_network_sanitation_subject(slot: slot(i: 1), receipt: srv2_receipt()) {
-    SanitationSubjectAdmitted { subject: s } => Present { value: slot_network_readback(s: s, readings: r) }
+    SanitationSubjectAdmitted { subject: s } => Present { value: bound_slot_network_readback_result(b: slot_network_readback(s: s, readings: r)) }
     SanitationSubjectRefused { refusal: _ } => none
   }
 }
@@ -533,4 +534,21 @@ test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() ->
     && !string_contains(s: text, pattern: "meta nfproto ipv6")
     && !string_contains(s: text, pattern: "iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "ip daddr 1.1.1.1/32 udp dport 53 accept")
+}
+
+// THE RESULT NAMES THE SLOT IT WAS TAKEN FOR, WHICHEVER VERDICT IT CARRIES. The lifecycle controller
+// joins on this slot rather than re-deriving it. The red is a result bound to any slot but the
+// sanitation subject's -- slot 2's readback reporting slot 1, or the binding lost on a refutation.
+test fn the_readback_result_carries_the_slot_it_was_taken_for() -> Bool {
+  match slot_network_sanitation_subject(slot: slot(i: 2), receipt: srv2_receipt()) {
+    SanitationSubjectAdmitted { subject: s } => {
+      let clean = slot_network_readback(s: s, readings: clean_readings(i: 2))
+      let refuted = slot_network_readback(s: s, readings: with_neighbour(r: clean_readings(i: 2), c: slot_residue(i: 2, o: ResiduePresent { entries: 1 })))
+      runner_slot_identity_equal(a: bound_slot_network_readback_slot(b: clean), b: slot(i: 2))
+        && !runner_slot_identity_equal(a: bound_slot_network_readback_slot(b: clean), b: slot(i: 1))
+        && runner_slot_identity_equal(a: bound_slot_network_readback_slot(b: refuted), b: slot(i: 2))
+        && verdict(r: Present { value: bound_slot_network_readback_result(b: refuted) }) == "refuted:neighbour"
+    }
+    SanitationSubjectRefused { refusal: _ } => false
+  }
 }
