@@ -1277,11 +1277,11 @@ fn primitive_call_callee_of_target(
     }
 }
 
-/// Walk one typed expression tree and push every call site whose callee the resolver did NOT
-/// establish as a source declaration or a local binding. Those two are the only callee kinds
-/// that are not the census's subject; everything else is either a primitive identity the
-/// resolver minted or a site where it minted nothing, and both are rows.
-fn collect_primitive_call_edges(
+/// Record the callee of ONE node when the resolver did NOT establish it as a source declaration
+/// or a local binding -- the only two callee kinds that are not the census subject; everything
+/// else is a primitive identity the resolver minted or a site where it minted nothing, and both
+/// are rows. The descent is `collect_primitive_call_edges`.
+fn primitive_call_edge_at(
     texpr: &Rc<crate::v1_std_core::Node>,
     caller_module: &str,
     caller_decl: &str,
@@ -1345,11 +1345,28 @@ fn collect_primitive_call_edges(
             span_start: texpr.span.start,
         });
     }
-    for child in texpr.children.iter() {
-        collect_primitive_call_edges(child, caller_module, caller_decl, source_indices, out);
-    }
-    if let Some(body) = &texpr.body {
-        collect_primitive_call_edges(body, caller_module, caller_decl, source_indices, out);
+}
+
+/// Walk one typed expression tree and push every call site whose callee the resolver did NOT
+/// establish as a source declaration or a local binding. Explicit worklist: a deeply nested
+/// expression overflowed the main thread's stack on the first corpus walk (2026-09-18), so the
+/// descent is iterative; visit order does not matter because the edges are sorted afterwards.
+fn collect_primitive_call_edges(
+    texpr: &Rc<crate::v1_std_core::Node>,
+    caller_module: &str,
+    caller_decl: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
+) {
+    let mut pending: Vec<Rc<crate::v1_std_core::Node>> = vec![texpr.clone()];
+    while let Some(node) = pending.pop() {
+        primitive_call_edge_at(&node, caller_module, caller_decl, source_indices, out);
+        for child in node.children.iter() {
+            pending.push(child.clone());
+        }
+        if let Some(body) = &node.body {
+            pending.push(body.clone());
+        }
     }
 }
 
@@ -1373,19 +1390,60 @@ fn primitive_call_edges_from_module(
     }
 }
 
-/// THE PRIMITIVE-CONSUMER EDGE CENSUS: every call site in every `.dag` under `pool_roots` whose
-/// resolver-established callee is a runtime primitive, an algebra method template, a service
-/// operation, or NOTHING -- with the caller's declaration identity and the site's span.
+/// THE PRIMITIVE-CONSUMER EDGE CENSUS: every call site in every `.dag` module under
+/// `pool_roots` (walked when its path starts with one of `entry_prefixes`, all when none are
+/// given, and never when it matches an `exclude_substrings`) whose resolver-established callee
+/// is a runtime primitive, an algebra method template, a service operation, or NOTHING -- with
+/// the caller's declaration identity and the site's span.
 ///
-/// Every file under the pool (minus `exclude_substrings`) is resolved as its own entry against a
-/// PRIVATE index of `pool_roots`, so a census over `dag ∪ src/v2 ∪ src/v1` never replaces the
-/// process-shared slot the running interpreter resolved its own program through. Each entry's
-/// OWN module is walked once; modules reached only as dependencies are walked when their own
-/// file is the entry, so no module is counted twice and no module in the pool is skipped. An
-/// entry with blocking diagnostics is carried as a typed refusal ROW rather than aborting the
-/// whole census, because the consumer (`gunbc.primitive_egress.census`) decides whether a
-/// refused entry is admissible -- and it refuses when any production entry is.
+/// ONE RESOLUTION, NOT ONE PER ENTRY (DESIGN section 6b, the #11401 R1 specimen). The first cut
+/// of this query resolved every entry as its own closure through `resolve_entry_with_index`:
+/// that assembled a graph per entry, re-typed the v2 compiler modules whenever the typed cache's
+/// cap evicted them, and pinned every assembled graph in `resolved_graph_memo` (25 GiB before the
+/// first receipt, measured 2026-09-18). The population is a walk over ONE resolved corpus, so the
+/// query now takes the same route `gunbc compile --source-root` takes for a primary root:
+/// `primary_root_subject_closure` for each pool root, one `compile_to_resolved_with_options`
+/// over the union under the floor's compile-clean admission (modules outside that closure enter
+/// the name census only), and a walk over every module of that single `ResolvedGraph`.
+///
+/// A module carrying an interpreter-blocking diagnostic is carried as a typed refusal ROW keyed
+/// by its module path and its body is not walked, because a partially typed tree can carry a
+/// callee identity the resolver never established. The consumer
+/// (`gunbc.primitive_egress.census`) refuses when any admitted module is refused.
 pub fn compile_dag_primitive_call_edges(
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    entry_prefixes: &[String],
+) -> crate::cli_run::PrimitiveCallEdgeCensus {
+    // ON A THREAD WITH A LARGE STACK. The one-resolution graph over the corpus is dropped when
+    // this query returns, and dropping a deeply nested `Rc<Node>` chain recurses once per level:
+    // on the default 8 MiB main stack that overflowed twice on 2026-09-19 AFTER the walk had
+    // finished. The stack is reserved virtual memory, committed only as touched.
+    let outcome = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("primitive-call-edges".to_string())
+            .stack_size(1 << 30)
+            .spawn_scoped(scope, || {
+                compile_dag_primitive_call_edges_on_this_thread(
+                    exclude_substrings,
+                    pool_roots,
+                    entry_prefixes,
+                )
+            })
+            .map(|handle| handle.join())
+    });
+    match outcome {
+        Ok(Ok(census)) => census,
+        Ok(Err(_)) => crate::cli_run::PrimitiveCallEdgeCensus::Refused {
+            cause: "primitive call edges: the walk thread panicked".to_string(),
+        },
+        Err(e) => crate::cli_run::PrimitiveCallEdgeCensus::Refused {
+            cause: format!("primitive call edges: could not spawn the walk thread: {e}"),
+        },
+    }
+}
+
+fn compile_dag_primitive_call_edges_on_this_thread(
     exclude_substrings: &[String],
     pool_roots: &[String],
     entry_prefixes: &[String],
@@ -1398,99 +1456,113 @@ pub fn compile_dag_primitive_call_edges(
         };
     }
     let abs_roots = pool_roots_abs(pool_roots);
-    let mut files = Vec::new();
     for (authored, abs) in pool_roots.iter().zip(abs_roots.iter()) {
-        let root_path = Path::new(abs);
-        if !root_path.is_dir() {
+        if !Path::new(abs).is_dir() {
             return PrimitiveCallEdgeCensus::Refused {
                 cause: format!(
                     "primitive call edges: declared root '{authored}' is not an inspectable directory"
                 ),
             };
         }
-        if let Err(cause) = collect_dag_files_complete(root_path, &mut files) {
-            return PrimitiveCallEdgeCensus::Refused { cause };
+    }
+    // Progress goes through the trace-mark seam (`v1_rt::trace_mark`, the one phase printer this
+    // crate admits) so a killed run still shows which phase it died in.
+    v1_rt::trace_mark("primitive-call-edges.close.begin".to_string());
+    let index = crate::cli_run::build_multi_entry_index(&abs_roots);
+    let mut by_path: BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> = BTreeMap::new();
+    for root in pool_roots {
+        match crate::cli_run::primary_root_subject_closure(&index, root) {
+            Ok(closure) => {
+                for source in closure {
+                    by_path.insert(source.path.clone(), source);
+                }
+            }
+            Err(refusal) => {
+                return PrimitiveCallEdgeCensus::Refused {
+                    cause: format!(
+                        "primitive call edges: closure of root '{root}' refused at {}: {}",
+                        refusal.phase, refusal.cause
+                    ),
+                }
+            }
         }
     }
-    files.sort();
-    let mut entries: Vec<String> = files
-        .iter()
-        .map(|file| rel_path_for_layer_import(file))
-        .filter(|rel| !is_excluded_import_path(rel, exclude_substrings))
-        .filter(|rel| {
-            entry_prefixes.is_empty() || entry_prefixes.iter().any(|p| rel.starts_with(p.as_str()))
-        })
-        .collect();
-    entries.sort();
-    entries.dedup();
-    if entries.is_empty() {
+    let closure: Vec<Rc<v1_compiler_compile::SourceFile>> = by_path.into_values().collect();
+    v1_rt::trace_mark(format!(
+        "primitive-call-edges.close ({} sources).done",
+        closure.len()
+    ));
+    v1_rt::trace_mark("primitive-call-edges.resolve.begin".to_string());
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let resolved =
+        v1_compiler_compile::compile_to_resolved_with_options(Rc::new(closure.into()), options);
+    v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
+    v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
+    let Some(graph) = resolved.graph.clone() else {
+        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+            resolved.diagnostics.clone(),
+        );
         return PrimitiveCallEdgeCensus::Refused {
-            cause:
-                "primitive call edges: no .dag entry under the pool roots survives the exclusions"
-                    .to_string(),
+            cause: format!(
+                "primitive call edges: the corpus did not resolve to a graph: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
         };
+    };
+    // Blocking diagnostics, attributed to the module that carries them.
+    let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for d in resolved.diagnostics.iter() {
+        if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                Rc::new(vec![d.clone()].into()),
+            )
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| "blocking diagnostic".to_string());
+            blocked_modules
+                .entry(d.module_name.clone())
+                .or_default()
+                .push(message);
+        }
     }
-    let index = crate::cli_run::build_multi_entry_index(&abs_roots);
+    let admitted = |rel: &str| -> bool {
+        !is_excluded_import_path(rel, exclude_substrings)
+            && (entry_prefixes.is_empty()
+                || entry_prefixes.iter().any(|p| rel.starts_with(p.as_str())))
+    };
     let mut entries_resolved = Vec::new();
     let mut entries_refused = Vec::new();
     let mut edges = Vec::new();
     let mut walked_modules: HashSet<String> = HashSet::new();
-    let total_entries = entries.len();
-    let walk_started = std::time::Instant::now();
-    for (ordinal, entry) in entries.into_iter().enumerate() {
-        if ordinal % 25 == 0 {
-            eprintln!(
-                "[primitive-call-edges] entry {}/{} ({} edges so far, {}s): {}",
-                ordinal + 1,
-                total_entries,
-                edges.len(),
-                walk_started.elapsed().as_secs(),
-                entry
-            );
+    for module in graph.modules.iter() {
+        let module_file = rel_path_for_layer_import(Path::new(&module.module.span.file));
+        if !admitted(&module_file) {
+            continue;
         }
-        match crate::cli_run::resolve_entry_with_index(&index, &entry) {
-            Ok((graph, _)) => {
-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                    graph.diagnostics.clone(),
-                );
-                if !blocking.is_empty() {
-                    entries_refused.push(PrimitiveCallEntryRefusal {
-                        entry: entry.clone(),
-                        cause: blocking.iter().cloned().collect::<Vec<_>>().join("; "),
-                    });
-                    continue;
-                }
-                for module in graph.modules.iter() {
-                    let module_file = module.module.span.file.clone();
-                    let is_entry_module = module_file == entry
-                        || rel_path_for_layer_import(Path::new(&module_file)) == entry;
-                    if !is_entry_module {
-                        continue;
-                    }
-                    let module_name = crate::v1_std_core::authored_name_at(
-                        module.type_env.source_indices.clone(),
-                        module.module.clone(),
-                    );
-                    if walked_modules.insert(module_name) {
-                        primitive_call_edges_from_module(module, &mut edges);
-                    }
-                }
-                entries_resolved.push(entry);
-                // RELEASE THE ENTRY GRAPH. `resolve_entry_with_index` memoizes every
-                // assembled ResolvedGraph by closure subject, and a graph strong-pins
-                // every module of its closure; over a whole-corpus walk that memo alone
-                // held 25 GiB (measured 2026-09-18) before the first receipt. The walk
-                // reads each entry once, so the memo buys nothing here; the typed-module
-                // cache (capped) is what makes the next entry cheap.
-                index.resolved_graph_memo.borrow_mut().clear();
-                index
-                    .resolved_graph_memo_cross_process_subjects
-                    .borrow_mut()
-                    .clear();
-            }
-            Err(cause) => entries_refused.push(PrimitiveCallEntryRefusal { entry, cause }),
+        let module_name = crate::v1_std_core::authored_name_at(
+            module.type_env.source_indices.clone(),
+            module.module.clone(),
+        );
+        if !walked_modules.insert(module_name.clone()) {
+            continue;
         }
+        if let Some(messages) = blocked_modules.get(&module_name) {
+            entries_refused.push(PrimitiveCallEntryRefusal {
+                entry: module_file,
+                cause: messages.join("; "),
+            });
+            continue;
+        }
+        primitive_call_edges_from_module(module, &mut edges);
+        entries_resolved.push(module_file);
     }
+    v1_rt::trace_mark(format!(
+        "primitive-call-edges.walk ({} modules, {} refused, {} edges).done",
+        entries_resolved.len(),
+        entries_refused.len(),
+        edges.len()
+    ));
     edges.sort_by(|a, b| {
         (&a.caller_module, &a.caller_decl, &a.span_file, a.span_start).cmp(&(
             &b.caller_module,
@@ -1499,6 +1571,8 @@ pub fn compile_dag_primitive_call_edges(
             b.span_start,
         ))
     });
+    entries_resolved.sort();
+    entries_refused.sort_by(|a, b| a.entry.cmp(&b.entry));
     PrimitiveCallEdgeCensus::Observed {
         entries_resolved,
         entries_refused,
