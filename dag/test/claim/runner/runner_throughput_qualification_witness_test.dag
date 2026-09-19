@@ -52,7 +52,7 @@ import gunbc.runner_throughput_qualification_route {
   RegisterEphemeralRunnerSlot, DispatchFloorToSlot, CollectInstruments, DeregisterRunnerSlot,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire,
 }
-import gunbc.runner_host_filtered_egress { DefaultDrop, DefaultAccept }
+import gunbc.runner.runner_host_filtered_egress { DefaultDrop, DefaultAccept }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -120,7 +120,7 @@ fn subject(runs: List<QualificationRun>) -> RunnerThroughputQualification {
     workload: pin(),
     slot_envelope: gunbc_runner_slot_desired(),
     workspace_backing: RamBackedTmpfs,
-    cores_per_slot: CoresPerSlotResolved { threads: hardware_thread_count(count: 6) },
+    cores_per_slot: gunbc_runner_cores_per_slot(),
     calibration: floor_eval_step_calibration,
     runs: runs,
   }
@@ -147,15 +147,22 @@ test fn a_run_meeting_every_axis_admits_the_host_to_its_candidate_class() -> Boo
 
 // THE SLOT COUNT IS DERIVED UNDER THE HOST BUDGET, NOT READ OFF THE HOST'S SIZE: 250 GiB minus the
 // 5 GiB idle overhead minus the oomd floor (1/16 of the host) leaves 229.4 GiB, which holds 8 slots
-// of 26 GiB; 160 threads hold 26 slots of 6. Memory binds, at 8.
+// of 26 GiB. The CPU axis is 160 threads over the fleet's cores-per-slot, read from its producer
+// rather than transcribed (an earlier draft wrote 6 from stale prose and the producer said
+// otherwise). Memory binds, at 8, for any cores-per-slot up to 20.
 test fn the_receipt_derives_slot_width_as_the_minimum_over_memory_and_cpu() -> Bool {
-  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
-    HostAdmittedToClass { receipt: r, class: _ } =>
-      match r.slot_width {
-        SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } => m == 8 && c == 26 && n == 8
-        SlotWidthUnderivable { cause: _ } => false
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
+      match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
+        HostAdmittedToClass { receipt: r, class: _ } =>
+          match r.slot_width {
+            SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
+              m == 8 && c == 160 / hardware_thread_count_value(t: t) && n == 8
+            SlotWidthUnderivable { cause: _ } => false
+          }
+        _ => false
       }
-    _ => false
   }
 }
 
@@ -445,17 +452,24 @@ test fn the_workspace_keeps_every_byte_on_the_subject() -> Bool {
 }
 
 // THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority: the
-// declared MemoryMax and the resolved CPU quota both appear as property words.
+// declared MemoryMax and the resolved CPU quota (cores-per-slot x 100%) both appear as property
+// words, and the quota is read from the slot's own resolution rather than written here.
 test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
-  match ephemeral_slot_argv(
-    unit: "gunbc-qualification-mtcollins1-x.service" as NonEmptyStr,
-    desired: gunbc_runner_slot_desired(),
-    command_argv: ["/mnt/runner/run.sh"],
-  ) {
-    Absent => false
-    Present { value: argv } =>
-      (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
-        && (argv |> any(w => w == "--property=CPUQuota=600%"))
+  match gunbc_runner_slot_desired().cpu_quota {
+    CpuQuotaRefused { cause: _ } => false
+    CpuQuotaResolved { threads: t } => {
+      let quota = concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%"))
+      match ephemeral_slot_argv(
+        unit: "gunbc-qualification-mtcollins1-x.service" as NonEmptyStr,
+        desired: gunbc_runner_slot_desired(),
+        command_argv: ["/mnt/runner/run.sh"],
+      ) {
+        Absent => false
+        Present { value: argv } =>
+          (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
+            && (argv |> any(w => w == quota))
+      }
+    }
   }
 }
 
@@ -464,11 +478,13 @@ test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
   (labels |> any(l => l == "gunbc-heavy")) && (labels |> any(l => l == "mtcollins1")) && (labels |> any(l => l == "mtcollins1-qual-1"))
 }
 
-// THE INHABITANCE CLAIM FOR THE SUPPLIED cores_per_slot: the real producer resolves, and to the
-// value the fixture supplied, so the width derivation above is denominated in the fleet's slot.
-test fn the_fleet_cores_per_slot_resolves_to_the_supplied_width() -> Bool {
+// THE INHABITANCE CLAIM FOR cores_per_slot: the real producer resolves to a positive width that
+// leaves memory as the binding axis on a 160-thread host, so the fixture above is denominated in
+// the fleet's slot and not in a number this file chose.
+test fn the_fleet_cores_per_slot_resolves_to_a_positive_width() -> Bool {
   match gunbc_runner_cores_per_slot() {
-    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) == 6
+    CoresPerSlotResolved { threads: t } =>
+      hardware_thread_count_value(t: t) >= 1 && hardware_thread_count_value(t: t) <= 20
     CoresPerSlotUnresolved { cause: _ } => false
   }
 }

@@ -6,7 +6,7 @@ import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { CapacityClass, ControlPlaneCapacity }
-import gunbc.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
+import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
@@ -80,7 +80,7 @@ fn stage_controller_write(stage: QualificationStage) -> StageControllerWrite {
 // THE GUEST NEEDS THE NETWORK, AND THE STAGES THAT DO SAY WHICH POLICY. The census stages forbid
 // runtime fetches by construction (the payload is on the ISO); the runner stages cannot -- a runner
 // that reaches no GitHub takes no job. So each stage that opens the network names the fleet's
-// default-drop runner policy (`gunbc.runner_host_filtered_egress runner_host_egress_policy`: the
+// default-drop runner policy (`gunbc.runner.runner_host_filtered_egress runner_host_egress_policy`: the
 // resolver and a TCP 443 destination class, the BMC and the LAN denied by name), never an ambient
 // stance. A stage answering `none` opens nothing.
 fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {

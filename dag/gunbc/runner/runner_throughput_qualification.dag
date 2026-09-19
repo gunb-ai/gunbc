@@ -402,12 +402,13 @@ fn runs_at_pin(pin: FloorWorkloadPin, runs: List<QualificationRun>) -> List<Qual
   fold(runs, init: [], f: (acc, r) => if r.revision == pin.revision { list_push(acc, r) } else { acc })
 }
 
-fn run_rate_upper_bound(run: QualificationRun) -> Nat {
+fn run_rate_upper_bound(run: QualificationRun) -> Int {
   match run.rate_specimen {
     RateSpecimenUnread { because: _ } => 0
     RateSpecimenRead { eval_steps: steps, cpu: cpu } => {
-      let cpu_ms = millisecond_count(m: cpu)
-      if cpu_ms == 0 { 0 } else { eval_step_count_value(s: steps) / cpu_ms }
+      let cpu_ms = millisecond_count(m: cpu) as Int
+      let steps_n = eval_step_count_value(s: steps) as Int
+      if cpu_ms == 0 { 0 } else { steps_n / cpu_ms }
     }
   }
 }
