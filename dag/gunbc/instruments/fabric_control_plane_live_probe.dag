@@ -29,7 +29,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import std.durable_compare_and_set {
-  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
   CasUnreadableObservationBoundExceeded,
@@ -72,10 +72,17 @@ import gunbc.fabric_control_plane {
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
-  bind_fabric_cell_candidate, CellSlotDecoded, CellSlotUndecodable, CellHeld, CellFree,
-  decode_cell_slot_payload,
+  bind_fabric_cell_candidate, fabric_hold_owner, fabric_money_reservation_ref,
 }
-import gunbc.durable_cas_file_store { observe_cas_slot_state }
+import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
+import gunbc.durable_exclusive_hold_file_store {
+  HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload,
+}
+import gunbc.durable_cas_file_store {
+  observe_cas_slot_state, DefaultAccessCreateOnly,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  admit_cas_attempt_for_derived_payload, file_compare_and_set,
+}
 import gunbc.fabric_required_build_cell {
   RequiredBuildCellObservation, RequiredBuildCellObserved, ReservationPayloadWorkMismatch,
   RequiredBuildCellLifetimeVerdict, RequiredBuildCellObservationRefused,
@@ -287,12 +294,11 @@ fn cp_probe_account() -> MoneyAccount {
   }
 }
 
-fn cp_probe_reserve(root: NonEmptyStr, expected: CasExpectation) -> Int {
+fn cp_probe_reserve(root: NonEmptyStr) -> Int {
   cp_probe_code(
     r: reserve_selected_cell(
       root: root,
       slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
-      expected: expected,
       demand_id: cp_probe_demand_id(key: "demand-7"),
       offer_id: cp_probe_offer_id(key: "offer-1"),
       account: cp_probe_account(),
@@ -301,15 +307,23 @@ fn cp_probe_reserve(root: NonEmptyStr, expected: CasExpectation) -> Int {
 }
 
 // The exclusion itself. A fresh cell reserves at generation 1; a SECOND writer
-// expecting the same absent slot must LOSE rather than overwrite -- that middle
-// row is the whole point, because it is the case where two brokers ranked the
-// same roster and reached the same answer; and a writer that correctly expects
-// generation 1 advances to 2.
+// must LOSE rather than overwrite -- that row is the whole point, because it is
+// the case where two brokers ranked the same roster and reached the same answer.
+// A THIRD attempt while the cell is still held also loses: under the shared hold
+// protocol a held slot refuses acquisition even to its own spelling, where the
+// broker used to advance a held slot to generation 2 when handed the right
+// expectation. The advance now needs a release in between: the holder frees the
+// cell at generation 2 and the next reservation lands on generation 3.
 fn cp_live_reservation_is_exclusive(root: NonEmptyStr) -> Bool {
-  let first = cp_probe_reserve(root: root, expected: ExpectSlotAbsent)
-  let second = cp_probe_reserve(root: root, expected: ExpectSlotAbsent)
-  let advance = cp_probe_reserve(root: root, expected: ExpectSlotGeneration { generation: 1 })
-  first == 101 && second == 2 && advance == 102
+  let first = cp_probe_reserve(root: root)
+  let second = cp_probe_reserve(root: root)
+  let held_again = cp_probe_reserve(root: root)
+  let released = cp_probe_release_for(
+    root: root,
+    reservation: fabric_money_reservation_ref(demand: cp_probe_demand_id(key: "demand-7"), offer: cp_probe_offer_id(key: "offer-1")),
+  )
+  let advance = cp_probe_reserve(root: root)
+  first == 101 && second == 2 && held_again == 2 && released == 202 && advance == 103
 }
 
 // The empty-roster control for the split above. It must answer 50 -- nothing
@@ -451,7 +465,7 @@ fn fci1_probe_demand() -> Fci1DemandBinding {
 
 // FCI-1 instrument leaves the complete typed producer outputs visible. These are functions rather
 // than receipt rows: every invocation re-reads the live CAS slot and cell substrate.
-fn fci1_live_reserve(root: NonEmptyStr, expected: CasExpectation) -> CellReservation {
+fn fci1_live_reserve(root: NonEmptyStr) -> CellReservation {
   match fci1_probe_demand() {
     Fci1DemandRefused => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "FCI-0 Work construction refused" }
     Fci1DemandBound { demand: demand } => broker_reserve_for_demand(
@@ -459,7 +473,6 @@ fn fci1_live_reserve(root: NonEmptyStr, expected: CasExpectation) -> CellReserva
       demand: demand,
       roster: cp_probe_roster(executor: "srv3-06", work: demand.work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
-      expected: expected,
       account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
@@ -467,42 +480,53 @@ fn fci1_live_reserve(root: NonEmptyStr, expected: CasExpectation) -> CellReserva
   }
 }
 
-fn fci1_live_reserve_absent(root: NonEmptyStr) -> CellReservation {
-  fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
-}
+// THE GENERATION-REPLACEMENT MUTATION IS INJECTED BELOW THE HOLD PROTOCOL, ON PURPOSE.
+//
+// This falsifier exists to move a held slot's generation underneath a reservation and prove the
+// lifetime verdict notices. It used to do that THROUGH the broker, by handing it the held slot's
+// generation as an expectation -- which is exactly the write the shared hold protocol now
+// refuses: a held slot admits no acquisition, not even by its own spelling. So the mutation is
+// what it always was in substance and is now spelled honestly: a compare-and-set at the CAS layer
+// carrying the same owner at the next generation, over the ONE shared codec, bypassing the
+// protocol whose detection it is testing. It is not a reservation and does not return one.
+type Fci1HeldGenerationMutation
+  = Fci1HeldGenerationReplaced { slot_key: NonEmptyStr, generation: Int }
+  | Fci1HeldGenerationMutationRefused { detail: NonEmptyStr }
 
-fn fci1_live_reserve_generation(root: NonEmptyStr, generation: Int) -> CellReservation {
-  fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: generation })
-}
-
-// Reuse the generation produced by the canonical store. An absent slot creates generation one; a
-// released slot advances from the generation it actually carries; a held or unreadable slot
-// refuses. The caller never authors the fence.
-fn fci1_live_reserve_available(root: NonEmptyStr) -> CellReservation {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasSlotObservationRefused { cause: cause } }
-    CasObservedReadable { readable: CasReadableAbsent } => fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
-    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
-      match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellFree { released_by: _ } } =>
-          fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: version.generation })
-        CellSlotDecoded { state: CellHeld { reservation: _ } } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
-        CellSlotUndecodable { detail: detail } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: detail }
+fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
+  let slot_key = fabric_cell_allocation_key(slot: cp_probe_slot())
+  match fci1_allocation_slot_observation(root: root) {
+    Fci1SlotHeld { path: _, generation: generation, reservation_identity: holder, payload: _, content: _ } =>
+      match admit_cas_attempt_for_derived_payload(
+        key: slot_key,
+        expected: ExpectSlotGeneration { generation: generation },
+        proposed: hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: holder as ReservationRef) }),
+      ) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } =>
+          Fci1HeldGenerationMutationRefused { detail: "allocation key is not slot-addressable" }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: c } => Fci1HeldGenerationReplaced { slot_key: slot_key, generation: c.generation }
+            CasPreconditionFailed { expected: _, observed: _ } =>
+              Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
+            CasStoreRefused { cause: cause } =>
+              Fci1HeldGenerationMutationRefused { detail: fci1_cas_store_failure_wire(cause: cause) }
+          }
       }
+    Fci1SlotAbsent { path: _ } => Fci1HeldGenerationMutationRefused { detail: "the slot is absent, so there is no hold to replace" }
+    Fci1SlotFree { path: _, generation: _, released_by: _, payload: _, content: _ } =>
+      Fci1HeldGenerationMutationRefused { detail: "the slot is free, so there is no hold to replace" }
+    Fci1SlotUnreadable { path: _ } => Fci1HeldGenerationMutationRefused { detail: "the slot is unreadable" }
+    Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } =>
+      Fci1HeldGenerationMutationRefused { detail: "the slot payload is undecodable" }
   }
 }
 
-fn fci1_live_replace_held(root: NonEmptyStr) -> CellReservation {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: cause } => StoreUnavailable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasSlotObservationRefused { cause: cause } }
-    CasObservedReadable { readable: CasReadableAbsent } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
-    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
-      match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellHeld { reservation: _ } } =>
-          fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: version.generation })
-        CellSlotDecoded { state: CellFree { released_by: _ } } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
-        CellSlotUndecodable { detail: detail } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: detail }
-      }
+fn fci1_held_generation_mutation_wire(mutation: Fci1HeldGenerationMutation) -> String {
+  match mutation {
+    Fci1HeldGenerationReplaced { slot_key: slot, generation: g } =>
+      join(["held-generation-replaced|slot=", slot as String, "|generation=", to_string(g)], "")
+    Fci1HeldGenerationMutationRefused { detail: d } => join(["held-generation-mutation-refused|detail=", d as String], "")
   }
 }
 
@@ -626,7 +650,7 @@ fn fci1_modeled_ownership_wire(member: FabricCellMember) -> NonEmptyStr {
 }
 
 fn fci1_live_replace_held_wire(root: NonEmptyStr) -> String {
-  fci1_cell_reservation_wire(reservation: fci1_live_replace_held(root: root))
+  fci1_held_generation_mutation_wire(mutation: fci1_live_replace_held(root: root))
 }
 
 fn fci1_assert_replace_held(
@@ -655,11 +679,12 @@ fn fci1_assert_replace_held(
   }
   else { let outcome = fci1_live_replace_held(root: root)
   match outcome {
-    CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } =>
-      if slot == "srv3-06" && offer.key == "offer-1" && generation == expected_generation { ExitSuccess } else {
-        exit_failure(reason: join(["generation replacement selected wrong identity: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
+    Fci1HeldGenerationReplaced { slot_key: slot, generation: generation } =>
+      if slot == "srv3-06" && generation == expected_generation { ExitSuccess } else {
+        exit_failure(reason: join(["generation replacement landed on the wrong slot or generation: ", fci1_held_generation_mutation_wire(mutation: outcome)], ""))
       }
-    _ => exit_failure(reason: join(["generation replacement refused: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
+    Fci1HeldGenerationMutationRefused { detail: _ } =>
+      exit_failure(reason: join(["generation replacement refused: ", fci1_held_generation_mutation_wire(mutation: outcome)], ""))
   } } }
 }
 
@@ -703,7 +728,7 @@ fn fci1_reservation_cleanup_authority_wire(authority: Fci1ReservationCleanupAuth
 
 fn fci1_cleanup_authority(root: NonEmptyStr, generation: Int) -> Fci1ReservationCleanupAuthority {
   let reservation = cp_probe_reservation_ref()
-  let payload = join(["held|", reservation as String], "") as NonEmptyStr
+  let payload = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: reservation) })
   Fci1ReservationCleanupAuthority {
     root: root,
     slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
@@ -771,8 +796,8 @@ fn fci1_live_reserve_and_observe_available(
   if expected_generation < 1 { exit_failure(reason: "ReservationCleanupAuthorityPrestateRefused") }
   else if !authority_write.success { exit_failure(reason: "ReservationCleanupAuthorityWriteRefusedBeforeCommit") }
   else { let reserved = match prestate {
-    AllocationSlotAbsent { path: _ } => fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
-    AllocationSlotFree { path: _, generation: generation } => fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: generation })
+    AllocationSlotAbsent { path: _ } => fci1_live_reserve(root: root)
+    AllocationSlotFree { path: _, generation: _ } => fci1_live_reserve(root: root)
     AllocationSlotHeld { path: _, generation: _ } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     AllocationSlotUnreadable { path: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate unreadable" }
     AllocationSlotUndecodable { path: _, generation: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate undecodable" }
@@ -818,10 +843,10 @@ fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationSlotPrestate {
     CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: root }
     CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
-      match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellFree { released_by: _ } } => AllocationSlotFree { path: root, generation: version.generation }
-        CellSlotDecoded { state: CellHeld { reservation: _ } } => AllocationSlotHeld { path: root, generation: version.generation }
-        CellSlotUndecodable { detail: _ } => AllocationSlotUndecodable { path: root, generation: version.generation }
+      match decode_hold_slot_payload(payload: version.value) {
+        HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => AllocationSlotFree { path: root, generation: version.generation }
+        HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => AllocationSlotHeld { path: root, generation: version.generation }
+        HoldPayloadUndecodable { detail: _ } => AllocationSlotUndecodable { path: root, generation: version.generation }
       }
   }
 }
@@ -853,17 +878,17 @@ fn fci1_allocation_slot_observation(root: NonEmptyStr) -> Fci1AllocationSlotObse
     CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {
       let content = serialize_content_hash(hash: version.content)
-      match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellFree { released_by: released } } => Fci1SlotFree {
-          path: root, generation: version.generation, released_by: released,
+      match decode_hold_slot_payload(payload: version.value) {
+        HoldPayloadDecoded { state: DurableHoldFree { released_by: released } } => Fci1SlotFree {
+          path: root, generation: version.generation, released_by: (released as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
-        CellSlotDecoded { state: CellHeld { reservation: reservation } } => Fci1SlotHeld {
+        HoldPayloadDecoded { state: DurableHoldHeld { owner: owner } } => Fci1SlotHeld {
           path: root, generation: version.generation,
-          reservation_identity: (reservation as String) as NonEmptyStr,
+          reservation_identity: (owner as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
-        CellSlotUndecodable { detail: _ } => Fci1SlotUndecodable {
+        HoldPayloadUndecodable { detail: _ } => Fci1SlotUndecodable {
           path: root, generation: version.generation, payload: version.value, content: content,
         }
       }
@@ -1693,7 +1718,6 @@ fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
     r: broker_reserve_for_demand(
       root: root,
       demand: cp_probe_demand(),
-      expected: ExpectSlotAbsent,
       roster: [],
       sanctions: [],
       account: cp_probe_account(),
@@ -1915,7 +1939,6 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
       demand: cp_probe_demand(),
       roster: cp_probe_roster(executor: "srv3-06", work: cp_probe_demand().work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
-      expected: ExpectSlotAbsent,
       account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
@@ -1953,11 +1976,11 @@ fn cp_probe_reservation_ref() -> ReservationRef {
 // The account carries a real hold taken through reserve_money, not an authored
 // ledger entry: an authored hold would let this row pass against a release that
 // never agreed with the reserve path about what a hold looks like.
-fn cp_probe_held_account() -> List<MoneyAccount> {
+fn cp_probe_held_account_for(reservation: ReservationRef) -> List<MoneyAccount> {
   match reserve_money(
     a: cp_probe_account(),
     request: MoneyReservationRequest {
-      reference: cp_probe_reservation_ref(),
+      reference: reservation,
       generation: 0,
       maximum_liability: money_amount_micro(count: 1000),
       currency: Usd,
@@ -1968,25 +1991,45 @@ fn cp_probe_held_account() -> List<MoneyAccount> {
   }
 }
 
+fn cp_probe_held_account() -> List<MoneyAccount> {
+  cp_probe_held_account_for(reservation: cp_probe_reservation_ref())
+}
+
+// THE INSTRUMENT RE-DERIVES THE ACQUISITION GENERATION IT NEVER HELD. A production caller
+// carries CellReserved.generation from the reservation to the release; each probe phase is a
+// separate process that has lost that handle, so it reads the slot and presents the generation
+// it finds. That is the instrument's honesty, not the protocol's: the ABA fence the acquisition
+// generation exists for is witnessed hermetically, where a stale generation is supplied and refused.
+fn fci1_observed_hold_generation(root: NonEmptyStr) -> Int {
+  match fci1_allocation_slot_observation(root: root) {
+    Fci1SlotHeld { path: _, generation: g, reservation_identity: _, payload: _, content: _ } => g
+    Fci1SlotFree { path: _, generation: g, released_by: _, payload: _, content: _ } => g
+    Fci1SlotUndecodable { path: _, generation: g, payload: _, content: _ } => g
+    Fci1SlotAbsent { path: _ } => 1
+    Fci1SlotUnreadable { path: _ } => 1
+  }
+}
+
 // The observation is read by release_reserved_cell_at from the store itself
 // rather than supplied here. A hand-built observation would prove only that the
 // decision agrees with itself; this row exists to establish that the store's
 // own answer flows through the holder comparison and reaches a commit.
-fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
+fn cp_probe_release_for(root: NonEmptyStr, reservation: ReservationRef) -> Int {
   fold(
-    cp_probe_held_account(),
+    cp_probe_held_account_for(reservation: reservation),
     init: 0,
     f: fn(acc, a) {
       cp_probe_release_code(
         r: release_reserved_cell_at(
           root: root,
           slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+          acquired_generation: fci1_observed_hold_generation(root: root),
           lease: LeaseIdentity {
             lease_key: "cell-lease-probe",
             resource_fingerprint: content_hash_of_value(value: "srv3-06"),
             generation: 0,
           },
-          reservation: cp_probe_reservation_ref(),
+          reservation: reservation,
           reason: "probe release",
           released_at: "2026-08-28T02:00:00Z",
           account: a,
@@ -1994,6 +2037,10 @@ fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
       )
     },
   )
+}
+
+fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
+  cp_probe_release_for(root: root, reservation: cp_probe_reservation_ref())
 }
 
 fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
@@ -2035,6 +2082,7 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
       HeadAbsent => release_reserved_cell_at(
         root: root,
         slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+        acquired_generation: fci1_observed_hold_generation(root: root),
         lease: LeaseIdentity {
           lease_key: "cell-lease-probe",
           resource_fingerprint: content_hash_of_value(value: "srv3-06"),

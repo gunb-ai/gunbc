@@ -2561,3 +2561,234 @@ fn an_unmodeled_ci_event_refuses_rather_than_defaulting() {
     );
     assert!(adjudication_event_from_name(Some("schedule")).is_err());
 }
+
+// ── RELOCATION: ONE ROW FOR ONE MOVED DECLARATION, STILL AN ENUMERATION ──────────────────────
+//
+// A declaration moving between modules repoints every reference to its leaf; under `Binding` that
+// is one row per reference site (gunbc#10994 needed seventeen for one move). `Relocation` admits the
+// move once. Each arm below mutates the same move by one fact, so a subject that admitted whatever
+// shared the leaf -- the predicate the grain paragraph forbids -- would fail the second and third.
+
+const RELOC_HOME_DECLARES: &str = "module probe.home\n\ndata widget: String = \"w\"\n";
+const RELOC_HOME_MOVED_AWAY: &str = "module probe.home\n\ndata gadget: String = \"g\"\n";
+const RELOC_OTHER_EMPTY: &str = "module probe.other\n\ndata sprocket: String = \"s\"\n";
+const RELOC_OTHER_DECLARES: &str = "module probe.other\n\ndata widget: String = \"o\"\n";
+const RELOC_THIRD_DECLARES: &str = "module probe.third\n\ndata widget: String = \"t\"\n";
+const RELOC_SECOND_IMPORTS_HOME: &str =
+    "module probe.second\n\nimport probe.home { widget }\n\nfn use_again() -> String { widget }\n";
+const RELOC_SECOND_IMPORTS_OTHER: &str =
+    "module probe.second\n\nimport probe.other { widget }\n\nfn use_again() -> String { widget }\n";
+const RELOC_SECOND_IMPORTS_THIRD: &str =
+    "module probe.second\n\nimport probe.third { widget }\n\nfn use_again() -> String { widget }\n";
+
+fn ta_relocation(
+    label: &str,
+    spelling: &str,
+    from_module: &str,
+    to_module: &str,
+) -> TransitionAdmission {
+    TransitionAdmission {
+        label: label.to_string(),
+        subject: AdmissionSubject::Relocation {
+            spelling: spelling.to_string(),
+            from_module: from_module.to_string(),
+            to_module: to_module.to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+        deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 0,
+    }
+}
+
+fn widget_bindings_admitted_by(report: &WaveAdmissionReport, label: &str) -> Vec<(String, bool)> {
+    report
+        .deltas
+        .iter()
+        .filter_map(|d| match &d.subject {
+            DeltaSubject::Binding {
+                module, spelling, ..
+            } if spelling == "widget" => {
+                Some((module.clone(), d.admitted_by.as_deref() == Some(label)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn reloc_base() -> [(&'static str, &'static str); 4] {
+    [
+        ("home.dag", RELOC_HOME_DECLARES),
+        ("other.dag", RELOC_OTHER_EMPTY),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+        ("second.dag", RELOC_SECOND_IMPORTS_HOME),
+    ]
+}
+
+#[test]
+fn one_relocation_row_admits_every_binding_the_move_repoints() {
+    let head = [
+        ("home.dag", RELOC_HOME_MOVED_AWAY),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_OTHER),
+    ];
+    let refused = compare("reloc_unadmitted", &reloc_base(), &head);
+    assert!(
+        refused
+            .deltas
+            .iter()
+            .any(|d| d.disposition == NamespaceDeltaDisposition::TargetChanged),
+        "PLANT NEVER REACHED: the move must produce TargetChanged deltas, got: {:?}",
+        refused.deltas
+    );
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let admitted = compare_with("reloc_admitted", &reloc_base(), &head, &admissions);
+    let bindings = widget_bindings_admitted_by(&admitted, "move-widget");
+    assert!(
+        bindings.len() >= 2,
+        "both consumers' widget bindings must be deltas, got: {:?}",
+        admitted.deltas
+    );
+    assert!(
+        bindings.iter().all(|(_, a)| *a),
+        "one relocation row must admit every binding the move repoints, got: {bindings:?}"
+    );
+    assert!(
+        admitted.stale_admissions.is_empty(),
+        "a relocation that matched must not also be stale: {:?}",
+        admitted.stale_admissions
+    );
+}
+
+#[test]
+fn a_relocation_row_does_not_admit_a_binding_repointed_elsewhere() {
+    let head = [
+        ("home.dag", RELOC_HOME_MOVED_AWAY),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("third.dag", RELOC_THIRD_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_THIRD),
+    ];
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let report = compare_with("reloc_elsewhere", &reloc_base(), &head, &admissions);
+    let bindings = widget_bindings_admitted_by(&report, "move-widget");
+    assert!(
+        bindings.iter().any(|(m, a)| m == "probe.consumer" && *a),
+        "the binding that followed the move is admitted, got: {bindings:?}"
+    );
+    assert!(
+        bindings.iter().any(|(m, a)| m == "probe.second" && !*a),
+        "a binding repointed to a THIRD module shares the leaf and must stay unadmitted, got: {bindings:?}"
+    );
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "the unadmitted repoint must still refuse"
+    );
+}
+
+#[test]
+fn a_relocation_whose_declaration_did_not_leave_its_old_module_is_invalid() {
+    let head = [
+        ("home.dag", RELOC_HOME_DECLARES),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_OTHER),
+    ];
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let report = compare_with("reloc_not_moved", &reloc_base(), &head, &admissions);
+    assert!(
+        widget_bindings_admitted_by(&report, "move-widget")
+            .iter()
+            .all(|(_, a)| !*a),
+        "a row whose declaration still lives in its old module admits nothing: {:?}",
+        report.deltas
+    );
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("declared-in-from=true")),
+        "the refusal must say the declaration is still in its old module: {:?}",
+        report.stale_admissions
+    );
+}
+
+fn relocation_row_source(stem: &str, from_module: &str) -> String {
+    format!(
+        "module gunbc.namespace.transition_admission.{stem}\n\n\
+         import std.types {{ NonEmptyStr, List }}\n\
+         import std.integer {{ UInt32 }}\n\
+         import std.decl_ref {{ decl_ref }}\n\
+         import gunbc.compiler_frontend_program_interlock {{ TargetChanged }}\n\
+         import gunbc.namespace.transition_admission {{ TransitionAdmission, Relocation, NotAuthored }}\n\n\
+         data {stem}: TransitionAdmission = TransitionAdmission {{\n\
+           label: \"move-widget\" as NonEmptyStr,\n\
+           subject: Relocation {{\n\
+             to: decl_ref(\"probe.other\", \"widget\"),\n\
+             from_module: \"{from_module}\" as NonEmptyStr,\n\
+           }},\n\
+           disposition: TargetChanged,\n\
+           deletion_follow_up: NotAuthored,\n\
+           owner_pull_request: 0 as UInt32,\n\
+         }}\n"
+    )
+}
+
+#[test]
+fn a_relocation_row_file_loads_to_the_subject_it_spells() {
+    let dir = std::env::temp_dir().join("gunbc_transition_admission_relocation_row");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("probe_widget_moves.dag"),
+        relocation_row_source("probe_widget_moves", "probe.home"),
+    )
+    .unwrap();
+    let loaded = load_transition_admissions_from_dir(&dir).expect("well-formed relocation row");
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(
+        loaded[0].subject,
+        AdmissionSubject::Relocation {
+            spelling: "widget".to_string(),
+            from_module: "probe.home".to_string(),
+            to_module: "probe.other".to_string(),
+        }
+    );
+}
+
+#[test]
+fn a_relocation_from_a_module_to_itself_refuses_located() {
+    let dir = std::env::temp_dir().join("gunbc_transition_admission_relocation_self");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("probe_widget_moves.dag");
+    std::fs::write(
+        &path,
+        relocation_row_source("probe_widget_moves", "probe.other"),
+    )
+    .unwrap();
+    let err = load_transition_admissions_from_dir(&dir).expect_err("self-relocation must refuse");
+    assert!(
+        err.contains(&path.display().to_string()),
+        "refusal must name the file: {err}"
+    );
+    assert!(
+        err.contains("to itself"),
+        "refusal must name the defect: {err}"
+    );
+}
