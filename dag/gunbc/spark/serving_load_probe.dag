@@ -9,7 +9,7 @@ import std.measure {
   MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
   MilliRequestsPerSecond, milli_requests_per_second,
 }
-import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub }
+import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -344,7 +344,14 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                 match harness_gauge_count(text: ac) {
                                   Absent => HistogramDeltaUnread { cause: "histogram count after was not an exact count" as NonEmptyStr }
                                   Present { value: acn } =>
-                                    let ds = exact_decimal_sub(a: asm, b: bsm)
+                                    if bsm.units < 0 {
+                                      HistogramDeltaUnread { cause: "histogram sum before was negative, outside a cumulative sum's domain" as NonEmptyStr }
+                                    } else if asm.units < 0 {
+                                      HistogramDeltaUnread { cause: "histogram sum after was negative, outside a cumulative sum's domain" as NonEmptyStr }
+                                    } else {
+                                    match exact_decimal_sub(a: asm, b: bsm) {
+                                      ExactDifferenceUnrepresentable { cause: _ } => HistogramDeltaUnread { cause: "histogram sum delta does not fit a 64-bit exact decimal" as NonEmptyStr }
+                                      ExactDifference { value: ds } =>
                                     if ds.units < 0 {
                                       HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
                                     } else {
@@ -352,6 +359,8 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                           Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
                                           Present { value: dc } => HistogramDeltaRead { sum: ds, count: dc }
                                         }
+                                    }
+                                    }
                                     }
                                 }
                             }
