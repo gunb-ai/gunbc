@@ -231,7 +231,7 @@ Anchor in the file: `ShuffleSeed`. Two pure functions and nothing else: a seed-t
 module examples.blackjack.shuffle
 
 import std.integer { UInt8 }
-import std.encoding { base64_octet_int }
+import std.encoding { base64_octet_word }
 import examples.blackjack.cards { Card }
 import examples.blackjack.round { Shoe }
 
@@ -246,8 +246,9 @@ fn shuffle(deck: List<Card>, seed: ShuffleSeed) -> Shoe { … }
 fn next_seed(seed: ShuffleSeed) -> ShuffleSeed { … }
 
 // The bridge from the entropy boundary. The octets arrive as the List<UInt8> that
-// std.encoding.base64_decode returns; base64_octet_int (same module) reads each one as an
-// Int, and a fold combines them. Take the real decoded type here -- do not mint an Int list.
+// std.encoding.base64_decode returns; base64_octet_word (same module) ADMITS each one through
+// word_of_int at Width8, so an octet outside the byte range refuses rather than being renamed,
+// and a fold combines them. Take the real decoded type here -- do not mint an Int list.
 fn seed_from_octets(octets: List<UInt8>) -> ShuffleSeed { … }
 ```
 
@@ -350,7 +351,7 @@ Every test you write must be one you can make go **red** by breaking the code it
 
 ## 6. The randomness boundary
 
-Only after deterministic rounds run from hand-ordered shoes do you connect entropy — and even then, the connection is one function call in one test. `dag/test/claim/random_bytes_csprng_witness_test.dag` is the in-tree exemplar: it calls `Urandom.ReadBytes(count: 16).octets_b64`, base64-decodes it with `std.encoding` `base64_decode` to `List<UInt8>?`, and asserts the count. Your integration test does the same, matches the `Present` arm (the `Absent` arm is a refusal of the test, not a skip), hands that `List<UInt8>` to `seed_from_octets` unchanged — it takes the decoder's type, and reads each octet with `base64_octet_int` — then `shuffle`, and asserts that the result is a 52-card shoe containing each card exactly once. That last assertion is a property of `shuffle`, not of the entropy; it is here because it is the one place the whole route executes.
+Only after deterministic rounds run from hand-ordered shoes do you connect entropy — and even then, the connection is one function call in one test. `dag/test/claim/random_bytes_csprng_witness_test.dag` is the in-tree exemplar: it calls `Urandom.ReadBytes(count: 16).octets_b64`, base64-decodes it with `std.encoding` `base64_decode` to `List<UInt8>?`, and asserts the count. Your integration test does the same, matches the `Present` arm (the `Absent` arm is a refusal of the test, not a skip), hands that `List<UInt8>` to `seed_from_octets` unchanged — it takes the decoder's type, and admits each octet with `base64_octet_word` — then `shuffle`, and asserts that the result is a 52-card shoe containing each card exactly once. That last assertion is a property of `shuffle`, not of the entropy; it is here because it is the one place the whole route executes.
 
 The seed is the replay handle. Every `SimulatedRound` carries the seed its shoe was built from, so a surprising row in a 10,000-round simulation is reproduced by one call to `play_round` with that seed — no reruns, no logging, no luck.
 
