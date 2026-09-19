@@ -23,6 +23,8 @@ data surface_shorthand_preempts_resolved_identity: RecurringFailureMode = Recurr
 
     "NEXT RUNG FOR THIS SPECIMEN, a capability and not an artifact: an ambiguous bare name that reaches the shared slot is REFUSED, landed together with the renames that make the corpus pass it and never with an allow-list, so a reference with no declaration-aware answer has no evaluation at all. That makes the ambiguity unwritable rather than unlikely to be observed, and it is the step the existing trigger below names for evaluator construction in general.",
 
+    "THIRD SPECIMEN (2026-09-19, gunbc#11603, review 68098/68166). A bare `Https` or `Http`, imported by name from extdeps.uri, evaluates to NoSuchVariable in any closure that also reaches gunbc.cloudflare.r2_origin, while the same literal evaluates in a minimal module; v2.extdeps.coordination CoordinationEffectKind also declares an `Http` variant, and the resolved import is discarded for a bare-spelling lookup that the colliding family defeats. The module-qualified `extdeps.uri.Https` evaluates correctly in the same closure, which is the discriminator and the route #11603 now uses (the interim uri_scheme_is_https predicate was deleted). Still open: the bare imported form. Reproduce with `gunbc run --entry dag/test/claim/cloudflare_boot_origin_witness_test.dag --function readback_refuses_plain_http` after replacing the qualified reference in boot_origin.dag with the bare imported one.",
+
     "Next-rung trigger: host literals and intentional primitive representations are typed parser/resolver constructions, and evaluator value construction is total over every resolved binding with no raw-spelling arm able to override it.)",
   ],
 

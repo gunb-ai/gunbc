@@ -48,6 +48,8 @@ import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
+import gunbc.cloudflare.boot_origin { cloudflare_boot_origin_frontier_rows }
+import gunbc.network_boot_delivery { network_boot_delivery_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
@@ -110,6 +112,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_token_mint_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
+    cloudflare_boot_origin_frontier_rows,
+    network_boot_delivery_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
