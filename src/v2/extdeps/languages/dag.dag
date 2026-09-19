@@ -1812,9 +1812,11 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // `input` uses. The reserved keywords are NOT widened into ident positions. Fields carry v1's
 // `Type [from "key"] [= default]` tail (extdeps.shell `Find` declares `max_depth: Int = 1`).
 // The v2-inline operation form and service-level `config` are v1-admitted and not yet in this
-// nest — named remainder, not a silent drop. Parsing is not lowering: dissolve-on
-// ^service_family_body_lowering — a consumed body-lowering arm for
-// dag_surface_service_decl.
+// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
+// no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
+// (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
+// and normalized_tree admit_normalized_tree refuses it before resolve. The refusal moved from parse
+// to normalize; it did not disappear.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
