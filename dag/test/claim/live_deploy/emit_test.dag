@@ -11,6 +11,8 @@ import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
+  gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
+  gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
   DeploymentSpec,
   DeploymentDependencyStep,
   EnsuredPackage,
@@ -90,7 +92,14 @@ import gunbc.live_deploy.effect_leaf {
   apt_install_unelevated_effect,
   dpkg_status_effect,
 }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
+}
 import gunbc.live_deploy.emit {
+  approval_broker_dark_install_script,
+  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  live_deploy_approval_broker_unit_file,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -172,6 +181,12 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
 data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER: THE ADDITIVE INSTALL ────────────────────────────
+data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(
+  spec: deployment_spec_srv1(),
+  revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+)
 
 fn witness_apply_script() -> String {
   witness_apply_script_text
@@ -1330,3 +1345,113 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 }
 
 
+
+// ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────
+// THIS IS THE CLAIM THE STAGE EXISTS TO SATISFY, not a hygiene check on a script. Roadmap
+// redeploys are FROZEN at the current release until the cutover completes (operator directive
+// 2026-09-19), and the first stage has to add a second served process without disturbing the one
+// already serving. A daemon-reload does not restart running units, so the roadmap keeps its PID and
+// its incarnation -- but only while nothing in this script names its unit.
+//
+// THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
+// apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
+// fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
+test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
+    && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
+    && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
+}
+
+// IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
+// dark process; a unit whose ExecStart named no revision, or a different one, would make every
+// later reading a measurement of a build nobody deployed.
+test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
+  string_contains(
+    s: witness_approval_broker_dark_script_text,
+    pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE TWIN'S APPLY MUST NOT RE-OWN THE HOST'S BROKER — review 68094
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// teardown_safety_witness_note above says the twin claims were written over the RETRACT order
+// "because teardown is the destructive direction and a claim about apply would not have caught it".
+// The approval broker is the case where that stopped being true: it is a HOST singleton whose unit
+// content is instance-derived, so the destructive direction for it is APPLY -- srv1-lab writing
+// /etc/systemd/system/gunbc-approval-broker.service with the lab tree's WorkingDirectory and
+// restarting it, killing production's broker on the same port.
+//
+// THE SUBJECT IS THE STEP LIST, NOT THE RENDERED SCRIPT, and that is a correction the floor forced:
+// the first cut rendered a whole second apply script per claim to grep it for a unit name, which
+// cost about 200k eval steps each against a 72300 budget. Rendering an entire deploy program to ask
+// whether four steps were produced is DESIGN section 3's claim-reaches-too-far in its plainest
+// form -- the claim's subject was one interface and its cost was the whole emitter's. Asking the
+// producers directly is cheaper AND stronger: an empty list cannot be serialized into a script that
+// happens not to mention the unit.
+//
+// THE RED IS THE SAME EDIT AS BEFORE: drop the ownership predicate from
+// apply_approval_broker_unit_write_steps or approval_broker_lifecycle_steps and the twin's lists
+// stop being empty.
+
+test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
+  let twin = srv1_twin_spec()
+  count(apply_approval_broker_unit_write_steps(
+    spec: twin,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) == 0
+    && count(approval_broker_lifecycle_steps(spec: twin)) == 0
+}
+
+// THE POSITIVE CONTROL, without which the claim above is satisfied by an emitter that never writes
+// the broker at all -- a different defect with the same green.
+test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
+  let live = deployment_spec_srv1()
+  count(apply_approval_broker_unit_write_steps(
+    spec: live,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) > 0
+    && count(approval_broker_lifecycle_steps(spec: live)) > 0
+    && deployment_owns_the_host_approval_broker(spec: live)
+    && !deployment_owns_the_host_approval_broker(spec: srv1_twin_spec())
+}
+
+// BOTH INSTALL PATHS BIND THE BROKER'S ONE PORT. The staged install and the release apply must
+// describe the SAME process, so a reading taken at one is about the other. This reads the unit
+// VALUE rather than either rendered script, for the same cost reason as above -- the port is a
+// directive on a unit, and rendering two deploy programs to find it was paying for the emitter.
+test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
+  let unit = live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  service_has_execstart_containing(
+    file: unit,
+    fragment: join([" --port ", to_string(approval_broker_listen_port)], ""),
+  )
+}
+
+fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      any(directives, d => match d {
+        ExecStart { command: c } => string_contains(s: c as String, pattern: fragment)
+        _ => false
+      })
+    _ => false
+  }
+}
+
+// A NON-OWNER REACHING THE STAGED DARK INSTALL REFUSES LOUDLY rather than rendering a script that
+// installs nothing and reports success -- the absorbing fallback at the seam where an operator is
+// being told a stage completed. This one DOES render, because the refusal marker is a property of
+// the emitted text and there is nothing cheaper that observes it.
+test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
+  let script = approval_broker_dark_install_script(
+    spec: srv1_twin_spec(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: script, pattern: gunbc_approval_broker_unit_path() as String)
+}

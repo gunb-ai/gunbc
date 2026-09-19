@@ -1,0 +1,402 @@
+module test.claim.approval_broker_serve_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, HttpMethod, GET, POST, PUT }
+import extdeps.http.server {
+  ServedRouteTable,
+  ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+}
+import extdeps.uri_path { path_param_value }
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ObservedMarker, NoMarkerInBody, MarkerObserved,
+  ConfirmHandlerObserved, BrokerNoRouteMatched,
+  approval_broker_served_token, approval_serving_process_label,
+}
+import gunbc.auth.approval_broker_serve {
+  ApprovalBrokerHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  approval_broker_route_specs,
+  approval_broker_route_table_build,
+  approval_broker_respond,
+  approval_broker_respond_as,
+}
+import gunbc.auth.approval_writer_authority {
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+  ApprovalWriterAuthority, RoadmapWriter, BrokerWriter,
+  ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
+  approval_write_admission_under,
+}
+import extdeps.http.server { ServeHttpResponse }
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_confirm_path_template,
+  approval_broker_decide_path_template,
+  approval_broker_submit_path,
+  approval_broker_status_path_template,
+  approval_broker_confirm_path_prefix,
+  approval_broker_listen_port,
+  approval_broker_submit_url,
+  approval_broker_status_url,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A Refused build yields the EMPTY table here, so every selection claim below goes RED — the
+// discriminating direction. The production path never does this: approval_broker_respond answers
+// 500 naming the broken literal.
+fn broker_table_or_empty() -> ServedRouteTable<ApprovalBrokerHandler> {
+  match approval_broker_route_table_build() {
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+  }
+}
+
+fn broker_selects(method: HttpMethod, path: String, want: ApprovalBrokerHandler) -> Bool {
+  match serve_select_route(table: broker_table_or_empty(), method: method, path: path) {
+    SelectedDynamic { handler: h, params: _ } => h == want
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ROADMAP'S WALL. test.claim.roadmap_serve_witness
+// roadmap_serve_table_owns_no_approval_route asserts the roadmap answers NOTHING for these four
+// (method, path) pairs; on its own that claim is satisfiable by deleting the approval loop. This
+// one establishes the same four pairs are answered HERE, so the pair together says the routes
+// moved rather than vanished.
+test fn approval_broker_table_selects_the_four_routes() -> Bool {
+  broker_selects(method: GET, path: "/approve/esc-1.approve.0badc0de", want: ApprovalConfirmPageHandler)
+    && broker_selects(method: POST, path: "/approve/esc-1.approve.0badc0de", want: ApprovalDecideHandler)
+    && broker_selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
+    && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
+}
+
+// THE TABLE IS EXACTLY THE FOUR. A fifth row is not a neutral addition: every route this process
+// serves is one more thing whose demand shares the broker's slice, and the split exists because
+// co-tenancy is what made an approval poll depend on a dashboard render.
+test fn approval_broker_table_carries_no_other_route() -> Bool {
+  count(approval_broker_route_specs()) == 4
+    && match approval_broker_route_table_build() {
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 4
+      ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+    }
+}
+
+// A METHOD THE PAIR DOES NOT DEFINE IS 405 WITH THE ALLOWED SET, not a 404 and not a decision.
+// The GET/POST split on one path is the whole safety property of the approval pair, so the table
+// must distinguish "this path exists under other methods" from "no such path".
+test fn approval_broker_unsupported_method_on_the_pair_is_method_not_allowed() -> Bool {
+  match serve_select_route(table: broker_table_or_empty(), method: PUT, path: "/approve/esc-1.approve.0badc0de") {
+    MethodNotAllowed { allowed: ms } => count(ms) == 2
+    SelectedDynamic { handler: _, params: _ } => false
+    SelectedStatic { route: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// THE DECIDE PATH IS THE CONFIRM PATH. Two literals that agree today are a coincidence; one literal
+// read twice is the construction that keeps "same path, different consequence" true.
+test fn approval_broker_pair_is_one_path() -> Bool {
+  approval_broker_decide_path_template == approval_broker_confirm_path_template
+}
+
+// THE LINK PREFIX IS THE ROUTE'S OWN. gunbc.auth.approval_request_submission builds every
+// notification link from approval_broker_confirm_path_prefix; if that prefix and the route template
+// could disagree, an issued link would 404 at the broker while every claim over either side passed.
+test fn approval_broker_link_prefix_matches_the_confirm_route() -> Bool {
+  join([approval_broker_confirm_path_prefix as String, "\{capability\}"], "")
+    == approval_broker_confirm_path_template as String
+}
+
+// ── THE INHABITANCE CLAIM ────────────────────────────────────────────────────────────────────
+// Every claim above supplies a (method, path) at the ROUTE TABLE boundary and inspects what the
+// table answers. DESIGN section 3's pairing obligation is that some claim still runs the real path,
+// and it is discharged here: this one enters approval_broker_respond — the fold the serve entry
+// calls — with the bytes a request carries, and lets it build the table, select, bind the path
+// parameter, parse the capability segment and serialize the page.
+//
+// The confirm route is the one that can be run for real without a store: it renders and stops, by
+// construction, because a GET must never spend a decision. That is the same property being
+// asserted — a 200 with the decision word in it and NO write — so the claim exercises the route
+// rather than merely proving the adapter compiles.
+//
+// DELETE THE INTEGRATION AND THIS GOES RED: remove the confirm row from the specs and the same call
+// answers 404, not a differently-shaped 200.
+test fn approval_broker_confirm_route_renders_through_the_real_entry() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// THE ADAPTER'S 404 IS ITS OWN, not the table's absence: a path this process does not serve answers
+// not-found through the same entry rather than reaching a handler.
+test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/roadmap",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 404
+}
+
+// ── THE MARKER IS PRODUCED BY THE REAL PATH, WHICH IS WHAT MAKES THE CUTOVER'S PROBE A READING ──
+// THE PAIRING OBLIGATION FOR gunbc.auth.approval_broker_cutover (DESIGN section 3). Those claims
+// SUPPLY an ObservedMarker to admission, which is the right grain for a claim about admission --
+// but a supplied marker is a hypothesis about this boundary until something runs the producer. If
+// no claim executed the real adapter, the entire marker scheme could be inert and every cutover
+// claim would stay green: the plan would refuse and admit exactly as written over values nothing
+// emits, and the stage-5 probe on srv1 would read an unmarked body from a broker that was answering
+// correctly, refuse a sound cutover, and report the front door as broken.
+//
+// So this enters approval_broker_respond -- the fold the serve entry calls -- and asserts the token
+// is in the bytes that come back. DELETE THE INTEGRATION AND THIS GOES RED: drop the marker
+// argument from broker_text_response's body construction and this answers 200 with an unmarked body
+// while every claim in the cutover witness stays green.
+//
+// IT IS THE HTML ARM, which is the one that can break silently in the other direction: the marker is
+// carried as a comment there rather than as a trailing line, so a body that renders correctly on a
+// phone is exactly the body a probe must still be able to read a token out of.
+test fn the_confirm_page_carries_its_own_fold_marker_through_the_real_entry() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 200
+    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: ConfirmHandlerObserved) as String)
+}
+
+// THE ADAPTER'S OWN 404 IS MARKED TOO, and this is the half the cutover's prefix-strip reading rests
+// on. A request that reaches the broker and matches no route must be distinguishable from one that
+// never arrived, and the only channel is the body -- so the not-found path carries
+// approval-broker/no-route-matched and the front-door probe can tell the two apart.
+test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/roadmap",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 404
+    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+}
+
+// AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
+// token is in the bytes; this one runs the fold the probe will actually use over those same bytes,
+// so a token the responder emits and the reader cannot find is a red rather than a silent
+// disagreement between two greps.
+test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  match approval_broker_marker_in_body(body: r.body) {
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m)
+        == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
+    NoMarkerInBody => false
+  }
+}
+
+// ── THE SAME FOLD, SERVED BY THE ROADMAP, IS A DIFFERENT MARKER ─────────────────────────────
+// THE RED THAT REVIEW 68539 SHOWED WAS MISSING, and it is the claim that makes the whole scheme
+// mean what its prose says. Until the last cutover stage the roadmap MOUNTS THESE FOLDS -- it
+// projects its approval rows from approval_broker_route_specs and invokes them with
+// process: RoadmapProcess -- so the marker has to separate the two processes on a route they BOTH
+// serve correctly. With the token naming only the fold, both produced identical bytes here.
+//
+// It runs the real adapter for both, on the same method and path, so the only difference between
+// the two calls is the process the entry binds. DELETE THE PROCESS FROM THE TOKEN AND THIS GOES
+// RED, while every other marker claim in this file stays green -- which is exactly how the defect
+// survived.
+//
+// WHAT IT DOES NOT ESTABLISH, said rather than left to be assumed: it enters this module's adapter
+// with process: RoadmapProcess, not gunbc.roadmap.roadmap_serve's own table. That is the same fold
+// with the same process value -- roadmap_serve's approval arm calls approval_broker_invoke, which is
+// what this reaches -- but it is not evidence about the roadmap's route table, and a claim that
+// entered there would take on that module's whole subject (instance, plan, release) for one fact
+// about marking.
+test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool {
+  let by_broker = approval_broker_respond_as(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+    process: BrokerProcess,
+  )
+  let by_roadmap = approval_broker_respond_as(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+    process: RoadmapProcess,
+  )
+  let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    NoMarkerInBody => "none"
+  }
+  let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    NoMarkerInBody => "none"
+  }
+  by_broker.status == 200 && by_roadmap.status == 200
+    && seen_broker == "broker"
+    && seen_roadmap == "roadmap"
+    && seen_broker != seen_roadmap
+}
+
+// ── THE LOOPBACK ENDPOINT A BOOT RUN IS POINTED AT ──────────────────────────────────────────
+// ONE ADDRESS FOR THE PROCESS'S WHOLE LIFE, so a boot client needs no cutover-aware port logic: the
+// same URL reaches the broker while it is dark and after it holds the store, and what changes is
+// whether the write is ADMITTED (gunbc.auth.approval_writer_authority), not where it lands. An
+// earlier cut parameterised this over a dark port and a serving port, which made the client's
+// correctness depend on knowing which stage the deployment was in (side-chat HOLD item 1).
+test fn the_loopback_submit_url_names_the_brokers_one_port() -> Bool {
+  let url = approval_broker_submit_url(port: approval_broker_listen_port) as String
+  string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
+    && string_contains(s: url, pattern: approval_broker_submit_path as String)
+}
+
+// THE STATUS URL IS THE SUBMIT COLLECTION PLUS A MEMBER, and the claim is here because the obvious
+// implementation is a second "/approvals/" literal that agrees until one of them moves. A status URL
+// built this way reaches the route the broker's table actually carries.
+test fn the_loopback_status_url_is_the_submit_collection_plus_the_escalation() -> Bool {
+  let url = approval_broker_status_url(port: approval_broker_listen_port, escalation_id: "esc-1" as NonEmptyStr) as String
+  url == join([approval_broker_submit_url(port: approval_broker_listen_port) as String, "/esc-1"], "")
+    && broker_selects(method: GET, path: join([approval_broker_submit_path as String, "/esc-1"], ""), want: ApprovalStatusHandler)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// WRITER AUTHORITY IS CONSULTED BEFORE ANY STORE MUTATION — side-chat HOLD item 3
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// PORT IDENTITY IS NOT WRITER AUTHORITY. The earlier design kept the broker on a separate port and
+// treated being off the front door as being unable to write. That holds only for traffic arriving
+// through the front door; a boot client on the same host reaches loopback directly, and the moment
+// one does, two processes with working keyrings and one store root are both able to write it.
+//
+// So the two MUTATING routes consult gunbc.auth.approval_writer_authority before the store, and the
+// process that is not the declared writer refuses. These claims run the real entry fold for both
+// process identities, which is the only way to establish that the gate is on the path rather than
+// merely declared beside it.
+
+fn broker_respond_as(process: ApprovalServingProcess, method_label: String, path: String, body: String) -> ServeHttpResponse {
+  approval_broker_respond_as(
+    method_label: method_label,
+    path: path,
+    body: body,
+    tailscale_identity: "",
+    process: process,
+  )
+}
+
+// THE ROADMAP MOUNT CANNOT FILE WHILE THE BROKER HOLDS AUTHORITY, and vice versa. Exactly one of
+// the two process identities is admitted at any value of the row, which is the single-writer
+// property stated where it is decided.
+test fn exactly_one_process_may_write_at_every_authority_value() -> Bool {
+  let roadmap_holds = approval_write_admission_under(authority: RoadmapWriter, asker: RoadmapProcess)
+  let roadmap_holds_broker_asks = approval_write_admission_under(authority: RoadmapWriter, asker: BrokerProcess)
+  let broker_holds = approval_write_admission_under(authority: BrokerWriter, asker: BrokerProcess)
+  let broker_holds_roadmap_asks = approval_write_admission_under(authority: BrokerWriter, asker: RoadmapProcess)
+  admitted(a: roadmap_holds) && !admitted(a: roadmap_holds_broker_asks)
+    && admitted(a: broker_holds) && !admitted(a: broker_holds_roadmap_asks)
+}
+
+fn admitted(a: ApprovalWriteAdmission) -> Bool {
+  match a {
+    ApprovalWriteAdmitted { writer: _ } => true
+    ApprovalWriteRefused { holder: _, asker: _ } => false
+  }
+}
+
+// ── WHICH IDENTITY IS THE NON-WRITER TODAY, AND WHY GETTING IT BACKWARDS MATTERED ───────────
+// These two claims passed RoadmapProcess and called it the non-writer. It is the WRITER: the live
+// posture is RoadmapServesAndWrites, which derives RoadmapWriter, whose process is RoadmapProcess.
+// The non-writer today is BrokerProcess (review 68224).
+//
+// THE SUBMISSION CLAIM WENT RED, which is the honest half. THE DECISION CLAIM LANDED ON 503 ANYWAY,
+// through RedemptionIdentityUntrusted -- because approval_identity_trust is NotEstablished while
+// the unit binds 0.0.0.0 -- and only the body conjunct saved it. Had I asserted status alone, it
+// would have been PERMANENTLY GREEN through a mechanism it does not exercise, which is precisely
+// the designed-fixture failure DESIGN section 3 names: the claim reaches the right verdict by the
+// wrong route, so the wall it was built to be is gone while it still reports coverage. The body
+// assertion is what made the near-miss visible, and it stays for that reason rather than as detail.
+//
+// THE PAIR BELOW IS WHAT THE GATE ACTUALLY NEEDS: the non-writer refused with the authority's own
+// reason, and the writer NOT refused that way -- because a claim that only shows a refusal cannot
+// tell a working gate from one that refuses everybody.
+
+// THE GATE IS ON THE REQUEST PATH, NOT BESIDE IT. This runs the broker's own adapter under the
+// non-writer identity, so a future edit removing the consult from approval_submit_response reds
+// here even though the admission fold itself still exists and its own claims still pass.
+test fn a_non_writer_submission_is_refused_before_the_store() -> Bool {
+  let r = broker_respond_as(
+    process: BrokerProcess,
+    method_label: "POST",
+    path: approval_broker_submit_path as String,
+    body: "{}",
+  )
+  r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
+}
+
+// THE WRITER IS NOT REFUSED BY THE GATE, and this is the conjunct that makes the claim above mean
+// something. The same malformed body under the WRITER identity reaches the envelope parse and comes
+// back as a submission outcome -- so the gate discriminates on identity rather than refusing every
+// caller. THE RED: make approval_write_admission refuse unconditionally and this fails while the
+// claim above still passes.
+test fn the_writer_reaches_the_submission_fold_rather_than_the_gate() -> Bool {
+  let r = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "POST",
+    path: approval_broker_submit_path as String,
+    body: "{}",
+  )
+  !string_contains(s: r.body, pattern: "writer authority is held by")
+    && string_contains(s: r.body, pattern: "approval submission:")
+}
+
+// THE SAME FOR THE ONE ROUTE THAT COMMITS A DECISION, and here the BODY is the whole assertion.
+// This path answers 503 under either identity today -- the non-writer through the authority gate,
+// the writer through RedemptionIdentityUntrusted -- so a status-only claim would pass without ever
+// reaching the gate. What discriminates is WHICH refusal came back.
+test fn a_non_writer_decision_is_refused_before_the_store() -> Bool {
+  let refused = broker_respond_as(
+    process: BrokerProcess,
+    method_label: "POST",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  let writer = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "POST",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  refused.status == 503
+    && string_contains(s: refused.body, pattern: "writer authority is held by")
+    && !string_contains(s: writer.body, pattern: "writer authority is held by")
+}
+
+// THE READ ROUTES ARE NOT GATED, because gating a read would refuse a poll that is safe from either
+// process and would say nothing true about single-writer discipline. The confirmation page renders
+// what a URL claims and writes nothing. It runs under the NON-WRITER identity, which is the arm
+// that would break if a future edit gated reads by authority.
+test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
+  let r = broker_respond_as(
+    process: BrokerProcess,
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}

@@ -54,6 +54,7 @@ import gunbc.host_effect {
   ShellEffectApplied,
   LiveDeployApply,
   LiveDeployRetract,
+  LiveDeployApprovalBrokerDarkInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
@@ -61,8 +62,13 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.auth.approval_broker_cutover {
+  CutoverAdmission, StageAdmitted, StageRefused,
+  dark_install_release_discharged, cutover_refusal_reason,
+}
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
+  live_deploy_liveness_get_local,
   ServiceReadiness,
   service_readiness_reason,
 }
@@ -596,6 +602,109 @@ fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAcces
       r: live_deploy_retract_with_access(spec: spec, access: access)
     )
   }
+}
+
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
+// IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
+// is the point: an additive install is still a privileged host mutation, and giving it its own path
+// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// gate exists to hold.
+//
+// WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
+// (operator directive 2026-09-19: roadmap redeploys are frozen at the current release until the
+// cutover completes). That is a property of the EFFECT, not of this wrapper -- the arm's script
+// writes the broker's two files and starts one unit -- so a later edit cannot quietly widen it here
+// without widening the emitter the byte oracles pin.
+//
+// IT OBSERVES A CANDIDATE because the unit it writes names a release in its ExecStart, and a broker
+// whose launch identity is not a revision must never be started: the cutover's next stage reads that
+// identity back, and every reading after it would otherwise be about an unknown build.
+fn approval_broker_dark_install_wet_with_access(
+  spec: DeploymentSpec,
+  access: DeployAccess,
+) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        let mutation = live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployApprovalBrokerDarkInstall { spec: spec, candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          approval_broker_dark_install_readback_exit(spec: spec, candidate: candidate)
+        }
+      }
+    }
+  }
+}
+
+// THE INSTALL IS NOT THE POINT; THE READBACK IS. A converged mutation says the unit files were
+// written and systemd was asked to start one -- it says nothing about whether a process came up,
+// bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
+// question, and this is where it is asked, so the plan has a production consumer rather than being
+// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+//
+// THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
+// probe reaches the process this deploy actually placed, and cannot drift to the serving port while
+// the roadmap is still a writer.
+//
+// THE ADMITTING ARM CARRIES NO MESSAGE because ProcessExit's success arm has no field to carry one;
+// what the probe said reaches an operator through the refusal path, where it is needed, and through
+// the journal of the unit that answered.
+//
+// IT EXITS ON THE STAGE BEING DISCHARGED, NOT ON BEING ADMITTED TO IT, and the difference is the
+// defect review 68058 found in the first cut of this function: admission for ProveRelease asks
+// whether the readback MAY BE ATTEMPTED and was a constant pass from here, so a broker that never
+// bound its port still exited success while this annotation claimed the opposite.
+//
+// What goes red now: an unanswered probe, non-JSON bytes, a JSON value that is not an object, a
+// missing or duplicated revision member, a non-string revision, a revision that is not 40 lowercase
+// hex, AND -- the case the cutover HOLD's item 4 named -- a well-formed revision that is not THIS
+// DEPLOY'S CANDIDATE. That last one is the stale-broker case: the unit was written and something is
+// answering, but the service did not restart or came back on an older admitted release, and until
+// this comparison existed it passed the stage whose whole purpose is to say which build is
+// listening. The candidate comes from the deploy that just installed it, never from the process
+// being interrogated.
+fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let port = spec.approval_broker.listen.port
+  let read = live_deploy_liveness_get_local(port: port, spec: spec)
+  match dark_install_release_discharged(
+    listening_port: port,
+    read: read,
+    expected_release: candidate.revision as String as NonEmptyStr,
+  ) {
+    StageAdmitted { stage: _ } => ExitSuccess
+    StageRefused { stage: _, cause: c } =>
+      exit_failure(reason: join([
+        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        cutover_refusal_reason(c: c) as String,
+      ], ""))
+  }
+}
+
+fn approval_broker_dark_install_srv1_operator_local_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_operator_local_access,
+  )
+}
+
+fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_access,
+  )
 }
 
 fn live_deploy_apply_srv1_wet() -> ProcessExit {
