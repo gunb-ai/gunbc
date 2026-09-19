@@ -32,7 +32,7 @@ import extdeps.virtualization.firecracker {
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
-  Description, After, Wants, SuccessAction, FailureAction, UnitActionPoweroffForce,
+  Description, After, Wants, SuccessAction, FailureAction,
   ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPost, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
@@ -369,14 +369,18 @@ fn runner_guest_listener_command() -> NonEmptyStr {
 // ran 2.337.0 while the model said 2.336.0 and nothing here caught it. `Runner.Listener --version`
 // prints the release actually baked into the image on the console the host reads, where
 // gunbc.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
+// `poweroff-force` skips the orderly stop of other units but still kills every process and unmounts
+// before powering off -- a one-job VM has nothing else whose orderly stop matters.
+data runner_guest_agent_end_action: NonEmptyStr = "poweroff-force" as NonEmptyStr
+
 fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc ephemeral Actions runner guest agent" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
-      SuccessAction { action: UnitActionPoweroffForce },
-      FailureAction { action: UnitActionPoweroffForce },
+      SuccessAction { action: runner_guest_agent_end_action },
+      FailureAction { action: runner_guest_agent_end_action },
     ],
     service: [
       ServiceType { mode: "exec" as NonEmptyStr },
