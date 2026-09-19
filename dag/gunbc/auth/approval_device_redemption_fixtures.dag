@@ -12,7 +12,9 @@ import gunbc.auth.approval_device_wire {
   EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive,
   enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
-  device_request_path, device_enrollment_path, enrollment_id_for_code,
+  device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
+  approval_device_enrollment_header, approval_device_requested_at_header, approval_device_assertion_header,
+  approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
 import extdeps.apple.apns { ApnsProduction }
@@ -178,15 +180,57 @@ data envelope_vectors: List<EnvelopeVector> = [
   EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
   EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
   EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
-  EnvelopeVector { name: "request_path", body: match device_request_path(escalation_id: "esc-mtc1-boot-1") { Present { value: p } => p as String  Absent => "refused" } },
+  EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String },
   EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
-  EnvelopeVector { name: "enrollment_path", body: match device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) { Present { value: p } => p as String  Absent => "refused" } },
+  EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) as String },
 ]
 
 fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
   json_object(members: [
     json_kv(key: "name", value: json_string(s: v.name as String)),
     json_kv(key: "body", value: json_string(s: v.body)),
+  ])
+}
+
+// ── The HTTP surface ─────────────────────────────────────────────────────────────────────────
+// EVERY NAME THE APP SENDS OR ADDRESSES, from the wire's own rows, so Wire.swift restates none of
+// them: the three authenticated-request headers, every fixed route and route prefix, and the path
+// segment encoding over specimens of each character class it must handle.
+type SurfaceVector {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+data surface_vectors: List<SurfaceVector> = [
+  SurfaceVector { name: "header_enrollment", value: approval_device_enrollment_header },
+  SurfaceVector { name: "header_requested_at", value: approval_device_requested_at_header },
+  SurfaceVector { name: "header_assertion", value: approval_device_assertion_header },
+  SurfaceVector { name: "route_enrol", value: approval_device_enrol_path },
+  SurfaceVector { name: "route_pending", value: approval_device_pending_path },
+  SurfaceVector { name: "route_request_prefix", value: approval_device_request_path_prefix },
+  SurfaceVector { name: "route_redeem", value: approval_device_redeem_path },
+  SurfaceVector { name: "route_enrollment_prefix", value: approval_device_enrollment_path_prefix },
+  SurfaceVector { name: "route_push", value: approval_device_push_path },
+]
+
+type SegmentVector {
+  input: NonEmptyStr
+  encoded: NonEmptyStr
+}
+
+data segment_specimens: List<NonEmptyStr> = ["esc-mtc1_boot~1", "482?913", "a%2Fb", "a#b", "a/b", "..", ".", "sp ace", "café", "☃", "🔒"]
+
+fn segment_vector_json(input: NonEmptyStr) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "input", value: json_string(s: input as String)),
+    json_kv(key: "encoded", value: json_string(s: path_segment(s: input) as String)),
+  ])
+}
+
+fn surface_vector_json(v: SurfaceVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "value", value: json_string(s: v.value as String)),
   ])
 }
 
@@ -198,6 +242,8 @@ fn approval_device_vectors_json() -> String {
       json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
       json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
       json_kv(key: "envelope", value: json_array(elements: map(envelope_vectors, v => envelope_vector_json(v: v)))),
+      json_kv(key: "surface", value: json_array(elements: map(surface_vectors, v => surface_vector_json(v: v)))),
+      json_kv(key: "path_segment", value: json_array(elements: map(segment_specimens, x => segment_vector_json(input: x)))),
     ])),
     "\n",
   )

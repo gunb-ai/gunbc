@@ -11,6 +11,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
+import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed,
@@ -814,28 +815,41 @@ fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Time
   framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])
 }
 
-// A PATH SEGMENT IS THE RFC 3986 UNRESERVED ALPHABET, or it is refused. Escalation and enrolment ids
-// are placed into paths, and a "/", "?", "#" or "%" in one would change the HTTP target so the
-// assertion covered a different textual path than the one transported. Refusing, rather than
-// percent-encoding, keeps the signed path and the requested path the same bytes.
-fn is_unreserved_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 46 || cp == 95 || cp == 126
+// A PATH SEGMENT IS ENCODED, TOTALLY AND INJECTIVELY, and never refused: an identity the store
+// admits must always have a route, or an enrolment could commit and then be unreadable. Each code
+// point's UTF-8 bytes are kept only when they are RFC 3986 unreserved, excluding ".", and every other
+// byte -- "%" itself included -- is "%" plus two UPPERCASE hex digits. "." is always encoded, so no id
+// can form a dot-segment a URL library would normalize away. The mapping is injective, so two
+// identities never share a path, and the app transports the encoded path verbatim (percent-encoded,
+// never re-encoded), so the assertion covers exactly the bytes sent.
+fn is_path_kept_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 95 || cp == 126
 }
 
-fn path_segment(s: NonEmptyStr) -> NonEmptyStr? {
-  if all(chars(s: s as String), cp => is_unreserved_code_point(cp: cp)) && s != "." && s != ".." { Present { value: s } } else { none }
+// UTF-8 per RFC 3629, from the code point's value.
+fn utf8_octets_of_code_point(cp: Int) -> List<Int> {
+  if cp < 128 { [cp] }
+  else if cp < 2048 { [192 + cp / 64, 128 + cp % 64] }
+  else if cp < 65536 { [224 + cp / 4096, 128 + (cp / 64) % 64, 128 + cp % 64] }
+  else { [240 + cp / 262144, 128 + (cp / 4096) % 64, 128 + (cp / 64) % 64, 128 + cp % 64] }
 }
 
-fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr? {
-  match path_segment(s: escalation_id) {
-    Absent => none
-    Present { value: seg } => Present { value: join([approval_device_request_path_prefix as String, seg as String], "") as NonEmptyStr }
-  }
+fn percent_octet(o: Int) -> String {
+  let h = int_to_upper_hex(n: o)
+  if string_length(s: h) == 1 { join(["%0", h], "") } else { join(["%", h], "") }
 }
 
-fn device_enrollment_path(enrollment_id: NonEmptyStr) -> NonEmptyStr? {
-  match path_segment(s: enrollment_id) {
-    Absent => none
-    Present { value: seg } => Present { value: join([approval_device_enrollment_path_prefix as String, seg as String], "") as NonEmptyStr }
-  }
+fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
+  join(map(chars(s: s as String), cp =>
+    if is_path_kept_code_point(cp: cp) { from_code_point(cp: cp) }
+    else { join(map(utf8_octets_of_code_point(cp: cp), o => percent_octet(o: o)), "") }
+  ), "") as NonEmptyStr
+}
+
+fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  join([approval_device_request_path_prefix as String, path_segment(s: escalation_id) as String], "") as NonEmptyStr
+}
+
+fn device_enrollment_path(enrollment_id: NonEmptyStr) -> NonEmptyStr {
+  join([approval_device_enrollment_path_prefix as String, path_segment(s: enrollment_id) as String], "") as NonEmptyStr
 }

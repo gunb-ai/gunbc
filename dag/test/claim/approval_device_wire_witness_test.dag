@@ -192,13 +192,19 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
   }
 }
 
-// PATHS: an id that would change the HTTP target is refused, never percent-encoded into a second
-// spelling of the signed path.
-test fn witness_path_segment_refuses_target_changing_ids() -> Bool {
-  path_segment(s: "esc-mtc1_boot.1~a") != none
-    && path_segment(s: "a/b") == none && path_segment(s: "a?b") == none && path_segment(s: "a#b") == none
-    && path_segment(s: "a%2F") == none && path_segment(s: "..") == none
-    && device_request_path(escalation_id: "a/../b") == none
+// PATHS: every identity has a route. Target-changing characters, "%" itself, dots and non-ASCII
+// are percent-encoded from their UTF-8 bytes, and the encoding is injective -- "a/b" and the literal
+// text "a%2Fb" are two different paths.
+test fn witness_path_segment_encodes_every_identity_injectively() -> Bool {
+  path_segment(s: "esc-mtc1_boot~1") as String == "esc-mtc1_boot~1"
+    && path_segment(s: "a/b") as String == "a%2Fb"
+    && path_segment(s: "a%2Fb") as String == "a%252Fb"
+    && path_segment(s: "482?913") as String == "482%3F913"
+    && path_segment(s: "a#b") as String == "a%23b"
+    && path_segment(s: "..") as String == "%2E%2E"
+    && path_segment(s: "café") as String == "caf%C3%A9"
+    && path_segment(s: "🔒") as String == "%F0%9F%94%92"
+    && device_request_path(escalation_id: "a/../b") as String == "/approve/device/requests/a%2F%2E%2E%2Fb"
 }
 
 // The push-update assertion covers the token: a different token is different client data.
