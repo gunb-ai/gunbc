@@ -656,6 +656,12 @@ fn runner_slot_host_cidr(net: RunnerSlotNetwork) -> String {
   ], "")
 }
 
+// THE SLOT'S NETWORK FILES ARE ENUMERATED HERE AND NOWHERE ELSE. The v6 sysctl file is one of them:
+// leaving it out made the fold say two files while the converge frontier's prose said three, so the
+// converge would either install no disable_ipv6 -- and then every slot refuses sanitation subject
+// construction, since that requires the tap's v6 read back disabled -- or author its own list beside
+// this one (review 68660).
+//
 // THE OPERATIONS ARE INSTALLS AND ONE RELOAD, and every one of them converges: installing a file
 // that is already byte-identical changes nothing, and reload re-reads without tearing a link down.
 // There is no non-idempotent arm left to guard, which is why the observe-then-act standing the
@@ -665,6 +671,7 @@ fn runner_slot_network_install_operations(
   net: RunnerSlotNetwork,
   staged_netdev: NonEmptyStr,
   staged_network: NonEmptyStr,
+  staged_ipv6_sysctl: NonEmptyStr,
 ) -> List<ExecutorPrivilegedOperation> {
   [
     InstallFile {
@@ -677,6 +684,13 @@ fn runner_slot_network_install_operations(
     InstallFile {
       source: staged_network,
       destination: runner_slot_network_file_path(net: net) as NonEmptyStr,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_ipv6_sysctl,
+      destination: runner_slot_ipv6_sysctl_path(net: net) as NonEmptyStr,
       owner: runner_microvm_networkd_file_owner,
       group: runner_microvm_networkd_file_owner,
       mode: runner_microvm_networkd_file_mode,

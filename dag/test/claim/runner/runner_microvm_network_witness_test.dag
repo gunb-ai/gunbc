@@ -30,7 +30,7 @@ import gunbc.runner_microvm_network {
   ResidueObservation, ResidueAbsent, ResiduePresent, ResidueUnreadable,
   TapIpv6DisabledFact, GuestNeighbourAbsentFact, ExpectationTableEmptyFact,
   runner_slot_teardown_flush_commands, runner_slot_guest_neighbour_show_command, runner_host_expectation_list_command,
-  runner_slot_ipv6_sysctl_text, runner_slot_ipv6_sysctl_path, runner_slot_ipv6_disabled_proc_path,
+  runner_slot_ipv6_sysctl_text, runner_slot_ipv6_sysctl_path, runner_slot_network_install_operations, runner_slot_ipv6_disabled_proc_path,
   runner_slot_guest_network_boot_args, guest_ipv6_disabled_readback_frontier, converged_slot_network_producer_frontier,
   TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
   RulesetListed, RulesetUnreadable, slot_network_readback,
@@ -45,6 +45,7 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.runner_microvm_network { TapHolderObservation }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { argv_words }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -584,4 +585,30 @@ test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool {
 test fn a_new_flow_toward_a_tap_is_dropped_on_the_shared_hosts() -> Bool {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "    iifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" drop\n  }\n  chain output")
+}
+
+// A SLOT'S NETWORK FILES ARE THE .netdev, THE .network AND THE v6 SYSCTL, AND THE FOLD EMITS ALL
+// THREE. The red is the previous fold, which emitted two while the converge frontier's prose named
+// three -- the converge would have installed no disable_ipv6, and every slot would then refuse
+// sanitation subject construction (review 68660).
+test fn a_slots_install_set_carries_every_network_file_it_declares() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 5))
+  map(
+    runner_slot_network_install_operations(
+      net: net,
+      staged_netdev: "/stage/netdev" as NonEmptyStr,
+      staged_network: "/stage/network" as NonEmptyStr,
+      staged_ipv6_sysctl: "/stage/ipv6.conf" as NonEmptyStr,
+    ),
+    op => match op {
+      InstallFile { source: _, destination: d, owner: _, group: _, mode: _ } => d as String
+      SystemdReloadUnit { unit: u } => join(["reload ", u as String], "")
+      _ => "other"
+    },
+  ) == [
+    runner_slot_netdev_path(net: net),
+    runner_slot_network_file_path(net: net),
+    runner_slot_ipv6_sysctl_path(net: net),
+    "reload systemd-networkd",
+  ]
 }
