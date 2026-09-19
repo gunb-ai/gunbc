@@ -342,6 +342,19 @@ fn uses_line_reading(path: String, line: String) -> UsesLineReading {
   }
 }
 
+// ANY `uses` FOLLOWED BY A COLON IS A KEY SPELLING UNTIL PROVEN OTHERWISE. The projection reads a
+// use only in the shapes it models; every other line that spells a `uses` key -- a flow sequence or
+// mapping anywhere on the line, a tab separator, a space before the colon -- refuses rather than
+// reading as "no use here", which would be the silent narrow DESIGN section 5 forbids. Comment lines
+// are the only exemption, and prose that says "uses" with no colon is not a key.
+fn uses_line_is_comment(line: String) -> Bool {
+  starts_with(s: substring(s: line, start: yaml_indent_of(line: line), end: line.length()), prefix: "#")
+}
+
+fn uses_line_spells_a_uses_key(line: String) -> Bool {
+  string_contains(s: line, pattern: "uses:") || string_contains(s: line, pattern: "uses :") || string_contains(s: line, pattern: "uses\t")
+}
+
 type UsesScan {
   uses: List<RealizedActionUse>
   refusal: String
@@ -360,7 +373,12 @@ fn realized_workflow_action_uses(path: String, source: String) -> RealizedWorkfl
         acc
       } else {
         match uses_line_reading(path: path, line: line) {
-          UsesLineNotAUse => acc
+          UsesLineNotAUse =>
+            if uses_line_is_comment(line: line) || !uses_line_spells_a_uses_key(line: line) {
+              acc
+            } else {
+              UsesScan { uses: acc.uses, refusal: join(["a `uses` key this projection cannot classify (flow style, a tab, or a key not at the head of the line) -- at `", line, "`"], "") }
+            }
           UsesLineUse { use: u } => UsesScan { uses: concat(acc.uses, [u]), refusal: acc.refusal }
           UsesLineRefused { reason: r } => UsesScan { uses: acc.uses, refusal: r }
         }
