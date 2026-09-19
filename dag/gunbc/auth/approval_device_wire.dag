@@ -11,7 +11,8 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
-import std.encoding { base64_encode, base64_decode, UrlSafe, base64_octet_of_int, base64_octet_int }
+import std.encoding { base64_encode, base64_decode, UrlSafe, base64_octet_int }
+import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.integer { UInt8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
@@ -821,24 +822,19 @@ fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Time
 // padding and the "id-" prefix, so it carries no percent escape for any layer to decode, cannot be a
 // dot segment (it always starts "id-"), and has no case-equivalent alternate spelling. Percent
 // encoding was rejected: a URL parser treats %2E%2E as ".." and collapses the path, so an encoded
-// dot is not a stable transport spelling. The codec is std.encoding's, not a second one.
+// dot is not a stable transport spelling. ENCODING uses the standard codecs only: std.bytes
+// utf8_encode_bytes / bytes_octets for UTF-8 and std.encoding base64_encode for base64url.
 data path_segment_prefix: String = "id-"
 
-fn utf8_octets_of_code_point(cp: Int) -> List<Int> {
-  if cp < 128 { [cp] }
-  else if cp < 2048 { [192 + cp / 64, 128 + cp % 64] }
-  else if cp < 65536 { [224 + cp / 4096, 128 + (cp / 64) % 64, 128 + cp % 64] }
-  else { [240 + cp / 262144, 128 + (cp / 4096) % 64, 128 + (cp / 64) % 64, 128 + cp % 64] }
-}
-
-fn utf8_octets(s: String) -> List<UInt8> {
-  flat_map(chars(s: s), cp => map(utf8_octets_of_code_point(cp: cp), o => base64_octet_of_int(n: o)))
-}
-
 fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
-  join([path_segment_prefix, base64_encode(octets: utf8_octets(s: s as String), variant: UrlSafe)], "") as NonEmptyStr
+  join([path_segment_prefix, base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s as String)), variant: UrlSafe)], "") as NonEmptyStr
 }
 
+// A STATED DEPARTURE FROM std.encoding utf8_decode_bytes, which is total and so cannot refuse: the
+// route must tell "no identity was decoded" (malformed) apart from "an identity, spelled another way"
+// (non-canonical), and a total decoder erases that difference. This decoder only decides
+// admissibility; decode_path_segment's re-encode through the standard encoder remains the backstop,
+// so any disagreement between the two refuses rather than admitting an alias.
 // UTF-8 per RFC 3629, from octets; a malformed sequence is Absent, never a replacement character.
 // Each completed scalar is checked against its sequence length, so overlong forms (a value encodable
 // in fewer bytes), UTF-16 surrogates (U+D800..U+DFFF) and values above U+10FFFF are malformed here --
