@@ -2557,7 +2557,11 @@ fn dag_declared_inhabitants_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
+      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node()),
+      dag_named_edge(
+        name: ^dag_inhabitant_field_module_body,
+        target: namespace_graft_module_body_marker_node()
+      )
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -5176,6 +5180,14 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // deliberately NOT emitted: the members are the body, and a captured wrapper
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
+
+// The one constructor of the marker node: emitted by namespace_graft_build_body_conj
+// and declared in dag_declared_inhabitants_core, so infer grounds it as a node the
+// dag language authority declares (infer_node_declared_in_language_inhabitants) and
+// a marked body stays a fully evidenced product.
+fn namespace_graft_module_body_marker_node() -> Node {
+  dag_inhabitant_atom(id: namespace_graft_module_body_identity)
+}
 
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
