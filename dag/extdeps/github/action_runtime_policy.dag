@@ -1,6 +1,6 @@
 module extdeps.github.action_runtime_policy
 
-import std.types { NonEmptyStr }
+import std.types { Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -50,21 +50,45 @@ type PlatformActionExecutionDisposition
   | PlatformRefusesDeclaration { declared: ActionExecutionMechanism, reason: NonEmptyStr }
   | PlatformDispositionUnmodeled { declared: ActionExecutionMechanism }
 
-// Node majors other than 20 and 24 are not answered. GitHub's treatment of node12 and node16 has
-// changed more than once, and nothing here read it, so the answer is `Unmodeled`, not a guess.
-// This is the actions/runner policy as it applies to the runner versions this repository
-// runs (gunbc.runner_first_job_receipt records 2.337.0), all of which carry the forced
-// substitution; a runner old enough to still execute node20 as declared is not distinguished.
-fn github_actions_execution_disposition(declared: ActionExecutionMechanism) -> PlatformActionExecutionDisposition {
+// A NODE-RUNTIME POLICY EPOCH: the dated regime the platform executes JavaScript actions under. The
+// disposition is a function of the epoch AND the declaration, never of the declaration alone,
+// because GitHub has changed it on a schedule: runner v2.328.0 shipped both Node 20 and Node 24
+// with Node 20 the default; Node 24 became the default on 2026-06-16, from which a node20
+// declaration is forced onto Node 24; `override_variable` set to true -- in a workflow or on the
+// runner host -- keeps node20 executing as declared until Node 20's removal (announced for
+// 2026-09-23). Each epoch is a cited row; the next change is a new row, and a declaration no epoch
+// row answers is Unmodeled rather than guessed.
+type NodeRuntimePolicyEpoch {
+  effective_from: NonEmptyStr
+  minimum_runner_version: NonEmptyStr
+  default_node_major: Int
+  substituted_node_majors: List<Int>
+  override_variable: NonEmptyStr
+  authority: ExternalAuthority
+}
+
+data node24_default_epoch: NodeRuntimePolicyEpoch = NodeRuntimePolicyEpoch {
+  effective_from: "2026-06-16",
+  minimum_runner_version: "2.328.0",
+  default_node_major: 24,
+  substituted_node_majors: [20],
+  override_variable: "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION",
+  authority: extdeps_external_authority_anchor,
+}
+
+// The override is not an input here: it restores node20 as DECLARED, which is exact execution of a
+// declaration the repository refuses on other grounds, and whether a workflow sets it is a fact
+// about the workflow (gunbc.action_use_admission refuses it wherever it appears in a realized file).
+fn github_actions_execution_disposition(epoch: NodeRuntimePolicyEpoch, declared: ActionExecutionMechanism) -> PlatformActionExecutionDisposition {
   match declared {
     JavaScriptAction { node_major: n } =>
-      if n == 24 {
+      if n == epoch.default_node_major {
         PlatformExecutesExact { declared: declared }
-      } else if n == 20 {
+      } else if any(epoch.substituted_node_majors, m => m == n) {
         PlatformForcedSubstitution {
           declared: declared,
-          realized: JavaScriptAction { node_major: 24 },
-          policy_authority: extdeps_external_authority_anchor,
+          realized: JavaScriptAction { node_major: epoch.default_node_major },
+          policy_authority: epoch.authority,
         }
       } else {
         PlatformDispositionUnmodeled { declared: declared }

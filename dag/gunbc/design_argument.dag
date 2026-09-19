@@ -114,6 +114,7 @@ data conformance_domains: List<ConformanceDomain> = [
       first: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
       rest: [
         decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
+        decl_ref(module_path: "std.durable_exclusive_hold", decl_name: "DurableHoldState"),
         decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
         decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
         decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),

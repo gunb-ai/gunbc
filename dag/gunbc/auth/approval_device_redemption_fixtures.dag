@@ -18,7 +18,11 @@ import gunbc.auth.approval_device_wire {
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
 import extdeps.apple.apns { ApnsProduction }
-import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest }
+import gunbc.auth.approval_decision_store { StoredApprovalRequest, stored_request_json, approval_mac_key_id }
+import std.scoped_authorization { AttemptIdentity }
+import std.logic { Bool }
+import extdeps.languages.json.emit { json_bool }
+import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest, DeviceEnrollmentRevoked, DeviceEnrollmentUnknown }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
@@ -124,7 +128,8 @@ type ReadVector {
 
 data read_vectors: List<ReadVector> = [
   ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "request", path: join([approval_device_request_path_prefix as String, "esc-mtc1-boot-1"], "") as NonEmptyStr, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
 ]
 
 fn read_vector_json(v: ReadVector) -> JsonValue {
@@ -179,6 +184,8 @@ data envelope_vectors: List<EnvelopeVector> = [
   EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) },
   EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
   EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
+  EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: "enr-482913" })) },
+  EnvelopeVector { name: "redemption_response_enrollment_unknown", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentUnknown)) },
   EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
   EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String },
   EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
@@ -234,6 +241,43 @@ fn surface_vector_json(v: SurfaceVector) -> JsonValue {
   ])
 }
 
+// ── Stored requests ──────────────────────────────────────────────────────────────────────────
+// THE BYTES THE APP'S DETAIL SCREEN PARSES, rendered by the store's own stored_request_json, so the
+// app's consent-fact reader is checked against the server's rendering and not a hand-typed one.
+// One destructive request, and one whose purpose carries a quote, a backslash, a newline and
+// non-ASCII text.
+fn stored_request_specimen(escalation_id: NonEmptyStr, requester: NonEmptyStr, purpose: NonEmptyStr, destructive: Bool, expires_at: Timestamp) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: escalation_id,
+    request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+    attempt: "mtc1-boot-attempt-1" as AttemptIdentity,
+    requester: requester,
+    purpose: purpose,
+    destructive: destructive,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+data stored_request_specimens: List<StoredApprovalRequest> = [
+  stored_request_specimen(escalation_id: "esc-mtc1-boot-1", requester: "eager-owl-205", purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.", destructive: true, expires_at: "2026-09-17T20:00:00Z"),
+  stored_request_specimen(escalation_id: "esc-escapes-2", requester: "wise-owl-628", purpose: "Grant \"read\" on C:\\keys — été\nsecond line", destructive: false, expires_at: "2026-09-18T20:00:00Z"),
+]
+
+fn stored_request_vector_json(r: StoredApprovalRequest) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: r.escalation_id as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "requester", value: json_string(s: r.requester as String)),
+      json_kv(key: "purpose", value: json_string(s: r.purpose as String)),
+      json_kv(key: "destructive", value: json_bool(b: r.destructive)),
+      json_kv(key: "expires_at", value: json_string(s: r.expires_at)),
+    ])),
+    json_kv(key: "json", value: json_string(s: stored_request_json(r: r))),
+  ])
+}
+
 fn approval_device_vectors_json() -> String {
   concat(
     serialize_json(v: json_object(members: [
@@ -242,6 +286,7 @@ fn approval_device_vectors_json() -> String {
       json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
       json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
       json_kv(key: "envelope", value: json_array(elements: map(envelope_vectors, v => envelope_vector_json(v: v)))),
+      json_kv(key: "stored_request", value: json_array(elements: map(stored_request_specimens, r => stored_request_vector_json(r: r)))),
       json_kv(key: "surface", value: json_array(elements: map(surface_vectors, v => surface_vector_json(v: v)))),
       json_kv(key: "path_segment", value: json_array(elements: map(segment_specimens, x => segment_vector_json(input: x)))),
     ])),
