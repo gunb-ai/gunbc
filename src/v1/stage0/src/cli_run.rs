@@ -158,8 +158,9 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
-    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
+    builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
+    compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
+    compile_dag_multi_module_fixture, compile_dag_primitive_call_edges,
     compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
     emit_source_root_ingest_manifest,
 };
@@ -3251,6 +3252,63 @@ pub struct ResolvedCallEdgeRow {
 pub enum ResolvedCallEdgeCensus {
     Refused { cause: String },
     Observed { edges: Vec<ResolvedCallEdgeRow> },
+}
+
+/// THE CALLEE IDENTITY THE RESOLVER ESTABLISHED FOR ONE CALL SITE, projected for the primitive
+/// census (`gunbc.primitive_egress.census`). This is the resolver's OWN product read off the typed
+/// tree -- `CallTargetIdentity::RuntimePrimitiveCall` for a free call and
+/// `MethodSemantics::AlgebraMethodSemantics` for a method form -- never a spelling match. The
+/// two arms that carry a spelling and no identity (`PlainMethod`, `UndeterminedFreeCall`) are
+/// exactly the sites where the resolver established NOTHING; they are carried so the census can
+/// report a consumer whose callee identity is unresolved rather than drop it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimitiveCalleeIdentity {
+    RuntimePrimitive {
+        primitive_name: String,
+        projected_from_module: Option<String>,
+        projected_from_decl: Option<String>,
+    },
+    AlgebraMethod {
+        template_name: String,
+    },
+    ServiceOperation {
+        service_name: String,
+        operation: String,
+    },
+    PlainMethod {
+        spelling: String,
+    },
+    UndeterminedFreeCall {
+        spelling: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrimitiveCallEdgeRow {
+    pub caller_module: String,
+    pub caller_decl: String,
+    pub authored_spelling: String,
+    pub callee: PrimitiveCalleeIdentity,
+    pub span_file: String,
+    pub span_start: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrimitiveCallEntryRefusal {
+    pub entry: String,
+    pub cause: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimitiveCallEdgeCensus {
+    Refused {
+        cause: String,
+    },
+    Observed {
+        entries_resolved: Vec<String>,
+        entries_refused: Vec<PrimitiveCallEntryRefusal>,
+        edges: Vec<PrimitiveCallEdgeRow>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40721,7 +40779,7 @@ pub(crate) fn prepared_subject_exclusion_row_for<'a>(
 
 /// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
 /// contains by name (`seed.` is a proper prefix). `a.b` contains `a.b.c` and not `a.bc`.
-fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
+pub(crate) fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
     module == seed
         || (module.len() > seed.len()
             && module.starts_with(seed)

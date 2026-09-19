@@ -1,0 +1,110 @@
+module test.claim.review_sheet_a1_title_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import gunbc.review_sheet_projection {
+  A1Column,
+  A1Cell,
+  A1RowSpan,
+  ReviewSheetWritePlan,
+  DerivedCellWrite,
+}
+import gunbc.review_sheet_sheets {
+  sheet_a1_range_wire,
+  sheet_qualified_cell,
+  sheet_qualified_span,
+  SheetA1Range,
+  A1EndOpen,
+  A1EndClosed,
+  A1EndWholeTab,
+  a1_readback_standing,
+  A1ReadbackStanding,
+  A1ReadbackAnchored,
+  A1ReadbackUnreadable,
+  value_range_includes_column_letter,
+  value_ranges_from_write_plan,
+  TabBoundWritePlan,
+  WritePlanRanges,
+  WritePlanTitleRefused,
+}
+import extdeps.google.sheets { a1_range_encoding_text, A1RangeEncoded, A1TitleApostropheUnsupported }
+
+fn cell(letter: String, row: Int) -> A1Cell {
+  A1Cell { column: A1Column { letter: letter as NonEmptyStr }, row: row }
+}
+
+fn wire(range: SheetA1Range) -> String {
+  a1_range_encoding_text(e: sheet_a1_range_wire(range: range))
+}
+
+fn standing_text(s: A1ReadbackStanding) -> String {
+  match s {
+    A1ReadbackAnchored { range: r } =>
+      concat("anchored|", concat(r.tab as String, concat("|", a1_range_encoding_text(e: sheet_a1_range_wire(range: SheetA1Range { tab: "T" as NonEmptyStr, origin: r.origin, end: r.end })))))
+    A1ReadbackUnreadable { reason: why } => concat("unreadable|", why as String)
+  }
+}
+
+fn one_patch_plan(tab: NonEmptyStr) -> TabBoundWritePlan {
+  TabBoundWritePlan {
+    tab: tab,
+    plan: ReviewSheetWritePlan {
+      patches: [DerivedCellWrite { listing_id: "L1" as NonEmptyStr, column: "title" as NonEmptyStr, a1: cell(letter: "B", row: 2), value: "Widget" }],
+      appends: [],
+    },
+  }
+}
+
+// Each writer of a qualified range emits the quoted title exactly.
+test fn each_writer_quotes_a_spaced_title_exactly() -> Bool {
+  let tab = "Buyer Review" as NonEmptyStr
+  wire(range: SheetA1Range { tab: tab, origin: cell(letter: "A", row: 1), end: A1EndClosed { cell: cell(letter: "C", row: 1) } })
+    == "'Buyer Review'!A1:C1"
+    && wire(range: SheetA1Range { tab: tab, origin: cell(letter: "A", row: 1), end: A1EndOpen { column: A1Column { letter: "C" as NonEmptyStr } } })
+      == "'Buyer Review'!A1:C"
+    && wire(range: SheetA1Range { tab: tab, origin: cell(letter: "A", row: 1), end: A1EndWholeTab }) == "'Buyer Review'"
+    && a1_range_encoding_text(e: sheet_qualified_cell(tab: tab, cell: cell(letter: "B", row: 2))) == "'Buyer Review'!B2"
+    && a1_range_encoding_text(e: sheet_qualified_span(tab: tab, span: A1RowSpan { start: cell(letter: "A", row: 1), end: cell(letter: "C", row: 1) }))
+      == "'Buyer Review'!A1:C1"
+    && match value_ranges_from_write_plan(bound: one_patch_plan(tab: tab)) {
+      WritePlanRanges { ranges: rs } =>
+        match rs |> first {
+          Present { value: vr } => vr.range == "'Buyer Review'!B2"
+          Absent => false
+        }
+      WritePlanTitleRefused { encoding: _ } => false
+    }
+}
+
+// An apostrophe title reaches no wire: every writer carries the encoder's typed refusal.
+test fn each_writer_refuses_an_apostrophe_title() -> Bool {
+  let tab = "Bob's" as NonEmptyStr
+  match sheet_qualified_cell(tab: tab, cell: cell(letter: "A", row: 1)) {
+    A1TitleApostropheUnsupported { title: t } => (t as String) == "Bob's"
+    A1RangeEncoded { wire: _ } => false
+  }
+    && match value_ranges_from_write_plan(bound: one_patch_plan(tab: tab)) {
+      WritePlanTitleRefused { encoding: _ } => true
+      WritePlanRanges { ranges: _ } => false
+    }
+}
+
+// The spellings values.get returns in ValueRange.range, including the guide's Jon's_Data.
+test fn readback_accepts_the_quoted_range_google_returns() -> Bool {
+  standing_text(s: a1_readback_standing(range: "'Buyer Review'!A1:C1")) == "anchored|Buyer Review|'T'!A1:C1"
+    && standing_text(s: a1_readback_standing(range: "'Q3!final'!A1:C1")) == "anchored|Q3!final|'T'!A1:C1"
+    && standing_text(s: a1_readback_standing(range: "'Jon's_Data'!A1:D5")) == "anchored|Jon's_Data|'T'!A1:D5"
+}
+
+test fn readback_refuses_malformed_quoting_with_a_typed_reason() -> Bool {
+  standing_text(s: a1_readback_standing(range: "'Buyer Review!A1:C1"))
+    == "unreadable|A1 sheet title: unterminated quote: 'Buyer Review!A1:C1"
+    && standing_text(s: a1_readback_standing(range: "'Jon''s'!A1:C1"))
+      == "unreadable|A1 sheet title: '' is one escaped apostrophe or two literal ones; ambiguous at offset 4: 'Jon''s'!A1:C1"
+    && standing_text(s: a1_readback_standing(range: "''!A1:C1"))
+      == "unreadable|A1 sheet title: empty title: ''!A1:C1"
+}
+
+test fn column_letter_reader_decodes_a_bang_in_the_title() -> Bool {
+  value_range_includes_column_letter(range: "'Q3!final'!A2:C2", letter: "B")
+    && !value_range_includes_column_letter(range: "'Q3!final'!A2:C2", letter: "D")
+}
