@@ -167,10 +167,11 @@ fn gunbc_floor_demand_receipts() -> List<FloorRunCgroupPeakReceipt> {
   [gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19]
 }
 
-// THE SIZING INPUT IS THE UNCENSORED RECEIPT AND NOTHING ELSE. These three rows keep the names
+// THE SIZING INPUT IS THE UNCENSORED RECEIPT AND NOTHING ELSE. These two rows keep the names
 // gunbc.runner_slot_allocation has gated on since 2026-08-17 (they moved here; they did not
 // change meaning), and they are DERIVED from the receipt rather than typed beside it, so the
-// wall's input and the receipt cannot disagree.
+// wall's input and the receipt cannot disagree. The armed line is not re-exported as a third
+// row: the reading kind below carries it inside ThrottlePin, and nothing reads it as a bare figure.
 fn floor_peak_receipt_peak(receipt: FloorRunCgroupPeakReceipt) -> ByteSize {
   match receipt {
     FloorRunCgroupPeakUnmeasured => byte_size(0)
@@ -178,16 +179,7 @@ fn floor_peak_receipt_peak(receipt: FloorRunCgroupPeakReceipt) -> ByteSize {
   }
 }
 
-fn floor_peak_receipt_armed_high(receipt: FloorRunCgroupPeakReceipt) -> ByteSize {
-  match receipt {
-    FloorRunCgroupPeakUnmeasured => byte_size(0)
-    FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: _, armed_memory_high: high, floor_outcome: _ } => high
-  }
-}
-
 data gunbc_floor_measured_peak_observation: ByteSize = floor_peak_receipt_peak(receipt: gunbc_floor_uncensored_demand_receipt)
-
-data gunbc_floor_measured_peak_armed_high: ByteSize = floor_peak_receipt_armed_high(receipt: gunbc_floor_uncensored_demand_receipt)
 
 fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
   match floor_peak_reading_kind(receipt: gunbc_floor_uncensored_demand_receipt) {
