@@ -818,6 +818,10 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+// Where gunbc.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
+// and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
+data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
+
 data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
   function: "site_pxe_edge_observe_ci_wet",
@@ -1839,7 +1843,7 @@ fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
     entry: gunbc_ci_site_pxe_edge_observe_target.entry,
     function: gunbc_ci_site_pxe_edge_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/site-pxe-edge-converge-receipt.txt"
+    receipt_rel: site_pxe_edge_converge_receipt_path
   )
 }
 
@@ -1849,7 +1853,7 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
     entry: gunbc_ci_site_pxe_edge_converge_target.entry,
     function: gunbc_ci_site_pxe_edge_converge_target.function,
     claim_run: false,
-    receipt_rel: "target/site-pxe-edge-converge-receipt.txt"
+    receipt_rel: site_pxe_edge_converge_receipt_path
   )
 }
 

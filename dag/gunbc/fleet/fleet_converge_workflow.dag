@@ -66,6 +66,7 @@ import gunbc.fleet_workflow_steps {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec {
+  site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
@@ -1034,7 +1035,7 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "site-pxe-edge-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/site-pxe-edge-converge-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: site_pxe_edge_converge_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },

@@ -62,6 +62,7 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.ci_spec { site_pxe_edge_converge_receipt_path }
 import gunbc.runner_host_file_converge { elevated_argv }
 import gunbc.machine_intake_subject { content_hash_equal }
 import gunbc.network_boot_delivery {
@@ -632,7 +633,6 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
 
 data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
 
-data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
 
 fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
   uses net: Network
