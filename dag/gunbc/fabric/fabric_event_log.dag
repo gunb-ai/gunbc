@@ -1,7 +1,7 @@
 module gunbc.fabric_event_log
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.measure { Count, One }
 import product.placement_supply { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
