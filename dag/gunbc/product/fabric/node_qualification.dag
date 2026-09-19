@@ -1,0 +1,1224 @@
+module product.fabric.node_qualification
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte,
+  Nanosecond, nanosecond_count,
+}
+import product.placement_supply { HostIdentity, host_identity_eq }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.nvidia.gpu_direct_rdma {
+  GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
+  GpuDirectRdmaCapabilityUnread,
+}
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, rank_gpu_direct_capability,
+}
+
+// A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
+//
+// product.fabric.selection ranks SupplierOffer on ADVERTISED shape, and product.capacity leases
+// seats against those offers. Neither fold observes delivery. A Spark that advertises four GB10s
+// on a 100GBASE-CR2 rail can sit on a 50GBASE-CR2 breakout leg with a Gen5 x4 NIC attachment and
+// no GPUDirect RDMA; selection still takes it, the collective waits on the slowest rank, and the
+// shortfall is blamed on the model. That is gunbc#11540's serving-arm law one layer down:
+// configuration agreement is not qualification.
+//
+// EACH AXIS IS THREE-VALUED: agrees, falls short with the shortfall named, or unread. Unread is
+// not agreement. There is no Bool that answers false for unread -- that is the fail-open
+// gunbc#11560 had to retract. A node that cannot be qualified is not qualified.
+//
+// MEASUREMENTS ARE SUPPLIED READINGS. This module does not run lspci, ethtool, mstlink,
+// cudaDeviceGetAttribute or nccl-tests. Inferring a reading from a product brief is the
+// failure the type exists to prevent: a catalog PcieLink is not LnkSta, and a CUDA module
+// being present is not GPUDirect RDMA.
+
+// ── INSTRUMENTS. Named so a later reader can tell a live query from a catalog row. ─────────────
+
+type RailLinkInstrument = EthtoolLinkModes | MstlinkStatus
+
+type NicPcieInstrument = LspciLnkSta | SysfsCurrentLinkWidth
+
+type CollectiveInstrument = NcclTestsAllReducePerf | NcclTestsAllGatherPerf | NcclTestsAllToAllPerf
+
+type NcclTestsSizeSemantics
+  = EachRankContributesTheSizeColumn
+  | TotalBufferSplitPerPeer { rank_count: Nat }
+
+type NcclLibraryVersion {
+  major: Nat
+  minor: Nat
+  patch: Nat
+}
+
+type ServingNcclIdentity {
+  torch_built_against: NcclLibraryVersion
+  loaded_runtime: NcclLibraryVersion
+}
+
+type CollectivePrimitiveAttribution
+  = CollectivePrimitiveAttributionUnestablished
+  | CollectivePrimitiveSameRuntime { nccl: NcclLibraryVersion }
+  | CollectivePrimitiveMeasuredOnDifferentRuntime {
+      measured_with: NcclLibraryVersion,
+      serving: ServingNcclIdentity,
+    }
+
+type HostRegisteredIbFallbackStanding
+  = HostRegisteredIbFallbackUnread { because: NonEmptyStr }
+  | HostRegisteredIbFallbackCitedOnServingRuntime { nccl: NcclLibraryVersion }
+  | HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+      measured_with: NcclLibraryVersion,
+      serving_revisions_not_censused: ServingNcclIdentity,
+    }
+
+// ── PER-AXIS READINGS. Failure and unread cannot construct a measured value. ───────────────────
+
+type CountReading
+  = CountRead { count: Nat }
+  | CountUnread { because: NonEmptyStr }
+
+type ByteSizeReading
+  = ByteSizeRead { bytes: ByteSize }
+  | ByteSizeUnread { because: NonEmptyStr }
+
+type LinkModeReading
+  = LinkModeRead { mode: LinkMode, instrument: RailLinkInstrument }
+  | LinkModeUnread { because: NonEmptyStr }
+
+type PcieLinkReading
+  = PcieLinkRead { link: PcieLink, instrument: NicPcieInstrument }
+  | PcieLinkUnread { because: NonEmptyStr }
+
+type CollectiveSample {
+  message_bytes: ByteSize
+  bus_bandwidth: Bandwidth
+  in_place_latency: Nanosecond
+  out_of_place_latency: Nanosecond
+}
+
+// nccl-tests prints busbw in decimal GB/s (10^9 bytes/s). Bandwidth is bits/s
+// (DataRate: transfers × bus width). Passing the printed figure through bandwidth()
+// unscaled is a meaning fork: the same type as lane_rate_25g, short by bits_per_byte.
+fn nccl_tests_busbw_from_printed_gbs(printed_times_1e9: Nat) -> Bandwidth {
+  bandwidth(count: printed_times_1e9 * bits_per_byte())
+}
+
+type CollectiveSmallMessageShape
+  = SmallMessageStepThenPlateau { step_at: ByteSize }
+  | SmallMessageShapeUncharacterized
+
+type EngineBufferModeStanding
+  = EngineBufferModeInPlace
+  | EngineBufferModeOutOfPlace
+  | EngineBufferModeUnestablished
+
+type PerLayerAllReduceCountStanding
+  = PerLayerAllReduceCount { count: Nat }
+  | PerLayerAllReduceCountUnestablished
+
+type CollectiveWindowStanding
+  = WindowIsolated
+  | WindowSharedWithDeclaredTraffic
+  | WindowStandingUnread { because: NonEmptyStr }
+
+// GPUDirect standing is the GpuDirectRdmaCapability that rank_gpu_direct_capability derives
+// from a RankGpuDirectCapabilityReceipt. This module does not redeclare that capability type.
+
+type RankCurveProducer
+  = RankLocalCollectiveCurve
+  | GroupWideCurveCopiedOntoRank
+
+type NcclTestsDtype = NcclTestsHalf | NcclTestsDtypeUnread
+
+type DtypeJoin
+  = DtypeAgrees
+  | DtypeDiffers
+  | DtypeUnread
+
+type CollectiveProtocol {
+  instrument: CollectiveInstrument
+  size_semantics: NcclTestsSizeSemantics
+  dtype: NcclTestsDtype
+  rank_count: Nat
+}
+
+type CollectiveCurveProvenance
+  = SuppliedHistoricalDemonstration
+  | AwaitingLiveProducerMint
+
+type CollectiveObservationIdentity {
+  protocol: CollectiveProtocol
+  run_identity: NonEmptyStr
+  ranks: List<HostIdentity>
+  samples: List<CollectiveSample>
+  provenance: CollectiveCurveProvenance
+}
+
+data supplied_historical_curve_unread: NonEmptyStr = "supplied historical curves are not a positive delivery reading" as NonEmptyStr
+
+type CollectiveCurveReading
+  = CollectiveCurveRead {
+      observation: CollectiveObservationIdentity,
+      small_message_shape: CollectiveSmallMessageShape,
+      engine_buffer_mode: EngineBufferModeStanding,
+      per_layer_all_reduce_count: PerLayerAllReduceCountStanding,
+      primitive_attribution: CollectivePrimitiveAttribution,
+      window: CollectiveWindowStanding,
+    }
+  | CollectiveCurveUnread { because: NonEmptyStr }
+
+type RankCollectiveReading {
+  rank: HostIdentity
+  curve: CollectiveCurveReading
+  producer: RankCurveProducer
+}
+
+// ── ADVERTISED OFFER, THE THING SELECTION ALREADY BELIEVES. ────────────────────────────────────
+
+// A DISCRETE-ADAPTER SKU IS NOT A SPARK ATTACHMENT. The Spark constructor carries no caller-written
+// link: Gen5 x4 is derived. x16 plus a Spark provenance tag is unwritable.
+type AdvertisedPcie
+  = AdvertisedSparkConnectX7PerPort
+  | AdvertisedDiscreteAdapterSku { sku: NonEmptyStr, link: PcieLink }
+
+fn advertised_spark_connectx7_per_port_link() -> PcieLink {
+  PcieLink { generation: Gen5, lane_count: 4 }
+}
+
+fn first_host_not_in(want: List<HostIdentity>, have: List<HostIdentity>) -> HostIdentity? {
+  match want.first() {
+    Absent => none
+    Present { value: h } => match first(filter(have, x => host_identity_eq(a: x, b: h))) {
+      Absent => Present { value: h }
+      Present { value: _ } => first_host_not_in(want: want.skip(n: 1), have: have)
+    }
+  }
+}
+
+fn observation_roster_unread_reason(
+  observed: List<HostIdentity>,
+  expected: List<HostIdentity>,
+) -> NonEmptyStr? {
+  if observed.length() != expected.length() {
+    Present {
+      value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+    }
+  } else {
+    match first_host_not_in(want: expected, have: observed) {
+      Present { value: _ } => Present {
+        value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+      }
+      Absent => match first_host_not_in(want: observed, have: expected) {
+        Present { value: _ } => Present {
+          value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+        }
+        Absent => none
+      }
+    }
+  }
+}
+
+fn dtype_join(a: NcclTestsDtype, b: NcclTestsDtype) -> DtypeJoin {
+  match a {
+    NcclTestsDtypeUnread => DtypeUnread
+    NcclTestsHalf => match b {
+      NcclTestsHalf => DtypeAgrees
+      NcclTestsDtypeUnread => DtypeUnread
+    }
+  }
+}
+
+fn protocol_eq(a: CollectiveProtocol, b: CollectiveProtocol) -> Bool {
+  a.instrument == b.instrument
+    && a.size_semantics == b.size_semantics
+    && match dtype_join(a: a.dtype, b: b.dtype) {
+      DtypeAgrees => true
+      DtypeDiffers => false
+      DtypeUnread => false
+    }
+    && a.rank_count == b.rank_count
+}
+
+fn size_semantics_rank_count_holds(protocol: CollectiveProtocol) -> Bool {
+  match protocol.size_semantics {
+    EachRankContributesTheSizeColumn => true
+    TotalBufferSplitPerPeer { rank_count: n } => n == protocol.rank_count
+  }
+}
+
+// ONE HOST. Accelerator count and memory here are that host's, not the serving group's.
+// gpu_direct_platform is caller-owned: rank_gpu_direct_capability attaches that name to
+// GpuDirectRdmaDeviceUnsupported. A HostIdentity is not a platform; Group B supplies
+// gunbc.spark.spark_gpu_direct_capability spark_gb10_platform.
+type HostAdvertisedDelivery {
+  accelerator_count: Nat
+  usable_memory: ByteSize
+  rail_link_mode: LinkMode
+  nic_pcie: AdvertisedPcie
+  gpu_direct_platform: NonEmptyStr
+}
+
+type GpuDirectCapabilityReading
+  = GpuDirectReceiptPresent { receipt: RankGpuDirectCapabilityReceipt }
+  | GpuDirectReceiptUnread { because: NonEmptyStr }
+
+type HostMeasuredDelivery {
+  accelerator_count: CountReading
+  usable_memory: ByteSizeReading
+  rail_link_mode: LinkModeReading
+  nic_pcie: PcieLinkReading
+  gpu_direct: GpuDirectCapabilityReading
+}
+
+// THE SERVING GROUP / COLLECTIVE SUBJECT. A four-rank curve does not inhabit a HostIdentity.
+type CollectiveGroupAdvertised {
+  expected_ranks: List<HostIdentity>
+  latency_ceiling: Nanosecond
+  latency_message_bytes: ByteSize
+  all_reduce_protocol: CollectiveProtocol
+  bandwidth_floor: Bandwidth
+  bandwidth_message_bytes: ByteSize
+  all_to_all_latency_ceiling: Nanosecond
+  all_to_all_message_bytes: ByteSize
+  all_to_all_protocol: CollectiveProtocol
+}
+
+type CollectiveGroupMeasured {
+  collective: CollectiveCurveReading
+  all_to_all: CollectiveCurveReading
+  host_registered_ib_fallback: HostRegisteredIbFallbackStanding
+  ranks: List<RankCollectiveReading>
+}
+
+// ── THREE-VALUED STANDINGS. No constructor maps unread onto agreement. ─────────────────────────
+
+type AcceleratorCountStanding
+  = AcceleratorCountAgrees { count: Nat }
+  | AcceleratorCountFallsShort { advertised: Nat, measured: Nat }
+  | AcceleratorCountUnread { advertised: Nat, because: NonEmptyStr }
+
+type UsableMemoryStanding
+  = UsableMemoryAgrees { bytes: ByteSize }
+  | UsableMemoryFallsShort { advertised: ByteSize, measured: ByteSize }
+  | UsableMemoryUnread { advertised: ByteSize, because: NonEmptyStr }
+
+type RailLinkModeStanding
+  = RailLinkModeAgrees { mode: LinkMode, instrument: RailLinkInstrument }
+  | RailLinkModeDiffers { advertised: LinkMode, measured: LinkMode, instrument: RailLinkInstrument }
+  | RailLinkModeUnread { advertised: LinkMode, because: NonEmptyStr }
+
+type NicPcieStanding
+  = NicPcieAgrees { link: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieFallsShort { advertised: PcieLink, measured: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieExceeds { advertised: PcieLink, measured: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieDiffers { advertised: PcieLink, measured: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieOfferUngrounded { advertised: AdvertisedPcie, because: NonEmptyStr }
+  | NicPcieUnread { advertised: PcieLink, because: NonEmptyStr }
+
+type GpuDirectStanding
+  = GpuDirectDeviceUnsupported { capability: GpuDirectRdmaCapability }
+  | GpuDirectDevicePrerequisiteMet { capability: GpuDirectRdmaCapability }
+  | GpuDirectReceiptNamesAnotherHost {
+      expected: HostIdentity,
+      observed: HostIdentity,
+      receipt: RankGpuDirectCapabilityReceipt,
+    }
+  | GpuDirectUnread { because: NonEmptyStr }
+
+// Group-curve latency and bandwidth stay unread until CollectiveObservationReceipt is minted
+// from nccl-tests output and the launch population. There is no Agrees or FallsShort
+// constructor: a supplied historical curve and an AwaitingLiveProducerMint tag are not that
+// producer. Discriminating reds are the unread reasons (protocol, roster, provenance).
+// TRIGGER: mint CollectiveObservationReceipt from the live producer.
+// SUFFICIENT FOR: Agrees/FallsShort at an advertised message size become reachable.
+type CollectiveLatencyStanding
+  = CollectiveLatencyUnread { ceiling: Nanosecond, because: NonEmptyStr }
+
+type CollectiveBandwidthStanding
+  = CollectiveBandwidthUnread { floor: Bandwidth, because: NonEmptyStr }
+
+data collective_curve_unread_awaits_live_producer: NonEmptyStr = "group curve scoring is unread until CollectiveObservationReceipt is minted from nccl-tests output and the launch population; a supplied historical curve is not that producer" as NonEmptyStr
+
+// Rank-local symmetry is unread until RankLocalCollectiveReceipt exists. There is no Agrees or
+// FallsShort constructor: a RankLocalCollectiveCurve tag is not that producer. Discriminating
+// reds are the unread reasons. TRIGGER: mint RankLocalCollectiveReceipt from rank-local output.
+// SUFFICIENT FOR: Agrees/FallsShort and an advertised latency multiple become reachable.
+type RankSymmetryStanding
+  = RankSymmetryUnread { because: NonEmptyStr }
+
+data rank_symmetry_unread_no_expected_ranks: NonEmptyStr = "the group advertisement named no expected ranks; symmetry is unread without a roster" as NonEmptyStr
+data rank_symmetry_unread_duplicate_expected: NonEmptyStr = "the expected roster names a host twice; uniqueness is unread, not symmetric" as NonEmptyStr
+data rank_symmetry_unread_duplicate_measured: NonEmptyStr = "measured ranks name a host twice; uniqueness is unread, not symmetric" as NonEmptyStr
+data rank_symmetry_unread_missing_rank: NonEmptyStr = "an expected rank has no independent curve; nccl-tests group output is not a per-rank producer" as NonEmptyStr
+data rank_symmetry_unread_extra_rank: NonEmptyStr = "a measured rank is not on the expected roster" as NonEmptyStr
+data rank_symmetry_unread_copied_curve: NonEmptyStr = "a rank carries a copied group-wide curve, not a rank-local producer" as NonEmptyStr
+data rank_symmetry_unread_protocol_mismatch: NonEmptyStr = "rank curves do not share the advertised protocol key" as NonEmptyStr
+data rank_symmetry_unread_run_mismatch: NonEmptyStr = "rank curves do not share a run identity" as NonEmptyStr
+data rank_symmetry_unread_awaits_rank_local_receipt: NonEmptyStr = "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr
+
+type HostQualificationReceipt {
+  node: HostIdentity
+  advertised: HostAdvertisedDelivery
+  accelerators: AcceleratorCountStanding
+  usable_memory: UsableMemoryStanding
+  rail_link_mode: RailLinkModeStanding
+  nic_pcie: NicPcieStanding
+  gpu_direct: GpuDirectStanding
+}
+
+type CollectiveGroupReceipt<P> {
+  offer: FabricIdentity<P, OfferKey>
+  advertised: CollectiveGroupAdvertised
+  host_roster: GroupHostRosterStanding
+  collective_latency: CollectiveLatencyStanding
+  collective_bandwidth: CollectiveBandwidthStanding
+  all_to_all_latency: CollectiveLatencyStanding
+  rank_symmetry: RankSymmetryStanding
+  host_registered_ib_fallback: HostRegisteredIbFallbackStanding
+  window: CollectiveWindowStanding
+  primitive_attribution: CollectivePrimitiveAttribution
+}
+
+type GroupHostRosterStanding
+  = GroupHostRosterComplete { rank_count: Int }
+  | GroupHostRosterUnread { because: NonEmptyStr }
+  | GroupMemberNotQualified { host: HostIdentity, receipt: HostQualificationReceipt }
+
+type HostQualificationAdmission
+  = HostQualified { receipt: HostQualificationReceipt }
+  | HostNotQualified { receipt: HostQualificationReceipt, refusals: List<QualificationRefusal> }
+
+type GroupQualificationAdmission<P>
+  = GroupQualified { receipt: CollectiveGroupReceipt<P> }
+  | GroupNotQualified { receipt: CollectiveGroupReceipt<P>, refusals: List<QualificationRefusal> }
+
+type QualificationRefusal
+  = AcceleratorCountDidNotHold { standing: AcceleratorCountStanding }
+  | UsableMemoryDidNotHold { standing: UsableMemoryStanding }
+  | RailLinkModeDidNotHold { standing: RailLinkModeStanding }
+  | NicPcieDidNotHold { standing: NicPcieStanding }
+  | GpuDirectDidNotHold { standing: GpuDirectStanding }
+  | CollectiveLatencyDidNotHold { standing: CollectiveLatencyStanding }
+  | CollectiveBandwidthDidNotHold { standing: CollectiveBandwidthStanding }
+  | RankSymmetryDidNotHold { standing: RankSymmetryStanding }
+  | AllToAllLatencyDidNotHold { standing: CollectiveLatencyStanding }
+  | HostRegisteredIbFallbackDidNotHold { standing: HostRegisteredIbFallbackStanding }
+  | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
+  | CollectivePrimitiveDidNotHold { attribution: CollectivePrimitiveAttribution }
+  | GroupHostRosterDidNotHold { standing: GroupHostRosterStanding }
+
+type ClaimedDeliveryCheck<P>
+  = ClaimedDeliveryHolds
+  | ClaimedDeliveryUnqualified { refusals: List<QualificationRefusal> }
+  | ClaimedDeliveryOfferMismatch {
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
+
+fn qualify_accelerator_count(advertised: Nat, reading: CountReading) -> AcceleratorCountStanding {
+  match reading {
+    CountUnread { because: b } => AcceleratorCountUnread { advertised: advertised, because: b }
+    CountRead { count: n } => if n < advertised {
+      AcceleratorCountFallsShort { advertised: advertised, measured: n }
+    } else {
+      AcceleratorCountAgrees { count: n }
+    }
+  }
+}
+
+fn qualify_usable_memory(advertised: ByteSize, reading: ByteSizeReading) -> UsableMemoryStanding {
+  match reading {
+    ByteSizeUnread { because: b } => UsableMemoryUnread { advertised: advertised, because: b }
+    ByteSizeRead { bytes: m } => if byte_size_count(b: m) == byte_size_count(b: advertised) {
+      UsableMemoryAgrees { bytes: m }
+    } else {
+      if byte_size_count(b: m) < byte_size_count(b: advertised) {
+        UsableMemoryFallsShort { advertised: advertised, measured: m }
+      } else {
+        UsableMemoryAgrees { bytes: m }
+      }
+    }
+  }
+}
+
+fn qualify_rail_link_mode(advertised: LinkMode, reading: LinkModeReading) -> RailLinkModeStanding {
+  match reading {
+    LinkModeUnread { because: b } => RailLinkModeUnread { advertised: advertised, because: b }
+    LinkModeRead { mode: m, instrument: i } => if link_mode_eq(a: advertised, b: m) {
+      RailLinkModeAgrees { mode: m, instrument: i }
+    } else {
+      RailLinkModeDiffers { advertised: advertised, measured: m, instrument: i }
+    }
+  }
+}
+
+fn qualify_nic_pcie(advertised: AdvertisedPcie, reading: PcieLinkReading) -> NicPcieStanding {
+  match advertised {
+    AdvertisedDiscreteAdapterSku { sku: sku, link: _ } => NicPcieOfferUngrounded {
+      advertised: advertised,
+      because: sku,
+    }
+    AdvertisedSparkConnectX7PerPort => {
+      let want = advertised_spark_connectx7_per_port_link()
+      match reading {
+        PcieLinkUnread { because: b } => NicPcieUnread { advertised: want, because: b }
+        PcieLinkRead { link: m, instrument: i } => if want == m {
+          NicPcieAgrees { link: m, instrument: i }
+        } else {
+          if want.generation == m.generation {
+            if m.lane_count < want.lane_count {
+              NicPcieFallsShort { advertised: want, measured: m, instrument: i }
+            } else {
+              if m.lane_count > want.lane_count {
+                NicPcieExceeds { advertised: want, measured: m, instrument: i }
+              } else {
+                NicPcieDiffers { advertised: want, measured: m, instrument: i }
+              }
+            }
+          } else {
+            NicPcieDiffers { advertised: want, measured: m, instrument: i }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_gpu_direct(
+  node: HostIdentity,
+  platform: NonEmptyStr,
+  reading: GpuDirectCapabilityReading,
+) -> GpuDirectStanding {
+  match reading {
+    GpuDirectReceiptUnread { because: b } => GpuDirectUnread { because: b }
+    GpuDirectReceiptPresent { receipt: r } =>
+      if !host_identity_eq(a: node, b: r.from.host) {
+        GpuDirectReceiptNamesAnotherHost { expected: node, observed: r.from.host, receipt: r }
+      } else {
+        let cap = rank_gpu_direct_capability(platform: platform, r: r)
+        match cap {
+          GpuDirectRdmaCapabilityUnread { cause: c } => GpuDirectUnread { because: c }
+          GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } =>
+            GpuDirectDeviceUnsupported { capability: cap }
+          GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } =>
+            GpuDirectDevicePrerequisiteMet { capability: cap }
+        }
+      }
+  }
+}
+
+fn curve_protocol(reading: CollectiveCurveReading) -> CollectiveProtocol? {
+  match reading {
+    CollectiveCurveUnread { because: _ } => none
+    CollectiveCurveRead {
+      observation: obs,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: _,
+    } => Present { value: obs.protocol }
+  }
+}
+
+fn protocol_population_unread_reason(
+  protocol: CollectiveProtocol,
+  expected: List<HostIdentity>,
+) -> NonEmptyStr? {
+  if !size_semantics_rank_count_holds(protocol: protocol) {
+    Present {
+      value: "the size-column rank_count is not the protocol rank_count" as NonEmptyStr,
+    }
+  } else {
+    if (protocol.rank_count as Int) == expected.length() {
+      none
+    } else {
+      Present {
+        value: "the protocol rank_count is not the expected roster" as NonEmptyStr,
+      }
+    }
+  }
+}
+
+fn qualify_collective_latency(
+  ceiling: Nanosecond,
+  expected: List<HostIdentity>,
+  required: CollectiveProtocol,
+  reading: CollectiveCurveReading,
+) -> CollectiveLatencyStanding {
+  match protocol_population_unread_reason(protocol: required, expected: expected) {
+    Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+    Absent => match reading {
+    CollectiveCurveUnread { because: b } =>
+      CollectiveLatencyUnread { ceiling: ceiling, because: b }
+    CollectiveCurveRead {
+      observation: obs,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: _,
+    } =>
+      match curve_protocol(reading: reading) {
+        Absent => CollectiveLatencyUnread {
+          ceiling: ceiling,
+          because: "the curve named no protocol key" as NonEmptyStr,
+        }
+        Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
+          Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+          Absent => if protocol_eq(a: key, b: required) {
+          match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
+            Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+            Absent => match obs.provenance {
+              SuppliedHistoricalDemonstration => CollectiveLatencyUnread {
+                ceiling: ceiling,
+                because: supplied_historical_curve_unread,
+              }
+              AwaitingLiveProducerMint => CollectiveLatencyUnread {
+                ceiling: ceiling,
+                because: collective_curve_unread_awaits_live_producer,
+              }
+            }
+          }
+        } else {
+          CollectiveLatencyUnread {
+            ceiling: ceiling,
+            because: "the curve's operation and size column are not the advertised protocol key" as NonEmptyStr,
+          }
+        }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_collective_bandwidth(
+  floor: Bandwidth,
+  expected: List<HostIdentity>,
+  required: CollectiveProtocol,
+  reading: CollectiveCurveReading,
+) -> CollectiveBandwidthStanding {
+  match protocol_population_unread_reason(protocol: required, expected: expected) {
+    Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+    Absent => match reading {
+    CollectiveCurveUnread { because: b } =>
+      CollectiveBandwidthUnread { floor: floor, because: b }
+    CollectiveCurveRead {
+      observation: obs,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: _,
+    } =>
+      match curve_protocol(reading: reading) {
+        Absent => CollectiveBandwidthUnread {
+          floor: floor,
+          because: "the curve named no protocol key" as NonEmptyStr,
+        }
+        Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
+          Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+          Absent => if protocol_eq(a: key, b: required) {
+          match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
+            Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+            Absent => match obs.provenance {
+              SuppliedHistoricalDemonstration => CollectiveBandwidthUnread {
+                floor: floor,
+                because: supplied_historical_curve_unread,
+              }
+              AwaitingLiveProducerMint => CollectiveBandwidthUnread {
+                floor: floor,
+                because: collective_curve_unread_awaits_live_producer,
+              }
+            }
+          }
+        } else {
+          CollectiveBandwidthUnread {
+            floor: floor,
+            because: "the curve's operation and size column are not the advertised protocol key" as NonEmptyStr,
+          }
+        }
+        }
+      }
+    }
+  }
+}
+
+fn reading_window(reading: CollectiveCurveReading) -> CollectiveWindowStanding {
+  match reading {
+    CollectiveCurveUnread { because: b } => WindowStandingUnread { because: b }
+    CollectiveCurveRead {
+      observation: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: w,
+    } => w
+  }
+}
+
+fn reading_attribution(reading: CollectiveCurveReading) -> CollectivePrimitiveAttribution {
+  match reading {
+    CollectiveCurveUnread { because: _ } => CollectivePrimitiveAttributionUnestablished
+    CollectiveCurveRead {
+      observation: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: a,
+      window: _,
+    } => a
+  }
+}
+
+fn join_windows(a: CollectiveWindowStanding, b: CollectiveWindowStanding) -> CollectiveWindowStanding {
+  match a {
+    WindowStandingUnread { because: _ } => a
+    WindowSharedWithDeclaredTraffic => match b {
+      WindowStandingUnread { because: _ } => b
+      WindowSharedWithDeclaredTraffic => a
+      WindowIsolated => a
+    }
+    WindowIsolated => b
+  }
+}
+
+fn join_attributions(
+  a: CollectivePrimitiveAttribution,
+  b: CollectivePrimitiveAttribution,
+) -> CollectivePrimitiveAttribution {
+  match a {
+    CollectivePrimitiveAttributionUnestablished => a
+    CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => match b {
+      CollectivePrimitiveAttributionUnestablished => b
+      CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => a
+      CollectivePrimitiveSameRuntime { nccl: _ } => a
+    }
+    CollectivePrimitiveSameRuntime { nccl: _ } => b
+  }
+}
+
+fn rank_named(ranks: List<RankCollectiveReading>, want: HostIdentity) -> RankCollectiveReading? {
+  first(filter(ranks, r => host_identity_eq(a: r.rank, b: want)))
+}
+
+fn first_missing_expected_rank(
+  expected: List<HostIdentity>,
+  ranks: List<RankCollectiveReading>,
+) -> HostIdentity? {
+  match expected.first() {
+    Absent => none
+    Present { value: h } => match rank_named(ranks: ranks, want: h) {
+      Absent => Present { value: h }
+      Present { value: _ } => first_missing_expected_rank(expected: expected.skip(n: 1), ranks: ranks)
+    }
+  }
+}
+
+fn first_duplicate_host(seen: List<HostIdentity>, rest: List<HostIdentity>) -> HostIdentity? {
+  match rest.first() {
+    Absent => none
+    Present { value: h } => match rank_named_hosts(hosts: seen, want: h) {
+      Present { value: _ } => Present { value: h }
+      Absent => first_duplicate_host(seen: concat(seen, [h]), rest: rest.skip(n: 1))
+    }
+  }
+}
+
+fn rank_named_hosts(hosts: List<HostIdentity>, want: HostIdentity) -> HostIdentity? {
+  first(filter(hosts, h => host_identity_eq(a: h, b: want)))
+}
+
+fn first_extra_measured_rank(expected: List<HostIdentity>, ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match rank_named_hosts(hosts: expected, want: r.rank) {
+      Absent => Present { value: r.rank }
+      Present { value: _ } => first_extra_measured_rank(expected: expected, ranks: ranks.skip(n: 1))
+    }
+  }
+}
+
+fn first_copied_group_curve(ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match r.producer {
+      GroupWideCurveCopiedOntoRank => Present { value: r.rank }
+      RankLocalCollectiveCurve => first_copied_group_curve(ranks: ranks.skip(n: 1))
+    }
+  }
+}
+
+fn curve_observation(reading: CollectiveCurveReading) -> CollectiveObservationIdentity? {
+  match reading {
+    CollectiveCurveUnread { because: _ } => none
+    CollectiveCurveRead {
+      observation: obs,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: _,
+    } => Present { value: obs }
+  }
+}
+
+fn first_run_mismatch(want: NonEmptyStr, ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match curve_observation(reading: r.curve) {
+      Absent => Present { value: r.rank }
+      Present { value: obs } => if (obs.run_identity as String) == (want as String) {
+        first_run_mismatch(want: want, ranks: ranks.skip(n: 1))
+      } else {
+        Present { value: r.rank }
+      }
+    }
+  }
+}
+
+fn first_protocol_mismatch(want: CollectiveProtocol, ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match curve_protocol(reading: r.curve) {
+      Absent => Present { value: r.rank }
+      Present { value: key } => if protocol_eq(a: key, b: want) {
+        first_protocol_mismatch(want: want, ranks: ranks.skip(n: 1))
+      } else {
+        Present { value: r.rank }
+      }
+    }
+  }
+}
+
+fn first_host_receipt_missing(expected: List<HostIdentity>, receipts: List<HostQualificationReceipt>) -> HostIdentity? {
+  match expected.first() {
+    Absent => none
+    Present { value: h } => match host_receipt_named(receipts: receipts, want: h) {
+      Absent => Present { value: h }
+      Present { value: _ } => first_host_receipt_missing(expected: expected.skip(n: 1), receipts: receipts)
+    }
+  }
+}
+
+fn host_receipt_named(receipts: List<HostQualificationReceipt>, want: HostIdentity) -> HostQualificationReceipt? {
+  first(filter(receipts, r => host_identity_eq(a: r.node, b: want)))
+}
+
+fn first_extra_host_receipt(expected: List<HostIdentity>, receipts: List<HostQualificationReceipt>) -> HostIdentity? {
+  match receipts.first() {
+    Absent => none
+    Present { value: r } => match rank_named_hosts(hosts: expected, want: r.node) {
+      Absent => Present { value: r.node }
+      Present { value: _ } => first_extra_host_receipt(expected: expected, receipts: receipts.skip(n: 1))
+    }
+  }
+}
+
+fn host_receipt_nodes(receipts: List<HostQualificationReceipt>) -> List<HostIdentity> {
+  map(receipts, r => r.node)
+}
+
+fn qualify_rank_symmetry(
+  expected: List<HostIdentity>,
+  ranks: List<RankCollectiveReading>,
+  required: CollectiveProtocol,
+) -> RankSymmetryStanding {
+  if expected.length() == 0 {
+    RankSymmetryUnread { because: rank_symmetry_unread_no_expected_ranks }
+  } else {
+    match protocol_population_unread_reason(protocol: required, expected: expected) {
+      Present { value: b } => RankSymmetryUnread { because: b }
+      Absent => match first_duplicate_host(seen: [], rest: expected) {
+        Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_duplicate_expected }
+        Absent => match first_duplicate_host(seen: [], rest: map(ranks, r => r.rank)) {
+          Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_duplicate_measured }
+          Absent => match first_missing_expected_rank(expected: expected, ranks: ranks) {
+            Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_missing_rank }
+            Absent => match first_extra_measured_rank(expected: expected, ranks: ranks) {
+              Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_extra_rank }
+              Absent => match first_copied_group_curve(ranks: ranks) {
+                Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_copied_curve }
+                Absent => match first_protocol_mismatch(want: required, ranks: ranks) {
+                  Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_protocol_mismatch }
+                  Absent => match ranks.first() {
+                    Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
+                    Present { value: r } => match curve_observation(reading: r.curve) {
+                      Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
+                      Present { value: obs } => match first_run_mismatch(want: obs.run_identity, ranks: ranks) {
+                        Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_run_mismatch }
+                        Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_host(
+  node: HostIdentity,
+  advertised: HostAdvertisedDelivery,
+  measured: HostMeasuredDelivery,
+) -> HostQualificationReceipt {
+  HostQualificationReceipt {
+    node: node,
+    advertised: advertised,
+    accelerators: qualify_accelerator_count(
+      advertised: advertised.accelerator_count,
+      reading: measured.accelerator_count,
+    ),
+    usable_memory: qualify_usable_memory(
+      advertised: advertised.usable_memory,
+      reading: measured.usable_memory,
+    ),
+    rail_link_mode: qualify_rail_link_mode(
+      advertised: advertised.rail_link_mode,
+      reading: measured.rail_link_mode,
+    ),
+    nic_pcie: qualify_nic_pcie(
+      advertised: advertised.nic_pcie,
+      reading: measured.nic_pcie,
+    ),
+    gpu_direct: qualify_gpu_direct(
+      node: node,
+      platform: advertised.gpu_direct_platform,
+      reading: measured.gpu_direct,
+    ),
+  }
+}
+
+fn admission_receipt(a: HostQualificationAdmission) -> HostQualificationReceipt {
+  match a {
+    HostQualified { receipt: r } => r
+    HostNotQualified { receipt: r, refusals: _ } => r
+  }
+}
+
+fn first_unqualified_receipt(receipts: List<HostQualificationReceipt>) -> HostQualificationReceipt? {
+  match receipts.first() {
+    Absent => none
+    Present { value: r } =>
+      if host_qualification_refusals(receipt: r).length() == 0 {
+        first_unqualified_receipt(receipts: receipts.skip(n: 1))
+      } else {
+        Present { value: r }
+      }
+  }
+}
+
+fn qualify_group_host_roster(
+  expected: List<HostIdentity>,
+  admissions: List<HostQualificationAdmission>,
+) -> GroupHostRosterStanding {
+  let receipts = map(admissions, a => admission_receipt(a: a))
+  if expected.length() == 0 {
+    GroupHostRosterUnread {
+      because: "the group advertisement named no expected ranks" as NonEmptyStr,
+    }
+  } else {
+    match first_duplicate_host(seen: [], rest: expected) {
+      Present { value: _ } => GroupHostRosterUnread {
+        because: "the expected roster names a host twice" as NonEmptyStr,
+      }
+      Absent => match first_duplicate_host(seen: [], rest: host_receipt_nodes(receipts: receipts)) {
+        Present { value: _ } => GroupHostRosterUnread {
+          because: "host admissions name a host twice" as NonEmptyStr,
+        }
+        Absent => match first_host_receipt_missing(expected: expected, receipts: receipts) {
+          Present { value: _ } => GroupHostRosterUnread {
+            because: "an expected rank has no host admission; a group must not qualify from one host's facts" as NonEmptyStr,
+          }
+          Absent => match first_extra_host_receipt(expected: expected, receipts: receipts) {
+            Present { value: _ } => GroupHostRosterUnread {
+              because: "a host admission is not on the expected roster" as NonEmptyStr,
+            }
+            Absent => match first_unqualified_receipt(receipts: receipts) {
+              Present { value: r } => GroupMemberNotQualified { host: r.node, receipt: r }
+              Absent => GroupHostRosterComplete { rank_count: expected.length() }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_collective_group<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  advertised: CollectiveGroupAdvertised,
+  measured: CollectiveGroupMeasured,
+  host_admissions: List<HostQualificationAdmission>,
+) -> CollectiveGroupReceipt<P> {
+  CollectiveGroupReceipt {
+    offer: offer,
+    advertised: advertised,
+    host_roster: qualify_group_host_roster(expected: advertised.expected_ranks, admissions: host_admissions),
+    collective_latency: qualify_collective_latency(
+      ceiling: advertised.latency_ceiling,
+      expected: advertised.expected_ranks,
+      required: advertised.all_reduce_protocol,
+      reading: measured.collective,
+    ),
+    collective_bandwidth: qualify_collective_bandwidth(
+      floor: advertised.bandwidth_floor,
+      expected: advertised.expected_ranks,
+      required: advertised.all_reduce_protocol,
+      reading: measured.collective,
+    ),
+    all_to_all_latency: qualify_collective_latency(
+      ceiling: advertised.all_to_all_latency_ceiling,
+      expected: advertised.expected_ranks,
+      required: advertised.all_to_all_protocol,
+      reading: measured.all_to_all,
+    ),
+    rank_symmetry: qualify_rank_symmetry(
+      expected: advertised.expected_ranks,
+      ranks: measured.ranks,
+      required: advertised.all_reduce_protocol,
+    ),
+    host_registered_ib_fallback: measured.host_registered_ib_fallback,
+    window: join_windows(
+      a: reading_window(reading: measured.collective),
+      b: reading_window(reading: measured.all_to_all),
+    ),
+    primitive_attribution: join_attributions(
+      a: reading_attribution(reading: measured.collective),
+      b: reading_attribution(reading: measured.all_to_all),
+    ),
+  }
+}
+
+fn host_roster_refusal(s: GroupHostRosterStanding) -> List<QualificationRefusal> {
+  match s {
+    GroupHostRosterComplete { rank_count: _ } => []
+    GroupHostRosterUnread { because: _ } => [GroupHostRosterDidNotHold { standing: s }]
+    GroupMemberNotQualified { host: _, receipt: _ } => [GroupHostRosterDidNotHold { standing: s }]
+  }
+}
+
+fn host_qualification_refusals(receipt: HostQualificationReceipt) -> List<QualificationRefusal> {
+  concat(
+    accelerator_refusal(s: receipt.accelerators),
+    concat(
+      memory_refusal(s: receipt.usable_memory),
+        concat(
+          rail_refusal(s: receipt.rail_link_mode),
+          concat(
+            pcie_refusal(s: receipt.nic_pcie),
+            gpu_direct_refusal(s: receipt.gpu_direct),
+          ),
+        ),
+    ),
+  )
+}
+
+fn group_qualification_refusals<P>(receipt: CollectiveGroupReceipt<P>) -> List<QualificationRefusal> {
+  concat(
+    host_roster_refusal(s: receipt.host_roster),
+    concat(
+      latency_refusal(s: receipt.collective_latency),
+      concat(
+        bandwidth_refusal(s: receipt.collective_bandwidth),
+        concat(
+          symmetry_refusal(s: receipt.rank_symmetry),
+          concat(
+            all_to_all_refusal(s: receipt.all_to_all_latency),
+            concat(
+              ib_fallback_refusal(s: receipt.host_registered_ib_fallback),
+              concat(
+                window_refusal(s: receipt.window),
+                primitive_refusal(a: receipt.primitive_attribution),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn admit_qualified_host(receipt: HostQualificationReceipt) -> HostQualificationAdmission {
+  let refusals = host_qualification_refusals(receipt: receipt)
+  if refusals.length() == 0 {
+    HostQualified { receipt: receipt }
+  } else {
+    HostNotQualified { receipt: receipt, refusals: refusals }
+  }
+}
+
+fn admit_qualified_group<P>(receipt: CollectiveGroupReceipt<P>) -> GroupQualificationAdmission<P> {
+  let refusals = group_qualification_refusals(receipt: receipt)
+  if refusals.length() == 0 {
+    GroupQualified { receipt: receipt }
+  } else {
+    GroupNotQualified { receipt: receipt, refusals: refusals }
+  }
+}
+
+// THE QUALIFIED PROJECTION OF AN EXISTING OFFER. Delivery floors that a VM catalog never claimed
+// are OfferDoesNotClaimNodeDelivery. A Spark/rail offer that claims group delivery must carry the
+// group admission; assemble_candidate_field excludes GroupNotQualified by name. Wiring a live Spark
+// SupplierOffer is a declared frontier (review 5246424986 item 6); Group B in this change is a
+// historical demonstration of the vocabulary.
+type OfferDeliveryClaim<P>
+  = OfferDoesNotClaimNodeDelivery
+  | OfferClaimsNodeDelivery {
+      offer: FabricIdentity<P, OfferKey>,
+      admission: GroupQualificationAdmission<P>,
+    }
+
+fn group_admission_receipt<P>(a: GroupQualificationAdmission<P>) -> CollectiveGroupReceipt<P> {
+  match a {
+    GroupQualified { receipt: r } => r
+    GroupNotQualified { receipt: r, refusals: _ } => r
+  }
+}
+
+fn host_admission_refusals(a: HostQualificationAdmission) -> List<QualificationRefusal> {
+  host_qualification_refusals(receipt: admission_receipt(a: a))
+}
+
+fn group_admission_refusals<P>(a: GroupQualificationAdmission<P>) -> List<QualificationRefusal> {
+  group_qualification_refusals(receipt: group_admission_receipt(a: a))
+}
+
+fn claimed_delivery_check<P>(claim: OfferDeliveryClaim<P>) -> ClaimedDeliveryCheck<P> {
+  match claim {
+    OfferDoesNotClaimNodeDelivery => ClaimedDeliveryHolds
+    OfferClaimsNodeDelivery { offer: o, admission: a } => {
+      let r = group_admission_receipt(a: a)
+      if !fabric_identity_eq(left: o, right: r.offer) {
+        ClaimedDeliveryOfferMismatch { claim_names: o, receipt_names: r.offer }
+      } else {
+        let refusals = group_qualification_refusals(receipt: r)
+        if refusals.length() == 0 {
+          ClaimedDeliveryHolds
+        } else {
+          ClaimedDeliveryUnqualified { refusals: refusals }
+        }
+      }
+    }
+  }
+}
+
+fn accelerator_refusal(s: AcceleratorCountStanding) -> List<QualificationRefusal> {
+  match s {
+    AcceleratorCountAgrees { count: _ } => []
+    AcceleratorCountFallsShort { advertised: _, measured: _ } =>
+      [AcceleratorCountDidNotHold { standing: s }]
+    AcceleratorCountUnread { advertised: _, because: _ } =>
+      [AcceleratorCountDidNotHold { standing: s }]
+  }
+}
+
+fn memory_refusal(s: UsableMemoryStanding) -> List<QualificationRefusal> {
+  match s {
+    UsableMemoryAgrees { bytes: _ } => []
+    UsableMemoryFallsShort { advertised: _, measured: _ } =>
+      [UsableMemoryDidNotHold { standing: s }]
+    UsableMemoryUnread { advertised: _, because: _ } =>
+      [UsableMemoryDidNotHold { standing: s }]
+  }
+}
+
+fn rail_refusal(s: RailLinkModeStanding) -> List<QualificationRefusal> {
+  match s {
+    RailLinkModeAgrees { mode: _, instrument: _ } => []
+    RailLinkModeDiffers { advertised: _, measured: _, instrument: _ } =>
+      [RailLinkModeDidNotHold { standing: s }]
+    RailLinkModeUnread { advertised: _, because: _ } =>
+      [RailLinkModeDidNotHold { standing: s }]
+  }
+}
+
+fn pcie_refusal(s: NicPcieStanding) -> List<QualificationRefusal> {
+  match s {
+    NicPcieAgrees { link: _, instrument: _ } => []
+    NicPcieExceeds { advertised: _, measured: _, instrument: _ } => []
+    NicPcieFallsShort { advertised: _, measured: _, instrument: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+    NicPcieDiffers { advertised: _, measured: _, instrument: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+    NicPcieOfferUngrounded { advertised: _, because: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+    NicPcieUnread { advertised: _, because: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+  }
+}
+
+fn gpu_direct_refusal(s: GpuDirectStanding) -> List<QualificationRefusal> {
+  match s {
+    GpuDirectDeviceUnsupported { capability: _ } => []
+    GpuDirectDevicePrerequisiteMet { capability: _ } => []
+    GpuDirectReceiptNamesAnotherHost { expected: _, observed: _, receipt: _ } =>
+      [GpuDirectDidNotHold { standing: s }]
+    GpuDirectUnread { because: _ } => [GpuDirectDidNotHold { standing: s }]
+  }
+}
+
+fn latency_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveLatencyUnread { ceiling: _, because: _ } =>
+      [CollectiveLatencyDidNotHold { standing: s }]
+  }
+}
+
+fn bandwidth_refusal(s: CollectiveBandwidthStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveBandwidthUnread { floor: _, because: _ } =>
+      [CollectiveBandwidthDidNotHold { standing: s }]
+  }
+}
+
+fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
+  match s {
+    RankSymmetryUnread { because: _ } => [RankSymmetryDidNotHold { standing: s }]
+  }
+}
+
+fn all_to_all_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveLatencyUnread { ceiling: _, because: _ } =>
+      [AllToAllLatencyDidNotHold { standing: s }]
+  }
+}
+
+fn window_refusal(s: CollectiveWindowStanding) -> List<QualificationRefusal> {
+  match s {
+    WindowIsolated => []
+    WindowSharedWithDeclaredTraffic => [CollectiveWindowDidNotHold { standing: s }]
+    WindowStandingUnread { because: _ } => [CollectiveWindowDidNotHold { standing: s }]
+  }
+}
+
+fn primitive_refusal(a: CollectivePrimitiveAttribution) -> List<QualificationRefusal> {
+  match a {
+    CollectivePrimitiveSameRuntime { nccl: _ } => []
+    CollectivePrimitiveAttributionUnestablished =>
+      [CollectivePrimitiveDidNotHold { attribution: a }]
+    CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } =>
+      [CollectivePrimitiveDidNotHold { attribution: a }]
+  }
+}
+fn ib_fallback_refusal(s: HostRegisteredIbFallbackStanding) -> List<QualificationRefusal> {
+  match s {
+    HostRegisteredIbFallbackCitedOnServingRuntime { nccl: _ } => []
+    HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+      measured_with: _,
+      serving_revisions_not_censused: _,
+    } => [HostRegisteredIbFallbackDidNotHold { standing: s }]
+    HostRegisteredIbFallbackUnread { because: _ } =>
+      [HostRegisteredIbFallbackDidNotHold { standing: s }]
+  }
+}

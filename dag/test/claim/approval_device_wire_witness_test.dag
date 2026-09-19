@@ -1,0 +1,113 @@
+module test.claim.approval_device_wire_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.measure { byte_size }
+import extdeps.apple.apns { ApnsStatusUnlisted, apns_refusal_class }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed, signature_verification_from_implementation,
+}
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_device_wire {
+  framed, device_redemption_signing_input, enrolment_transcript, DeviceRedemptionSigningInput, RedemptionChallenge,
+  approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
+}
+
+data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
+data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
+data sig: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "SIG" }
+
+test fn witness_apns_unlisted_status_is_not_misclassified() -> Bool {
+  match apns_refusal_class(status: 418) {
+    ApnsStatusUnlisted { status } => status == 418
+    _ => false
+  }
+}
+
+// ── Framing ──────────────────────────────────────────────────────────────────────────────────
+// THE NON-INJECTIVITY A SEPARATOR JOIN HAD: ["a,b", "c"] and ["a", "b,c"] (and any pair that moves
+// a separator across a boundary) must render differently. With framing they do, whatever the
+// fields contain.
+test fn witness_framing_is_injective_across_a_moved_boundary() -> Bool {
+  framed(fields: ["a:1,b", "c"]) != framed(fields: ["a", "1,b:c"])
+    && framed(fields: ["ab", ""]) != framed(fields: ["a", "b"])
+}
+
+test fn witness_framing_counts_code_points() -> Bool {
+  framed(fields: ["été"]) as String == "3:été,"
+}
+
+// ── Signature seam ───────────────────────────────────────────────────────────────────────────
+test fn witness_malformed_signature_refuses_despite_a_true_verdict() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 71), message: "m", implementation_verified: true) {
+    SignatureMalformed { declared: _, expected: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_malformed_key_refuses_despite_a_true_verdict() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 33), signature: sig, signature_size: byte_size(count: 64), message: "m", implementation_verified: true) {
+    VerifyingKeyMalformed { declared: _, expected: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_false_verdict_is_invalid() -> Bool {
+  match signature_verification_from_implementation(key: key_a, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 64), message: "m", implementation_verified: false) {
+    SignatureInvalid { suite: _ } => true
+    _ => false
+  }
+}
+
+
+// ── Signing input: every field an attacker would swap changes the bytes ──────────────────────
+fn redemption_input(approve: Bool, enrollment: NonEmptyStr, nonce: NonEmptyStr, request_text: NonEmptyStr, tag: NonEmptyStr) -> NonEmptyStr {
+  device_redemption_signing_input(i: DeviceRedemptionSigningInput {
+    audience: approval_device_audience,
+    enrollment_id: enrollment,
+    challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z", nonce_hex: nonce },
+    escalation_id: "esc-1",
+    request_revision: "r1",
+    stored_request_text: request_text,
+    decision: if approve { ProposeApprove } else { ProposeDeny },
+    capability_text: "cap",
+    capability_tag_b64url: tag,
+  })
+}
+
+data base_input: NonEmptyStr = redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
+
+test fn witness_signing_input_binds_the_verb() -> Bool {
+  base_input != redemption_input(approve: false, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_enrollment() -> Bool {
+  base_input != redemption_input(approve: true, enrollment: "e2", nonce: "n1", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_server_challenge() -> Bool {
+  base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n2", request_text: "req", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_displayed_request() -> Bool {
+  base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req-revised", tag: "T")
+}
+
+test fn witness_signing_input_binds_the_capability_tag() -> Bool {
+  base_input != redemption_input(approve: true, enrollment: "e1", nonce: "n1", request_text: "req", tag: "T2")
+}
+
+test fn witness_enrolment_transcript_binds_key_and_platform() -> Bool {
+  enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_b, platform: MobileIos)
+    && enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileIos) != enrolment_transcript(code: "482913", decision_key: key_a, platform: MobileAndroid)
+}
+
+// The read transcript binds the path and the enrolment: an assertion for one GET or one device
+// cannot authenticate another.
+test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool {
+  let base = device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
+  base != device_read_client_data(path: "/approve/device/requests/esc-1", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
+    && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-2", requested_at: "2026-09-18T12:00:30Z")
+    && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:31Z")
+}

@@ -1,0 +1,337 @@
+module gunbc.ci_workflow_scan_producer
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
+import std.nat { Nat, nat_range_inclusive }
+import std.resources { Network }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import extdeps.github.code_search {
+  CodeSearchPage,
+  CodeSearchHit,
+  code_search_hits_read,
+  retrievable_result_ceiling,
+  deepest_retrievable_page,
+}
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead,
+  CodeSearchPageComplete,
+  CodeSearchPageTruncated,
+  CodeSearchPageRefused,
+  perform_code_search_page,
+}
+import gunbc.github_observation_record {
+  GithubObservation,
+  GithubObservationRequest,
+  CodeSearchPageRequest,
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationTruncatedUpstream,
+  ObservationMorePagesRemain,
+  ObservationRefused,
+  ObservationBudgetStanding,
+  github_observation,
+  budget_unobservable,
+}
+
+// THE PAGE WALK THE CORPUS HAS BEEN MISSING. gunbc.ci_workflow_source_read models every decision a
+// discovery scan needs -- a page is complete, truncated, or refused; a hit canonicalizes only when
+// the hit, the request and the response name the same subject -- and has carried a frontier row
+// since before this lane started saying what was absent: "a scan producer that pages
+// perform_code_search_page under a declared bound ... the obligation is the page walk and its
+// receipt, which is where a bounded scan becomes a declared population rather than a sample nobody
+// sized". This module is that walk.
+//
+// IT IS A FOLD OVER A BOUNDED PAGE LIST, NOT A LOOP UNTIL EMPTY, and the difference is the whole
+// safety property. "Keep fetching until a page comes back short" has no bound: a query whose result
+// set grows under it, or an endpoint that answers a full page forever, walks until something else
+// stops it -- a rate limit, a budget, an operator. The page list is derived from the ceiling before
+// the first call, so the most this can ever spend is known before it spends anything.
+//
+// EARLY EXHAUSTION STILL STOPS IT, and that needs care because a fold cannot break. The walk state
+// carries a stop reason, and once set every later step is a pure pass-through that performs NO
+// effect: the fold visits the remaining page numbers and fetches none of them. Fetching past the
+// end would burn budget against an answer already known, which on an instrument rate-limited to ten
+// requests a minute is the difference between a scan that finishes and one that does not.
+
+type ScanStop
+  = StoppedExhausted { pages_read: Int }
+  | StoppedTruncated { cause: NonEmptyStr, pages_read: Int }
+  | StoppedRefused { cause: NonEmptyStr, pages_read: Int }
+  | StoppedAtBound { pages_read: Int }
+
+type ScanWalkState {
+  pages_read: Int
+  hits: List<CodeSearchHit>
+  records: List<GithubObservation>
+  total_count_seen: Int
+  stop: ScanStop?
+}
+
+fn initial_walk_state() -> ScanWalkState {
+  ScanWalkState {
+    pages_read: 0,
+    hits: [],
+    records: [],
+    total_count_seen: 0,
+    stop: none,
+  }
+}
+
+// A QUERY'S ENUMERABILITY IS A FACT ABOUT THE QUERY, NOT ABOUT THE WALK THAT RAN IT. GitHub reports
+// how many results it believes exist; the endpoint will surrender at most retrievable_result_ceiling
+// of them. When the first exceeds the second, no page walk however patient can enumerate the query,
+// and reporting what came back as "the population" states a lower bound as a total. The repair is
+// not more pages -- it is a narrower query, which is why this standing exists to be acted on rather
+// than merely recorded.
+type PartitionEnumerability
+  = PartitionFullyEnumerable { total_count: Int }
+  | PartitionSaturated { total_count: Int, ceiling: Int, cause: NonEmptyStr }
+  | PartitionSizeUnobserved
+
+fn partition_enumerability(total_count_seen: Int, pages_read: Int) -> PartitionEnumerability {
+  if pages_read == 0 {
+    PartitionSizeUnobserved
+  } else {
+    if total_count_seen > retrievable_result_ceiling {
+      PartitionSaturated {
+        total_count: total_count_seen,
+        ceiling: retrievable_result_ceiling,
+        cause: "the query reports more results than this endpoint will ever surrender, so its pages are a truncation of an answer whose size is known; the population from this partition is a lower bound and the query must be subdivided before it may be described as enumerated" as NonEmptyStr,
+      }
+    } else {
+      PartitionFullyEnumerable { total_count: total_count_seen }
+    }
+  }
+}
+
+// THE RECEIPT, AND IT IS THE POINT OF THE MODULE. A scan that returns hits and no receipt hands its
+// consumer a list with no way to know what it is a list OF. Every field here is something a reader
+// would otherwise have to assume: how deep the walk was allowed to go, how far it actually got, why
+// it stopped, and whether the query was enumerable at all.
+type ScanReceipt {
+  query: NonEmptyStr
+  per_page: Int
+  page_bound: Int
+  pages_read: Int
+  hits_read: Int
+  enumerability: PartitionEnumerability
+  stop: ScanStop
+  records: List<GithubObservation>
+}
+
+// A POPULATION MAY BE READ FROM THIS SCAN ONLY WHEN ALL THREE HOLD, and each guards a different way
+// a sample has been reported as a census in this lane's own prototype: the walk ran to exhaustion
+// rather than to its bound, upstream never declared it gave up early, and the query was small
+// enough to enumerate in the first place.
+fn scan_is_a_declared_population(receipt: ScanReceipt) -> Bool {
+  match receipt.stop {
+    StoppedExhausted { pages_read: _ } =>
+      match receipt.enumerability {
+        PartitionFullyEnumerable { total_count: _ } => true
+        PartitionSaturated { total_count: _, ceiling: _, cause: _ } => false
+        PartitionSizeUnobserved => false
+      }
+    StoppedAtBound { pages_read: _ } => false
+    StoppedTruncated { cause: _, pages_read: _ } => false
+    StoppedRefused { cause: _, pages_read: _ } => false
+  }
+}
+
+fn walk_stop_or_bound(state: ScanWalkState) -> ScanStop {
+  match state.stop {
+    Present { value: s } => s
+    Absent => StoppedAtBound { pages_read: state.pages_read }
+  }
+}
+
+// ONE STEP. It performs an effect only when the walk has not already stopped, which is what makes a
+// fold over a fixed page list behave like a loop that breaks.
+fn advance_scan(
+  state: ScanWalkState,
+  auth_token: Secret,
+  query: NonEmptyStr,
+  per_page: Int,
+  page: Int,
+  observed_at: NonEmptyStr,
+  api_version: NonEmptyStr,
+) -> ScanWalkState uses net: Network {
+  match state.stop {
+    Present { value: _ } => state
+    Absent =>
+      fold_page_into_state(
+        state: state,
+        read: perform_code_search_page(
+          auth_token: auth_token,
+          q: query as String,
+          per_page: per_page,
+          page: page,
+        ),
+        query: query,
+        per_page: per_page,
+        page: page,
+        observed_at: observed_at,
+        api_version: api_version,
+      )
+  }
+}
+
+fn scan_observation(
+  query: NonEmptyStr,
+  per_page: Int,
+  page: Int,
+  observed_at: NonEmptyStr,
+  api_version: NonEmptyStr,
+  completeness: ObservationCompleteness,
+) -> GithubObservation {
+  github_observation(
+    request: CodeSearchPageRequest { query: query, per_page: per_page, page: page },
+    observed_at: observed_at,
+    api_version: api_version,
+    body_digest: content_hash_atom(value: query),
+    completeness: completeness,
+    budget: budget_unobservable(),
+  )
+}
+
+// THE DECISION THAT ENDS A WALK, SEPARATED FROM THE EFFECT THAT FEEDS IT. Classifying what a page
+// means is a total function over the page, and ci_workflow_source_read split it for exactly this
+// reason: a decision fused to a fetch can only be exercised against whatever the mock happens to
+// publish. This one is testable against every arm without a network.
+fn fold_page_into_state(
+  state: ScanWalkState,
+  read: CodeSearchPageRead,
+  query: NonEmptyStr,
+  per_page: Int,
+  page: Int,
+  observed_at: NonEmptyStr,
+  api_version: NonEmptyStr,
+) -> ScanWalkState {
+  match read {
+    CodeSearchPageRefused { performance: _ } =>
+      ScanWalkState {
+        pages_read: state.pages_read,
+        hits: state.hits,
+        records: concat(state.records, [
+          scan_observation(
+            query: query, per_page: per_page, page: page,
+            observed_at: observed_at, api_version: api_version,
+            completeness: ObservationRefused {
+              cause: "the code search page was refused by the transport; no hits from it may be folded into a population" as NonEmptyStr
+            },
+          )
+        ]),
+        total_count_seen: state.total_count_seen,
+        stop: Present {
+          value: StoppedRefused {
+            cause: "a page of this query was refused, so the walk cannot establish what the query contains" as NonEmptyStr,
+            pages_read: state.pages_read,
+          }
+        },
+      }
+    CodeSearchPageTruncated { page: p, hits_read: read_count, cause: c } =>
+      ScanWalkState {
+        pages_read: state.pages_read + 1,
+        hits: concat(state.hits, p.items),
+        records: concat(state.records, [
+          scan_observation(
+            query: query, per_page: per_page, page: page,
+            observed_at: observed_at, api_version: api_version,
+            completeness: ObservationTruncatedUpstream { cause: c },
+          )
+        ]),
+        total_count_seen: p.total_count,
+        stop: Present { value: StoppedTruncated { cause: c, pages_read: state.pages_read + 1 } },
+      }
+    CodeSearchPageComplete { page: p, hits_read: read_count } =>
+      ScanWalkState {
+        pages_read: state.pages_read + 1,
+        hits: concat(state.hits, p.items),
+        records: concat(state.records, [
+          scan_observation(
+            query: query, per_page: per_page, page: page,
+            observed_at: observed_at, api_version: api_version,
+            completeness: page_completeness(read_count: read_count, per_page: per_page, page: page),
+          )
+        ]),
+        total_count_seen: p.total_count,
+        stop: exhausted_if_short(read_count: read_count, per_page: per_page, pages_read: state.pages_read + 1),
+      }
+  }
+}
+
+// A SHORT PAGE IS THE END OF THE ANSWER, and a full one is not evidence that more exist -- it is
+// only the absence of evidence that they do not. That asymmetry is why the walk continues on a full
+// page and stops on a short one, rather than trying to predict the total from total_count, which is
+// GitHub's claim rather than an observation of what it will actually serve.
+fn exhausted_if_short(read_count: Int, per_page: Int, pages_read: Int) -> ScanStop? {
+  if read_count < per_page {
+    Present { value: StoppedExhausted { pages_read: pages_read } }
+  } else {
+    none
+  }
+}
+
+// THE NEXT PAGE IS THE NEXT PAGE, not a placeholder. A record saying "more pages remain" without
+// saying which one is a note to a human rather than a fact a resume can act on.
+fn page_completeness(read_count: Int, per_page: Int, page: Int) -> ObservationCompleteness {
+  if read_count < per_page {
+    ObservationComplete
+  } else {
+    ObservationMorePagesRemain { next_page: page + 1 }
+  }
+}
+
+// THE WALK ITSELF, AND ITS BOUND IS DERIVED BEFORE THE FIRST CALL. deepest_retrievable_page turns
+// the endpoint's own ceiling into the page list, so the cost of this scan is known from the query
+// and the page size alone -- no configuration, no caller-supplied limit that could be set past what
+// the endpoint will serve. A caller wanting a shallower walk narrows the query, which is the same
+// repair saturation calls for.
+fn scan_partition(
+  auth_token: Secret,
+  query: NonEmptyStr,
+  per_page: Int,
+  observed_at: NonEmptyStr,
+  api_version: NonEmptyStr,
+) -> ScanReceipt uses net: Network {
+  let bound = deepest_retrievable_page(per_page: per_page)
+  let walked = fold(
+    nat_range_inclusive(1, bound as Nat),
+    init: initial_walk_state(),
+    f: fn(acc, page) {
+      advance_scan(
+        state: acc,
+        auth_token: auth_token,
+        query: query,
+        per_page: per_page,
+        page: page as Int,
+        observed_at: observed_at,
+        api_version: api_version,
+      )
+    },
+  )
+  ScanReceipt {
+    query: query,
+    per_page: per_page,
+    page_bound: bound,
+    pages_read: walked.pages_read,
+    hits_read: count(walked.hits),
+    enumerability: partition_enumerability(
+      total_count_seen: walked.total_count_seen,
+      pages_read: walked.pages_read,
+    ),
+    stop: walk_stop_or_bound(state: walked),
+    records: walked.records,
+  }
+}
+
+// THE HITS A CONSUMER MAY ACT ON, and it is deliberately not a field on the receipt. A reader
+// holding the receipt can see the standing and the hits together; a reader handed only a list
+// cannot, and this lane has already shipped one figure that was a lower bound presented as a total.
+// Reading hits out requires passing the receipt, so the standing is always in reach of the hand
+// that takes the population.
+fn scan_hits_if_declared_population(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> List<CodeSearchHit> {
+  if scan_is_a_declared_population(receipt: receipt) {
+    hits
+  } else {
+    []
+  }
+}

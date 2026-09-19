@@ -90,7 +90,11 @@ jobs:
       # repository's size rather than whether the host can check out at all, and the attempt
       # workspace is bounded.
       - name: Check out this repository
-        uses: actions/checkout@v4
+        # Pinned to the commit of actions/checkout v5.1.0, whose action.yml declares node24. A tag
+        # is not accepted here: gunbc.action_use_admission refuses any `uses:` that does not name a
+        # producer commit it has read, and refuses any release GitHub executes under a runtime other
+        # than the one it declares (test.claim.action_use_admission_witness reads this file).
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 1
 
@@ -111,7 +115,8 @@ jobs:
       # A JAVASCRIPT ACTION THAT IS NOT checkout, so the action-download path and the runner's
       # bundled node are exercised by something whose success does not depend on git.
       - name: Run a JavaScript action
-        uses: actions/github-script@v7
+        # actions/github-script v8.0.0, declared node24; see the checkout step above.
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         with:
           script: |
             const os = require('os');

@@ -77,7 +77,7 @@ import gunbc.spark.serving_subject {
 // The container build and the published-image probe ask it, and the answer reads only OBSERVED
 // causes -- a role, a claimed group, a placed arm, a held reservation -- because those are the facts
 // that something is already running or reserved on the machine. Its projection is
-// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host_live` (an effect reads the current authority first; `admit_unplaced_host_resting` is the pure projection over the source rows).
+// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host_live` (an effect reads the current authority first; `admit_unplaced_host` is the pure projection over the source rows).
 //
 // The second is ADMISSIBILITY TO A SERVING SUBJECT: which units a particular deployment may use. A
 // host is admissible to subject S iff EVERY commitment cause on it is held by S. That reading is
@@ -813,16 +813,22 @@ fn spark_authority_held_causes_in(standings: List<SparkHostStanding>, host: Host
   }
 }
 
-fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<SparkHostStanding>) -> SparkHostAdmission {
+// THE DECISION TAKES ITS POPULATION AS A SUPPLIED VALUE; THE PRODUCTION SEAM BELOW SUPPLIES THE LIVE ONE.
+// Once every Spark unit carries a standing -- the state after group B's assigned arm claimed its
+// four hosts on 2026-09-18 -- no production host is unplaced, so the admitting arm of this seam
+// cannot be exercised against the live census at all. Supplying the unplaced set keeps that arm
+// authorable as a positive control while every refusal arm still runs the real path through
+// admit_unplaced_host (DESIGN section 3: a witness discriminates at one interface, and the real path
+// keeps one inhabitance claim).
+fn admit_unplaced_host_among(raw: String, purpose: NonEmptyStr, unplaced: List<HostIdentity>, held_causes: fn(HostIdentity) -> String) -> SparkHostAdmission {
   let host = raw as HostIdentity
-  let unplaced = spark_unplaced_hosts_of(standings: standings)
   if raw == "" {
     SparkHostRefused { cause: join(["no host was named for ", purpose as String, "; this entry takes one and does not pick"], "") as NonEmptyStr }
   } else if !any(unplaced, h => host_identity_eq(a: h, b: host)) {
     SparkHostRefused {
       cause: join([
         raw, " is not admissible for ", purpose as String, ", because ",
-        spark_authority_held_causes_in(standings: standings, host: host) as String,
+        held_causes(host),
         ". Unplaced as of this read: ",
         join(map(unplaced, h => h as String), ", "),
         ". This is an eligibility read and not a held claim",
@@ -833,11 +839,13 @@ fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<Spa
   }
 }
 
-// The admission over the RESTING rows -- the pure projection, for consumers with no effect to
-// admit. An effect asks admit_unplaced_host_live, which reads the current authority first.
-fn admit_unplaced_host_resting(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
-  admit_unplaced_host_in(raw: raw, purpose: purpose, standings: spark_host_standings)
+// The same decision over a whole standings population: the unplaced set and the causes are both
+// projections of it, so a caller with standings (the current-authority route) supplies one value.
+fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<SparkHostStanding>) -> SparkHostAdmission {
+  admit_unplaced_host_among(raw: raw, purpose: purpose, unplaced: spark_unplaced_hosts_of(standings: standings), held_causes: fn(h) { spark_authority_held_causes_in(standings: standings, host: h) as String })
 }
+
+
 
 // THE EFFECT'S ADMISSION IS A CLAIM, NOT A READ. The current standings admit, then the claim lands
 // -- on the host's group partition when a pair-serving authority claims the group (against the
@@ -932,4 +940,15 @@ fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> Pro
       }
     }
   }
+}
+
+// The admission over the RESTING rows -- the pure projection, for consumers with no effect to
+// admit. An effect asks admit_unplaced_host_live, which reads the current authority and claims.
+fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  admit_unplaced_host_among(
+    raw: raw,
+    purpose: purpose,
+    unplaced: spark_unplaced_hosts,
+    held_causes: h => spark_authority_held_causes_wire(host: h) as String,
+  )
 }

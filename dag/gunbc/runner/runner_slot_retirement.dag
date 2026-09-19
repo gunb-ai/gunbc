@@ -45,7 +45,7 @@ import gunbc.systemctl_show_read {
 //   3. OBSERVE IT GONE, and observe the CGROUP EMPTY -- two facts, not one.
 //
 // WHY THE CGROUP IS A SEPARATE OBSERVATION FROM THE UNIT. `gunbc.runner_unit`'s teardown intent
-// (ExitType=cgroup, KillMode=control-group) exists precisely because a runner unit could report
+// (ExitType=main, KillMode=control-group) exists precisely because a runner unit could report
 // stopped while its Runner.Worker, claim_executor and gunbc children kept running -- the orphan
 // class that motivated that drop-in. A unit reported gone whose cgroup still holds processes is
 // exactly that state, and it still holds memory. Charging capacity against the unit's disposition
