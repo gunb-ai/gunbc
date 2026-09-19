@@ -1,13 +1,11 @@
 module test.claim.spark.serving_load_probe_witness
 
-import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
-import std.nat { Nat }
-import v2.std.algebra { length, filter }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueExact, SampleValueNotFinite, SampleValueUnreadable }
-import std.measure { token_count, token_count_value, millisecond, millisecond_count, milli_tokens_per_second_count }
-import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
+import std.measure { token_count_value, millisecond, millisecond_count }
+import product.capacity.lease { lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.serving_rank_observe {
@@ -16,69 +14,28 @@ import gunbc.spark.serving_rank_observe {
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.model_snapshot_materialize { RemoteRan, RemoteUnreachable }
 import gunbc.spark.vllm_endpoint_process_launch {
-  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved,
 }
 import gunbc.harness.harness_backend { harness_queue_from_body }
-import extdeps.vllm.metrics { InterTokenLatencySeconds }
-import extdeps.vllm.bench_serve {
-  VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
-  vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
-  vllm_bench_serve_identity_matches,
-}
-import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks }
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.spark.serving_load_probe {
-  DrainObservedIdle, DrainNotIdle,
-  ExclusionNotEstablished, ExclusionEstablished,
-  WindowIsolated, WindowIsolationNotEstablished,
-  ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
-  window_from_drain, isolated_window, drain_from_queue,
-  ArmInService, ArmOutOfService,
-  OperationLedger, LedgerClosed, LedgerIncomplete, ledger_admits_token_denomination,
-  RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
-  ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
-  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, TokenDeltaScoped, generation_token_delta, generation_token_delta_scoped,
-  derive_rate_honest, serving_load_observation, serving_load_observation_text, ServingLoadObservation, tokens_per_observation_second,
-  foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
-  occupancy_from_body, occupancy_trace_from_endpoint_scrapes, 
-  itl_latency_delta, iteration_tokens_booked_delta,
-  LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset,
-  TokenHistogramRead, TokenHistogramUnread, TokenHistogramReset,
-  glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
-  glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
-  OccupancyBoundariesRead, OccupancyBoundariesUnread, OccupancySample,
-  glm_native_sweep_ttft_c8, glm_native_sweep_ttft_c16,
-  ClientOutputTokensUnread, ClientOutputTokensObserved,
-  ClientBenchLatencyUnread, ClientBenchLatencyReported,
-  glm_native_workload_admission,
-  glm_native_single_stream_decode_bound_millis,
-  glm_native_single_stream_decode_bound_standing,
-  glm_native_engine_tokenizer_path,
-  glm_native_live_probe_provenance, DriverObserverSplit, SamePrincipal,
-  glm_native_smoke_protocol, glm_native_smoke_client_latency,
-  glm_native_arm_service,
-  decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
-  glm_native_wiring_smoke_protocol, glm_native_contended_sweep_c1, glm_native_contended_sweep_c2,
-  glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
-  
-  glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
-  glm_native_window_standing_specimen, window_standing_gap_is_unattributed,
-  SuccessfulClientRequestSecondBucketPeak,
-  ClientItlDistributionObserved, ClientItlDistributionUnread, client_itl_text, client_bucket_peak_text,
-  ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
-  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
-  ClientOutputTokensObserved,
-  pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
-  glm_native_holistic_execution, LongContextLoadProtocolPrototype, LongContextRunnable,
-  glm_native_live_runtime_is_derived_gb10_row,
-  glm_native_protected_subject, protected_subject_key,
-  bench_serve_from_remote, BenchServeRan, BenchServeUnreachable, BenchServeExecution,
-  mixed_run_client_facts_cannot_be_written, nonzero_exit_does_not_yield_client_facts,
-  unreachable_does_not_yield_client_facts, stderr_is_not_the_client_summary,
-  glm_native_observation_carries_bench_source_standing,
-  observation_evidence_replays_client_facts, glm_native_qualification_frontier,
-  qualification_frontier_requires_serve_py_digest,
+  DrainObservedIdle, DrainNotIdle, ExclusionNotEstablished, ExclusionEstablished, WindowIsolated,
+  WindowIsolationNotEstablished, ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread, window_from_drain,
+  isolated_window, drain_from_queue, OperationLedger, LedgerClosed, LedgerIncomplete,
+  ledger_admits_token_denomination, RateFromClientOutputTokens, RateUndenominable, RateUnreadable, ArrivalSkewUnread,
+  arrival_admits_rate_comparison, TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, TokenDeltaScoped,
+  generation_token_delta, generation_token_delta_scoped, derive_rate_honest, serving_load_observation, serving_load_observation_text,
+  ServingLoadObservation, tokens_per_observation_second, foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread,
+  ForeignWorkContradiction, occupancy_from_body, occupancy_trace_from_endpoint_scrapes, itl_latency_delta, iteration_tokens_booked_delta,
+  LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset, TokenHistogramRead, TokenHistogramUnread,
+  TokenHistogramReset, glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged,
+  ContinuityUnread, ClientOutputTokensUnread, ClientOutputTokensObserved, glm_native_smoke_protocol, decode_corroboration_for_protocol,
+  CorroborationNotApplicable, CorroborationUnread, SuccessfulClientRequestSecondBucketPeak, ClientItlDistributionObserved, ClientItlDistributionUnread,
+  client_itl_text, client_bucket_peak_text, ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
+  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout, glm_native_protected_subject, protected_subject_key, bench_serve_from_remote,
+  BenchServeExecution, bench_serve_completed_output, glm_native_live_subject, arrival_text,
+  ArrivalSkewObserved,
 }
+import gunbc.spark.serving_performance_subject { serving_subject_standing, ServingPerformanceSubjectStanding }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
 
@@ -310,8 +267,12 @@ fn fx_bench_receipt(stdout: String) -> BenchServeExecution {
 }
 
 fn fx_obs() -> ServingLoadObservation {
+  fx_obs_for(subject: glm_native_live_subject_standing())
+}
+
+fn fx_obs_for(subject: ServingPerformanceSubjectStanding) -> ServingLoadObservation {
   serving_load_observation(
-    subject: glm_native_live_subject_standing(),
+    subject: subject,
     window: window_from_drain(drain: DrainObservedIdle),
     continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
     occupancy: occupancy_trace_from_endpoint_scrapes(before_body: fx_idle, after_body: fx_after),
@@ -332,18 +293,6 @@ test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
     RateUndenominable { because: _ } => true
     RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
     RateUnreadable { because: _ } => false
-  }
-}
-
-test fn occupancy_above_declared_concurrency_does_not_refuse_the_client_rate() -> Bool {
-  match derive_rate_honest(
-    ledger: closed_ok(),
-    scrape_millis: Present { value: millisecond(count: 2000) },
-    client_output: ClientOutputTokensObserved { tokens: 128 },
-  ) {
-    RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
-    RateUnreadable { because: _ } => false
-    RateUndenominable { because: _ } => false
   }
 }
 
@@ -374,29 +323,6 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
         }
     RateUnreadable { because: _ } => false
     RateUndenominable { because: _ } => false
-  }
-}
-
-test fn unsampled_occupancy_does_not_refuse_the_client_rate() -> Bool {
-  match derive_rate_honest(
-    ledger: closed_ok(),
-    scrape_millis: Present { value: millisecond(count: 2000) },
-    client_output: ClientOutputTokensObserved { tokens: 128 },
-  ) {
-    RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
-    RateUnreadable { because: _ } => false
-    RateUndenominable { because: _ } => false
-  }
-}
-
-test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
-  match glm_native_workload_admission {
-    AdmissionCostUnestablished { cause: _ } =>
-      match fx_obs().admission {
-        AdmissionCostUnestablished { cause: _ } => true
-        AdmissionCostBlocks { blocks: _ } => false
-      }
-    AdmissionCostBlocks { blocks: _ } => false
   }
 }
 
@@ -493,33 +419,11 @@ test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
   }
 }
 
-test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
-  match decode_corroboration_for_protocol(req: glm_native_holistic_protocol) {
-    CorroborationNotApplicable { because: _ } =>
-      millisecond_count(m: glm_native_single_stream_decode_bound_millis) == 49
-        && match glm_native_single_stream_decode_bound_standing {
-          TranscribedUncited { read_obligation: _ } => true
-          CitedToAuthority { authority: _ } => false
-        }
+test fn a_multi_stream_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
+  match decode_corroboration_for_protocol(req: glm_native_smoke_protocol) {
+    CorroborationNotApplicable { because: _ } => true
     CorroborationUnread { because: _ } => false
   }
-}
-
-test fn the_smoke_protocol_is_not_the_holistic_envelope() -> Bool {
-  !holistic_protocol_is_session_shaped(req: glm_native_smoke_protocol)
-    && !vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_smoke_protocol)
-    && millisecond_count(m: glm_native_smoke_client_latency.tpot_milli) == 82
-}
-
-test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
-  bench_output_len(req: glm_native_wiring_smoke_protocol) == 64
-    && bench_output_len(req: glm_native_contended_sweep_c2.protocol) == 128
-    && !pinned_load_protocol_matches(a: glm_native_wiring_smoke_protocol, b: glm_native_contended_sweep_c2.protocol)
-}
-
-test fn protocol_identity_includes_backend_model_tokenizer_and_arrival() -> Bool {
-  vllm_bench_serve_identity_matches(a: glm_native_smoke_protocol, b: glm_native_wiring_smoke_protocol)
-    && !vllm_bench_serve_identity_matches(a: glm_native_smoke_protocol, b: glm_native_holistic_protocol)
 }
 
 data fx_bench_stdout: String = join([
@@ -541,14 +445,6 @@ data fx_bench_stdout: String = join([
   "Mean ITL (ms):                           83.20\n",
   "Median ITL (ms):                         82.10\n",
   "P99 ITL (ms):                            165.00\n",
-], "")
-
-data fx_bench_stdout_short: String = join([
-  "============ Serving Benchmark Result ============\n",
-  "Successful requests:                     4\n",
-  "Failed requests:                         0\n",
-  "Benchmark duration (s):                  10.00\n",
-  "Total generated tokens:                  512\n",
 ], "")
 
 test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
@@ -577,86 +473,6 @@ test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
   }
 }
 
-test fn wet_smoke_tpot_is_not_a_protocol_match_to_sweep_c1() -> Bool {
-  glm_native_wet_smoke_is_not_sweep_c1_protocol()
-}
-
-test fn the_probe_rate_is_completed_output_tokens_not_total_including_prefill() -> Bool {
-  glm_native_wet_smoke_rate_is_output_tokens()
-}
-
-test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
-  length(glm_native_contended_sweep_points) == 5
-    && glm_native_sweep_num_prompts(concurrency: 1) == 8
-    && glm_native_sweep_num_prompts(concurrency: 2) == 8
-    && glm_native_sweep_num_prompts(concurrency: 4) == 16
-    && milli_tokens_per_second_count(r: glm_native_contended_sweep_c1.latency.output_throughput) == 10860
-    && millisecond_count(m: glm_native_contended_sweep_c1.latency.tpot_milli) == 81
-    && millisecond_count(m: glm_native_contended_sweep_c1.latency.ttft_milli) == 1542
-    && glm_native_contended_sweep_c1.concurrency == 1
-}
-
-test fn ttft_c8_and_c16_remain_primitive_observations() -> Bool {
-  glm_native_sweep_ttft_c8() == 2602 && glm_native_sweep_ttft_c16() == 5218
-}
-
-test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
-  millisecond_count(m: glm_native_window_standing_specimen.quieter_engine_tpot_milli) == 49
-    && millisecond_count(m: glm_native_window_standing_specimen.contended_client_c1_tpot_milli) == 81
-    && window_standing_gap_is_unattributed(s: glm_native_window_standing_specimen)
-}
-
-test fn long_context_stays_a_prototype_until_the_qualification_window() -> Bool {
-  match glm_native_holistic_execution {
-    LongContextLoadProtocolPrototype { until: u } =>
-      string_contains(s: u as String, pattern: "qualification-window")
-    LongContextRunnable { because: _ } => false
-  }
-}
-
-test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bool {
-  holistic_protocol_is_session_shaped(req: glm_native_holistic_protocol)
-    && vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_holistic_protocol)
-    && !vllm_bench_serve_uses_poisson_idle_gaps(req: vllm_bench_serve_request(
-      backend: OpenaiChat,
-      base_url: "http://127.0.0.1:30000" as NonEmptyStr,
-      model: "m" as NonEmptyStr,
-      tokenizer: "m" as NonEmptyStr,
-      dataset: RandomDatasetSpec { input_len: token_count(count: 128), output_len: token_count(count: 128), prefix_len: token_count(count: 0) },
-      num_prompts: 4,
-      arrival: SendAllImmediately,
-      max_concurrency: Absent,
-      ignore_eos: true,
-      seed: 20260918,
-    ))
-}
-
-fn words_contain(words: List<String>, needle: String) -> Bool {
-  count(filter(words, w => w == needle)) > 0
-}
-
-test fn the_rendered_argv_carries_the_prefix_and_a_finite_rate() -> Bool {
-  let words = vllm_bench_serve_arguments(req: glm_native_holistic_protocol)
-  words_contain(words: words, needle: "--random-prefix-len")
-    && words_contain(words: words, needle: "100000")
-    && words_contain(words: words, needle: "--request-rate")
-    && words_contain(words: words, needle: "0.050")
-    && !words_contain(words: words, needle: "inf")
-    && words_contain(words: words, needle: "--tokenizer")
-    && words_contain(words: words, needle: glm_native_engine_tokenizer_path as String)
-    && words_contain(words: words, needle: "--model")
-    && words_contain(words: words, needle: "--seed")
-    && words_contain(words: words, needle: "20260918")
-    && (glm_native_holistic_protocol.model as String) != (glm_native_holistic_protocol.tokenizer as String)
-}
-
-test fn this_reading_names_a_split_driver_and_observer() -> Bool {
-  match glm_native_live_probe_provenance {
-    DriverObserverSplit { driver: _, observer: _ } => true
-    SamePrincipal { principal: _ } => false
-  }
-}
-
 test fn exporter_restart_breaks_counter_continuity() -> Bool {
   let after: VllmEndpointProcessLaunchObservation = LaunchObserved {
     launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: "1789300999.00" as NonEmptyStr),
@@ -669,54 +485,41 @@ test fn exporter_restart_breaks_counter_continuity() -> Bool {
   }
 }
 
-test fn mixing_two_bench_stdout_bodies_cannot_write_one_receipt() -> Bool {
-  mixed_run_client_facts_cannot_be_written(
-    a: fx_bench_receipt(stdout: fx_bench_stdout),
-    b: fx_bench_receipt(stdout: fx_bench_stdout_short),
-  )
-}
-
-test fn live_subject_consumes_the_derived_gb10_runtime_row() -> Bool {
-  glm_native_live_runtime_is_derived_gb10_row()
+fn client_output_is_unread(e: BenchServeExecution) -> Bool {
+  match bench_serve_completed_output(e: e) {
+    ClientOutputTokensUnread { cause: _ } => true
+    ClientOutputTokensObserved { tokens: _ } => false
+  }
 }
 
 test fn a_nonzero_bench_exit_does_not_parse_stdout() -> Bool {
-  nonzero_exit_does_not_yield_client_facts(e: bench_serve_from_remote(
+  client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteRan { exit_code: 1, stdout: fx_bench_stdout, stderr: "" },
   ))
+    && !client_output_is_unread(e: fx_bench_receipt(stdout: fx_bench_stdout))
 }
 
 test fn an_unreachable_bench_does_not_parse_stdout() -> Bool {
-  unreachable_does_not_yield_client_facts(e: bench_serve_from_remote(
+  client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteUnreachable { cause: "ssh refused" },
   ))
 }
 
 test fn stderr_carrying_the_summary_is_not_parsed() -> Bool {
-  stderr_is_not_the_client_summary(e: bench_serve_from_remote(
+  client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteRan { exit_code: 0, stdout: "", stderr: fx_bench_stdout },
   ))
 }
 
-test fn the_observation_carries_bench_source_standing() -> Bool {
-  glm_native_observation_carries_bench_source_standing(o: fx_obs())
-}
-
 test fn the_receipt_persists_raw_evidence_for_replay() -> Bool {
-  let obs = fx_obs()
-  let text = serving_load_observation_text(o: obs)
-  observation_evidence_replays_client_facts(o: obs)
-    && string_contains(s: text, pattern: "--- metrics-before digest=")
+  let text = serving_load_observation_text(o: fx_obs())
+  string_contains(s: text, pattern: "--- metrics-before digest=")
     && string_contains(s: text, pattern: "--- bench-stdout digest=")
     && string_contains(s: text, pattern: "vllm:num_requests_running")
     && string_contains(s: text, pattern: "Total generated tokens")
-}
-
-test fn qualification_frontier_names_the_producers() -> Bool {
-  qualification_frontier_requires_serve_py_digest(f: glm_native_qualification_frontier)
 }
 
 test fn a_latency_sum_decrease_within_one_millisecond_is_a_reset_not_zero() -> Bool {
@@ -816,4 +619,36 @@ test fn the_receipt_bucket_line_prints_the_parsed_peak_not_a_verdict() -> Bool {
   string_contains(s: t, pattern: "client_max_concurrency=2 successful_request_second_bucket_peak=4 ")
     && !string_contains(s: t, pattern: "foreign")
     && string_contains(s: client_bucket_peak_text(p: SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: 2, bucket_peak: 7 }), pattern: "successful_request_second_bucket_peak=7 ")
+}
+
+fn fx_partial_subject(would_settle: String) -> ServingPerformanceSubjectStanding {
+  serving_subject_standing(
+    subject: glm_native_live_subject,
+    believed: "transport is probably NCCL over RoCE" as NonEmptyStr,
+    would_settle: would_settle as NonEmptyStr,
+  )
+}
+
+test fn receipts_differing_only_in_the_settling_obligation_differ() -> Bool {
+  let a = serving_load_observation_text(o: fx_obs_for(subject: fx_partial_subject(would_settle: "read obligation alpha")))
+  let b = serving_load_observation_text(o: fx_obs_for(subject: fx_partial_subject(would_settle: "read obligation beta")))
+  a != b
+    && string_contains(s: a, pattern: "would_settle=read obligation alpha")
+    && !string_contains(s: a, pattern: "read obligation beta")
+    && string_contains(s: b, pattern: "would_settle=read obligation beta")
+    && !string_contains(s: b, pattern: "read obligation alpha")
+}
+
+test fn the_live_subject_receipt_carries_the_nccl_announcement_obligation() -> Bool {
+  let t = serving_load_observation_text(o: fx_obs())
+  string_contains(s: t, pattern: "subject: partial ")
+    && string_contains(s: t, pattern: "would_settle=read the running launch's NCCL transport announcement on this incarnation")
+}
+
+test fn arrival_unread_and_observed_render_distinguishably() -> Bool {
+  let t = serving_load_observation_text(o: fx_obs())
+  let observed = arrival_text(a: ArrivalSkewObserved { max_stagger_millis: millisecond(count: 250) })
+  string_contains(s: t, pattern: "arrival: unread ")
+    && string_contains(s: observed, pattern: "observed max_stagger_ms=250")
+    && !string_contains(s: observed, pattern: "unread")
 }

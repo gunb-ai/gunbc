@@ -37,7 +37,7 @@ import gunbc.spark.serving_load_probe {
 //
 // Witnesses supply metric bodies. This function drives `vllm bench serve` against the live native
 // GLM head. A non-idle drain REFUSES the start. An idle start is WindowIsolationNotEstablished:
-// glm_native_arm_service's annotation names actors who might arrive; that is not a traffic observation.
+// naming actors who might arrive (window_from_drain's annotation) is not a traffic observation.
 // Client facts are derived from one BenchServeExecution minted from the remote operation.
 // glm_native_serving_load_wet exits 0 when the observation is captured. Qualification is a
 // declared frontier (request start events, reserved-window lease/exclusion, interval occupancy,

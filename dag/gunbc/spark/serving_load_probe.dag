@@ -1,57 +1,42 @@
 module gunbc.spark.serving_load_probe
 
-import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
+import std.types { Bool, String, NonEmptyStr, EpochSecs, Int }
 import std.nat { Nat }
 import std.measure {
-  Millisecond, millisecond, millisecond_count,
-  TokenCount, token_count, token_count_value,
-  Measure, Dimensionless, Milli,
-  MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
-  MilliRequestsPerSecond, milli_requests_per_second,
+  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, Measure, Dimensionless, Milli, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, MilliRequestsPerSecond,
 }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
-import product.fabric.demand { ObservationReceiptRef }
 import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.vllm.metrics {
-  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal,
-  HistogramStatistic, HistogramSum, HistogramCount,
-  vllm_metric_exports_histogram_statistics,
+  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal, HistogramSum, HistogramCount, vllm_metric_exports_histogram_statistics,
 }
 import extdeps.vllm.bench_serve {
-  VllmBenchServeRequest, PoissonProcess, SendAllImmediately,
-  RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_uses_poisson_idle_gaps,
-  vllm_bench_serve_identity_matches, vllm_bench_serve_source_standing, vllm_bench_backend_route,
+  VllmBenchServeRequest, PoissonProcess, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_source_standing, vllm_bench_backend_route,
 }
 import extdeps.vllm.server { vllm_route_path }
 import gunbc.spark.model_snapshot_materialize { SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.harness.harness_backend {
-  harness_gauge_value, harness_labelled_gauge_value, harness_gauge_count,
-  harness_histogram_statistic_value, harness_launch_from_body, harness_queue_from_body,
-  text_labeled_count, text_labeled_head_count, text_field_last_word, text_without_sudo_prompt,
+  harness_gauge_value, harness_gauge_count, harness_histogram_statistic_value, harness_queue_from_body, text_labeled_count, text_labeled_head_count, text_field_last_word, text_without_sudo_prompt,
 }
 import gunbc.serving.turn_admission {
-  ServingQueueReading, QueueDepthRead, QueueDepthUnread,
-  ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
-  glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire, serving_runtime_wire,
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile, glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire,
 }
 import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
-  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
-  serving_performance_subject_wire,
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, serving_performance_subject_wire, serving_subject_axes_wire,
 }
 import gunbc.spark.serving_rank_observe {
   ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
@@ -130,14 +115,12 @@ fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
   }
 }
 
-type ArmServiceStanding
-  = ArmInService { because: NonEmptyStr }
-  | ArmOutOfService { how: NonEmptyStr }
-
 // A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT, not exclusion. The probe still refuses to START on a
 // non-idle queue: that would mix already-running foreign requests into the client window without a
 // join. An idle start without lease/exclusion/protected subject is WindowIsolationNotEstablished.
-// Actors who might arrive are named beside glm_native_arm_service; naming them is not a traffic observation.
+// Actors who may share Group B during a capture, none of which a drain snapshot excludes: operator
+// interactive long-context sessions, gunbc.harness.harness_cli harness_probe_cli turns, and nccl-tests
+// all_reduce_perf buffers. Naming them is not a traffic observation.
 fn window_from_drain(drain: DrainReceipt) -> ProbeWindowStanding {
   match drain {
     DrainUnread { cause: c } => WindowIsolationNotEstablished { cause: c, drain: drain }
@@ -715,6 +698,9 @@ type DecodeCorroboration
   = CorroborationNotApplicable { because: NonEmptyStr }
   | CorroborationUnread { because: NonEmptyStr }
 
+// The 49 ms/token single-stream bound is TRANSCRIBED, NOT A READING: parent measured 48.9 ms
+// single-stream in a quieter window, against a contended client c=1 TPOT of ~81 ms. The gap is
+// observed; its cause is unestablished until an overlapping lease or engine-population join attributes it.
 fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorroboration {
   match req.max_concurrency {
     Present { value: 1 } =>
@@ -870,47 +856,6 @@ fn bench_serve_bucket_peak(e: BenchServeExecution) -> ClientRequestConcurrencySt
   }
 }
 
-fn mixed_run_client_facts_cannot_be_written(a: BenchServeExecution, b: BenchServeExecution) -> Bool {
-  match bench_serve_interval(e: a) {
-    Absent => false
-    Present { value: ia } =>
-      match bench_serve_interval(e: b) {
-        Absent => false
-        Present { value: ib } => ia != ib
-      }
-  }
-}
-
-fn nonzero_exit_does_not_yield_client_facts(e: BenchServeExecution) -> Bool {
-  match e {
-    BenchServeUnreachable { protocol: _, cause: _ } => false
-    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
-      code != 0
-        && match bench_serve_completed_output(e: e) {
-          ClientOutputTokensUnread { cause: _ } => true
-          ClientOutputTokensObserved { tokens: _ } => false
-        }
-  }
-}
-
-fn unreachable_does_not_yield_client_facts(e: BenchServeExecution) -> Bool {
-  match e {
-    BenchServeRan { protocol: _, exit_code: _, stdout: _, stderr: _ } => false
-    BenchServeUnreachable { protocol: _, cause: _ } =>
-      match bench_serve_completed_output(e: e) {
-        ClientOutputTokensUnread { cause: _ } => true
-        ClientOutputTokensObserved { tokens: _ } => false
-      }
-  }
-}
-
-fn stderr_is_not_the_client_summary(e: BenchServeExecution) -> Bool {
-  match bench_serve_completed_output(e: e) {
-    ClientOutputTokensUnread { cause: _ } => true
-    ClientOutputTokensObserved { tokens: _ } => false
-  }
-}
-
 type CapturedText sole_constructor {
   kind: NonEmptyStr
   digest: ContentHash
@@ -923,10 +868,6 @@ fn captured_text(kind: NonEmptyStr, body: String) -> CapturedText {
     digest: content_hash_of_value(value: join([kind as String, "\n", body], "") as NonEmptyStr),
     body: body,
   }
-}
-
-fn captured_text_digest_matches(c: CapturedText) -> Bool {
-  (serialize_content_hash(hash: c.digest) as String) == (serialize_content_hash(hash: captured_text(kind: c.kind, body: c.body).digest) as String)
 }
 
 type ServingLoadEvidence sole_constructor {
@@ -1054,36 +995,12 @@ fn serving_load_observation(
   }
 }
 
-fn observation_evidence_replays_client_facts(o: ServingLoadObservation) -> Bool {
-  captured_text_digest_matches(c: o.evidence.metrics_before)
-    && captured_text_digest_matches(c: o.evidence.metrics_after)
-    && captured_text_digest_matches(c: o.evidence.bench_stdout)
-    && captured_text_digest_matches(c: o.evidence.bench_stderr)
-    && match bench_serve_interval(e: o.execution) {
-      Absent =>
-        match scrape_millis_from_bench_stdout(body: o.evidence.bench_stdout.body) {
-          Absent => true
-          Present { value: _ } => false
-        }
-      Present { value: ia } =>
-        match scrape_millis_from_bench_stdout(body: o.evidence.bench_stdout.body) {
-          Absent => false
-          Present { value: ib } => ia == ib
-        }
-    }
-}
-
-fn qualification_frontier_requires_serve_py_digest(f: ClientRateQualificationFrontier) -> Bool {
-  string_contains(s: f.serve_py_digest as String, pattern: "serve.py")
-    && string_contains(s: f.request_start_events as String, pattern: "start")
-    && string_contains(s: f.reserved_window as String, pattern: "exclusive")
-    && string_contains(s: f.interval_occupancy as String, pattern: "time-series")
-}
-
 fn serving_load_observation_text(o: ServingLoadObservation) -> String {
   join([
     "serving-load observation\n",
     "execution: ", bench_execution_text(e: o.execution), "\n",
+    "subject: ", subject_standing_text(s: o.subject), "\n",
+    "arrival: ", arrival_text(a: o.arrival), "\n",
     "bench source standing: ", cited_standing_text(s: o.bench_source_standing), "\n",
     "window: ", window_text(s: o.window), "\n",
     "continuity: ", continuity_text(c: o.continuity), "\n",
@@ -1104,6 +1021,30 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "qualification frontier: ", qualification_frontier_text(f: o.qualification_frontier), "\n",
     serving_load_evidence_text(ev: o.evidence),
   ], "")
+}
+
+// The standing is rendered as the subject authority states it: a Partial's belief is printed as a
+// belief and its settling obligation as an obligation, never as a reading of the unknown axes.
+fn subject_standing_text(s: ServingPerformanceSubjectStanding) -> String {
+  match s {
+    SubjectEstablished { subject: sub } =>
+      join(["established ", serving_performance_subject_wire(s: sub) as String], "")
+    SubjectPartial { subject: sub, unknown_axes: axes, believed: b, would_settle: w } =>
+      join([
+        "partial ", serving_performance_subject_wire(s: sub) as String,
+        " unknown_axes=", serving_subject_axes_wire(axes: axes),
+        " believed (unverified)=", b as String,
+        " would_settle=", w as String,
+      ], "")
+  }
+}
+
+fn arrival_text(a: ArrivalSkew) -> String {
+  match a {
+    ArrivalSkewUnread { cause: c } => join(["unread ", c as String], "")
+    ArrivalSkewObserved { max_stagger_millis: m } =>
+      join(["observed max_stagger_ms=", to_string(millisecond_count(m: m))], "")
+  }
 }
 
 fn foreign_work_text(f: ForeignWorkBound) -> String {
@@ -1291,11 +1232,13 @@ fn rate_text(r: DerivedRate) -> String {
   }
 }
 
-// ── THE HOLISTIC GLM PROTOCOL THIS FLEET'S SESSIONS ACTUALLY LOOK LIKE ────────────────────────
+// ── ADMISSION FOR THE SESSIONS THIS FLEET ACTUALLY SERVES ─────────────────────────────────────
 //
 // Real sessions sit at ~100k-130k tokens of context after compacting a 262k window. They idle
 // between turns. Each turn is a separate request whose KV frees on completion while the prefix
-// stays in the prefix cache. A long-context point is how that envelope is exercised.
+// stays in the prefix cache. A 100k-prefix load protocol is not modeled here: it is the heaviest
+// prefill this arm can construct, and it waits on the qualification window (exact lease and
+// exclusion, idle drain, protected subject).
 //
 // THAT IS NOT AN ADMISSION CAPACITY. vLLM's printed token pool is floor(max_concurrency ×
 // max_model_len) — the same fact twice — and GLM's hybrid KV (full / sliding-window / Mamba) does
@@ -1307,26 +1250,11 @@ data glm_native_workload_admission: AdmissionCost = AdmissionCostUnestablished {
   cause: "the live cache-group roster is unobserved, so cold_admission_blocks cannot establish per-request cost; a token-pool divided by request length is not an admission capacity" as NonEmptyStr
 }
 
-data glm_native_holistic_dataset: RandomDatasetSpec = RandomDatasetSpec {
-  input_len: token_count(count: 20000),
-  output_len: token_count(count: 128),
-  prefix_len: token_count(count: 100000),
-}
-
 data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
   placement: HubCachePlacement { cache_root: glm_native_weights_container_dir },
   repo: glm53_native_fp8_row.repo,
   revision: glm53_native_fp8_row.revision,
 )
-
-// WIRING IS PROVEN AT A FEW HUNDRED TOKENS. A 100k-prefix protocol is not a smoke test: it is the
-// heaviest prefill this arm can construct and it starves operator interactive traffic. SendAllImmediately
-// is the validated wiring argv; it is not a comparable rate protocol (arrival skew).
-data glm_native_wiring_smoke_dataset: RandomDatasetSpec = RandomDatasetSpec {
-  input_len: token_count(count: 256),
-  output_len: token_count(count: 64),
-  prefix_len: token_count(count: 0),
-}
 
 data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
   input_len: token_count(count: 256),
@@ -1336,6 +1264,9 @@ data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
 
 data glm_native_bench_seed: Nat = 20260918
 
+// The live probe's protocol: 256-in/128-out, SendAllImmediately, c=2. SendAllImmediately is wiring,
+// not a comparable rate protocol (arrival skew is unread). The derived rate counts completed output
+// tokens; bench-serve's total token throughput also counts prefill and answers a different question.
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: "http://127.0.0.1:30000" as NonEmptyStr,
@@ -1349,67 +1280,9 @@ data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request
   seed: glm_native_bench_seed,
 )
 
-data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
-  backend: OpenaiChat,
-  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
-  model: glm_native_concurrent_profile.served_alias,
-  tokenizer: glm_native_engine_tokenizer_path,
-  dataset: glm_native_holistic_dataset,
-  num_prompts: 4,
-  arrival: PoissonProcess { request_rate: milli_requests_per_second(count: 50), burstiness: Measure { count: 1000 } },
-  max_concurrency: Present { value: 2 },
-  ignore_eos: true,
-  seed: glm_native_bench_seed,
-)
-
 data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
   driver: "calm-bat-65 via srv1 docker exec of vllm bench serve" as NonEmptyStr,
   observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
-}
-
-// Actors who may share Group B during a capture, none of which a drain snapshot excludes: operator
-// interactive long-context sessions (70-110k prompt jumps), gunbc.harness.harness_cli
-// harness_probe_cli turns, and proud-boar-181's nccl-tests all_reduce_perf buffers. That is why this
-// arm is ArmInService and every window here is WindowIsolationNotEstablished.
-data glm_native_arm_service: ArmServiceStanding = ArmInService {
-  because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
-}
-
-data glm_native_wiring_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
-  backend: OpenaiChat,
-  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
-  model: glm_native_concurrent_profile.served_alias,
-  tokenizer: glm_native_engine_tokenizer_path,
-  dataset: glm_native_wiring_smoke_dataset,
-  num_prompts: 4,
-  arrival: SendAllImmediately,
-  max_concurrency: Present { value: 2 },
-  ignore_eos: true,
-  seed: glm_native_bench_seed,
-)
-
-// Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 wiring
-// smoke (256/64, inf rate, c=2, 4/4 ok). Contended. Not the 256/128 sweep protocol.
-type TranscribedClientLatency {
-  output_throughput: MilliTokensPerSecond
-  tpot_milli: Millisecond
-  itl_milli: Millisecond?
-  ttft_milli: Millisecond
-  standing: CitedFigureStanding
-}
-
-data glm_native_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
-  output_throughput: milli_tokens_per_second(count: 17390)
-  tpot_milli: millisecond(count: 82)
-  itl_milli: Present { value: millisecond(count: 82) }
-  ttft_milli: millisecond(count: 2185)
-  standing: TranscribedUncited {
-    read_obligation: "re-read vllm bench serve stdout for the 256-in/64-out wiring argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
-  }
-}
-
-data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "re-read calm-bat-65 docker-exec stdout for glm_native_smoke_protocol (256-in/128-out/prefix 0/4 prompts/inf/c=2/ignore-eos) on 192.168.1.236" as NonEmptyStr
 }
 
 fn bench_labeled_nat(body: String, label: String) -> Nat? {
@@ -1506,216 +1379,6 @@ fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -
   }
 }
 
-type RateTokenDenomination
-  = RateDenominatedInCompletedOutputTokens { because: NonEmptyStr }
-  | RateDenominatedInTotalTokensIncludingPrefill { because: NonEmptyStr }
-
-data glm_native_client_rate_denomination: RateTokenDenomination = RateDenominatedInCompletedOutputTokens {
-  because: "vllm bench serve output token throughput and the probe rate both count completed decode tokens; total token throughput also counts prefill of the same requests and is a different question" as NonEmptyStr
-}
-
-type PrefillVersusDecodeThroughput {
-  output_throughput: MilliTokensPerSecond
-  total_throughput: MilliTokensPerSecond
-  input_tokens: Nat
-  output_tokens: Nat
-}
-
-data glm_native_wet_smoke_prefill_versus_decode: PrefillVersusDecodeThroughput = PrefillVersusDecodeThroughput {
-  output_throughput: milli_tokens_per_second(count: 22510)
-  total_throughput: milli_tokens_per_second(count: 69640)
-  input_tokens: 1072
-  output_tokens: 512
-}
-
-fn total_token_throughput_is_not_the_probe_rate(r: PrefillVersusDecodeThroughput) -> Bool {
-  milli_tokens_per_second_count(r: r.total_throughput) != milli_tokens_per_second_count(r: r.output_throughput)
-}
-
-data glm_native_wet_smoke_client_output: ClientOutputTokens = ClientOutputTokensObserved { tokens: 512 }
-data glm_native_wet_smoke_duration_millis: Millisecond = millisecond(count: 22750)
-
-fn glm_native_wet_smoke_rate() -> DerivedRate {
-  derive_rate_honest(
-    ledger: LedgerClosed { offered: 4, completed: 4, failed: 0 },
-    scrape_millis: Present { value: glm_native_wet_smoke_duration_millis },
-    client_output: glm_native_wet_smoke_client_output,
-  )
-}
-
-fn glm_native_wet_smoke_is_not_sweep_c1_protocol() -> Bool {
-  !pinned_load_protocol_matches(a: glm_native_smoke_protocol, b: glm_native_contended_sweep_c1.protocol)
-}
-
-fn glm_native_wet_smoke_rate_is_output_tokens() -> Bool {
-  match glm_native_client_rate_denomination {
-    RateDenominatedInTotalTokensIncludingPrefill { because: _ } => false
-    RateDenominatedInCompletedOutputTokens { because: _ } =>
-      total_token_throughput_is_not_the_probe_rate(r: glm_native_wet_smoke_prefill_versus_decode)
-        && glm_native_wet_smoke_prefill_versus_decode.output_tokens == 512
-        && glm_native_wet_smoke_prefill_versus_decode.input_tokens == 1072
-        && match glm_native_wet_smoke_rate() {
-          RateFromClientOutputTokens { tokens: t, scrape_millis: ms } => t == 512 && millisecond_count(m: ms) == 22750
-          RateUndenominable { because: _ } => false
-          RateUnreadable { because: _ } => false
-        }
-  }
-}
-
-data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "re-read calm-bat-65's vllm bench serve stdout for the 256-in/128-out inf-rate ignore-eos sweep (num-prompts 4×concurrency, min 8) taken while operator long-context traffic shared Group B" as NonEmptyStr
-}
-
-data glm_native_sweep_min_prompts: Nat = 8
-
-fn glm_native_sweep_num_prompts(concurrency: Nat) -> Nat {
-  let fourfold = concurrency * 4
-  if fourfold < glm_native_sweep_min_prompts { glm_native_sweep_min_prompts } else { fourfold }
-}
-
-fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeRequest {
-  vllm_bench_serve_request(
-    backend: OpenaiChat,
-    base_url: "http://127.0.0.1:30000" as NonEmptyStr,
-    model: glm_native_concurrent_profile.served_alias,
-    tokenizer: glm_native_engine_tokenizer_path,
-    dataset: glm_native_sweep_dataset,
-    num_prompts: glm_native_sweep_num_prompts(concurrency: concurrency),
-    arrival: SendAllImmediately,
-    max_concurrency: Present { value: concurrency },
-    ignore_eos: true,
-    seed: glm_native_bench_seed,
-  )
-}
-
-fn glm_native_contended_client_latency(
-  throughput: MilliTokensPerSecond,
-  tpot_milli: Nat,
-  ttft_milli: Nat,
-) -> TranscribedClientLatency {
-  TranscribedClientLatency {
-    output_throughput: throughput,
-    tpot_milli: millisecond(count: tpot_milli),
-    itl_milli: none,
-    ttft_milli: millisecond(count: ttft_milli),
-    standing: glm_native_contended_sweep_standing,
-  }
-}
-
-type ContendedSweepPoint {
-  concurrency: Nat
-  protocol: VllmBenchServeRequest
-  latency: TranscribedClientLatency
-}
-
-fn glm_native_contended_sweep_point(
-  concurrency: Nat,
-  throughput: MilliTokensPerSecond,
-  tpot_milli: Nat,
-  ttft_milli: Nat,
-) -> ContendedSweepPoint {
-  ContendedSweepPoint {
-    concurrency: concurrency,
-    protocol: glm_native_contended_sweep_protocol(concurrency: concurrency),
-    latency: glm_native_contended_client_latency(
-      throughput: throughput,
-      tpot_milli: tpot_milli,
-      ttft_milli: ttft_milli,
-    ),
-  }
-}
-
-data glm_native_contended_sweep_c1: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 1, throughput: milli_tokens_per_second(count: 10860), tpot_milli: 81, ttft_milli: 1542,
-)
-data glm_native_contended_sweep_c2: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 2, throughput: milli_tokens_per_second(count: 17220), tpot_milli: 109, ttft_milli: 994,
-)
-data glm_native_contended_sweep_c4: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 4, throughput: milli_tokens_per_second(count: 25490), tpot_milli: 140, ttft_milli: 2353,
-)
-data glm_native_contended_sweep_c8: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 8, throughput: milli_tokens_per_second(count: 38360), tpot_milli: 190, ttft_milli: 2602,
-)
-data glm_native_contended_sweep_c16: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 16, throughput: milli_tokens_per_second(count: 62530), tpot_milli: 198, ttft_milli: 5218,
-)
-
-data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
-  glm_native_contended_sweep_c1,
-  glm_native_contended_sweep_c2,
-  glm_native_contended_sweep_c4,
-  glm_native_contended_sweep_c8,
-  glm_native_contended_sweep_c16,
-]
-
-fn glm_native_sweep_ttft_c8() -> Nat {
-  millisecond_count(m: glm_native_contended_sweep_c8.latency.ttft_milli)
-}
-
-fn glm_native_sweep_ttft_c16() -> Nat {
-  millisecond_count(m: glm_native_contended_sweep_c16.latency.ttft_milli)
-}
-
-type WindowStandingGapSpecimen {
-  quieter_engine_tpot_milli: Millisecond
-  contended_client_c1_tpot_milli: Millisecond
-}
-
-data glm_native_window_standing_specimen: WindowStandingGapSpecimen = WindowStandingGapSpecimen {
-  quieter_engine_tpot_milli: glm_native_single_stream_decode_bound_millis,
-  contended_client_c1_tpot_milli: millisecond(count: 81),
-}
-
-// Same subject, same single-stream protocol shape, different window: quieter engine 48.9 ms vs
-// contended client c=1 TPOT 80.7 ms. The gap is observed; its cause is unestablished until an
-// overlapping lease or engine-population join attributes it.
-fn window_standing_gap_is_unattributed(s: WindowStandingGapSpecimen) -> Bool {
-  millisecond_count(m: s.contended_client_c1_tpot_milli) > millisecond_count(m: s.quieter_engine_tpot_milli)
-}
-
-fn bench_output_len(req: VllmBenchServeRequest) -> Nat {
-  token_count_value(t: req.dataset.output_len)
-}
-
-fn pinned_load_protocol_matches(a: VllmBenchServeRequest, b: VllmBenchServeRequest) -> Bool {
-  vllm_bench_serve_identity_matches(a: a, b: b)
-    && token_count_value(t: a.dataset.input_len) == token_count_value(t: b.dataset.input_len)
-    && bench_output_len(req: a) == bench_output_len(req: b)
-    && token_count_value(t: a.dataset.prefix_len) == token_count_value(t: b.dataset.prefix_len)
-    && a.ignore_eos == b.ignore_eos
-    && a.num_prompts == b.num_prompts
-    && match a.max_concurrency {
-      Absent =>
-        match b.max_concurrency {
-          Absent => true
-          Present { value: _ } => false
-        }
-      Present { value: ac } =>
-        match b.max_concurrency {
-          Absent => false
-          Present { value: bc } => ac == bc
-        }
-    }
-}
-
-type LongContextExecutionStanding
-  = LongContextLoadProtocolPrototype { until: NonEmptyStr }
-  | LongContextRunnable { because: NonEmptyStr }
-
-data glm_native_holistic_execution: LongContextExecutionStanding = LongContextLoadProtocolPrototype {
-  until: "the qualification-window law holds: exact lease and exclusion, idle drain, and a protected subject; a 100k-prefix protocol stays a prototype until that window can be established" as NonEmptyStr
-}
-
-// TRANSCRIBED BOUND, NOT A READING. Parent derived ~10.7 GB active weights / ~9-11 ms memory-bandwidth
-// floor from the checkpoint config (45 layers, hidden 4096, 288 routed experts, top-8 + 1 shared, fp8)
-// and measured 48.9 ms single-stream. Until those config rows are cited, the 49 ms figure stays
-// TranscribedUncited and is not consumed as a rate.
-data glm_native_single_stream_decode_bound_millis: Millisecond = millisecond(count: 49)
-data glm_native_single_stream_decode_bound_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read the served GLM-5.3-Flash checkpoint config for layer count, hidden size, routed experts, top-k and shared expert, and the independent single-stream measurement this 49 ms/token bound was transcribed from; the 9-11 ms memory-bandwidth floor is a derived bound from that config, not a serving reading" as NonEmptyStr
-}
-
 // max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
 // Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
 data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
@@ -1741,35 +1404,8 @@ fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
   )
 }
 
-fn glm_native_live_runtime_is_derived_gb10_row() -> Bool {
-  (serving_runtime_wire(r: glm_native_live_subject.runtime) as String) == (serving_runtime_wire(r: GunbcGlm53DerivedGb10) as String)
-    && (glm_native_live_subject.runtime_image_reference as String) == (runtime_artifact_wire(a: glm53_derived_row.artifact) as String)
-}
-
 data glm_native_protected_subject: ProtectedSubjectField = protected_subject_field(
   subject: glm_native_live_subject,
   served_alias: glm_native_concurrent_profile.served_alias,
   route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
 )
-
-fn glm_native_observation_carries_bench_source_standing(o: ServingLoadObservation) -> Bool {
-  match o.bench_source_standing {
-    TranscribedUncited { read_obligation: a } =>
-      match vllm_bench_serve_source_standing {
-        TranscribedUncited { read_obligation: b } => (a as String) == (b as String)
-        CitedToAuthority { authority: _ } => false
-      }
-    CitedToAuthority { authority: _ } => false
-  }
-}
-
-fn holistic_protocol_is_session_shaped(req: VllmBenchServeRequest) -> Bool {
-  vllm_bench_serve_uses_poisson_idle_gaps(req: req)
-    && token_count_at_least(t: req.dataset.prefix_len, n: 100000)
-    && token_count_at_least(t: req.dataset.input_len, n: 10000)
-    && (req.model as String) != (req.tokenizer as String)
-}
-
-fn token_count_at_least(t: TokenCount, n: Nat) -> Bool {
-  token_count_value(t: t) >= n
-}
