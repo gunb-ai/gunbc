@@ -4,6 +4,16 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
+// POPULATION EMPTY, DROP NOT RETIRED (2026-09-19, gunbc#11704). Transition admissions are now
+// carried in the commit messages of the change that needs them and TransitionAdmission no longer
+// has a deletion_follow_up field, so no row can be in this drop's population: the used rows whose
+// owner authored no deletion_follow_up. RECEIPT: v1_compiler.namespace_wave_admission
+// tree_carried_admission_refusal refuses any row file in the tree, and the type in
+// gunbc.namespace.transition_admission carries only label, subject and disposition. The drop is
+// INERT, NOT RETIRED: DESIGN section 4b(3) retires a drop by its trigger and by nothing else, and
+// this row's trigger -- resolving an authored follow-up number to the pull request it names -- has
+// not fired. The declaration below is kept verbatim as the record of what was true on 2026-09-16.
+//
 // DECLARED 2026-09-16 beside gunbc#11481, which removed BOTH merge_group follow-up arms of
 // wave_admission_refusal on an operator ruling that mandating a deletion follow-up pull request is
 // not worth its cost. The sibling row consumed_row_owner_charge_unenforced covers the removal of
