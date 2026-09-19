@@ -93,8 +93,13 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
+}
 import gunbc.live_deploy.emit {
   approval_broker_dark_install_script,
+  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  live_deploy_approval_broker_unit_file,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -1390,40 +1395,72 @@ test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
 // The approval broker is the case where that stopped being true: it is a HOST singleton whose unit
 // content is instance-derived, so the destructive direction for it is APPLY -- srv1-lab writing
 // /etc/systemd/system/gunbc-approval-broker.service with the lab tree's WorkingDirectory and
-// restarting it, killing production's broker on the same port. The owned-path claims cannot see it,
-// because the broker unit is deliberately not an owned member (a twin retract must not remove it).
+// restarting it, killing production's broker on the same port.
 //
-// THE RED IS THE EDIT THAT CAUSED IT: drop the ownership predicate from
-// apply_approval_broker_unit_write_steps or approval_broker_lifecycle_steps and the twin's script
-// starts naming the broker unit again.
-
-fn twin_apply_script() -> String {
-  live_deploy_apply_script_for(
-    spec: srv1_twin_spec(),
-    plan: deploy_witness_full_install_plan(spec: srv1_twin_spec()),
-    cap_authorization: witness_cap_authorization,
-  )
-}
+// THE SUBJECT IS THE STEP LIST, NOT THE RENDERED SCRIPT, and that is a correction the floor forced:
+// the first cut rendered a whole second apply script per claim to grep it for a unit name, which
+// cost about 200k eval steps each against a 72300 budget. Rendering an entire deploy program to ask
+// whether four steps were produced is DESIGN section 3's claim-reaches-too-far in its plainest
+// form -- the claim's subject was one interface and its cost was the whole emitter's. Asking the
+// producers directly is cheaper AND stronger: an empty list cannot be serialized into a script that
+// happens not to mention the unit.
+//
+// THE RED IS THE SAME EDIT AS BEFORE: drop the ownership predicate from
+// apply_approval_broker_unit_write_steps or approval_broker_lifecycle_steps and the twin's lists
+// stop being empty.
 
 test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
-  let twin = twin_apply_script()
-  !string_contains(s: twin, pattern: gunbc_approval_broker_unit_name as String)
-    && !string_contains(s: twin, pattern: gunbc_approval_broker_slice_unit_name as String)
+  let twin = srv1_twin_spec()
+  count(apply_approval_broker_unit_write_steps(
+    spec: twin,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) == 0
+    && count(approval_broker_lifecycle_steps(spec: twin)) == 0
 }
 
 // THE POSITIVE CONTROL, without which the claim above is satisfied by an emitter that never writes
-// the broker at all -- which would be a different defect with the same green.
+// the broker at all -- a different defect with the same green.
 test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
-  let live = witness_apply_script()
-  string_contains(s: live, pattern: gunbc_approval_broker_unit_name as String)
-    && string_contains(s: live, pattern: gunbc_approval_broker_slice_unit_name as String)
-    && deployment_owns_the_host_approval_broker(spec: deployment_spec_srv1())
+  let live = deployment_spec_srv1()
+  count(apply_approval_broker_unit_write_steps(
+    spec: live,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )) > 0
+    && count(approval_broker_lifecycle_steps(spec: live)) > 0
+    && deployment_owns_the_host_approval_broker(spec: live)
     && !deployment_owns_the_host_approval_broker(spec: srv1_twin_spec())
+}
+
+// BOTH INSTALL PATHS BIND THE BROKER'S ONE PORT. The staged install and the release apply must
+// describe the SAME process, so a reading taken at one is about the other. This reads the unit
+// VALUE rather than either rendered script, for the same cost reason as above -- the port is a
+// directive on a unit, and rendering two deploy programs to find it was paying for the emitter.
+test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
+  let unit = live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  service_has_execstart_containing(
+    file: unit,
+    fragment: join([" --port ", to_string(approval_broker_listen_port)], ""),
+  )
+}
+
+fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      any(directives, d => match d {
+        ExecStart { command: c } => string_contains(s: c as String, pattern: fragment)
+        _ => false
+      })
+    _ => false
+  }
 }
 
 // A NON-OWNER REACHING THE STAGED DARK INSTALL REFUSES LOUDLY rather than rendering a script that
 // installs nothing and reports success -- the absorbing fallback at the seam where an operator is
-// being told a stage completed.
+// being told a stage completed. This one DOES render, because the refusal marker is a property of
+// the emitted text and there is nothing cheaper that observes it.
 test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
   let script = approval_broker_dark_install_script(
     spec: srv1_twin_spec(),

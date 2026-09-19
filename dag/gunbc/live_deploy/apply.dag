@@ -642,7 +642,7 @@ fn approval_broker_dark_install_wet_with_access(
         if !reconciliation_converged(r: mutation) {
           live_deploy_reconciliation_exit(r: mutation)
         } else {
-          approval_broker_dark_install_readback_exit(spec: spec)
+          approval_broker_dark_install_readback_exit(spec: spec, candidate: candidate)
         }
       }
     }
@@ -669,12 +669,21 @@ fn approval_broker_dark_install_wet_with_access(
 // bound its port still exited success while this annotation claimed the opposite.
 //
 // What goes red now: an unanswered probe, non-JSON bytes, a JSON value that is not an object, a
-// missing or duplicated revision member, a non-string revision, and a revision that is not 40
-// lowercase hex -- a converged mutation with any of those is a FAILED deploy.
-fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec) -> ProcessExit {
+// missing or duplicated revision member, a non-string revision, a revision that is not 40 lowercase
+// hex, AND -- the case the cutover HOLD's item 4 named -- a well-formed revision that is not THIS
+// DEPLOY'S CANDIDATE. That last one is the stale-broker case: the unit was written and something is
+// answering, but the service did not restart or came back on an older admitted release, and until
+// this comparison existed it passed the stage whose whole purpose is to say which build is
+// listening. The candidate comes from the deploy that just installed it, never from the process
+// being interrogated.
+fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let port = spec.approval_broker.listen.port
   let read = live_deploy_liveness_get_local(port: port, spec: spec)
-  match dark_install_release_discharged(listening_port: port, read: read) {
+  match dark_install_release_discharged(
+    listening_port: port,
+    read: read,
+    expected_release: candidate.revision as String as NonEmptyStr,
+  ) {
     StageAdmitted { stage: _ } => ExitSuccess
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([

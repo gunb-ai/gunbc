@@ -282,8 +282,18 @@ type RouteClassProbe
   | RouteClassRefused { status: Int, detail: NonEmptyStr }
   | RouteClassAnswered { status: Int }
 
+// THE CANDIDATE THIS DEPLOY INSTALLED, CARRIED SO THE READBACK CAN BE COMPARED RATHER THAN MERELY
+// PARSED (cutover HOLD item 4). Without it, release_admission accepted ANY well-formed 40-hex
+// revision, so a broker left running from an earlier admitted release passed the stage whose entire
+// purpose is to establish WHICH BUILD is listening -- and every later stage's evidence would then
+// be about that other build while reading as if it were about this one.
+//
+// It is the deploy's own candidate revision, supplied by the caller that performed the install,
+// never read back from the same process being interrogated: asking the subject to supply the value
+// it is checked against is not a comparison.
 type ApprovalBrokerCutoverEvidence {
   dark: DarkDeploymentStanding
+  expected_release: NonEmptyStr
   release_readback: ReleaseReadback
   demand: BrokerDemandReading
   front_door: FrontDoorStanding
@@ -302,6 +312,7 @@ type CutoverRefusal
   | DarkDeploymentOnUnexpectedPort { observed: Port, expected: Port }
   | DarkStageBrokerAlreadyHoldsWriterAuthority
   | ReleaseUnreadable { detail: NonEmptyStr }
+  | ReleaseDoesNotMatchCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
   | DemandNotMeasured { missing: NonEmptyStr }
   | FrontDoorStillAtRoadmap
   | RouteClassNotProbed { route: NonEmptyStr }
@@ -365,10 +376,18 @@ fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal
   }
 }
 
+// THE READBACK MUST NAME THE CANDIDATE, NOT MERELY LOOK LIKE A REVISION. Three outcomes, and the
+// middle one is the whole of the repair: unreadable (nothing to compare), readable but a different
+// build (the stale-broker case, previously ADMITTED), and readable and this build.
 fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.release_readback {
     ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
-    ReleaseReadBack { revision: _ } => Absent
+    ReleaseReadBack { revision: r } =>
+      if (r as String) == (e.expected_release as String) {
+        Absent
+      } else {
+        Present { value: ReleaseDoesNotMatchCandidate { expected: e.expected_release, observed: r } }
+      }
   }
 }
 
@@ -514,6 +533,14 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
     ReleaseUnreadable { detail: d } =>
       join(["the dark broker did not read back a release revision: ", d as String,
             ". Every later stage's evidence would be about an unknown build."], "") as NonEmptyStr
+    ReleaseDoesNotMatchCandidate { expected: x, observed: o } =>
+      join([
+        "the broker is running release ", o as String, " but this deploy installed ", x as String,
+        ". The unit was written and something is answering, but it is not this build -- most likely ",
+        "the service did not restart, or restarted from an older admitted release. Every later ",
+        "stage's readings would describe that process while reading as if they described this one, ",
+        "which is why the demand measurement and the route probes sit BEHIND this stage.",
+      ], "") as NonEmptyStr
     DemandNotMeasured { missing: m } =>
       join([
         "the broker's own memory demand is unmeasured: ", m as String,
@@ -617,8 +644,13 @@ fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>
 // built from the port the deploy intended to use, which made "is a broker listening" a restatement
 // of "we asked systemd to start one". A probe that did not land is a unit that is not listening,
 // and that is the only thing that can distinguish them from here.
-fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> ApprovalBrokerCutoverEvidence {
+fn dark_install_evidence(
+  listening_port: Port,
+  read: ServeLivenessRead,
+  expected_release: NonEmptyStr,
+) -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
+    expected_release: expected_release,
     dark: match read {
       ServeLivenessUnreachable { detail: d } => DarkUnitNotStarted { detail: d }
       _ => DarkUnitListening { port: listening_port }
@@ -649,9 +681,17 @@ fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> Appro
 // broker running a different admitted release passes. Closing that needs the evidence producers to
 // derive ReleaseMatchesCandidate rather than accept a well-formed revision, which is deferred work
 // and is recorded here rather than implied away.
-fn dark_install_release_discharged(listening_port: Port, read: ServeLivenessRead) -> CutoverAdmission {
+fn dark_install_release_discharged(
+  listening_port: Port,
+  read: ServeLivenessRead,
+  expected_release: NonEmptyStr,
+) -> CutoverAdmission {
   approval_broker_cutover_stage_discharged(
     stage: ProveRelease,
-    e: dark_install_evidence(listening_port: listening_port, read: read),
+    e: dark_install_evidence(
+      listening_port: listening_port,
+      read: read,
+      expected_release: expected_release,
+    ),
   )
 }

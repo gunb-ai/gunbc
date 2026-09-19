@@ -54,14 +54,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claims about a plan whose stages are decided by observations rather than by assertions: the
 // admitting arm is reachable only through a liveness document that parsed and validated
 // (review 68036). The empty-body call below is the refusing direction for the same reason.
+data cutover_fixture_revision: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr
+
 data cutover_fixture_liveness_body: String = join([
   "{\"live\":true,\"", running_release_revision_key,
-  "\":\"0123456789abcdef0123456789abcdef01234567\",\"bound_port\":18085}",
+  "\":\"", cutover_fixture_revision as String, "\",\"bound_port\":8085}",
 ], "")
 
 fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitNotStarted { detail: "no unit installed" as NonEmptyStr },
+    expected_release: cutover_fixture_revision,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "all six readings" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
@@ -75,6 +78,7 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_listen_port },
+    expected_release: cutover_fixture_revision,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: cutover_fixture_liveness_body)),
     demand: DemandMeasured {
       cold_load_peak: byte_size(900000000),
@@ -131,6 +135,7 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
+    expected_release: full.expected_release,
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
@@ -156,6 +161,7 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
+    expected_release: full.expected_release,
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
@@ -183,6 +189,7 @@ test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: 18085 },
+    expected_release: full.expected_release,
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: FrontDoorPointsAtRoadmap,
@@ -209,6 +216,7 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
+    expected_release: full.expected_release,
     release_readback: full.release_readback,
     demand: DemandUnmeasured { missing: "redemption peak" as NonEmptyStr },
     front_door: full.front_door,
@@ -438,6 +446,7 @@ test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
+    expected_release: full.expected_release,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "not taken" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
@@ -520,5 +529,84 @@ test fn the_rollback_posture_still_mounts_the_roadmap_rows() -> Bool {
   match routing_for(p: BrokerServesAndWrites) {
     ApprovalPathsRoutedToBroker => true
     _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE READBACK MUST NAME THIS DEPLOY'S CANDIDATE — cutover HOLD item 4
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// STAGE 2 USED TO ADMIT ANY WELL-FORMED 40-HEX REVISION. A broker left running from an earlier
+// admitted release therefore passed the stage whose entire purpose is to establish WHICH BUILD is
+// listening -- and because every later stage sits behind this one, the demand measurement and all
+// four route probes would then have described that other process while reading as if they described
+// this one. That is the sharpest instance of the HOLD's "cutover evidence is caller-assertible".
+//
+// The comparison value is the deploy's own candidate, supplied by the caller that performed the
+// install. Asking the subject to supply the value it is checked against would not be a comparison.
+
+data cutover_other_release: NonEmptyStr = "fedcba9876543210fedcba9876543210fedcba98" as NonEmptyStr
+
+fn liveness_body_naming(revision: NonEmptyStr) -> String {
+  join(["{\"live\":true,\"", running_release_revision_key, "\":\"", revision as String, "\"}"], "")
+}
+
+// THE RED THAT WAS UNREACHABLE BEFORE. A perfectly well-formed liveness document naming a DIFFERENT
+// admitted release is refused, and the refusal names both revisions so an operator can tell a
+// service that did not restart from one that came back on an older build.
+test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
+  match dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: c } => match c {
+      ReleaseDoesNotMatchCandidate { expected: x, observed: o } =>
+        (x as String) == (cutover_fixture_revision as String)
+          && (o as String) == (cutover_other_release as String)
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it is what stops the comparison being satisfiable by refusing every
+// readback: the SAME document naming THIS deploy's candidate is admitted.
+test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool {
+  match dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageAdmitted { stage: _ } => true
+    StageRefused { stage: _, cause: _ } => false
+  }
+}
+
+// A MALFORMED REVISION AND A WRONG REVISION ARE DIFFERENT FACTS with different remedies -- one is a
+// broken launch argument, the other is a process that did not restart -- so they must not fold
+// together into one "release not established".
+test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
+  let malformed = dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: "main" as NonEmptyStr)),
+    expected_release: cutover_fixture_revision,
+  )
+  let wrong = dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
+    expected_release: cutover_fixture_revision,
+  )
+  match malformed {
+    StageRefused { stage: _, cause: c } => match c {
+      ReleaseUnreadable { detail: _ } => match wrong {
+        StageRefused { stage: _, cause: c2 } => match c2 {
+          ReleaseDoesNotMatchCandidate { expected: _, observed: _ } => true
+          _ => false
+        }
+        StageAdmitted { stage: _ } => false
+      }
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
   }
 }
