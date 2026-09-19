@@ -1,0 +1,234 @@
+module gunbc.runner_retirement_scope
+
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import gunbc.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.runner_slot_retirement { transition_required_retiring }
+import gunbc.runner_host_retirement { unit_name_for_owned_registration }
+
+// THE RETIREMENT SUBJECT IS A SCOPE, NOT A SECOND SPINE, AND THIS MODULE IS ITS ADMISSION.
+//
+// WHY THIS SHAPE REPLACED "THREAD A TRANSPORT THROUGH THE FullHost OBSERVERS".
+//
+// The earlier plan was to make every FullHost observer take a transport so plan/apply could reach a
+// remote target. Re-deriving the slice found that locality is the SECOND wall for srv2 and not the
+// first: every FullHost observer gates on `runner_host_deploy_for(host)` answering
+// `RunnerHostDeployFound`, and srv2 answers `RunnerHostDeployRefused` because no admitted width can
+// be derived for it. `observe_slot_retirement_evidence_wet` returns `SlotRetirementEvidenceAbsent`,
+// `observe_runner_unit_standings_wet` returns `UnitStandingsUnobserved`, and
+// `fleet_converge_slot_family` returns `SlotFamilyHostRefused` -- three independent refusals, all
+// upstream of any transport question. A run executing ON srv2 with a perfect local transport still
+// produces no retirement plan for it.
+//
+// SO THREADING THE TRANSPORT WOULD HAVE REPAIRED A WALL THAT WAS NOT BLOCKING, and the one-line way
+// to make srv2 reach those observers is to give it a deploy row -- which is the zero-width
+// `RunnerHostDeploy` the ruling forbids, arriving in the costume of a spine fix.
+//
+// `FleetConvergeScope` ALREADY CARRIES NARROWER SUBJECTS WITH THEIR OWN OBSERVERS: `LaunchEnvironment`
+// observes only timers, `FabricAllocationStoreOnly` only the allocation store. The retirement scope is
+// that same move. It gates on the OBLIGATION rather than on the deploy row, so it serves both a host
+// that is leaving (srv2, via the declared host retirement) and a retained host with surplus (srv3,
+// srv4, via the width transition) -- and the FullHost observers keep their locality and their
+// executor-equals-target corroboration, which is a wall worth keeping for retained hosts rather than
+// something to dissolve.
+
+// THE OBLIGATION IS THE ADMISSION, AND IT IS THE UNION ALREADY BUILT. `transition_required_retiring`
+// joins the declared width transitions and the declared host retirements by exact identity. A host
+// with nothing owed has no retirement subject, which is a different fact from a host that is not
+// modelled and from one whose width refuses -- and none of the three is an error here.
+type RetirementScopeAdmission
+  = RetirementScopeAdmitted { subject: RetirementScopeSubject }
+  | RetirementScopeNoObligation { host: HostIdentity, cause: String }
+  | RetirementScopeRefused { cause: String }
+
+// THE TRANSPORT IS A REALIZATION CHOICE OVER ONE SUBJECT, WHICH IS WHY IT IS A SEPARATE FIELD RATHER
+// THAN TWO SUBJECT TYPES. DESIGN section 3: the interface shape is the retirement obligation, the
+// transport is one of N handlers bound to it, and the dispatch that selects a handler is itself
+// realization and sits peripheral. A remote retirement and a local one are the same plan over the
+// same subject reached two ways.
+type RetirementTransportLocality
+  = RetirementOnExecutorLocal
+  | RetirementOverFleetSsh { endpoint: NonEmptyStr, principal: NonEmptyStr }
+
+type RetirementScopeSubject {
+  target: HostIdentity
+  executor: NonEmptyStr
+  locality: RetirementTransportLocality
+  required: List<NonEmptyStr>
+}
+
+fn retirement_transport_locality_wire(l: RetirementTransportLocality) -> String {
+  match l {
+    RetirementOnExecutorLocal => "local"
+    RetirementOverFleetSsh { endpoint: e, principal: p } =>
+      join(["fleet-ssh:", p as String, "@", e as String], "")
+  }
+}
+
+// THE LOCALITY IS DECIDED BY THE TWO CARRIED LABELS AND NOTHING ELSE. It is not read from the
+// machine's hostname: that would make the label deciding WHERE the job runs and the name the machine
+// answers to one reading, which is the corroboration collapse review 61761 found on the reset route.
+fn retirement_transport_locality(executor: NonEmptyStr, target: HostIdentity) -> RetirementTransportLocality {
+  if (executor as String) == (target as String) {
+    RetirementOnExecutorLocal
+  } else {
+    RetirementOverFleetSsh {
+      endpoint: fleet_probe_endpoint_for(host: target as String) as NonEmptyStr,
+      principal: executor_bootstrap_principal.login,
+    }
+  }
+}
+
+// THE TRANSPORT VALUE, BOUND ONCE. `FleetSsh` is the arm `gunbc.host_operation_exec` already
+// dispatches, so every observer in `gunbc.runner_slot_retirement` reaches the target through it with
+// no new transport and nothing resident on the subject.
+fn retirement_scope_transport(
+  locality: RetirementTransportLocality,
+  context: FleetSshExecutionContext,
+) -> HostEffectTransport {
+  match locality {
+    RetirementOnExecutorLocal => LocalShell
+    RetirementOverFleetSsh { endpoint: e, principal: p } =>
+      FleetSsh { target: SshTarget { endpoint: e, principal: p }, context: context }
+  }
+}
+
+
+// ── A RUN MAY NOT RETIRE THE SLOT IT IS EXECUTING IN ──────────────────────────────────────────
+//
+// This is the local case's own hazard and it has no remote analogue. When the executor IS the target,
+// the process is running inside one of that host's runner slots; if that slot is in the obligation,
+// the plan would mask and stop the runner executing the plan. The apply dies mid-transaction, the
+// readback never happens, and what it wrote before dying is the empty value that reads as a positive
+// answer -- the same shape the host-reset route inverts its whole dispatch to avoid.
+//
+// THE RUNNER NAME IS COMPARED, NEVER PARSED. `extdeps.github.actions_environment` states the rule
+// this fold obeys: the runner is an OPAQUE identity and nothing may be derived from its spelling --
+// a host family is not recoverable from a slot name by taking a prefix. So this does not decompose
+// `RUNNER_NAME` to find a host. It derives FORWARD, registration name to unit name, through
+// `unit_name_for_owned_registration` -- the same direction the naming authority writes -- and then
+// asks one exact-identity question: is that unit in the obligation. Forward derivation plus an
+// identity join, with no backward parse anywhere.
+//
+// AN ABSENT RUNNER NAME REFUSES RATHER THAN PASSING. A local run that cannot say which slot it is in
+// cannot establish that it is not about to retire itself, and "I could not tell" is not "it is safe".
+type SelfSlotStanding
+  = SelfSlotOutsideObligation { unit: String }
+  | SelfSlotInObligation { unit: String }
+  | SelfSlotUnknown { cause: String }
+
+fn self_slot_standing(
+  locality: RetirementTransportLocality,
+  runner_name_raw: String,
+  required: List<NonEmptyStr>,
+) -> SelfSlotStanding {
+  match locality {
+    RetirementOverFleetSsh { endpoint: _, principal: _ } =>
+      SelfSlotOutsideObligation {
+        unit: "<remote target: this run executes on a different machine than the one being retired>",
+      }
+    RetirementOnExecutorLocal => {
+      let name = trim(s: runner_name_raw)
+      if name == "" {
+        SelfSlotUnknown {
+          cause: "this run executes on the host it is retiring and RUNNER_NAME is unset, so it cannot establish which slot it occupies or that its own slot is outside the obligation",
+        }
+      } else {
+        let own_unit = unit_name_for_owned_registration(name: name as NonEmptyStr) as String
+        if any(required, r => (r as String) == own_unit) {
+          SelfSlotInObligation { unit: own_unit }
+        } else {
+          SelfSlotOutsideObligation { unit: own_unit }
+        }
+      }
+    }
+  }
+}
+
+fn self_slot_standing_wire(s: SelfSlotStanding) -> String {
+  match s {
+    SelfSlotOutsideObligation { unit: u } => join(["outside-obligation ", u], "")
+    SelfSlotInObligation { unit: u } => join(["IN-OBLIGATION ", u], "")
+    SelfSlotUnknown { cause: c } => join(["UNKNOWN ", c], "")
+  }
+}
+
+fn self_slot_permits_plan(s: SelfSlotStanding) -> Bool {
+  match s {
+    SelfSlotOutsideObligation { unit: _ } => true
+    SelfSlotInObligation { unit: _ } => false
+    SelfSlotUnknown { cause: _ } => false
+  }
+}
+
+
+// ── ADMISSION ─────────────────────────────────────────────────────────────────────────────────
+
+fn retirement_scope_admission(
+  executor_raw: String,
+  target_raw: String,
+  runner_name_raw: String,
+) -> RetirementScopeAdmission {
+  let executor = trim(s: executor_raw)
+  let target = trim(s: target_raw)
+  if executor == "" {
+    RetirementScopeRefused {
+      cause: "the retirement executor is empty; the label decides where this process runs and cannot be defaulted to the target",
+    }
+  } else if target == "" {
+    RetirementScopeRefused {
+      cause: "the retirement target is empty; a retirement scope with no subject would read whichever host it happened to land on",
+    }
+  } else {
+    let host = target as HostIdentity
+    let required = transition_required_retiring(host: host)
+    if list_length(items: required) == 0 {
+      RetirementScopeNoObligation {
+        host: host,
+        cause: join([target, " owes no retirement under any declared authority -- neither a width transition nor a host retirement names a retiree for it -- so there is no retirement subject to plan"], ""),
+      }
+    } else {
+      let locality = retirement_transport_locality(executor: executor as NonEmptyStr, target: host)
+      let self_slot = self_slot_standing(
+        locality: locality,
+        runner_name_raw: runner_name_raw,
+        required: required,
+      )
+      if !self_slot_permits_plan(s: self_slot) {
+        RetirementScopeRefused {
+          cause: join([
+            "this run executes on ", target, " and ", self_slot_standing_wire(s: self_slot),
+            ": planning it would mask and stop the runner executing the plan, so the apply would die mid-transaction and the readback would never happen. Dispatch from a retained peer executor instead",
+          ], ""),
+        }
+      } else {
+        RetirementScopeAdmitted {
+          subject: RetirementScopeSubject {
+            target: host,
+            executor: executor as NonEmptyStr,
+            locality: locality,
+            required: required,
+          },
+        }
+      }
+    }
+  }
+}
+
+// THE SUBJECT'S OBSERVABLE CONTENT, FOR THE PLAN FINGERPRINT. The locality is part of it on purpose:
+// a plan built to reach srv2 over the fleet edge and a plan built to run on srv2 locally are
+// different plans over the same obligation, and an apply that reobserved through the other transport
+// must not admit against it.
+fn retirement_scope_baseline_rows(subject: RetirementScopeSubject) -> List<String> {
+  concat(
+    [
+      join(["retirement-scope:target=", subject.target as String], ""),
+      join(["retirement-scope:locality=", retirement_transport_locality_wire(l: subject.locality)], ""),
+    ],
+    subject.required |> map(u => join(["retirement-scope:required=", u as String], "")),
+  )
+}

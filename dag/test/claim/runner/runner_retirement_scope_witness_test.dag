@@ -1,0 +1,152 @@
+module test.claim.runner.runner_retirement_scope_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String, list_length }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
+import gunbc.runner_retirement_scope {
+  RetirementScopeAdmitted,
+  RetirementScopeNoObligation,
+  RetirementScopeRefused,
+  retirement_scope_admission,
+  RetirementOnExecutorLocal,
+  RetirementOverFleetSsh,
+  retirement_transport_locality,
+  retirement_transport_locality_wire,
+  SelfSlotOutsideObligation,
+  SelfSlotInObligation,
+  SelfSlotUnknown,
+  self_slot_standing,
+  self_slot_permits_plan,
+  retirement_scope_baseline_rows,
+}
+import gunbc.runner_slot_retirement { transition_required_retiring }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE SCOPE SERVES A LEAVING HOST AND A RETAINED ONE ───────────────────────────────────────
+
+// srv2 IS ADMITTED THOUGH ITS DEPLOY ROW REFUSES. This is the whole point of gating on the
+// obligation rather than on runner_host_deploy_for: the FullHost observers answer Refused /
+// Unobserved / SlotFamilyHostRefused for srv2 before any transport question, and this scope reaches
+// it anyway because a declared host retirement owes retirees for it.
+test fn a_leaving_host_is_admitted_from_a_peer_executor() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv2", runner_name_raw: "srv1-03") {
+    RetirementScopeAdmitted { subject: s } =>
+      (s.target as String) == (operator_host_srv2 as String)
+        && list_length(items: s.required) > 0
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+    RetirementScopeRefused { cause: _ } => false
+  }
+}
+
+// AND A RETAINED HOST IS ADMITTED TOO, on its width-transition obligation. srv4 stays in the fleet
+// and still owes retirees, which is the case the scope must serve for srv3/srv4 surplus.
+test fn a_retained_host_with_surplus_is_admitted() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv4", runner_name_raw: "srv1-03") {
+    RetirementScopeAdmitted { subject: s } => list_length(items: s.required) > 0
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+    RetirementScopeRefused { cause: _ } => false
+  }
+}
+
+// A HOST THAT OWES NOTHING IS NOT AN ERROR AND IS NOT A SUBJECT. srv2 and srv4 both owe; a host with
+// no declared authority naming it owes nothing, and that is its own arm rather than a refusal.
+test fn a_host_owing_nothing_is_no_obligation_rather_than_refused() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv9", runner_name_raw: "srv1-03") {
+    RetirementScopeNoObligation { host: _, cause: _ } =>
+      list_length(items: transition_required_retiring(host: "srv9" as NonEmptyStr)) == 0
+    RetirementScopeAdmitted { subject: _ } => false
+    RetirementScopeRefused { cause: _ } => false
+  }
+}
+
+// ── THE TRANSPORT IS A REALIZATION CHOICE OVER ONE SUBJECT ───────────────────────────────────
+
+test fn a_peer_executor_selects_the_fleet_ssh_transport() -> Bool {
+  match retirement_transport_locality(executor: "srv1" as NonEmptyStr, target: operator_host_srv2) {
+    RetirementOverFleetSsh { endpoint: _, principal: _ } => true
+    RetirementOnExecutorLocal => false
+  }
+}
+
+test fn an_executor_that_is_its_own_target_selects_the_local_transport() -> Bool {
+  match retirement_transport_locality(executor: "srv4" as NonEmptyStr, target: operator_host_srv4) {
+    RetirementOnExecutorLocal => true
+    RetirementOverFleetSsh { endpoint: _, principal: _ } => false
+  }
+}
+
+// THE LOCALITY IS IN THE PLAN FINGERPRINT, so an apply that reobserved through the other transport
+// cannot admit against a plan built for this one.
+test fn the_locality_is_part_of_the_plan_subject() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv2", runner_name_raw: "srv1-03") {
+    RetirementScopeAdmitted { subject: s } =>
+      any(retirement_scope_baseline_rows(subject: s), r =>
+        r == join(["retirement-scope:locality=", retirement_transport_locality_wire(l: s.locality)], ""))
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+    RetirementScopeRefused { cause: _ } => false
+  }
+}
+
+// ── A RUN MAY NOT RETIRE THE SLOT IT IS EXECUTING IN ─────────────────────────────────────────
+
+// THE DISCRIMINATOR. srv4 owes 13..21 and this run is executing in srv4-13, so planning would mask
+// and stop the runner executing the plan.
+test fn a_local_run_inside_the_obligation_is_refused() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv4", target_raw: "srv4", runner_name_raw: "srv4-13") {
+    RetirementScopeRefused { cause: _ } => true
+    RetirementScopeAdmitted { subject: _ } => false
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL ON THE SAME HOST: srv4-01 is committed, not surplus, so a run there may
+// plan srv4's retirement locally. Without this row the refusal above is satisfied by a predicate
+// that refuses every local run.
+test fn a_local_run_outside_the_obligation_is_admitted() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv4", target_raw: "srv4", runner_name_raw: "srv4-01") {
+    RetirementScopeAdmitted { subject: _ } => true
+    RetirementScopeRefused { cause: _ } => false
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+  }
+}
+
+// AN ABSENT RUNNER NAME REFUSES RATHER THAN PASSING. A local run that cannot say which slot it
+// occupies cannot establish that it is not about to retire itself.
+test fn a_local_run_with_no_runner_name_is_refused() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv4", target_raw: "srv4", runner_name_raw: "") {
+    RetirementScopeRefused { cause: _ } => true
+    RetirementScopeAdmitted { subject: _ } => false
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+  }
+}
+
+// THE HAZARD HAS NO REMOTE ANALOGUE, and an unset RUNNER_NAME on a remote run must not refuse: the
+// run is not executing on the machine being retired at all.
+test fn a_remote_run_with_no_runner_name_is_admitted() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv2", runner_name_raw: "") {
+    RetirementScopeAdmitted { subject: _ } => true
+    RetirementScopeRefused { cause: _ } => false
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+  }
+}
+
+// THE COMPARISON IS AN EXACT IDENTITY JOIN OVER A FORWARD-DERIVED UNIT NAME, never a prefix parse of
+// the runner name -- extdeps.github.actions_environment rules that a runner is an opaque identity and
+// a host family is not recoverable from its spelling. A name that is not in the obligation does not
+// become one by sharing srv4's prefix.
+test fn the_self_slot_test_is_an_identity_join_not_a_prefix_test() -> Bool {
+  let required = transition_required_retiring(host: operator_host_srv4)
+  match self_slot_standing(locality: RetirementOnExecutorLocal, runner_name_raw: "srv4-01", required: required) {
+    SelfSlotOutsideObligation { unit: u } =>
+      u == "actions-runner@srv4-01.service"
+        && !self_slot_permits_plan(s: self_slot_standing(
+             locality: RetirementOnExecutorLocal,
+             runner_name_raw: "srv4-13",
+             required: required,
+           ))
+    SelfSlotInObligation { unit: _ } => false
+    SelfSlotUnknown { cause: _ } => false
+  }
+}
