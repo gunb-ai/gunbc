@@ -1,0 +1,165 @@
+module test.claim.build_provenance_join_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { String, CommitSha }
+import gunbc.cli_dispatch_surface {
+  CliCleanSourceCommit,
+  CliDirtySourceCommit,
+  CliVersionLineParsed,
+  CliVersionLineRefused,
+  gunbc_cli_version_identity,
+  gunbc_cli_version_line_parse,
+  gunbc_cli_version_text,
+}
+import gunbc.build_provenance_join {
+  RunningSeedIdentityRead,
+  RunningSeedIdentityUnreadable,
+  BuildProvenanceJoined,
+  BuildProvenanceMismatch,
+  BuildProvenanceDirty,
+  BuildProvenanceUnobserved,
+  join_build_provenance,
+  build_provenance_join_holds,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision_r: String = "4e6e066f88fcabe0058a683f9cb634de4f8abff3"
+data revision_s: String = "7261964510969c72ab874e908e8cc3fc80b880aa"
+
+// ── THE JOIN, AT ITS ONE INTERFACE: an expected revision and a reading of the running executable ──
+//
+// The reading is SUPPLIED, not observed: what the running interpreter reports is the subject of
+// `observe_running_seed_identity`, whose inhabitance is the wet probe and the fleet route
+// (gunbc.build_provenance_join build_provenance_probe_wet), and re-executing it here would make
+// every claim below a claim about this harness's binary rather than about the fold.
+
+// THE POSITIVE CONTROL: all three agree, and the join carries the revision it joined on.
+test fn an_executable_built_from_the_selected_revision_joins() -> Bool {
+  match join_build_provenance(
+    expected: revision_r,
+    reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: revision_r as CommitSha } },
+  ) {
+    BuildProvenanceJoined { revision: r } => (r as String) == revision_r
+    BuildProvenanceMismatch { expected: _, built_from: _ } => false
+    BuildProvenanceDirty { built_from: _ } => false
+    BuildProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED THE BRIEF NAMES: the checkout is R, the binary was built from S. The
+// refusal carries both so the receipt can say which is which.
+test fn an_executable_built_from_another_revision_refuses_with_both_named() -> Bool {
+  match join_build_provenance(
+    expected: revision_r,
+    reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: revision_s as CommitSha } },
+  ) {
+    BuildProvenanceMismatch { expected: e, built_from: b } => (e as String) == revision_r && (b as String) == revision_s
+    BuildProvenanceJoined { revision: _ } => false
+    BuildProvenanceDirty { built_from: _ } => false
+    BuildProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// A DIRTY BUILD OF R IS NOT R. The same commit with the dirty observation flipped must not join;
+// stripping the suffix to recover the commit would be the impersonation the render refuses.
+test fn a_dirty_build_of_the_selected_revision_refuses() -> Bool {
+  match join_build_provenance(
+    expected: revision_r,
+    reading: RunningSeedIdentityRead { identity: CliDirtySourceCommit { commit: revision_r as CommitSha } },
+  ) {
+    BuildProvenanceDirty { built_from: b } => (b as String) == revision_r
+    BuildProvenanceJoined { revision: _ } => false
+    BuildProvenanceMismatch { expected: _, built_from: _ } => false
+    BuildProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// PROVENANCE UNREADABLE REFUSES AS UNOBSERVED, never as a pass and never as a mismatch.
+test fn an_unreadable_identity_refuses_as_unobserved() -> Bool {
+  match join_build_provenance(
+    expected: revision_r,
+    reading: RunningSeedIdentityUnreadable { cause: "the running gunbc did not report its version" },
+  ) {
+    BuildProvenanceUnobserved { cause: _ } => true
+    BuildProvenanceJoined { revision: _ } => false
+    BuildProvenanceMismatch { expected: _, built_from: _ } => false
+    BuildProvenanceDirty { built_from: _ } => false
+  }
+}
+
+// ONLY THE JOINED ARM HOLDS -- the predicate the route consumes to decide whether a blocker exists.
+test fn only_a_joined_provenance_holds() -> Bool {
+  build_provenance_join_holds(
+    verdict: join_build_provenance(
+      expected: revision_r,
+      reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: revision_r as CommitSha } },
+    ),
+  )
+    && !build_provenance_join_holds(
+      verdict: join_build_provenance(
+        expected: revision_r,
+        reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: revision_s as CommitSha } },
+      ),
+    )
+    && !build_provenance_join_holds(
+      verdict: join_build_provenance(
+        expected: revision_r,
+        reading: RunningSeedIdentityUnreadable { cause: "unread" },
+      ),
+    )
+}
+
+// ── THE VERSION LINE, READ BACK THROUGH THE GRAMMAR THAT RENDERED IT ─────────────────────────
+
+// ROUND TRIP: what `gunbc_cli_version_text` renders, prefixed by the binary name as clap prints
+// it, parses back to the identity it was rendered from -- clean and dirty alike.
+test fn a_rendered_version_line_parses_back_to_its_identity() -> Bool {
+  let clean = gunbc_cli_version_identity(source_commit: revision_r as CommitSha, source_dirty: false)
+  let dirty = gunbc_cli_version_identity(source_commit: revision_r as CommitSha, source_dirty: true)
+  let clean_back = match gunbc_cli_version_line_parse(line: join(["gunbc ", gunbc_cli_version_text(identity: clean), "\n"], "")) {
+    CliVersionLineParsed { identity: i } =>
+      match i {
+        CliCleanSourceCommit { commit: c } => (c as String) == revision_r
+        CliDirtySourceCommit { commit: _ } => false
+      }
+    CliVersionLineRefused { cause: _ } => false
+  }
+  let dirty_back = match gunbc_cli_version_line_parse(line: join(["gunbc ", gunbc_cli_version_text(identity: dirty)], "")) {
+    CliVersionLineParsed { identity: i } =>
+      match i {
+        CliDirtySourceCommit { commit: c } => (c as String) == revision_r
+        CliCleanSourceCommit { commit: _ } => false
+      }
+    CliVersionLineRefused { cause: _ } => false
+  }
+  clean_back && dirty_back
+}
+
+// A MATERIALIZED-TREE IDENTITY (the devboot producer's spelling) is refused rather than read as a
+// commit: a tree object names no revision this join could compare against.
+test fn a_materialized_tree_identity_is_refused_not_admitted_as_a_commit() -> Bool {
+  match gunbc_cli_version_line_parse(line: "gunbc tree:sha1:4e6e066f88fcabe0058a683f9cb634de4f8abff3") {
+    CliVersionLineRefused { cause: _ } => true
+    CliVersionLineParsed { identity: _ } => false
+  }
+}
+
+// ANOTHER PROGRAM'S VERSION LINE IS REFUSED: the parse asserts the binary name, so a line printed
+// by something that is not gunbc cannot supply gunbc's identity.
+test fn another_programs_version_line_is_refused() -> Bool {
+  match gunbc_cli_version_line_parse(line: "rustc 1.90.0") {
+    CliVersionLineRefused { cause: _ } => true
+    CliVersionLineParsed { identity: _ } => false
+  }
+}
+
+// AN EMPTY OR MALFORMED LINE IS REFUSED, which is what an operation whose process printed nothing
+// produces, and which must reach the join as unobserved rather than as any identity.
+test fn an_empty_version_line_is_refused() -> Bool {
+  match gunbc_cli_version_line_parse(line: "") {
+    CliVersionLineRefused { cause: _ } => true
+    CliVersionLineParsed { identity: _ } => false
+  }
+}

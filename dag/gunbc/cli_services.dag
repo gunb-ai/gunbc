@@ -43,6 +43,40 @@ service gunbc.Cli {
     }
   }
 
+  // THE RUNNING INTERPRETER REPORTS WHICH SOURCE COMMIT BUILT IT, AND NOTHING ELSE CAN ANSWER FOR IT.
+  //
+  // `Run` above takes `bin_path`, so what it observes is whichever file the CALLER named. That is
+  // the wrong shape for a provenance join: an assessment that must prove the executable it is
+  // running under was built from the selected revision cannot take the executable's identity from
+  // a path, because a path is a claim about a file and the join is about a process. This operation
+  // therefore takes NO INPUT. Its argv is fixed at the Linux procfs magic link
+  // (extdeps.linux.procfs ProcSelfExe): the shell transport forks and execs argv[0] directly
+  // (no intermediate shell), and the kernel resolves /proc/self/exe in the forked child before the
+  // exec, so the program that answers is the same image the interpreter evaluating the call is
+  // running -- not the file at target/release/gunbc, not a binary a caller pointed at, and still
+  // the same image if that file was replaced after the interpreter started.
+  //
+  // The line it prints is `gunbc <identity>`, rendered by the generated clap surface from
+  // GUNBC_BUILD_IDENTITY (gunbc.cli_dispatch_surface gunbc_cli_version_text), and it is read back
+  // through that module's `gunbc_cli_version_line_parse` so render and parse stay one grammar.
+  //
+  // NO mock_response, deliberately. A hermetic caller receives a typed refusal rather than an
+  // identity that no build produced: a fabricated commit here would be the fabricated plausible
+  // output DESIGN section 5 forbids, wearing the name of the wall built to catch it.
+  operation RunningVersion {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["/proc/self/exe", "--version"] }
+    exit {
+      0 => Unit
+      nonzero => String "the running gunbc did not report its version"
+    }
+  }
 }
 
 service claim_executor.Executor {

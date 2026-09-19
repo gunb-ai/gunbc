@@ -645,8 +645,9 @@ test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
   )
 }
 
-// AN EXTRA BLOCKER SUPPLIED BY THE ROUTE BLOCKS TOO -- this is how the unresolved build provenance
-// reaches the verdict rather than being asserted or omitted.
+// AN EXTRA BLOCKER SUPPLIED BY THE ROUTE BLOCKS TOO -- this is how a refused build-provenance join
+// (gunbc.build_provenance_join, one blocker per refusal arm) reaches the verdict rather than being
+// asserted or omitted.
 test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
