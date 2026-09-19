@@ -1,0 +1,308 @@
+module test.claim.machine_intake.mtcollins1_boot_run_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure { second_count, minute_count }
+import v2.std.optional { Present }
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
+  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
+  mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
+  mtcollins1_boot_submit_timeout,
+  mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe,   mtcollins1_boot_sol_is_held,
+  mtcollins1_boot_sol_held_from_observations,
+  mtcollins1_sol_observed_from_collector,
+  mtcollins1_boot_terminal_observed,
+  mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import std.process { ExitSuccess }
+import std.temporal_effect {
+  LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
+  held_lease_observed_verdict,
+}
+import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
+import std.scoped_authorization { authorization_claim_key }
+import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
+import gunbc.auth.approval_request_client {
+  approval_poll_standing, PollExpired, PollUnreadable,
+}
+import gunbc.auth.approval_status_wire {
+  StatusUnreadable, StatusPending, parse_filed_approval_status,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn approval_window_is_the_poll_budget_not_zero() -> Bool {
+  let window = second_count(s: mtcollins1_boot_approval_window()) as Int
+  window == mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int)
+    && window > 0
+}
+
+test fn the_submit_timeout_is_a_second_not_a_bare_literal() -> Bool {
+  (second_count(s: mtcollins1_boot_submit_timeout) as Int) == 30
+}
+
+test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() -> Bool {
+  let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_approval_window()) as Int)
+    + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
+  (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
+}
+
+test fn a_zero_window_expires_on_the_next_observation() -> Bool {
+  match approval_poll_standing(
+    status: StatusPending { expires_at: "2026-09-16T20:00:00Z" },
+    observed_at: "2026-09-16T20:00:01Z",
+    expires_at: "2026-09-16T20:00:00Z",
+  ) {
+    PollExpired => true
+    _ => false
+  }
+}
+
+test fn a_failed_status_get_is_unreadable_not_pending() -> Bool {
+  match mtcollins1_status_from_get(success: false, body: "") {
+    StatusUnreadable { detail: _ } => true
+    _ => false
+  }
+    && match approval_poll_standing(
+      status: mtcollins1_status_from_get(success: false, body: ""),
+      observed_at: "2026-09-16T20:00:00Z",
+      expires_at: "2026-09-16T20:22:30Z",
+    ) {
+      PollUnreadable { detail: _ } => true
+      _ => false
+    }
+    && match parse_filed_approval_status(body: "standing=pending\nexpires_at=2026-09-16T20:22:30Z\n") {
+      StatusPending { expires_at: _ } => true
+      _ => false
+    }
+}
+
+test fn clock_unreadable_is_not_an_observation_instant() -> Bool {
+  match mtcollins1_boot_instant_from_probe(reading: none) { Absent => true  _ => false }
+    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "clock-unreadable" as NonEmptyStr }) { Absent => true  _ => false }
+    && match mtcollins1_boot_instant_from_probe(reading: Present { value: "2026-09-16T20:00:00Z" as NonEmptyStr }) {
+      Present { value: t } => t as String == "2026-09-16T20:00:00Z"
+      _ => false
+    }
+}
+
+test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
+  !mtcollins1_boot_sol_is_held(pid_path: "")
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: false,
+      pid_file_content: "123",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "\n",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: true,
+      cmdline_content: "bash",
+    )
+    && !mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: false,
+      cmdline_content: "ipmitool",
+    )
+    && mtcollins1_boot_sol_held_from_observations(
+      pid_path: "/tmp/sol.pid",
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      cmdline_ok: true,
+      cmdline_content: "ipmitool sol activate",
+    )
+}
+
+test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
+  let eid = "mtcollins1-boot-1" as NonEmptyStr
+  (authorization_claim_key(escalation_id: eid) as String) == (eid as String)
+}
+
+test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
+  held_lease_observed_verdict(
+    observed: mtcollins1_sol_observed_from_collector(
+      pid_path_set: false,
+      pid_file_ok: false,
+      pid_file_content: "",
+      collector_held: false,
+    ),
+  ) == Inaccessible
+    && held_lease_observed_verdict(
+      observed: mtcollins1_sol_observed_from_collector(
+        pid_path_set: true,
+        pid_file_ok: true,
+        pid_file_content: "123\n",
+        collector_held: true,
+      ),
+    ) == Converged
+    && held_lease_observed_verdict(
+      observed: mtcollins1_sol_observed_from_collector(
+        pid_path_set: true,
+        pid_file_ok: true,
+        pid_file_content: "123\n",
+        collector_held: false,
+      ),
+    ) == Drifted
+    && held_lease_observed_verdict(
+      observed: mtcollins1_sol_observed_from_collector(
+        pid_path_set: true,
+        pid_file_ok: false,
+        pid_file_content: "",
+        collector_held: false,
+      ),
+    ) == Absent
+    && mtcollins1_sol_observed_from_collector(
+      pid_path_set: true,
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      collector_held: false,
+    ) == LeaseRunningStale
+    && mtcollins1_sol_observed_from_collector(
+      pid_path_set: true,
+      pid_file_ok: true,
+      pid_file_content: "123\n",
+      collector_held: true,
+    ) == LeaseRunningExpected
+    && mtcollins1_sol_observed_from_collector(
+      pid_path_set: false,
+      pid_file_ok: false,
+      pid_file_content: "SOL enabled",
+      collector_held: false,
+    ) == LeaseInaccessible
+}
+
+test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
+  let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+  let clean = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let ghes_ce = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let ue = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let nproc_elsewhere = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----EXIT nproc: 1\n----SECTION lscpu----\nCPU(s):                               160\n----EXIT lscpu: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let digest_mismatch = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let begin_only = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION nproc----\n160\n"
+  let begin_with_spurious_end = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    "console said the process reached the end of its run\n----SECTION nproc----\n160\n",
+  )
+  mtcollins1_boot_terminal_observed(capture: clean, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: ue, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: subject)
+}
+
+test fn boot_loopback_filing_is_srv1_only() -> Bool {
+  mtcollins1_boot_host_must_be_srv1(host: operator_host_srv1 as String)
+    && !mtcollins1_boot_host_must_be_srv1(host: operator_host_srv2 as String)
+    && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
+    && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv2 as String) { ExitSuccess => false  _ => true }
+}
