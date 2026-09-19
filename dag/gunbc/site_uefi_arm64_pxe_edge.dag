@@ -299,8 +299,8 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
   )
 }
 
-// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
-// srv4 as the edge daemon's config. It renders the SAME roster admission gates on: its known-machine
+// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this as the srv4 edge
+// daemon's config once its gate opens (see the frontier row below for what that waits on). It renders the SAME roster admission gates on: its known-machine
 // tags are the roster's MACs and its boot line is the roster's derived transport. tftp_directory is
 // the serving host's filesystem path for dnsmasq's tftp-root, a host fact beside the roster's TFTP
 // route identity.
@@ -319,9 +319,16 @@ fn site_edge_offered_filename(roster: SiteEdgeRoster) -> NonEmptyStr {
 // failure is a MacParseFailed every consumer must refuse on, never an empty roster.
 data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
 
-// The production route this module provides and nothing yet executes, as counted
+// The production routes this module provides and nothing yet executes, as counted
 // rows (enrolled in gunbc.census_closure_frontier) rather than prose.
 data site_uefi_arm64_pxe_edge_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
+    reason: "gunbc.site_pxe_edge_converge site_pxe_edge_config_file renders this config, but its converge gate is closed by construction (site_pxe_edge_chainloader_pin is SitePxeEdgeChainloaderUnpinned), so no dispatch has written it to srv4",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the iPXE arm64 chainloader pin is grounded (a digested build pinned as SitePxeEdgeChainloaderPinned and present in the TFTP root) and a site_pxe_edge_converge dispatch writes this rendering to srv4 and reads it back; the converge code existing does not fire this"
+    )
+  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_client_admission"),
     reason: "no route binds an observed srv4 boot offer into gunbc.network_boot_delivery NetworkBootJoinInputs.site; the admission verdict is constructed only by witnesses over supplied rosters",
