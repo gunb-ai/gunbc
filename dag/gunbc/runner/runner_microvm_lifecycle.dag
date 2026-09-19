@@ -5,7 +5,7 @@ import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
   CellId, SandboxId, CellReadiness, SanitationFact, SanitationReadback, SanitationObservation,
   FactConfirmed, FactRefuted, FactUnobservable,
-  NoSurvivingProcesses, CgroupEmpty, MountsRemoved, NetworkNamespaceRemoved,
+  NoSurvivingProcesses, CgroupEmpty, MountsRemoved, SlotNetworkQuiescent, SlotScopedNetwork,
   WritableLayersDeleted, SecretsRemoved, cell_readiness_after,
 }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -236,14 +236,21 @@ type ResourceReadback
 // are slot-scoped converge state (sunny-ant-606 ruling A); the attempt owns only its jail subtree and
 // workspace. What must hold after an attempt is that the slot network is QUIESCENT -- no process holds
 // the tap, conntrack for the reused guest address is empty, the ruleset digest equals the converged
-// one -- and any failure of that is the network fact refuted. `network` carries that verdict; its
-// typed producer is gunbc.runner_microvm_network's network readback (networking lane), and until it
-// lands this field is the frontier where that readback is consumed.
+// one -- which is product.fabric.sanitation's SlotNetworkQuiescent, owed by a SlotScopedNetwork
+// readback, and not NetworkNamespaceRemoved, which is the attempt-scoped contract. Its vocabulary is
+// quiet/active rather than absent/present for the same reason. Its typed producer is
+// gunbc.runner_microvm_network slot_network_readback (networking lane, gunbc#11675); until that lands
+// this type is the frontier where that readback is consumed.
+type SlotNetworkQuiescence
+  = SlotNetworkQuiet
+  | SlotNetworkActive { detail: NonEmptyStr }
+  | SlotNetworkUnreadable { reason: NonEmptyStr }
+
 type HostTeardownReadback {
   stop: TeardownStop
   cgroup: CgroupSubtreeReadback
   mounts: ResourceReadback
-  network: ResourceReadback
+  network: SlotNetworkQuiescence
   attempt_storage: ResourceReadback
   credential_disk: ResourceReadback
 }
@@ -253,6 +260,14 @@ fn resource_observation(fact: SanitationFact, readback: ResourceReadback) -> San
     ResourceAbsent => FactConfirmed { fact: fact }
     ResourcePresent { detail: d } => FactRefuted { fact: fact, detail: d }
     ResourceUnreadable { reason: r } => FactUnobservable { fact: fact, reason: r }
+  }
+}
+
+fn slot_network_observation(readback: SlotNetworkQuiescence) -> SanitationObservation {
+  match readback {
+    SlotNetworkQuiet => FactConfirmed { fact: SlotNetworkQuiescent }
+    SlotNetworkActive { detail: d } => FactRefuted { fact: SlotNetworkQuiescent, detail: d }
+    SlotNetworkUnreadable { reason: r } => FactUnobservable { fact: SlotNetworkQuiescent, reason: r }
   }
 }
 
@@ -295,7 +310,7 @@ fn host_observations(host: HostTeardownReadback) -> List<SanitationObservation> 
     surviving_process_observation(stop: host.stop, cgroup: host.cgroup),
     cgroup_observation(readback: host.cgroup),
     resource_observation(fact: MountsRemoved, readback: host.mounts),
-    resource_observation(fact: NetworkNamespaceRemoved, readback: host.network),
+    slot_network_observation(readback: host.network),
     resource_observation(fact: WritableLayersDeleted, readback: host.attempt_storage),
     resource_observation(fact: SecretsRemoved, readback: host.credential_disk),
   ]
@@ -308,6 +323,7 @@ fn sanitation_readback_of_host(identity: AttemptIdentity, host: HostTeardownRead
   SanitationReadback {
     cell: attempt_identity_cell(identity: identity),
     sandbox: attempt_identity_sandbox(identity: identity),
+    network_scope: SlotScopedNetwork,
     observations: host_observations(host: host),
   }
 }
@@ -347,6 +363,7 @@ fn settle_recovery(
   let readiness = cell_readiness_after(readback: SanitationReadback {
     cell: cell,
     sandbox: attempt as String as SandboxId,
+    network_scope: SlotScopedNetwork,
     observations: host_observations(host: host),
   })
   WriteReadbackSettled { cell: cell, generation: generation, attempt: attempt, readiness: readiness }

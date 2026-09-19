@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved,
-  required_sanitation_facts,
+  required_sanitation_facts, SlotScopedNetwork,
 }
 
 data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
@@ -159,7 +159,7 @@ fn admission_of_record(record: CellReadinessRecord, allocation_generation: Int) 
 // QUARANTINE. Residue found on a cell the store called Ready belongs to no attempt the store knows,
 // and inventing one -- the cell's name, the previous generation -- would be a record claiming an
 // identity nobody observed. It carries no readiness parameter: its record is a quarantine with every
-// sanitation fact unobserved, at the generation that was about to run, and only a later readback at
+// sanitation fact a microVM cell owes (slot-scoped network) unobserved, at the generation that was about to run, and only a later readback at
 // a higher generation that establishes the facts can clear it.
 type CellReadinessWrite
   = WriteAttemptStarted { cell: CellId, generation: Int, attempt: NonEmptyStr }
@@ -190,7 +190,7 @@ fn record_of_write(write: CellReadinessWrite) -> CellReadinessRecord {
       CellSettled {
         cell: c,
         generation: g,
-        readiness: CellQuarantined { cell: c, unproven: map(required_sanitation_facts(), f => FactNotObserved { fact: f }) },
+        readiness: CellQuarantined { cell: c, unproven: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactNotObserved { fact: f }) },
       }
   }
 }
@@ -223,49 +223,47 @@ fn apply_cell_readiness_write(
             WriteAccepted { records: replaced }
           }
       }
-    WriteReadbackSettled { cell: _, generation: _, attempt: _, readiness: _ } =>
-      match records_for_cell(records: records, cell: cell).first() {
+    WriteReadbackSettled { cell: c, generation: offered, attempt: a, readiness: r } =>
+      match records_for_cell(records: records, cell: c).first() {
         Absent => WriteAccepted { records: replaced }
         Present { value: stored } => {
-          let offered = record_generation(record: record_of_write(write: write))
           let held = record_generation(record: stored)
           if offered < held {
-            WriteRefusedStale { cell: cell, stored: held, offered: offered }
+            WriteRefusedStale { cell: c, stored: held, offered: offered }
           } else if offered > held {
             WriteAccepted { records: replaced }
           } else {
-            same_generation_settle(stored: stored, write: write, replaced: replaced)
+            same_generation_settle(stored: stored, cell: c, generation: offered, attempt: a, readiness: r, replaced: replaced)
           }
         }
       }
   }
 }
 
+// Called only from the WriteReadbackSettled arm, with that arm's fields rather than the write: the
+// other write shapes are not representable here, so there is no arm for them to answer (review 68138).
 fn same_generation_settle(
   stored: CellReadinessRecord,
-  write: CellReadinessWrite,
+  cell: CellId,
+  generation: Int,
+  attempt: NonEmptyStr,
+  readiness: CellReadiness,
   replaced: List<CellReadinessRecord>,
 ) -> CellReadinessWriteResult {
-  match write {
-    WriteAttemptStarted { cell: c, generation: g, attempt: _ } =>
-      WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g }
-    WriteUnattributedResidue { cell: _, generation: _ } => WriteAccepted { records: replaced }
-    WriteReadbackSettled { cell: c, generation: g, attempt: a, readiness: r } =>
-      match stored {
-        CellAttemptInFlight { cell: _, generation: _, attempt: sa } =>
-          if (sa as String) == (a as String) {
-            WriteAccepted { records: replaced }
-          } else {
-            WriteRefusedAttemptMismatch { cell: c, stored_attempt: sa, offered_attempt: a }
-          }
-        CellSettled { cell: _, generation: _, readiness: held } =>
-          match held {
-            CellQuarantined { cell: _, unproven: _ } => WriteRefusedWouldLoosenQuarantine { cell: c, generation: g }
-            CellReady { cell: _ } =>
-              match r {
-                CellQuarantined { cell: _, unproven: _ } => WriteAccepted { records: replaced }
-                CellReady { cell: _ } => WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g }
-              }
+  match stored {
+    CellAttemptInFlight { cell: _, generation: _, attempt: sa } =>
+      if (sa as String) == (attempt as String) {
+        WriteAccepted { records: replaced }
+      } else {
+        WriteRefusedAttemptMismatch { cell: cell, stored_attempt: sa, offered_attempt: attempt }
+      }
+    CellSettled { cell: _, generation: _, readiness: held } =>
+      match held {
+        CellQuarantined { cell: _, unproven: _ } => WriteRefusedWouldLoosenQuarantine { cell: cell, generation: generation }
+        CellReady { cell: _ } =>
+          match readiness {
+            CellQuarantined { cell: _, unproven: _ } => WriteAccepted { records: replaced }
+            CellReady { cell: _ } => WriteRefusedAttemptAlreadyRecorded { cell: cell, generation: generation }
           }
       }
   }

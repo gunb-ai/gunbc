@@ -30,6 +30,7 @@ import gunbc.runner_microvm_lifecycle {
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
+  SlotNetworkQuiescence, SlotNetworkQuiet, SlotNetworkActive,
   HostTeardownReadback, settle_teardown, settle_recovery,
 }
 
@@ -60,7 +61,7 @@ fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostTeardown
     stop: stop,
     cgroup: cgroup,
     mounts: ResourceAbsent,
-    network: ResourceAbsent,
+    network: SlotNetworkQuiet,
     attempt_storage: ResourceAbsent,
     credential_disk: ResourceAbsent,
   }
@@ -157,7 +158,7 @@ test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool {
       stop: StoppedGracefully,
       cgroup: CgroupSubtreeEmpty,
       mounts: ResourceAbsent,
-      network: ResourcePresent { detail: "tap-srv2-04 is still held open" as NonEmptyStr },
+      network: SlotNetworkActive { detail: "tap-srv2-04 is still held open" as NonEmptyStr },
       attempt_storage: ResourceAbsent,
       credential_disk: ResourceAbsent,
     },
