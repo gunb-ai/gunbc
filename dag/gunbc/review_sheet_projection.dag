@@ -626,9 +626,18 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
 
 // ONE AUTHORITY FOR A REVIEW SHEET'S HEADER ROW, AND IT IS A CONSTRUCTION WALL RATHER THAN A CHECK.
 // The names classify_review_sheet requires an observed sheet to carry are exactly the names a writer
-// of a blank tab must put there, in this order. Holding that in two places is how a first write can
-// occupy a tab with a row the next classification then refuses -- and a header row cannot be taken
-// back, so header correctness cannot be deferred past the write.
+// of a blank tab must put there, in this order.
+//
+// NO SUCH WRITER IS ON MAIN, AND THAT IS THE POINT OF LANDING THE CARRIER FIRST, not an unstated
+// assumption this annotation is making. Nothing in the corpus today renders a header row: the
+// intended first writer is the parked initializer of gunbc#11613, which is where this wall's
+// finding 3 was raised and which is deliberately not landed here. So the consumer that closes the
+// loop is a DECLARED FRONTIER rather than a present fact, and what IS consumed in this change is
+// the requiring half -- classify_review_sheet, the format actuator's extent and standing position,
+// and the converge CLI. Holding the header row in two places is how a first write occupies a tab
+// with a row the next classification then refuses; a header row cannot be taken back, so header
+// correctness cannot be deferred past the write, and the carrier has to exist before the writer
+// does rather than after it.
 //
 // ValidatedHeaderSchema is sole_constructor and validate_header_schema is its only mint, so a writer
 // that demands the carrier cannot be handed a schema whose header row is malformed: the invalid
