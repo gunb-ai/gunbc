@@ -134,10 +134,14 @@ data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDri
 // byte, and blank lines are what systemd's environment-file parser skips -- a NUL fill would not be.
 // The length is measured in UTF-8 BYTES, the unit the sector is denominated in, not in characters.
 
-// THE GUEST NAME FOLLOWS FROM THE DRIVE ORDER IN runner_microvm_vm_config BELOW: virtio-blk devices
-// enumerate in configuration order, the root drive is first (`root=/dev/vda`), and the credential
-// drive is second. Moving the credential drive in that list moves this name, and the two sit in one
-// module so that edit is made once.
+// THE GUEST NAME FOLLOWS FROM THE DRIVE ORDER IN runner_microvm_vm_config BELOW, and that is now a
+// checked relation rather than a promise: extdeps.virtualization.firecracker
+// firecracker_drive_guest_device maps a drive's position to its guest name, and the witness
+// the_credential_device_is_where_the_vm_config_puts_the_credential_drive applies it to the real
+// configuration. Reordering or prepending a drive reds there instead of silently pointing the
+// guest's EnvironmentFile= at the rootfs -- which, since that read tolerates absence, would boot
+// looking exactly like the honest no-credential arm. The rung is mechanically preventable (a witness),
+// not structural: the unit is rendered without a configuration in hand to derive from.
 data jit_drive_guest_device: NonEmptyStr = "/dev/vdb"
 
 fn jit_drive_assignment(encoded_jit_config: NonEmptyStr) -> String {

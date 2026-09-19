@@ -167,6 +167,34 @@ fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
   firecracker_root_drive_count(config: config) == 1
 }
 
+// WHICH GUEST DEVICE A DRIVE BECOMES IS ITS POSITION IN `drives`. Firecracker attaches the
+// virtio-blk devices in the order of the configuration's drives array, and the Linux virtio_blk
+// driver names them vda, vdb, ... in the order it probes them (virtblk_name_format). On this fleet's
+// aarch64 hosts that order was observed, not only read: the Mt. Collins run
+// (gunbc.runner.runner_first_job_receipt execution_chain) booted root=/dev/vda and read its second
+// drive's credential off /dev/vdb. Only the first 26 drives are named here; a drive beyond them, or
+// one that is not attached, has no name rather than a guessed one.
+type DriveIndexScan {
+  next: Int
+  found: Int
+}
+
+data firecracker_guest_block_letters: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
+  let scan = fold(drives, init: DriveIndexScan { next: 0, found: -1 }, f: fn(acc, d) {
+    DriveIndexScan {
+      next: acc.next + 1,
+      found: if acc.found < 0 && d.drive_id as String == drive_id as String { acc.next } else { acc.found },
+    }
+  })
+  if scan.found < 0 || scan.found >= string_length(s: firecracker_guest_block_letters) {
+    none
+  } else {
+    Present { value: concat("/dev/vd", substring(s: firecracker_guest_block_letters, start: scan.found, end: scan.found + 1)) }
+  }
+}
+
 // --- the configuration FILE, which is upstream's own wire shape and not a rendering of ours ---
 
 // FIRECRACKER READS ONE JSON DOCUMENT WHOSE KEYS ARE HYPHENATED WHERE THE API PATHS ARE. The
