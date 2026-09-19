@@ -461,15 +461,15 @@ data authorization_pattern_domain: ChoiceDomain = ChoiceDomain {
 
 data authorization_pattern_policy: SelectionPolicy = UniqueSurvivorRequired { identity: id_policy }
 
+data param_frequency: ContextParameter = ContextParameter { identity: id_param_frequency }
+data param_reversibility: ContextParameter = ContextParameter { identity: id_param_reversibility }
+data param_surface: ContextParameter = ContextParameter { identity: id_param_surface }
+data param_workload_identity: ContextParameter = ContextParameter { identity: id_param_workload_identity }
+data param_minted_reach: ContextParameter = ContextParameter { identity: id_param_minted_reach }
+data param_billing: ContextParameter = ContextParameter { identity: id_param_billing }
+
 fn context_parameters() -> List<ContextParameter> {
-  [
-    ContextParameter { identity: id_param_frequency },
-    ContextParameter { identity: id_param_reversibility },
-    ContextParameter { identity: id_param_surface },
-    ContextParameter { identity: id_param_workload_identity },
-    ContextParameter { identity: id_param_minted_reach },
-    ContextParameter { identity: id_param_billing },
-  ]
+  [param_frequency, param_reversibility, param_surface, param_workload_identity, param_minted_reach, param_billing]
 }
 
 fn frequency_text(f: HumanInterventionFrequency) -> String {
