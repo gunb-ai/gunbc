@@ -937,7 +937,11 @@ test fn an_unavailable_local_population_blocks_the_closure() -> Bool {
 // authorization and one outside it. The fold used to receive ONE precomputed availability, so the
 // covered unit's MethodAvailable -- an empty blocker list -- was the answer for both, and the
 // uncovered unit passed the method gate on a permission that never named it. The authorization is
-// srv4's real one, whose scope enumerates slots 13..21, so srv4-13 is covered and srv4-01 is not.
+// srv4's real one, whose scope enumerates slots 13..21, so srv4-18 is covered and srv4-01 is not.
+// srv4-18 rather than srv4-13 because at srv4's current committed width of 17 the retirees are
+// 18..21: both are inside the authorization and either would carry the claim, but 18 is also a unit
+// the obligation actually names, so a reader cannot mistake this for a claim about membership. What
+// is being discriminated is COVERAGE BY THE AUTHORIZATION and nothing else.
 fn method_verdict(subjects: List<String>) -> RetirementAssessmentVerdict {
   retirement_assessment_verdict(
     revision: "abc123" as NonEmptyStr,
@@ -959,7 +963,7 @@ fn method_verdict(subjects: List<String>) -> RetirementAssessmentVerdict {
 
 test fn an_uncovered_subject_blocks_even_beside_a_covered_one() -> Bool {
   !assessment_is_clear_of_blockers(v: method_verdict(subjects: [
-    "actions-runner@srv4-13.service",
+    "actions-runner@srv4-18.service",
     "actions-runner@srv4-01.service",
   ]))
 }
@@ -969,7 +973,7 @@ test fn an_uncovered_subject_blocks_even_beside_a_covered_one() -> Bool {
 test fn the_uncovered_subject_blocks_in_either_order() -> Bool {
   !assessment_is_clear_of_blockers(v: method_verdict(subjects: [
     "actions-runner@srv4-01.service",
-    "actions-runner@srv4-13.service",
+    "actions-runner@srv4-18.service",
   ]))
 }
 
@@ -977,7 +981,7 @@ test fn the_uncovered_subject_blocks_in_either_order() -> Bool {
 // discriminate on coverage rather than on this method arm always refusing.
 test fn subjects_wholly_inside_the_authorization_do_not_block_on_the_method() -> Bool {
   assessment_is_clear_of_blockers(v: method_verdict(subjects: [
-    "actions-runner@srv4-13.service",
-    "actions-runner@srv4-14.service",
+    "actions-runner@srv4-18.service",
+    "actions-runner@srv4-19.service",
   ]))
 }

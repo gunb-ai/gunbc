@@ -291,9 +291,19 @@ fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: Stri
 // work must not be forgeable by whatever code happens to want it, including a test that would
 // rather not be blocked.
 //
-// THE SCOPE IS THE EXACT UNITS, ENUMERATED. srv4's committed width becomes 12, so slots 13..21 are
-// the surplus population and they are named one by one rather than expressed as a range or a glob.
-// A range would silently acquire new members if the width moved again; an enumeration cannot.
+// THE SCOPE IS THE EXACT UNITS, ENUMERATED, AND IT IS NOT DERIVED FROM A WIDTH. These are the units
+// the operator named on 2026-09-12, when srv4's committed width was moving to 12 and 13..21 was
+// therefore its surplus. The width has since moved to 17 (#11716), so the obligation is 18..21 and
+// this permission is BROADER than it -- which is why the enumeration was the right shape and a range
+// was not. A range would have silently RE-ACQUIRED 13..17 as the width moved, granting permission to
+// interrupt slots that are once again committed; an enumeration cannot change meaning underneath the
+// decision that authored it.
+//
+// SO THE BREADTH IS SAFE IN THE PERMISSION DIRECTION AND ONLY THERE: an authorization wider than the
+// obligation interrupts nothing by itself, because the obligation decides WHAT is retired and this
+// row only decides what MAY be interrupted when it is. A narrower authorization would refuse, which
+// is the arm that matters. This note previously derived 13..21 from the width rather than from the
+// decision, so it read as a live derivation and rotted the moment the width moved.
 //
 // WHAT THE OPERATOR DECIDED, and the boundary of it: the surplus INTERNAL CI slots on srv4 carry
 // disposable dev/test jobs and may be interrupted for this transition. That is not permission to
