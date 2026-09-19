@@ -35,8 +35,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // They are MOVED, not recomputed, so no second authority for the scope's order can exist. No
 // production caller observes a behaviour change; the struct retains two values it already held.
 //
-// THE `#[cfg(test)] mod equivalence` IS ALSO HAND RUST and is deliberately inside this receipt's
-// scope rather than exempted as "just tests". It is the module's only consumer today, which is
+// THE `#[cfg(test)] mod equivalence` IS ALSO HAND RUST and its eight items are ENUMERATED above,
+// not merely claimed to be in scope. The first version of this receipt said they were "inside this
+// receipt's scope" and then listed only the six production declarations -- a sentence doing the
+// work the enumeration is supposed to do, which review 68064 caught. gunbc.rust_item_host_observation
+// projects them as citable refs whatever this prose says, so an unenumerated test module is
+// unenumerated hand growth with a paragraph in front of it. It is the module's only consumer today, which is
 // what makes the carriers consumed rather than dangling (DESIGN section 3c), and it dissolves on
 // the SAME trigger: when step 3 deletes the materialized maps there is no legacy side left to
 // compare against, and an equivalence law with one arm is a decoration.
@@ -51,7 +55,15 @@ data scope_rank_view_seed_growth_justification: SeedGrowthJustification = SeedGr
     DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ItemWinner", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ScopeRanks", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "resolve_item", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ambiguous_items", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ambiguous_items", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "prepared_from", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "colliding_corpus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "ambiguous_corpus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "fold_winner", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "the_fixture_ranks_one_colliding_name_oppositely", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "rank_view_resolves_every_name_as_the_fold_does", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "ambiguity_census_agrees_with_the_fold", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view.equivalence", decl_name: "ambiguity_census_agrees_on_a_corpus_that_reaches_the_unauthored_arm", field: WholeDeclaration }
   ],
   reason: "Step 2 of the scope rank-view replacement migration, whose section 8 order of work requires the carriers to land BESIDE the fold with an executing equivalence law before any reader moves. The growth is the price of that ordering, and the ordering is not a preference: section 8 forbids a leaf-first cutover because a surviving materialized map is DESIGN section 3's attractor, so the readers and the maps must go in ONE motion in step 3. Landing the carriers first with a law, rather than landing the cut directly, is what makes that one motion reviewable against evidence instead of against an argument.\n\nWHAT EACH ITEM IS FOR. SubjectItemDeclarers is the subject-wide claimant relation -- the already-memoized per-module fragments inverted from per-module lists into per-name lists, introducing no new derivation and no new authority, only a different join order over facts the subject already carries. ScopeRanks is the per-scope fact: module to rank, plus the authored-region boundary, sized by the scope's MODULE count rather than its item count, which is the whole difference from the map it replaces. resolve_item and ambiguous_items derive the winner and the ambiguity census from the join of those two at the ask, so nothing is materialized at scope entry. ItemDeclarer and ItemWinner are their carriers; ItemWinner exists so a resolved winner is attributable without a second lookup.\n\nSCOPED TO ONE SLOT ON PURPOSE. gunbc.scope_rank_view records six slots at three polarities, and service_ops and file_module_paths resolve HIGHEST rank while item_registry resolves lowest. A uniform cutover is silently wrong -- the tree carries the receipt for what that costs, the std.resources Filesystem and extdeps.filesystem Filesystem collision that dropped a service's operations into unknown-service-operation at runtime -- so the remaining slots land with their own laws rather than by generalizing these carriers.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
