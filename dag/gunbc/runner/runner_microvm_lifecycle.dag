@@ -29,6 +29,16 @@ data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
 // controller exits. This module is what the controller decides at each step, from what it has
 // observed; the realization that performs the steps consumes these decisions and adds none.
 //
+// DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
+// no production entry calls it yet. NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize, the
+// controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
+// stop_request_admission and settle_teardown, reading and writing the store through
+// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
+// adhoc-3faa2033-f8f lane. TRIGGER: that module lands with srv1 transient-unit receipts for the
+// modeled REDs (SIGTERM-ignoring child, double-fork, unkillable task, failed cgroup read, stale stop,
+// background process after success). SUFFICIENT FOR retiring this paragraph. NOT satisfied by that
+// module compiling, or by it existing without an entry the slot unit execs.
+//
 // THE RULE THE WHOLE MODULE IS SHAPED BY: A GUEST EVENT MAY TRIGGER TEARDOWN, AND NO GUEST EVENT
 // MAY ESTABLISH SANITATION. The guest is the tenant. "The runner exited 0" and "the guest powered
 // off" are statements made by the code whose residue sanitation exists to find, so they can start a
