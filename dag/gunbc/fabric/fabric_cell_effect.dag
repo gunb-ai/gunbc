@@ -124,9 +124,10 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // refuses rather than guessing. EXPLICITLY BLOCKED, with its trigger: the finite-to-unbounded
 // repair on an existing cell lands when change realization admits a bounded resource-boundary
 // change at this address -- the same subject, authorization and readback as the add path, applied
-// through set-property to the existing slice, never by deleting and recreating the cell. The live
-// fabric cell runs with CPUQuota infinity today (srv4 census), so nothing on the fleet sits behind
-// this block; a cell that acquires a finite quota out of band would.
+// through set-property to the existing slice, never by deleting and recreating the cell. The
+// reported srv4 runner-unit census found unlimited quotas; the fabric boundary
+// (fabric-cell-srv3-06.slice) requires its own readback, and this row does not establish
+// fleet-wide quota conformity -- a cell found carrying a finite quota sits behind this block.
 //
 // WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
 // `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted
