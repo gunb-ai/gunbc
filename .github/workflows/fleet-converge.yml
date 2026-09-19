@@ -49,6 +49,10 @@ on:
         description: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization"
         required: false
         type: string
+      roster_page_size:
+        description: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links"
+        required: false
+        type: string
       transaction_nonce:
         description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
         required: false
@@ -388,6 +392,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           GUNBC_RUNNER_ID_PROBES: ${{ github.event.inputs.runner_ids }}
+          GUNBC_RUNNER_ROSTER_PAGE_SIZE: ${{ github.event.inputs.roster_page_size }}
         if: github.event.inputs.mode == 'org_runner_roster_observe'
         timeout-minutes: 5
       - name: Upload org runner roster receipt

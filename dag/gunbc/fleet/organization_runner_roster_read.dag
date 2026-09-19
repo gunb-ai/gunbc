@@ -6,6 +6,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.page_fold {
+  PageSize, PageSizeAdmission, PageSizeAdmitted, PageSizeAboveAuthorityMaximum, admit_page_size,
   PageBound, PageCursor, OffsetPage, OpaqueToken, LinkNext,
   PageContinuation, PageObservation,
   PageFoldState, PageFoldDemand, DemandPage, DemandNone,
@@ -30,6 +31,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.github { max_per_page }
 import extdeps.github.organizations { organization_id_from_included }
 import extdeps.github.pagination {
+  GitHubLinkHeader, LinkHeaderPresent, LinkHeaderAbsent, github_max_page_size,
   GitHubContinuationRead, ContinuationRead, LinkHeaderUnreadable,
   github_continuation_from_link_header, github_listing_subject, github_first_page_cursor
 }
@@ -40,6 +42,7 @@ import extdeps.github.ci_runner {
   org_self_hosted_runners_first_page_target
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
 import gunbc.fleet.org_actions_converge {
   org_admin_token_env_name,
@@ -70,7 +73,12 @@ import gunbc.fleet_runner_connectivity {
 
 // ONE PAGE AS THIS READ KEEPS IT. total_count is carried per page, not once, because the population
 // can change between requests; pages that disagree on it did not observe one population.
+// The request target and the Link field the authority answered with are kept beside the rows, so a
+// receipt can show which request produced which ids and how the listing continued -- the HTTP
+// boundary facts, not only the conclusion drawn from them.
 type OrganizationRunnerRosterPage {
+  target: String
+  link_field: String
   registrations: List<GitHubSelfHostedRunnerRegistration>
   total_count: Int
 }
@@ -154,7 +162,7 @@ fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
 }
 
 type RosterPageDecode
-  = RosterPageDecoded { page: OrganizationRunnerRosterPage }
+  = RosterPageDecoded { registrations: List<GitHubSelfHostedRunnerRegistration>, total_count: Int }
   | RosterPageDecodeRefused { reason: NonEmptyStr }
 
 fn first_registration_refusal(ds: List<RunnerRegistrationDecode>) -> NonEmptyStr? {
@@ -179,13 +187,13 @@ fn decode_roster_page_json(body: String) -> RosterPageDecode {
           let decoded = map(elements, e => decode_runner_registration(v: e))
           match first_registration_refusal(ds: decoded) {
             Present { value: reason } => RosterPageDecodeRefused { reason: reason }
-            Absent => RosterPageDecoded { page: OrganizationRunnerRosterPage {
+            Absent => RosterPageDecoded {
               registrations: flat_map(decoded, d => match d {
                 RunnerRegistrationDecoded { registration } => [registration]
                 RunnerRegistrationDecodeRefused { reason: _ } => []
               }),
               total_count: total
-            } }
+            }
           }
         }
         JsonMemberFound { value: _ } => RosterPageDecodeRefused { reason: "runners is not a JSON array" }
@@ -200,7 +208,14 @@ fn decode_roster_page_json(body: String) -> RosterPageDecode {
 // ONE INCLUDED RESPONSE TO ONE PAGE READ. This is the pure half of the fetch, so the decision a
 // response produces -- status, continuation, body -- is exercisable over a supplied response
 // without a network (DESIGN section 3: a witness discriminates at one interface).
-fn roster_page_read_from_included(stdout: String, stderr: String) -> OrganizationRunnerRosterPageRead {
+fn link_field_text(link: GitHubLinkHeader) -> String {
+  match link {
+    LinkHeaderPresent { field_value: v } => v
+    LinkHeaderAbsent => ""
+  }
+}
+
+fn roster_page_read_from_included(target: String, stdout: String, stderr: String) -> OrganizationRunnerRosterPageRead {
   match parse_gh_api_included(stdout: stdout) {
     GhApiIncludedUnreadable { reason } =>
       RosterPageFailed { cause: join([reason as String, "; gh stderr: ", stderr], "") as NonEmptyStr }
@@ -212,7 +227,15 @@ fn roster_page_read_from_included(stdout: String, stderr: String) -> Organizatio
           LinkHeaderUnreadable { parse: _ } => RosterPageFailed { cause: "org runners page carries a Link header that does not parse, so whether another page exists is unknown" }
           ContinuationRead { continuation } => match decode_roster_page_json(body: response.body) {
             RosterPageDecodeRefused { reason } => RosterPageFailed { cause: reason }
-            RosterPageDecoded { page } => RosterPageDelivered { page: page, continuation: continuation }
+            RosterPageDecoded { registrations, total_count } => RosterPageDelivered {
+              page: OrganizationRunnerRosterPage {
+                target: target,
+                link_field: link_field_text(link: response.link),
+                registrations: registrations,
+                total_count: total_count
+              },
+              continuation: continuation
+            }
           }
         }
       }
@@ -228,6 +251,14 @@ data github_api_origin_prefix: String = "https://api.github.com/"
 type OrganizationRunnerScope {
   login: NonEmptyStr
   id: Int?
+}
+
+// THE LISTING REQUEST: the subject, and the page size its first request asks for. Page size is a
+// request parameter admitted against the authority's maximum (std.page_fold admit_page_size); every
+// later request is the authority's own continuation target, so the size is never re-composed.
+type OrganizationRunnerListing {
+  scope: OrganizationRunnerScope
+  page_size: PageSize
 }
 
 // WHICH REQUEST A CURSOR NAMES, AND WHETHER IT IS STILL THIS LISTING. The first request is composed
@@ -259,11 +290,12 @@ fn continuation_path_admitted(scope: OrganizationRunnerScope, path: String) -> B
   }
 }
 
-fn roster_request_target(scope: OrganizationRunnerScope, cursor: PageCursor) -> RosterRequestTarget {
+fn roster_request_target(listing: OrganizationRunnerListing, cursor: PageCursor) -> RosterRequestTarget {
+  let scope = listing.scope
   match cursor {
     OffsetPage { page: n } =>
       if n == 1 {
-        RosterRequestAt { target: org_self_hosted_runners_first_page_target(org: scope.login, per_page: max_per_page) }
+        RosterRequestAt { target: org_self_hosted_runners_first_page_target(org: scope.login, per_page: listing.page_size.count) }
       } else {
         RosterRequestRefused { cause: "an offset cursor past page one reached the org runners read, which continues only by Link targets" }
       }
@@ -293,15 +325,15 @@ type RosterTransportResponse {
 }
 
 fn fetch_roster_page_via(
-  scope: OrganizationRunnerScope,
+  listing: OrganizationRunnerListing,
   cursor: PageCursor,
   respond: fn(NonEmptyStr) -> RosterTransportResponse,
 ) -> OrganizationRunnerRosterPageRead {
-  match roster_request_target(scope: scope, cursor: cursor) {
+  match roster_request_target(listing: listing, cursor: cursor) {
     RosterRequestRefused { cause } => RosterPageFailed { cause: cause }
     RosterRequestAt { target } => {
       let response = respond(target)
-      roster_page_read_from_included(stdout: response.stdout, stderr: response.stderr)
+      roster_page_read_from_included(target: target as String, stdout: response.stdout, stderr: response.stderr)
     }
   }
 }
@@ -345,7 +377,7 @@ fn roster_walk_begin() -> OrganizationRunnerRosterWalk {
 // refuses, or advances to a cursor not already demanded and counts the page against max_pages; a
 // failed or refused fetch ends the walk.
 fn roster_walk_pump(
-  scope: OrganizationRunnerScope,
+  listing: OrganizationRunnerListing,
   walk: OrganizationRunnerRosterWalk,
   respond: fn(NonEmptyStr) -> RosterTransportResponse,
 ) -> OrganizationRunnerRosterWalk {
@@ -353,11 +385,11 @@ fn roster_walk_pump(
     Present { value: _ } => walk
     Absent => match page_fold_demand(state: walk.state) {
       DemandNone => walk
-      DemandPage { cursor: c } => match fetch_roster_page_via(scope: scope, cursor: c, respond: respond) {
+      DemandPage { cursor: c } => match fetch_roster_page_via(listing: listing, cursor: c, respond: respond) {
         RosterPageFailed { cause } =>
           OrganizationRunnerRosterWalk { state: walk.state, pages: walk.pages, failure: Present { value: cause } }
         RosterPageDelivered { page, continuation } =>
-          roster_walk_pump(scope: scope, walk: OrganizationRunnerRosterWalk {
+          roster_walk_pump(listing: listing, walk: OrganizationRunnerRosterWalk {
             state: page_fold_observe(state: walk.state, page: PageObservation { items: page.registrations, continuation: continuation }),
             pages: list_push(walk.pages, page),
             failure: none
@@ -378,24 +410,46 @@ data organization_runner_roster_page_bound: PageBound = PageBound { max_pages: 6
 // receipt the observe mode writes.
 type OrganizationRunnerRosterReport {
   evidence: OrganizationRunnerRosterEvidence
+  pages: List<OrganizationRunnerRosterPage>
   pages_read: Int
   disputed_ids: List<String>
   note: String
 }
 
-// ONE READING OF A REGISTRATION, as a canonical string over every field the schema carries. Two
-// readings of one id agree exactly when these are equal.
-fn registration_reading(r: GitHubSelfHostedRunnerRegistration) -> String {
-  join([
-    to_string(r.id),
-    r.name as String,
-    match r.status { GitHubRunnerOnline => "online", GitHubRunnerOffline => "offline" },
-    if r.busy { "busy" } else { "idle" },
-    match r.ephemeral { Present { value: e } => if e { "ephemeral" } else { "persistent" }, Absent => "ephemeral-unreported" },
-    match r.version { Present { value: v } => v as String, Absent => "version-unreported" },
-    r.os as String,
-    join(map(r.labels, l => l as String), ",")
-  ], "\u{1f}")
+// TWO READINGS OF ONE ID AGREE WHEN EVERY FIELD AGREES, compared as typed values: optional presence
+// is compared as presence, not through a sentinel spelling, and labels through the established
+// label-equivalence authority (gunbc.runner_slot_allocation runner_label_sets_equal), which compares
+// label SETS rather than a joined rendering -- so ["blue,green"] and ["blue", "green"] differ.
+fn optional_bool_agrees(a: Bool?, b: Bool?) -> Bool {
+  match a {
+    Absent => match b { Absent => true, Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false, Present { value: y } => x == y }
+  }
+}
+
+fn optional_text_agrees(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
+  match a {
+    Absent => match b { Absent => true, Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false, Present { value: y } => (x as String) == (y as String) }
+  }
+}
+
+fn registration_status_agrees(a: GitHubRunnerRegistrationStatus, b: GitHubRunnerRegistrationStatus) -> Bool {
+  match a {
+    GitHubRunnerOnline => match b { GitHubRunnerOnline => true, GitHubRunnerOffline => false }
+    GitHubRunnerOffline => match b { GitHubRunnerOnline => false, GitHubRunnerOffline => true }
+  }
+}
+
+fn registration_readings_agree(a: GitHubSelfHostedRunnerRegistration, b: GitHubSelfHostedRunnerRegistration) -> Bool {
+  to_string(a.id) == to_string(b.id)
+    && (a.name as String) == (b.name as String)
+    && registration_status_agrees(a: a.status, b: b.status)
+    && a.busy == b.busy
+    && optional_bool_agrees(a: a.ephemeral, b: b.ephemeral)
+    && optional_text_agrees(a: a.version, b: b.version)
+    && (a.os as String) == (b.os as String)
+    && runner_label_sets_equal(a: map(a.labels, l => l as String), b: map(b.labels, l => l as String))
 }
 
 // REPEATED IDS ARE RECONCILED, NEVER RESOLVED BY POSITION. A paginated listing is not an atomic
@@ -409,7 +463,7 @@ type RegistrationReconciliation {
 }
 
 type ReconcileScan {
-  first_reading: Map<String, String>
+  first_reading: Map<String, GitHubSelfHostedRunnerRegistration>
   disputed: Map<String, Bool>
   first_seen_reversed: List<GitHubSelfHostedRunnerRegistration>
   disputed_reversed: List<String>
@@ -423,16 +477,15 @@ fn reconcile_registrations(pages: List<OrganizationRunnerRosterPage>) -> Registr
     disputed_reversed: []
   }, f: fn(acc, r) {
     let key = to_string(r.id)
-    let reading = registration_reading(r: r)
     match map_get(acc.first_reading, key) {
       Absent => ReconcileScan {
-        first_reading: map_insert(acc.first_reading, key, reading),
+        first_reading: map_insert(acc.first_reading, key, r),
         disputed: acc.disputed,
         first_seen_reversed: concat([r], acc.first_seen_reversed),
         disputed_reversed: acc.disputed_reversed
       }
       Present { value: seen } =>
-        if seen == reading {
+        if registration_readings_agree(a: seen, b: r) {
           acc
         } else {
           match map_get(acc.disputed, key) {
@@ -473,13 +526,14 @@ fn partial_report(
   observed_on: NonEmptyStr,
   registrations: List<GitHubSelfHostedRunnerRegistration>,
   authority_total: Int,
-  pages_read: Int,
+  pages: List<OrganizationRunnerRosterPage>,
   disputed_ids: List<String>,
   note: String,
 ) -> OrganizationRunnerRosterReport {
   OrganizationRunnerRosterReport {
     evidence: partial_roster(observed_on: observed_on, registrations: registrations, authority_total: authority_total),
-    pages_read: pages_read,
+    pages: pages,
+    pages_read: length(xs: pages),
     disputed_ids: disputed_ids,
     note: note
   }
@@ -498,6 +552,7 @@ fn classify_roster_walk(walk: OrganizationRunnerRosterWalk, observed_on: NonEmpt
         Present { value: cause } => concat("the first org runners page was not read: ", cause as String)
         Absent => "the org runners read delivered no page"
       } },
+      pages: [],
       pages_read: 0,
       disputed_ids: [],
       note: "no page read"
@@ -508,17 +563,18 @@ fn classify_roster_walk(walk: OrganizationRunnerRosterWalk, observed_on: NonEmpt
       let disputed = reconciled.disputed_ids
       let total = first.total_count
       match walk.failure {
-        Present { value: cause } => partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages_read: pages_read, disputed_ids: disputed, note: concat("a later page failed after the earlier pages were kept: ", cause as String))
+        Present { value: cause } => partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages: walk.pages, disputed_ids: disputed, note: concat("a later page failed after the earlier pages were kept: ", cause as String))
         Absent => match page_fold_finish(state: walk.state) {
-          PagesRefused { refusal } => partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages_read: pages_read, disputed_ids: disputed, note: concat("the page fold refused before the listing closed: ", page_fold_refusal_key(r: refusal) as String))
+          PagesRefused { refusal } => partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages: walk.pages, disputed_ids: disputed, note: concat("the page fold refused before the listing closed: ", page_fold_refusal_key(r: refusal) as String))
           PagesClosed { subject: _, pages_read: _, items: _ } =>
             if !all(walk.pages, p => p.total_count == total) {
-              partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages_read: pages_read, disputed_ids: disputed, note: "pages disagreed on total_count, so the listing did not observe one population")
+              partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages: walk.pages, disputed_ids: disputed, note: "pages disagreed on total_count, so the listing did not observe one population")
             } else if length(xs: disputed) > 0 {
-              partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages_read: pages_read, disputed_ids: disputed, note: concat("runner ids were read with disagreeing payloads and are withheld: ", join(disputed, ",")))
+              partial_report(observed_on: observed_on, registrations: regs, authority_total: total, pages: walk.pages, disputed_ids: disputed, note: concat("runner ids were read with disagreeing payloads and are withheld: ", join(disputed, ",")))
             } else {
               OrganizationRunnerRosterReport {
                 evidence: organization_runner_roster_from_page(observed_on: observed_on, registrations: regs, authority_total: total),
+                pages: walk.pages,
                 pages_read: pages_read,
                 disputed_ids: [],
                 note: "listing closed; distinct runner ids compared against total_count"
@@ -530,26 +586,46 @@ fn classify_roster_walk(walk: OrganizationRunnerRosterWalk, observed_on: NonEmpt
   }
 }
 
-// THE ADMITTED CREDENTIAL ROUTE, NAMED RATHER THAN INFERRED. gh authenticates from GH_TOKEN before
-// any stored configuration, and gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude exports the
-// minted installation token as BOTH GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN. A read is admitted only
-// when both are present: finding the custom variable alone would not establish which credential gh
-// actually used. No token value is ever carried here or rendered into a receipt.
+// THE ADMITTED CREDENTIAL ROUTE, AND THE ONE BINDING IT REQUIRES. gh authenticates from GH_TOKEN
+// before any stored configuration, and gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude exports
+// the one minted installation token as BOTH GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN. The route is admitted
+// only when both bindings are present AND AGREE: two present but different values would let gh
+// authenticate with a credential other than the one the prelude minted while the route claimed the
+// prelude's. Equality does not authenticate an arbitrary environment -- the trusted-prelude
+// assumption stays explicit -- it refuses a contradictory binding. No value is ever rendered into a
+// reason, a receipt or an argv.
 type OrgRunnerReadRoute = GhTokenFromOrgAdminPrelude {}
+
+type OrgRunnerRouteAdmission
+  = OrgRunnerRouteAdmitted { route: OrgRunnerReadRoute }
+  | OrgRunnerRouteRefused { reason: NonEmptyStr }
 
 data gh_token_env_name: NonEmptyStr = "GH_TOKEN"
 
-fn organization_runner_read_route() -> OrgRunnerReadRoute? {
-  match env_credential(env_var: org_admin_token_env_name).token {
-    Absent => none
-    Present { value: _ } => match env_credential(env_var: gh_token_env_name).token {
-      Absent => none
-      Present { value: _ } => Present { value: GhTokenFromOrgAdminPrelude {} }
+fn org_runner_route_from_bindings(admin_token: String?, gh_token: String?) -> OrgRunnerRouteAdmission {
+  match admin_token {
+    Absent => OrgRunnerRouteRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted" }
+    Present { value: admin } => match gh_token {
+      Absent => OrgRunnerRouteRefused { reason: "GH_TOKEN is absent, so gh would not authenticate with the prelude's installation token" }
+      Present { value: gh } =>
+        if admin == "" || gh == "" {
+          OrgRunnerRouteRefused { reason: "a required credential binding is empty" }
+        } else if admin == gh {
+          OrgRunnerRouteAdmitted { route: GhTokenFromOrgAdminPrelude {} }
+        } else {
+          OrgRunnerRouteRefused { reason: "GH_TOKEN and GUNBC_ORG_ADMIN_TOKEN are bound to different values, so gh would not authenticate with the credential the prelude minted" }
+        }
     }
   }
 }
 
-data organization_runner_roster_credential_absent_reason: String = "GUNBC_ORG_ADMIN_TOKEN or GH_TOKEN is absent: the org runner roster is read only under the gunbai-ci App installation token that gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run and exports as both; outside that step there is no admitted credential, and no pinned population is substituted"
+fn organization_runner_read_route() -> OrgRunnerRouteAdmission {
+  org_runner_route_from_bindings(
+    admin_token: shell.Env.Get(name: org_admin_token_env_name).value,
+    gh_token: shell.Env.Get(name: gh_token_env_name).value
+  )
+}
+
 
 // WHICH ORGANIZATION IS READ IS NOT AUTHORED HERE. The token is minted for the gunbai-ci App's
 // installation, so the organization it can answer for is that App row's owner login -- the same
@@ -565,16 +641,21 @@ fn organization_runner_scope(org: NonEmptyStr) -> OrganizationRunnerScope {
   OrganizationRunnerScope { login: org, id: organization_id_from_included(stdout: response.stdout) }
 }
 
-fn organization_runner_roster_report(org: NonEmptyStr) -> OrganizationRunnerRosterReport {
+fn organization_runner_roster_report(org: NonEmptyStr, page_size: PageSize) -> OrganizationRunnerRosterReport {
   match organization_runner_read_route() {
-    Absent => OrganizationRunnerRosterReport {
-      evidence: RosterReadUnavailable { reason: organization_runner_roster_credential_absent_reason },
+    OrgRunnerRouteRefused { reason } => OrganizationRunnerRosterReport {
+      evidence: RosterReadUnavailable { reason: reason as String },
+      pages: [],
       pages_read: 0,
       disputed_ids: [],
-      note: "credential absent"
+      note: "credential route refused"
     }
-    Present { value: _ } => {
-      let walk = roster_walk_pump(scope: organization_runner_scope(org: org), walk: roster_walk_begin(), respond: fn(t) { gh_roster_transport(target: t) })
+    OrgRunnerRouteAdmitted { route: _ } => {
+      let walk = roster_walk_pump(
+        listing: OrganizationRunnerListing { scope: organization_runner_scope(org: org), page_size: page_size },
+        walk: roster_walk_begin(),
+        respond: fn(t) { gh_roster_transport(target: t) }
+      )
       classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
     }
   }
@@ -582,7 +663,7 @@ fn organization_runner_roster_report(org: NonEmptyStr) -> OrganizationRunnerRost
 
 // THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner_capacity_realize plan from this.
 fn organization_runner_roster_live_read() -> OrganizationRunnerRosterEvidence {
-  organization_runner_roster_report(org: organization_runner_roster_org()).evidence
+  organization_runner_roster_report(org: organization_runner_roster_org(), page_size: github_max_page_size).evidence
 }
 
 // PER-ID PRESENCE, for a registration id captured elsewhere (a JIT mint, a local .runner file).
@@ -680,8 +761,8 @@ fn organization_runner_id_observations(
   runner_ids: List<Int>,
 ) -> List<OrganizationRunnerIdObservation> {
   match organization_runner_read_route() {
-    Absent => map(runner_ids, id => RunnerIdUnobserved { org: org, runner_id: id, reason: organization_runner_roster_credential_absent_reason as NonEmptyStr })
-    Present { value: _ } => map(runner_ids, id => {
+    OrgRunnerRouteRefused { reason } => map(runner_ids, id => RunnerIdUnobserved { org: org, runner_id: id, reason: reason })
+    OrgRunnerRouteAdmitted { route: _ } => map(runner_ids, id => {
       let response = github.CliOrgSelfHostedRunners.GetOrgRunner(org: org, runner_id: id)
       runner_id_observation_from_included(org: org, visibility: visibility, runner_id: id, stdout: response.stdout, stderr: response.stderr)
     })
@@ -753,23 +834,98 @@ fn runner_id_observation_line(o: OrganizationRunnerIdObservation) -> String {
   }
 }
 
+// THE COMMAND'S TERMINAL. Green only when the roster is complete AND every requested probe reached a
+// concrete answer: present and absent are both observations; unobserved is not. A complete listing
+// does not excuse a requested subject that was never observed.
+type RosterObserveTerminal
+  = RosterObserveComplete
+  | RosterObserveRosterPartial
+  | RosterObserveRosterUnavailable { reason: String }
+  | RosterObserveProbesUnobserved { runner_ids: List<Int> }
+
+fn unobserved_probe_ids(probes: List<OrganizationRunnerIdObservation>) -> List<Int> {
+  flat_map(probes, o => match o {
+    RunnerIdUnobserved { org: _, runner_id: id, reason: _ } => [id]
+    RunnerIdPresent { org: _, registration: _ } => []
+    RunnerIdAbsent { org: _, runner_id: _ } => []
+  })
+}
+
+fn roster_observe_terminal(evidence: OrganizationRunnerRosterEvidence, probes: List<OrganizationRunnerIdObservation>) -> RosterObserveTerminal {
+  match evidence {
+    RosterReadUnavailable { reason: r } => RosterObserveRosterUnavailable { reason: r }
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => RosterObserveRosterPartial
+    RosterObserved { observed_on: _, registrations: _ } => {
+      let missing = unobserved_probe_ids(probes: probes)
+      if length(xs: missing) > 0 { RosterObserveProbesUnobserved { runner_ids: missing } } else { RosterObserveComplete }
+    }
+  }
+}
+
+// THE PAGE SIZE THIS RUN ASKS FOR: the authority's maximum unless the dispatcher names a smaller one,
+// which is how a real continuation is exercised against a population that fits one full page.
+data roster_page_size_env_name: NonEmptyStr = "GUNBC_RUNNER_ROSTER_PAGE_SIZE"
+
+type RosterPageSizeRequest
+  = RosterPageSizeRequested { size: PageSize }
+  | RosterPageSizeRefused { reason: NonEmptyStr }
+
+fn roster_page_size_from(raw: String?) -> RosterPageSizeRequest {
+  match raw {
+    Absent => RosterPageSizeRequested { size: github_max_page_size }
+    Present { value: text } =>
+      if trim(s: text) == "" {
+        RosterPageSizeRequested { size: github_max_page_size }
+      } else {
+        match parse_int(s: trim(s: text)) {
+          Absent => RosterPageSizeRefused { reason: concat("roster_page_size is not an integer: ", text) as NonEmptyStr }
+          Present { value: n } =>
+            if n < 1 {
+              RosterPageSizeRefused { reason: concat("roster_page_size must be positive: ", text) as NonEmptyStr }
+            } else {
+              match admit_page_size(requested: PageSize { count: n }, maximum: github_max_page_size) {
+                PageSizeAdmitted { size } => RosterPageSizeRequested { size: size }
+                PageSizeAboveAuthorityMaximum { requested: _, maximum: _ } =>
+                  RosterPageSizeRefused { reason: concat("roster_page_size exceeds the authority's maximum page size: ", text) as NonEmptyStr }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn roster_page_lines(pages: List<OrganizationRunnerRosterPage>) -> String {
+  join(map(pages, p => join([
+    "page target=", p.target,
+    " total_count=", to_string(p.total_count),
+    " link=", if p.link_field == "" { "(none)" } else { p.link_field },
+    " ids=", join(map(p.registrations, r => to_string(r.id)), ","),
+    "\n"
+  ], "")), "")
+}
+
 fn organization_runner_roster_observe_wet() -> ProcessExit {
   match runner_id_probe_request() {
     RunnerIdProbesUnparsable { tokens } =>
       exit_failure(reason: concat("OrgRunnerIdProbesUnparsable: runner_ids carries tokens that are not non-negative integer ids: ", join(tokens, ",")))
-    RunnerIdProbesParsed { ids } => organization_runner_roster_observe_with_probes(runner_ids: ids)
+    RunnerIdProbesParsed { ids } => match roster_page_size_from(raw: shell.Env.Get(name: roster_page_size_env_name).value) {
+      RosterPageSizeRefused { reason } => exit_failure(reason: concat("OrgRunnerRosterPageSizeRefused: ", reason as String))
+      RosterPageSizeRequested { size } => organization_runner_roster_observe_with_probes(runner_ids: ids, page_size: size)
+    }
   }
 }
 
-fn organization_runner_roster_observe_with_probes(runner_ids: List<Int>) -> ProcessExit {
+fn organization_runner_roster_observe_with_probes(runner_ids: List<Int>, page_size: PageSize) -> ProcessExit {
   let org = organization_runner_roster_org()
-  let report = organization_runner_roster_report(org: org)
-  let probes = match organization_runner_read_route() {
-    Absent => organization_runner_id_observations(org: org, visibility: RunnersVisibilityUnestablished { org: org, reason: organization_runner_roster_credential_absent_reason as NonEmptyStr }, runner_ids: runner_ids)
-    Present { value: route } => organization_runner_id_observations(org: org, visibility: runner_visibility_from_report(org: org, route: route, report: report), runner_ids: runner_ids)
+  let route = organization_runner_read_route()
+  let report = organization_runner_roster_report(org: org, page_size: page_size)
+  let probes = match route {
+    OrgRunnerRouteRefused { reason } => organization_runner_id_observations(org: org, visibility: RunnersVisibilityUnestablished { org: org, reason: reason }, runner_ids: runner_ids)
+    OrgRunnerRouteAdmitted { route: r } => organization_runner_id_observations(org: org, visibility: runner_visibility_from_report(org: org, route: r, report: report), runner_ids: runner_ids)
   }
   let receipt = join([
     "endpoint=GET-/orgs/\{org\}/actions/runners organization=", org as String,
+    " page_size=", to_string(page_size.count),
     " pages_read=", to_string(report.pages_read),
     " roster=", roster_evidence_arm(e: report.evidence),
     " disputed_ids=", join(report.disputed_ids, ","),
@@ -777,16 +933,22 @@ fn organization_runner_roster_observe_with_probes(runner_ids: List<Int>) -> Proc
   ], "")
   let wrote = Filesystem.Write(
     path: organization_runner_roster_receipt_path,
-    content: join([receipt, roster_registration_lines(e: report.evidence), join(map(probes, o => runner_id_observation_line(o: o)), "")], "")
+    content: join([
+      receipt,
+      roster_page_lines(pages: report.pages),
+      roster_registration_lines(e: report.evidence),
+      join(map(probes, o => runner_id_observation_line(o: o)), "")
+    ], "")
   )
   if !wrote.success {
     exit_failure(reason: concat("OrgRunnerRosterReceiptWriteRefused: ", wrote.error))
   } else {
-    match report.evidence {
-      RosterObserved { observed_on: _, registrations: _ } => ExitSuccess
-      RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } =>
-        exit_failure(reason: concat("OrgRunnerRosterPartial: ", receipt))
-      RosterReadUnavailable { reason: r } => exit_failure(reason: concat("OrgRunnerRosterUnavailable: ", r))
+    match roster_observe_terminal(evidence: report.evidence, probes: probes) {
+      RosterObserveComplete => ExitSuccess
+      RosterObserveRosterPartial => exit_failure(reason: concat("OrgRunnerRosterPartial: ", receipt))
+      RosterObserveRosterUnavailable { reason: r } => exit_failure(reason: concat("OrgRunnerRosterUnavailable: ", r))
+      RosterObserveProbesUnobserved { runner_ids: ids } =>
+        exit_failure(reason: concat("OrgRunnerIdProbesUnobserved: requested runner ids with no concrete answer: ", join(map(ids, i => to_string(i)), ",")))
     }
   }
 }
