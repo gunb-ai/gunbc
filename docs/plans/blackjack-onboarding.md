@@ -340,7 +340,7 @@ Four levels, and you will use all four. The question to ask before writing any t
 
 1. **Pure unit tests** supply cards, hands and values directly. Most of your tests.
 2. **State-transition tests** supply a complete `RoundState` and an action, and assert the exact next state or the exact refusal. One test per refusal arm.
-3. **Boundary tests** supply the value an effectful producer *would* return — a `List<UInt8>` of octets (built with `std.encoding` `base64_octet_of_int`, the same constructor the decoder uses) handed to `seed_from_octets`, a `ShuffleSeed` handed to `shuffle` — without calling the producer.
+3. **Boundary tests** supply the value an effectful producer *would* return — a `List<UInt8>` of octets written directly, which is exactly the type `std.encoding` `base64_decode` returns, handed to `seed_from_octets`, a `ShuffleSeed` handed to `shuffle` — without calling the producer.
 4. **One integration test** calls the real producer, `Urandom.ReadBytes`, and establishes only that its output inhabits the shape the boundary tests assumed (the right number of octets, decodable). It does not assert that a random shoe has any particular order.
 
 Level 3 without level 4 is the trap DESIGN §3 names: a suite that is fast, green, and proves no program, because every boundary was supplied and none was ever executed. Level 4 is what turns your supplied inputs from hypotheses into readings. Keep it to one test, keep it narrow, and know that it is *wet* — it shells out — so it runs with `--wet` locally and is the one that can fail for reasons that are not yours.
