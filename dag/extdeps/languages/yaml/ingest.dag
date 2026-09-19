@@ -2,6 +2,7 @@ module extdeps.languages.yaml.ingest
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Present, Absent }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
@@ -38,12 +39,18 @@ type YamlLiteralCollectResult {
 
 data yaml_digit_chars: String = "0123456789"
 
+// STOPS AT THE FIRST NON-DIGIT, BY BRANCHING. Written as `digit(head) && yaml_all_digits(tail)` it
+// recursed to the end of every plain value, because the interpreter evaluates both operands of `&&`
+// before dispatching it -- the operand-demand divergence already recorded as
+// gunbc.recurring_failure_mode.realization_arms_diverge_on_whether_the_program_refuses. The explicit
+// branch is this function's own early exit; it does not resolve that shared defect.
 fn yaml_all_digits(s: String) -> Bool {
   if s == "" {
     true
+  } else if !string_contains(s: yaml_digit_chars, pattern: substring(s: s, start: 0, end: 1)) {
+    false
   } else {
-    string_contains(s: yaml_digit_chars, pattern: substring(s: s, start: 0, end: 1)) &&
-      yaml_all_digits(s: substring(s: s, start: 1, end: s.length()))
+    yaml_all_digits(s: substring(s: s, start: 1, end: s.length()))
   }
 }
 
@@ -81,49 +88,62 @@ fn yaml_strip_indent(line: String, indent: Int) -> String {
   substring(s: line, start: indent, end: line.length())
 }
 
-fn yaml_lines_from_source(src: String) -> List<String> {
-  let raw = split(s: src, delimiter: "\n")
-  let n = raw.length()
-  if (n > 0) && (raw.skip(n: n - 1).first() == "") {
-    raw.take(n: n - 1)
-  } else {
-    raw
-  }
+// ONE LINE, READ ONCE. Every parse function asks the same three questions of a line -- its indent,
+// its text after that indent, and whether it is blank or a full-line comment -- and each used to
+// re-derive them from the raw string, several times per line and once more at every enclosing block
+// level that checks for its own end. That made the parse cost a large constant per line (measured at
+// 200-320 eval steps on this repository's workflows) for facts that never change after the line is
+// read. The table computes them once; every consumer reads the field.
+type YamlLine {
+  raw: String
+  indent: Int
+  text: String
+  ignorable: Bool
 }
 
-fn yaml_has_line_at(lines: List<String>, index: Int) -> Bool {
+fn yaml_line_record(raw: String) -> YamlLine {
+  let indent = yaml_indent_of(line: raw)
+  let text = substring(s: raw, start: indent, end: raw.length())
+  YamlLine { raw: raw, indent: indent, text: text, ignorable: (text == "") || starts_with(s: text, prefix: "#") }
+}
+
+fn yaml_lines_from_source(src: String) -> List<YamlLine> {
+  let raw = split(s: src, delimiter: "\n")
+  let n = raw.length()
+  let kept = if (n > 0) && (raw.skip(n: n - 1).first() == "") { raw.take(n: n - 1) } else { raw }
+  map(kept, l => yaml_line_record(raw: l))
+}
+
+fn yaml_has_line_at(lines: List<YamlLine>, index: Int) -> Bool {
   index < lines.length()
 }
 
-fn yaml_line_at(lines: List<String>, index: Int) -> String {
-  lines.skip(n: index).first()
+// Callers guard with yaml_has_line_at; the Absent arm is the out-of-range row those guards exclude,
+// shaped so that no predicate below can mistake it for content (indent -1 matches no block).
+fn yaml_line_entry(lines: List<YamlLine>, index: Int) -> YamlLine {
+  match get(xs: lines, index: index) {
+    Present { value: l } => l
+    Absent => YamlLine { raw: "", indent: -1, text: "", ignorable: false }
+  }
 }
 
-fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
-  if yaml_has_line_at(lines: lines, index: index) {
-    yaml_indent_of(line: yaml_line_at(lines: lines, index: index))
-  } else {
-    -1
-  }
+fn yaml_text_at(lines: List<YamlLine>, index: Int) -> String {
+  yaml_line_entry(lines: lines, index: index).text
+}
+
+fn yaml_indent_at(lines: List<YamlLine>, index: Int) -> Int {
+  yaml_line_entry(lines: lines, index: index).indent
 }
 
 // OUTSIDE A SCALAR, A BLANK LINE OR A FULL-LINE COMMENT CARRIES NO CONTENT AT ANY INDENTATION
 // (YAML 1.2.2 section 6.6, l-comment). Block-literal bodies never pass through here -- they are
 // collected by yaml_collect_literal_lines_from, where blank and `#` lines ARE content -- so skipping
-// them between structural entries cannot drop scalar text. Before this, a blank line ended the
-// enclosing mapping and a comment indented differently from its siblings was refused, which made
-// every hand-authored workflow in .github/workflows unreadable.
-fn yaml_line_is_ignorable(lines: List<String>, index: Int) -> Bool {
-  if !yaml_has_line_at(lines: lines, index: index) {
-    false
-  } else {
-    let l = yaml_line_at(lines: lines, index: index)
-    let t = yaml_strip_indent(line: l, indent: yaml_indent_of(line: l))
-    t == "" || starts_with(s: t, prefix: "#")
-  }
+// them between structural entries cannot drop scalar text.
+fn yaml_line_is_ignorable(lines: List<YamlLine>, index: Int) -> Bool {
+  yaml_has_line_at(lines: lines, index: index) && yaml_line_entry(lines: lines, index: index).ignorable
 }
 
-fn yaml_skip_ignorable_lines(lines: List<String>, index: Int) -> Int {
+fn yaml_skip_ignorable_lines(lines: List<YamlLine>, index: Int) -> Int {
   if yaml_line_is_ignorable(lines: lines, index: index) {
     yaml_skip_ignorable_lines(lines: lines, index: index + 1)
   } else {
@@ -196,19 +216,30 @@ fn yaml_parse_scalar_text(text: String) -> YamlValue {
   }
 }
 
-fn yaml_collect_literal_lines_from(lines: List<String>, index: Int, content_indent: Int, acc: List<String>) -> YamlLiteralCollectResult {
-  if yaml_has_line_at(lines: lines, index: index) && (yaml_line_at(lines: lines, index: index) == "") {
-    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [""]))
-  } else if yaml_has_line_at(lines: lines, index: index) && (yaml_indent_at(lines: lines, index: index) >= content_indent) {
-    let stripped = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: content_indent)
-    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [stripped]))
+// A BLOCK LITERAL IS A SLICE: every line after the indicator that is empty or indented to at least
+// the content column. Its end is found with one field test per line, and its text is built once
+// from the slice -- not by re-reading each line and copying the growing accumulator on every step,
+// which cost ~117 eval steps a literal line.
+fn yaml_literal_end(lines: List<YamlLine>, index: Int, content_indent: Int) -> Int {
+  let e = yaml_line_entry(lines: lines, index: index)
+  if yaml_has_line_at(lines: lines, index: index) && ((e.raw == "") || (e.indent >= content_indent)) {
+    yaml_literal_end(lines: lines, index: index + 1, content_indent: content_indent)
   } else {
-    YamlLiteralCollectResult { text: join(acc, "\n"), next_index: index }
+    index
   }
 }
 
-fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
-  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
+fn yaml_collect_literal_lines_from(lines: List<YamlLine>, index: Int, content_indent: Int) -> YamlLiteralCollectResult {
+  let end = yaml_literal_end(lines: lines, index: index, content_indent: content_indent)
+  let body = lines.skip(n: index).take(n: end - index)
+  YamlLiteralCollectResult {
+    text: join(map(body, l => if l.raw == "" { "" } else { yaml_strip_indent(line: l.raw, indent: content_indent) }), "\n"),
+    next_index: end,
+  }
+}
+
+fn yaml_parse_mapping_entry(lines: List<YamlLine>, index: Int, indent: Int) -> YamlEntryResult {
+  let content = yaml_text_at(lines: lines, index: index)
   let parts = split(s: content, delimiter: ": ")
   if parts.length() > 1 {
     let key = parts.first()
@@ -216,7 +247,7 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
     if yaml_has_unmodeled_inline_comment(text: rest) {
       YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
     } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
+      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2)
       ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
       ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
@@ -240,7 +271,7 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
   }
 }
 
-fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
+fn yaml_parse_mapping_entry_from_text(text: String, lines: List<YamlLine>, index: Int, indent: Int) -> YamlEntryResult {
   let parts = split(s: text, delimiter: ": ")
   if parts.length() > 1 {
     let key = parts.first()
@@ -248,7 +279,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
     if yaml_has_unmodeled_inline_comment(text: rest) {
       YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
     } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4, acc: [])
+      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4)
       ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
       ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
@@ -272,13 +303,14 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
   }
 }
 
-fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
+fn yaml_parse_mapping_entries(lines: List<YamlLine>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
   let current = yaml_skip_ignorable_lines(lines: lines, index: index)
+  let ln = yaml_line_entry(lines: lines, index: current)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else if yaml_indent_at(lines: lines, index: current) != indent {
+  } else if ln.indent != indent {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else if starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent), prefix: "- ") {
+  } else if starts_with(s: ln.text, prefix: "- ") {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
   } else {
     match yaml_parse_mapping_entry(lines: lines, index: current, indent: indent) {
@@ -289,11 +321,11 @@ fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc:
   }
 }
 
-fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqItemResult {
-  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
+fn yaml_parse_seq_item(lines: List<YamlLine>, index: Int, indent: Int) -> YamlSeqItemResult {
+  let content = yaml_text_at(lines: lines, index: index)
   let item_text = substring(s: content, start: 2, end: content.length())
   if item_text == "|" {
-    let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
+    let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2)
     ParsedYamlSeqItem { value: YamlString { value: lit.text }, next_index: lit.next_index }
   } else if yaml_is_flow_sequence_text(text: item_text) {
     ParsedYamlSeqItem { value: yaml_parse_flow_sequence(text: item_text), next_index: index + 1 }
@@ -313,13 +345,14 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
   }
 }
 
-fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
+fn yaml_parse_seq_items(lines: List<YamlLine>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
   let current = yaml_skip_ignorable_lines(lines: lines, index: index)
+  let ln = yaml_line_entry(lines: lines, index: current)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else if yaml_indent_at(lines: lines, index: current) != indent {
+  } else if ln.indent != indent {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else if !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent), prefix: "- ") {
+  } else if !starts_with(s: ln.text, prefix: "- ") {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
   } else {
     match yaml_parse_seq_item(lines: lines, index: current, indent: indent) {
@@ -330,14 +363,14 @@ fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<
   }
 }
 
-fn yaml_parse_block(lines: List<String>, index: Int, indent: Int) -> YamlBlockResult {
+fn yaml_parse_block(lines: List<YamlLine>, index: Int, indent: Int) -> YamlBlockResult {
   let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     YamlBlockRejected { reason: "expected a YAML block, found end of input" }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
     YamlBlockRejected { reason: concat("indentation mismatch at line ", to_string(current)) }
   } else {
-    let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent)
+    let content = yaml_text_at(lines: lines, index: current)
     if starts_with(s: content, prefix: "- ") {
       yaml_parse_seq_items(lines: lines, index: current, indent: indent, acc: [])
     } else {
