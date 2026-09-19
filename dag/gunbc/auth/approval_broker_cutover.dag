@@ -1,7 +1,6 @@
 module gunbc.auth.approval_broker_cutover
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
-import std.logic { Bool }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port, approval_broker_dark_listen_port,
   approval_broker_confirm_path_template, approval_broker_submit_path,
