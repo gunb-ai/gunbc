@@ -530,7 +530,11 @@ fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Ou
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: found, diagnostics: d } =>
           Accepted {
-            value: (match found { Present { value: _ } => true  Absent => false }),
+            value: (match found {
+              BoundInFrame { canonical: _ } => true
+              BoundAtRoot { canonical: _ } => true
+              ScopeUnbound => false
+            }),
             diagnostics: d
           }
       }
