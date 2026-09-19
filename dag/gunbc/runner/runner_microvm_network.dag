@@ -15,7 +15,7 @@ import gunbc.executor_privileged_operation {
 }
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
-  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftPolicy, NftPolicyAccept, NftPolicyDrop,
+  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftInput, NftInputInterface, NftPolicy, NftPolicyAccept, NftPolicyDrop,
   NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
@@ -301,8 +301,14 @@ type GuestEgressGrant {
 // denials are one row for the fleet. The forward grain and the IPv6 standing are facts about ONE
 // host -- whether it owns its forward chain, whether v6 is off on its data path -- so each host
 // supplies its own HostEgressGrain, and no host's row carries another host's values (review 68199).
+// THE INPUT HOOK IS PART OF WHAT A GUEST MAY REACH. Traffic a guest sends to the HOST's own addresses
+// -- sshd, the dockerd socket, any local listener -- never traverses forward, so a policy projected
+// only into forward would deny 172.16.0.0/12 in its type while the host's tap address in that range
+// stayed reachable (review 68590). Each host states its input grain the same way it states its
+// forward grain, and the fold realizes both.
 type HostEgressGrain {
   forward: ForwardDenyGrain
+  input: ForwardDenyGrain
   ipv6: IpV6Standing
 }
 
@@ -325,6 +331,9 @@ fn runner_microvm_guest_resolver() -> Ipv4Address {
 data runner_microvm_shared_host_grain: HostEgressGrain = HostEgressGrain {
   forward: TapScopedFinalDrop {
     chain_policy_reason: "other tables hook forward on srvN (dockerd on srv2) and every table runs with any drop winning, so a chain-level drop would drop traffic this fleet does not own" as NonEmptyStr,
+  },
+  input: TapScopedFinalDrop {
+    chain_policy_reason: "the shared hosts run their own services and other tables hook input, so a chain-level drop would cut traffic this fleet does not own" as NonEmptyStr,
   },
   ipv6: IpV6DefaultDenyRuleset,
 }
@@ -435,6 +444,38 @@ fn raw_ipv6_rules(v: IpV6Standing) -> List<NftRule> {
   }
 }
 
+// A GUEST REACHES NOTHING ON THE HOST. It resolves through a public resolver and fetches over the
+// forward path, so no host-local service is one it needs: from a tap, input accepts only replies to
+// flows the host itself opened and drops the rest, on every grain. A host that owns its whole input
+// policy (HostChainDefaultDrop) additionally drops at the chain and so admits its own loopback and
+// replies explicitly -- the two input rows the Mt. Collins receipt read back.
+fn input_chain_rules(g: ForwardDenyGrain) -> List<NftRule> {
+  concat(
+    match g {
+      HostChainDefaultDrop => [
+        NftRule { matches: [NftInputInterface { device: "lo" as NonEmptyStr }], verdict: NftAccept },
+        NftRule { matches: [NftConnectionTrackingEstablished], verdict: NftAccept },
+      ]
+      TapScopedFinalDrop { chain_policy_reason: _ } => []
+    },
+    [
+      from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept),
+      from_guest_tap(m: [], verdict: NftDrop),
+    ],
+  )
+}
+
+fn runner_microvm_input_chain(host: HostEgressGrain) -> NftChain {
+  NftChain {
+    name: "input" as NonEmptyStr,
+    chain_type: NftTypeFilter,
+    hook: NftInput,
+    priority: NftPriorityFilter,
+    policy: forward_chain_policy(g: host.input),
+    rules: input_chain_rules(g: host.input),
+  }
+}
+
 fn runner_microvm_raw_prerouting_chain(host: HostEgressGrain) -> NftChain {
   NftChain {
     name: "raw_prerouting" as NonEmptyStr,
@@ -471,7 +512,7 @@ fn runner_microvm_nft_table(host: HostEgressGrain) -> NftTable {
   NftTable {
     family: NftInet,
     name: runner_microvm_nft_table_name,
-    chains: [runner_microvm_raw_prerouting_chain(host: host), runner_microvm_forward_chain(host: host), runner_microvm_postrouting_chain()],
+    chains: [runner_microvm_raw_prerouting_chain(host: host), runner_microvm_input_chain(host: host), runner_microvm_forward_chain(host: host), runner_microvm_postrouting_chain()],
   }
 }
 

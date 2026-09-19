@@ -532,7 +532,7 @@ test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() ->
   string_contains(s: text, pattern: "hook forward priority 0; policy drop;")
     && string_contains(s: text, pattern: "oifname \"gunbc-tap*\" ct state established,related accept")
     && !string_contains(s: text, pattern: "meta nfproto ipv6")
-    && !string_contains(s: text, pattern: "iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: text, pattern: "tcp dport 443 accept\n  }")
     && string_contains(s: text, pattern: "ip daddr 1.1.1.1/32 udp dport 53 accept")
 }
 
@@ -551,4 +551,16 @@ test fn the_readback_result_carries_the_slot_it_was_taken_for() -> Bool {
     }
     SanitationSubjectRefused { refusal: _ } => false
   }
+}
+
+// A GUEST REACHES NOTHING ON THE HOST, ON EITHER GRAIN. Guest-to-host traffic never traverses forward,
+// so the policy is realized in input too: from a tap, only replies to host-opened flows are accepted
+// and the rest dropped. The shared hosts keep input's policy accept (their own services); the raw
+// host drops at the chain and admits loopback and its own replies. The red is the previous table,
+// with no input chain at all -- the guest reached every host-local listener (review 68590).
+test fn a_guest_reaches_nothing_on_the_host_on_either_grain() -> Bool {
+  let shared = runner_microvm_shared_host_nft_ruleset_text()
+  let raw = runner_microvm_nft_ruleset_text_for(host: runner_host_egress_policy.host)
+  string_contains(s: shared, pattern: "type filter hook input priority 0; policy accept;\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: raw, pattern: "type filter hook input priority 0; policy drop;\n    iifname \"lo\" accept\n    ct state established,related accept\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" drop\n  }")
 }

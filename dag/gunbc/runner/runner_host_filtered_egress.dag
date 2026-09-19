@@ -3,7 +3,7 @@ module gunbc.runner.runner_host_filtered_egress
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
-  RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
+  RunnerSlotNetwork, runner_slot_host_cidr,
   runner_microvm_network_supernet,
   GuestEgressPolicy, runner_microvm_guest_egress_policy,
   HostEgressGrain, HostChainDefaultDrop, IpV6DisabledOnDataPath,
@@ -76,7 +76,6 @@ data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandid
 // EVERY CHAIN STARTS CLOSED AND OPENS BY NAME. The grants are the whole of what a guest may reach,
 // and the denials that matter most are the ones a permissive default would have allowed silently:
 // the BMC, the rest of the LAN, and any other attempt's tap.
-type ChainStance = DefaultDrop | DefaultAccept
 
 // THE GUEST-FACING GRANTS AND DENIALS ARE CONSUMED, NOT RESTATED. They are
 // gunbc.runner_microvm_network runner_microvm_guest_egress_policy, the same rows the shared hosts'
@@ -95,15 +94,13 @@ type ChainStance = DefaultDrop | DefaultAccept
 // and tap to tap is the forward chain's first rule in gunbc.runner_microvm_network; a prose list here
 // would be a third spelling of both (review 68294).
 type EgressPolicyShape {
-  host_input: ChainStance
   host: HostEgressGrain
   guest: GuestEgressPolicy
   nat: NonEmptyStr
 }
 
 data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
-  host_input: DefaultDrop,
-  host: HostEgressGrain { forward: HostChainDefaultDrop, ipv6: IpV6DisabledOnDataPath },
+  host: HostEgressGrain { forward: HostChainDefaultDrop, input: HostChainDefaultDrop, ipv6: IpV6DisabledOnDataPath },
   guest: runner_microvm_guest_egress_policy,
   nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
 }
@@ -193,17 +190,16 @@ fn runner_host_admitted_guest_source(net: RunnerSlotNetwork) -> String {
   join([render_ipv4_address(addr: net.guest_address) as String, "/32"], "")
 }
 
-// THE HOST SIDE OF THE POINT-TO-POINT LINK, which is the guest's only next hop and therefore the
-// only address it may reach on the host at all.
+// THE HOST SIDE OF THE POINT-TO-POINT LINK, which is the guest's only next hop. It is a next hop
+// and not a destination: the input chain refuses everything a tap sends to the host itself.
 fn runner_host_tap_cidr(net: RunnerSlotNetwork) -> String {
   runner_slot_host_cidr(net: net)
 }
 
-// THE GUEST IS TOLD ITS ADDRESS AT BOOT, WHICH IS WHY NO DHCP CLIENT IS NEEDED ON EITHER SIDE. The
-// same rendering the fleet already uses; the raw host does not get a second spelling of it.
-fn runner_host_guest_boot_ip_arg(net: RunnerSlotNetwork) -> String {
-  runner_slot_guest_ip_boot_arg(net: net)
-}
+// THE GUEST'S BOOT ARGUMENTS ARE gunbc.runner_microvm_network runner_slot_guest_network_boot_args ON
+// EVERY HOST. A wrapper here returned only the ip= directive, a second spelling that omitted the v6
+// refusal on the one host with no v6 ruleset behind it (review 68590); it had no caller and is gone.
+
 
 // TAP-TO-TAP IS DENIED BY THE SUPERNET, not by enumerating peers. Every slot's /30 sits inside the
 // one supernet, so a single rule denying guest -> supernet forbids reaching EVERY other attempt --
