@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
-  JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel, EncodedJitConfig,
+  JitRunnerConfigRequest, JitRunnerGroupId, EncodedJitConfig,
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused, JitConfigMintNotFound,
   JitConfigMintConflict, JitConfigMintValidationFailed,
 }
@@ -20,7 +20,7 @@ import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
 import gunbc.runner_microvm_attempt { MicroVmAttempt, MicroVmCellBinding }
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  JitMintRefusedAttemptUnbound, plan_jit_mint,
+  JitMintRefusedAttemptUnbound, JitMintRefusedLabelsUnresolved, plan_jit_mint,
 }
 
 data runner_jit_perform_disposition: Disposition = SingleAuthority
@@ -70,6 +70,7 @@ type JitDispatchRefusal
       unsatisfied: List<CredentialCapability>
     }
   | DispatchRefusedAttemptUnbound { cause: String }
+  | DispatchRefusedLabelsUnresolved { cause: String }
   | DispatchRefusedNoInstallationCredential { cause: String }
 
 // THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.
@@ -111,7 +112,6 @@ fn dispatch_jit_mint(
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
   runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintDispatch {
   match plan_jit_mint(
@@ -120,13 +120,14 @@ fn dispatch_jit_mint(
     control_plane: control_plane,
     organization: organization,
     runner_group_id: runner_group_id,
-    labels: labels,
     attempt_binding: attempt_binding,
   ) {
     JitMintRefusedCellNotOwned { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } }
     JitMintRefusedAttemptUnbound { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
+    JitMintRefusedLabelsUnresolved { cause: c } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedLabelsUnresolved { cause: c } }
     JitMintRefusedCredential { organization: org, unsatisfied: u } =>
       JitMintDispatchRefused {
         refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },

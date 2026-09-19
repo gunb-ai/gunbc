@@ -35,7 +35,7 @@ import std.types { List }
 // with a ComputationNode{behavior: Match} - by the time a tree is normalized,
 // ^dag_surface_match_expr is no longer a reliable anchor for this static-analysis walk.
 
-// Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal.
+// Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal never publishes the authored text (StampClass for an ordinary identifier, a fixed StampBinding of ^dag_token_ident for the promoted type-decl modifier spellings), so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal.
 type SourceFindingsStanding
   = SourceFindingsEstablished { findings: List<Finding> }
   | SourceFindingsNotEstablished { cause: SourceAnalysisNotEstablishedCause }

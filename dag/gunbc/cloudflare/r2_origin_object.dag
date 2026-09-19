@@ -31,14 +31,17 @@ import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated,
   CloudflareAccountUnallocated,
   fleet_cloudflare_account_standing,
-  DurableOriginBucket,
-  DurableOriginAllocated,
-  DurableOriginUnallocated,
+  R2OriginBucket,
+  R2OriginAllocated,
+  R2OriginUnallocated,
   fabric_durable_origin_standing,
   bucket_purpose_key,
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
+  bucket_purpose_admission,
+  origin_admission_is_create_only,
 }
 import gunbc.cloudflare.r2_s3_netrc {
   R2S3NetrcPlaced,
@@ -86,7 +89,7 @@ import gunbc.fabric_m0_origin_readback {
 //
 // THE PUT IS CREATE-IF-ABSENT, DERIVED FROM THE ADMISSION RATHER THAN CHOSEN. The origin admits
 // commit manifests and content-addressed outputs (gunbc.cloudflare.r2_origin
-// DurableOriginAdmission): a content-addressed object at its own digest is byte-identical to any
+// OriginAdmission): a content-addressed object at its own digest is byte-identical to any
 // earlier write, and a manifest slot is written once per attempt, so no admitted object is ever
 // legitimately OVERWRITTEN. If-None-Match: * makes that a store-side refusal (412) instead of a
 // convention. A 412 is reported as its own arm -- the object is already there, which for both
@@ -187,10 +190,11 @@ type OriginTarget
       locator: R2ObjectLocator
       access_key_id: NonEmptyStr
       token_value: SecretRef
+      create_only: Bool
     }
   | OriginTargetRefused { cause: NonEmptyStr }
 
-fn origin_credential_for(direction: OriginDirection, bucket: DurableOriginBucket) -> OriginCredentialStanding {
+fn origin_credential_for(direction: OriginDirection, bucket: R2OriginBucket) -> OriginCredentialStanding {
   match direction {
     OriginRead => bucket.read_credential
     OriginWrite => bucket.write_credential
@@ -233,9 +237,9 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
       OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
       match fabric_durable_origin_standing() {
-        DurableOriginUnallocated { purpose: purpose } =>
+        R2OriginUnallocated { purpose: purpose } =>
           OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
-        DurableOriginAllocated { bucket: bucket } =>
+        R2OriginAllocated { bucket: bucket } =>
           match origin_credential_for(direction: direction, bucket: bucket) {
             OriginCredentialUnminted { mint_entry: entry } =>
               OriginTargetRefused {
@@ -243,6 +247,14 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
                   "THE ORIGIN'S ", origin_direction_word(direction: direction),
                   " CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String,
                   " and pin the stored version in gunbc.cloudflare.r2_origin before this operation can sign a request",
+                ], "") as NonEmptyStr,
+              }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              OriginTargetRefused {
+                cause: join([
+                  "THE ORIGIN'S ", origin_direction_word(direction: direction),
+                  " CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String,
+                  " yet, so this operation cannot sign a request",
                 ], "") as NonEmptyStr,
               }
             OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
@@ -254,6 +266,7 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
                 },
                 access_key_id: access_key_id,
                 token_value: token_value,
+                create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
               }
           }
       }
@@ -296,7 +309,7 @@ fn put_origin_object(
     OriginTransportPresent =>
   match resolve_origin_target(direction: OriginWrite, key: key) {
     OriginTargetRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } =>
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } =>
       match place_r2_s3_netrc(
         host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
         access_key_id: access_key_id,
@@ -313,7 +326,7 @@ fn put_origin_object(
               local_path: local_path as String,
               netrc_path: netrc_binding_path(binding: binding),
               sigv4_region: r2_s3_sigv4_region,
-              create_only: true,
+              create_only: create_only,
             ),
             transport: LocalExec,
           )
@@ -375,7 +388,7 @@ fn fetch_origin_object(
     OriginTransportPresent =>
   match resolve_origin_target(direction: OriginRead, key: key) {
     OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } => {
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: _ } => {
       let staging = shell.Mktemp.Dir()
       if staging.success == false {
         OriginFetchUnavailable { key: key, cause: "no private directory could be minted to stage the origin's bytes, so nothing was fetched" }

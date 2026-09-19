@@ -4,6 +4,10 @@ import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, li
 import std.disposition { Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_allocation { runner_label_sets_equal }
+import gunbc.runner_registration_labels {
+  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+}
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
   process_identity_eq,
@@ -589,12 +593,23 @@ fn plan_slot_connectivity_action(
   )
 }
 
+// THE DESIRED SIDE IS THE SLOT'S OWN REGISTRATION LABELS (platform, class and the host it runs
+// on), compared as a SET: order is not a fact GitHub schedules on, and a successor that registered
+// under another host's label is not this slot's runner.
+// A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
+// fails the postcondition rather than accepting whatever the successor registered with.
+fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
+  match runner_registration_labels(host: slot.host) {
+    RegistrationLabelsResolved { labels: want } => runner_label_sets_equal(a: observed, b: want)
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+}
+
 fn verify_incarnation_replace_postcondition(
   slot: RunnerSlotIdentity,
   prior: RunnerLocalIncarnation,
   after_local: RunnerLocalObservation,
   after_remote: RunnerRemoteObservation,
-  expected_labels: List<String>,
 ) -> IncarnationReplacePostcondition {
   if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
@@ -611,7 +626,7 @@ fn verify_incarnation_replace_postcondition(
       Present { value: reg } =>
         match reg {
           RunnerRemoteOnline { runner_name: name, labels: labels } =>
-            if labels == expected_labels {
+            if replace_successor_labels_conform(slot: slot, observed: labels) {
               ReplaceVerified {
                 slot: slot,
                 prior: prior,

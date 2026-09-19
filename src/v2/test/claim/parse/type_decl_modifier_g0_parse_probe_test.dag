@@ -1,0 +1,159 @@
+module v2.test.parse.type_decl_modifier_g0_parse_probe
+
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-2: posix_effective_principal.dag stopped at leftover `nominal_opaque` because G0's
+// dag_grammar_type_decl_expr had no slot between the type name and `=` / field block.
+// v1.compiler.parse drop_leading_type_modifier / type_body_tokens_after_modifiers drops
+// exactly those two ident spellings, in that order. The treatment is the smallest alias
+// that carries `nominal_opaque`; the standing red is an unknown ident in that slot, which
+// v1 also leaves for the body parser to refuse.
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parse_outcome(src: String) -> String {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          symbol_lexeme(sym: fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason }))
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+      }
+  }
+}
+
+data unmodified_alias_source: String = "module m\ntype T = Int\n"
+data nominal_opaque_alias_source: String = "module m\ntype T nominal_opaque = Int\n"
+data sole_constructor_record_source: String = "module m\ntype T sole_constructor { x: Int }\n"
+data unknown_modifier_red_source: String = "module m\ntype T not_a_modifier = Int\n"
+data modifier_spelling_as_data_name_source: String = "module m\ndata sole_constructor: Int = 1\n"
+data modifier_spelling_as_caret_source: String = "module m\nfn f() -> Int { ^sole_constructor }\n"
+data modifier_spelling_as_generic_param_source: String = "module m\ntype T<sole_constructor> = Int\n"
+
+test fn unmodified_type_alias_still_parses_holds() -> Bool {
+  parse_outcome(src: unmodified_alias_source) == "ACCEPTED"
+}
+
+test fn nominal_opaque_type_alias_parses_holds() -> Bool {
+  parse_outcome(src: nominal_opaque_alias_source) == "ACCEPTED"
+}
+
+test fn sole_constructor_type_record_still_parses_holds() -> Bool {
+  parse_outcome(src: sole_constructor_record_source) == "ACCEPTED"
+}
+
+test fn unknown_type_decl_modifier_still_refuses_holds() -> Bool {
+  parse_outcome(src: unknown_modifier_red_source) == "parse_g0_tokens_remain"
+}
+
+test fn sole_constructor_as_a_data_name_still_parses_holds() -> Bool {
+  parse_outcome(src: modifier_spelling_as_data_name_source) == "ACCEPTED"
+}
+
+test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
+  parse_outcome(src: modifier_spelling_as_caret_source) == "ACCEPTED"
+}
+
+// THE ARRANGEMENT THESE CLAIMS MEASURE. Ordinary identifier tokens are StampClass, whose
+// published identity is the token class ^dag_token_ident. The two promoted keyword classes
+// are a FIXED StampBinding of ^dag_token_ident. So BOTH publish the same generic identifier
+// identity and NEITHER publishes authored text, by two different mechanisms -- which is the
+// property the class-stamped sites had before promotion. A lexeme stamp is the third
+// outcome: it publishes the authored text itself (v2.compiler.02_parse
+// symbol_intern_lexeme), which would change the identity every caret literal and generic
+// parameter carries corpus-wide and falsify
+// v2.lens.identity_captured_navigation.analyze node_source_symbol_note.
+//
+// The pair below discriminates on ONE spelling, in both directions: the word is absent from
+// the caret tree's atom identities and present in the data-decl tree's, the latter being
+// genuinely lexeme-stamped. Routing the caret site through the lexeme helper turns the
+// first red.
+
+fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: art, diagnostics: _ } =>
+          fold_list(
+            xs: node_subtree_nodes(root: art.tree),
+            empty: false,
+            cons: fn(acc, n) {
+              match node_atom_identity_optional(node: n) {
+                Present { value: id } => acc || id == identity
+                Absent => acc
+              }
+            }
+          )
+      }
+  }
+}
+
+test fn caret_referenced_ident_does_not_publish_the_lexeme_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^sole_constructor
+  ) == false
+}
+
+test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_data_name_source,
+    identity: ^sole_constructor
+  )
+}
+
+// "NOT THE LEXEME" IS NOT "THE SAME IDENTITY AS BEFORE", and the gap between those two
+// facts is a second transition this change has to hold out. v2.compiler.02_parse resolves a
+// class stamp as exactly `StampClass => tok.class`, so promoting these spellings to their
+// own keyword classes moves a class-stamped site's published identity from ^dag_token_ident
+// to ^dag_token_kw_sole_constructor WITHOUT ever touching the stamp mode. A membership claim
+// that only says the interned lexeme is absent passes under both implementations, because
+// neither tree contains it. The claims below therefore assert the identity POSITIVELY --
+// what the site publishes, not merely what it does not -- at both class-stamped sites,
+// including the generic-parameter site, which carried no identity measurement at all.
+
+test fn caret_referenced_ident_publishes_the_generic_ident_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^dag_token_ident
+  )
+}
+
+test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^dag_token_kw_sole_constructor
+  ) == false
+}
+
+test fn generic_param_publishes_the_generic_ident_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_generic_param_source,
+    identity: ^dag_token_ident
+  )
+}
+
+test fn generic_param_does_not_publish_the_keyword_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_generic_param_source,
+    identity: ^dag_token_kw_sole_constructor
+  ) == false
+}
