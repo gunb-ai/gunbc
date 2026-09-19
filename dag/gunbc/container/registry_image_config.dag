@@ -34,6 +34,7 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   json_string_value_or_empty,
+  json_string_list,
   parse_json_document,
 }
 import extdeps.tools.sha256sum
@@ -110,37 +111,6 @@ fn check_sha256_hex(subject: NonEmptyStr, expected: NonEmptyStr, observed: NonEm
     RegistryBytesDigestMatched { hex: observed }
   } else {
     RegistryBytesDigestMismatched { subject: subject, expected: expected, observed: observed }
-  }
-}
-
-fn json_string_list(v: JsonValue) -> List<String>? {
-  match v {
-    JsonArray { elements: es } => json_string_list_from(es: es, index: 0, acc: [])
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonNumber { lexeme: _ } => none
-    JsonString { value: _ } => none
-    JsonObject { members: _ } => none
-  }
-}
-
-fn json_string_list_from(es: List<JsonValue>, index: Int, acc: List<String>) -> List<String>? {
-  if index >= count(es) {
-    Present { value: acc }
-  } else {
-    match es |> get(index) {
-      Absent => none
-      Present { value: el } =>
-        match el {
-          JsonString { value: s } =>
-            json_string_list_from(es: es, index: index + 1, acc: append(acc, items: [s]))
-          JsonNull => none
-          JsonBool { value: _ } => none
-          JsonNumber { lexeme: _ } => none
-          JsonArray { elements: _ } => none
-          JsonObject { members: _ } => none
-        }
-    }
   }
 }
 

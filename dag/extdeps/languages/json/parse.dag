@@ -167,6 +167,40 @@ fn json_string_value_or_empty(v: JsonValue) -> String {
   }
 }
 
+// AN ARRAY OF STRINGS, OR NONE. The six JsonValue arms are exhaustive: a non-array, or an array
+// whose element is not a string, is unread rather than last-wins or stringify. Docker Config.Env
+// and OCI image-config Env are two readers of this one accessor.
+fn json_string_list(v: JsonValue) -> List<String>? {
+  match v {
+    JsonArray { elements: es } => json_string_list_from(es: es, index: 0, acc: [])
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn json_string_list_from(es: List<JsonValue>, index: Int, acc: List<String>) -> List<String>? {
+  if index >= count(es) {
+    Present { value: acc }
+  } else {
+    match es |> get(index) {
+      Absent => none
+      Present { value: el } =>
+        match el {
+          JsonString { value: s } =>
+            json_string_list_from(es: es, index: index + 1, acc: append(acc, items: [s]))
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonNumber { lexeme: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
+        }
+    }
+  }
+}
+
 // RFC 8259 permits duplicate names in an object and does not say which one wins, so JsonObject
 // keeps members as an authored LIST rather than a map. A reader that folds that list into last-wins
 // silently picks a value the document never committed to - and for an identity field like schema or

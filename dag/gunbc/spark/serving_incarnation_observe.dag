@@ -18,6 +18,8 @@ import gunbc.spark.vllm_serving_launch {
 }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_unit_name }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv, spark_managed_grant_wire }
+import extdeps.vllm.usage_stats { VllmUsageStatsLaunchStanding }
+import gunbc.spark.serving_usage_stats_observe { spark_serving_usage_stats_decode, spark_usage_stats_inspect_unread_obligation }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.docker.cli {
@@ -113,8 +115,36 @@ type ServingIncarnationRefusal
   | IncarnationImageIdNotSha256 { image_id: NonEmptyStr }
   | IncarnationStartBeforeEpoch { seconds: Int }
 
+// ONE INSPECT, TWO PROJECTIONS, AND THE SEALED ONE IS MINTED HERE. The authorized `docker container
+// inspect` this operation executes returns the whole container object (Config.Env included, which
+// can carry secrets). Its raw stdout exists only inside incarnation_after_container: the identity
+// projection (.Id/.Image) is taken there, the usage-stats projection (the four named env terms,
+// gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_decode) is taken there from the
+// same bytes, and the document dies with the call. ServingUsageStatsEvidence is a sole-constructor
+// record and this module is its only mint, from that stdout and the launch this operation just
+// bound -- so a Disabled standing policy may act on cannot be authored from caller-chosen JSON
+// anywhere (side-chat ruling 2026-09-16). The decoder itself is exported and unsealed; what it
+// returns is only a standing over whatever bytes it was given.
+type ServingUsageStatsSubject {
+  launch: VllmServingLaunch
+  standing: VllmUsageStatsLaunchStanding
+  receipt: ObservationReceiptRef
+}
+
+type ServingUsageStatsEvidence sole_constructor {
+  subject: ServingUsageStatsSubject
+}
+
+type ServingUsageStatsObservation
+  = ServingUsageStatsObserved { evidence: ServingUsageStatsEvidence }
+  | ServingUsageStatsUnobserved { obligation: NonEmptyStr }
+
+fn spark_usage_stats_inspect_unread() -> ServingUsageStatsObservation {
+  ServingUsageStatsUnobserved { obligation: spark_usage_stats_inspect_unread_obligation }
+}
+
 type ServingIncarnationReading
-  = IncarnationObserved { observation: EndpointIncarnationObservation }
+  = IncarnationObserved { observation: EndpointIncarnationObservation, usage_stats: ServingUsageStatsObservation }
   | IncarnationRefused { refusal: ServingIncarnationRefusal }
 
 data serving_incarnation_receipt: ObservationReceiptRef = "gunbc.spark.serving_incarnation_observe" as ObservationReceiptRef
@@ -160,9 +190,22 @@ fn serving_incarnation_refusal_text(r: ServingIncarnationRefusal) -> String {
   }
 }
 
+// The usage-stats projection of a reading: sealed evidence on the observed arm, Unobserved with
+// the operation's refusal on every other, so a consumer holding an unobserved incarnation also
+// holds an unread telemetry path rather than a default.
+fn endpoint_incarnation_usage_stats(reading: ServingIncarnationReading) -> ServingUsageStatsObservation {
+  match reading {
+    IncarnationObserved { observation: _, usage_stats: u } => u
+    IncarnationRefused { refusal: r } =>
+      ServingUsageStatsUnobserved {
+        obligation: join(["gunbc.spark.serving_incarnation_observe refused before the inspect projection: ", serving_incarnation_refusal_text(r: r)], "") as NonEmptyStr,
+      }
+  }
+}
+
 fn endpoint_incarnation_standing(reading: ServingIncarnationReading) -> EndpointIncarnationStanding {
   match reading {
-    IncarnationObserved { observation: o } => EndpointIncarnationObserved { observation: o }
+    IncarnationObserved { observation: o, usage_stats: _ } => EndpointIncarnationObserved { observation: o }
     IncarnationRefused { refusal: r } =>
       EndpointIncarnationUnobserved {
         obligation: join(["gunbc.spark.serving_incarnation_observe refused: ", serving_incarnation_refusal_text(r: r)], "") as NonEmptyStr,
@@ -323,22 +366,33 @@ fn incarnation_after_container(
                 Present { value: hex } =>
                   match sha256_hex_digest(hex: hex) {
                     Absent => IncarnationRefused { refusal: IncarnationImageIdNotSha256 { image_id: image_id } }
-                    Present { value: digest } =>
+                    Present { value: digest } => {
+                      let launch = vllm_serving_launch(
+                        group: group,
+                        head: head,
+                        systemd_invocation: invocation,
+                        container_id: container_id,
+                        executable_digest: Sha256Hash(digest),
+                        unit_digest: unit_digest,
+                        started_at: started_at,
+                      )
                       IncarnationObserved {
                         observation: endpoint_incarnation_observation(
                           endpoint: endpoint,
-                          launch: vllm_serving_launch(
-                            group: group,
-                            head: head,
-                            systemd_invocation: invocation,
-                            container_id: container_id,
-                            executable_digest: Sha256Hash(digest),
-                            unit_digest: unit_digest,
-                            started_at: started_at,
-                          ),
+                          launch: launch,
                           receipt: serving_incarnation_receipt,
                         ),
+                        usage_stats: ServingUsageStatsObserved {
+                          evidence: ServingUsageStatsEvidence {
+                            subject: ServingUsageStatsSubject {
+                              launch: launch,
+                              standing: spark_serving_usage_stats_decode(launch: launch, inspect_stdout: r.stdout),
+                              receipt: serving_incarnation_receipt,
+                            },
+                          },
+                        },
                       }
+                    }
                   }
               }
             }

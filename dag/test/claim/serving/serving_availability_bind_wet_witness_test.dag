@@ -21,6 +21,7 @@ import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import gunbc.spark.pair_serving_realization { DeclaredUnitDigested, DeclaredUnitDigestUnavailable }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.spark.serving_incarnation_observe { spark_usage_stats_inspect_unread }
 import gunbc.harness.harness_seat {
   HarnessCandidates, HarnessDeclaredUnitRoster, harness_add_serving_candidate,
   harness_declared_unit_roster, harness_declared_unit_from_roster,
@@ -150,6 +151,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
     readback: w_readback(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    usage_stats: spark_usage_stats_inspect_unread(),
     route: harness_serving_route(
       group: FabricGroupA, launch: launch, readback: w_readback(),
       incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },

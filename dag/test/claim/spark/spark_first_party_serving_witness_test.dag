@@ -14,14 +14,11 @@ import product.fabric.provider_admission {
   DispositionRefused, DispositionUnresolved,
   refusal_reason, admit_provider_use,
 }
-import extdeps.vllm.usage_stats {
-  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
-  UsageStatsLaunchUnread,
-}
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
+import gunbc.spark.serving_incarnation_observe { spark_usage_stats_inspect_unread }
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
@@ -34,7 +31,7 @@ import gunbc.spark.vllm_observed {
   vllm_models_route_readback,
 }
 import gunbc.spark.first_party_serving {
-  SparkServingRealization, spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
+  SparkServingRealization, spark_usage_stats_telemetry_path,
   spark_serving_usage_stats_unread_cause, SparkTelemetryUnreadCause,
   TelemetryReadbackUnresolved, TelemetryReportedPathDiffers, TelemetryDeclaredPathUnpinned,
   TelemetryNoHostMembership, TelemetryHostsWithoutObservedLanes,
@@ -161,6 +158,7 @@ fn t_foreign_realization() -> SparkServingRealization {
 test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool {
   match spark_first_party_admission(
     realization: t_pair_realization(),
+    usage_stats: spark_usage_stats_inspect_unread(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
@@ -245,7 +243,7 @@ test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
 // a telemetry path resolves, it does not reach production, and it is NOT the deferred launch-bound
 // positive control -- that row remains absent until evidence bound to the offered launch exists.
 fn t_facts_reaching_the_scope_checks() -> ProviderRouteFacts {
-  let f = spark_first_party_route_facts(realization: t_pair_realization())
+  let f = spark_first_party_route_facts(realization: t_pair_realization(), usage_stats: spark_usage_stats_inspect_unread())
   let onsite = f.data_paths.execution
   ProviderRouteFacts {
     route: f.route,
@@ -308,19 +306,9 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
   }
 }
-// THE DROP'S POSITIVE CONTROL IS DELETED HERE, AND THE DELETION IS THE HONEST MOVE RATHER THAN A
-// GAP. It asserted that the launch leaves usage reporting ON, which is what
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits was declared against. That standing no
-// longer exists to assert: the deciding producer does not read the declared environment at all, so
-// there is no arm that concludes reporting is on or off for this launch, and the drop's population
-// is empty pending attribution evidence. A control whose subject has no producer is not a weak
-// control, it is a permanently green one, and DESIGN 4b is explicit that such a check is worse than
-// absent because it will be cited as coverage.
-//
-// WHAT REPLACES IT IS NOT NOTHING. The same input is now driven by the first control below, which
-// asserts the opposite and correct result -- that a matching readback establishes no telemetry
-// standing at all. The drop keeps its record in its own row; what it does not keep is a witness
-// claiming a live population it no longer has.
+// THIS FILE STILL DRIVES UNREAD INSPECT. Disabled inspect -> Absent and admit is in
+// test.claim.spark.spark_serving_usage_stats_observe_witness_test. Enabled egress is refused there
+// too; this PR does not populate gunbc.rung_drop.provider_path_jurisdiction_unread_admits.
 
 
 // THE THREE RESULTS THIS REPAIR HAS TO ESTABLISH, each at the seam that owns it. They are separate
@@ -360,7 +348,7 @@ test fn a_matching_readback_is_classified_as_configuration_matched_not_as_a_read
 // Located -- which product.fabric.provider_route first_unresolved_obligation counts as RESOLVED, so
 // the route admitted.
 test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool {
-  match spark_usage_stats_telemetry_path(realization: t_pair_realization()) {
+  match spark_usage_stats_telemetry_path(realization: t_pair_realization(), usage_stats: spark_usage_stats_inspect_unread()) {
     ProviderPathUnread { obligation: _ } => true
     ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
     ProviderPathAbsent { evidence: _ } => false
@@ -393,6 +381,7 @@ test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool
 test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
   match spark_first_party_admission(
     realization: t_foreign_realization(),
+    usage_stats: spark_usage_stats_inspect_unread(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {

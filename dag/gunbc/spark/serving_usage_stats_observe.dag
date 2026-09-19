@@ -1,0 +1,85 @@
+module gunbc.spark.serving_usage_stats_observe
+
+import std.types { List, NonEmptyStr, String }
+import extdeps.docker.cli {
+  DockerEnvAssignment,
+  DockerContainerInspectNamedEnv,
+  DockerContainerInspectNamedEnvUnreadable,
+  docker_container_inspect_named_env_from_stdout,
+}
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsLaunchUnread, UsageStatsEnvMalformed,
+  VllmUsageStatsEnvAssignment, VllmDoNotTrackMarkerStanding, DoNotTrackMarkerUnread,
+  vllm_usage_stats_inspect_env_names, vllm_usage_stats_standing_from_effective_config,
+}
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
+
+// ACCESS. This read is authorized by gunbc.spark.managed_access_bootstrap InspectServingContainer
+// (`docker container inspect <pinned name>`). That grant already returns Config.Env. A second grant
+// is not required. WHAT THIS MODULE MUST NOT DO: return, log or persist the rest of Config.Env;
+// infer the running environment from a declared unit; widen an identity-only inspect decoder.
+
+data spark_usage_stats_inspect_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the answering container's inspect stdout was not supplied, so the effective usage-stats configuration is unread. THE GRANT THAT AUTHORIZES THE READ is gunbc.spark.managed_access_bootstrap InspectServingContainer, installed through gunbc.spark.managed_grant_install. The decoder is docker_container_inspect_named_env_from_stdout over VLLM_NO_USAGE_STATS, VLLM_DO_NOT_TRACK, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER only." as NonEmptyStr
+
+data spark_usage_stats_marker_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the upstream do-not-track marker file was not observed inside the answering container. InspectServingContainer does not authorize a filesystem read of disable_marker_path. Disable-by-marker is therefore not claimed." as NonEmptyStr
+
+data spark_usage_stats_container_id_mismatch_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: inspect Id does not equal the offered launch container_id, so the env projection is not a reading of the answering incarnation." as NonEmptyStr
+
+// THE HOST OPERATION BOUNDARY IS gunbc.spark.serving_incarnation_observe. Raw `docker container
+// inspect` stdout is the whole container object, every Config.Env entry included, and it is
+// secret-bearing. The host operation that executed the authorized inspect holds it, projects the
+// container identity from it there, and hands the same stdout to spark_serving_usage_stats_decode
+// below for the second projection; only the two typed projections leave that operation and the
+// document dies with it. Policy (gunbc.spark.first_party_serving) receives sealed evidence, never
+// the document, so the document cannot be retained, printed or re-decoded there.
+//
+// std.observation IS NOT INHABITED, AND THAT IS A STATED DEPARTURE (DESIGN 3b). std.observation
+// ObservationEvent/RecordedObservation are keyed on a compiler-run containment path
+// (ObservationSubject: run > batch > entry > module > declaration > phase); the subject here is a
+// live serving container on a fleet host, which that path cannot name. The evidence instead joins
+// the existing live-host observation vocabulary of this lane: it is bound to a VllmServingLaunch and
+// carries a gunbc.product.fabric.demand ObservationReceiptRef, exactly as
+// gunbc.spark.vllm_serving_launch EndpointIncarnationObservation does. The standing is upstream's own
+// extdeps.vllm.usage_stats VllmUsageStatsLaunchStanding, reused rather than restated.
+//
+// THIS MODULE IS A DECODER, NOT AN OBSERVER. Its result is an UNSEALED VllmUsageStatsLaunchStanding
+// over caller-supplied inspect stdout, and it is exactly as trustworthy as that stdout. The sealed
+// evidence -- the thing policy may act on -- is minted only inside the host operation that executed
+// the authorized inspect (gunbc.spark.serving_incarnation_observe), from that operation's own
+// stdout, beside the incarnation identity it projects from the same document. An earlier spelling
+// declared the sealed evidence here and minted it from a String parameter, which made this exported
+// function an alternate constructor for a Disabled standing over caller-authored JSON (side-chat
+// ruling 2026-09-16, the admitted_call_edge_with_unrestricted_value_egress class).
+fn spark_usage_stats_marker_unread() -> VllmDoNotTrackMarkerStanding {
+  DoNotTrackMarkerUnread { obligation: spark_usage_stats_marker_unread_obligation }
+}
+
+fn docker_assignments_as_vllm(assignments: List<DockerEnvAssignment>) -> List<VllmUsageStatsEnvAssignment> {
+  map(assignments, a => VllmUsageStatsEnvAssignment { name: a.name, value: a.value })
+}
+
+// container_id is the container the inspect ADDRESSED, the launch's own. An inspect whose decoded Id
+// disagrees is still an observation of that address, and its standing is Unread. The marker is not
+// a parameter: nothing the inspect grant observes reads the do-not-track marker file, so it is
+// Unread by construction and only an env term the inspect returned can disable.
+fn spark_serving_usage_stats_decode(
+  launch: VllmServingLaunch,
+  inspect_stdout: String,
+) -> VllmUsageStatsLaunchStanding {
+  match docker_container_inspect_named_env_from_stdout(
+    stdout: inspect_stdout,
+    names: vllm_usage_stats_inspect_env_names(),
+  ) {
+    DockerContainerInspectNamedEnvUnreadable { cause: c } =>
+      UsageStatsEnvMalformed { cause: c }
+    DockerContainerInspectNamedEnv { id: id, assignments: asg } =>
+      if (id as String) != (launch.container_id as String) {
+        UsageStatsLaunchUnread { obligation: spark_usage_stats_container_id_mismatch_obligation }
+      } else {
+        vllm_usage_stats_standing_from_effective_config(
+          assignments: docker_assignments_as_vllm(assignments: asg),
+          marker: spark_usage_stats_marker_unread(),
+        )
+      }
+  }
+}
