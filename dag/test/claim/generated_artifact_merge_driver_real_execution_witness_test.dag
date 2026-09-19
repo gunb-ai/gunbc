@@ -17,7 +17,7 @@ import gunbc.rung_drop.roster { rung_drop_roster }
 import extdeps.tools.sed
 import extdeps.tools.sed { sed_script_arguments }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
-import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.ci_spec { generated_artifact_author_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -68,7 +68,7 @@ fn seed_witness_repository(repo: FilePath, driver_value: String, heal_paths: Lis
   let script = Filesystem.Write(
     path: witness_repo_file(repo: repo, name: witness_driver_script_name),
     content: expected_generated_artifact_merge_driver_sh(
-      regen_command: ci_heal_author_commit_regen_command,
+      regen_command: generated_artifact_author_regen_command,
       heal_regenerated_paths: heal_paths
     ),
   ).success
@@ -140,11 +140,11 @@ data witness_retired_take_ours_driver_value: String = "true"
 // merge refusal with a shell syntax error before any diagnostic ran.
 test fn empty_heal_delegation_population_emits_valid_default_route() -> Bool {
   let script = expected_generated_artifact_merge_driver_sh(
-    regen_command: ci_heal_author_commit_regen_command,
+    regen_command: generated_artifact_author_regen_command,
     heal_regenerated_paths: []
   )
   string_contains(s: script, pattern: "case \"$merged_path\" in\n  )") == false
-    && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
+    && string_contains(s: script, pattern: generated_artifact_author_regen_command)
     && string_contains(s: script, pattern: "exit 1")
 }
 
