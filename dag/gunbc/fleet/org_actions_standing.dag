@@ -145,8 +145,8 @@ fn org_actions_deviation_text(d: OrgActionsDeviation) -> String {
   }
 }
 
-// The converge binding, as a typed dissolution row (not prose): HoldsByBehavior is weaker
-// than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
-// diff is the deliverable while apply stays gated, because a settings surface converged
-// by silent overwrite would erase an operator's deliberate UI change.
+// Write authority, as a typed dissolution row (not prose). The located deviations
+// (RepoAdmissionDiverges, RepoPublicExposureDiverges) are the deliverable while apply stays
+// gated, because a settings surface converged by silent overwrite would erase an operator's
+// deliberate UI change.
 data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_inspection and consumes assess_org_actions through std.goal_assessment inspect_goal in the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")
