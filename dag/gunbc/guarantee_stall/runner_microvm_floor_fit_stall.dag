@@ -32,7 +32,7 @@ data runner_microvm_floor_fit_stall: GuaranteeStall = GuaranteeStall {
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "which of the two rows moves, and by how much, is an operator decision with a fleet cost: raising gunbc.runner_slot_allocation's per-slot MemoryMax above demand plus allowance plus reserve (28 GiB at the 2026-09-19 figures, which takes cores_per_slot 10 -> 11 and CPU width 12 -> 11 per host) or reducing the floor's demand below the current remainder. The in-guest cold receipt (gunbc.floor_cold_build_receipt) may also move the demand: the host-slot reading is censored on the held-set axis (anonymous memory being swapped at the line), and a guest that holds its own anonymous set may read differently",
+    grounding: "which of the two rows moves, and by how much, is an operator decision with a fleet cost: raising gunbc.runner_slot_allocation's per-slot MemoryMax above demand plus allowance plus reserve (28 GiB at the 2026-09-19 figures, which lowers each host's memory-admitted width -- the binding axis since gunbc#11716 cleared the CPU ceiling -- by the envelope quotient gunbc.runner_slot_allocation host_memory_admitted_width derives) or reducing the floor's demand below the current remainder. The in-guest cold receipt (gunbc.floor_cold_build_receipt) may also move the demand: the host-slot reading is censored on the held-set axis (anonymous memory being swapped at the line), and a guest that holds its own anonymous set may read differently",
   },
   population: BoundedPopulation {
     members: [

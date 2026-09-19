@@ -54,7 +54,6 @@ import gunbc.runner_microvm {
   MicroVmShapeResolved,
   MicroVmShapeRefused,
   RunnerMicroVmShapeRefusal,
-  ShapeRefusedCpuEntitlementRelativeOnly,
   ShapeRefusedWorkThreadsExceedEntitlement,
   ShapeRefusedWorkMemoryUnstated,
   ShapeRefusedReserveUnmodeled,
@@ -103,11 +102,9 @@ import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.checked_arithmetic { int_inclusive_max }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
   gunbc_runner_slot_desired,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
 
 
@@ -825,17 +822,22 @@ test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool
   guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
-// THE CELL GRANTS AN ABSOLUTE CPU ENTITLEMENT WHEN THE SLOT SURVEY RESOLVES, AND THAT IS THE SAME
-// THREAD COUNT AS gunbc_runner_slot_desired().cpu_quota. If this ever falls back to RelativeOnly
-// while the survey is Resolved, the slice quota and the guest-sizing entitlement have forked.
-test fn the_cell_grants_the_surveyed_absolute_cpu_entitlement() -> Bool {
+// THE CELL'S ENTITLEMENT IS THE SLOT ROW'S QUOTA SEEN FROM THE GUEST, ARM FOR ARM. A resolved
+// quota is an Absolute entitlement of the same thread count; the unbounded quota (the 2026-09-19
+// policy, and the production row) is RelativeOnly with a cause that names that policy. If either
+// arm ever maps to the other, the slice quota and the guest-sizing entitlement have forked.
+test fn the_cell_entitlement_is_the_slot_quota_arm_for_arm() -> Bool {
   match gunbc_runner_slot_desired().cpu_quota {
-    CpuQuotaRefused { cause: _ } => false
     CpuQuotaResolved { threads: want } =>
       match gunbc_runner_microvm_cell_cpu_entitlement() {
         CpuEntitlementRelativeOnly { cause: _ } => false
         CpuEntitlementAbsolute { threads: got } =>
           hardware_thread_count_value(t: want) == hardware_thread_count_value(t: got)
+      }
+    SlotCpuQuotaUnbounded =>
+      match gunbc_runner_microvm_cell_cpu_entitlement() {
+        CpuEntitlementAbsolute { threads: _ } => false
+        CpuEntitlementRelativeOnly { cause: c } => cause_mentions(cause: c, needle: "2026-09-19")
       }
   }
 }
@@ -981,20 +983,20 @@ test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -
   }
 }
 
-test fn a_relative_only_entitlement_refuses_the_shape() -> Bool {
+// A RELATIVE-ONLY ENTITLEMENT BOUNDS NOTHING ON THE CPU AXIS, SO THE WORK'S THREADS STAND. Under
+// the 2026-09-19 no-ceiling ruling this is the production arm: the slot carries CPUWeight and no
+// ceiling, and a relative share can refuse no count. An implementation that refused here would
+// refuse the whole fleet for a reason the operator has ruled is not one.
+test fn a_relative_only_entitlement_admits_the_works_threads_unbounded() -> Bool {
   match shape_of(
-    work: floor_like_work(),
+    work: work_with(threads: 64, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
     storage: fixture_storage(),
     cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
   ) {
-    MicroVmShapeResolved { shape: _ } => false
-    MicroVmShapeRefused { refusal: r } =>
-      match r {
-        ShapeRefusedCpuEntitlementRelativeOnly { cause: c } => cause_mentions(cause: c, needle: "fixture")
-        _ => false
-      }
+    MicroVmShapeRefused { refusal: _ } => false
+    MicroVmShapeResolved { shape: s } => hardware_thread_count_value(t: s.size.vcpu_count) == 64
   }
 }
 
@@ -1196,11 +1198,9 @@ test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> 
     && count(mvp_sized_config().network_interfaces) == 1
 }
 
-// THE CORE COUNT RESOLVES AND THE CELL NOW GRANTS THAT COUNT AS AN ABSOLUTE ENTITLEMENT. This
-// witness keeps the survey fact true so a sizing refusal cannot be misread as "the survey failed".
-test fn the_cell_core_count_still_resolves() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) > 0
-  }
+// THE CORE COUNT IS A POLICY AND IT IS POSITIVE. cores_per_slot no longer resolves or refuses --
+// it is authored (gunbc_runner_cores_per_slot_policy) -- so the only thing left to keep true is
+// that the policy is not zero, which would admit every core against no slot at all.
+test fn the_cell_core_count_is_a_positive_policy() -> Bool {
+  hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) > 0
 }

@@ -1521,42 +1521,19 @@ fn ci_prospect_sheet_schema() -> ReviewSheetSchema {
   }
 }
 
-data buyer_review_identity_column: NonEmptyStr = "Listing"
-
-data buyer_review_operator_columns: List<ReviewColumn> = [
-  ReviewColumn { name: "Decision" as NonEmptyStr, kind: OperatorEntered },
-  ReviewColumn { name: "Units to buy" as NonEmptyStr, kind: OperatorEntered },
-  ReviewColumn { name: "Accepted on judgement" as NonEmptyStr, kind: OperatorEntered },
-  ReviewColumn { name: "Note" as NonEmptyStr, kind: OperatorEntered },
-]
-
-fn buyer_review_sheet_schema(derived_columns: List<ReviewColumn>) -> ReviewSheetSchema {
-  ReviewSheetSchema {
-    identity_column: buyer_review_identity_column,
-    columns: concat(derived_columns, buyer_review_operator_columns),
-  }
-}
-
-fn buyer_review_sheet_projection(
-  derived_columns: List<ReviewColumn>,
-  rows: List<ProjectionRow>,
-) -> ReviewSheetProjection {
-  ReviewSheetProjection {
-    schema: buyer_review_sheet_schema(derived_columns: derived_columns),
-    rows: rows,
-  }
-}
-
-// The ensure consumer of buyer_review_sheet_projection is a declared frontier, enrolled in
-// gunbc.census_closure_frontier. The caller cannot live in this module: the roster is private
-// strategy.buyer_review_sheet. Live GetValues / BatchUpdate is a different frontier
-// (live_sheets_transport_frontier).
+// OPEN OBLIGATION, RE-HOMED OFF THE DELETED PUBLIC BUYER SCHEMA PAIR. gunbc-private
+// strategy.buyer_review_projection already derives the sheet schema from the roster; the public
+// hardcoded Listing/operator pair was a DESIGN section 3 fork and is gone. The remaining gap is a
+// production inhabitance of the TYPED public seam: review_sheet_ensure_assess then
+// review_sheet_ensure_decide, not the prose-flattening compatibility wrapper. A public FrontierRow
+// cannot cite a private declaration; the bind is review_sheet_ensure_assess. live_sheets_transport_frontier
+// is the transport scaffold on review_sheet_ensure, not this consumption obligation.
 data buyer_review_ensure_projection_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_projection", decl_name: "buyer_review_sheet_projection"),
-    reason: "no executing caller of review_sheet_ensure supplies buyer_review_sheet_projection; the buyer roster it projects is private strategy.buyer_review_sheet, so the caller cannot live in this repository's public modules",
+    ref: decl_ref(module_path: "gunbc.review_sheet_sheets", decl_name: "review_sheet_ensure_assess"),
+    reason: "no production entry yet reads the live buyer sheet whole-tab, preserves the private roster-derived projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess, applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues; the buyer roster is private, so that production caller cannot live in this repository's public modules",
     dissolution: unbound_dissolution(
-      description: "dissolves when an executing caller of gunbc.review_sheet_sheets review_sheet_ensure supplies buyer_review_sheet_projection built from the buyer roster (derived_columns from strategy.buyer_review_sheet, rows keyed by Browse itemId) and the ensure decision is consumed on that route; a witness that the projection fold exists does not fire this"
+      description: "dissolves when a production entry reads the live buyer sheet (whole-tab GetValues), preserves the private projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess (rows keyed by Browse itemId), applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues, with the decision consumed on that production route; a witness that classify_review_sheet or a projection fold exists, or that the composition exists or is itself witnessed, does not fire this; strategy.buyer_review_converge in its current prose-returning form (the transitional wrapper that flattens refusals into UpsertDecision prose) does not fire this either"
     )
   )
 ]

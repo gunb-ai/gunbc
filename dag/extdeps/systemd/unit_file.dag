@@ -513,6 +513,7 @@ type SystemdDirectiveValue
   | DirectiveWeight { weight: Int }
   | DirectiveCpuTime { threads: HardwareThreadCount }
   | DirectiveUnlimited
+  | DirectiveReset
 
 fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
   match value {
@@ -521,8 +522,17 @@ fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
     DirectiveWeight { weight: w } => to_string(w)
     DirectiveCpuTime { threads: t } => join([to_string(hardware_thread_count_value(t: t) * 100), "%"], "")
     DirectiveUnlimited => systemd_directive_unlimited_wire
+    DirectiveReset => systemd_directive_reset_wire
   }
 }
+
+// AN EMPTY ASSIGNMENT RESETS THE SETTING TO ITS DEFAULT. systemd.syntax(7) states it for the unit
+// file, and systemd.resource-control(5) restates it for the one knob that has no `infinity`
+// spelling: "Setting CPUQuota= to an empty value unsets the quota" -- `CPUQuota=infinity` is not a
+// value that directive's parser admits, so `DirectiveUnlimited` cannot serve it. `systemctl
+// set-property` reads the same empty assignment as unset. `DirectiveReset` is the write-side arm
+// for that wire; the read side already carries the state it produces as `CpuQuotaUnbounded`.
+data systemd_directive_reset_wire: String = ""
 
 // systemd's sentinel for "no limit", spelled once. `max` is the cgroup v2 kernel interface's word;
 // `infinity` is systemd's, and a unit file is read by systemd rather than by the kernel.
@@ -583,6 +593,13 @@ fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
 // wall second, where 100% is one CPU by definition.
 fn slice_cpu_quota(threads: HardwareThreadCount) -> SystemdSliceDirective {
   SystemdSliceDirective { property: CPUQuota, value: DirectiveCpuTime { threads: threads } }
+}
+
+// NO CEILING ON THE CPU AXIS IS AN ASSIGNMENT, NOT AN OMISSION. A slice that was once given a
+// quota keeps it until something unsets it, so a desired state of "unbounded" that emitted nothing
+// would converge only on cells that never had one. This mint is the affirmative unset.
+fn slice_cpu_quota_unbounded() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUQuota, value: DirectiveReset }
 }
 
 // The directive names are systemd's, spelled once here. A consumer never writes the literal

@@ -32,7 +32,8 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 //
 // WHY A DROP RATHER THAN EXTENDING THE WALL. Consuming the pin in the wall would refuse the
 // current row on every required run until the row moves, and moving it is an operator decision
-// with a fleet cost (28/27 GiB takes cores_per_slot 10 -> 11 and CPU width 12 -> 11 per host;
+// with a fleet cost (28/27 GiB lowers each host's memory-admitted width, the binding axis since
+// gunbc#11716 cleared the CPU ceiling;
 // gunbc.runner_slot_allocation's 2026-09-12 ruling paragraph). A lane that raises the row on its
 // own to green a wall would be exactly the sizing-to-the-last-pin loop that ruling ended; a lane
 // that widens the guard to admit pins would size the fleet to a censored bound. The honest arm is

@@ -704,12 +704,19 @@ fn emits_mask(lines: List<String>) -> Bool {
   any(lines, l => string_contains(s: l, pattern: "'mask'"))
 }
 
+// THE SURPLUS FIXTURE INDICES FOLLOW THE COMMITTED WIDTH, NOT A TRANSCRIBED ONE. These rows drove
+// srv4-13 and srv1-13 as the first surplus slots while the fleet committed 12; under the 2026-09-19
+// one-core-per-slot ruling srv4 commits 17 and srv1 15, so the required retirees derived by
+// gunbc.runner_width_transition are srv4-18..21 and srv1-16..50, and a slot-13 fixture is a MEMBER
+// whose plan is membership, not retirement. The fixtures name srv4-18 / srv4-19 / srv1-16 -- the
+// first surplus index on each host -- so each row still exercises the retirement route.
+//
 // 1. AN ACTIVE SURPLUS SLOT PRODUCES NO TREE REMOVAL. Ownership still refuses the incarnation, so
 // membership cannot authorize `rm -rf`. The inhibitor is a different obligation: a required retiree
 // the interruption authorization names is masked even while the unit is still serving.
 test fn an_active_surplus_slot_is_never_deleted() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: true, enabled: true)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: true, enabled: true)],
     evidence: srv4_evidence(standings: []),
   )
   emits_no_tree_removal(lines: lines)
@@ -720,11 +727,11 @@ test fn an_active_surplus_slot_is_never_deleted() -> Bool {
 // raise stays withheld after the inactive remainder is gone.
 test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Bool {
   let lines = srv1_plan(
-    observed: [srv1_surplus_member(name: "srv1-13", active: true, enabled: true)],
+    observed: [srv1_surplus_member(name: "srv1-16", active: true, enabled: true)],
     evidence: srv1_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv1-13.service" as NonEmptyStr,
+          unit: "actions-runner@srv1-16.service" as NonEmptyStr,
           unit_file_state: "enabled",
           active_state: "active",
           occupancy: CgroupObservedPopulated,
@@ -737,11 +744,11 @@ test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Boo
 
 test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld() -> Bool {
   let lines = srv1_plan(
-    observed: [srv1_surplus_member(name: "srv1-13", active: true, enabled: true)],
+    observed: [srv1_surplus_member(name: "srv1-16", active: true, enabled: true)],
     evidence: srv1_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv1-13.service" as NonEmptyStr,
+          unit: "actions-runner@srv1-16.service" as NonEmptyStr,
           unit_file_state: "enabled",
           active_state: "active",
           occupancy: CgroupUnobserved { cause: "probe refused" },
@@ -753,7 +760,7 @@ test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld()
     && emits_no_tree_removal(lines: lines)
     && any(lines, l =>
       string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__")
-        && string_contains(s: l, pattern: "actions-runner@srv1-13.service")
+        && string_contains(s: l, pattern: "actions-runner@srv1-16.service")
     )
 }
 
@@ -763,11 +770,11 @@ test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld()
 // predicate cannot see.
 test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit: "actions-runner@srv4-18.service" as NonEmptyStr,
           unit_file_state: "masked",
           active_state: "inactive",
           occupancy: CgroupObservedPopulated,
@@ -783,7 +790,7 @@ test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
 // realization actuates and defers. A pass that did both would be establishing its own postcondition.
 test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: []),
   )
   emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
@@ -814,11 +821,11 @@ test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
 // is removed -- and the mask is NOT re-emitted, because the unit is already retired.
 test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit: "actions-runner@srv4-18.service" as NonEmptyStr,
           unit_file_state: "masked",
           active_state: "inactive",
           occupancy: CgroupAbsent,
@@ -826,7 +833,7 @@ test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
       ),
     ]),
   )
-  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-18"))
     && !emits_mask(lines: lines)
 }
 
@@ -854,11 +861,11 @@ test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
 // 5. AN UNREADABLE CGROUP IS A NAMED REFUSAL, NOT A DELETION AND NOT A SILENCE.
 test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit: "actions-runner@srv4-18.service" as NonEmptyStr,
           unit_file_state: "masked",
           active_state: "inactive",
           occupancy: CgroupUnobserved { cause: "probe refused" },
@@ -867,19 +874,19 @@ test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
     ]),
   )
   emits_no_tree_removal(lines: lines)
-    && any(lines, l => string_contains(s: l, pattern: "actions-runner@srv4-13.service"))
+    && any(lines, l => string_contains(s: l, pattern: "actions-runner@srv4-18.service"))
     && !emits_mask(lines: lines)
 }
 
 // 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
-// identity; a gate that checked "some retirement completed" would delete srv4-13 on srv4-14's proof.
+// identity; a gate that checked "some retirement completed" would delete srv4-18 on srv4-19's proof.
 test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
       runner_retirement_standing(
         o: retirement_observation_from_readings(
-          unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+          unit: "actions-runner@srv4-19.service" as NonEmptyStr,
           unit_file_state: "masked",
           active_state: "inactive",
           occupancy: CgroupAbsent,
@@ -905,7 +912,7 @@ test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_delete
 // planner supplies, so a route that has not been taught to observe retirement cannot delete or mask.
 test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
   let lines = srv4_plan(
-    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: no_retirement_evidence(),
   )
   emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
