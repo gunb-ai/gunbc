@@ -306,6 +306,18 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // instrument lands when the three capabilities land, as the strip fold composed with the route,
 // and its FIRST discriminated run on the production route is the receipt this row holds.
 //
+// ONE REQUIREMENT ON THE THROWAWAY TREE ITSELF, found by the lane building capability 3
+// (vivid-lark-741, 2026-09-19) and stated here so it binds whoever executes the cut:
+// v2.compiler.source_authority source_root_for_storage_path classifies a read's tree by a TEXTUAL
+// prefix on the path as walked (`src/` is V2Tree, everything else DagTree). A stripped copy read
+// at an absolute scratch path therefore classifies every file as DagTree, the active roots
+// collapse to one tree, and v2.std.cross_tree.resolution answers EdgeNormalResolution where the
+// real tree answers EdgeCrossDenied -- FEWER refusals, from the copy rather than from the strip.
+// So the rehearsal tree is a worktree whose roots are passed under the SAME RELATIVE spellings
+// (`dag`, `src/v2`) with the process cwd inside it; the path strings are then identical and so
+// is the classification. A census whose root spelling differs from production's is not a
+// rehearsal of production.
+//
 // Empty by construction again, and honestly so: no stage delivery instrument is delivered. XL-0's
 // producer exists and answers on the production route (gunbc#11582), but its declared identities
 // are spelling-derived, so it is not a delivery of XL-0's denominator (see above). XL-2's
