@@ -116,3 +116,26 @@ fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
     }
   )
 }
+
+// ── AGREEMENT AS A VALUE, BECAUSE A BARE `if` CANNOT PRODUCE AN Optional HERE ────────────────
+// The comparison used to sit inline in gunbc.auth.approval_broker_cutover route_class_admission,
+// with `Absent` in one branch and a `Present` in the other, and it did not typecheck: the branches
+// resolved to Optional and CutoverRefusal rather than to one type. That is the same shape
+// ReleaseCandidateMatch already fixed in that module, so it gets the same repair rather than a
+// second idiom -- the agreement is decided here, as a value, and the caller's `match` is what
+// produces the Optional.
+//
+// IT COMPARES TOKENS AND NOT ARMS because the token IS the identity that crosses the wire. Two
+// arms are equal exactly when their tokens are, by construction of approval_broker_marker_token,
+// and comparing what the probe actually reads keeps the claim about the observable.
+type MarkerAgreement
+  = MarkerAgrees
+  | MarkerDiffers
+
+fn approval_broker_marker_agreement(observed: ApprovalBrokerMarker, expected: ApprovalBrokerMarker) -> MarkerAgreement {
+  if approval_broker_marker_token(m: observed) == approval_broker_marker_token(m: expected) {
+    MarkerAgrees
+  } else {
+    MarkerDiffers
+  }
+}

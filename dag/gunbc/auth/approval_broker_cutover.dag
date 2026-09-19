@@ -11,7 +11,8 @@ import gunbc.serve_liveness {
   observe_serve_liveness, serve_liveness_read_reason,
 }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_agreement,
+  MarkerAgreement, MarkerAgrees, MarkerDiffers,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
 }
@@ -356,10 +357,9 @@ fn route_class_admission(
       match o {
         NoMarkerInBody => Present { value: RouteClassAnsweredByNoBroker { route: route, status: st } }
         MarkerObserved { marker: m } =>
-          if approval_broker_marker_token(m: m) == approval_broker_marker_token(m: expected) {
-            Absent
-          } else {
-            Present { value: RouteClassAnsweredByWrongFold {
+          match approval_broker_marker_agreement(observed: m, expected: expected) {
+            MarkerAgrees => Absent
+            MarkerDiffers => Present { value: RouteClassAnsweredByWrongFold {
               route: route,
               expected: approval_broker_marker_token(m: expected),
               observed: approval_broker_marker_token(m: m),
