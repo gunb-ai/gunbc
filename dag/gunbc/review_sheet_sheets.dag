@@ -152,6 +152,40 @@ fn sheet_a1_range_wire(range: SheetA1Range) -> String {
   }
 }
 
+// AN A1 RANGE QUALIFIED BY A TAB TITLE IS ONLY VALID UNQUOTED FOR SOME TITLES, and this module
+// already knew half of it: a1_readback_standing refuses a parsed title containing an apostrophe
+// because the quoting rule is what an apostrophe interacts with. The qualifying side had no such
+// judgement -- sheet_qualified_cell and sheet_qualified_span concatenate whatever title they are
+// given -- which was invisible while the title came from a caller that only ever passed a safe
+// one. A LOCATED title is read off the workbook, so it is whatever a person typed, and the
+// characters below each break an unquoted qualification: a space and an apostrophe are why A1
+// quoting exists at all, and ! and : are the range grammar's own separators.
+//
+// THIS REFUSES; IT DOES NOT ENCODE. Producing the quoted form is a codec -- how a title is wrapped
+// and how an interior apostrophe is doubled -- and that codec is gunbc#11703, in flight. Writing a
+// second one here to get past a title with a space would be the fork that PR exists to prevent, so
+// the arm a title needing quoting takes is a refusal naming the codec, and it retires when #11703
+// lands an encoder this function can call instead of declining.
+type A1TabQualification
+  = A1TabQualifiesUnquoted { tab: NonEmptyStr }
+  | A1TabNeedsQuoting { cause: NonEmptyStr }
+
+fn a1_tab_qualification(tab: NonEmptyStr) -> A1TabQualification {
+  if string_contains(s: tab as String, pattern: "'")
+    || string_contains(s: tab as String, pattern: " ")
+    || string_contains(s: tab as String, pattern: "!")
+    || string_contains(s: tab as String, pattern: ":") {
+    A1TabNeedsQuoting {
+      cause: concat(
+        "the tab title needs A1 quoting before it can qualify a range and this corpus has no encoder for it yet (gunbc#11703): ",
+        tab as String,
+      ) as NonEmptyStr
+    }
+  } else {
+    A1TabQualifiesUnquoted { tab: tab }
+  }
+}
+
 fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
   concat(tab as String, concat("!", a1_cell_wire(cell: cell)))
 }

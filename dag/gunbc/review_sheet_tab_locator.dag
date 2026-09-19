@@ -1,0 +1,353 @@
+module gunbc.review_sheet_tab_locator
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.resources { Network }
+import std.decl_ref { decl_ref }
+import extdeps.transports.rest {
+  RestOutcome,
+  RestReadExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.sheets
+import extdeps.google.sheets {
+  SpreadsheetRead,
+  SheetsSheetRead,
+  SheetsSheetPropertiesRead,
+  sheets_sheet_id_read,
+  sheets_sheet_index_read,
+}
+import v2.std.algebra { fold_list }
+
+// A FILE IS NOT A TAB, AND UNTIL THIS MODULE THE CORPUS ONLY EVER ESTABLISHED THE FILE.
+// gunbc.review_sheet_spreadsheet_actuator converge_review_spreadsheet finds or creates the Drive
+// file by a marker property and returns a file_id. That settles WHICH SPREADSHEET. It says nothing
+// about which of the tabs inside it is the review tab, and a spreadsheet is a container of tabs:
+// gunbc.review_sheet_sheets already refuses an unqualified A1 range with "BatchUpdate would hit the
+// first tab", and gunbc.review_sheet_format_actuator addressed extdeps.google.sheets
+// spreadsheet_first_sheet_id -- the constant 0 -- on every one of its batchUpdate steps. Both were
+// assuming the answer to a question nobody had asked upstream.
+//
+// THE ADMISSION RULE IS EXACTLY-ONE, AND IT IS CHOSEN RATHER THAN DEFAULTED.
+// A spreadsheet carrying exactly one tab HAS a review tab and no adjudication is required: the one
+// tab's observed sheetId and observed title are adopted as read. Two or more is TabAmbiguous and
+// this module refuses to pick, because nothing it can observe distinguishes them -- index order is
+// a workbook layout fact, not a statement about which tab the review lives in, and "take the first"
+// is the very assumption being removed rather than a weaker version of it.
+//
+// WHY NOT THE OTHER RULE (converge a specifically named tab and read it back). It is the stronger
+// rule and it is the one this lane should end at, but it is not buildable today: naming a tab means
+// a spreadsheets.batchUpdate addSheet request this corpus does not model, and it means a title
+// codec -- the A1 title syntax, gunbc#11703, still in flight -- to say what a valid title is and
+// how it quotes inside a range. Building exactly-one first is not a weaker substitute for that
+// convergence; it is its OBSERVATION HALF, which the named-tab rule needs anyway to read its own
+// write back. Nothing here has to be deleted when the second half lands: a named converge adds an
+// Apply arm ahead of this read, and this read stays the independent readback (DESIGN section 3d --
+// selection precedes convergence, and a convergence primitive reads back independently).
+//
+// AND THE FIT IS REAL RATHER THAN CONVENIENT. The only creator of this file is
+// converge_review_spreadsheet, which calls drive.Files.CreateFile with the Google Sheets MIME type
+// and nothing else; a spreadsheet minted that way has exactly one tab. So a second tab is not a
+// state this pipeline produces -- it is a state a person produced in a browser, and a person who
+// added a tab is the only one who can say which tab the review is now in. Refusing to a human is
+// the right answer to a state only a human created.
+
+// THE FILE'S DISPLAY NAME IS NEVER READ HERE AND THAT IS THE POINT OF THE MODULE.
+// gunbc.review_sheet_converge_cli ci_prospect_sheet_name is the Drive file's name, written by
+// files.create into the file's metadata. The tab's title is written by Sheets into the workbook
+// when the file is minted, and upstream's default is "Sheet1" -- the two facts have different
+// authors, different storage and no upstream relation, and renaming one does not touch the other.
+// Inferring either from the other would produce an A1 range naming a tab that does not exist, which
+// Sheets answers 400 for; worse, the SAME inference on a workbook that happens to agree would
+// answer 200 and hide the defect until the day somebody renamed the file. There is no import of
+// review_sheet_converge_cli in this module, so the inference is unavailable rather than declined.
+type ReviewTabCandidate {
+  sheet_id: Int
+  title: NonEmptyStr
+  index: Int
+}
+
+// THE LOCATED CARRIER IS SEALED, AND IT IS SEALED FOR THE SAME REASON THE HOLD PLANS ARE.
+// gunbc.durable_exclusive_hold_file_store states the discipline: a plan is minted ONLY by a
+// function that performed the read itself, is sole_constructor, and carries the subject it was
+// read from -- so a caller cannot author a coordinate and hand it to a writer. The shape of the
+// harm is the same one class down here. A hand-built LocatedReviewTab { sheet_id: 0 } committed to
+// the formatter reinstates exactly the constant this change removes, and it does so while WEARING
+// THE NAME of an observation: every downstream refusal reads "the located tab", and the located
+// tab was a literal. So the record has no constructor outside this module, and the one mint below
+// is further admit_callers-sealed so that even inside it, only the function that performed the
+// metadata read may call it.
+//
+// WHAT THE SEAL DOES NOT CLOSE, said here rather than left to be discovered. It does not make the
+// READ honest -- a locator handed a truthful response still depends on Sheets having answered about
+// the spreadsheet we asked about, and the spreadsheet_id carried on the record is this process's
+// own argument rather than a value read back out of the response. The response does carry
+// spreadsheetId, and cross-checking it is the next rung; it is not done here because
+// GetSpreadsheetMetadata's field mask selects sheets.properties and would have to widen, and a
+// widened mask changes what every existing caller of that operation pays. DESIGN section 4b(2):
+// this is a class below its ceiling naming its trigger, which is a spreadsheetId in the mask.
+type LocatedReviewTab sole_constructor {
+  spreadsheet_id: NonEmptyStr
+  sheet_id: Int
+  title: NonEmptyStr
+}
+
+// FOUR ARMS AND NO FIFTH, and the three that are not TabLocated are three different remedies.
+// TabAbsent is a spreadsheet with no tabs at all, which Sheets does not produce and a truncated
+// field mask does -- the remedy is to look at the request. TabAmbiguous is a person's edit and the
+// remedy is a person. TabUnreadable is anything that stopped this from being an observation: a
+// refused status, an unreachable endpoint, a tab whose properties or title the response did not
+// carry. Folding the last two together would send an operator to adjudicate tabs when the real
+// answer was a 403.
+type ReviewTabStanding
+  = TabLocated { tab: LocatedReviewTab }
+  | TabAbsent
+  | TabAmbiguous { candidates: List<ReviewTabCandidate> }
+  | TabUnreadable { cause: NonEmptyStr }
+
+// A TAB WHOSE IDENTITY THE RESPONSE DID NOT CARRY IS A READING THAT FAILED, NOT A TAB WITH
+// DEFAULTS. sheetId and index are Int and absent means zero -- the proto3 omission
+// extdeps.google.sheets sheets_sheet_id_read is the single authority for, the same rule the colour
+// channels and frozenRowCount already run under. title is a String whose default is empty, and
+// upstream has no tab named "", so an absent title is the response failing to say what the tab is
+// called. Substituting anything there -- the file name, "Sheet1", the index -- would be this module
+// AUTHORING the identity it exists to observe.
+type ReviewTabCandidateReading
+  = CandidateRead { candidate: ReviewTabCandidate }
+  | CandidateUnreadable { cause: NonEmptyStr }
+
+fn review_tab_candidate_of(sheet: SheetsSheetRead) -> ReviewTabCandidateReading {
+  match sheet.properties {
+    Absent =>
+      CandidateUnreadable {
+        cause: "spreadsheets.get answered with a sheet carrying no properties at all, so neither its sheetId nor its title was read and nothing may be adopted from it" as NonEmptyStr
+      }
+    Present { value: props } => review_tab_candidate_of_properties(props: props)
+  }
+}
+
+fn review_tab_candidate_of_properties(props: SheetsSheetPropertiesRead) -> ReviewTabCandidateReading {
+  match props.title {
+    Absent =>
+      CandidateUnreadable {
+        cause: "spreadsheets.get answered with a sheet whose properties carry no title; a tab title has no proto3 default that upstream ever produces, so this is an unread field rather than an unnamed tab, and naming it from anything else would invent the tab's identity" as NonEmptyStr
+      }
+    Present { value: t } => review_tab_candidate_titled(props: props, title: t)
+  }
+}
+
+fn review_tab_candidate_titled(props: SheetsSheetPropertiesRead, title: String) -> ReviewTabCandidateReading {
+  if title == "" {
+    CandidateUnreadable {
+      cause: "spreadsheets.get answered with a sheet whose title is the empty string; upstream names no tab that, so the field was present and meaningless rather than read" as NonEmptyStr
+    }
+  } else {
+    CandidateRead {
+      candidate: ReviewTabCandidate {
+        sheet_id: sheets_sheet_id_read(id: props.sheetId),
+        title: title as NonEmptyStr,
+        index: sheets_sheet_index_read(index: props.index),
+      }
+    }
+  }
+}
+
+// THE SCAN CARRIES EVERY CANDIDATE AND THE FIRST UNREADABLE CAUSE, because both are needed by
+// different arms: the candidates are what TabAmbiguous must show an operator, and one unreadable
+// sheet poisons the whole reading rather than being skipped -- a tab this module could not read is
+// a tab it cannot rule out as the review tab, so silently dropping it would turn a two-tab
+// workbook into a confident one-tab answer. That is the absorbing fallback DESIGN section 5
+// refuses, and it is the exact widen this scan exists to avoid.
+type ReviewTabScan {
+  candidates: List<ReviewTabCandidate>
+  unreadable: NonEmptyStr?
+}
+
+fn advance_review_tab_scan(acc: ReviewTabScan, sheet: SheetsSheetRead) -> ReviewTabScan {
+  match review_tab_candidate_of(sheet: sheet) {
+    CandidateUnreadable { cause: c } =>
+      match acc.unreadable {
+        Present { value: first } => ReviewTabScan { candidates: acc.candidates, unreadable: Present { value: first } }
+        Absent => ReviewTabScan { candidates: acc.candidates, unreadable: Present { value: c } }
+      }
+    CandidateRead { candidate: cand } =>
+      ReviewTabScan { candidates: concat(acc.candidates, [cand]), unreadable: acc.unreadable }
+  }
+}
+
+fn review_tab_scan_of(sheets_read: List<SheetsSheetRead>) -> ReviewTabScan {
+  fold_list(
+    sheets_read,
+    ReviewTabScan { candidates: [], unreadable: none },
+    (acc, s) => advance_review_tab_scan(acc: acc, sheet: s),
+  )
+}
+
+// THE MINT, AND THE ONLY ONE. Sealed to the function that performed the metadata read, plus the
+// witnesses that supply a response at this interface by name -- the admission list is the same
+// shape std.materialization_provider result_content_identity uses, and it is what lets a witness
+// assert the PAYLOAD of a located tab without opening a route a production caller could take.
+fn review_tab_standing_from_read(
+  spreadsheet_id: NonEmptyStr,
+  read: SpreadsheetRead,
+) -> ReviewTabStanding admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "review_tab_standing_of_outcome"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "no_tabs_is_absent_rather_than_unreadable"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "an_absent_sheets_field_is_absent_rather_than_unreadable"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "the_located_tab_carries_the_spreadsheet_id_the_read_was_performed_against"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "only_the_located_arm_reports_located"),
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "located_tab_for_witness")
+] {
+  match read.sheets {
+    Absent => TabAbsent
+    Present { value: ss } => review_tab_standing_of_scan(spreadsheet_id: spreadsheet_id, scan: review_tab_scan_of(sheets_read: ss))
+  }
+}
+
+// AN UNREADABLE TAB IS CHECKED BEFORE THE COUNT, deliberately. A workbook whose second sheet came
+// back without properties has an unknown number of tabs, so answering "exactly one" from the one
+// that parsed would be a confident answer derived from an incomplete reading.
+fn review_tab_standing_of_scan(spreadsheet_id: NonEmptyStr, scan: ReviewTabScan) -> ReviewTabStanding {
+  match scan.unreadable {
+    Present { value: c } => TabUnreadable { cause: c }
+    Absent => review_tab_standing_of_candidates(spreadsheet_id: spreadsheet_id, candidates: scan.candidates)
+  }
+}
+
+fn review_tab_standing_of_candidates(
+  spreadsheet_id: NonEmptyStr,
+  candidates: List<ReviewTabCandidate>,
+) -> ReviewTabStanding {
+  if count(candidates) == 0 {
+    TabAbsent
+  } else {
+    if count(candidates) == 1 {
+      review_tab_located_from(spreadsheet_id: spreadsheet_id, candidates: candidates)
+    } else {
+      TabAmbiguous { candidates: candidates }
+    }
+  }
+}
+
+// THE ONE-ELEMENT LIST IS RE-OPENED RATHER THAN INDEXED, because there is no total indexing
+// operation to reach for and a fold that cannot find its single element must say so rather than
+// substitute one. The Absent arm is unreachable given count == 1 above and is still a refusal:
+// a fold whose impossible arm invents a tab is the same defect as the constant, arriving later.
+fn review_tab_located_from(
+  spreadsheet_id: NonEmptyStr,
+  candidates: List<ReviewTabCandidate>,
+) -> ReviewTabStanding {
+  match first_review_tab_candidate(items: candidates) {
+    Absent =>
+      TabUnreadable {
+        cause: "the scan counted exactly one candidate tab and then could not read it back out of its own list" as NonEmptyStr
+      }
+    Present { value: c } =>
+      TabLocated {
+        tab: LocatedReviewTab { spreadsheet_id: spreadsheet_id, sheet_id: c.sheet_id, title: c.title }
+      }
+  }
+}
+
+fn first_review_tab_candidate(items: List<ReviewTabCandidate>) -> ReviewTabCandidate? {
+  fold_list(
+    items,
+    none,
+    (acc, x) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: x }
+      },
+  )
+}
+
+// THE MASK IS THE THREE PROPERTIES THIS MODULE READS AND NOTHING ELSE. It selects no grid data, so
+// the read does not grow with the census, and it names the three fields the candidate is built
+// from -- a mask wider than the reading is a cost nobody asked for, and one narrower is a field
+// that silently arrives absent.
+data review_tab_locator_field_mask: String = "sheets.properties.sheetId,sheets.properties.title,sheets.properties.index"
+
+// THE READ THAT MAKES THE MINT LEGITIMATE. Every arm that is not a 200 is TabUnreadable carrying
+// the transport's own account of why, because a locator that answered TabAbsent to a 403 would
+// send an operator to look for a missing tab in a spreadsheet they cannot open.
+fn locate_review_tab(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding uses net: Network {
+  let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
+    spreadsheet_id: spreadsheet_id as String,
+    fields: review_tab_locator_field_mask,
+  )
+  review_tab_standing_of_outcome(spreadsheet_id: spreadsheet_id, outcome: meta.outcome, read: meta.result)
+}
+
+// SEALED FOR THE SAME REASON THE MINT IS. This function calls the mint, so leaving it open would
+// be a second door into a located tab: a caller handing it RestOk beside an authored response
+// would obtain exactly what sole_constructor exists to prevent. A seal with an unsealed caller is
+// not a weaker seal, it is no seal.
+fn review_tab_standing_of_outcome(
+  spreadsheet_id: NonEmptyStr,
+  outcome: RestOutcome,
+  read: SpreadsheetRead,
+) -> ReviewTabStanding admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "locate_review_tab"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent")
+] {
+  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
+    RestExchangeSucceeded => review_tab_standing_from_read(spreadsheet_id: spreadsheet_id, read: read)
+    RestExchangeStatusRefused { status, body } =>
+      TabUnreadable {
+        cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      TabUnreadable {
+        cause: join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      TabUnreadable {
+        cause: join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      TabUnreadable {
+        cause: join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+fn review_tab_candidate_text(c: ReviewTabCandidate) -> String {
+  join(["sheetId ", to_string(c.sheet_id), " titled ", c.title as String, " at index ", to_string(c.index)], "")
+}
+
+fn review_tab_standing_text(s: ReviewTabStanding) -> String {
+  match s {
+    TabLocated { tab: t } =>
+      join(["located tab: sheetId ", to_string(t.sheet_id), " titled ", t.title as String, " in ", t.spreadsheet_id as String], "")
+    TabAbsent => "no tab: spreadsheets.get answered with no sheets for this spreadsheet, so there is nothing to format"
+    TabAmbiguous { candidates: cs } =>
+      join(
+        [
+          "AMBIGUOUS: this spreadsheet carries ", to_string(count(cs)),
+          " tabs and nothing observable says which is the review tab (",
+          join(map(cs, c => review_tab_candidate_text(c: c)), "; "),
+          "); only an operator can adjudicate",
+        ],
+        "",
+      )
+    TabUnreadable { cause: c } => join(["tab UNREADABLE: ", c as String], "")
+  }
+}
+
+fn review_tab_is_located(s: ReviewTabStanding) -> Bool {
+  match s {
+    TabLocated { tab: _ } => true
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}

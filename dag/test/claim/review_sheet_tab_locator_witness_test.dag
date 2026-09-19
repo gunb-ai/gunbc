@@ -1,0 +1,246 @@
+module test.claim.review_sheet_tab_locator_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import extdeps.google.sheets {
+  SpreadsheetRead,
+  SheetsSheetRead,
+  SheetsSheetPropertiesRead,
+  sheets_sheet_id_read,
+  sheets_sheet_index_read,
+}
+import extdeps.transports.rest { RestOutcome, RestStatusRefused }
+import gunbc.review_sheet_tab_locator {
+  ReviewTabStanding,
+  TabLocated,
+  TabAbsent,
+  TabAmbiguous,
+  TabUnreadable,
+  ReviewTabCandidate,
+  LocatedReviewTab,
+  review_tab_standing_from_read,
+  review_tab_standing_of_outcome,
+  review_tab_is_located,
+}
+
+// THE RESPONSES ARE SUPPLIED AT THIS INTERFACE AND THAT IS THE RULE RATHER THAN A SHORTCUT.
+// DESIGN section 3's witness rule: a claim discriminates at ONE interface, and its inputs belong
+// there as supplied values rather than as the output of executing the layers beneath. The subject
+// here is review_tab_standing_from_read -- what standing a spreadsheets.get response yields -- so
+// the response is constructed. Executing Sheets to obtain one would make every claim below a claim
+// about the network.
+//
+// THE PAIRED INHABITANCE, so this is not shape agreement standing in for execution. The real
+// producer is gunbc.review_sheet_tab_locator locate_review_tab, whose route is
+// gunbc.review_sheet_converge_cli converge_drive_half_cli -> format_located_tab ->
+// locate_review_tab -> converge_review_sheet_format, and the last claim in this file asserts THAT
+// ROUTE's own pure half: review_tab_standing_of_outcome, the function locate_review_tab hands its
+// live outcome to, turns a real transport refusal into TabUnreadable rather than TabAbsent. The
+// mint is admit_callers-sealed to that function and to the claims below by name, so no third
+// caller can obtain a located tab from a supplied response.
+
+fn sheet_read(sheet_id: Int, title: String, index: Int) -> SheetsSheetRead {
+  SheetsSheetRead {
+    properties: Present {
+      value: SheetsSheetPropertiesRead {
+        sheetId: Present { value: sheet_id },
+        title: Present { value: title },
+        index: Present { value: index },
+        gridProperties: none,
+      }
+    },
+    data: none,
+    conditionalFormats: none,
+  }
+}
+
+fn sheet_read_from_properties(props: SheetsSheetPropertiesRead) -> SheetsSheetRead {
+  SheetsSheetRead { properties: Present { value: props }, data: none, conditionalFormats: none }
+}
+
+fn spreadsheet_read_of(sheets_read: List<SheetsSheetRead>) -> SpreadsheetRead {
+  SpreadsheetRead { spreadsheetId: none, sheets: Present { value: sheets_read } }
+}
+
+data witness_spreadsheet_id: NonEmptyStr = "1ciProspectSheetFileId"
+
+// (1) EXACTLY ONE TAB IS LOCATED, AND THE PAYLOAD IS ASSERTED RATHER THAN THE VARIANT. The ids are
+// chosen so that neither could be produced by the assumption being removed: sheetId 1836271154 is
+// not the constant zero, and the title "Prospects 2026" is not the Drive file's display name
+// ("CI prospect sheet", gunbc.review_sheet_converge_cli ci_prospect_sheet_name). A mutation taking
+// either from anywhere but properties fails this claim on the value, not on the arm.
+test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 1836271154, title: "Prospects 2026", index: 0)]),
+  ) {
+    TabLocated { tab: t } => (t.sheet_id == 1836271154) && ((t.title as String) == "Prospects 2026")
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+test fn the_located_tab_carries_the_spreadsheet_id_the_read_was_performed_against() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 4, title: "Sheet1", index: 0)]),
+  ) {
+    TabLocated { tab: t } => (t.spreadsheet_id as String) == (witness_spreadsheet_id as String)
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+// (2) ZERO TABS IS ABSENT. A spreadsheet the response says has no sheets is a spreadsheet with
+// nothing to format, and the remedy is to look at the request that asked -- not to send an
+// operator hunting for an unreadable workbook.
+test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(sheets_read: []),
+  ) {
+    TabAbsent => true
+    TabLocated { tab: _ } => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+test fn an_absent_sheets_field_is_absent_rather_than_unreadable() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: SpreadsheetRead { spreadsheetId: none, sheets: none },
+  ) {
+    TabAbsent => true
+    TabLocated { tab: _ } => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+fn candidate_ids(cs: List<ReviewTabCandidate>) -> List<Int> {
+  map(cs, c => c.sheet_id)
+}
+
+fn candidate_titles(cs: List<ReviewTabCandidate>) -> List<String> {
+  map(cs, c => c.title as String)
+}
+
+// (3) TWO TABS ARE AMBIGUOUS AND BOTH ARE CARRIED. This is the claim the whole module exists for:
+// the failure being removed is "take the first", which would answer TabLocated with sheetId 0 here
+// and is exactly what the constant did. The candidate list is asserted at its payload so that an
+// arm returning an empty TabAmbiguous -- refusing without saying what it saw -- also fails.
+test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(
+      sheets_read: [
+        sheet_read(sheet_id: 0, title: "Sheet1", index: 0),
+        sheet_read(sheet_id: 918273645, title: "Prospects 2026", index: 1),
+      ],
+    ),
+  ) {
+    TabAmbiguous { candidates: cs } =>
+      (count(cs) == 2)
+        && (candidate_ids(cs: cs) == [0, 918273645])
+        && (candidate_titles(cs: cs) == ["Sheet1", "Prospects 2026"])
+    TabLocated { tab: _ } => false
+    TabAbsent => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+// (4) AN UNREADABLE TAB. A sheet whose properties carry no title is not a tab named nothing: the
+// proto3 default for a string is empty and upstream produces no tab with an empty title, so the
+// field was not read. Substituting the Drive file's name there is mutation M2 in reverse and is
+// what this arm forbids.
+test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(
+      sheets_read: [
+        sheet_read_from_properties(
+          props: SheetsSheetPropertiesRead { sheetId: Present { value: 7 }, title: none, index: none, gridProperties: none }
+        ),
+      ],
+    ),
+  ) {
+    TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "no title")
+    TabLocated { tab: _ } => false
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+  }
+}
+
+// (5) ONE UNREADABLE TAB POISONS THE WHOLE READING. A workbook whose second sheet came back
+// without properties has an UNKNOWN number of tabs, so answering "exactly one" from the sheet that
+// did parse is a confident answer derived from an incomplete reading -- the absorbing fallback
+// DESIGN section 5 refuses, arriving as a skip rather than as a widen.
+test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(
+      sheets_read: [
+        sheet_read(sheet_id: 55, title: "Prospects 2026", index: 0),
+        SheetsSheetRead { properties: none, data: none, conditionalFormats: none },
+      ],
+    ),
+  ) {
+    TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "no properties at all")
+    TabLocated { tab: _ } => false
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+  }
+}
+
+// (6) AN ABSENT sheetId IS ZERO AND MUST NOT REFUSE. This is the arm that keeps the locator usable
+// on the workbooks this pipeline actually creates: Sheets omits a field equal to its proto3
+// default, a freshly minted workbook's only tab has sheetId 0, so the common case arrives with the
+// id ABSENT. Reading it as zero is the decode extdeps.google.sheets sheets_sheet_id_read owns and
+// the colour channels already ran under -- it is not a substituted default, and the claim is here
+// so that a future tightening of the title arm cannot quietly take this one with it.
+test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> Bool {
+  match review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(
+      sheets_read: [
+        sheet_read_from_properties(
+          props: SheetsSheetPropertiesRead { sheetId: none, title: Present { value: "Sheet1" }, index: none, gridProperties: none }
+        ),
+      ],
+    ),
+  ) {
+    TabLocated { tab: t } => (t.sheet_id == 0) && ((t.title as String) == "Sheet1")
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+// (7) THE LIVE ROUTE'S OWN PURE HALF. locate_review_tab performs the read and hands the outcome
+// here, so this is the function standing between a transport answer and a standing. A 403 is not
+// a spreadsheet with no tabs, and answering TabAbsent to one would send an operator looking for a
+// missing tab in a workbook they cannot open. The Absent-versus-refused distinction is the class
+// gunbc.recurring_failure_mode rosters as absent_reads_identically_to_never_looked.
+test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent() -> Bool {
+  match review_tab_standing_of_outcome(
+    spreadsheet_id: witness_spreadsheet_id,
+    outcome: RestStatusRefused { status: 403, body: "caller lacks Sheets access" },
+    read: SpreadsheetRead { spreadsheetId: none, sheets: none },
+  ) {
+    TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "403")
+    TabAbsent => false
+    TabLocated { tab: _ } => false
+    TabAmbiguous { candidates: _ } => false
+  }
+}
+
+test fn only_the_located_arm_reports_located() -> Bool {
+  review_tab_is_located(s: review_tab_standing_from_read(
+    spreadsheet_id: witness_spreadsheet_id,
+    read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 3, title: "Sheet1", index: 0)]),
+  ))
+    && (review_tab_is_located(s: TabAbsent) == false)
+    && (review_tab_is_located(s: TabUnreadable { cause: "read failed" as NonEmptyStr }) == false)
+}

@@ -1,0 +1,138 @@
+module test.claim.review_sheet_format_target_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import extdeps.google.sheets {
+  SpreadsheetRead,
+  SheetsSheetRead,
+  SheetsSheetPropertiesRead,
+  spreadsheet_first_sheet_id,
+}
+import gunbc.review_sheet_tab_locator {
+  ReviewTabStanding,
+  TabLocated,
+  TabAbsent,
+  TabAmbiguous,
+  TabUnreadable,
+  LocatedReviewTab,
+  review_tab_standing_from_read,
+}
+import gunbc.review_sheet_format_actuator {
+  FormatRequestPlan,
+  format_request_plan,
+  format_plan_sheet_ids,
+  HeaderRangeStanding,
+  HeaderRangeWire,
+  HeaderRangeUnqualifiable,
+  review_sheet_header_range,
+  review_sheet_header_cells,
+}
+import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+
+// THE SUBJECT IS THE ADDRESSING, NOT THE FORMATTING. gunbc.review_sheet_format_actuator sends
+// three kinds of batchUpdate request and every one of them names a sheetId. Until this change all
+// seven named extdeps.google.sheets spreadsheet_first_sheet_id -- the constant 0 -- so the
+// formatter wrote to whichever tab happened to be first in a workbook whose tab identity nothing
+// had established. format_request_plan derives all seven from a located tab BEFORE any is sent,
+// which is what makes the addressing a value a claim can read.
+//
+// WHAT THIS DISCRIMINATES AND WHAT IT DOES NOT. It reddens on a plan built from the constant, on a
+// plan that takes its id from anywhere but the located tab, and on a header range that is not
+// qualified by the located title. It does NOT reach the wire: a step function rewritten to ignore
+// the request it was handed would pass this, and closing that needs the three batchUpdate
+// operations in extdeps.google.sheets_mock_corpus, which carries only GetValues and
+// BatchUpdateValues. That is the trigger, stated rather than implied.
+
+// THE ONLY WAY TO A LocatedReviewTab, HERE AS ANYWHERE. The carrier is sole_constructor and the
+// mint is admit_callers-sealed, so this witness cannot write the record it needs -- it supplies a
+// response at the locator's interface and takes what the locator makes of it, which is the same
+// route production takes with a response Sheets supplied. The refusal that this is the only route
+// is test.claim.review_sheet_tab_refusal_probe_witness.
+fn located_tab_for_witness(sheet_id: Int, title: String) -> ReviewTabStanding {
+  review_tab_standing_from_read(
+    spreadsheet_id: "1ciProspectSheetFileId" as NonEmptyStr,
+    read: SpreadsheetRead {
+      spreadsheetId: none,
+      sheets: Present {
+        value: [
+          SheetsSheetRead {
+            properties: Present {
+              value: SheetsSheetPropertiesRead {
+                sheetId: Present { value: sheet_id },
+                title: Present { value: title },
+                index: Present { value: 0 },
+                gridProperties: none,
+              }
+            },
+            data: none,
+            conditionalFormats: none,
+          },
+        ]
+      },
+    },
+  )
+}
+
+data witness_located_sheet_id: Int = 1836271154
+
+fn plan_sheet_ids_for(sheet_id: Int, title: String) -> List<Int> {
+  match located_tab_for_witness(sheet_id: sheet_id, title: title) {
+    TabLocated { tab: t } =>
+      format_plan_sheet_ids(plan: format_request_plan(tab: t, schema: ci_prospect_sheet_schema(), standing_col: 3))
+    TabAbsent => []
+    TabAmbiguous { candidates: _ } => []
+    TabUnreadable { cause: _ } => []
+  }
+}
+
+// EVERY REQUEST, NOT ONE OF THEM. The freeze, the header band and the five conditional rules are
+// seven separate batchUpdates and each carries its own sheetId, so a mutation that reverts ONE of
+// them to the constant is exactly the defect a claim over a single request would miss.
+test fn every_batch_update_request_in_the_plan_addresses_the_located_sheet_id() -> Bool {
+  plan_sheet_ids_for(sheet_id: witness_located_sheet_id, title: "Prospects 2026")
+    == [
+      witness_located_sheet_id, witness_located_sheet_id, witness_located_sheet_id,
+      witness_located_sheet_id, witness_located_sheet_id, witness_located_sheet_id,
+      witness_located_sheet_id,
+    ]
+}
+
+// THE POSITIVE CONTROL FOR THE ABOVE, and it is what makes the claim a measurement rather than a
+// tautology. The witness id is deliberately not zero, so if the plan were still built from
+// spreadsheet_first_sheet_id the claim above would read seven zeros; this asserts that those two
+// values really are distinguishable, so a green above cannot be an accident of them coinciding.
+test fn the_witness_sheet_id_is_not_the_constant_the_formatter_used_to_address() -> Bool {
+  (witness_located_sheet_id == spreadsheet_first_sheet_id) == false
+}
+
+// THE HEADER READ IS QUALIFIED BY THE LOCATED TITLE. An unqualified A1 range reads the first tab,
+// which gunbc.review_sheet_sheets a1_readback_standing refuses in as many words -- and the
+// formatter's readback was sending one. A readback that inspects a different tab from the one the
+// writes address is not evidence about the writes at all.
+test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
+  match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects2026") {
+    TabLocated { tab: t } =>
+      match review_sheet_header_range(tab: t) {
+        HeaderRangeWire { range: r } => r == join(["Prospects2026", "!", review_sheet_header_cells], "")
+        HeaderRangeUnqualifiable { cause: _ } => false
+      }
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+// A TITLE THAT NEEDS A1 QUOTING REFUSES RATHER THAN BEING CONCATENATED. The quoting codec is
+// gunbc#11703 and is in flight; writing a second one here to get past a title with a space would
+// be the fork that PR exists to prevent, so the range declines and the converge reports it.
+test fn a_title_needing_a1_quoting_declines_the_range_instead_of_guessing_the_encoding() -> Bool {
+  match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects 2026") {
+    TabLocated { tab: t } =>
+      match review_sheet_header_range(tab: t) {
+        HeaderRangeUnqualifiable { cause: c } => string_contains(s: c as String, pattern: "11703")
+        HeaderRangeWire { range: _ } => false
+      }
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}

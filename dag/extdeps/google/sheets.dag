@@ -300,6 +300,20 @@ fn sheets_color_channel_read(channel: Float?) -> Float {
   }
 }
 
+fn sheets_sheet_id_read(id: Int?) -> Int {
+  match id {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn sheets_sheet_index_read(index: Int?) -> Int {
+  match index {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
 type SheetsTextFormatRead {
   foregroundColor: SheetsColorRead?
   bold: Bool?
@@ -335,8 +349,29 @@ type SheetsGridPropertiesRead {
   frozenRowCount: Int?
 }
 
+// title AND index ARE THE TAB'S IDENTITY AND THEY ARE NOT THE FILE'S. A spreadsheet is a Drive
+// file with a display name, and every tab inside it carries its own title -- upstream calls the
+// file a Spreadsheet and each tab a Sheet, and sheets.properties.title is the tab's. Modelling
+// only sheetId left a consumer with no way to name the tab it had located, so the values path took
+// a title from its caller and the format path addressed sheet 0. Both are here because both come
+// back in one spreadsheets.get: sheetId is what a batchUpdate request addresses, title is what an
+// A1 range qualifies with, and index is the tab's position in the workbook, carried because the
+// response carries it and a consumer adjudicating two tabs needs to say which one it means.
+//
+// All three are Optional, and the three absences do NOT mean the same thing. sheetId and index
+// are Int and a first tab has 0 for both, which equals the proto3 default and is therefore OMITTED
+// from the JSON -- exactly as a zero colour channel and an unfrozen frozenRowCount are omitted, and
+// absent IS zero for the same reason. sheets_sheet_id_read and sheets_sheet_index_read are the only
+// places that say so, beside sheets_color_channel_read which already said it for a channel.
+//
+// title is NOT that case. Its proto3 default is the empty string and upstream never names a tab
+// with one, so an absent title is a response this model could not read rather than a tab called
+// nothing -- and a consumer that substituted a name there would be inventing the tab's identity.
+// Nothing here decides that; the type keeps the distinction and the consumer refuses on it.
 type SheetsSheetPropertiesRead {
   sheetId: Int?
+  title: String?
+  index: Int?
   gridProperties: SheetsGridPropertiesRead?
 }
 
