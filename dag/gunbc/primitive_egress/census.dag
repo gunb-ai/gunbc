@@ -133,7 +133,7 @@ type JoinedSurfaceFact {
 }
 
 fn join_surface_fact(fact: SurfaceFact) -> JoinedSurfaceFact {
-  JoinedSurfaceFact { fact: fact, join: canonical_join(surface: Present { value: fact.surface }, spelling: fact.spelling, form: fact.form) }
+  JoinedSurfaceFact { fact: fact, join: canonical_join(surface: Present { value: fact.surface }, spelling: fact.spelling) }
 }
 
 // Which layer a caller inhabits, read off the resolver's own module identity. `v2.` is src/v2 and
@@ -221,19 +221,19 @@ type EdgeJoin
 fn edge_join(edge: PrimitiveCallEdge, on_surface: fn(PrimitiveIdentity) -> Bool) -> EdgeJoin {
   match edge.callee {
     RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } =>
-      EstablishedConsumer { identity: canonical_join(surface: none, spelling: n, form: FreeForm).identity }
+      EstablishedConsumer { identity: canonical_join(surface: none, spelling: n).identity }
     AlgebraMethodCallee { template_name: t } =>
-      EstablishedConsumer { identity: canonical_join(surface: none, spelling: t, form: MethodForm).identity }
+      EstablishedConsumer { identity: canonical_join(surface: none, spelling: t).identity }
     ServiceOperationCallee { service_name: s, operation: op } => {
-      let id = canonical_join(surface: none, spelling: concat(s, ".", op), form: FormlessSurface).identity
+      let id = canonical_join(surface: none, spelling: concat(s, ".", op)).identity
       if on_surface(id) { EstablishedConsumer { identity: id } } else { ServiceOperationSite { service_name: s, operation: op } }
     }
     PlainMethodCallee { spelling: sp } => {
-      let id = canonical_join(surface: none, spelling: sp, form: MethodForm).identity
+      let id = canonical_join(surface: none, spelling: sp).identity
       if on_surface(id) { UnresolvedConsumer { identity: id } } else { OffSurfaceSite { spelling: sp } }
     }
     UndeterminedFreeCallee { spelling: sp } => {
-      let id = canonical_join(surface: none, spelling: sp, form: FreeForm).identity
+      let id = canonical_join(surface: none, spelling: sp).identity
       if on_surface(id) { UnresolvedConsumer { identity: id } } else { OffSurfaceSite { spelling: sp } }
     }
   }
@@ -479,9 +479,9 @@ fn consumer_established_identities(edges: List<PrimitiveCallEdge>) -> List<Primi
   edges |> fold(init: [], f: fn(acc, edge) {
     match edge.callee {
       RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } =>
-        push_identity(acc: acc, id: canonical_join(surface: none, spelling: n, form: FreeForm).identity)
+        push_identity(acc: acc, id: canonical_join(surface: none, spelling: n).identity)
       AlgebraMethodCallee { template_name: t } =>
-        push_identity(acc: acc, id: canonical_join(surface: none, spelling: t, form: MethodForm).identity)
+        push_identity(acc: acc, id: canonical_join(surface: none, spelling: t).identity)
       ServiceOperationCallee { service_name: _, operation: _ } => acc
       PlainMethodCallee { spelling: _ } => acc
       UndeterminedFreeCallee { spelling: _ } => acc

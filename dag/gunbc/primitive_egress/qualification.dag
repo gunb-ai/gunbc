@@ -246,8 +246,9 @@ fn qualify_realization(r: RealizationStanding, ctx: QualificationContext) -> Qua
 // A conflict is DERIVED from the joined surfaces: (a) an interpreter arm this identity dispatches
 // through also carries a spelling of a different identity (std.primitive_identity's
 // SurfaceJoinsTwoIdentities, one arm two meanings); (b) the operation authority resolves to a
-// modeled .dag fn AND an interpreter arm realizes the same identity with no std.primitive_projection
-// row relating them (two realizations, no stated relation). An authored SurfacesDisagree is
+// modeled .dag FN (a body -- a data contract row is a cost contract, not a competing realization)
+// AND an interpreter arm realizes the same identity with no std.primitive_projection row relating
+// them (two realizations, no stated relation). An authored SurfacesDisagree is
 // carried in addition; an authored NoMeaningConflict is not evidence and is ignored.
 fn qualify_conflict(authored: MeaningConflict, computation: QualifiedComputation, ctx: QualificationContext) -> QualifiedConflict {
   let authored_conflict = match authored {
@@ -264,7 +265,7 @@ fn qualify_conflict(authored: MeaningConflict, computation: QualifiedComputation
           ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
             match a {
               AuthorityVerified { declaration: d, kind: k } =>
-                if ctx.has_interpreter_arm && is_dag_computation_kind(k: k) && !ctx.has_algebra_template
+                if ctx.has_interpreter_arm && is_fn_kind(k: k) && !ctx.has_algebra_template
                   && !(ctx.projection_declarations |> any(p => declaration_ref_eq(a: p, b: d))) {
                   ConflictDerived { detail: concat("the operation authority resolves to a modeled .dag ", kind_label(k: k), " (", d.module_path as String, " ", d.decl_name as String, ") AND an interpreter arm realizes the same identity, with no std.primitive_projection row relating them") as NonEmptyStr }
                 } else {

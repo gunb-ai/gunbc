@@ -1241,8 +1241,9 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
 /// `v1.compiler.infer_method` `builtin_function_registry` is a `Map<String, BuiltinSignature>`
 /// whose values carry `Node`s, so the interpreter cannot evaluate the `data` row itself
 /// (`NoSuchField { type_name: "Node", field: "ident" }` when it tries), which is why
-/// `std.primitives` `builtin_registry_surface_names` has been a HAND ROSTER beside it -- measured
-/// 17 rows behind on 2026-09-18. This query reads the compiled registry's key set directly so
+/// `std.primitives` `builtin_registry_surface_names` has been a HAND ROSTER beside it (the census
+/// receipt's `hand_roster_missing_registry_rows` / `hand_roster_rows_absent_from_registry` lines
+/// are the instrument for its drift). This query reads the compiled registry's key set directly so
 /// `gunbc.primitive_egress.census` derives the registry population from the one authority and
 /// reports the roster's drift as a typed finding rather than inheriting it.
 pub fn builtin_function_registry_keys() -> Vec<String> {

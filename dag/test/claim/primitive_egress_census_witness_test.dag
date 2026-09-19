@@ -407,7 +407,8 @@ test fn w_refused_entry_refuses_the_census() -> Bool {
 
 // 6. THE SAME-LEAF DECOY, ON THE REAL PRODUCER. The fixture declares its own `scan_to_eol` (a
 // registry + contract + bridge spelling that no other module reads bare, so the decoy cannot
-// ambiguate or rebind a bare read anywhere in the prepared corpus -- `length` did, 48 sites) and calls
+// ambiguate or rebind a bare read anywhere in the prepared corpus -- a spelling with bare readers
+// makes every one of them an AmbiguousBareNameRead on the floor) and calls
 // it bare and through an import: the resolver binds both to the declaration, so neither is a
 // primitive edge. The free call `count(..)`, the method form `|> count` and the aliased `map_has`
 // ARE primitive edges, and the census joins them to `length` and `map_contains_key`.
@@ -438,8 +439,8 @@ test fn w_decoy_declaration_is_not_a_primitive_edge_on_the_real_producer() -> Bo
         && count(count_edges) == 2
         && count(edges |> filter(fn(e) { callee_names_primitive(e: e, name: "scan_to_eol") })) == 0
         && count(map_has_edges) == 1
-        && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: "count", form: FreeForm).identity, right: primitive_identity_slug(name: "length")) }))
-        && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has", form: FreeForm).identity, right: primitive_identity_slug(name: "map_contains_key"))
+        && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: "count").identity, right: primitive_identity_slug(name: "length")) }))
+        && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has").identity, right: primitive_identity_slug(name: "map_contains_key"))
     }
   }
 }

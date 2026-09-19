@@ -276,13 +276,30 @@ fn derive_disposition(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> P
   match e.conflict {
     ConflictDerived { detail: d } => unresolved(cause: ConflictingRealizations { detail: d }, candidates: partial_candidates(e: e))
     NoConflictDerived =>
+      match e.computation {
+        ComputationNotEstablished { detail: d } => unresolved(cause: SubjectUnestablished { detail: d }, candidates: partial_candidates(e: e))
+        ComputationVerified { authority: _, inputs: _, result: _, body: _ } => derive_by_external(e: e, ownership: ownership)
+        NoComputationHalf => derive_by_external(e: e, ownership: ownership)
+      }
+  }
+}
+
+// An unverified external subject beside a computation half is still two questions (the
+// acquisition claim and the fold), and the conflation is the more located cause; with no
+// computation half the unverified subject is the cause itself.
+fn derive_by_external(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> PrimitiveDisposition {
       match e.external {
-        ExternalUnverified { detail: d } => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
+        ExternalUnverified { detail: d } =>
+          match e.computation {
+            ComputationVerified { authority: _, inputs: _, result: _, body: _ } =>
+              unresolved(cause: MixedSemanticQuestions { questions: [q(s: concat("which external state is observed or mutated (claimed, not verified: ", d as String, ")")), q(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input")] }, candidates: partial_candidates(e: e))
+            NoComputationHalf => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
+            ComputationNotEstablished { detail: cd } => unresolved(cause: SubjectUnestablished { detail: cd }, candidates: partial_candidates(e: e))
+          }
         ExternalPresentVerified { operation: op, subject: subj, provider: prov, ambient: amb } =>
           derive_with_external_subject(e: e, op: op, subj: subj, prov: prov, amb: amb)
         ExternalAbsentVerified { by: _ } => derive_without_external_subject(e: e, ownership: ownership)
       }
-  }
 }
 
 // An operation that observes or mutates external state is a bound host effect ONLY when nothing

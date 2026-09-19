@@ -23,30 +23,27 @@ import std.primitive_identity {
 // because D13 chose operation-plus-logical-subject grain and Read and List differ in arguments,
 // result shape, ordering question and refusals. No alias row may collapse them.
 //
-// WHY ALIASES ARE FORM-SCOPED. The interpreter dispatches free calls and method calls through
-// different arm families, and one spelling can name different arms in the two forms:
-// `append` is the `list_push` arm as a free call and the `concat` arm as a method. Aliasing it
-// either way would erase the conflict the census exists to surface, so `append` stays its own
-// identity (see its Unresolved row) and only unambiguous spellings are aliased.
+// WHY ALIASES ARE NOT FORM-SCOPED. The interpreter dispatches free calls and method calls through
+// different arm families, and one spelling can name different arms in the two forms: `append` is
+// the `list_push` arm as a free call and the `concat` arm as a method. Aliasing it either way
+// would erase the conflict the census exists to surface, so `append` stays its own identity (the
+// derived-conflict rule marks it) and only spellings that mean one thing on every surface are
+// aliased. A form-scoped alias is therefore not a declared frontier: it would be the mechanism
+// for erasing exactly the class the census reports.
 
 type CallForm
   = FreeForm
   | MethodForm
   | FormlessSurface
 
-type AliasScope
-  = AnyForm
-  | OnlyForm { form: CallForm }
-
 type SpellingAliasRow {
-  scope: AliasScope
   spelling: String
   canonical: String
   reason: NonEmptyStr
 }
 
 fn spelling_alias(spelling: String, canonical: String, reason: String) -> SpellingAliasRow {
-  SpellingAliasRow { scope: AnyForm, spelling: spelling, canonical: canonical, reason: reason as NonEmptyStr }
+  SpellingAliasRow { spelling: spelling, canonical: canonical, reason: reason as NonEmptyStr }
 }
 
 fn form_label(form: CallForm) -> String {
@@ -54,17 +51,6 @@ fn form_label(form: CallForm) -> String {
     FreeForm => "free"
     MethodForm => "method"
     FormlessSurface => "formless"
-  }
-}
-
-fn call_form_eq(a: CallForm, b: CallForm) -> Bool {
-  form_label(form: a) == form_label(form: b)
-}
-
-fn alias_scope_admits(scope: AliasScope, form: CallForm) -> Bool {
-  match scope {
-    AnyForm => true
-    OnlyForm { form: f } => call_form_eq(a: f, b: form)
   }
 }
 
@@ -102,17 +88,12 @@ type CanonicalJoin {
   route: JoinRoute
 }
 
-fn egress_alias_for(spelling: String, form: CallForm) -> SpellingAliasRow? {
+fn egress_alias_for(spelling: String) -> SpellingAliasRow? {
   egress_alias_rows()
     |> fold(init: none, f: fn(acc, row) {
       match acc {
         Present { value: _ } => acc
-        Absent =>
-          if row.spelling == spelling && alias_scope_admits(scope: row.scope, form: form) {
-            Present { value: row }
-          } else {
-            none
-          }
+        Absent => if row.spelling == spelling { Present { value: row } } else { none }
       }
     })
 }
@@ -120,7 +101,7 @@ fn egress_alias_for(spelling: String, form: CallForm) -> SpellingAliasRow? {
 // The one join every surface fact and every consumer edge goes through. `surface` is Absent for a
 // consumer edge (a call site inhabits no realization surface, so passing one would fabricate a
 // D0 join key -- the same argument std.primitive_identity makes for its canonical-name arm).
-fn canonical_join(surface: PrimitiveSurfaceAuthority?, spelling: String, form: CallForm) -> CanonicalJoin {
+fn canonical_join(surface: PrimitiveSurfaceAuthority?, spelling: String) -> CanonicalJoin {
   let d0 = match surface {
     Present { value: s } => primitive_identity_lookup(authority: s, authored_symbol: spelling)
     Absent => none
@@ -128,7 +109,7 @@ fn canonical_join(surface: PrimitiveSurfaceAuthority?, spelling: String, form: C
   match d0 {
     Present { value: id } => CanonicalJoin { identity: id, route: JoinedByD0AliasTable }
     Absent =>
-      match egress_alias_for(spelling: spelling, form: form) {
+      match egress_alias_for(spelling: spelling) {
         Present { value: row } =>
           CanonicalJoin { identity: primitive_identity_slug(name: row.canonical), route: JoinedByEgressAliasRow { reason: row.reason } }
         Absent =>
@@ -137,8 +118,8 @@ fn canonical_join(surface: PrimitiveSurfaceAuthority?, spelling: String, form: C
   }
 }
 
-fn canonical_identity(surface: PrimitiveSurfaceAuthority?, spelling: String, form: CallForm) -> PrimitiveIdentity {
-  canonical_join(surface: surface, spelling: spelling, form: form).identity
+fn canonical_identity(surface: PrimitiveSurfaceAuthority?, spelling: String) -> PrimitiveIdentity {
+  canonical_join(surface: surface, spelling: spelling).identity
 }
 
 fn identity_name(identity: PrimitiveIdentity) -> String {
@@ -150,13 +131,9 @@ fn identity_name(identity: PrimitiveIdentity) -> String {
 // fork this module exists to close, so it is checked rather than assumed.
 fn egress_alias_rows_are_acyclic() -> Bool {
   egress_alias_rows() |> all(fn(row) {
-    match egress_alias_for(spelling: row.canonical, form: FreeForm) {
+    match egress_alias_for(spelling: row.canonical) {
       Present { value: _ } => false
-      Absent =>
-        match egress_alias_for(spelling: row.canonical, form: MethodForm) {
-          Present { value: _ } => false
-          Absent => true
-        }
+      Absent => true
     }
   })
 }
