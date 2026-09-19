@@ -22,6 +22,7 @@ import gunbc.runner_microvm {
   gunbc_runner_microvm_vm_config, jit_drive_without_credential,
 }
 import gunbc.runner_guest_image {
+  guest_console_carries, GuestEmitted, GuestBooted,
   runner_guest_image_root, runner_guest_image_path,
   runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
@@ -162,6 +163,7 @@ type BootProbeVerdict
   = BootPrintedRunnerVersion { version: String }
   | BootProducedNoConsole { cause: String }
   | BootConsoleLacksRunnerVersion { expected: String, console: String }
+  | BootConsoleLacksGuestBooted { console: String }
   | BootNotAttempted { cause: String }
   | BootExceededHostDeadline { deadline: String, console: String, detail: String }
   | BootVmmFailed { exit_code: Int, console: String, detail: String }
@@ -186,12 +188,33 @@ fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation
   }
 }
 
+// A LIVE BOOT OF THIS IMAGE MUST ALSO CARRY THE AGENT'S GuestBooted MARKER, read through
+// gunbc.runner_guest_image guest_console_carries -- the host's one console reader -- so a version
+// string that reached the console some other way is not read as the agent having run. It is a layer
+// over boot_probe_verdict rather than inside it because that verdict also judges consoles captured
+// before the marker existed (gunbc.runner_observed_version_check's committed Mt. Collins capture),
+// where requiring it would fail a true version readback for a reason unrelated to the version.
+fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
+  let base = boot_probe_verdict(runner: runner, observed: observed)
+  match base {
+    BootPrintedRunnerVersion { version: _ } =>
+      if guest_console_carries(console: observed.stdout, kind: GuestEmitted { event: GuestBooted }) {
+        base
+      } else {
+        BootConsoleLacksGuestBooted { console: observed.stdout }
+      }
+    _ => base
+  }
+}
+
 fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
   match v {
     BootPrintedRunnerVersion { version: x } => join(["boot=printed-runner-version ", x], "")
     BootProducedNoConsole { cause: c } => join(["boot=no-console (", c, ")"], "")
     BootConsoleLacksRunnerVersion { expected: e, console: c } =>
       join(["boot=console-without-runner-version expected=", e, "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootConsoleLacksGuestBooted { console: c } =>
+      join(["boot=console-without-guest-booted (the guest agent never reported GuestBooted)\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
     BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
       join(["boot=host-deadline-expired after ", d,
@@ -208,6 +231,7 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootPrintedRunnerVersion { version: _ } => true
     BootProducedNoConsole { cause: _ } => false
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
+    BootConsoleLacksGuestBooted { console: _ } => false
     BootNotAttempted { cause: _ } => false
     BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
     BootVmmFailed { exit_code: _, console: _, detail: _ } => false
@@ -278,7 +302,7 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                   )
                 } else {
                   runner_microvm_boot_probe_receipt_wet(
-                    verdict: boot_probe_verdict(
+                    verdict: guest_agent_boot_verdict(
                       runner: image.runner,
                       observed: run_shell_command_observe(
                         command: runner_microvm_boot_probe_bounded_command(

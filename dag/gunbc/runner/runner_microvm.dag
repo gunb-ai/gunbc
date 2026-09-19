@@ -9,6 +9,7 @@ import std.measure {
   gibibyte_to_byte_size,
   HardwareThreadCount,
   byte_size_count,
+  byte_size,
   mebibyte,
   mebibyte_count,
   mebibyte_to_byte_size,
@@ -50,7 +51,9 @@ import extdeps.virtualization.firecracker {
   FirecrackerRelease,
   firecracker_release_aarch64,
   firecracker_config_has_single_root,
+  firecracker_block_sector_size,
 }
+import std.bytes { utf8_encode_bytes, bytes_octets }
 
 data runner_microvm_disposition: Disposition = SingleAuthority
 
@@ -125,11 +128,11 @@ data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDri
 // read. No shell, no `cat`, and the secret never appears on a command line where `ps` would show it.
 //
 // THE PADDING IS NEWLINES BECAUSE A BLOCK DEVICE HAS NO LENGTH OF ITS OWN. Firecracker exposes a
-// backing file as whole 512-byte sectors and drops any partial tail sector, so an unpadded 4,076-byte
-// config would reach the guest truncated to 3,584 bytes. Padding to the sector boundary with blank
-// lines keeps every byte, and blank lines are what systemd's environment-file parser skips -- a NUL
-// fill would not be.
-data jit_drive_sector_bytes: Int = 512
+// backing file only in whole sectors (extdeps.virtualization.firecracker
+// firecracker_block_sector_size) and drops a partial tail, so an unpadded 4,076-byte config would
+// reach the guest cut to 3,584 bytes. Padding to the sector boundary with blank lines keeps every
+// byte, and blank lines are what systemd's environment-file parser skips -- a NUL fill would not be.
+// The length is measured in UTF-8 BYTES, the unit the sector is denominated in, not in characters.
 
 // THE GUEST NAME FOLLOWS FROM THE DRIVE ORDER IN runner_microvm_vm_config BELOW: virtio-blk devices
 // enumerate in configuration order, the root drive is first (`root=/dev/vda`), and the credential
@@ -141,7 +144,14 @@ fn jit_drive_assignment(encoded_jit_config: NonEmptyStr) -> String {
   join([actions_runner_jitconfig_env_name(), "=", encoded_jit_config as String, "\n"], "")
 }
 
-fn jit_drive_newlines_512() -> String {
+fn jit_drive_utf8_size(text: String) -> ByteSize {
+  byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: text))))
+}
+
+// ONE SECTOR OF NEWLINES, AS A SOURCE TO CUT PADDING FROM. Built by doubling to 512 and checked
+// against the sector size by the_credential_drive_is_whole_sectors_of_one_assignment: a newline is
+// one UTF-8 byte, so this string's byte size is its length.
+fn jit_drive_newline_sector() -> String {
   let n2 = "\n\n"
   let n8 = concat(concat(n2, n2), concat(n2, n2))
   let n32 = concat(concat(n8, n8), concat(n8, n8))
@@ -153,16 +163,17 @@ fn jit_drive_newlines_512() -> String {
 // environment-file read accepts and assigns nothing from. A VM booted with it reaches the listener,
 // which refuses as unconfigured -- the boot-only probe's arm, where no registration may be spent.
 fn jit_drive_without_credential() -> String {
-  jit_drive_newlines_512()
+  jit_drive_newline_sector()
 }
 
 fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
   let body = jit_drive_assignment(encoded_jit_config: encoded_jit_config)
-  let tail = string_length(s: body) % jit_drive_sector_bytes
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
   if tail == 0 {
     body
   } else {
-    concat(body, substring(s: jit_drive_newlines_512(), start: 0, end: jit_drive_sector_bytes - tail))
+    concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail))
   }
 }
 

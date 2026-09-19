@@ -19,9 +19,10 @@ import gunbc.runner_guest_image {
   runner_guest_agent_unit, runner_guest_agent_unit_path,
   runner_guest_agent_drop_in_path, runner_guest_agent_target_drop_in,
   runner_guest_image_size, runner_guest_image_filesystem,
-  GuestObservationKind, GuestBooted, RunnerStarted, RunnerListening, RunnerExited,
-  GuestObservationRead, GuestObservationSeen, NotAGuestObservation,
-  guest_observation_line, guest_observation_of_console_line,
+  GuestObservationKind, GuestEmitted, RunnerListening,
+  GuestBooted, RunnerStarted, RunnerExited,
+  guest_observation_line, guest_observation_kind_label,
+  guest_console_observations, guest_console_carries,
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -187,58 +188,23 @@ test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool {
     && !string_contains(s: c, pattern: " ")
 }
 
-fn kind_is_guest_booted(k: GuestObservationKind) -> Bool {
-  match k {
-    GuestBooted => true
-    RunnerStarted => false
-    RunnerListening => false
-    RunnerExited => false
-  }
-}
-
-fn kind_is_runner_started(k: GuestObservationKind) -> Bool {
-  match k {
-    GuestBooted => false
-    RunnerStarted => true
-    RunnerListening => false
-    RunnerExited => false
-  }
-}
-
-fn kind_is_runner_exited(k: GuestObservationKind) -> Bool {
-  match k {
-    GuestBooted => false
-    RunnerStarted => false
-    RunnerListening => false
-    RunnerExited => true
-  }
-}
-
-fn kind_is_runner_listening(k: GuestObservationKind) -> Bool {
-  match k {
-    GuestBooted => false
-    RunnerStarted => false
-    RunnerListening => true
-    RunnerExited => false
-  }
-}
-
 // THE HOST READS THE FOUR EVENTS OFF THE CONSOLE, and the reader is driven with the exact lines the
 // unit emits -- so an edit to the emitter that the reader does not follow reds here rather than on a
 // VM. RunnerListening is read from upstream's own line, and a line merely mentioning the marker
 // without a known kind is not an observation.
 test fn every_emitted_observation_is_read_back_as_its_own_kind() -> Bool {
   let img = gunbc_runner_guest_image
-  let booted = guest_observation_of_console_line(line: concat("[   3.1] ", guest_observation_line(kind: GuestBooted, image: img)))
-  let started = guest_observation_of_console_line(line: guest_observation_line(kind: RunnerStarted, image: img))
-  let exited = guest_observation_of_console_line(line: concat(guest_observation_line(kind: RunnerExited, image: img), " exit_code=exited exit_status=0"))
-  let listening = guest_observation_of_console_line(line: "2026-09-19 05:20:04Z: Listening for Jobs")
-  let noise = guest_observation_of_console_line(line: "gunbc-guest-observation something-else image=x")
-  (match booted { GuestObservationSeen { kind: k, line: _ } => kind_is_guest_booted(k: k)  NotAGuestObservation => false })
-    && (match started { GuestObservationSeen { kind: k, line: _ } => kind_is_runner_started(k: k)  NotAGuestObservation => false })
-    && (match exited { GuestObservationSeen { kind: k, line: _ } => kind_is_runner_exited(k: k)  NotAGuestObservation => false })
-    && (match listening { GuestObservationSeen { kind: k, line: _ } => kind_is_runner_listening(k: k)  NotAGuestObservation => false })
-    && (match noise { NotAGuestObservation => true  GuestObservationSeen { kind: _, line: _ } => false })
+  let console = join([
+    "[   3.1] ", guest_observation_line(event: GuestBooted, image: img), "\n",
+    guest_observation_line(event: RunnerStarted, image: img), "\n",
+    "2026-09-19 05:20:04Z: Listening for Jobs\n",
+    guest_observation_line(event: RunnerExited, image: img), " exit_code=exited exit_status=0\n",
+    "gunbc-guest-observation something-else image=x\n",
+  ], "")
+  let labels = list_map(xs: guest_console_observations(console: console), f: fn(k) { guest_observation_kind_label(kind: k) })
+  labels == ["guest-booted", "runner-started", "runner-listening", "runner-exited"]
+    && guest_console_carries(console: console, kind: RunnerListening)
+    && !guest_console_carries(console: "Listening for nothing", kind: GuestEmitted { event: GuestBooted })
 }
 
 // THE REGRESSION CONTROL FOR THE ACTIVATION DEFECT, and it is written against the mechanism systemd

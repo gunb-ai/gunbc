@@ -254,33 +254,50 @@ data runner_guest_agent_drop_in_suffix: String = ".conf"
 //
 // WHAT THE CHANNEL CANNOT CARRY IS STATED BECAUSE IT DECIDES WHO OWNS THE IDENTITY. A console line is
 // written by the guest, so it is a claim by the workload about itself. The guest therefore asserts
-// only what it can know -- which event, and which image it is -- and the host joins every line to the
-// attempt tuple (host, slot, generation, attempt, InvocationID, VMM identity, registration) by the
-// fact that the line arrived on THAT VMM's stdout. A guest that printed a slot or attempt id would be
+// only what it can know -- which event, and which image it is. Joining a line to the attempt tuple
+// (host, slot, generation, attempt, InvocationID, VMM identity, registration) is the host-side
+// lifecycle controller's job, by the fact that the line arrived on THAT VMM's stdout; that
+// controller is not built yet, and today's only reader is the boot probe, which has no attempt. A guest that printed a slot or attempt id would be
 // forging a key the host must hold independently. And per the program rule, any of these events may
 // TRIGGER the host's teardown; none of them may ESTABLISH that the cell is clean.
-type GuestObservationKind
+//
+// THE GUEST EMITS THREE OF THE FOUR, AND THE TYPE SAYS WHICH. RunnerListening is known only to the
+// listener, which prints its own readiness line; a guest-emitted marker for it would be a second line
+// claiming the same fact. So the emitter takes a GuestEmittedEvent, which has no RunnerListening
+// constructor, and only the reader's GuestObservationKind can name it.
+type GuestEmittedEvent
   = GuestBooted
   | RunnerStarted
-  | RunnerListening
   | RunnerExited
+
+type GuestObservationKind
+  = GuestEmitted { event: GuestEmittedEvent }
+  | RunnerListening
 
 // THE MARKER IS A FIXED TOKEN RATHER THAN A PHRASE, because the console interleaves kernel and systemd
 // output into any line and a reader matching prose has already been fooled once on this lane (the
 // Mt. Collins boot-marker grep, gunbc.runner.runner_first_job_receipt defects_found).
 data guest_observation_marker: String = "gunbc-guest-observation"
 
-fn guest_observation_kind_wire(kind: GuestObservationKind) -> String {
-  match kind {
+fn guest_emitted_event_wire(event: GuestEmittedEvent) -> String {
+  match event {
     GuestBooted => "guest-booted"
     RunnerStarted => "runner-started"
-    RunnerListening => "runner-listening"
     RunnerExited => "runner-exited"
   }
 }
 
-fn guest_observation_line(kind: GuestObservationKind, image: RunnerGuestImage) -> String {
-  join([guest_observation_marker, " ", guest_observation_kind_wire(kind: kind), " image=", runner_guest_image_name(image: image)], "")
+// A LABEL FOR RECEIPTS AND WITNESSES, NOT A WIRE: RunnerListening's label is never printed by the
+// guest, it names what the reader recognised in upstream's line.
+fn guest_observation_kind_label(kind: GuestObservationKind) -> String {
+  match kind {
+    GuestEmitted { event: e } => guest_emitted_event_wire(event: e)
+    RunnerListening => "runner-listening"
+  }
+}
+
+fn guest_observation_line(event: GuestEmittedEvent, image: RunnerGuestImage) -> String {
+  join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " image=", runner_guest_image_name(image: image)], "")
 }
 
 // PID 1 GIVES A SERVICE NO PATH WORTH TRUSTING, SO EVERY PROGRAM IS NAMED ABSOLUTELY. The Mt. Collins
@@ -292,8 +309,8 @@ data runner_guest_echo_program: String = "/usr/bin/echo"
 data runner_guest_job_path: NonEmptyStr = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
 data runner_guest_job_home: NonEmptyStr = "HOME=/root" as NonEmptyStr
 
-fn guest_observation_emit_command(kind: GuestObservationKind, image: RunnerGuestImage) -> NonEmptyStr {
-  join([runner_guest_echo_program, " ", guest_observation_line(kind: kind, image: image)], "") as NonEmptyStr
+fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestImage) -> NonEmptyStr {
+  join([runner_guest_echo_program, " ", guest_observation_line(event: event, image: image)], "") as NonEmptyStr
 }
 
 // RunnerExited CARRIES THE EXIT THE MANAGER RECORDED, via systemd's own ExecStopPost environment
@@ -301,7 +318,7 @@ fn guest_observation_emit_command(kind: GuestObservationKind, image: RunnerGuest
 // leading `-` makes a failed echo non-fatal, so reporting can never be what keeps the VM alive.
 fn guest_runner_exited_emit_command(image: RunnerGuestImage) -> NonEmptyStr {
   join([
-    "-", runner_guest_echo_program, " ", guest_observation_line(kind: RunnerExited, image: image),
+    "-", runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
     " exit_code=${EXIT_CODE} exit_status=${EXIT_STATUS}",
   ], "") as NonEmptyStr
 }
@@ -314,22 +331,40 @@ type GuestObservationRead
   = GuestObservationSeen { kind: GuestObservationKind, line: String }
   | NotAGuestObservation
 
+fn guest_emitted_event_in_line(line: String, event: GuestEmittedEvent) -> Bool {
+  string_contains(s: line, pattern: join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " "], ""))
+}
+
 fn guest_observation_of_console_line(line: String) -> GuestObservationRead {
-  if string_contains(s: line, pattern: concat(guest_observation_marker, " ")) {
-    if string_contains(s: line, pattern: concat(" ", concat(guest_observation_kind_wire(kind: GuestBooted), " "))) {
-      GuestObservationSeen { kind: GuestBooted, line: line }
-    } else if string_contains(s: line, pattern: concat(" ", concat(guest_observation_kind_wire(kind: RunnerStarted), " "))) {
-      GuestObservationSeen { kind: RunnerStarted, line: line }
-    } else if string_contains(s: line, pattern: concat(" ", concat(guest_observation_kind_wire(kind: RunnerExited), " "))) {
-      GuestObservationSeen { kind: RunnerExited, line: line }
-    } else {
-      NotAGuestObservation
-    }
+  if guest_emitted_event_in_line(line: line, event: GuestBooted) {
+    GuestObservationSeen { kind: GuestEmitted { event: GuestBooted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerStarted) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerStarted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerExited) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerExited }, line: line }
   } else if string_contains(s: line, pattern: actions_runner_listening_line_suffix) {
     GuestObservationSeen { kind: RunnerListening, line: line }
   } else {
     NotAGuestObservation
   }
+}
+
+// THE WHOLE CONSOLE, READ LINE BY LINE, AS THE HOST'S ONE READER. gunbc.runner_microvm_boot_probe
+// consumes it today to require GuestBooted; the lifecycle controller consumes the same fold for the
+// rest.
+fn guest_console_observations(console: String) -> List<GuestObservationKind> {
+  fold(split(s: console, delimiter: "\n"), init: [] as List<GuestObservationKind>, f: fn(acc, line) {
+    match guest_observation_of_console_line(line: line) {
+      GuestObservationSeen { kind: k, line: _ } => append(acc, items: [k])
+      NotAGuestObservation => acc
+    }
+  })
+}
+
+fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
+  any(xs: guest_console_observations(console: console), predicate: fn(k) {
+    guest_observation_kind_label(kind: k) == guest_observation_kind_label(kind: kind)
+  })
 }
 
 // DECLARED FRONTIER: THE AGENT HAS NOT YET RUN A JOB. Everything above is exercised by witnesses over
@@ -403,10 +438,10 @@ fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
       EnvironmentFileIfPresent { path: jit_drive_guest_device },
       ServiceStandardOutput { stream: OutputJournalAndConsole },
       ServiceStandardError { stream: OutputJournalAndConsole },
-      ExecStartPre { command: guest_observation_emit_command(kind: GuestBooted, image: image) },
+      ExecStartPre { command: guest_observation_emit_command(event: GuestBooted, image: image) },
       ExecStartPre { command: runner_guest_version_readback_command() },
       ExecStart { command: runner_guest_listener_command() },
-      ExecStartPost { command: guest_observation_emit_command(kind: RunnerStarted, image: image) },
+      ExecStartPost { command: guest_observation_emit_command(event: RunnerStarted, image: image) },
       ExecStopPost { command: guest_runner_exited_emit_command(image: image) },
     ],
     install: Installable {

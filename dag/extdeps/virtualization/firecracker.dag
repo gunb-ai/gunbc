@@ -3,6 +3,7 @@ module extdeps.virtualization.firecracker
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -112,6 +113,13 @@ type FirecrackerBootSource {
   kernel_image_path: FilePath
   boot_args: NonEmptyStr
 }
+
+// A DRIVE IS EXPOSED TO THE GUEST IN WHOLE 512-BYTE SECTORS, AND A PARTIAL TAIL IS DROPPED.
+// firecracker v1.16.1 src/vmm/src/devices/virtio/block/virtio/mod.rs: SECTOR_SIZE = 1 << SECTOR_SHIFT
+// (9). device.rs, on opening the backing file: "If the image is not a multiple of the sector size,
+// the tail bits are not exposed" -- it logs a warning and the guest sees the size rounded down. A
+// backing file whose content matters to its last byte must therefore be a whole number of these.
+data firecracker_block_sector_size: ByteSize = byte_size(count: 512)
 
 // A drive is identified by a caller-chosen id and is EITHER the root device or not. Upstream lets
 // both flags be set independently; modelling is_root_device as a Bool beside is_read_only keeps
