@@ -1,0 +1,67 @@
+module gunbc.serve_liveness
+
+import std.types { NonEmptyStr, String, Int, Bool, CommitSha, HttpStatus }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_int }
+
+// ── A HEALTH ANSWER THAT DOES NOT DEPEND ON THE THING BEING ASKED ABOUT ──────────────────────
+// WHAT /healthz CANNOT ANSWER, AND WHY THAT IS NOT A DEFECT IN IT. The roadmap's /healthz publishes
+// digests of the surface the process serves, which means answering it RENDERS that surface: it
+// materializes the site bundle inside the evaluator, under the process's evaluation budget, out of
+// the process's heap. That is the right shape for the question it asks -- "am I serving this tree"
+// -- and it is exactly the wrong instrument for the question an operator asks during an incident,
+// because the conditions that make a process unhealthy are the conditions that make an expensive
+// evaluation fail.
+//
+// Boot 15 is the receipt (side-chat ruling 2026-09-19, and the earlier #11557 request): the roadmap
+// process's heap was swapped and OOM-killed, and every route that could have reported it was inside
+// the evaluator that could not run. A health endpoint reachable only through the evaluator answers
+// "healthy" or nothing, and "nothing" is indistinguishable from a network fault, a dead host or a
+// process that never started.
+//
+// SO THIS ONE IS ANSWERED BEFORE THE EVALUATOR IS ENTERED. The serve seam recognizes this path and
+// writes the body from values it already holds -- the release revision it validated before binding,
+// the entry it armed, and the address it actually bound -- without calling any `.dag` function and
+// without arming an evaluation budget. That is not a shortcut around the model: it is the only
+// construction under which the answer is available in the state it exists to report.
+//
+// IT IS NOT A SECOND NAME FOR /healthz. They answer different questions: /healthz answers WHAT this
+// process is serving and can therefore be wrong in ways only an evaluation can detect; this answers
+// THAT this process is alive, listening, and which release it is. A deployment reads both -- this
+// one to know the process exists, that one to know it is serving the tree that was deployed -- and
+// a reader that could only reach the second would have no way to distinguish a broken surface from
+// a dead process.
+//
+// BOTH SERVED PROCESSES GET IT WITHOUT EITHER ROUTE TABLE CARRYING IT, which is the property the
+// split needs: the broker's table is exactly its four approval routes, the roadmap's is its own,
+// and neither owns a liveness row that the other would have to copy.
+data serve_liveness_path: NonEmptyStr = "/livez"
+
+// THE BODY IS MODELED HERE EVEN THOUGH THE SEED WRITES IT, and the two are not a fork. This module
+// is the AUTHORITY for what the document says; the seed is its realization at a boundary no `.dag`
+// fold can occupy, exactly as gunbc.running_release_identity and the seed's own
+// release_revision_text_valid are one rule realized at two boundaries. What that buys is a
+// discriminating claim: a reader can assert the document's shape against this fold without a
+// running process, and a change to the shape is a change to one declaration rather than to a string
+// literal inside a Rust match.
+fn serve_liveness_body(
+  release_revision: CommitSha,
+  entry_function: NonEmptyStr,
+  bound_host: NonEmptyStr,
+  bound_port: Int,
+) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "live", value: json_string(s: "true")),
+    json_kv(key: "release_revision", value: json_string(s: release_revision as String)),
+    json_kv(key: "entry_function", value: json_string(s: entry_function as String)),
+    json_kv(key: "bound_host", value: json_string(s: bound_host as String)),
+    json_kv(key: "bound_port", value: json_int(n: bound_port)),
+  ]))
+}
+
+// 200 AND NOTHING ELSE. This endpoint has exactly one honest answer, because it is answered from
+// values the process validated before it bound the listener: if the process can write a response at
+// all, every field is present and correct. An endpoint that could answer 503 would be asserting
+// something about a subsystem it does not consult, and a reader that saw one would have no way to
+// know what was actually wrong. The failure mode this instrument reports is the CONNECTION not
+// completing, which is the observation the caller makes rather than a status this process writes.
+data serve_liveness_status: HttpStatus = 200

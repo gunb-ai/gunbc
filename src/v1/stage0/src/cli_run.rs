@@ -19924,6 +19924,16 @@ fn release_revision_text_valid(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
+/// The liveness path this server answers WITHOUT entering the evaluator.
+///
+/// Seed realization of `gunbc.serve_liveness` `serve_liveness_path`. It is a constant here rather
+/// than a value read from the graph for the reason the endpoint exists at all: a path resolved by
+/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on. The `.dag`
+/// declaration is the authority for what the path and the document are; this is the one place that
+/// authority is realized at a boundary no fold can occupy, the same two-boundary arrangement
+/// `release_revision_text_valid` already carries.
+const SERVE_LIVENESS_PATH: &str = "/livez";
+
 /// The process-wide evaluation budget this serve process enforces.
 ///
 /// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
@@ -20233,6 +20243,44 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
+                // THE ONE ROUTE ANSWERED BEFORE THE EVALUATOR IS ENTERED.
+                //
+                // Seed realization of `gunbc.serve_liveness` — that module owns the path, the
+                // document and the single status, and states why the answer cannot live behind an
+                // evaluation. The short version, because it is the reason this branch is here and
+                // not a `.dag` row: the conditions that make a served process unhealthy are the
+                // conditions that make an expensive evaluation fail, so a health endpoint reachable
+                // only through the evaluator answers "healthy" or nothing — and "nothing" is
+                // indistinguishable from a dead host. Boot 15 was that outage (side-chat ruling
+                // 2026-09-19; the request is #11557).
+                //
+                // Every field is a value this process validated BEFORE it bound: the release
+                // revision was checked for shape and the process exited if it was not a revision,
+                // the entry is the armed contract's subject, and the address is the one
+                // `local_addr` reported. So there is nothing here that can be unavailable while
+                // the connection is writable, which is why the module declares exactly one status.
+                //
+                // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
+                // deadline around a `format!` would be ceremony, and reaching the evaluator at all
+                // would reintroduce the dependency this endpoint exists to remove.
+                Ok(Some((method, path, _body, _identity)))
+                    if method == "GET" && path == SERVE_LIVENESS_PATH =>
+                {
+                    serve_write_response(
+                        &mut stream,
+                        200,
+                        "application/json; charset=utf-8",
+                        &format!(
+                            "{{\"live\":\"true\",\"release_revision\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
+                            serve_json_string(&release_revision),
+                            serve_json_string(serve_budget_refusal::serve_contract_entry(
+                                &armed_contract
+                            )),
+                            serve_json_string(&bound.ip().to_string()),
+                            bound.port(),
+                        ),
+                    )
+                }
                 Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),

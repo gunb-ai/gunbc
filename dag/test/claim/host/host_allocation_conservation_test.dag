@@ -12,6 +12,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim, HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured }
 import gunbc.fleet_host_budget {
   host_allocation_verdict,
   HostAllocationVerdict,
@@ -78,11 +79,13 @@ fn witness_allocation_conserves(
   runner_pool: ByteSize,
   session_pool: ByteSize,
   compile_pool: ByteSize,
-  control_plane: HostFabricControlPlaneClaim
+  control_plane: HostFabricControlPlaneClaim,
+  served_deployment: HostServedDeploymentClaim
 ) -> Bool {
   match host_allocation_verdict(
     host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
-    session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane
+    session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
+    served_deployment: served_deployment
   ) {
     HostAllocationConserves => true
     HostAllocationOversubscribed => false
@@ -103,7 +106,8 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
     runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
     session_pool: byte_size(0),
     compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced
   )
 }
 
@@ -185,7 +189,8 @@ fn live_verdict_with_session_charge(
     ),
     session_pool: session_pool,
     compile_pool: byte_size(0),
-    control_plane: control_plane
+    control_plane: control_plane,
+    served_deployment: host_served_deployment_claim(host: host)
   )
 }
 
@@ -370,7 +375,8 @@ test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
     runner_pool: byte_size(128849018880),
     session_pool: byte_size(0),
     compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced
   )
 }
 
@@ -382,7 +388,8 @@ fn sessions_fixture_at(session_pool: ByteSize) -> Bool {
     runner_pool: byte_size(68719476736),
     session_pool: session_pool,
     compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced
+    control_plane: ControlPlaneNotPlaced,
+    served_deployment: ServedDeploymentNotPlaced
   )
 }
 
@@ -744,7 +751,8 @@ fn conserves_at_width_charging(host: HostIdentity, slots: Int, control_plane: By
     s: live_conservation_at_width(
       host: host,
       slots: slots,
-      control_plane: ControlPlaneClaimResolved { memory: control_plane }
+      control_plane: ControlPlaneClaimResolved { memory: control_plane },
+      served_deployment: ServedDeploymentNotPlaced
     )
   )
 }
@@ -932,7 +940,8 @@ test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_on
     h => match live_conservation_at_width(
       host: h,
       slots: 1,
-      control_plane: ControlPlaneClaimUnmeasured { cause: "probe" }
+      control_plane: ControlPlaneClaimUnmeasured { cause: "probe" },
+      served_deployment: ServedDeploymentNotPlaced
     ) {
       LiveConservationEvaluated { host: _, slots: _, verdict: v } =>
         match v {

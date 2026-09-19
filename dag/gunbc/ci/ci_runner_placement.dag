@@ -25,6 +25,7 @@ import gunbc.session_reservation_policy {
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
 }
+import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim }
 import gunbc.fleet_host_budget {
   gunbc_runner_pool_budget_for,
   host_allocation_verdict,
@@ -585,11 +586,12 @@ fn host_standing_with_session_slice(
             runner_pool: gunbc_runner_pool_budget_for(host: host_id),
             session_pool: session_pool,
             compile_pool: compile_pool,
-            control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
+            control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),
+            served_deployment: host_served_deployment_claim(host: host_id)
           ) {
             HostAllocationOversubscribed =>
               refuse_host(host: host_id, cause: HostAllocationOversubscribedOnHost {
-                cause: concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", host_id)
+                cause: concat("host allocation over-committed (runner_pool + session_pool + compile_pool + served_deployment_pool + overhead + headroom exceeds host RAM): ", host_id)
               })
             HostAllocationUnchargeable { cause: c } =>
               refuse_host(host: host_id, cause: HostAllocationUnchargeableOnHost {

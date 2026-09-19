@@ -6,7 +6,9 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port, approval_broker_dark_listen_port,
   approval_broker_confirm_path_template, approval_broker_submit_path,
   approval_broker_status_path_template,
+  approval_broker_confirm_front_door, approval_broker_status_front_door,
 }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
 
 // ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
 // THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a
@@ -319,4 +321,30 @@ fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
       StageAdmitted { stage: _ } => true
       StageRefused { stage: _, cause: _ } => false
     }
+}
+
+// ── WHAT STAGE 4 INSTALLS ────────────────────────────────────────────────────────────────────
+// THE TWO MOUNTS ARE A VALUE THE PLAN CARRIES, not a command someone types at stage 4. That is the
+// difference between a modeled deploy step and the hand-authored migration script DESIGN section 6
+// classifies as out-of-band actuation: the argv the operator runs and the argv the plan reasons
+// about are the same projection of the same endpoint, so "was the front door repointed" is a
+// question about a value rather than about what was typed.
+//
+// THEY ADD MAPPINGS RATHER THAN REPLACING ONE, and that is what keeps the roadmap serving
+// everything else through the cutover. tailscale keys a mapping on (listener port x mount path x
+// service), so two --set-path endpoints on the same https listener sit beside the roadmap's root
+// mount instead of rebinding it -- the collision the endpoint key exists to make expressible, here
+// deliberately avoided rather than deliberately caused.
+fn approval_broker_front_door_endpoints(https_port: Port, backend_port: Port) -> List<TailscaleServeEndpoint> {
+  [
+    approval_broker_confirm_front_door(https_port: https_port, backend_port: backend_port),
+    approval_broker_status_front_door(https_port: https_port, backend_port: backend_port),
+  ]
+}
+
+fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>> {
+  map(
+    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_listen_port),
+    e => tailscale_serve_enable_argv(endpoint: e),
+  )
 }

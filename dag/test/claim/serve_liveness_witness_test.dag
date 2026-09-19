@@ -1,0 +1,58 @@
+module test.claim.serve_liveness_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, CommitSha }
+import gunbc.serve_liveness { serve_liveness_path, serve_liveness_body, serve_liveness_status }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data liveness_fixture_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+
+// THE DOCUMENT CARRIES THE RELEASE IDENTITY, which is the whole reason a deployment reads this
+// endpoint rather than merely opening a socket. A connection that completes says a process is
+// listening; only the body says WHICH release is listening, and a readback that could not
+// distinguish the deployed revision from the previous one would let a failed deploy look converged.
+//
+// THE RED: drop the release_revision member from serve_liveness_body and this claim fails while the
+// endpoint still answers 200 -- which is exactly the failure a status-only check cannot see.
+test fn serve_liveness_body_publishes_the_release_identity() -> Bool {
+  let body = serve_liveness_body(
+    release_revision: liveness_fixture_revision,
+    entry_function: "approval_broker_handle" as NonEmptyStr,
+    bound_host: "127.0.0.1" as NonEmptyStr,
+    bound_port: 8085,
+  )
+  string_contains(s: body, pattern: liveness_fixture_revision as String)
+    && string_contains(s: body, pattern: "approval_broker_handle")
+    && string_contains(s: body, pattern: "8085")
+}
+
+// THE ENTRY FUNCTION IS IN THE DOCUMENT because after the approval-broker split there are two
+// served gunbc processes on one host running the same binary out of the same tree. A liveness
+// answer that did not say which entry it was armed for would be ambiguous exactly where the split
+// matters: an operator probing during an incident needs to know whether the roadmap or the broker
+// answered, and the ports alone will not say so once anything proxies them.
+test fn serve_liveness_body_distinguishes_the_two_served_entries() -> Bool {
+  let roadmap = serve_liveness_body(
+    release_revision: liveness_fixture_revision,
+    entry_function: "roadmap_serve_handle" as NonEmptyStr,
+    bound_host: "0.0.0.0" as NonEmptyStr,
+    bound_port: 8080,
+  )
+  let broker = serve_liveness_body(
+    release_revision: liveness_fixture_revision,
+    entry_function: "approval_broker_handle" as NonEmptyStr,
+    bound_host: "0.0.0.0" as NonEmptyStr,
+    bound_port: 8085,
+  )
+  !(roadmap == broker)
+}
+
+// THE PATH IS NOT /healthz, and the claim is here because the two would be trivially merged by
+// anyone who read only one of them. They answer different questions -- what this process is SERVING
+// versus THAT it is alive and which release -- and the whole value of this one is that answering it
+// costs no evaluation. Pointing it at the roadmap's health path would put it back inside the
+// evaluator it exists to stay out of.
+test fn serve_liveness_path_is_not_the_served_surface_health_path() -> Bool {
+  !(serve_liveness_path as String == "/healthz") && serve_liveness_status == 200
+}
