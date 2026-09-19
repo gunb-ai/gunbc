@@ -670,7 +670,8 @@ test fn the_live_session_charge_is_decisive_on_a_derived_boundary() -> Bool {
           ),
           session_pool: byte_size(0),
           compile_pool: byte_size(0),
-          control_plane: host_fabric_control_plane_claim(host: h)
+          control_plane: host_fabric_control_plane_claim(host: h),
+          served_deployment: ServedDeploymentNotPlaced
         )
     LiveDiscriminatorUnavailable { host: _, cause: _ } => false
   }
@@ -751,8 +752,7 @@ fn conserves_at_width_charging(host: HostIdentity, slots: Int, control_plane: By
     s: live_conservation_at_width(
       host: host,
       slots: slots,
-      control_plane: ControlPlaneClaimResolved { memory: control_plane },
-      served_deployment: ServedDeploymentNotPlaced
+      control_plane: ControlPlaneClaimResolved { memory: control_plane }
     )
   )
 }
@@ -940,8 +940,7 @@ test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_on
     h => match live_conservation_at_width(
       host: h,
       slots: 1,
-      control_plane: ControlPlaneClaimUnmeasured { cause: "probe" },
-      served_deployment: ServedDeploymentNotPlaced
+      control_plane: ControlPlaneClaimUnmeasured { cause: "probe" }
     ) {
       LiveConservationEvaluated { host: _, slots: _, verdict: v } =>
         match v {

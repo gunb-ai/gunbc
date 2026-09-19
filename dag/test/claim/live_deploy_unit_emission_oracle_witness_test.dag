@@ -673,15 +673,15 @@ test fn slice_unit_is_not_installable() -> Bool {
 fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
   let base = live_spec()
   match base {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, repo_root: rr, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: rr,
               service_user: wrong_user,
               service_uid: uid, listen: l,
@@ -710,15 +710,15 @@ fn divergent_repo_root() -> NonEmptyStr {
 
 fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: wrong_root,
               service_user: su, service_uid: uid, listen: l,
               serve_cpu_limit: cpu, serve_wall_limit: wall,
@@ -756,15 +756,15 @@ test fn serve_unit_user_goes_red_under_different_user() -> Bool {
 
 fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: rr,
               service_user: su, service_uid: uid,
               listen: HttpServerListenConfig { host: l.host, port: wrong_port },

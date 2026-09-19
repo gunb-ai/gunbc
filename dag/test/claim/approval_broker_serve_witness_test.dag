@@ -204,16 +204,29 @@ fn admitted(a: ApprovalWriteAdmission) -> Bool {
   }
 }
 
-// THE GATE IS ON THE REQUEST PATH, NOT BESIDE IT. This runs the broker's own adapter with the
-// NON-WRITER identity and asserts the submission is refused with the authority's own reason -- so a
-// future edit that removes the consult from approval_submit_response reds here even though the
-// admission fold itself still exists and its own claims still pass.
+// ── WHICH IDENTITY IS THE NON-WRITER TODAY, AND WHY GETTING IT BACKWARDS MATTERED ───────────
+// These two claims passed RoadmapProcess and called it the non-writer. It is the WRITER: the live
+// posture is RoadmapServesAndWrites, which derives RoadmapWriter, whose process is RoadmapProcess.
+// The non-writer today is BrokerProcess (review 68224).
 //
-// THE RED: delete the approval_write_admission call in approval_submit_response and this answers a
-// submission outcome instead of the authority refusal.
+// THE SUBMISSION CLAIM WENT RED, which is the honest half. THE DECISION CLAIM LANDED ON 503 ANYWAY,
+// through RedemptionIdentityUntrusted -- because approval_identity_trust is NotEstablished while
+// the unit binds 0.0.0.0 -- and only the body conjunct saved it. Had I asserted status alone, it
+// would have been PERMANENTLY GREEN through a mechanism it does not exercise, which is precisely
+// the designed-fixture failure DESIGN section 3 names: the claim reaches the right verdict by the
+// wrong route, so the wall it was built to be is gone while it still reports coverage. The body
+// assertion is what made the near-miss visible, and it stays for that reason rather than as detail.
+//
+// THE PAIR BELOW IS WHAT THE GATE ACTUALLY NEEDS: the non-writer refused with the authority's own
+// reason, and the writer NOT refused that way -- because a claim that only shows a refusal cannot
+// tell a working gate from one that refuses everybody.
+
+// THE GATE IS ON THE REQUEST PATH, NOT BESIDE IT. This runs the broker's own adapter under the
+// non-writer identity, so a future edit removing the consult from approval_submit_response reds
+// here even though the admission fold itself still exists and its own claims still pass.
 test fn a_non_writer_submission_is_refused_before_the_store() -> Bool {
   let r = broker_respond_as(
-    process: RoadmapProcess,
+    process: BrokerProcess,
     method_label: "POST",
     path: approval_broker_submit_path as String,
     body: "{}",
@@ -221,25 +234,51 @@ test fn a_non_writer_submission_is_refused_before_the_store() -> Bool {
   r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
 }
 
-// THE SAME FOR THE ONE ROUTE THAT COMMITS A DECISION. A capability that parses is the input that
-// would otherwise reach redeem_over_store, so this asserts the gate sits between the parse and the
-// store rather than after it.
-test fn a_non_writer_decision_is_refused_before_the_store() -> Bool {
+// THE WRITER IS NOT REFUSED BY THE GATE, and this is the conjunct that makes the claim above mean
+// something. The same malformed body under the WRITER identity reaches the envelope parse and comes
+// back as a submission outcome -- so the gate discriminates on identity rather than refusing every
+// caller. THE RED: make approval_write_admission refuse unconditionally and this fails while the
+// claim above still passes.
+test fn the_writer_reaches_the_submission_fold_rather_than_the_gate() -> Bool {
   let r = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "POST",
+    path: approval_broker_submit_path as String,
+    body: "{}",
+  )
+  !string_contains(s: r.body, pattern: "writer authority is held by")
+    && string_contains(s: r.body, pattern: "approval submission:")
+}
+
+// THE SAME FOR THE ONE ROUTE THAT COMMITS A DECISION, and here the BODY is the whole assertion.
+// This path answers 503 under either identity today -- the non-writer through the authority gate,
+// the writer through RedemptionIdentityUntrusted -- so a status-only claim would pass without ever
+// reaching the gate. What discriminates is WHICH refusal came back.
+test fn a_non_writer_decision_is_refused_before_the_store() -> Bool {
+  let refused = broker_respond_as(
+    process: BrokerProcess,
+    method_label: "POST",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  let writer = broker_respond_as(
     process: RoadmapProcess,
     method_label: "POST",
     path: "/approve/esc-1.approve.0badc0de",
     body: "",
   )
-  r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
+  refused.status == 503
+    && string_contains(s: refused.body, pattern: "writer authority is held by")
+    && !string_contains(s: writer.body, pattern: "writer authority is held by")
 }
 
-// THE POSITIVE CONTROL: the READ routes are not gated, because gating a read would refuse a poll
-// that is safe from either process and would say nothing true about single-writer discipline. The
-// confirmation page renders what a URL claims and writes nothing.
+// THE READ ROUTES ARE NOT GATED, because gating a read would refuse a poll that is safe from either
+// process and would say nothing true about single-writer discipline. The confirmation page renders
+// what a URL claims and writes nothing. It runs under the NON-WRITER identity, which is the arm
+// that would break if a future edit gated reads by authority.
 test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
   let r = broker_respond_as(
-    process: RoadmapProcess,
+    process: BrokerProcess,
     method_label: "GET",
     path: "/approve/esc-1.approve.0badc0de",
     body: "",
