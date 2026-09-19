@@ -20,7 +20,10 @@ import product.fabric.work { ExecutionRequirements }
 import product.fabric.envelope { StorageRequirement }
 import extdeps.firmware.kernel_cmdline { sysctl_cmdline_arg, kernel_cmdline_arg_wire }
 import gunbc.fabric_witness_run { floor_execution_requirements }
-import gunbc.floor_demand { floor_storage_requirement }
+import gunbc.floor_demand {
+  floor_storage_requirement, round_up_to_gibibyte_grain,
+  gunbc_floor_non_reclaimable_standing, NonReclaimableUnmeasured, NonReclaimableMeasured,
+}
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,
@@ -440,7 +443,7 @@ fn runner_microvm_shape(
   cpu: CellCpuEntitlement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
-  cache_allowance: Gibibyte,
+  cache_allowance: ByteSize,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -479,7 +482,7 @@ fn runner_microvm_shape_after_cpu(
   storage: StorageRequirement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
-  cache_allowance: Gibibyte,
+  cache_allowance: ByteSize,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -491,7 +494,7 @@ fn runner_microvm_shape_after_cpu(
         MicroVmShapeRefused { refusal: ShapeRefusedReserveExceedsCell { reserve: r, envelope: envelope.bytes } }
       } else {
         let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: r)
-        let allowance = gibibyte_to_byte_size(cache_allowance)
+        let allowance = cache_allowance
         if remainder < byte_size_count(b: need) + byte_size_count(b: allowance) {
           MicroVmShapeRefused {
             refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
@@ -519,17 +522,24 @@ fn runner_microvm_shape_after_cpu(
   }
 }
 
-// THE GUEST'S CACHE ALLOWANCE IS OPERATOR POLICY, NOT A MEASUREMENT, AND IT IS NAMED AS SUCH. A
-// guest whose RAM equals the Work's non-reclaimable demand runs the floor with no file cache at
-// all, re-reading every source and object from the workspace image on each touch. ITS EVIDENCE IS
-// THE DEMAND RECEIPT'S OWN TWO BEATS (gunbc.floor_demand gunbc_floor_non_reclaimable_receipt_2026_09_19):
-// with about 1.8 GiB of cache beside the anonymous peak the host slot stalled zero faults per
-// minute, and with that cache reclaimed to 13 MiB it took sixty-seven thousand a minute -- so two
-// gibibytes is the smallest whole-gibibyte grain above the cache the run held while it was not
-// thrashing. It is a floor on a working operating point, not a measured optimum; the operator may
-// revise it, and its revision trigger is the in-guest cold receipt
-// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest.
-data gunbc_runner_microvm_guest_cache_allowance: Gibibyte = gibibyte(count: 2)
+// THE GUEST'S CACHE ALLOWANCE IS DERIVED FROM THE DEMAND RECEIPT, NOT DECLARED BESIDE IT. A guest
+// whose RAM equals the Work's non-reclaimable demand runs the floor with no file cache at all,
+// re-reading every source and object from the workspace image on each touch. The receipt carries
+// the last beat at which the host slot was NOT thrashing (gunbc.floor_demand
+// FloorNonReclaimableReceipt.last_unstalled: the stall clause at zero, 1895120896 bytes of file
+// cache beside the anonymous demand on 2026-09-19), and the allowance is that cache rounded up to
+// the corpus's whole-gibibyte grain: the smallest grain above a cache the run held while it worked.
+// It is a floor on a working operating point rather than a measured optimum, which is the only
+// honest reading of one beat; its revision is the in-guest cold receipt
+// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest. While the
+// demand is unmeasured there is no beat to derive from, and the shape refuses on the unstated
+// Work memory before this is ever read.
+fn gunbc_runner_microvm_guest_cache_allowance() -> ByteSize {
+  match gunbc_floor_non_reclaimable_standing() {
+    NonReclaimableUnmeasured { instrument: _ } => byte_size(0)
+    NonReclaimableMeasured { receipt: r } => round_up_to_gibibyte_grain(bytes: r.last_unstalled.file)
+  }
+}
 
 // THE FLEET'S OWN SHAPE: the floor's Work against this fleet's cell, reserve, cache allowance,
 // task row and workspace grant. Every input is read from the authority that owns it; nothing here is a
@@ -542,7 +552,7 @@ fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
     cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
     envelope: CellMemoryEnvelope { bytes: cell.memory_max },
     reserve: gunbc_runner_microvm_realization_reserve(),
-    cache_allowance: gunbc_runner_microvm_guest_cache_allowance,
+    cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
     task_ceiling: cell.tasks_max,
     workspace: runner_microvm_workspace_grant,
   )

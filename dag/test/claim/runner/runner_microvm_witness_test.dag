@@ -88,7 +88,10 @@ import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, Con
 import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import extdeps.storage.types { Ephemeral }
-import gunbc.floor_demand { floor_storage_requirement, floor_memory_requirement }
+import gunbc.floor_demand {
+  floor_storage_requirement, floor_memory_requirement, round_up_to_gibibyte_grain,
+  gunbc_floor_non_reclaimable_standing, NonReclaimableUnmeasured, NonReclaimableMeasured,
+}
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
   CoresPerSlotResolved,
@@ -637,7 +640,7 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
           }
       }
     Present { value: need } =>
-      if byte_size_count(b: need.min_bytes) + byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_guest_cache_allowance)) <= remainder {
+      if byte_size_count(b: need.min_bytes) + byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) <= remainder {
         match gunbc_runner_microvm_shape() {
           MicroVmShapeResolved { shape: s } =>
             mebibyte_count(m: s.size.memory) == remainder / (1024 * 1024)
@@ -651,12 +654,26 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
             match r {
               ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
                 byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
-                  && byte_size_count(b: a) == byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_guest_cache_allowance))
+                  && byte_size_count(b: a) == byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
                   && byte_size_count(b: m) == remainder
               _ => false
             }
         }
       }
+  }
+}
+
+// THE ALLOWANCE IS THE LAST UNSTALLED BEAT'S CACHE AT GIBIBYTE GRAIN, READ FROM THE RECEIPT, and
+// zero while nothing is measured -- so a change to the receipt moves the allowance without anyone
+// editing a literal.
+test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat() -> Bool {
+  match gunbc_floor_non_reclaimable_standing() {
+    NonReclaimableUnmeasured { instrument: _ } => byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) == 0
+    NonReclaimableMeasured { receipt: r } =>
+      byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
+        == byte_size_count(b: round_up_to_gibibyte_grain(bytes: r.last_unstalled.file))
+        && r.last_unstalled.stall_faults_per_minute == 0
+        && byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) >= byte_size_count(b: r.last_unstalled.file)
   }
 }
 
@@ -795,7 +812,7 @@ fn shape_of(
     cpu: cpu,
     envelope: envelope,
     reserve: reserve,
-    cache_allowance: gibibyte(count: 1),
+    cache_allowance: gibibyte_to_byte_size(gibibyte(count: 1)),
     task_ceiling: 16384,
     workspace: runner_microvm_workspace_grant,
   )
