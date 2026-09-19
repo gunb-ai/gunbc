@@ -162,42 +162,64 @@ type RunnerUnitLifecycleIntent {
   kill_mode: SystemdKillMode
 }
 
-// THE ONE PROPERTY THE INTENT EXISTS TO GUARANTEE, STATED AS A PREDICATE OVER THE PAIR RATHER THAN
-// AS A CHOSEN CONSTANT.
+// THE ONE PROPERTY THE INTENT EXISTS TO GUARANTEE: WHEN AN INCARNATION ENDS, SYSTEMD ISSUES A STOP,
+// AND THAT STOP REACHES EVERY PROCESS IN THE CGROUP.
 //
-// A slot cannot leave a live process behind at teardown unless BOTH hold: the stop must reach every
-// process in the cgroup (kill_mode), and systemd must not consider the service finished while
-// processes remain (exit_type). Either one alone is insufficient, and that is the trap the brief
-// names -- KillMode=control-group with ExitType=main still lets the manager decide the service
-// ended when a wrapper exits, so the teardown that would have reached the cgroup is never issued
-// for the survivors.
+// Two questions, and each half answers exactly one. kill_mode answers whether an ISSUED stop
+// reaches the whole cgroup. exit_type answers whether a stop is ISSUED AT ALL when the incarnation
+// ends -- and that second question is the one an earlier revision of this predicate answered
+// backwards.
 //
-// THE PARAMETER IS WHETHER THE LISTENER IS THE MAIN PROCESS, NOT WHETHER A WRAPPER EXECS, AND THE
-// DIFFERENCE IS THE WHOLE MEASUREMENT. An earlier revision asked the second question, on the
-// reasoning that a wrapper which execs leaves the listener as the tracked process. That reasoning
-// is wrong here for a reason no amount of reading the wrapper would have shown: jit-runner.sh DOES
-// exec, and the listener is still not the main process, because what it execs into is GitHub's
-// stock run.sh, which does not exec. Measured process tree, srv1 2026-08-25 -- run.sh at pid
-// 702572 with ppid 1 as MainPID, its run-helper.sh child at 702921, and Runner.Listener at 702930.
-// The listener is a GRANDCHILD of the process systemd supervises.
+// THE RETRACTED ARMS, AND THE INCIDENT THAT FALSIFIED THEM. The earlier predicate read
+// `ExitTypeCgroup => true` and `ExitTypeMain => listener_is_main_process`, on the reasoning that
+// ExitType=cgroup makes systemd wait for the whole cgroup and so cannot call the service finished
+// while a process remains. The waiting is real; what it implies is the opposite of what that
+// revision concluded. Under ExitType=cgroup, a populated cgroup keeps the unit RUNNING after
+// MainPID exits, so no stop transaction begins, KillMode never executes and TimeoutStopSec never
+// starts. srv2-02, 2026-09-16: GitHub cancelled a job at its 180-minute cap, the cancel reached the
+// step's shell but not its claim_executor child, run.sh exited, and the unit sat `active` with
+// MainPID=0 for 2.7 days holding 16 GB. The census of 2026-09-18 found srv1-03 and srv1-07 in the
+// same state for 16 days, held by background processes a SUCCESSFUL job had left behind -- so the
+// hang is not a property of cancellation, it is a property of any survivor.
 //
-// So the predicate takes the fact that decides the outcome rather than a proxy for it. A proxy that
-// happens to be true while the thing it stands for is false is worse than no parameter at all.
-fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is_main_process: Bool) -> Bool {
+// THE CORRECTED ARMS ARE MEASURED, NOT READ. srv1, systemd 255, 2026-09-18, a transient unit with
+// KillMode=control-group, SendSIGKILL=yes, TimeoutStopSec=4s, whose main process forks a child and
+// exits zero: under ExitType=main the child was reaped whether it honored SIGTERM or ignored it (the
+// second after the SIGKILL escalation); under ExitType=cgroup the unit stayed `active running` with
+// MainPID=0 and the child alive in both cases; an explicit `systemctl stop` under ExitType=cgroup
+// reaped the ignoring child in 4s. So ExitType decides whether a stop is issued, KillMode decides
+// whether an issued stop reaches the cgroup, and ExitType is irrelevant once a stop is requested.
+//
+// THE PARAMETER IS WHETHER THE TRACKED MAIN PROCESS EXITS WHEN THE INCARNATION ENDS, and it
+// replaces `listener_is_main_process`, which was the wrong question. The listener being a
+// grandchild of MainPID does not matter: run.sh's exit is what makes systemd issue the stop, and
+// KillMode=control-group then collects the grandchildren. What would defeat ExitType=main is a main
+// process that OUTLIVES the incarnation -- which is exactly run.sh's return-code-2 relaunch loop.
+//
+// WHAT THIS PREDICATE DOES NOT PROVE, stated so it is not cited for more. It is a static property
+// of unit configuration: it says a stop is issued and reaches the cgroup. It does not say the
+// processes are gone afterwards (a task in uninterruptible sleep survives a pending SIGKILL), it
+// does not cover a main process that stays alive across the incarnation's end, and it does not say
+// the cell is safe to reuse. Those are runtime facts, owned by a terminalizer's readback and by
+// gunbc.product.fabric.sanitation's CellReadiness, and no Bool over two directives can stand for
+// them.
+fn lifecycle_intent_stops_finished_incarnation(intent: RunnerUnitLifecycleIntent, main_exits_when_incarnation_ends: Bool) -> Bool {
   systemd_kill_mode_reaches_whole_cgroup(mode: intent.kill_mode)
     && match intent.exit_type {
-      ExitTypeCgroup => true
-      ExitTypeMain => listener_is_main_process
+      ExitTypeMain => main_exits_when_incarnation_ends
+      ExitTypeCgroup => false
     }
 }
 
-// THE DECLARED RESTING FORM, AND IT IS FORCED BY MEASUREMENT RATHER THAN CHOSEN.
+// THE DECLARED RESTING FORM: ExitType=main WITH KillMode=control-group.
 //
-// The preferred form was that the listener become the tracked main process, because then nothing
-// has to wait on a cgroup to know the service is over. That form is UNREACHABLE without forking
-// run.sh -- vendor code that also carries the return-code-2 relaunch loop and the deprecation exit
-// path -- so it is not on the table, and this row records that as the reason rather than presenting
-// ExitTypeCgroup as a preference.
+// An earlier revision declared ExitType=cgroup, on the reasoning that the listener could not
+// become the tracked main process without forking run.sh. The premise holds -- run.sh does not
+// exec -- but it was never the deciding fact: the listener does not need to be MainPID for
+// ExitType=main to work, because run.sh itself exits when the incarnation ends, and that exit is
+// what issues the stop. ExitType=cgroup was the configuration that turned every surviving process
+// into a slot held indefinitely (see the predicate above). It is retracted, not kept beside the
+// corrected form.
 //
 // WHAT THE OTHER HALF FIXES, MEASURED BY EXECUTION ON srv4-04 2026-08-25. An explicit
 // `systemctl restart` of an idle slot killed the main process and NOTHING ELSE: the outgoing
@@ -234,8 +256,8 @@ fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is
 // drop-in, and a needrestart deferral so the upgrade stops issuing the restart.
 //
 // THE DECLARED INTENT DOES NOT DEPEND ON THAT CHAIN, WHICH IS WHY THE RETRACTION DOES NOT MOVE IT.
-// ExitTypeCgroup plus KillModeControlGroup is warranted by what a teardown must reach, and by the
-// executed fact that today's teardown reaches only the main process. Whether the ordinary path
+// KillModeControlGroup is warranted by what a teardown must reach, and by the executed fact that a
+// KillMode=process teardown reaches only the main process. Whether the ordinary path
 // detaches lineages by that route or another, a stop that does not reach the cgroup cannot collect
 // them.
 //
@@ -246,11 +268,16 @@ fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is
 // lane -- srv1-01 showed many restarts and no surplus while srv4-03 showed none and several
 // detached generations, so it is diagnostic metadata and never the subject.
 data gunbc_runner_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
-  exit_type: ExitTypeCgroup,
+  exit_type: ExitTypeMain,
   kill_mode: KillModeControlGroup,
 }
 
-// THE LISTENER IS NOT THE MAIN PROCESS ON THIS FLEET, stated as its own row because it is the input
-// the predicate above needs and it is an observation about vendor code rather than a choice. It
-// changes only if run.sh changes or is replaced.
-data gunbc_runner_listener_is_main_process: Bool = false
+// run.sh EXITS WHEN THE INCARNATION ENDS, stated as its own row because it is the input the
+// predicate above needs and it is an observation about vendor code rather than a choice. In the
+// pinned runner, run-helper.sh returns 0 -- and run.sh exits -- for listener codes 0, 1, 5 and any
+// unknown code; it returns 2, and run.sh relaunches in place, for listener codes 2, 3 and 4 (the
+// self-update and retryable paths). An ephemeral runner finishing its one job returns 0. The
+// relaunch arm is the residual this row does not cover: there the incarnation ends while MainPID
+// lives, no stop is issued, and collecting the outgoing incarnation is the terminalizer's
+// obligation, not this unit's. This changes only if run.sh changes or is replaced.
+data gunbc_runner_main_exits_when_incarnation_ends: Bool = true

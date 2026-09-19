@@ -733,8 +733,21 @@ fn census_app_agreement(
 // THE PLAN IS THE EXCHANGE, AND IT CARRIES THE CODE RATHER THAN BEING THE CODE. A converge that
 // decided Apply without a code in hand would be deciding to ask a human, which is a different
 // decision from deciding to spend one.
+// THE PLAN NAMES THE SUBJECT THE ACTUATION ADDRESSES, so the actuator honours the decision rather
+// than re-deriving it. An earlier cut carried only the SecretRef destinations here and left the
+// actuator reaching for census_app_identity directly, which made custody_name a second derivation of
+// a fact the plan was already built from. It was harmless while both derived from one declaration --
+// and that is exactly the shape that stopped being harmless once in this PR, when the custody write
+// keyed on the returned slug while the read keyed on the declared name. Two derivations of one name
+// is the defect; one derivation passed through the plan is the repair.
+//
+// custody_name AND custody ARE DIFFERENT FACTS AND BOTH BELONG HERE. custody_name is what the
+// actuation ADDRESSES its handoff files by, now; custody is where those bytes are DESTINED, in
+// Secret Manager, and is what custody_identity_document writes beside them so an operator holding
+// four files knows where they go.
 type CensusAppPlan {
   code: GitHubAppManifestCode
+  custody_name: NonEmptyStr
   custody: GitHubAppCustody
 }
 
@@ -911,7 +924,7 @@ fn census_app_not_acquired_classification(
         Present { value: c } =>
           UpsertClassification {
             verdict: Absent,
-            decision: Apply { plan: CensusAppPlan { code: c, custody: census_app_custody() } },
+            decision: Apply { plan: CensusAppPlan { code: c, custody_name: census_app_identity.name, custody: census_app_custody() } },
           }
       }
   }
