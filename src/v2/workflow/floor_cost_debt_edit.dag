@@ -73,11 +73,12 @@ type CostDebtWitnessEdit =
     PureConjunctRemoval { removed_conjuncts: Int }
   | ReJudgedAsNewWitness { cause: CostDebtEditReJudgeCause }
 
-// `label` is the receipt wording the host prints; it is derived here so the host formats nothing.
+// WHAT THE HOST CONSUMES, AND NOTHING ELSE (review 68218): `label` is the receipt wording the host
+// prints (the edit's projection, so the host formats nothing) and `budget` is the tier's ceiling.
+// The edit and the tier are not carried beside them -- each would be a second representation of a
+// fact a read field already carries, with no reader of its own.
 type CostDebtChangedWitnessCeiling {
-  edit: CostDebtWitnessEdit
   label: String
-  tier: ClaimCeilingTier
   budget: EvalStepCount
 }
 
@@ -89,12 +90,9 @@ fn cost_debt_edit_tier(edit: CostDebtWitnessEdit) -> ClaimCeilingTier {
 }
 
 fn cost_debt_changed_witness_ceiling(edit: CostDebtWitnessEdit) -> CostDebtChangedWitnessCeiling {
-  let tier = cost_debt_edit_tier(edit: edit)
   CostDebtChangedWitnessCeiling {
-    edit: edit,
     label: cost_debt_edit_label(edit: edit),
-    tier: tier,
-    budget: claim_ceiling_eval_step_budget(tier: tier)
+    budget: claim_ceiling_eval_step_budget(tier: cost_debt_edit_tier(edit: edit))
   }
 }
 
