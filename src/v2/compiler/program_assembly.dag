@@ -63,11 +63,9 @@ type ProgramAssemblyFoldState
 // construction; a consumer that needs it reads this pair, never a positional zip of two lists
 // across this module's boundary (DESIGN 5: completeness is an identity join, not a count
 // equality). The tree-only fold state above is a projection of the located one. A plain
-// record, not sole_constructor: the pair carries no invariant beyond its fields, and the
-// v2 grammar realization (v2.extdeps.languages.dag dag_grammar_type_decl_expr) admits no
-// modifier between the type name and its field block, so the emitted compiler refused this
-// file with parse_g0_tokens_remain (gunbc#11461 srv2 pair, fold11461g) - a load-bearing
-// stage must stay native-readable.
+// record, not sole_constructor: the pair carries no invariant beyond its fields. G0 used to
+// refuse a modifier between the type name and its field block (gunbc#11461 srv2 pair,
+// fold11461g; dag_grammar_type_decl_expr now admits the same two modifiers v1 drops).
 type LocatedNormalizedTree {
   path: String,
   tree: NormalizedTree

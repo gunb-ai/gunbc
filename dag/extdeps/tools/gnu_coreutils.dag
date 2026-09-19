@@ -1,7 +1,7 @@
 module extdeps.tools.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
-import std.measure { Second, second_count, ByteSize, byte_size_count }
+import std.measure { Second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -43,7 +43,6 @@ data whoami_program: NonEmptyStr = "whoami"
 data readlink_program: NonEmptyStr = "readlink"
 data ls_program: NonEmptyStr = "ls"
 data install_program: NonEmptyStr = "install"
-data truncate_program: NonEmptyStr = "truncate"
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -73,12 +72,6 @@ fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, g
     program: install_program,
     arguments: ["-m", octal_mode as String, "-o", to_string(uid), "-g", to_string(gid), "/dev/null", path],
   )
-}
-
-// truncate(1) -s N EXTENDS a shorter file with NUL bytes (and would CUT a longer one -- the caller
-// owns ensuring N is not below the content it keeps). Used to pad a payload to a block boundary.
-fn truncate_to_size_command(path: String, size: ByteSize) -> ArgvCommand {
-  argv_command(program: truncate_program, arguments: ["-s", to_string(byte_size_count(b: size)), path])
 }
 
 // -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which

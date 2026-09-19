@@ -35,7 +35,7 @@ import gunbc.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
   JitDeviceRefusal, JitMintNotReceived, JitCredentialNotDelivered,
   JitCredentialBoundToDifferentAttempt, JitCredentialBelowFloor, JitCredentialAboveCeiling,
-  jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep,
+  jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep, StatRead, StatUnread, JitDeviceStagingOutcome,
   plan_attempt_launch, planned_jailer_launches,
   attempt_jail_chroot_root, workspace_drive_path_on_host,
   work_standing_from_vmm_exit, WorkNotEstablished,
@@ -55,6 +55,8 @@ import gunbc.github_effect_perform {
   GenerateJitConfigStep,
 }
 import gunbc.runner_microvm_attempt { runner_microvm_attempt_unit_name }
+import gunbc.runner_microvm { jit_drive_content, jit_drive_utf8_size }
+import extdeps.github.actions_runner { actions_runner_jitconfig_env_name }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -346,16 +348,13 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
                 let words = join(argv_words(command: jailer), " ")
                 let create_words = join(argv_words(command: create), " ")
                 let device_create = join(argv_words(command: device.create), " ")
-                let device_pad = join(argv_words(command: device.pad), " ")
                 reg == registration_fixture_id
                   && (name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
                   && device.host_path == concat(jail_root, jail_jit_path as String)
                   && (device.create.program as String) == "install"
                   && string_contains(s: device_create, pattern: "-m 0400 -o 1000 -g 1000 /dev/null")
                   && string_contains(s: device_create, pattern: device.host_path)
-                  && (device.pad.program as String) == "truncate"
-                  && string_contains(s: device_pad, pattern: "-s 65536")
-                  && (device.credential.encoded as String) == doubled(s: "A", k: 10)
+                  && staged_bytes_are_the_guest_contract(content: device.content, blob: doubled(s: "A", k: 10))
                   && jit_drive_is_read_only_at(cfg_drives: cfg.drives, path: jail_jit_path as String)
                   && (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
                   && nft == runner_microvm_nft_ruleset_text()
@@ -389,27 +388,50 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
   }
 }
 
+// THE STAGED BYTES ARE THE GUEST'S CONTRACT (gunbc.runner_microvm jit_drive_content), pinned two
+// ways so neither side can drift alone: equal to the guest-side function, AND independently shaped
+// as that function's documented contract -- one <actions_runner_jitconfig_env_name>=<blob> line, then
+// only newline padding, in whole 512-byte sectors. A host that wrote the bare blob or NUL padding
+// (the recovered init's format) fails both.
+fn staged_bytes_are_the_guest_contract(content: String, blob: String) -> Bool {
+  let line = join([actions_runner_jitconfig_env_name(), "=", blob, "\n"], "")
+  let size = byte_size_count(b: jit_drive_utf8_size(text: content))
+  content == jit_drive_content(encoded_jit_config: blob as NonEmptyStr)
+    && starts_with(s: content, prefix: line)
+    && size % 512 == 0
+    && size >= string_length(line)
+    && only_newlines_from(s: content, i: string_length(line))
+}
+
+fn only_newlines_from(s: String, i: Int) -> Bool {
+  if i >= string_length(s) { true } else if char_at(s, i) != "\n" { false } else { only_newlines_from(s: s, i: i + 1) }
+}
+
+fn readback_refused(r: JitDeviceStagingOutcome?) -> Bool {
+  match r {
+    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: _ } } => true
+    _ => false
+  }
+}
+
 // THE READBACK DECIDES ON WHAT THE HOST REPORTS. Each of the three facts refuses on its own -- a
-// root-owned device (unreadable to the dropped uid), a group-readable one, a short one -- and the
-// exact triple the staging should produce is the only one that admits.
+// root-owned device (unreadable to the dropped uid), a group-readable one, a short one -- a stat
+// that FAILED refuses as unread rather than as a mismatch, and the exact triple the staging should
+// produce is the only one that admits.
 test fn staging_readback_refuses_each_wrong_fact_and_admits_the_right_one() -> Bool {
-  let refused_owner = match jit_device_readback(uid: "0", mode: "400", size: "65536") {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: _ } } => true
-    _ => false
-  }
-  let refused_mode = match jit_device_readback(uid: "1000", mode: "440", size: "65536") {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: _ } } => true
-    _ => false
-  }
-  let refused_size = match jit_device_readback(uid: "1000", mode: "400", size: "1024") {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: _ } } => true
-    _ => false
-  }
-  let admitted = match jit_device_readback(uid: "1000", mode: "400", size: "65536") {
-    Absent => true
-    Present { value: _ } => false
-  }
-  refused_owner && refused_mode && refused_size && admitted
+  let content = jit_drive_content(encoded_jit_config: doubled(s: "A", k: 10) as NonEmptyStr)
+  let size = to_string(byte_size_count(b: jit_drive_utf8_size(text: content)))
+  readback_refused(r: jit_device_readback(uid: StatRead { value: "0" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content))
+    && readback_refused(r: jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "440" }, size: StatRead { value: size }, content: content))
+    && readback_refused(r: jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "400" }, size: StatRead { value: "65536" }, content: content))
+    && match jit_device_readback(uid: StatUnread { detail: "stat exit 1: No such file" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content) {
+      Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: d } } => starts_with(s: d, prefix: "owner uid unread")
+      _ => false
+    }
+    && match jit_device_readback(uid: StatRead { value: "1000" }, mode: StatRead { value: "400" }, size: StatRead { value: size }, content: content) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 test fn a_clean_vmm_exit_is_not_evidence_that_work_ran() -> Bool {

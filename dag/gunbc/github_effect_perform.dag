@@ -6,9 +6,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
 }
-import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
+import extdeps.auth.jws {
+  jws_rs256_signing_input, jws_compact_serialization, JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
+}
+import gunbc.jws_signer_realize { jws_rs256_sign }
 import extdeps.auth.jwt { JwtCompactSerialization }
-import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.github.actions_jit_runner {
   JitConfigCreatedBody, jit_config_mint_outcome, jit_config_created_status, jit_runner_label_wire,
@@ -19,9 +21,6 @@ import extdeps.transports.rest {
 }
 import extdeps.github.app
 import extdeps.github.actions_jit_runner
-import gunbc.host_cli_dependency {
-  HostCliDependencyAbsence, first_absent_host_cli_dependency, jit_mint_host_cli_requirements,
-}
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
   JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
@@ -62,7 +61,9 @@ data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unb
 // ownership readback are a converge entry, not this module; until that entry lands the path names a
 // file no converge has produced, and perform refuses at the signer (openssl cannot open it) rather
 // than falling back to the runner-owned key.
-data lifecycle_controller_app_key_path: NonEmptyStr = "/etc/gunbc/microvm-controller/app.pem"
+data lifecycle_controller_app_key: JwsSigningKeyRef = HostKeyFile {
+  path: "/etc/gunbc/microvm-controller/app.pem",
+}
 
 type JitMintStep
   = InstallationAccessTokenStep
@@ -74,18 +75,17 @@ type JitMintStep
 // the attempt's unit name (gunbc.runner_jit_mint jit_runner_name_for).
 type JitMintPerformance
   = JitMintReceived { delivery: JitCredentialDelivery }
-  | JitMintSignerToolAbsent { absence: HostCliDependencyAbsence }
   | JitMintClockUnread { detail: String }
   | JitMintAppJwtUnsigned { detail: String }
   | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangePerformance }
 
-fn app_jwt_for(dispatch_app_id: Int, key_file: NonEmptyStr, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
+fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
   let signing_input = jws_rs256_signing_input(
     payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
   )
-  match openssl_sign_sha256(key_file: key_file, signing_input: signing_input) {
-    OpensslSignRefused { exit_code: _, detail: d } => AppJwtUnsigned { detail: d }
-    OpensslSigned { octets: sig } =>
+  match jws_rs256_sign(signing_input: signing_input, key: key) {
+    JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
+    JwsSigned { signature: sig } =>
       AppJwtSigned { jwt: jws_compact_serialization(signing_input: signing_input, signature: sig) }
   }
 }
@@ -142,13 +142,10 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformanc
       organization: organization,
       request: request,
     } =>
-      match first_absent_host_cli_dependency(tools: jit_mint_host_cli_requirements) {
-        Present { value: absence } => JitMintSignerToolAbsent { absence: absence }
-        Absent =>
           match clock_unix_millis_read() {
             ClockUnixMillisRefused { detail: d } => JitMintClockUnread { detail: d }
             ClockUnixMillisObserved { millis: ms } =>
-              match app_jwt_for(dispatch_app_id: app.app_id.value, key_file: lifecycle_controller_app_key_path, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
+              match app_jwt_for(dispatch_app_id: app.app_id.value, key: lifecycle_controller_app_key, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
                 AppJwtUnsigned { detail: d } => JitMintAppJwtUnsigned { detail: d }
                 AppJwtSigned { jwt: jwt } => {
                   let token = github.AppInstallationAccessTokens.Create(
@@ -176,6 +173,5 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformanc
                 }
               }
           }
-      }
   }
 }

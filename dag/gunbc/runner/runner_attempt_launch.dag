@@ -9,7 +9,7 @@ import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measu
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
 import extdeps.tools.gnu_coreutils {
-  timeout_command, cp_command, install_empty_file_command, truncate_to_size_command,
+  timeout_command, cp_command, install_empty_file_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.busybox { busybox_dd_sparse_image_command }
@@ -41,6 +41,7 @@ import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
 import gunbc.runner_microvm {
+  jit_drive_content, jit_drive_utf8_size,
   runner_microvm_vm_config,
   attach_workspace_drive,
   runner_microvm_workspace_drive_id,
@@ -221,20 +222,25 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
   }
 }
 
-// THE DEVICE, AS THREE HOST STEPS WHOSE ORDER IS THE SECURITY PROPERTY. (1) install(1) creates an
+// THE DEVICE, AS TWO HOST STEPS WHOSE ORDER IS THE SECURITY PROPERTY. (1) install(1) creates an
 // EMPTY file already owned by the attempt's unprivileged uid and mode 0400, inside the attempt's
-// jail; (2) the credential bytes are written into it -- through the filesystem, never an argv; (3)
-// truncate(1) pads it with NULs to jit_config_byte_ceiling, a whole number of 512-byte sectors,
-// because a virtio-blk device exposes only whole sectors and the guest strips the NULs (the
-// contract the recovered guest init already reads). There is never a moment where secret bytes
-// exist under a looser mode, and the file is inside the chroot of exactly one attempt: the guest
-// sees it as a read-only drive (gunbc.runner_microvm JitConfigOnReadOnlyDrive) and never sees the
-// host path, the App key, the JWT or the installation token, none of which this carrier holds.
+// jail; (2) the drive bytes are written into it -- through the filesystem, never an argv.
+//
+// THE BYTES ARE THE GUEST'S CONTRACT, NOT A HOST CHOICE. What goes on the drive is exactly
+// gunbc.runner_microvm jit_drive_content(credential): one ACTIONS_RUNNER_INPUT_JITCONFIG line,
+// newline-padded to whole sectors, which is what the guest agent (gunbc.runner_guest_image) reads
+// from the device jit_drive_guest_device names. A second host-side format (the recovered init's
+// NUL padding, which this module used to write) would be a second authority for one fact, and the
+// guest could not read it. The staged file's size is therefore the content's own size, and
+// readback checks exactly that.
+//
+// The file is inside the chroot of exactly one attempt. The guest sees it as a read-only drive
+// (gunbc.runner_microvm JitConfigOnReadOnlyDrive) and never sees the host path, the App key, the
+// JWT or the installation token, none of which this carrier holds.
 type JitDeviceStaging {
   host_path: String
   create: ArgvCommand
-  credential: EncodedJitConfig
-  pad: ArgvCommand
+  content: String
 }
 
 // ONE ROW FOR THE DEVICE'S MODE, in the digits stat(1) %a prints. install(1) -m takes the same
@@ -255,8 +261,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
       uid: attempt_unprivileged_uid,
       gid: attempt_unprivileged_gid,
     ),
-    credential: admitted.credential,
-    pad: truncate_to_size_command(path: host_path, size: jit_config_byte_ceiling),
+    content: jit_drive_content(encoded_jit_config: admitted.credential.encoded),
   }
 }
 
@@ -513,35 +518,63 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
 // Each step's refusal is its own arm naming the step, so a failed install is not reported as a
 // failed write. The readback checks the three facts the device's safety rests on: owned by the
 // attempt's uid (the jailer drops to it, so root-owned would be unreadable and anything looser would
-// be readable by others), mode 0400, and size exactly the padded ceiling (so the guest sees whole
-// sectors). A device that fails readback is a refusal: the caller must not launch over it.
+// be readable by others), mode 0400, and size exactly the drive content's size (so the guest reads
+// whole sectors of the contract it expects). A stat that itself failed is its own refusal carrying
+// its stderr -- not a mismatch of an empty reading (review 68502). A device that fails readback is
+// a refusal: the caller must not launch over it.
 type JitDeviceStagingStep
   = JitDeviceCreateStep
   | JitDeviceWriteStep
-  | JitDevicePadStep
   | JitDeviceReadbackStep
 
 type JitDeviceStagingOutcome
   = JitDeviceStaged { host_path: String }
   | JitDeviceStagingRefused { step: JitDeviceStagingStep, detail: String }
 
-fn process_outcome_token(outcome: ProcessOutcome) -> String {
+type JitDeviceStatReading
+  = StatRead { value: String }
+  | StatUnread { detail: String }
+
+fn jit_device_stat_reading(outcome: ProcessOutcome) -> JitDeviceStatReading {
   match outcome {
-    ProcessOutputPresent { text: t } => trim(s: t)
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+    ProcessOutputPresent { text: t } => StatRead { value: trim(s: t) }
+    ProcessOutputAbsent => StatUnread { detail: "stat printed nothing" }
+    ProcessRefused { exit_code: code, stderr: e } =>
+      StatUnread { detail: join(["stat exit ", to_string(code), ": ", trim(s: e)], "") }
   }
 }
 
-fn jit_device_readback(uid: String, mode: String, size: String) -> JitDeviceStagingOutcome? {
-  if uid != to_string(attempt_unprivileged_uid) {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["owner uid is ", uid], "") } }
-  } else if mode != (jit_device_mode_digits as String) {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["mode is ", mode], "") } }
-  } else if size != to_string(byte_size_count(b: jit_config_byte_ceiling)) {
-    Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["size is ", size], "") } }
-  } else {
-    none
+fn jit_device_fact(name: String, reading: JitDeviceStatReading, expected: String) -> JitDeviceStagingOutcome? {
+  match reading {
+    StatUnread { detail: d } =>
+      Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " unread: ", d], "") } }
+    StatRead { value: v } =>
+      if v == expected {
+        none
+      } else {
+        Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " is ", v, ", expected ", expected], "") } }
+      }
+  }
+}
+
+fn jit_device_readback(
+  uid: JitDeviceStatReading,
+  mode: JitDeviceStatReading,
+  size: JitDeviceStatReading,
+  content: String,
+) -> JitDeviceStagingOutcome? {
+  match jit_device_fact(name: "owner uid", reading: uid, expected: to_string(attempt_unprivileged_uid)) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match jit_device_fact(name: "mode", reading: mode, expected: jit_device_mode_digits as String) {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          jit_device_fact(
+            name: "size",
+            reading: size,
+            expected: to_string(byte_size_count(b: jit_drive_utf8_size(text: content))),
+          )
+      }
   }
 }
 
@@ -552,22 +585,18 @@ fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
     ProcessRefused { exit_code: _, stderr: e } =>
       JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: trim(s: e) }
     _ => {
-      let wrote = Filesystem.Write(path: device.host_path, content: device.credential.encoded as String)
+      let wrote = Filesystem.Write(path: device.host_path, content: device.content)
       if wrote.success == false {
         JitDeviceStagingRefused { step: JitDeviceWriteStep, detail: device.host_path }
       } else {
-        match run_shell_command_capture(command: device.pad, transport: LocalExec) {
-          ProcessRefused { exit_code: _, stderr: e } =>
-            JitDeviceStagingRefused { step: JitDevicePadStep, detail: trim(s: e) }
-          _ =>
-            match jit_device_readback(
-              uid: process_outcome_token(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
-              mode: process_outcome_token(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
-              size: process_outcome_token(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
-            ) {
-              Present { value: refused } => refused
-              Absent => JitDeviceStaged { host_path: device.host_path }
-            }
+        match jit_device_readback(
+          uid: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
+          mode: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
+          size: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
+          content: device.content,
+        ) {
+          Present { value: refused } => refused
+          Absent => JitDeviceStaged { host_path: device.host_path }
         }
       }
     }

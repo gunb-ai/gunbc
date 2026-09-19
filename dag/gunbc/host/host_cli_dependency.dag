@@ -81,11 +81,11 @@ data codex_wet_materialization_host_cli_requirements: List<CliTool> = [npm_cli_t
 // side belongs to.
 data password_session_host_cli_requirements: List<CliTool> = [sshpass_cli_tool]
 
-// THIRD ENROLLMENT ANSWER: the host that MINTS a JIT runner credential. gunbc.github_effect_perform
-// signs the App JWT with openssl (extdeps.tools.openssl), and refuses from this roster before the
-// key is touched when the binary is absent. A separate roster for the same reason the two above are
-// separate: the population is "hosts whose lifecycle controller mints", not every runner.
-data jit_mint_host_cli_requirements: List<CliTool> = [openssl_cli_tool]
+// THIRD ENROLLMENT ANSWER: a host that SIGNS a JWS with a key it holds as a file.
+// gunbc.jws_signer_realize binds openssl (extdeps.tools.openssl) as that signer's handler and
+// refuses from this roster before the key is touched. It is a separate roster for the same reason
+// the two above are separate: the population is "hosts that sign", not every runner.
+data jws_signer_host_cli_requirements: List<CliTool> = [openssl_cli_tool]
 
 // The absence is its own type, not a variant used in type position. Before this split,
 // first_absent_codex_wet_materialization_host_cli_dependency named HostCliDependencyAbsent as its
