@@ -133,10 +133,6 @@ fn refused(class: NetworkBootManifestVerificationClass) -> BootManifestVerificat
   BootManifestRefused { class: class }
 }
 
-fn epoch_ms_text(t: EpochMs) -> String {
-  to_string(t)
-}
-
 fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
   match mode {
     UefiHttpBoot => "uefi-http"
@@ -191,8 +187,8 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
             serialize_content_hash(hash: id.initrd_digest) as String,
             serialize_content_hash(hash: id.root_digest) as String,
             id.kernel_cmdline as String,
-            epoch_ms_text(t: id.not_before),
-            epoch_ms_text(t: id.expiry),
+            to_string(id.not_before),
+            to_string(id.expiry),
             id.signing_key_identity as String,
             id.callback_identity as String,
           ] |> map(f => length_prefixed_encode(s: f)),
