@@ -1,6 +1,7 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.keyed_row { KeyedRow, keyed_row_find }
@@ -42,10 +43,31 @@ import gunbc.live_deploy.spec {
 // operation may be pointed at. Convergence folds consume a caller-supplied DeploymentSpec;
 // they do not enumerate this list or choose a row. A fold that picked which deployment it was
 // acting on would rebuild the conflation DESIGN §3d forbids.
+//
+// selected_identity IS THE SELECTION RECEIPT FIELD (std.decision SelectionReceipt), carried
+// on the row it admits against. Convergence does not re-derive which declaration was
+// selected. The LiveDeploy FleetConvergeRequest arm binds admission to this field.
 type DesiredDeployment {
   instance: HostDashboardInstance
   target: DeploymentHostTarget
   names: DeploymentNames
+  selected_identity: DeclarationRef
+}
+
+fn desired_module_path() -> String {
+  "gunbc.live_deploy.desired"
+}
+
+fn srv1_production_selected_identity() -> DeclarationRef {
+  decl_ref(module_path: desired_module_path(), decl_name: "srv1_production_desired_deployment")
+}
+
+fn srv1_lab_selected_identity() -> DeclarationRef {
+  decl_ref(module_path: desired_module_path(), decl_name: "srv1_lab_desired_deployment")
+}
+
+fn srv2_deploy_selected_identity() -> DeclarationRef {
+  decl_ref(module_path: desired_module_path(), decl_name: "srv2_deploy_desired_deployment")
 }
 
 fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
@@ -62,6 +84,7 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     instance: instance,
     target: deployment_srv1_target(),
     names: srv1_live_deployment_names(instance: instance),
+    selected_identity: srv1_production_selected_identity(),
   }
 }
 
@@ -71,6 +94,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     instance: instance,
     target: deployment_srv1_target(),
     names: derived_deployment_names(instance: instance),
+    selected_identity: srv1_lab_selected_identity(),
   }
 }
 
@@ -98,6 +122,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     instance: instance,
     target: deployment_srv2_target(),
     names: derived_deployment_names(instance: instance),
+    selected_identity: srv2_deploy_selected_identity(),
   }
 }
 
@@ -257,6 +282,34 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentL
       ) {
         Present { value: found } => DesiredDeploymentFound { row: found.value }
         Absent => DesiredDeploymentUnknownInstanceId { instance_id: instance_id }
+      }
+  }
+}
+
+// THE REQUEST ARM BINDS THIS, NOT A HOSTNAME. A carried row whose selected_identity is not
+// the roster row for its instance_id is a different decision (DESIGN §3d) and refuses.
+// The Bound arm returns the roster row, so a caller cannot smuggle a different names/target
+// surface under a matching identity.
+type DesiredSelectedIdentityBind
+  = DesiredSelectedIdentityBound { row: DesiredDeployment }
+  | DesiredSelectedIdentityUnknownInstance { instance_id: String }
+  | DesiredSelectedIdentityRosterRefused { refusal: DesiredRosterRefusal }
+  | DesiredSelectedIdentityMismatch { carried: DeclarationRef, rostered: DeclarationRef }
+
+fn bind_desired_selected_identity(desired: DesiredDeployment) -> DesiredSelectedIdentityBind {
+  match desired_deployment_for_instance_id(instance_id: instance_id_text(id: desired.instance.instance_id)) {
+    DesiredDeploymentUnknownInstanceId { instance_id } =>
+      DesiredSelectedIdentityUnknownInstance { instance_id: instance_id }
+    DesiredDeploymentRosterRefused { refusal } =>
+      DesiredSelectedIdentityRosterRefused { refusal: refusal }
+    DesiredDeploymentFound { row } =>
+      if declaration_ref_eq(a: desired.selected_identity, b: row.selected_identity) {
+        DesiredSelectedIdentityBound { row: row }
+      } else {
+        DesiredSelectedIdentityMismatch {
+          carried: desired.selected_identity,
+          rostered: row.selected_identity,
+        }
       }
   }
 }

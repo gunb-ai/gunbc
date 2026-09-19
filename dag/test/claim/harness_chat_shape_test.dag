@@ -16,6 +16,7 @@ import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_enrolled_routes, serving_route_head,
   ServingRouteResolved, ServingRouteUnresolved, serving_route_endpoint_wire,
 }
+import gunbc.spark.fabric_serving_assignment { FabricServingHeadResolved, FabricServingHeadRefused }
 import v2.std.optional { Present, Absent }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.harness.harness_turn {
@@ -143,9 +144,13 @@ fn t_endpoints() -> List<String> {
 // and the addresses the routes actually carry, which is what makes the assertion a derivation rather
 // than a pair of literals: move a head's endpoint row and both sides move together.
 fn t_head_addresses() -> List<String> {
-  flat_map(serving_enrolled_groups, g => match host_lan_address(host: serving_route_head(group: g)) {
-    Present { value: h } => [h as String]
-    Absent => []
+  flat_map(serving_enrolled_groups, g => match serving_route_head(group: g) {
+    FabricServingHeadRefused { cause: _ } => []
+    FabricServingHeadResolved { host: head } =>
+      match host_lan_address(host: head) {
+        Present { value: h } => [h as String]
+        Absent => []
+      }
   })
 }
 

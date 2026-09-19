@@ -1,0 +1,104 @@
+module v2.test.claim.namespace_xl0.qualified_site_enumerator_differential
+
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_sites_from_parsed_module }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// TWO SITE ENUMERATORS STAND, AND THIS FILE MEASURES WHERE THEY DISAGREE, SO THAT THE OLDER ONE IS
+// NOT DELETED ON A CLAIM OF EQUIVALENCE (side-chat ruling on gunbc#11582, finding 3).
+//
+// v2.lens.reference_deps reference_sites_from_parsed_module walks the PARSE tree and keys on the
+// ^dag_surface_qualified_name production, so it sees a qualified name wherever that production
+// survives -- including a record FIELD type. v2.compiler.reference_site_collector walks the
+// NORMALIZED tree the resolver consumes, and since the dotted-reference lowering it sees a
+// qualified body reference and a qualified PARAMETER type -- but not a qualified FIELD type,
+// because v2.compiler.namespace_graft never rehomes a type declaration into the containment
+// tree (the declaration-grafting loss, v2.test.claim.namespace_xl0.field_type_tree_presence).
+//
+// The lens's dissolution row (reference_deps_dissolve_on) therefore stays PENDING: the collector
+// is the single authority for the classes it covers, and the deletion of the parse walker waits on
+// an identity-grain site-set comparison being EMPTY across every reference position. This file is
+// the first cell of that comparison, and the disagreement row below reds -- and is re-stated --
+// when the graft lands and the collector sees the field type.
+data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n"
+
+data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
+
+data qsd_param_spelling: String = "v2.test.qsd_provider.QsdParamType"
+
+fn qsd_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: qsd_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^qsd_subject_read, file_path: "src/v2/test/fixture/namespace_xl0/qsd_subject.dag" },
+    compilation_unit: ^qsd_subject_cu,
+    source_root: DagTree
+  }
+}
+
+data qsd_ingest: SourceRootIngest = Cons { head: qsd_read(), tail: Empty }
+
+// Both producers are nullary, pure, inline-sourced and portable (Nodes), and both are enrolled
+// warm in v2.workflow.floor_pure_producer_share: the stage every row here names is the WALK.
+fn qsd_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: qsd_ingest, lm: dag_language_model())
+}
+
+fn qsd_parsed() -> Outcome<Node> {
+  reference_deps_ingest_source_text(source_text: qsd_source, file: ^qsd_subject_parse)
+}
+
+fn collector_sees(spelling: String) -> Bool {
+  match qsd_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: collect_reference_sites(roots: normalized_tree_roots_to_nodes(roots: roots)).sites,
+        empty: false,
+        cons: fn(acc, site) { acc || qualified_name_to_dotted_string(qn: site.spelling) == spelling }
+      )
+  }
+}
+
+fn parse_walker_sees(spelling: String) -> Bool {
+  match qsd_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match reference_sites_from_parsed_module(module_root: root) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: sites, diagnostics: _ } =>
+          fold_list(
+            xs: sites,
+            empty: false,
+            cons: fn(acc, qn) { acc || qualified_name_to_dotted_string(qn: qn) == spelling }
+          )
+      }
+  }
+}
+
+// AGREEMENT CELL: a qualified parameter type is seen by both enumerators.
+test fn both_enumerators_see_a_qualified_parameter_type_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_param_spelling) && collector_sees(spelling: qsd_param_spelling)
+}
+
+// DISAGREEMENT CELL, MEASURED: the parse walker sees the qualified field type; the collector does
+// not, because the record declaration never reaches the normalized tree. This is the row that
+// keeps the parse walker alive, and it reds when declaration grafting lands.
+test fn only_the_parse_walker_sees_a_qualified_field_type_today() -> Bool {
+  parse_walker_sees(spelling: qsd_field_spelling) && !collector_sees(spelling: qsd_field_spelling)
+}

@@ -1,6 +1,7 @@
 
 module gunbc.generated_artifact_emit
 
+import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_json }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
@@ -15,10 +16,11 @@ import gunbc.generated_artifact {
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   WholeCorpusCompileMeasuredRootDemandsArtifact,
+  ApprovalDeviceVectorsArtifact,
   artifact_path,
   artifact_commit_policy,
   CommitRequired, NotCommitted,
-  GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput,
+  GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest,
   committed_generated_artifacts,
   heal_regenerated_after_provisional_merge_paths
 }
@@ -116,6 +118,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     ))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
+    ApprovalDeviceVectorsArtifact => artifact_generated(content: approval_device_vectors_json())
     CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
       CouponProgramGenerated { content } => artifact_generated(content: content)
       CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -194,6 +197,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       CommitRequired { consumer: ProjectDocumentation } => generated
       CommitRequired { consumer: HostReconciler } => generated
       CommitRequired { consumer: CompilerRunInput } => generated
+      CommitRequired { consumer: CrossLanguageClientTest } => generated
       NotCommitted => generated
     }
   }
@@ -228,6 +232,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     RunnerDeployArtifact => true
     CouponCadQueryProgramArtifact => true
     WholeCorpusCompileMeasuredRootDemandsArtifact => true
+    ApprovalDeviceVectorsArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true

@@ -6,6 +6,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
   dag_language_model_canonical_symbols,
+  dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -31,10 +32,12 @@ import v2.std.optional {
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic {
   Correction,
+  CorrectionNotModeled,
   Diagnostic,
   node_locus,
   Outcome,
   UserInputBoundary,
+  Unavailable,
   Accepted,
   None,
   diagnostics_merge,
@@ -348,6 +351,29 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// A QUALIFIED HIT ON A NON-ATOM DECLARATION HAS NO IDENTITY THIS RESOLVER CAN CARRY, SO IT REFUSES.
+// The resolved value here is a canonical Atom -- one Symbol -- and a fn (an Arrow) or a record
+// found by its full path is a DECLARATION, not a symbol: collapsing it to its leaf name would make
+// `a.run` and `b.run` indistinguishable downstream, which is an identity fork the import cut's
+// replacement graph cannot be built on. Until resolution answers with an exact declaring-identity
+// carrier (the unique-on-chain lane's changeover), the hit is refused with this located reason
+// rather than minted from a leaf. Enrolled: v2.test.claim.namespace_xl0.cross_module_reference_resolution.
+fn qualified_target_identity_unrepresentable_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_qualified_target_identity_unrepresentable,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn float_literal_not_lowered_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^float_literal_not_lowered,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
 fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_ambiguous_symbol,
@@ -421,34 +447,97 @@ fn lookup_symbol_index_atom_identity(
 }
 
 // feature:indexed-variant-path-projectable acceptance condition at the producer seam, required for conformance with docs/plans/namespace-resolution-design.md section 13 unique-on-chain: resolve the reference's FIRST segment to the unique binder on its ancestor chain, then project every remaining segment downward through the containment tree. try_resolve_qualified_name_node must therefore accept an authored Type.Variant path by projecting it from the referencing position onto the type-to-variant containment path that symbol_index_fill_containment_node already indexes. The feature is UNFIRED while this function sends the authored path directly to symbol_index_lookup as though every dotted path were corpus-root absolute: UpdateVersionPersistence.Persistent therefore refuses even though the full module.UpdateVersionPersistence.Persistent path is indexed. It fires only when an executing positive control resolves the type-relative path to that exact indexed variant; zero binders produces a located unresolved refusal; two or more binders produces a located Ambiguous refusal carrying the full candidate list rather than picking; and shadowing refuses rather than silently rebinding. This belongs to the namespace-only-resolution lane's producer-side changeover, not to a consumer workaround or a new syntax preference.
+// A HIT IS NEVER STAMPED WITH A REFUSAL REASON, AND IT IS NOT MINTED FROM A LEAF EITHER. This
+// arm's fallback identity used to be ^resolve_reason_unbound_symbol, so a qualified path that FOUND
+// a non-atom declaration (an Arrow -- every fn) was Accepted carrying a diagnostic symbol as its
+// canonical identity: a fabricated plausible output (DESIGN section 5) that no witness could have
+// caught, because no v2 route produced the qualified spine this arm consumes until body lowering
+// began to (see body_lower_dotted_reference_optional). One revision of gunbc#11582 replaced the
+// reason with the path's last segment; the side-chat ruling on that head found the leaf equally
+// fabricated -- two declarations named `run` in two modules collapse to one Atom -- so a hit whose
+// declaration is not itself an Atom now REFUSES (qualified_target_identity_unrepresentable_diagnostic)
+// until resolution carries exact declaring identity. Measured: a cross-module reference to a fn
+// came back Accepted with identity resolve_reason_unbound_symbol before the first repair.
+// THE HALF OF UNIQUE-ON-CHAIN THAT CAN BE HONEST BEFORE THE PROJECTION EXISTS (review 67651 on
+// gunbc#11582). Section 13 resolves a chain's FIRST segment on the ancestor chain and projects the
+// rest; the projection is unfired here, and this arm reads the whole path as corpus-root
+// absolute. What must not happen meanwhile is the absolute read SILENTLY WINNING over a binder
+// that is on the chain: `fn f(v2: Bool) -> Bool { v2.test.p.g }` bound `v2` and the absolute
+// path both answer, which section 13 names as two binders and refuses as Ambiguous -- it may not
+// pick the root and Accept a meaning the source did not spell. So the head is looked up on the
+// chain first. Head bound and absolute hit: Ambiguous. Head bound and no absolute hit: the
+// projection this arm cannot yet perform, refused Unbound rather than fabricated. Head not bound:
+// the absolute arm as before. The positive projection (`r.v` resolving through r's type) is a
+// capability NO enrolled row waits on yet: the local-receiver row in
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution is `Bool.v`, a permanent negative
+// control (`Bool` has no child `v`), and the positive `Rec.v` specimen needs declaration grafting
+// as well as this projection and is owned by those lanes. This check only closes the fail-open
+// arm beside the projection.
+fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Outcome<Bool> {
+  match path {
+    Cons { head: head, tail: _ } =>
+      match lookup_chain(s: ctx.scope, name: head) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          Accepted {
+            value: (match found { Present { value: _ } => true  Absent => false }),
+            diagnostics: d
+          }
+      }
+    Empty => Accepted { value: false, diagnostics: None }
+  }
+}
+
 fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Outcome<Node>> {
   match qualified_name_from_node(root: n) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: path, diagnostics: pending } =>
       if length(xs: path) > 1 {
+        match qualified_head_bound_on_chain(ctx: ctx, path: path) {
+          Rejected { diagnostics: r } =>
+            optional_present(value: Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) })
+          Accepted { value: head_bound, diagnostics: chain_pending } =>
         match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
           Present { value: resolved_node } =>
-            optional_present(
-              value: Accepted {
-                value: canonical_atom(
-                  identity: symbol_index_node_identity(
-                    node: resolved_node,
-                    fallback: ^resolve_reason_unbound_symbol
-                  ),
-                  occurrence_id: n.occurrence_id
-                ),
-                diagnostics: pending
-              }
-            )
+            if head_bound {
+              optional_present(
+                value: Rejected {
+                  diagnostics: rejected_with_pending(
+                    pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                    rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
+                  )
+                }
+              )
+            } else {
+            match resolved_node.kind {
+              TypeNode { connective: Atom { identity: declared } } =>
+                optional_present(
+                  value: Accepted {
+                    value: canonical_atom(identity: declared, occurrence_id: n.occurrence_id),
+                    diagnostics: diagnostics_merge(outer: pending, inner: chain_pending)
+                  }
+                )
+              _ =>
+                optional_present(
+                  value: Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                      rejected: diagnostics_singleton(d: qualified_target_identity_unrepresentable_diagnostic(n: n))
+                    )
+                  }
+                )
+            }
+            }
           Absent =>
             optional_present(
               value: Rejected {
                 diagnostics: rejected_with_pending(
-                  pending: pending,
+                  pending: diagnostics_merge(outer: pending, inner: chain_pending),
                   rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
                 )
               }
             )
+        }
         }
       } else {
         optional_absent()
@@ -459,6 +548,10 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
+  } else if dag_node_is_float_literal_atom(node: n) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: float_literal_not_lowered_diagnostic(n: n))
+    }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {

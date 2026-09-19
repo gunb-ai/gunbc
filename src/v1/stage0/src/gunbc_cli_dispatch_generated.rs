@@ -49,9 +49,11 @@ pub enum Commands {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// Entry function to execute (default: "main")
-        #[arg(long, default_value = "main")]
-        function: String,
+        /// Entry function to execute, repeatable: every named function runs in ONE process over
+        /// ONE load of the entry's closure, in the order given. Absent, an ordinary run executes
+        /// `main`; a --claim-run executes every `test fn` the entry module declares.
+        #[arg(long = "function")]
+        functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
@@ -168,7 +170,7 @@ pub trait CliDispatchHost {
     fn run_verb(
         &self,
         source_roots: Vec<String>,
-        function: String,
+        functions: Vec<String>,
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
@@ -225,13 +227,13 @@ pub fn dispatch<H: CliDispatchHost>(
         (
             Commands::Run {
                 source_roots,
-                function,
+                functions,
                 entry,
                 claim_run,
                 args,
             },
             _,
-        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
+        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, functions, entry, claim_run, args),
         (Commands::Build { .. }, true) => {
             eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
             std::process::exit(2);
