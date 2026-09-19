@@ -8,7 +8,7 @@ import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
 import gunbc.runner_slot_retirement { transition_required_retiring }
-import gunbc.runner_host_retirement { unit_name_for_owned_registration }
+import gunbc.runner_host_retirement { unit_name_for_owned_registration, host_retirement_discovery_subjects }
 
 // THE RETIREMENT SUBJECT IS A SCOPE, NOT A SECOND SPINE, AND THIS MODULE IS ITS ADMISSION.
 //
@@ -36,10 +36,20 @@ import gunbc.runner_host_retirement { unit_name_for_owned_registration }
 // executor-equals-target corroboration, which is a wall worth keeping for retained hosts rather than
 // something to dissolve.
 
-// THE OBLIGATION IS THE ADMISSION, AND IT IS THE UNION ALREADY BUILT. `transition_required_retiring`
-// joins the declared width transitions and the declared host retirements by exact identity. A host
-// with nothing owed has no retirement subject, which is a different fact from a host that is not
-// modelled and from one whose width refuses -- and none of the three is an error here.
+// THE SUBJECT IS A HOST WITH RETIREMENT WORK, AND AN OBLIGATION IS ONLY ONE OF THE TWO KINDS.
+//
+// The first cut admitted on `transition_required_retiring` being non-empty. That was written against
+// an earlier meaning of the function, and L2a-1's grounding repair changed it: the obligation is now
+// the GROUNDED population only, and an ungrounded host answers empty while its candidates move to
+// `host_retirement_discovery_subjects`. So this admission refused srv2 -- the one host the scope
+// exists to serve -- with "owes nothing", which was true of the obligation and false of the subject.
+//
+// The two kinds of work are therefore both admissions. A host with a grounded obligation has retirees
+// to assess; a host with an ungrounded population has candidates to OBSERVE, and that read-only pass
+// is exactly how the capture that grounds it eventually gets taken. Refusing the second leaves the
+// ungrounded host with no route to stop being ungrounded.
+//
+// A HOST WITH NEITHER IS STILL NOT A SUBJECT, and that stays its own arm rather than an error.
 type RetirementScopeAdmission
   = RetirementScopeAdmitted { subject: RetirementScopeSubject }
   | RetirementScopeNoObligation { host: HostIdentity, cause: String }
@@ -59,6 +69,7 @@ type RetirementScopeSubject {
   executor: NonEmptyStr
   locality: RetirementTransportLocality
   required: List<NonEmptyStr>
+  discovery: List<NonEmptyStr>
 }
 
 fn retirement_transport_locality_wire(l: RetirementTransportLocality) -> String {
@@ -116,6 +127,11 @@ fn retirement_scope_transport(
 //
 // AN ABSENT RUNNER NAME REFUSES RATHER THAN PASSING. A local run that cannot say which slot it is in
 // cannot establish that it is not about to retire itself, and "I could not tell" is not "it is safe".
+//
+// THE TEST IS OVER THE OBLIGATION AND NOT OVER THE DISCOVERY SUBJECTS, which is a decision rather than
+// an omission. A discovery subject is observed read-only -- no mask, no stop, no deletion -- so a run
+// reading its own slot's properties is reading, not retiring. Widening this to the discovery set would
+// refuse every local run on an ungrounded host for a hazard that set cannot produce.
 type SelfSlotStanding
   = SelfSlotOutsideObligation { unit: String }
   | SelfSlotInObligation { unit: String }
@@ -186,10 +202,11 @@ fn retirement_scope_admission(
   } else {
     let host = target as HostIdentity
     let required = transition_required_retiring(host: host)
-    if list_length(items: required) == 0 {
+    let discovery = host_retirement_discovery_subjects(host: host)
+    if list_length(items: required) == 0 && list_length(items: discovery) == 0 {
       RetirementScopeNoObligation {
         host: host,
-        cause: join([target, " owes no retirement under any declared authority -- neither a width transition nor a host retirement names a retiree for it -- so there is no retirement subject to plan"], ""),
+        cause: join([target, " has no retirement work of either kind: no declared authority names a grounded retiree for it, and no declared retirement offers discovery subjects to observe, so there is no retirement subject to plan"], ""),
       }
     } else {
       let locality = retirement_transport_locality(executor: executor as NonEmptyStr, target: host)
@@ -212,6 +229,7 @@ fn retirement_scope_admission(
             executor: executor as NonEmptyStr,
             locality: locality,
             required: required,
+            discovery: discovery,
           },
         }
       }
@@ -229,6 +247,9 @@ fn retirement_scope_baseline_rows(subject: RetirementScopeSubject) -> List<Strin
       join(["retirement-scope:target=", subject.target as String], ""),
       join(["retirement-scope:locality=", retirement_transport_locality_wire(l: subject.locality)], ""),
     ],
-    subject.required |> map(u => join(["retirement-scope:required=", u as String], "")),
+    concat(
+      subject.required |> map(u => join(["retirement-scope:required=", u as String], "")),
+      subject.discovery |> map(u => join(["retirement-scope:discovery=", u as String], "")),
+    ),
   )
 }

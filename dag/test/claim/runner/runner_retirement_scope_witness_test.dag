@@ -21,6 +21,7 @@ import gunbc.runner_retirement_scope {
   retirement_scope_baseline_rows,
 }
 import gunbc.runner_slot_retirement { transition_required_retiring }
+import gunbc.runner_host_retirement { host_retirement_discovery_subjects }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -30,11 +31,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // obligation rather than on runner_host_deploy_for: the FullHost observers answer Refused /
 // Unobserved / SlotFamilyHostRefused for srv2 before any transport question, and this scope reaches
 // it anyway because a declared host retirement owes retirees for it.
-test fn a_leaving_host_is_admitted_from_a_peer_executor() -> Bool {
+// srv2 IS ADMITTED ON ITS DISCOVERY SUBJECTS, NOT ON A GROUNDED OBLIGATION, and that distinction is
+// the whole point after L2a-1's grounding repair: its capture is unavailable, so its obligation is
+// empty and its candidates are discovery. An admission keyed on the obligation alone refused the one
+// host this scope exists to serve, and refusing it leaves an ungrounded host no route to stop being
+// ungrounded.
+test fn a_leaving_host_is_admitted_on_its_discovery_subjects() -> Bool {
   match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv2", runner_name_raw: "srv1-03") {
     RetirementScopeAdmitted { subject: s } =>
       (s.target as String) == (operator_host_srv2 as String)
-        && list_length(items: s.required) > 0
+        && list_length(items: s.required) == 0
+        && list_length(items: s.discovery) > 0
+    RetirementScopeNoObligation { host: _, cause: _ } => false
+    RetirementScopeRefused { cause: _ } => false
+  }
+}
+
+// AND A HOST WITH A GROUNDED OBLIGATION IS ADMITTED ON THAT, so the admission is a disjunction rather
+// than having swapped one single criterion for another. srv4's width transition is grounded.
+test fn a_retained_host_is_admitted_on_its_grounded_obligation() -> Bool {
+  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv4", runner_name_raw: "srv1-03") {
+    RetirementScopeAdmitted { subject: s } =>
+      list_length(items: s.required) > 0 && list_length(items: s.discovery) == 0
     RetirementScopeNoObligation { host: _, cause: _ } => false
     RetirementScopeRefused { cause: _ } => false
   }
@@ -42,20 +60,15 @@ test fn a_leaving_host_is_admitted_from_a_peer_executor() -> Bool {
 
 // AND A RETAINED HOST IS ADMITTED TOO, on its width-transition obligation. srv4 stays in the fleet
 // and still owes retirees, which is the case the scope must serve for srv3/srv4 surplus.
-test fn a_retained_host_with_surplus_is_admitted() -> Bool {
-  match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv4", runner_name_raw: "srv1-03") {
-    RetirementScopeAdmitted { subject: s } => list_length(items: s.required) > 0
-    RetirementScopeNoObligation { host: _, cause: _ } => false
-    RetirementScopeRefused { cause: _ } => false
-  }
-}
+
 
 // A HOST THAT OWES NOTHING IS NOT AN ERROR AND IS NOT A SUBJECT. srv2 and srv4 both owe; a host with
 // no declared authority naming it owes nothing, and that is its own arm rather than a refusal.
-test fn a_host_owing_nothing_is_no_obligation_rather_than_refused() -> Bool {
+test fn a_host_with_no_work_of_either_kind_is_no_obligation_rather_than_refused() -> Bool {
   match retirement_scope_admission(executor_raw: "srv1", target_raw: "srv9", runner_name_raw: "srv1-03") {
     RetirementScopeNoObligation { host: _, cause: _ } =>
       list_length(items: transition_required_retiring(host: "srv9" as NonEmptyStr)) == 0
+        && list_length(items: host_retirement_discovery_subjects(host: "srv9" as NonEmptyStr)) == 0
     RetirementScopeAdmitted { subject: _ } => false
     RetirementScopeRefused { cause: _ } => false
   }
