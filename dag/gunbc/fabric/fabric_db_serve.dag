@@ -1,0 +1,164 @@
+module gunbc.fabric_db_serve
+
+import std.types { String, NonEmptyStr, Int, List, CommitSha }
+import extdeps.http.server { ServeWireResponse }
+import std.fabric_db {
+  FabricObject, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
+  FabricReplyUndecodable, FabricHeadNameRefused,
+  FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
+}
+import gunbc.fabric_db_file_store {
+  FabricDbFileRoot, fabric_db_file_root, fabric_db_file_head, fabric_db_file_put, fabric_db_file_advance, fabric_db_file_closure,
+}
+import gunbc.fabric_db_wire { fabric_db_wire_head, fabric_db_wire_put, fabric_db_wire_advance, fabric_db_wire_closure }
+import gunbc.fabric_db_placement { fabric_db_placement, FabricDbPlaced, FabricDbUnplaced, fabric_db_route_prefix }
+
+// THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_db. One
+// `gunbc serve` process on the placed host, compiled once, answers each request by running the
+// file store (gunbc.fabric_db_file_store) against local disk and writing the outcome in the one
+// wire form (gunbc.fabric_db_wire). This module decides nothing about the log: it realizes four
+// store operations and nothing else.
+//
+// SINGLE WRITER BY CONSTRUCTION. Every append reaches this process on the one host holding the
+// files, and the head compare-and-set is O_EXCL on that local disk: two concurrent requests that
+// both pass the expectation still race for ONE generation file, and exactly one creates it. The
+// serve accept loop being serial is not relied on.
+//
+// NOTHING LIVES IN MEMORY. Each request reads and writes the files; a restart loses nothing and
+// there is no cache to rebuild or to go stale.
+//
+// ACCESS: the backend binds loopback only and is reached through `tailscale serve`, the same
+// deployment the dashboard uses, so only tailnet members reach it and the Tailscale-User-Login
+// header is trustworthy exactly to the extent extdeps.tailscale.identity states. DECLARED GAP: no
+// principal is refused here. Every tailnet member that reaches the mount may append; the caller's
+// login is not yet joined to a writer roster, because no roster of fabric writers is modeled.
+// Restricting appends to named principals is the next rung, triggered by a modeled fabric writer
+// principal roster -- sufficient for this handler to refuse a login outside it.
+//
+// EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
+// body. A non-200 means the request itself was not this protocol (unknown operation, malformed
+// request), and the caller reads that as FabricReplyUndecodable -- never as a store outcome.
+
+data fabric_db_closure_bound_cap: Int = 65536
+
+fn text_response(status: Int, body: String) -> ServeWireResponse {
+  ServeWireResponse { status: status, content_type_label: "text/plain; charset=utf-8", body: body }
+}
+
+fn ok(body: String) -> ServeWireResponse {
+  text_response(status: 200, body: body)
+}
+
+fn words(text: String) -> List<String> {
+  split(trim_line(s: text), separator: " ")
+}
+
+fn trim_line(s: String) -> String {
+  match first(split(s, separator: "\n")) { Present { value: l } => l  Absent => "" }
+}
+
+fn word(ws: List<String>, i: Int) -> String {
+  match first(ws |> skip(n: i)) { Present { value: w } => w  Absent => "" }
+}
+
+fn head_name(w: String) -> NonEmptyStr? {
+  if w == "" { none } else { Present { value: w as NonEmptyStr } }
+}
+
+fn malformed(detail: String) -> ServeWireResponse {
+  text_response(status: 400, body: join(["fabric_db/1 malformed request: ", detail, "\n"], ""))
+}
+
+// Request bodies:
+//   head      <name>
+//   closure   <name> <bound>
+//   put       <canonical preimage>
+//   advance   <name> absent <target>   |   <name> at <expected-ref> <target>
+fn fabric_db_respond(root: FabricDbFileRoot, operation: String, body: String) -> ServeWireResponse {
+  let ws = words(text: body)
+  match operation {
+    "head" =>
+      match head_name(w: word(ws: ws, i: 0)) {
+        Absent => malformed(detail: "head names no head")
+        Present { value: n } => ok(body: fabric_db_wire_head(read: fabric_db_file_head(root: root, name: n)))
+      }
+    "closure" =>
+      match head_name(w: word(ws: ws, i: 0)) {
+        Absent => malformed(detail: "closure names no head")
+        Present { value: n } =>
+          match parse_int(s: word(ws: ws, i: 1)) {
+            Absent => malformed(detail: "closure bound is not an integer")
+            Present { value: b } =>
+              if b < 1 || b > fabric_db_closure_bound_cap { malformed(detail: "closure bound out of range") }
+              else { ok(body: fabric_db_wire_closure(read: fabric_db_file_closure(root: root, name: n, bound: b))) }
+          }
+      }
+    "put" =>
+      match fabric_object_decode(preimage: body) {
+        Absent => malformed(detail: "put body is not one fabric object")
+        Present { value: o } => ok(body: fabric_db_wire_put(put: fabric_db_file_put(root: root, object: o)))
+      }
+    "advance" =>
+      match head_name(w: word(ws: ws, i: 0)) {
+        Absent => malformed(detail: "advance names no head")
+        Present { value: n } =>
+          match advance_request(ws: ws) {
+            Absent => malformed(detail: "advance expectation or target unreadable")
+            Present { value: req } => ok(body: fabric_db_wire_advance(advance: fabric_db_file_advance(root: root, name: n, expected: req.expected, target: req.target)))
+          }
+      }
+    _ => text_response(status: 404, body: join(["fabric_db/1 no operation ", operation, "\n"], ""))
+  }
+}
+
+type AdvanceRequest {
+  expected: FabricHeadExpectation
+  target: std.fabric_db.FabricObjectRef
+}
+
+fn advance_request(ws: List<String>) -> AdvanceRequest? {
+  match word(ws: ws, i: 1) {
+    "absent" =>
+      match fabric_object_ref_of_wire(wire: word(ws: ws, i: 2)) {
+        Present { value: t } => Present { value: AdvanceRequest { expected: ExpectHeadAbsent, target: t } }
+        Absent => none
+      }
+    "at" =>
+      match fabric_object_ref_of_wire(wire: word(ws: ws, i: 2)) {
+        Absent => none
+        Present { value: e } =>
+          match fabric_object_ref_of_wire(wire: word(ws: ws, i: 3)) {
+            Present { value: t } => Present { value: AdvanceRequest { expected: ExpectHeadAt { object: e }, target: t } }
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+// The mount is /fabric-db/<operation>; only POST is admitted, since every operation carries a body.
+fn fabric_db_operation_of(path: String) -> String? {
+  let prefix = join([fabric_db_route_prefix, "/"], "")
+  if starts_with(s: path, prefix: prefix) { Present { value: substring(s: path, start: length(prefix), end: length(path)) } } else { none }
+}
+
+fn fabric_db_serve_handle_over(root: FabricDbFileRoot, method: String, path: String, body: String) -> ServeWireResponse {
+  if method != "POST" {
+    text_response(status: 405, body: "fabric_db/1 only POST is admitted\n")
+  } else {
+    match fabric_db_operation_of(path: path) {
+      Absent => text_response(status: 404, body: join(["fabric_db/1 no route ", path, "\n"], ""))
+      Present { value: op } => fabric_db_respond(root: root, operation: op, body: body)
+    }
+  }
+}
+
+// THE SERVED ENTRY, in the shape `gunbc serve --function` binds (the roadmap serve seam's). The
+// store root is the placement's; an unplaced store answers 503 on every request rather than
+// choosing a root.
+fn fabric_db_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+  match fabric_db_placement() {
+    FabricDbUnplaced => text_response(status: 503, body: "fabric_db/1 the fabric DB is unplaced\n")
+    FabricDbPlaced { host: _, store_root: r, endpoint: _ } => fabric_db_serve_handle_over(root: fabric_db_file_root(root: r), method: method, path: path, body: body)
+  }
+}
