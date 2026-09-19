@@ -78,8 +78,10 @@ fn gsg_chassis_on_frontier(decl_name: String) -> Bool {
 
 // MEMBERSHIP BY IDENTITY FOR THE FOUR NAMES WITH A HISTORY. The first two gate a consumption that
 // would be wrong to build: the GSG minimum family and the Appendix E duty may not reach a fan
-// realizer before a wet probe binds FamilyObserved, because bmc_first_contact_standing carries no
-// function from a document to an installed family. The second two were DROPPED FROM THIS ROSTER
+// realizer before a SEPARATE per-unit discriminator constructs FamilyObserved -- not the
+// ProbeServiceRoot surface, which is reachability and Redfish presence only -- because
+// bmc_first_contact_standing carries no function from a document, or from an HTTP status, to an
+// installed family. The second two were DROPPED FROM THIS ROSTER
 // ONCE ALREADY (review 67996): two aliases made them look consumed, so nine siblings were rostered
 // and these were not. A count conjunct did not catch that and could not have; this does.
 test fn w_frontier_covers_the_rows_that_have_been_dropped_or_must_not_be_consumed() -> Bool {

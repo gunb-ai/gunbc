@@ -34,8 +34,15 @@ data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
 // their existence made two chassis rows LOOK consumed and kept them off the coverage frontier
 // (review 67996). Both are rostered in gunbc.machine_intake_mtjade1_coverage_frontier now.
 
-// Locus is reserved and off the accessor roster until the secret exists. Mint after a wet
-// ProbeServiceRoot blob binds FamilyObserved, then the first rotation — not before.
+// Locus is reserved and off the accessor roster until the secret exists. THE ORDER IS THREE
+// STAGES AND THE FIRST DOES NOT IMPLY THE SECOND: (1) a wet ProbeServiceRoot read establishes
+// reachability and a Redfish surface; (2) a SEPARATE per-unit discriminator -- an observed BMC
+// firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another
+// explicitly modeled probe -- constructs FamilyObserved; (3) only then the family-specific
+// rotation route, the mint and read-back, and roster admission. An earlier revision wrote stage 1
+// as if it produced stage 2. It cannot: ProbeServiceRoot yields only RedfishHttpSurface, a 200
+// service root is served by several families, and a 404 establishes the absence of that surface
+// rather than MegaRAC.
 type JadeManagedBmcSecretStanding
   = SecretLocusReservedNotOnAccessorRoster { ref: SecretRef }
 
