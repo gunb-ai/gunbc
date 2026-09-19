@@ -26,11 +26,7 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
   active_roadmap_nodes_for_accepted,
-  frontier_sets_from_live_history,
-  FrontierSetsProjected,
-  FrontierSetsProjectionRefused,
 }
-import gunbc.roadmap_document { RoadmapDocument }
 import std.keyed_row { KeyedRow }
 import gunbc.roadmap_sizing {
   SizingDerived,
@@ -619,31 +615,19 @@ test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Boo
     && !node_id_sets_agree(reported: reported_unsized_ids(refusals: duplicated), expected: expected)
 }
 
-// THE LIVE READ IS KEPT; THE DOCUMENT IT NEVER INSPECTS IS NOT (DESIGN section 3).
-// gunbc.rung_drop roadmap_sizing_authored_to_derived names this claim as the one control that
-// EXECUTES THE LIVE AUTHORITY AND REFUSES, so supplying its inputs would delete the drop's
-// evidence -- that is deliberately not what changed here. accepted and withheld still come from
-// frontier_sets_from_live_history(), the same live acceptance history roadmap_authority_projection
-// reads; what is no longer built is the RoadmapDocument, which roadmap_schedule_forecast_over
-// discards at its own `doc: _` and no assertion below reaches. Measured on this tree: the live
-// frontier plus the active node set is 54,727 eval steps against 433,321 for the full projection,
-// and the difference is entirely preamble and section markup. The claim still goes red the day the
-// graph renders a forecast, which is the property the drop row relies on.
-fn live_frontier_plan() -> RoadmapAuthorityProjection {
-  match frontier_sets_from_live_history() {
-    FrontierSetsProjectionRefused { detail: detail } =>
-      RoadmapAuthorityProjectionRefused { detail: detail }
-    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-      RoadmapAuthorityProjected {
-        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
-        accepted: accepted,
-        withheld: withheld,
-      }
-  }
-}
-
+// THE LIVE PROJECTION IS CALLED DIRECTLY, AND ROUTING AROUND IT WOULD COST MORE ON THE FLOOR.
+// This claim reads only `accepted` and `withheld`, so reaching the same two lists through
+// frontier_sets_from_live_history() and handing the forecast an empty RoadmapDocument looks
+// cheaper -- and is, when measured with claim_batch, which has no cross-claim share: 613,121 eval
+// steps against 240,465. That reading is over the wrong population.
+// v2.workflow.floor_pure_producer_share enrols gunbc.roadmap_authority.roadmap_authority_projection
+// as a carried-input warm row over roadmap_acceptance_event_history_load, so on the floor the
+// projection is SERVED rather than derived -- which is why the required run measures this identity
+// at 211,628 where claim_batch measures 613,121. frontier_sets_from_live_history is not enrolled,
+// so the "cheaper" form would pay a fold the floor was giving this claim for free. The instrument
+// that decides this is the floor's own required_floor_claim_cost receipt, not claim_batch.
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  let plan = live_frontier_plan()
+  let plan = roadmap_authority_projection()
   let expected = active_node_ids_for_plan(plan: plan)
   count(expected) > 0
     && match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {
