@@ -2,6 +2,7 @@ module test.claim.runner_attempt_launch_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import v2.std.optional { Absent, Present }
+import std.measure { byte_size_count }
 import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
@@ -176,7 +177,7 @@ test fn a_below_floor_credential_stages_no_device_and_starts_no_vmm() -> Bool {
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: received_for(attempt: a, encoded: short_blob), ground: GroundClear)
           no_device_no_vmm(plan: plan)
             && match refusal_of(plan: plan) {
-              Cons { head: JitCredentialBelowFloor { bytes: n }, tail: _ } => n == 20
+              Cons { head: JitCredentialBelowFloor { bytes: n }, tail: _ } => byte_size_count(b: n) == 20
               _ => false
             }
         }

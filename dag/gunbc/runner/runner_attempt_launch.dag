@@ -5,7 +5,7 @@ import v2.std.optional { Absent, Present }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second, ByteSize, byte_size, byte_size_count, Mebibyte, mebibyte }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, Mebibyte, mebibyte }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
 import extdeps.tools.gnu_coreutils {
@@ -37,6 +37,9 @@ import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialBoundToAttempt,
 }
 import gunbc.runner_jit_mint { jit_runner_name_for }
+import gunbc.runner.runner_jit_admission {
+  SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
+}
 import gunbc.runner_microvm {
   runner_microvm_vm_config,
   attach_workspace_drive,
@@ -153,8 +156,9 @@ type JitDeviceRefusal
   = JitMintNotReceived { performance: JitMintPerformance }
   | JitCredentialNotDelivered { delivery: JitCredentialDelivery }
   | JitCredentialBoundToDifferentAttempt { bound_to: MicroVmAttempt }
-  | JitCredentialBelowFloor { bytes: Int }
-  | JitCredentialAboveCeiling { bytes: Int }
+  | JitCredentialBelowFloor { bytes: ByteSize }
+  | JitCredentialAboveCeiling { bytes: ByteSize }
+  | JitMintAdmissionAxisNotRequired
 
 // THE ONLY CARRIER A DEVICE CAN BE STAGED FROM, and admit_jit_credential is its only constructor.
 // The registration id travels with the credential rather than beside it: it is GitHub's identity
@@ -170,8 +174,23 @@ type JitCredentialAdmission
   = JitCredentialAdmitted { admitted: AdmittedJitCredential }
   | JitCredentialRefused { refusal: JitDeviceRefusal }
 
-fn jit_credential_bytes(credential: EncodedJitConfig) -> Int {
-  string_length(credential.encoded as String)
+fn jit_credential_bytes(credential: EncodedJitConfig) -> ByteSize {
+  byte_size(count: string_length(credential.encoded as String))
+}
+
+// THE ROSTER IS CONSUMED, NOT RESTATED. gunbc.runner.runner_jit_admission declares signature and
+// expiry required with the HostMintAdmission checker, and admit_jit_credential IS that checker; so
+// it refuses if the roster stops saying so, rather than enforcing a wall the roster no longer
+// declares (or the roster declaring one nothing enforces).
+fn host_mint_admission_is_required() -> Bool {
+  match jit_admission_axis_standing(axis: SignatureAxis) {
+    AxisRequired { checker: HostMintAdmission } =>
+      match jit_admission_axis_standing(axis: ExpiryAxis) {
+        AxisRequired { checker: HostMintAdmission } => true
+        _ => false
+      }
+    _ => false
+  }
 }
 
 fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> JitCredentialAdmission {
@@ -179,11 +198,13 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
     JitMintReceived { delivery: delivery } =>
       match delivery {
         JitCredentialBoundToAttempt { attempt: bound, credential: c, runner_id: id } =>
-          if bound != attempt {
+          if !host_mint_admission_is_required() {
+            JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
+          } else if bound != attempt {
             JitCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: bound } }
-          } else if jit_credential_bytes(credential: c) < byte_size_count(b: jit_config_byte_floor) {
+          } else if !measure_le(a: jit_config_byte_floor, b: jit_credential_bytes(credential: c)) {
             JitCredentialRefused { refusal: JitCredentialBelowFloor { bytes: jit_credential_bytes(credential: c) } }
-          } else if jit_credential_bytes(credential: c) > byte_size_count(b: jit_config_byte_ceiling) {
+          } else if !measure_le(a: jit_credential_bytes(credential: c), b: jit_config_byte_ceiling) {
             JitCredentialRefused { refusal: JitCredentialAboveCeiling { bytes: jit_credential_bytes(credential: c) } }
           } else {
             JitCredentialAdmitted {

@@ -7,17 +7,17 @@ import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
   AxisRequired, AxisDeferred, AxisDissolvedInto,
-  HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
+  HostMintAdmission, GitHubMintRequestName,
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn signature_and_expiry_are_required_host_envelope_checks() -> Bool {
+test fn signature_and_expiry_are_required_host_mint_admission_checks() -> Bool {
   match jit_admission_axis_standing(axis: SignatureAxis) {
-    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
+    AxisRequired { checker: HostMintAdmission } =>
       match jit_admission_axis_standing(axis: ExpiryAxis) {
-        AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => true
+        AxisRequired { checker: HostMintAdmission } => true
         _ => false
       }
     _ => false
