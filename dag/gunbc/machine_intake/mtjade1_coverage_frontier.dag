@@ -38,6 +38,14 @@ fn gsg_subject_decl(name: String) -> DeclarationRef {
 // not admit, so the gap was invisible to the very claim that checks for gaps.
 data mtjade1_gsg_subject_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.specification_citation_read_provenance",
+      decl_name: "mt_jade_gsg_citation_read_comparison",
+    ),
+    reason: "The publisher-versus-mirror byte agreement for the GSG. Its Collins sibling names a production consumer (mt_collins_dimm_physical_identity carries both reads and their comparison into its operator projection); the Jade one has none, and is read only by the witness that asserts RecordedReadBytesAgree.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a carriage or provenance gate that refuses a GSG-derived declaration whose reads did not agree, the same gate mt_jade_gsg_publication_status waits on. TRIGGER: a production fold reads this comparison's standing on the path that consumes a GSG fact. SUFFICIENT FOR deleting this row. NOT satisfied by a witness asserting the standing, which is what reads it today."),
+  ),
+  frontier_row_decl(
     ref: gsg_subject_decl(name: "mt_jade_gsg_publication_status"),
     reason: "Whether the GSG is publicly published, which gates whether its facts may be carried into this corpus at all. Read only by a witness: upstream_fact_carriage is called on it there, but no production fold consults the status before consuming a GSG row.",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: a carriage gate that refuses a GSG-derived declaration when upstream_fact_carriage(status) is not FactsMayBeCarried, rather than leaving the permission checked once in a claim. TRIGGER: a production fold reads this status on the path that consumes a GSG fact. SUFFICIENT FOR deleting this row. NOT satisfied by a witness asserting the status is publicly published, which is what reads it today."),
@@ -132,6 +140,23 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
 // rows (review 67984). The same §4c argument in this file's header applies to a prose "NAMED
 // CONSUMER / TRIGGER" note on a gunbc row exactly as it applies to one on an extdeps row.
 
+// THE ACCESS-OBSERVATION MODULE, the FOURTH module this roster failed to cover (review 68081).
+// Every previous miss was found by a reviewer and fixed one module at a time, so this round the
+// census ran over EVERY declaration the change adds, in every production module it touches, with
+// annotation text stripped. That last part matters: mtjade1_managed_bmc_secret_standing is named
+// only in a // note in gunbc.secret_provision, and an un-stripped census counts that mention as a
+// consumer -- the same "an annotation makes a row look consumed" failure this roster exists to
+// record, reproduced inside the tool checking for it.
+data mtjade1_access_observation_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.machine_intake_mtjade1_access_observation",
+  decl_names: [
+    "mtjade1_unit_key_standing",
+    "mtjade1_managed_bmc_secret_standing",
+  ],
+  reason: "The access standing for unit 1 before any wet contact. The unit key is UnitKeyRefused{BoardSerialAbsent} because no FRU or SMBIOS read has happened, and the secret locus is reserved off the accessor roster because the secret is not minted. Both are refusals, and nothing in production reads a refusal that has no alternative yet.",
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the BMC onboarding route, which reads the secret standing to decide whether a credential may be fetched and the unit key to name the machine it belongs to. TRIGGER: a wet ProbeServiceRoot read binds FamilyObserved, the secret is minted and rotated once, and the locus joins fleet_accessor_grant_roster - at which point SecretLocusReservedNotOnAccessorRoster is no longer the only arm and a fold must choose between them. SUFFICIENT FOR deleting the NAME the route reads. NOT satisfied by minting the secret without rotating, which is the 'secret populated, server never rotated' state extdeps.bmc.http warns about."),
+)
+
 data mtjade1_first_dpc_plan_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: "gunbc.machine_intake_mtjade1_first_dpc_population_plan",
   decl_names: [
@@ -164,11 +189,22 @@ data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_d
   dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer jade_fan_policy_convergence selects once a family is observed - phosphor pid_control rows for OpenBMC, or an executed PWM profile for MegaRAC. TRIGGER: a wet probe binds FamilyObserved AND the unit POSTs with DIMMs so FirstPostFanCaptured carries a reading the realizer can act on. BOTH are required: a family with no post gives the realizer no thermal input, and a post with no family gives it no realizer. SUFFICIENT FOR deleting the NAME the realizer reads. NOT satisfied by the acoustic intent alone, which is a constraint on the realizer and not a consumer of it."),
 )
 
-// ONE LIST SO A READER ASKS ONE QUESTION. The witness folds this, not the three parts.
+// ONE LIST SO A READER ASKS ONE QUESTION. The witness folds this, not the parts.
+//
+// THIS ROW IS NOT ON THE FRONTIER AND THAT IS NOT AN OVERSIGHT. A census of the declarations this
+// change adds reports it dangling, because its only reader is a claim. But §3c's red is "a witness
+// that asserts a declaration EXISTS rather than exercising it", and the claim over this list
+// exercises it: it builds a keyed roster to find duplicate subjects, folds every row's dissolution
+// status, and checks every subject against the modules this roster is about. Execution by a claim
+// is execution. Rostering the roster would also be circular -- the frontier is the mechanism, not
+// a subject waiting for one.
 data mtjade1_coverage_frontier_rows: List<FrontierRow> = concat(
   mtjade1_gsg_document_frontier_rows,
   concat(
     concat(mtjade1_gsg_subject_frontier_rows, mtjade1_gsg_memory_frontier_rows),
-    concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
+    concat(
+      mtjade1_access_observation_frontier_rows,
+      concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
+    ),
   ),
 )
