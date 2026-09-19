@@ -87,13 +87,25 @@ fn is_provider_kind(k: ItemKind) -> Bool {
   match k { ServiceItem => true  TypeItem => true  FnItem => false  DataItem => false  OtherItem => false }
 }
 
+// A template LIST (`std.algebra *_templates`) is an authority for an identity only if it carries a
+// template row for that identity: citing the list is not the same fact as being declared on it,
+// and the surface join is what says whether the row exists.
+fn cites_template_list(d: DeclarationRef) -> Bool {
+  (d.module_path as String) == "std.algebra" && ends_with(s: d.decl_name as String, suffix: "_templates")
+}
+
 fn qualify_authority(a: OperationAuthorityStanding, ctx: QualificationContext) -> QualifiedAuthority {
   match a {
     AuthorityRequired { home: h } => AuthorityRequiredHome { home: h }
     AuthorityDeclared { declaration: d } => {
       let r = ctx.resolve(d)
       match resolved_kind(r: r) {
-        Present { value: k } => AuthorityVerified { declaration: d, kind: k }
+        Present { value: k } =>
+          if cites_template_list(d: d) && !ctx.has_algebra_template {
+            AuthorityUnresolved { reference: d, cause: "the cited template list declares no template for this identity (no AlgebraTemplate surface fact joined it)" as NonEmptyStr }
+          } else {
+            AuthorityVerified { declaration: d, kind: k }
+          }
         Absent => AuthorityUnresolved { reference: d, cause: resolution_failure(r: r) as NonEmptyStr }
       }
     }

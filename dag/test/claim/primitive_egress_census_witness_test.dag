@@ -273,9 +273,18 @@ test fn w_class_is_derived_from_evidence_not_authored() -> Bool {
 test fn w_authored_premises_that_do_not_join_cannot_reach_a_terminal_class() -> Bool {
   let registry_only = [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)]
   let spoofed_authority = census_with(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")], projections: [], decls: [], resolve: resolver_refusing_all)
-  let unowned_refusals = census_of(facts: registry_only, edges: [], rows: [row(name: "zeta")])
+  // Citing a template LIST with no template row for the identity is an authority that does not
+  // own the identity, even though the list itself resolves.
+  let list_without_template = census_of(facts: registry_only, edges: [], rows: [row(name: "zeta")])
+  // A resolving fn authority that is not a template list verifies the purity claim, but the
+  // refusal contract still has no owner without a template declaring the result.
+  let fn_authority_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject,
+    computation: computes(authority: authority(module_path: "v2.std.algebra", decl_name: "length"), inputs: "x", result: "y", body: DagBodyRequired),
+    refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
+  let unowned_refusals = census_of(facts: registry_only, edges: [], rows: [fn_authority_row])
   let joined = census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")])
   cause_kind(c: spoofed_authority, name: "zeta") == "OwningFactUnresolved"
+    && cause_kind(c: list_without_template, name: "zeta") == "OwningFactUnresolved"
     && cause_kind(c: unowned_refusals, name: "zeta") == "RefusalContractIncomplete"
     && class_of(c: joined, name: "zeta") == "PureDagComputation"
 }
