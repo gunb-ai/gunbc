@@ -7,8 +7,6 @@ import extdeps.github.code_search {
   CodeSearchHit,
   CodeSearchRepository,
   retrievable_result_ceiling,
-  CodeSearchPageSize,
-  CodeSearchPageSizeAdmission,
   CodeSearchPageSizeAdmitted,
   CodeSearchPageSizeRefused,
   admit_code_search_page_size,
