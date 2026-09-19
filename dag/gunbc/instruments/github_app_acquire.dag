@@ -340,7 +340,6 @@ fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -444,7 +443,6 @@ fn persist_issued_credentials(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> IssuedCredentialCustody
-  uses fs: std.resources.Filesystem
 {
   match issuance {
     CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
@@ -588,7 +586,6 @@ fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -836,7 +833,6 @@ fn installations_report(installations: List<GitHubAppInstallation>) -> String {
 }
 
 fn installations_read_exit(installations: List<GitHubAppInstallation>) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   let path = installations_report_path()
   let wrote = Filesystem.Write(path: path, content: installations_report(installations: installations))
@@ -949,7 +945,6 @@ fn persist_then_read_back(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
     CredentialNameUnsafe { name: s } =>

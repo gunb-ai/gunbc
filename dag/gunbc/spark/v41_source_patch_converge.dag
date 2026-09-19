@@ -2,7 +2,6 @@ module gunbc.spark.v41_source_patch_converge
 
 import std.algebra { trim }
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
-import std.resources { Network }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput }
 import v2.std.optional { Present, Absent }
@@ -216,7 +215,6 @@ fn v41_remote_declared_patch_path(path: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext, patch: V41EnginePatch) -> String?
-  uses net: Network
 {
   let local = Filesystem.Read(path: patch.path as String)
   match filesystem_read_outcome(content: local.content, success: local.success, error: local.error) {
@@ -246,7 +244,6 @@ fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext
 }
 
 fn v41_check_applicable(target: SshTarget, context: FleetSshExecutionContext, reverse: Bool, patch: V41EnginePatch) -> Bool?
-  uses net: Network
 {
   let remote = v41_remote_declared_patch_path(path: patch.path) as String
   let cmd = if reverse {
@@ -269,7 +266,6 @@ fn v41_check_applicable(target: SshTarget, context: FleetSshExecutionContext, re
 }
 
 fn v41_observe_member(target: SshTarget, context: FleetSshExecutionContext, patch: V41EnginePatch) -> V41PatchMemberRead?
-  uses net: Network
 {
   match v41_place_declared_patch(target: target, context: context, patch: patch) {
     Present { value: _ } => none
@@ -308,7 +304,6 @@ fn v41_observe_member(target: SshTarget, context: FleetSshExecutionContext, patc
 }
 
 fn v41_observe_members(target: SshTarget, context: FleetSshExecutionContext, patches: List<V41EnginePatch>) -> List<V41PatchMemberRead>?
-  uses net: Network
 {
   let rows = map(patches, p => v41_observe_member(target: target, context: context, patch: p))
   if any(rows, r => match r { Absent => true Present { value: _ } => false }) {
@@ -319,7 +314,6 @@ fn v41_observe_members(target: SshTarget, context: FleetSshExecutionContext, pat
 }
 
 fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desired_patches: List<V41EnginePatch>) -> V41SourceTreeRead?
-  uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
     Absent => none
@@ -349,7 +343,6 @@ fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desire
 }
 
 fn v41_apply_plan(target: SshTarget, context: FleetSshExecutionContext, plan: V41SourcePatchPlan) -> String?
-  uses net: Network
 {
   fold(plan.patches, init: none, f: (acc, p) => match acc {
     Present { value: _ } => acc
@@ -397,7 +390,6 @@ fn converge_vllm_source_with_patches(
   r: VllmContainerBuildRecipe,
   patches: List<V41EnginePatch>,
 ) -> V41PatchedSourceConverge
-  uses net: Network
 {
   match converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMayBeDirty) {
     VllmSourceRefused { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
@@ -457,7 +449,6 @@ fn converge_vllm_runtime_image_with_patches(
   r: VllmContainerBuildRecipe,
   patches: List<V41EnginePatch>,
 ) -> VllmImageBuild
-  uses net: Network
 {
   match converge_vllm_source_with_patches(target: target, context: context, r: r, patches: patches) {
     V41PatchedSourceRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }

@@ -2,7 +2,6 @@ module gunbc.spark.v41_source_patch_converge_wet
 
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.vllm.source_build { vllm_clone_url }
@@ -47,7 +46,6 @@ data v41_patched_source_acquire_attempt_raw: String = "v41-patched-source-acquir
 data v41_patched_source_acquire_receipt_path: String = "target/v41-patched-source-acquire-receipt.txt"
 
 fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
-  uses net: Network
 {
   match v41_storage_backed_patch_population() {
     V41PatchesAbsentByObservation => exit_failure(reason: "the storage-backed patch population is absent by observation")

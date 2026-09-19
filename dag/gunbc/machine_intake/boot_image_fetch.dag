@@ -109,7 +109,6 @@ fn fetch_verified_boot_image(
   image_name: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let published_path = join([export_dir as String, "/", image_name as String], "") as NonEmptyStr
   let staging_path = boot_image_staging_path(published_path: published_path)
@@ -139,7 +138,6 @@ fn verify_and_publish_boot_image(
   export_dir: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let measured = sha256sum_file_digest_via_shell(path: staging_path)
   return match measured {
@@ -181,7 +179,6 @@ fn admit_then_publish_boot_image(
   export_dir: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let standing = observed_export_ownership_standing(path: export_dir)
   return if export_ownership_admits_publication(standing: standing) {
@@ -215,7 +212,6 @@ fn publish_verified_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   moved = shell.Move.File(
     source: staging_path as FilePath,
@@ -248,7 +244,6 @@ fn confirm_published_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let republished = sha256sum_file_digest_via_shell(path: published_path)
   return match republished {

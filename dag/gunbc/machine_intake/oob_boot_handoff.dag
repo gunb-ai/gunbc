@@ -178,7 +178,6 @@ fn oob_power_cycle_after_confirmed_selection(
   device: NonEmptyStr,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
-  uses net: std.resources.Network
 {
   cycle = diagnostic.ipmi.Tool.ChassisPowerControl(
     bmc_host: bmc_host,
@@ -213,7 +212,6 @@ fn oob_boot_handoff(
   expected_rendering: NonEmptyStr,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
-  uses net: std.resources.Network
 {
   let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
   if oob_handoff_is_admitted(admission: admission) == false {

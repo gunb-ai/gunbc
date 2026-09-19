@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, FilePath }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io
 import product.placement_supply { HostIdentity }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
@@ -84,7 +83,6 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
 }
 
 fn materialize_codex_runtime_on_local_host() -> ProcessExit
-  uses net: Network
 {
   match provider_runtime_placement_for_host(host: "srv1" as HostIdentity) {
     Absent =>
@@ -109,7 +107,6 @@ fn materialize_codex_runtime_on_local_host() -> ProcessExit
 }
 
 fn provision_codex_runtime(host: HostIdentity) -> ProcessExit
-  uses net: Network
 {
   host_toolchain_ensure(host: host, kind: CodexRuntime)
 }

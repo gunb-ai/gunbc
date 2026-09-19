@@ -2,7 +2,6 @@ module gunbc.spark.v41_runtime_image_probe
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.content_hash { serialize_content_hash }
@@ -623,7 +622,6 @@ fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
 // the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
 // content per architecture, and what the probe must name is the image the daemon actually holds.
 fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
-  uses net: Network
 {
   match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
     Present { value: refusal } => refusal
@@ -701,7 +699,6 @@ fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outc
 data v41_probe_host_purpose: NonEmptyStr = "a published-image probe, which pulls a 9.6 GB image and starts a container" as NonEmptyStr
 
 fn v41_published_image_probe_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {

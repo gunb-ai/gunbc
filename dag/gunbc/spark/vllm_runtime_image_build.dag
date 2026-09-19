@@ -2,7 +2,6 @@ module gunbc.spark.vllm_runtime_image_build
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -370,7 +369,6 @@ type ImageLegOutcome
 // So the docker legs bind to gunbc.spark.model_snapshot_materialize spark_remote_run, the one route
 // the corpus models for that daemon, and this leg keeps the git work, which needs no root.
 fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
-  uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } => ImageLegFailed { step: step, cause: why }
@@ -459,7 +457,6 @@ fn vllm_image_run_steps(target: SshTarget, context: FleetSshExecutionContext, st
 }
 
 fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
-  uses net: Network
 {
   match vllm_image_leg(target: target, context: context, step: "source-clean" as NonEmptyStr, command: git_status_porcelain_command(repository_dir: vllm_source_dir() as String)) {
     ImageLegFailed { step: st, cause: why } =>
@@ -495,7 +492,6 @@ fn vllm_source_after_revision(
   already_present: Bool,
   working_tree: VllmWorkingTreeRequirement,
 ) -> VllmSourceState
-  uses net: Network
 {
   match working_tree {
     VllmWorkingTreeMayBeDirty => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
@@ -513,7 +509,6 @@ fn converge_vllm_source_to_revision(
   r: VllmContainerBuildRecipe,
   working_tree: VllmWorkingTreeRequirement,
 ) -> VllmSourceState
-  uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
     Present { value: head } =>
@@ -547,7 +542,6 @@ fn converge_vllm_source_to_revision(
 }
 
 fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
-  uses net: Network
 {
   converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMustBeClean)
 }
@@ -602,13 +596,11 @@ type VllmImageBuild
   | VllmImageBuildRefused { step: NonEmptyStr, cause: String }
 
 fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
-  uses net: Network
 {
   converge_vllm_image_keyed(ctx: ctx, r: r, key: vllm_image_build_key(r: r))
 }
 
 fn converge_vllm_image_keyed(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe, key: ContentHash) -> VllmImageBuild
-  uses net: Network
 {
   let tag = vllm_image_tag_for_key(key: key)
   match vllm_docker_leg(ctx: ctx, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
@@ -676,7 +668,6 @@ fn vllm_image_build_succeeded(b: VllmImageBuild) -> Bool {
 }
 
 fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
-  uses net: Network
 {
   if !vllm_recipe_arch_is_buildable(r: r) {
     VllmImageBuildRefused {
@@ -713,7 +704,6 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // here. Until then the fallback build is correct by reading on this transport and executed only on the
 // other one, and this row is what keeps that from being read the other way round.
 fn vllm_runtime_image_build_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
@@ -826,7 +816,6 @@ fn vllm_source_acquired(s: VllmSourceState) -> Bool {
 }
 
 fn vllm_source_acquire_wet(host: String) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match admit_unplaced_host(raw: host, purpose: vllm_build_host_purpose) {
@@ -947,7 +936,6 @@ fn classify_reported_hostname(host: HostIdentity, endpoint: NonEmptyStr, reporte
 }
 
 fn probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
-  uses net: Network
 {
   match spark_reach_endpoint(host: host, path: ReachManagementLan) {
     Absent => SparkHostUnresolved { host: host }
@@ -1025,7 +1013,6 @@ fn spark_reachability_verdict(readings: List<SparkHostReachability>) -> SparkRea
 // arm widening into silence. It now succeeds only when every admissible host answered AND its answer
 // joined to the identity it was asked about.
 fn spark_build_host_reachability_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match fleet_ssh_attempt_identity(raw: spark_reachability_attempt_raw) {

@@ -127,7 +127,6 @@ fn mtcollins1_drive_handoff(
   device: NonEmptyStr,
   expected_rendering: NonEmptyStr,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -154,7 +153,6 @@ fn mtcollins1_drive_handoff(
 }
 
 fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
-  uses net: std.resources.Network
 {
   mtcollins1_drive_handoff(
     label: "mtcollins1 handoff",
@@ -187,7 +185,6 @@ data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
 data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
 
 fn mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
-  uses net: std.resources.Network
 {
   mtcollins1_drive_handoff(
     label: "mtcollins1 cdrom handoff",
@@ -228,7 +225,6 @@ data mtcollins1_mismatched_capability_row: BmcFirmwareReleaseCapabilityRow = Bmc
 }
 
 fn mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
-  uses net: std.resources.Network
 {
   mtcollins1_drive_handoff(
     label: "mtcollins1 denied-admission control",

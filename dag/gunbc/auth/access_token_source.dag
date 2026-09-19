@@ -157,7 +157,6 @@ fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
 }
 
 fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
-  uses net: Network
 {
   match source {
     GcloudPrintToken => {

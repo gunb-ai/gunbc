@@ -2,7 +2,6 @@ module gunbc.spark.fabric_rail_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
@@ -67,7 +66,6 @@ fn fabric_rail_apply_legs(trust: FleetOpenSshTrustPolicy, plans: List<SparkPairH
 }
 
 fn fabric_rail_apply_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let plans = fabric_rail_apply_plans()

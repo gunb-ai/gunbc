@@ -2,7 +2,6 @@ module gunbc.runner_host_file_converge
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -629,7 +628,6 @@ fn observe_runner_host_administrator_privilege(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerHostPrivilegeStanding
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: elevated_argv(command: ["true"])) {
     TypedArgvExecRefused { reason: why } => AdministratorPrivilegeRefused { reason: why }
@@ -650,7 +648,6 @@ fn observe_runner_host_paths(
   paths: List<String>,
   kind: String,
 ) -> RunnerHostPathMetadata
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_root_only_find_argv(paths: paths, kind: kind)) {
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
@@ -680,7 +677,6 @@ fn observe_runner_host_file_content(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileStanding
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: ["test", "-e", file.path as String]) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
@@ -714,7 +710,6 @@ fn observe_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileObservation
-  uses net: Network
 {
   let content = observe_runner_host_file_content(subject: subject, context: context, file: file)
   RunnerHostFileObservation {
@@ -733,7 +728,6 @@ fn observe_runner_slot_population(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerSlotPopulation
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_list_all_service_units_argv()) {
     TypedArgvExecRefused { reason: why } => SlotPopulationUnobservable { reason: why }
@@ -781,7 +775,6 @@ fn apply_runner_host_file(
   context: FleetSshExecutionContext,
   planned: RunnerHostFilePlanned,
 ) -> RunnerHostFileOutcome
-  uses net: Network
 {
   match planned.action {
     HostFileLeaveInPlace => HostFileLeftInPlace
@@ -836,7 +829,6 @@ fn reload_runner_host_manager(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
 ) -> RunnerHostManagerReload
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv())) {
     TypedArgvExecRefused { reason: why } => ManagerReloadRefused { reason: why }
@@ -881,7 +873,6 @@ fn plan_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFilePlanned
-  uses net: Network
 {
   let observation = observe_runner_host_file(subject: subject, context: context, file: file)
   RunnerHostFilePlanned { file: file, observation: observation, action: runner_host_file_action(observation: observation) }
@@ -897,7 +888,6 @@ fn runner_host_manager_reload_step(
   privilege: RunnerHostPrivilegeStanding,
   before: RunnerSlotPopulation,
 ) -> RunnerHostManagerReload
-  uses net: Network
 {
   if !runner_slot_population_owes_reload(population: before) {
     ManagerReloadNotOwed
@@ -924,7 +914,6 @@ fn run_runner_host_files(
   files: List<RunnerHostFileDesired>,
   mode: RunnerHostFileConvergeMode,
 ) -> RunnerHostFileRun
-  uses net: Network
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
   let planned = map(files, f => plan_runner_host_file(subject: subject, context: context, file: f))
@@ -1056,7 +1045,6 @@ data runner_host_file_converge_receipt_path: String = "target/runner-host-file-c
 // chosen host in FLEET_CONVERGE_EXPECTED_HOST; an unset host refuses rather than fanning a root-file
 // write across the fleet from an empty variable.
 fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
-  uses net: Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -1094,13 +1082,11 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
 }
 
 fn runner_host_file_observe_ci_wet() -> ProcessExit
-  uses net: Network
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesObserveOnly)
 }
 
 fn runner_host_file_converge_ci_wet() -> ProcessExit
-  uses net: Network
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesApply)
 }

@@ -3,7 +3,6 @@ module gunbc.runner_microvm_host_ready
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
@@ -215,7 +214,6 @@ fn executor_home_wet() -> String? {
 // receipt and decides what can measure the reserve.
 
 fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
-  uses net: Network
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
@@ -266,7 +264,6 @@ fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStandin
 }
 
 fn runner_microvm_host_observe_wet() -> ProcessExit
-  uses net: Network
 {
   match executor_home_wet() {
     Absent => exit_failure(reason: "runner_microvm_host_observe: HOME is unset, so the executor-owned install root cannot be named")
@@ -289,7 +286,6 @@ fn runner_microvm_host_observe_wet() -> ProcessExit
 // Converge = observe, install only the binary if absent, observe again. The KVM half is never
 // actuated here: a device this executor cannot open is reported, and the report names the grant.
 fn runner_microvm_host_converge_wet() -> ProcessExit
-  uses net: Network
 {
   match executor_home_wet() {
     Absent => exit_failure(reason: "runner_microvm_host_converge: HOME is unset, so the executor-owned install root cannot be named")

@@ -683,7 +683,6 @@ fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bo
 // observed population independent of the desired one, which is the whole point of a reconcile.
 
 fn observe_runner_slot_members_wet() -> RunnerSlotObservation
-  uses net: Network
 {
   match run_shell_command_capture(
     command: ls_one_per_line_command(path: actions_runner_base_dir),
