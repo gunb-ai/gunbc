@@ -493,10 +493,7 @@ type RunnerSlotUnitStanding
 // the manager's DEFAULTS -- and the default KillMode is control-group, so reading KillMode first would
 // certify a slot that does not exist. A loaded unit whose configuration changed on disk reports the
 // OLD values until a reload, so NeedDaemonReload is read before the pair it would otherwise vouch for.
-fn classify_runner_slot_unit(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent) -> RunnerSlotUnitStanding {
-  classify_runner_slot_unit_against_retirement(reading: reading, intent: intent, retirements: [])
-}
-
+//
 // THE POPULATION IS JUDGED AGAINST THE SLOTS THAT SHOULD EXIST, NOT AGAINST THE GLOB. A masked unit is
 // discharged only by the retirement authority's OWN verdict on it: `retirements` carries
 // gunbc.runner_slot_retirement runner_retirement_standing for each unit the width transition obliges
