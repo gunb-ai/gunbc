@@ -1,6 +1,6 @@
 module gunbc.runner_microvm_cell_readiness
 
-import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.types { String, NonEmptyStr, Bool, List, Int, Map }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved,
@@ -61,14 +61,11 @@ type CellReadinessStoreRead
   = StoreRead { ownership: CellReadinessStoreOwnership, records: List<CellReadinessRecord> }
   | StoreUnreadable { reason: NonEmptyStr }
 
-fn records_for_cell(records: List<CellReadinessRecord>, cell: CellId) -> List<CellReadinessRecord> {
-  filter(records, r => (record_cell(record: r) as String) == (cell as String))
-}
-
 // WITHDRAWAL HAS TWO GRAINS AND THEY ARE NOT INTERCHANGEABLE.
 //
 // HOST grain: the evidence every cell's admission rests on is itself unsound -- the store cannot be
-// read, is not root's, or holds two records for one cell -- so no cell on the host may start,
+// read, is not root's, holds two records for one cell, or holds a settled record whose readiness names
+// a different cell -- so no cell on the host may start,
 // including cells whose last record happens to read Ready. CELL grain: the store is sound and says
 // THIS cell is not ready. Folding host grain into per-cell refusals would admit the next cell whose
 // record is intact inside a store nobody should trust; folding cell grain into host grain would let
@@ -76,7 +73,67 @@ fn records_for_cell(records: List<CellReadinessRecord>, cell: CellId) -> List<Ce
 type HostWithdrawal
   = HostStoreUnreadable { reason: NonEmptyStr }
   | HostStoreNotRootOwned { owner_uid: Int, mode: NonEmptyStr }
-  | HostStoreAmbiguous { cell: CellId, records: Int }
+  | HostStoreAmbiguous { cell: CellId }
+  | HostStoreRecordIncoherent { record_cell: CellId, readiness_cell: CellId }
+
+// THE STORE IS INDEXED ONCE, WHOLE, BEFORE ANY CELL IS PROJECTED OUT OF IT. Host grain is a property
+// of the store, not of the cell being asked about: a duplicate for cell B, or a record whose
+// readiness names a different cell than its key, makes the store unsound for cell A too. Filtering to
+// the requested cell first and then checking would withdraw only when the defect happened to be in
+// that cell, which is the host-grain fact demoted to cell grain (side-chat ruling on #11670). The
+// index is sealed: the only way to hold one is to have passed both checks over every record, and the
+// keyed map makes the uniqueness check one insert per record rather than a scan per record.
+type CellReadinessIndex sole_constructor {
+  by_cell: Map<String, CellReadinessRecord>
+}
+
+type CellReadinessIndexing
+  = StoreIndexed { index: CellReadinessIndex }
+  | StoreIndexRefused { withdrawal: HostWithdrawal }
+
+fn readiness_cell(readiness: CellReadiness) -> CellId {
+  match readiness {
+    CellReady { cell: c } => c
+    CellQuarantined { cell: c, unproven: _ } => c
+  }
+}
+
+fn record_incoherence(record: CellReadinessRecord) -> HostWithdrawal? {
+  match record {
+    CellAttemptInFlight { cell: _, generation: _, attempt: _ } => none
+    CellSettled { cell: c, generation: _, readiness: r } =>
+      if (readiness_cell(readiness: r) as String) == (c as String) {
+        none
+      } else {
+        Present { value: HostStoreRecordIncoherent { record_cell: c, readiness_cell: readiness_cell(readiness: r) } }
+      }
+  }
+}
+
+// THE FIRST DEFECT IS CARRIED, not overwritten by a later one: the store is refused as a whole and the
+// reader needs the first thing that made it unsound.
+fn index_step(acc: CellReadinessIndexing, record: CellReadinessRecord) -> CellReadinessIndexing {
+  match acc {
+    StoreIndexRefused { withdrawal: w } => StoreIndexRefused { withdrawal: w }
+    StoreIndexed { index: ix } =>
+      match record_incoherence(record: record) {
+        Present { value: w } => StoreIndexRefused { withdrawal: w }
+        Absent =>
+          match map_get(ix.by_cell, record_cell(record: record) as String) {
+            Present { value: _ } => StoreIndexRefused { withdrawal: HostStoreAmbiguous { cell: record_cell(record: record) } }
+            Absent => StoreIndexed { index: CellReadinessIndex { by_cell: map_insert(ix.by_cell, record_cell(record: record) as String, record) } }
+          }
+      }
+  }
+}
+
+fn index_cell_readiness(records: List<CellReadinessRecord>) -> CellReadinessIndexing {
+  fold(records, init: StoreIndexed { index: CellReadinessIndex { by_cell: empty_map() } }, f: (acc, r) => index_step(acc: acc, record: r))
+}
+
+fn indexed_record(index: CellReadinessIndex, cell: CellId) -> CellReadinessRecord? {
+  map_get(index.by_cell, cell as String)
+}
 
 type CellWithdrawal
   = CellNeverSettled
@@ -104,27 +161,24 @@ fn cell_incarnation_admission(
       match o {
         StoreNotRootOwned { owner_uid: u, mode: m } =>
           HostWithdrawn { withdrawal: HostStoreNotRootOwned { owner_uid: u, mode: m } }
-        StoreRootOwned => admission_of_cell_records(
-          cell: cell,
-          records: records_for_cell(records: rs, cell: cell),
-          allocation_generation: allocation_generation,
-        )
+        StoreRootOwned =>
+          match index_cell_readiness(records: rs) {
+            StoreIndexRefused { withdrawal: w } => HostWithdrawn { withdrawal: w }
+            StoreIndexed { index: ix } =>
+              admission_of_indexed_cell(index: ix, cell: cell, allocation_generation: allocation_generation)
+          }
       }
   }
 }
 
-fn admission_of_cell_records(
+fn admission_of_indexed_cell(
+  index: CellReadinessIndex,
   cell: CellId,
-  records: List<CellReadinessRecord>,
   allocation_generation: Int,
 ) -> CellIncarnationAdmission {
-  if (records |> count) > 1 {
-    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: cell, records: records |> count } }
-  } else {
-    match records.first() {
-      Absent => CellWithdrawn { cell: cell, withdrawal: CellNeverSettled }
-      Present { value: r } => admission_of_record(record: r, allocation_generation: allocation_generation)
-    }
+  match indexed_record(index: index, cell: cell) {
+    Absent => CellWithdrawn { cell: cell, withdrawal: CellNeverSettled }
+    Present { value: r } => admission_of_record(record: r, allocation_generation: allocation_generation)
   }
 }
 
@@ -173,6 +227,8 @@ type CellReadinessWriteResult
   | WriteRefusedAttemptMismatch { cell: CellId, stored_attempt: NonEmptyStr, offered_attempt: NonEmptyStr }
   | WriteRefusedAttemptAlreadyRecorded { cell: CellId, generation: Int }
   | WriteRefusedNotAdmitted { cell: CellId, admission: CellIncarnationAdmission }
+  | WriteRefusedStoreUnsound { withdrawal: HostWithdrawal }
+  | WriteRefusedIncoherent { withdrawal: HostWithdrawal }
 
 fn write_cell(write: CellReadinessWrite) -> CellId {
   match write {
@@ -200,8 +256,27 @@ fn record_of_write(write: CellReadinessWrite) -> CellReadinessRecord {
 // restated at the write -- the store refuses to record a start the admission would have refused,
 // rather than trusting every writer to have asked first. The first incarnation on a cell therefore
 // needs a readback establishing the empty cell before it, exactly like every later one.
+//
+// THE WRITE IS JUDGED AGAINST THE SAME SEALED INDEX THE ADMISSION READS, so an unsound store refuses
+// every write rather than accepting one into a store no reader will trust, and a write whose own
+// record would be incoherent is refused before it can make the store unsound.
 fn apply_cell_readiness_write(
   records: List<CellReadinessRecord>,
+  write: CellReadinessWrite,
+) -> CellReadinessWriteResult {
+  match index_cell_readiness(records: records) {
+    StoreIndexRefused { withdrawal: w } => WriteRefusedStoreUnsound { withdrawal: w }
+    StoreIndexed { index: ix } =>
+      match record_incoherence(record: record_of_write(write: write)) {
+        Present { value: w } => WriteRefusedIncoherent { withdrawal: w }
+        Absent => apply_indexed_write(records: records, index: ix, write: write)
+      }
+  }
+}
+
+fn apply_indexed_write(
+  records: List<CellReadinessRecord>,
+  index: CellReadinessIndex,
   write: CellReadinessWrite,
 ) -> CellReadinessWriteResult {
   let cell = write_cell(write: write)
@@ -209,12 +284,12 @@ fn apply_cell_readiness_write(
   let replaced = concat(others, [record_of_write(write: write)])
   match write {
     WriteAttemptStarted { cell: c, generation: g, attempt: _ } =>
-      match admission_of_cell_records(cell: c, records: records_for_cell(records: records, cell: c), allocation_generation: g) {
+      match admission_of_indexed_cell(index: index, cell: c, allocation_generation: g) {
         CellIncarnationAdmitted { cell: _, generation: _ } => WriteAccepted { records: replaced }
         refused => WriteRefusedNotAdmitted { cell: c, admission: refused }
       }
     WriteUnattributedResidue { cell: c, generation: g } =>
-      match records_for_cell(records: records, cell: c).first() {
+      match indexed_record(index: index, cell: c) {
         Absent => WriteAccepted { records: replaced }
         Present { value: stored } =>
           if g < record_generation(record: stored) {
@@ -224,7 +299,7 @@ fn apply_cell_readiness_write(
           }
       }
     WriteReadbackSettled { cell: c, generation: offered, attempt: a, readiness: r } =>
-      match records_for_cell(records: records, cell: c).first() {
+      match indexed_record(index: index, cell: c) {
         Absent => WriteAccepted { records: replaced }
         Present { value: stored } => {
           let held = record_generation(record: stored)

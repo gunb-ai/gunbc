@@ -2,7 +2,7 @@ module gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
@@ -12,7 +12,7 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
   CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned, StoreNotRootOwned,
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
-  HostWithdrawn, HostStoreUnreadable, HostStoreNotRootOwned, HostStoreAmbiguous,
+  HostWithdrawn, HostStoreUnreadable, HostStoreNotRootOwned, HostStoreAmbiguous, HostStoreRecordIncoherent,
   CellNeverSettled, CellQuarantinedAt, CellGenerationMismatch,
   CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
   CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
@@ -21,7 +21,8 @@ import gunbc.runner_microvm_cell_readiness {
 }
 import gunbc.runner_microvm_lifecycle {
   AttemptIdentity, attempt_identity_vmm,
-  ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue, StartRefused, StartIdentityDisagrees, controller_start,
+  ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue, StartRefused, StartBindingRefused, controller_start,
+  CellBinding, CellBindingRefusedCell,
   BringUpPhase, AttemptPrepared, VmmStarted, GuestBooted, RunnerListening, SlotServing,
   BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation,
   BringUpRefusedOutOfOrder, advance_bring_up,
@@ -36,12 +37,19 @@ import gunbc.runner_microvm_lifecycle {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data cell: CellId = "srv2-04"
+data witness_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }
+
+// THE CELL IS DERIVED FROM THE SAME SLOT THE IDENTITIES ARE BUILT ON, so every admission below that
+// names `cell` is the identity's own cell and the cell join in controller_start is exercised, not
+// assumed. `other_cell` is a different slot on the same host.
+data cell: CellId = runner_slot_instance_name(slot: witness_slot) as CellId
+
+data other_cell: CellId = runner_slot_instance_name(slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 5 }) as CellId
 
 // The identity goes through the sealed microvm_attempt constructor; a refusal there yields no
 // identity, so every test below that needs one fails rather than passing on a fabricated record.
 fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
-  match microvm_attempt(slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }, attempt_id: join(["w-", to_string(generation)], "")) {
+  match microvm_attempt(slot: witness_slot, attempt_id: join(["w-", to_string(generation)], "")) {
     MicroVmAttemptAccepted { attempt: a } =>
       Present {
         value: AttemptIdentity {
@@ -212,7 +220,7 @@ test fn an_unreadable_or_foreign_owned_store_withdraws_the_host() -> Bool {
     _ => false
   }
   let ambiguous = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: concat(ready, ready) }, cell: cell, allocation_generation: 1) {
-    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: _, records: 2 } } => true
+    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: _ } } => true
     _ => false
   }
   admits && unreadable && foreign && ambiguous
@@ -248,7 +256,7 @@ test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bo
                 ground: GroundClear,
                 identity: next,
               ) {
-                StartAttempt { identity: _, record: _ } => true
+                StartAttempt { bound: _, record: _ } => true
                 _ => false
               }
             _ => false
@@ -323,4 +331,52 @@ test fn bring_up_refuses_a_skipped_phase_and_a_foreign_incarnation() -> Bool {
         }
       }
   }
+}
+
+// AN ADMISSION FOR ONE CELL CANNOT START AN IDENTITY BOUND TO ANOTHER, even at the same generation,
+// and not by either start arm: the launch and the unattributed quarantine both require the join.
+test fn an_admission_for_one_cell_does_not_start_an_identity_of_another() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } => {
+      let clear = match controller_start(admission: CellIncarnationAdmitted { cell: other_cell, generation: 1 }, ground: GroundClear, identity: id) {
+        StartBindingRefused { binding: CellBindingRefusedCell { admitted: _, identity_cell: _ } } => true
+        _ => false
+      }
+      let occupied = match controller_start(admission: CellIncarnationAdmitted { cell: other_cell, generation: 1 }, ground: GroundOccupied, identity: id) {
+        StartBindingRefused { binding: CellBindingRefusedCell { admitted: _, identity_cell: _ } } => true
+        _ => false
+      }
+      let own = match controller_start(admission: CellIncarnationAdmitted { cell: cell, generation: 1 }, ground: GroundClear, identity: id) {
+        StartAttempt { bound: _, record: _ } => true
+        _ => false
+      }
+      clear && occupied && own
+    }
+  }
+}
+
+// HOST GRAIN IS A PROPERTY OF THE STORE: a duplicate record for ANOTHER cell, or a settled record whose
+// readiness names a different cell than its key, withdraws the host for this cell too -- whose own
+// record reads Ready and would otherwise admit.
+test fn a_defect_in_another_cells_records_withdraws_this_cell() -> Bool {
+  let mine = CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }
+  let theirs = CellSettled { cell: other_cell, generation: 3, readiness: CellReady { cell: other_cell } }
+  let duplicate = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [mine, theirs, theirs] }, cell: cell, allocation_generation: 1) {
+    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: c } } => (c as String) == (other_cell as String)
+    _ => false
+  }
+  let incoherent = match cell_incarnation_admission(
+    store: StoreRead { ownership: StoreRootOwned, records: [mine, CellSettled { cell: other_cell, generation: 3, readiness: CellReady { cell: cell } }] },
+    cell: cell,
+    allocation_generation: 1,
+  ) {
+    HostWithdrawn { withdrawal: HostStoreRecordIncoherent { record_cell: _, readiness_cell: _ } } => true
+    _ => false
+  }
+  let sound = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [mine, theirs] }, cell: cell, allocation_generation: 1) {
+    CellIncarnationAdmitted { cell: _, generation: _ } => true
+    _ => false
+  }
+  duplicate && incoherent && sound
 }
