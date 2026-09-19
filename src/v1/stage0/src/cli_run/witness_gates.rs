@@ -286,6 +286,21 @@ pub fn witness_exclusion_substrings() -> Vec<String> {
 pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
     plan: &CompileCleanScopePlan,
 ) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
+    witness_layer_roots_compile_clean_sources_and_index_for_plan(plan)
+        .map(|loaded| loaded.map(|(sources, _)| sources))
+}
+
+/// A compile-clean source closure and the witness-layer index it was loaded from.
+pub(crate) type CompileCleanSourcesAndIndex =
+    (Vec<Rc<v1_compiler_compile::SourceFile>>, MultiEntryIndex);
+
+/// The plan's source closure together with the witness-layer index it was loaded from, in both
+/// the whole-tree and the scoped arm. A caller that derives the name census and the corpus claim
+/// consults this build rather than re-walking both roots, so the closure and the corpus judgment
+/// come from one index (review 68591).
+pub(crate) fn witness_layer_roots_compile_clean_sources_and_index_for_plan(
+    plan: &CompileCleanScopePlan,
+) -> Result<Option<CompileCleanSourcesAndIndex>, String> {
     match plan {
         CompileCleanScopePlan::Refused { reason } => {
             eprintln!("compile-clean scope: refused ({reason})");
@@ -295,9 +310,7 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
             eprintln!("compile-clean scope: skipped ({reason})");
             Ok(None)
         }
-        CompileCleanScopePlan::WholeTree => {
-            compile_clean_whole_tree_sources_and_index().map(|(sources, _)| Some(sources))
-        }
+        CompileCleanScopePlan::WholeTree => compile_clean_whole_tree_sources_and_index().map(Some),
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
                 "compile-clean scope: {} affected entr{} (of whole-tree gate)",
@@ -310,9 +323,23 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
                 .collect();
             let roots = witness_layer_roots();
             let mei = build_multi_entry_index_primary_precedence(&roots);
-            load_compile_clean_entry_sources(&roots, &mei, Some(&filter)).map(Some)
+            let sources = load_compile_clean_entry_sources(&roots, &mei, Some(&filter))?;
+            Ok(Some((sources, mei)))
         }
     }
+}
+
+/// The whole-tree entry closure together with the witness-layer index it was loaded from. The index
+/// is returned rather than dropped so a caller that needs the name census and the corpus claim
+/// consults this one build instead of re-walking both roots (review 68591).
+pub(crate) fn compile_clean_whole_tree_sources_and_index(
+) -> Result<CompileCleanSourcesAndIndex, String> {
+    eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
+    let roots = witness_layer_roots();
+    let mei = build_multi_entry_index_primary_precedence(&roots);
+    let mut sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    append_test_floor_compile_clean_inject(&mut sources);
+    Ok((sources, mei))
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
@@ -323,25 +350,12 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
 /// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
 /// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).
-/// The whole-tree entry closure together with the witness-layer index it was loaded from. The index
-/// is returned rather than dropped so a caller that needs the name census and the corpus claim
-/// consults this one build instead of re-walking both roots (review 68591).
-pub(crate) fn compile_clean_whole_tree_sources_and_index(
-) -> Result<(Vec<Rc<v1_compiler_compile::SourceFile>>, MultiEntryIndex), String> {
-    eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
-    let roots = witness_layer_roots();
-    let mei = build_multi_entry_index_primary_precedence(&roots);
-    let mut sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
-    append_test_floor_compile_clean_inject(&mut sources);
-    Ok((sources, mei))
-}
-
 pub fn witness_layer_roots_compile_clean_check() -> bool {
-    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+    match witness_layer_roots_compile_clean_sources_and_index_for_plan(
+        &compile_clean_scope_plan_for_ci(),
+    ) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let roots = witness_layer_roots();
-            let index = build_multi_entry_index_primary_precedence(&roots);
+        Ok(Some((sources, index))) => {
             let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
             let result = v1_compiler_compile::compile_to_resolved_with_options(
                 Rc::new(sources.into()),
@@ -365,13 +379,11 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 /// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
 /// floor gate consumes `install_or_consume_floor_compile_clean_gate_receipt` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
+    match witness_layer_roots_compile_clean_sources_and_index_for_plan(
+        &compile_clean_scope_plan_for_ci(),
+    ) {
         Ok(None) => true,
-        Ok(Some(sources)) => {
-            let roots = witness_layer_roots();
-            let index = build_multi_entry_index_primary_precedence(&roots);
-            floor_compile_clean_emit_ok(sources, Some(&index))
-        }
+        Ok(Some((sources, index))) => floor_compile_clean_emit_ok(sources, Some(&index)),
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
