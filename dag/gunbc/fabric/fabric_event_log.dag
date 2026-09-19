@@ -182,6 +182,35 @@ type CollectState {
   refused: String?
 }
 
+// A MISS IS CHASED THROUGH THE REMOTE ONCE BEFORE IT IS A REFUSAL. The partition fetch brings the
+// ref's TIP object only: the parent hash inside each event's bytes is a content reference git does
+// not follow, so a mirror that did not locally witness every event holds the tip and nothing behind
+// it, and every chain longer than one event read as "occupancy unread" from any executor that is
+// not the placed host (measured 2026-09-16: srv2's mirror held the group-a quality-seat tip while
+// its parent existed only on srv1). The repair is at the step whose contract was always "the head's
+// objects": a missing parent is fetched from the remote BY ITS OBJECT ID -- which the placement's
+// repo must permit (uploadpack.allowAnySHA1InWant) -- and only a miss after that fetch is a
+// refusal. The fold's budget bounds the total chases, so one round trip is paid per event at most.
+fn cat_file_chasing_remote(layout: EventLogLayout, oid: String) -> String? {
+  let r = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: oid)
+  if r.success {
+    Present { value: r.content }
+  } else {
+    match event_log_remote_word(remote: layout.remote) {
+      Absent => none
+      Present { value: remote } => {
+        let f = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: oid)
+        if f.exit_code != 0 {
+          none
+        } else {
+          let r2 = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: oid)
+          if r2.success { Present { value: r2.content } } else { none }
+        }
+      }
+    }
+  }
+}
+
 fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
   match st.refused {
     Present { value: _ } => st
@@ -189,11 +218,10 @@ fn collect_step(layout: EventLogLayout, st: CollectState) -> CollectState {
       match st.current {
         HeadAbsent => st
         HeadAt { id: h } => {
-          let r = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: h as String)
-          if !r.success {
-            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
-          } else {
-            match pool_event_decode(text: r.content) {
+          match cat_file_chasing_remote(layout: layout, oid: h as String) {
+            Absent => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
+            Present { value: content } =>
+            match pool_event_decode(text: content) {
               PoolEventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
               PoolEventDecoded { event: e } => CollectState {
                 current: event_parent_expectation(e: e),

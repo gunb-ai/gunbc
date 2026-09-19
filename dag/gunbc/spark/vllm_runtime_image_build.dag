@@ -8,16 +8,26 @@ import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, spark_unplaced_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
   DockerBuildArg, DockerBuildSpec,
   docker_build_spec_command, docker_image_digest_command,
+  docker_image_save_command, docker_image_load_command,
 }
+import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
+import extdeps.ssh.client_options { serialize_ssh_client_options }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.tools.gnu_coreutils { rm_force_command }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.spark.vllm_image_identity {
+  vllm_image_repository, glm53_image_repository, vllm_image_repository_for, glm53_derived_key_inputs, glm53_derived_key, glm53_derived_tag, vllm_image_build_key_inputs, vllm_image_build_key, vllm_image_tag_for_key, vllm_image_tag,
+}
+import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
 import extdeps.git {
   git_clone_shallow_command, git_fetch_shallow_revision_command,
   git_checkout_revision_command, git_rev_parse_head_command, git_status_porcelain_command,
@@ -28,18 +38,36 @@ import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
   VllmContainerBuildRecipe,
   vllm_07b75534_aarch64_release_recipe,
+  vllm_8d09804_sm121_recipe,
+  vllm_glm_5_3_flash_sm121_revision,
   vllm_recipe_targeting,
   vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
   vllm_clone_url,
 }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel,
+  flashinfer_0_7_0_dev20260910_wheels, flashinfer_0_7_0_dev20260910_wheel_url,
+}
+import extdeps.posix.sh_invocation { posix_sh_script_command }
+import gunbc.file_access { FileTreeScope }
+import gunbc.host_effect { FleetSsh }
+import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
+import gunbc.spark.remote_step_sequence {
+  run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
+}
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite, typed_remote_file_write_seal,
+}
+import extdeps.tools.curl { curl_download_command }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext, SshTarget,
   FleetSshAttemptIdentity, fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
-  fleet_openssh_trust_policy_of,
+  fleet_openssh_trust_policy_of, fleet_openssh_trust_options,
 }
 import gunbc.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
@@ -195,7 +223,6 @@ fn vllm_source_dir() -> NonEmptyStr {
   join([vllm_build_root() as String, "/src"], "") as NonEmptyStr
 }
 data vllm_source_remote_name: NonEmptyStr = "origin" as NonEmptyStr
-data vllm_image_repository: NonEmptyStr = "gunbc-vllm-dsv41-gb10" as NonEmptyStr
 
 // ── WHAT IS BUILT ─────────────────────────────────────────────────────────────────────────────
 //
@@ -247,6 +274,235 @@ fn vllm_recipe_arch_is_buildable(r: VllmContainerBuildRecipe) -> Bool {
   fold(r.torch_cuda_arch_list, init: true, f: (acc, a) => acc && vllm_cuda_arch_supported(arch: a))
 }
 
+// ── THE GLM-5.3-FLASH SM121 IMAGE: THE BASE PLUS THE FLASHINFER NIGHTLY OVERRIDE ─────────────
+//
+// THE IMAGE THAT SERVES THE GLM NATIVE ARM IS BUILT, NOT PULLED. The arm's declared pin through
+// 2026-09-17 was the stock vllm/vllm-openai:glm53-flash digest, which on this fleet's measured
+// evidence cannot serve the model at all: every fp8 spelling crashes in concat_and_cache_mla
+// (pe_dim must be 64; the model's is 0 -- extdeps.vllm.kv_cache), and bfloat16 finds no attention
+// backend for sparse MLA at pe_dim=0 on that build. What actually served from 2026-09-13 was a
+// LOCAL build, read from its layer history 2026-09-17: upstream vLLM 8d09804c877c48165c6ba69bc9dc02d09bae0b83
+// for SM121 (the base recipe, extdeps.vllm.source_build vllm_8d09804_sm121_recipe) plus a derived
+// stage that force-reinstalls the flashinfer 0.7.0.dev20260910 nightly over the base's 0.6.18
+// (extdeps.flashinfer.flashinfer flashinfer_0_7_0_dev20260910_wheels). This section is that
+// derivation's home; the hand-built original (local tag gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4)
+// is the observation it was read from, and the first build through this lane replaces it.
+
+
+
+
+
+
+fn glm53_derived_context_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/glm53-derived"], "") as NonEmptyStr
+}
+
+// feature:container-recipe-emission — dissolve-on: when the substrate carries a modeled CONTAINER
+// IMAGE RECIPE -- an ordered list of typed build steps (base reference, staged inputs, an install
+// operation over declared artifacts) with a Dockerfile emitter bound to it as one realization the
+// way extdeps.docker.cli now binds two verbs to one DockerCreateSpec -- so this body becomes a
+// projection instead of `join` over "FROM ", "COPY " and "RUN ". extdeps.docker.cli DockerBuildSpec
+// already models the INVOCATION (tag, context, dockerfile path, target, platform, build args); what
+// has no carrier is the recipe's own CONTENT, which is why it is spelled here.
+//
+// THIS MARKER ADMITS NOTHING. DESIGN section 5: a dissolution condition says how admitted debt ends
+// and does not authorize creating it, and approval is external to the diff. No approval row is
+// claimed. The trigger names the CAPABILITY rather than an artifact, because rewriting this one
+// function would satisfy an artifact-shaped trigger while the class stayed alive.
+//
+// THE DERIVED DOCKERFILE, mirroring the observed hand build layer for layer: the wheels staged at
+// /tmp/gunbc-wheels, then one pip install --no-deps --force-reinstall over all three. The stage is
+// named so the generic DockerBuildSpec's --target has a stage to select.
+fn glm53_derived_dockerfile(base_tag: NonEmptyStr) -> String {
+  join([
+    "FROM ", base_tag as String, " AS glm53derived\n",
+    "COPY ", join(map(flashinfer_0_7_0_dev20260910_wheels, w => w.filename as String), " "), " /tmp/gunbc-wheels/\n",
+    "RUN python3 -m pip install --no-deps --force-reinstall ",
+    join(map(flashinfer_0_7_0_dev20260910_wheels, w => join(["/tmp/gunbc-wheels/", w.filename as String], "")), " "),
+    "\n",
+  ], "")
+}
+
+// feature:remote-shell-body-emission — dissolve-on: the same bounded-remote-operation-sequence
+// capability named at gunbc.spark.native_serving_apply's stage scripts, which is also the capability
+// gunbc.spark.pair_serving_apply needs and does not yet declare. This body is the fetch-and-verify
+// half of it: a per-wheel loop, a pipe into `sha256sum -c -`, and `set -e` as the failure discipline,
+// none of which has a carrier to be projected from. It is ONE class across three modules under one
+// trigger, not three separate debts -- and modeling it in any one of them alone would fork the
+// others on how a remote step is expressed.
+//
+// THE PREPARE SCRIPT: fetch the three digest-pinned wheels from the nightly release and verify
+// each against its declared sha256 BEFORE anything builds from them. A digest mismatch stops the
+// leg with sha256sum's own failure line; nothing falls back to an unverified wheel.
+//
+// THE SCRIPT IS FILE CONTENT, NOT AN ARGV WORD. An earlier revision handed the whole script to
+// `sh -c` as one remote word, and the portable-word wall at gunbc.fleet_known_hosts_anchor refused
+// it before anything ran -- correctly: a word carrying spaces, pipes and redirects is exactly what
+// that wall exists to stop, and the jit-cache wheel's URL alone carries a `+` the allowlist does
+// not admit. The modeled route is the corpus's own: the script and the Dockerfile travel as
+// typed_remote_file_write payloads (staged, moded, renamed, read back byte-for-byte), and the only
+// argv is `sh <path>` -- two portable words. The wheel fetches and their pipes then run as the far
+// side's reading of a verified file, which is data, not a re-parsed word.
+fn glm53_derived_prepare_script() -> String {
+  let dir = glm53_derived_context_dir() as String
+  join([
+    "set -e\n",
+    fold(flashinfer_0_7_0_dev20260910_wheels, init: "", f: (acc, w) => join([
+      acc,
+      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String, "\n",
+      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+    ], "")),
+  ], "")
+}
+
+fn glm53_derived_prepare_script_path() -> NonEmptyStr {
+  join([glm53_derived_context_dir() as String, "/prepare.sh"], "") as NonEmptyStr
+}
+
+fn glm53_derived_dockerfile_path() -> NonEmptyStr {
+  join([glm53_derived_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr
+}
+
+// Both payloads seal against the derived context directory and nothing else -- the seal is what
+// turns a path-plus-content pair into a TypedRemoteFileWrite at all.
+fn glm53_derived_file_scope() -> FileTreeScope {
+  FileTreeScope { root_path: glm53_derived_context_dir() }
+}
+
+// THE PREPARE PLAN, ORDERED: make the context directory, land the script and the Dockerfile as
+// readback-verified files, then run the script. The sequence halts at the first failure and the
+// standing names the step, so a refusal on the receipt is located.
+fn glm53_derived_prepare_steps(base_tag: NonEmptyStr) -> List<PlannedRemoteStep>? {
+  match typed_remote_file_write_seal(
+    path: glm53_derived_prepare_script_path() as FilePath,
+    content: glm53_derived_prepare_script(),
+    allowed_scope: glm53_derived_file_scope(),
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: script } =>
+      match typed_remote_file_write_seal(
+        path: glm53_derived_dockerfile_path() as FilePath,
+        content: glm53_derived_dockerfile(base_tag: base_tag),
+        allowed_scope: glm53_derived_file_scope(),
+      ) {
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+        TypedRemoteFileWriteAdmitted { write: dockerfile } => Present {
+          value: [
+            PlannedRemoteStep {
+              identity: "derived-context-dir" as NonEmptyStr,
+              operation: RemoteArgv {
+                argv: argv_words(command: mkdir_parents_command_at(
+                  mkdir_binary: mkdir_path_resolved_program,
+                  path: glm53_derived_context_dir() as String,
+                )),
+              },
+            },
+            PlannedRemoteStep {
+              identity: "derived-prepare-script" as NonEmptyStr,
+              operation: RemoteFileBytes { write: script, mode: RemoteFileModeOwnerReadWrite },
+            },
+            PlannedRemoteStep {
+              identity: "derived-dockerfile" as NonEmptyStr,
+              operation: RemoteFileBytes { write: dockerfile, mode: RemoteFileModeOwnerReadWrite },
+            },
+            PlannedRemoteStep {
+              identity: "derived-prepare-run" as NonEmptyStr,
+              operation: RemoteArgv {
+                argv: argv_words(command: posix_sh_script_command(path: glm53_derived_prepare_script_path())),
+              },
+            },
+          ],
+        }
+      }
+  }
+}
+
+fn glm53_derived_build_spec(base_tag: NonEmptyStr, base_key: ContentHash) -> DockerBuildSpec {
+  DockerBuildSpec {
+    tag: glm53_derived_tag(base_key: base_key),
+    context_dir: glm53_derived_context_dir() as FilePath,
+    dockerfile: glm53_derived_dockerfile_path(),
+    target: "glm53derived" as NonEmptyStr,
+    platform: "linux/arm64" as NonEmptyStr,
+    build_args: [] as List<DockerBuildArg>,
+  }
+}
+
+// THE DERIVED CONVERGENCE, with the same adoption/build/readback discipline as the base: a tag
+// already present is adopted under its expected tag with source equality unestablished; a build
+// that reports success is not believed until the digest reads back.
+fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, base: VllmImageIdentity) -> VllmImageBuild
+  uses net: Network
+{
+  let tag = glm53_derived_tag(base_key: base.build_key)
+  match vllm_docker_leg(ctx: ctx, step: "derived-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+    ImageLegFailed { step: st, cause: why } =>
+      VllmImageBuildRefused { step: st, cause: join(["the derived image query did not run, so nothing is known about whether the tag exists: ", why], "") }
+    ImageLegRan { stdout: digest } =>
+      if digest != "" {
+        VllmImageBuilt {
+          identity: VllmImageIdentity {
+            tag: tag, local_config_digest: digest as NonEmptyStr, requested_from: base.requested_from,
+            build_key: glm53_derived_key(base_key: base.build_key), provenance: AdoptedUnderExpectedTag,
+          },
+          already_present: true,
+        }
+      } else {
+        match glm53_derived_prepare_steps(base_tag: base.tag) {
+          Absent =>
+            VllmImageBuildRefused { step: "derived-prepare" as NonEmptyStr, cause: "the prepare payloads did not seal against the derived context scope" }
+          Present { value: steps } => {
+            let standings = run_remote_step_sequence(steps: steps, transport: FleetSsh { target: target, context: context })
+            if remote_step_sequence_failed(standings: standings) {
+              VllmImageBuildRefused { step: "derived-prepare" as NonEmptyStr, cause: remote_step_failure_causes_wire(standings: standings) }
+            } else {
+            match vllm_docker_leg(ctx: ctx, step: "derived-build" as NonEmptyStr, command: docker_build_spec_command(spec: glm53_derived_build_spec(base_tag: base.tag, base_key: base.build_key))) {
+              ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+              ImageLegRan { stdout: _ } =>
+                match vllm_docker_leg(ctx: ctx, step: "derived-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+                  ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: join(["the derived build reported success and the readback did not run: ", why], "") }
+                  ImageLegRan { stdout: readback } =>
+                    if readback == "" {
+                      VllmImageBuildRefused { step: "derived-readback" as NonEmptyStr, cause: "the derived build reported success and no image carries the tag it was asked to write" }
+                    } else {
+                      VllmImageBuilt {
+                        identity: VllmImageIdentity {
+                          tag: tag, local_config_digest: readback as NonEmptyStr, requested_from: base.requested_from,
+                          build_key: glm53_derived_key(base_key: base.build_key), provenance: BuiltByThisRun,
+                        },
+                        already_present: false,
+                      }
+                    }
+                }
+            }
+            }
+          }
+        }
+      }
+  }
+}
+
+// WHETHER A RECIPE CARRIES A DERIVED STAGE IS A FACT ABOUT THE RECIPE, not about the entry that
+// runs it: the GLM base is not servable without the nightly override, so the stage follows the
+// recipe's source revision. A recipe with no stage builds as before.
+fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+  uses net: Network
+{
+  match converge_vllm_runtime_image(target: target, context: context, ctx: ctx, r: r) {
+    VllmImageBuildRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+    VllmImageBuilt { identity: base, already_present: p } =>
+      if (r.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String) {
+        match converge_glm53_derived_image(target: target, context: context, ctx: ctx, base: base) {
+          VllmImageBuildRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+          VllmImageBuilt { identity: derived, already_present: dp } =>
+            VllmImageBuilt { identity: derived, already_present: p && dp }
+        }
+      } else {
+        VllmImageBuilt { identity: base, already_present: p }
+      }
+  }
+}
+
 // ── THE IDENTITY OF THE BUILD ─────────────────────────────────────────────────────────────────
 //
 // A CONTENT KEY OVER THE INPUTS, AND THE TAG IS THAT KEY. The image this lane produces is a
@@ -273,40 +529,9 @@ fn vllm_recipe_arch_is_buildable(r: VllmContainerBuildRecipe) -> Bool {
 // something already built. That is the redundancy DESIGN §2 prices, bought for nothing: the compiler
 // output does not depend on how many compilers ran at once.
 
-fn vllm_image_build_key_inputs(r: VllmContainerBuildRecipe) -> List<ArtifactRealizationInput> {
-  [
-    ArtifactRealizationInput { identity: "source_repository" as NonEmptyStr, content_digest: content_hash_atom(value: r.source.repository) },
-    ArtifactRealizationInput { identity: "source_revision" as NonEmptyStr, content_digest: content_hash_atom(value: r.source.full_revision) },
-    ArtifactRealizationInput { identity: "dockerfile_path" as NonEmptyStr, content_digest: content_hash_atom(value: r.dockerfile_path) },
-    ArtifactRealizationInput { identity: "build_target" as NonEmptyStr, content_digest: content_hash_atom(value: r.build_target) },
-    ArtifactRealizationInput { identity: "cuda_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.cuda_version) },
-    ArtifactRealizationInput { identity: "build_base_image" as NonEmptyStr, content_digest: content_hash_atom(value: r.build_base_image) },
-    ArtifactRealizationInput { identity: "final_base_image" as NonEmptyStr, content_digest: content_hash_atom(value: r.final_base_image) },
-    ArtifactRealizationInput { identity: "python_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.python_version) },
-    ArtifactRealizationInput { identity: "torch_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.torch_version) },
-    ArtifactRealizationInput { identity: "flashinfer_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.flashinfer_version) },
-    ArtifactRealizationInput { identity: "torch_cuda_arch_list" as NonEmptyStr, content_digest: content_hash_atom(value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) as NonEmptyStr) },
-    ArtifactRealizationInput { identity: "install_kv_connectors" as NonEmptyStr, content_digest: content_hash_atom(value: (if r.install_kv_connectors { "true" } else { "false" }) as NonEmptyStr) },
-  ]
-}
 
-// THE KEY IS MINTED BY std.artifact_store, NOT BY A FOLD WRITTEN HERE. An earlier revision combined
-// the input atoms with its own content_hash fold, which is a second spelling of
-// artifact_realization_digest -- the authority that already exists for "a list of named realization
-// inputs, folded into one content identity". Inhabiting it also buys the thing the hand fold did not
-// have: every input carries its NAME, so two recipes that differ only by which field holds a value
-// cannot collide, and a reader sees which inputs the key covers without counting positions.
-fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
-  artifact_realization_digest(inputs: vllm_image_build_key_inputs(r: r))
-}
 
-fn vllm_image_tag_for_key(key: ContentHash) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
-}
 
-fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  vllm_image_tag_for_key(key: vllm_image_build_key(r: r))
-}
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
 //
@@ -610,7 +835,7 @@ fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe
 fn converge_vllm_image_keyed(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe, key: ContentHash) -> VllmImageBuild
   uses net: Network
 {
-  let tag = vllm_image_tag_for_key(key: key)
+  let tag = vllm_image_tag_for_key(r: r, key: key)
   match vllm_docker_leg(ctx: ctx, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
     ImageLegFailed { step: st, cause: why } =>
       VllmImageBuildRefused { step: st, cause: join(["the image query did not run, so nothing is known about whether the tag exists: ", why], "") }
@@ -712,7 +937,12 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // decision, not this lane's), or this entry is executed against a warm context and its receipt lands
 // here. Until then the fallback build is correct by reading on this transport and executed only on the
 // other one, and this row is what keeps that from being read the other way round.
-fn vllm_runtime_image_build_ci_wet() -> ProcessExit
+// THE ENTRY BODY, PARAMETERIZED BY THE RECIPE. The admission preamble (target selection, host
+// admission, executor reach, credential, trust) is identical for every image family; what differs
+// is the recipe and whether it carries a derived stage, which converge_vllm_image_for_recipe
+// reads off the recipe itself. The v41 fallback and the GLM SM121 image are the two current
+// callers; a third family adds a recipe row and a one-line entry, not a copy of this body.
+fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -753,7 +983,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                       identity_file_name: "gunbc-vllm-image-build-admin-password" as NonEmptyStr,
                                       secret_bytes: administrator as Secret,
                                       use: fn(file) {
-                                        converge_vllm_runtime_image(
+                                        converge_vllm_image_for_recipe(
                                           target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr },
                                           context: context,
                                           ctx: SparkMaterializeContext {
@@ -764,7 +994,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                             admin_credential_file: file,
                                             executor: HostCli,
                                           },
-                                          r: v41_gb10_recipe(),
+                                          r: r,
                                         )
                                       },
                                     ) {
@@ -773,7 +1003,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
                                         let body = join([
                                           join(["vllm runtime image build probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint, " executor=", executor, "\n"], ""),
                                           known_hosts_materialization_receipt(outcome: materialization),
-                                          join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: v41_gb10_recipe().torch_cuda_arch_list), " cuda=", v41_gb10_recipe().cuda_version as String, " base=", v41_gb10_recipe().build_base_image as String, "\n"], ""),
+                                          join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list), " cuda=", r.cuda_version as String, " base=", r.build_base_image as String, "\n"], ""),
                                           vllm_image_receipt_line(b: build),
                                         ], "")
                                         let w = Filesystem.Write(path: vllm_image_build_receipt_path, content: body)
@@ -796,6 +1026,21 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
         }
       }
   }
+}
+
+fn vllm_runtime_image_build_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  vllm_runtime_image_build_entry(r: v41_gb10_recipe())
+}
+
+// THE GLM-5.3-FLASH SM121 BUILD ENTRY. The recipe is the observed base (extdeps.vllm.source_build
+// vllm_8d09804_sm121_recipe) and the derived stage follows it; the product is the image the GLM
+// native arm's declared reference is repointed to once a build through this lane has served.
+fn glm53_runtime_image_build_wet() -> ProcessExit
+  uses net: Network
+{
+  vllm_runtime_image_build_entry(r: vllm_8d09804_sm121_recipe)
 }
 
 // ── ACQUIRING THE SOURCE ON ITS OWN ──────────────────────────────────────────────────────────
@@ -868,6 +1113,371 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
                   }
               }
             }
+          }
+      }
+  }
+}
+
+// ── DISTRIBUTION: THE BUILT IMAGE LEAVES ITS BUILD HOST ─────────────────────────────────────
+//
+// THE FLEET RUNS NO REGISTRY, so a lane-built image reaches the arm's other hosts as BYTES:
+// docker save on the build host, scp through the executor (the only side holding the fleet
+// private key), docker load on each target, and a digest readback that must equal the source's --
+// docker load preserves the config digest, so equality with the source's own readback IS the
+// delivery proof. Rebuilding per host was the alternative and it re-pays a two-hour compile for a
+// fact one host already holds; that is DESIGN §2's redundant work, refused. Modeled 2026-09-17
+// when the GLM derived image (33GB) had to leave srv10 for srv9/11/12.
+//
+// THE TAR IS A STAGING ARTIFACT WITH A CONTENT-NAMED PATH: the build key names it on every host
+// it passes through, so a stale tar from an earlier image can never wear this one's name, and
+// every leg removes it once the readback has answered.
+//
+// THE scp LEGS RUN ON THE EXECUTOR under the same anchored trust as every other fleet leg: the
+// trust words are the materialized anchor's own options, and authentication is the agent already
+// verified at entry. The remote path half travels inside scp's principal@endpoint:path operand,
+// whose discipline the builder's comment states.
+data vllm_image_transfer_tar_stem: NonEmptyStr = "/tmp/gunbc-vllm-image" as NonEmptyStr
+
+fn vllm_image_transfer_tar_path(build_key: ContentHash) -> NonEmptyStr {
+  join([vllm_image_transfer_tar_stem as String, "-", serialize_content_hash(hash: build_key) as String, ".tar"], "") as NonEmptyStr
+}
+
+// THE LOCAL LEGS' ABSOLUTE PROGRAM PATHS ON THE EXECUTOR are filesystem observations, not
+// spellings to assume (extdeps.exec.command program_spelling_is_an_observation_claim): both read
+// 2026-09-17 on srv2. The ArgvCommand builders keep their PATH-resolved names; the runner is
+// handed the observed absolute path beside the command's arguments.
+data vllm_image_transfer_scp_path: NonEmptyStr = "/usr/bin/scp" as NonEmptyStr
+data vllm_image_transfer_rm_path: NonEmptyStr = "/usr/bin/rm" as NonEmptyStr
+
+// THE TARGETS ARE THE ARM'S ROSTER MINUS THE SOURCE: the image is already on the host that built
+// it, and delivering there would move 33GB to no end.
+fn vllm_image_distribution_targets(source: HostIdentity) -> List<HostIdentity> {
+  filter(glm_native_ranked_hosts(), h => !host_identity_eq(a: h, b: source))
+}
+
+type VllmImageHostDelivery
+  = VllmImageHostDelivered { host: HostIdentity, digest: NonEmptyStr, already_present: Bool }
+  | VllmImageHostDeliveryRefused { host: HostIdentity, step: NonEmptyStr, cause: String }
+
+// THE WORKDIR IS THE RUN'S OWN CWD, NOT /tmp: the trust words carry the anchor's path as the
+// materialization wrote it -- target/fleet-ssh-attempt-...-known-hosts-<id>, CWD-RELATIVE, exactly
+// like this module's receipt paths. The first distribution run (2026-09-17) set /tmp here and scp
+// strict-checked against a known_hosts that was not there: "No ED25519 host key is known for
+// 192.168.1.237". The anchor and the receipts share the one assumption this module already makes:
+// the operator invokes the run from the repository root.
+fn vllm_image_local_leg(step: NonEmptyStr, bin_path: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome {
+  let r = gunbc.WitnessBin.Run(
+    workdir: "." as FilePath,
+    bin_path: bin_path as FilePath,
+    args: command.arguments,
+    expect: OutcomeIsData,
+  )
+  if r.success {
+    ImageLegRan { stdout: trim(s: r.stdout) }
+  } else {
+    ImageLegFailed { step: step, cause: join(["local leg ", bin_path as String, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+  }
+}
+
+fn vllm_image_local_scp_leg(step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome {
+  vllm_image_local_leg(step: step, bin_path: vllm_image_transfer_scp_path, command: command)
+}
+
+// ONE HOST'S DELIVERY, IN ORDER: if the target's readback already equals the source digest the
+// host is done without a byte moved; otherwise upload, load, read back, and only then clean the
+// tar. A digest that reads back DIFFERENT after a successful load is a refusal, not a retry --
+// the bytes that landed are not the bytes the source holds, and that is a located fact.
+fn vllm_image_deliver_to_host(
+  host: HostIdentity,
+  endpoint: NonEmptyStr,
+  ctx: SparkMaterializeContext,
+  trust_words: List<String>,
+  local_tar: NonEmptyStr,
+  remote_tar: NonEmptyStr,
+  tag: NonEmptyStr,
+  expected_digest: NonEmptyStr,
+) -> VllmImageHostDelivery
+  uses net: Network
+{
+  match vllm_docker_leg(ctx: ctx, step: "deliver-digest-pre" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+    ImageLegFailed { step: st, cause: why } =>
+      VllmImageHostDeliveryRefused { host: host, step: st, cause: join(["the target's image query did not run, so nothing is known about whether the tag exists: ", why], "") }
+    ImageLegRan { stdout: prior } =>
+      if prior == (expected_digest as String) {
+        VllmImageHostDelivered { host: host, digest: expected_digest, already_present: true }
+      } else {
+        match vllm_image_local_scp_leg(step: "deliver-upload" as NonEmptyStr, command: scp_upload_command(trust_words: trust_words, principal: spark_managed_executor_login, endpoint: endpoint, local_path: local_tar, remote_path: remote_tar)) {
+          ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
+          ImageLegRan { stdout: _ } =>
+            match vllm_docker_leg(ctx: ctx, step: "deliver-load" as NonEmptyStr, command: docker_image_load_command(input_path: remote_tar)) {
+              ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
+              ImageLegRan { stdout: _ } =>
+                match vllm_docker_leg(ctx: ctx, step: "deliver-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+                  ImageLegFailed { step: st, cause: why } =>
+                    VllmImageHostDeliveryRefused { host: host, step: st, cause: join(["the load reported success and the readback did not run: ", why], "") }
+                  ImageLegRan { stdout: readback } =>
+                    if readback != (expected_digest as String) {
+                      VllmImageHostDeliveryRefused { host: host, step: "deliver-readback" as NonEmptyStr, cause: "the load reported success and the tag's digest is not the source's" }
+                    } else {
+                      match vllm_docker_leg(ctx: ctx, step: "deliver-cleanup" as NonEmptyStr, command: rm_force_command(path: remote_tar as String)) {
+                        ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
+                        ImageLegRan { stdout: _ } =>
+                          VllmImageHostDelivered { host: host, digest: expected_digest, already_present: false }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE FOLD'S SHARED STATE, carried in the accumulator because a named effectful step function
+// cannot close over the entry's bindings.
+type VllmImageDistributionAcc {
+  deliveries: List<VllmImageHostDelivery>
+  trust: FleetOpenSshTrustPolicy
+  trust_words: List<String>
+  path: SparkReachPath
+  admin_credential: Secret
+  admin_credential_file: NonEmptyStr
+  local_tar: NonEmptyStr
+  remote_tar: NonEmptyStr
+  tag: NonEmptyStr
+  expected_digest: NonEmptyStr
+}
+
+fn vllm_image_deliver_fold_step(acc: VllmImageDistributionAcc, host: HostIdentity) -> VllmImageDistributionAcc
+  uses net: Network
+{
+  match spark_reach_endpoint(host: host, path: acc.path) {
+    Absent => VllmImageDistributionAcc {
+      deliveries: concat(acc.deliveries, [VllmImageHostDeliveryRefused {
+        host: host, step: "deliver-reach" as NonEmptyStr,
+        cause: join(["no ", spark_reach_path_wire(p: acc.path), " endpoint for ", host as String], ""),
+      }]),
+      trust: acc.trust, trust_words: acc.trust_words, path: acc.path,
+      admin_credential: acc.admin_credential, admin_credential_file: acc.admin_credential_file,
+      local_tar: acc.local_tar, remote_tar: acc.remote_tar, tag: acc.tag, expected_digest: acc.expected_digest,
+    }
+    Present { value: endpoint } => {
+      let delivery = vllm_image_deliver_to_host(
+        host: host,
+        endpoint: endpoint as NonEmptyStr,
+        ctx: SparkMaterializeContext {
+          host: host, trust: acc.trust, path: acc.path,
+          admin_credential: acc.admin_credential, admin_credential_file: acc.admin_credential_file,
+          executor: HostCli,
+        },
+        trust_words: acc.trust_words,
+        local_tar: acc.local_tar,
+        remote_tar: acc.remote_tar,
+        tag: acc.tag,
+        expected_digest: acc.expected_digest,
+      )
+      VllmImageDistributionAcc {
+        deliveries: concat(acc.deliveries, [delivery]),
+        trust: acc.trust, trust_words: acc.trust_words, path: acc.path,
+        admin_credential: acc.admin_credential, admin_credential_file: acc.admin_credential_file,
+        local_tar: acc.local_tar, remote_tar: acc.remote_tar, tag: acc.tag, expected_digest: acc.expected_digest,
+      }
+    }
+  }
+}
+
+type VllmImageDistribution
+  = VllmImageDistributed { deliveries: List<VllmImageHostDelivery> }
+  | VllmImageDistributionRefused { step: NonEmptyStr, cause: String }
+
+fn vllm_image_delivery_wire(d: VllmImageHostDelivery) -> String {
+  match d {
+    VllmImageHostDelivered { host: h, digest: dg, already_present: p } =>
+      join(["  delivered host=", h as String, " digest=", dg as String, " already_present=", if p { "true" } else { "false" }, "\n"], "")
+    VllmImageHostDeliveryRefused { host: h, step: st, cause: why } =>
+      join(["  REFUSED host=", h as String, " step=", st as String, " cause=", why, "\n"], "")
+  }
+}
+
+// Hoisted out of the entry's match arm: the resolver loses callee identity for a lambda sitting
+// that deep in nested arms (observed 2026-09-17, "function 'map' not found in scope" beside
+// resolving joins two lines away), and a named fold at top level is the same computation with a
+// working scope.
+fn vllm_image_deliveries_wire(ds: List<VllmImageHostDelivery>) -> String {
+  join(map(ds, d => vllm_image_delivery_wire(d: d)), "")
+}
+
+fn vllm_image_distribution_succeeded(deliveries: List<VllmImageHostDelivery>) -> Bool {
+  fold(deliveries, init: true, f: (ok, d) => ok && match d {
+    VllmImageHostDelivered { host: _, digest: _, already_present: _ } => true
+    VllmImageHostDeliveryRefused { host: _, step: _, cause: _ } => false
+  })
+}
+
+// THE DISTRIBUTION ITSELF: save on the source (as root through the privileged leg, then chmod so
+// the executor principal can read it back out), read the source's digest as the expectation,
+// pull the tar to the executor, deliver to every target, and remove the staging tars. The source
+// digest is READ, not carried from the build receipt -- the receipt's number and the host's fact
+// agree by construction only if the read says so.
+fn distribute_vllm_image(
+  source: HostIdentity,
+  source_endpoint: NonEmptyStr,
+  source_ctx: SparkMaterializeContext,
+  trust: FleetOpenSshTrustPolicy,
+  path: SparkReachPath,
+  admin_credential: Secret,
+  admin_credential_file: NonEmptyStr,
+  tag: NonEmptyStr,
+  build_key: ContentHash,
+) -> VllmImageDistribution
+  uses net: Network
+{
+  let tar = vllm_image_transfer_tar_path(build_key: build_key)
+  let trust_words = serialize_ssh_client_options(options: fleet_openssh_trust_options(policy: trust))
+  match vllm_docker_leg(ctx: source_ctx, step: "distribute-save" as NonEmptyStr, command: docker_image_save_command(image: tag, output_path: tar)) {
+    ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match vllm_docker_leg(ctx: source_ctx, step: "distribute-save-chmod" as NonEmptyStr, command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "644" as NonEmptyStr, path: tar as String)) {
+        ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+        ImageLegRan { stdout: _ } =>
+          match vllm_docker_leg(ctx: source_ctx, step: "distribute-source-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
+            ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+            ImageLegRan { stdout: source_digest } =>
+              if source_digest == "" {
+                VllmImageDistributionRefused { step: "distribute-source-digest" as NonEmptyStr, cause: "the source host answers no digest for the tag it just saved" }
+              } else {
+                match vllm_image_local_scp_leg(step: "distribute-download" as NonEmptyStr, command: scp_download_command(trust_words: trust_words, principal: spark_managed_executor_login, endpoint: source_endpoint, remote_path: tar, local_path: tar)) {
+                  ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+                  ImageLegRan { stdout: _ } => {
+                    let acc = fold(
+                      vllm_image_distribution_targets(source: source),
+                      init: VllmImageDistributionAcc {
+                        deliveries: [],
+                        trust: trust, trust_words: trust_words, path: path,
+                        admin_credential: admin_credential, admin_credential_file: admin_credential_file,
+                        local_tar: tar, remote_tar: tar,
+                        tag: tag, expected_digest: source_digest as NonEmptyStr,
+                      },
+                      f: fn(a, h) { vllm_image_deliver_fold_step(acc: a, host: h) },
+                    )
+                    match vllm_image_local_leg(step: "distribute-local-cleanup" as NonEmptyStr, bin_path: vllm_image_transfer_rm_path, command: rm_force_command(path: tar as String)) {
+                      ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+                      ImageLegRan { stdout: _ } =>
+                        match vllm_docker_leg(ctx: source_ctx, step: "distribute-source-cleanup" as NonEmptyStr, command: rm_force_command(path: tar as String)) {
+                          ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+                          ImageLegRan { stdout: _ } => VllmImageDistributed { deliveries: acc.deliveries }
+                        }
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+data vllm_image_distribute_attempt_raw: String = "vllm-image-distribute"
+data vllm_image_distribute_receipt_path: String = "target/vllm-image-distribute-receipt.txt"
+
+// THE GLM DERIVED IMAGE'S DISTRIBUTION ENTRY. SPARK_CONVERGE_TARGET names the SOURCE host (the
+// host the build lane built on); the targets are the arm's roster minus it. The image identity
+// is derived from the recipe and derived-stage keys -- the same fold the build used -- so the tag
+// this distributes is the tag the build's receipt printed, not a re-typed string.
+fn glm53_image_distribute_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let base_key = vllm_image_build_key(r: vllm_8d09804_sm121_recipe)
+  let identity_tag = glm53_derived_tag(base_key: base_key)
+  let identity_key = glm53_derived_key(base_key: base_key)
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: distribution reads bytes FROM one named host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: source } =>
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm53_image_distribute: ", c], ""))
+        ExecutorReachKnown { short_hostname: executor, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: vllm_image_distribute_attempt_raw) {
+                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                Present { value: attempt } =>
+                  match probe_agent_credential_verification(attempt: attempt) {
+                    FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+                      exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+                    FleetSshCredentialDerivationRefused { cause: cause } =>
+                      exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+                    FleetSshCredentialVerified { binding: binding } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: context } =>
+                          match fleet_openssh_trust_policy_of(outcome: materialization) {
+                            Absent => exit_failure(reason: "the trust policy could not be sealed for the privileged legs")
+                            Present { value: trust } =>
+                              match spark_reach_endpoint(host: source, path: ReachManagementLan) {
+                                Absent => exit_failure(reason: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", source as String], ""))
+                                Present { value: endpoint } =>
+                                  match with_materialized_ssh_key_file(
+                                    identity_file_name: "gunbc-vllm-image-distribute-admin-password" as NonEmptyStr,
+                                    secret_bytes: administrator as Secret,
+                                    use: fn(file) {
+                                      distribute_vllm_image(
+                                        source: source,
+                                        source_endpoint: endpoint as NonEmptyStr,
+                                        source_ctx: SparkMaterializeContext {
+                                          host: source, trust: trust, path: path,
+                                          admin_credential: administrator as Secret,
+                                          admin_credential_file: file,
+                                          executor: HostCli,
+                                        },
+                                        trust: trust,
+                                        path: path,
+                                        admin_credential: administrator as Secret,
+                                        admin_credential_file: file,
+                                        tag: identity_tag,
+                                        build_key: identity_key,
+                                      )
+                                    },
+                                  ) {
+                                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                                    MaterializedSshKeyFileBracketCompleted { value: dist } => {
+                                      let dist_lines = match dist {
+                                        VllmImageDistributionRefused { step: st, cause: why } =>
+                                          join(["distribution REFUSED step=", st as String, " cause=", why, "\n"], "")
+                                        VllmImageDistributed { deliveries: ds } =>
+                                          vllm_image_deliveries_wire(ds: ds)
+                                      }
+                                      let body = join([
+                                        join(["vllm image distribute probed_at=", probed_at_word(reading: now) as String, " source=", source as String, " endpoint=", endpoint, " executor=", executor, "\n"], ""),
+                                        known_hosts_materialization_receipt(outcome: materialization),
+                                        join(["image tag=", identity_tag as String, " key=", serialize_content_hash(hash: identity_key) as String, "\n"], ""),
+                                        dist_lines,
+                                      ], "")
+                                      let w = Filesystem.Write(path: vllm_image_distribute_receipt_path, content: body)
+                                      if !w.success {
+                                        exit_failure(reason: join(["vllm image distribute receipt write failed: ", w.error], ""))
+                                      } else {
+                                        match dist {
+                                          VllmImageDistributionRefused { step: _, cause: _ } =>
+                                            exit_failure(reason: join(["vllm image distribute did not converge:\n", body], ""))
+                                          VllmImageDistributed { deliveries: ds } =>
+                                            if vllm_image_distribution_succeeded(deliveries: ds) {
+                                              ExitSuccess
+                                            } else {
+                                              exit_failure(reason: join(["vllm image distribute did not converge:\n", body], ""))
+                                            }
+                                        }
+                                      }
+                                    }
+                                  }
+                              }
+                          }
+                      }
+                    }
+                  }
+              }
           }
       }
   }

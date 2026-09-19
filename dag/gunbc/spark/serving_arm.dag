@@ -4,6 +4,12 @@ import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_checkpoint_manifest_gibibytes }
+import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
+import gunbc.spark.vllm_image_identity { glm53_derived_tag, vllm_image_build_key }
+import extdeps.vllm.engine_args {
+  VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
+}
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit,
 }
@@ -15,7 +21,6 @@ import extdeps.vllm.runtime_defaults {
   ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627, Vllm8d09804,
   defaults_source_revision, defaults_gpu_utilization,
 }
-import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
 }
@@ -30,7 +35,6 @@ import gunbc.spark.runtime_architecture_registry_reading {
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
-
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
 // WHY THIS AXIS IS BEING ADDED, AND WHAT IT COST TO DISCOVER. gunbc.harness.harness_reasoning_wire
@@ -756,12 +760,17 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
 // ADDING THIS FIELD CHANGES EVERY PROFILE IDENTITY, WHICH IS THE POINT. The identity is derived from the
 // fields, and a compatibility refusal recorded against a profile that said nothing about prefix caching
 // must not silently cover a launch that asks for it.
+// kv_cache_dtype IS THE TYPED REQUEST, NOT A WIRE STRING. It stood as `kv_cache_dtype_wire:
+// NonEmptyStr` until 2026-09-17, when the arm launched with `--kv-cache-dtype bf16` -- a spelling
+// no vLLM build accepts -- and crash-looped 88 times on argument parse. A bare string can spell
+// anything; the typed request can only spell what extdeps.vllm.engine_args admits, and the wire
+// map there is the single authority corrected against the engine's own choice list.
 type ServingLaunchProfile sole_constructor {
   max_model_len: TokenCount
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
-  kv_cache_dtype_wire: NonEmptyStr
+  kv_cache_dtype: VllmKvCacheDtypeRequest
   serve_port: Port
   served_alias: NonEmptyStr
   prefix_caching: VllmPrefixCachingRequest
@@ -789,7 +798,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     " batch=", to_string(token_count_value(t: p.max_num_batched_tokens)),
     " seqs=", to_string(p.max_num_seqs),
     " util_bp=", to_string(basis_point_count(bp: p.decided_gpu_memory_basis_points)),
-    " kv=", p.kv_cache_dtype_wire as String,
+    " kv=", vllm_kv_cache_dtype_wire(request: p.kv_cache_dtype) as String,
     " port=", to_string(p.serve_port),
     " alias=", p.served_alias as String,
     " prefix=", match p.prefix_caching {
@@ -799,12 +808,103 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
   ], "")
 }
 
+// ── THE KV DTYPE IS ADMITTED PER ENGINE BUILD, NOT CHOSEN ─────────────────────────────────────
+//
+// THE LAW THAT GATEKEEPED THIS ROW IS PER-(KERNEL, BUILD), AND 2026-09-17 MEASURED BOTH BUILDS.
+// The stock digest's kernel asserts pe_dim == 64 for fp8_ds_mla (cache_kernels.cu:928) and finds
+// no attention backend at all under bfloat16, so THAT build serves this model on no spelling --
+// both crash classes observed on the srv9 head 2026-09-17. The lane-built derived image (vLLM
+// 8d09804 + flashinfer 0.7.0.dev20260910, gunbc.spark.vllm_runtime_image_build) inverts both
+// readings: its only backend for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY
+// the fp8 KV cache -- bfloat16 is refused by the selector with "kv_cache_dtype not supported"
+// (smoke on srv10, 2026-09-17) -- and under fp8 it selects that backend, announces the fp8_ds_mla
+// format, and proceeds (same smoke); its hand-built twin with the same recipe inputs served this
+// model from 2026-09-13 to 2026-09-16, which on this build is possible only under an fp8 spelling.
+// So the admission is a function of the BUILD first and the dtype second, and the build is a
+// declared row rather than a fact re-derived at each call site.
+//
+// THE BUILD NAMES ITS IMAGE, and native_serving_realization derives the arm's image reference
+// from the declared build -- one authority for "which engine the arm runs", so the admission and
+// the pin cannot drift apart. The derived build's tag is COMPUTED from the build key
+// (gunbc.spark.vllm_image_identity glm53_derived_tag over the base recipe's key), the same function
+// the build lane tags with, so a wheel or base-recipe change moves the pin with the build instead of
+// leaving a copied `derived-<hash>` naming an image the key no longer describes (review 67469).
+type GlmNativeEngineBuild
+  = GlmNativeEngineStockG385dce36b
+  | GlmNativeEngineDerived8d09804
+
+fn glm_native_engine_build_image(build: GlmNativeEngineBuild) -> NonEmptyStr {
+  match build {
+    GlmNativeEngineStockG385dce36b =>
+      "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
+    GlmNativeEngineDerived8d09804 =>
+      glm53_derived_tag(base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  }
+}
+
+// THE ARM'S DECLARED BUILD: the lane-built derived image, receipt target/v41-runtime-image-build
+// -receipt.txt 2026-09-17 (provenance=built-by-this-run, local_config_digest sha256:c7d63d15...).
+// The stock digest is retained in the enum because it is the observed counter-example, not because
+// it is a candidate: it serves this model on no admitted spelling.
+data glm_native_engine_build: GlmNativeEngineBuild = GlmNativeEngineDerived8d09804
+
+// RUNG HONESTY: this is mechanically preventable, not structural -- the profile is a data row and
+// cannot refuse its own field, so the gate is the witness in
+// dag/test/claim/spark/serving_arm_kv_dtype_witness_test.dag, which goes red if the profile
+// carries a dtype its declared build refuses. The next-rung trigger is a profile constructor that
+// takes the admission as an argument, making a refused dtype unconstructible.
+type GlmNativeKvCacheDtypeAdmission
+  = GlmNativeKvCacheDtypeAdmitted { dtype: VllmKvCacheDtypeRequest }
+  | GlmNativeKvCacheDtypeRefused { dtype: VllmKvCacheDtypeRequest, cause: NonEmptyStr }
+
+fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
+  match build {
+    GlmNativeEngineDerived8d09804 =>
+      match dtype {
+        KvAuto => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvFp8 => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvFp8DsMla => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvBf16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "this build's only backend for the model (FLASHINFER_MLA_SPARSE_SM120) supports only the fp8 KV cache; the selector refused bfloat16 with 'kv_cache_dtype not supported' (smoke on srv10 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "unobserved, and this build's only backend for the model supports only the fp8 KV cache (the selector's refusal vocabulary for bfloat16, 2026-09-17)" as NonEmptyStr,
+        }
+      }
+    GlmNativeEngineStockG385dce36b =>
+      match dtype {
+        KvBf16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no valid attention backend for sparse MLA at pe_dim=0 with a non-fp8 KV cache on this build (srv9 head, 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp16 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
+        }
+        KvAuto => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed crash under auto 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp8 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "resolves to fp8_ds_mla on this MLA checkpoint, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
+        }
+        KvFp8DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "names the fp8_ds_mla kernel directly, which requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
+        }
+      }
+  }
+}
+
 data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
-  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  kv_cache_dtype: KvAuto,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -832,12 +932,34 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
 // engine running THIS profile is observed serving, which is what
 // gunbc.spark.serving_arm_launch intent_refusal will enforce: an unrun subject is admitted for a bounded
 // experiment and refused for normal serving.
+//
+// THIS ROW'S max_num_seqs IS A CHOSEN BOUND, NOT A MEASURED ONE, and the row says so rather than dressing the
+// number as a capacity reading. It stood at 1 under the launch policy "admit one until the runtime
+// sequence capacity and the KV-resident capacity are both measured". On 2026-09-16 the operator
+// replaced that posture ahead of any measurement: 16, on the stated basis that over-admission is
+// preferable to under-admission while the measurement is unfunded ("better to have too many than
+// too little"). The live evidence agrees the floor was far below the hardware: one sequence at a
+// 262k window occupied 7% of the KV cache. This number is THIS arm's -- it may not travel to
+// another model, quantisation or KV layout -- and the measurement that would replace a chosen
+// bound with a derived one (concurrent-request KV occupancy) remains the standing trigger.
+//
+// AND ITS KV REQUEST IS KvFp8, NOT THE auto THE INITIAL ROW RECORDS, BECAUSE OF THE BUILD-KEYED
+// ADMISSION ABOVE AND NOT A PREFERENCE. This is the profile the live arm launches from
+// (gunbc.spark.native_serving_realization), and after the 2026-09-17 bf16 crash-loop it spells fp8.
+// On the arm's declared build (the lane-built derived image) the only backend the selector admits
+// for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY the fp8 KV cache -- bfloat16
+// is refused by the engine itself (smoke, srv10 2026-09-17) -- and fp8 resolves to fp8_ds_mla,
+// the format this build serves (its hand-built twin served 2026-09-13 to 2026-09-16). The pe_dim
+// == 64 kernel law that forbids fp8 on the STOCK build is a per-(kernel, build) fact
+// (extdeps.vllm.kv_cache) and does not bind here. The witness
+// test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a dtype the declared
+// build refuses.
 data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
-  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  kv_cache_dtype: KvFp8,
   serve_port: glm_native_initial_profile.serve_port,
   served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
@@ -867,7 +989,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
   decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
-  kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+  kv_cache_dtype: KvFp8,
   serve_port: 30001,
   served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   prefix_caching: PrefixCachingOmitted,

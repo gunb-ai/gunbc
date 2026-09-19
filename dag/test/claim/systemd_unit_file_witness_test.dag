@@ -14,7 +14,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   SystemdServiceDirective,
-  ServiceType,
+  ServiceType, NotifyMode, OneshotMode, SimpleMode,
   ExecStart,
   Restart,
   Environment,
@@ -70,7 +70,7 @@ fn sample() -> SystemdUnitFile {
       After { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ExecStart { command: "/opt/x/bin/ollama serve" as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
@@ -126,7 +126,7 @@ test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
   serialize_systemd_unit_file(
     file: ServiceUnitFile {
       unit: [Description { text: "d" as NonEmptyStr }],
-      service: [ServiceType { mode: "oneshot" as NonEmptyStr }],
+      service: [ServiceType { mode: OneshotMode }],
       install: NotInstallable,
     },
   ) == "[Unit]\nDescription=d\n\n[Service]\nType=oneshot\n"
@@ -134,7 +134,7 @@ test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
 
 test fn installable_and_not_installable_render_differently() -> Bool {
   let base_unit = [Description { text: "d" as NonEmptyStr }]
-  let base_service = [ServiceType { mode: "oneshot" as NonEmptyStr }]
+  let base_service = [ServiceType { mode: OneshotMode }]
   serialize_systemd_unit_file(
     file: ServiceUnitFile { unit: base_unit, service: base_service, install: NotInstallable },
   ) != serialize_systemd_unit_file(
@@ -152,7 +152,7 @@ test fn installable_and_not_installable_render_differently() -> Bool {
 // model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
 // constructor name leaked into the emitted bytes.
 test fn service_type_renders_as_the_type_directive() -> Bool {
-  systemd_service_directive_line(directive: ServiceType { mode: "notify" as NonEmptyStr })
+  systemd_service_directive_line(directive: ServiceType { mode: NotifyMode })
     == "Type=notify"
 }
 

@@ -11,20 +11,22 @@ import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_fleet_site_allocation, spark_site_uncovered_units, spark_first_party_route,
   SparkServingRealization,
   spark_realization_identity, SparkRealizationIdentity,
-  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationObservation,
+  EndpointIncarnationObservation, VllmServingLaunch,
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance, launch_wire,
@@ -32,6 +34,10 @@ import gunbc.spark.vllm_serving_launch {
 import gunbc.spark.pair_serving_realization {
   spark_pair_head_unit_name,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+}
+import gunbc.spark.rendezvous_participation {
+  ServingGroupRendezvousReach, GroupHostsAllConnected, GroupHostsNotAllConnected, GroupRendezvousReachUnobserved,
+  RendezvousEpoch, serving_group_rendezvous_reach_line,
 }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
@@ -300,7 +306,7 @@ data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark
 // renderer.
 fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
   match spark_realization_identity(realization: realization) {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } =>
+    RealizationMatchesDeclaredConfiguration { configured_model_path: p } =>
       join([
         "the engine reports the model path this launch is declared to serve (", p as String,
         "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
@@ -332,6 +338,8 @@ type SparkServiceIdentityCause
   | ServiceIncarnationOutsideRealization { incarnation: NonEmptyStr }
   | ServiceDeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
+  | ServiceRanksAdriftFromTheRendezvous { detail: NonEmptyStr }
+  | ServiceRendezvousEvidenceFromAnotherEpoch { evidence: RendezvousEpoch, answering_head: HostIdentity, answering_invocation: NonEmptyStr }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
 // THE DECLARED SIDE OF THE UNIT COMPARISON IS SEALED DIGEST EVIDENCE
@@ -343,6 +351,25 @@ type SparkServiceIdentityCause
 // fingerprint remains the wrong family.
 
 data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the engine incarnation the answering endpoint process belongs to was not observed on this bind. gunbc.spark.serving_incarnation_observe is the producer -- it binds the answering exporter to a gunbc.spark.vllm_serving_launch VllmServingLaunch over the fleet key session -- and this standing is reached when that producer returned no observation for a specific reason it names: no fleet ssh context on this bind, the process not found or ambiguous at the exported start instant, hidepid hiding /proc, or the container image id unread. That last needs gunbc.spark.managed_access_bootstrap InspectServingContainer (installed through gunbc.spark.managed_grant_install): the unprivileged facts -- unit, start-tick identity, cgroup container id -- are established without it, but the image digest that completes the launch is read only through the inspect leg, so a host without that grant fails the inspect command (sudo denies) with the container named"
+
+// ── THE EDGE, DECLARED AT THE OFFER ──────────────────────────────────────────────────────────
+//
+// WHICH GRANTS AN ARM'S OFFER NEEDS HELD ON ITS HOSTS is a fact about the OFFER, because the
+// offer is what knows why: the incarnation chain above reads the live container through
+// InspectServingContainer, so the offer for an arm cannot open on a host where that arm's
+// container inspect is not granted. Until 2026-09-17 this edge existed only in the obligation
+// TEXT above, and the native arm's apply restarted four engines while the grant was installed on
+// none of them -- discovered by the harness probe afterward. Declared here as data, the edge has
+// one authority that both directions consume: the apply's preflight (gunbc.spark.native_serving_apply)
+// asks it what to probe BEFORE restarting anything, and the grants lane's population
+// (managed_access_bootstrap spark_managed_grant_population) is the same grants seen from the
+// install side. Keyed by fabric group because the arm determines the container.
+fn spark_serving_offer_required_grants(group: FabricGroup) -> List<SparkManagedGrant> {
+  match group {
+    FabricGroupA => [InspectServingContainer { container: spark_pair_container_name }]
+    FabricGroupB => [InspectServingContainer { container: glm_native_container_name }]
+  }
+}
 
 fn spark_launch_unit_provenance_text(provenance: LaunchUnitProvenance) -> String {
   match provenance {
@@ -363,6 +390,13 @@ fn spark_service_identity_cause_text(cause: SparkServiceIdentityCause, realizati
       join(["the observed incarnation ", i as String, " is not on this realization's group and hosts"], "")
     ServiceDeclaredUnitDigestUnavailable { obligation: o } => o as String
     ServiceIncarnationNotFromDeclaredUnit { provenance: p } => spark_launch_unit_provenance_text(provenance: p)
+    ServiceRanksAdriftFromTheRendezvous { detail: d } => d as String
+    ServiceRendezvousEvidenceFromAnotherEpoch { evidence: e, answering_head: h, answering_invocation: i } =>
+      join([
+        "the rendezvous participation reading is about the store opened by invocation ", e.head_invocation as String,
+        " of head ", e.head as String, ", but the answering incarnation is invocation ", i as String, " of head ", h as String,
+        "; evidence about one epoch neither clears nor condemns another, so this candidate needs a fresh bind that reads participation for its own epoch",
+      ], "")
     ServiceConfigurationDisagrees { configuration: _ } =>
       join(["the incarnation is observed and was launched from the declared unit, but the readback disagrees: ", spark_realization_identity_cause(realization: realization) as String], "")
   }
@@ -383,14 +417,14 @@ fn spark_service_unidentified(realization: SparkServingRealization, cause: Spark
 
 fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
   match identity {
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => true
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => true
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
   }
 }
 
-fn spark_service_from_observation(realization: SparkServingRealization, declared: ContentHash, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+fn spark_service_from_observation(realization: SparkServingRealization, declared: ContentHash, participation: ServingGroupRendezvousReach?, observation: EndpointIncarnationObservation) -> SparkServingRoute {
   let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
   let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
   if (observed_key as String) != (answering_key as String) {
@@ -404,22 +438,95 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
         spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: o, declared: d } })
       LaunchUnitDigestsIncomparable =>
         spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
-      LaunchedFromDeclaredUnit { declared: _ } => {
-        let identity = spark_realization_identity(realization: realization)
-        if spark_configuration_matches(identity: identity) {
-          ServingRouteOperatorAsserted {
-            route: spark_first_party_route(),
-            allocation: spark_fleet_site_allocation.allocation,
-            answered_by: observation,
-          }
-        } else {
-          spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
+      LaunchedFromDeclaredUnit { declared: _ } =>
+        match spark_rendezvous_epoch_mismatch(participation: participation, launch: observation.launch) {
+          Present { value: stale } => spark_service_unidentified(realization: realization, cause: stale)
+          Absent =>
+            match spark_ranks_adrift_detail(participation: participation) {
+              Present { value: detail } =>
+                spark_service_unidentified(realization: realization, cause: ServiceRanksAdriftFromTheRendezvous { detail: detail })
+              Absent => spark_service_after_rendezvous(realization: realization, observation: observation)
+            }
         }
-      }
     }
   }
 }
 
+// PARTICIPATION IS A FACT ABOUT ONE EPOCH, AND THIS IS THE ONE PLACE THE EPOCH MEETS THE CANDIDATE.
+// The harness reads participation once per bind (gunbc.harness.harness_seat
+// harness_group_participation_roster) and a bind runs several placement rounds; between them the head
+// can restart, so the candidate admitted here may answer from an invocation the reading never saw.
+// The comparison lives in this fold rather than in the harness because this is the only function that
+// holds BOTH the participation value and the answering incarnation's observed launch -- every route,
+// memo hit or miss, harness or otherwise, passes through it -- so a stale reading is unconsumable by
+// construction rather than by each caller remembering to compare. A mismatched epoch refuses with its
+// own typed cause: treating it as all-connected would let E1's assembly clear E2, and treating it as
+// adrift would blame E2's ranks for E1's detachment. An unobserved reading carries no epoch and is
+// left to spark_ranks_adrift_detail, which already refuses it.
+fn spark_rendezvous_epoch_mismatch(participation: ServingGroupRendezvousReach?, launch: VllmServingLaunch) -> SparkServiceIdentityCause? {
+  match participation {
+    Absent => none
+    Present { value: p } =>
+      match p {
+        GroupHostsAllConnected { epoch: e, ranks: _ } => spark_epoch_mismatch_cause(epoch: e, launch: launch)
+        GroupHostsNotAllConnected { epoch: e, adrift: _, attached: _, expected: _ } => spark_epoch_mismatch_cause(epoch: e, launch: launch)
+        GroupRendezvousReachUnobserved { cause: _ } => none
+      }
+  }
+}
+
+fn spark_epoch_mismatch_cause(epoch: RendezvousEpoch, launch: VllmServingLaunch) -> SparkServiceIdentityCause? {
+  if host_identity_eq(a: epoch.head, b: launch.head) && (epoch.head_invocation as String) == (launch.systemd_invocation as String) {
+    none
+  } else {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: epoch, answering_head: launch.head, answering_invocation: launch.systemd_invocation } }
+  }
+}
+
+// THE ADRIFT DETAIL, OR NOTHING TO SAY. `none` participation is an UNASKED question and `GroupHostsAllConnected`
+// is an answered one; both continue, and only a roster with a demonstrably detached or unreadable rank
+// stops the line. GroupRendezvousReachUnobserved stops it too, because a rendezvous we could not read is
+// not a rendezvous we found intact -- widening there would be the absorbing fallback DESIGN section 5
+// names, with the arm's assembly as the thing being assumed.
+fn spark_ranks_adrift_detail(participation: ServingGroupRendezvousReach?) -> NonEmptyStr? {
+  match participation {
+    Absent => none
+    Present { value: p } =>
+      match p {
+        GroupHostsAllConnected { epoch: _, ranks: _ } => none
+        GroupHostsNotAllConnected { epoch: _, adrift: _, attached: _, expected: _ } =>
+          Present { value: join(["the answering incarnation is our declared arm, but its ranks are not assembled: ", serving_group_rendezvous_reach_line(p: p)], "") as NonEmptyStr }
+        GroupRendezvousReachUnobserved { cause: c } =>
+          Present { value: join(["whether this arm's ranks are assembled could not be read, so it is not established that they are: ", c as String], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn spark_service_after_rendezvous(realization: SparkServingRealization, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+  let identity = spark_realization_identity(realization: realization)
+  if spark_configuration_matches(identity: identity) {
+    ServingRouteOperatorAsserted {
+      route: spark_first_party_route(),
+      allocation: spark_fleet_site_allocation.allocation,
+      answered_by: observation,
+    }
+  } else {
+    spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
+  }
+}
+
+// PARTICIPATION IS CHECKED AFTER THE UNIT PROVENANCE AND BEFORE THE CONFIGURATION, and the order is
+// the same reasoning the block above states. A rank roster is only meaningful once the answering
+// incarnation is known to be OUR declared arm: ranks adrift from a foreign engine's store is not a
+// fact about this deployment. And it precedes the configuration check because an arm missing ranks
+// cannot be expected to report a coherent configuration -- diagnosing the readback first would blame
+// the model path for an assembly failure.
+//
+// A GROUP WITH NO MODELED RENDEZVOUS PASSES THIS GATE, which is honest rather than lenient: group A's
+// ranks join through Ray and nothing here observes that, so `none` means UNASKED and the arm's
+// standing is decided by the checks that do apply. It is not a silent widen because the question is
+// not answerable for that arm at all -- the endpoint readback still gates it, exactly as before this
+// parameter existed.
 // THE DECLARED UNIT IS REFUSED BEFORE THE INCARNATION IS CONSULTED. Whether this repository could
 // render and digest its own head unit is decidable with no observation at all, and a route whose
 // declared digest is unavailable can never be identified however much is observed about it -- so
@@ -428,7 +535,7 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
 // is still unobserved (EndpointIncarnationUnobserved on every production realization), so a wire
 // that drops the digest between its mint and this fold is red at ServiceDeclaredUnitDigestUnavailable
 // rather than green by coincidence at ServiceIncarnationUnobserved.
-fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
+fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupRendezvousReach?) -> SparkServingRoute {
   let hosts = realization.hosts
   if count(hosts) == 0 {
     ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }
@@ -448,7 +555,7 @@ fn spark_serving_route_standing(realization: SparkServingRealization, declared_u
                 obligation: o,
               })
             EndpointIncarnationObserved { observation: obs } =>
-              spark_service_from_observation(realization: realization, declared: e.digest, observation: obs)
+              spark_service_from_observation(realization: realization, declared: e.digest, participation: participation, observation: obs)
           }
       }
     }

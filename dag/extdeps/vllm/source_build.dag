@@ -10,7 +10,7 @@ import extdeps.gpu.types {
   UnsubstantiatedGpuCapabilityLabel,
 }
 import extdeps.vendor.nvidia { nvidia }
-import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1_version }
+import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1_version, flashinfer_0_6_18_version }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,6 +44,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data vllm_deepseek_v4_1_sm12_revision: VllmSourceRevision = vllm_source_revision(
   repository: "github.com/vllm-project/vllm" as NonEmptyStr,
   full_revision: "07b75534651a0dd584c6f3be75d8c62fb8426397" as NonEmptyStr,
+)
+
+// THE REVISION THE GLM-5.3-FLASH SM121 BASE IMAGE BUILT FROM. The commit is upstream's own
+// "[Bugfix][SM120][MLA] Size sparse page table by actual top-k buffer width" (2026-09-04), the fix
+// GLM-5.3-Flash's sparse-MLA path needs; the local image's base tag names it (`8d09804-sm121`) and
+// the image's layer history carries the matching Dockerfile build args. Read from the image and the
+// upstream commit 2026-09-17.
+data vllm_glm_5_3_flash_sm121_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
 )
 
 // A REPOSITORY IDENTITY IS NOT A CLONE LOCATOR, AND CONFLATING THEM BREAKS COLD ACQUISITION.
@@ -156,6 +166,34 @@ data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
   flashinfer_version: flashinfer_0_6_18_post1_version,
   torch_cuda_arch_list: ["8.0" as NonEmptyStr, "8.7" as NonEmptyStr, "8.9" as NonEmptyStr, "9.0" as NonEmptyStr, "10.0" as NonEmptyStr, "11.0" as NonEmptyStr, "12.0" as NonEmptyStr],
   install_kv_connectors: true,
+  max_jobs: 16,
+  nvcc_threads: 8,
+}
+
+// THE GLM-5.3-FLASH SM121 BASE RECIPE, read 2026-09-17 from the layer history of the image that
+// actually served the GLM native arm from 2026-09-13 (local tag
+// gunbc-vllm-glm53-nope-gb10:8d09804-sm121). Every field except the two noted is observed in the
+// image's recorded build arguments: CUDA_VERSION=13.0.2 (an override -- the Dockerfile default at
+// this revision is 13.0.3), PYTHON_VERSION=3.12, NCCL_VERSION=2.30.7, FLASHINFER_VERSION=0.6.18
+// (the base's install; the serving image then force-reinstalls the 0.7.0.dev20260910 nightly,
+// which gunbc.spark.vllm_runtime_image_build carries as the derived stage), INSTALL_KV_CONNECTORS=false,
+// torch_cuda_arch_list=12.1, and triton-from-source DISABLED (TRITON_INSTALL_FROM_SOURCE_REPO empty,
+// so the Dockerfile writes the "disabled" build-state and the stock triton 3.7.1 stays).
+// build_base_image is the one field not recorded in the final image's history: it is upstream's own
+// aarch64 release builder, inferred from the aarch64 requirement exactly as the 07b75534 aarch64
+// row establishes; the fleet rebuild either succeeds from it or names the divergence.
+data vllm_8d09804_sm121_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_glm_5_3_flash_sm121_revision,
+  dockerfile_path: "docker/Dockerfile" as NonEmptyStr,
+  build_target: "vllm-openai" as NonEmptyStr,
+  cuda_version: "13.0.2" as NonEmptyStr,
+  build_base_image: "pytorch/manylinuxaarch64-builder:cuda13.0-b8b5f17a7d9ccfc25bbc5cf17b3fcea12964a042" as NonEmptyStr,
+  final_base_image: "nvidia/cuda:13.0.2-base-ubuntu24.04" as NonEmptyStr,
+  python_version: "3.12" as NonEmptyStr,
+  torch_version: "2.13.0" as NonEmptyStr,
+  flashinfer_version: flashinfer_0_6_18_version,
+  torch_cuda_arch_list: ["12.1" as NonEmptyStr],
+  install_kv_connectors: false,
   max_jobs: 16,
   nvcc_threads: 8,
 }
