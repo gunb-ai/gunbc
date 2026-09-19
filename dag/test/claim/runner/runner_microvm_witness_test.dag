@@ -663,6 +663,32 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
   }
 }
 
+// THE EXPECTING-RED PROBE PINNED TO TODAY (DESIGN 4b(4); review 68307). The either-state witness
+// above cannot record WHICH state production is in, so this one does: at the 2026-09-19 receipt
+// and the 26 GiB cell row, the production shape refuses on the memory remainder, and the refusal
+// carries the floor's stated demand, the derived allowance and the cell's remainder. The day the
+// cell row or the demand receipt moves so the sum fits, this reds -- and it is then FLIPPED to
+// assert resolution, citing what moved, rather than deleted. The stall it evidences is
+// gunbc.guarantee_stall.runner_microvm_floor_fit_stall.
+test fn the_production_shape_refuses_today_on_the_memory_remainder_with_all_three_figures() -> Bool {
+  match floor_memory_requirement() {
+    Absent => false
+    Present { value: need } =>
+      match gunbc_runner_microvm_shape() {
+        MicroVmShapeResolved { shape: _ } => false
+        MicroVmShapeRefused { refusal: r } =>
+          match r {
+            ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+              byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
+                && byte_size_count(b: a) == byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
+                && byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+                && byte_size_count(b: n) + byte_size_count(b: a) > byte_size_count(b: m)
+            _ => false
+          }
+      }
+  }
+}
+
 // THE ALLOWANCE IS THE LAST UNSTALLED BEAT'S CACHE AT GIBIBYTE GRAIN, READ FROM THE RECEIPT, and
 // zero while nothing is measured -- so a change to the receipt moves the allowance without anyone
 // editing a literal.
