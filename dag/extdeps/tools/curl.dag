@@ -1,6 +1,7 @@
 module extdeps.tools.curl
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, HttpStatus, http_status_of }
+import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -56,6 +57,17 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data curl_program: NonEmptyStr = "curl"
+
+// A bounded GET as argv words: -f makes an HTTP error a non-zero exit instead of a body, -sS keeps
+// the error text on stderr while suppressing the progress meter.
+fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second) -> List<String> {
+  [
+    curl_program as String, "-fsS",
+    "--connect-timeout", to_string(second_count(s: connect_timeout)),
+    "--max-time", to_string(second_count(s: max_time)),
+    url,
+  ]
+}
 
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
@@ -159,7 +171,41 @@ fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
 // -T names the local file to upload and the URL names the remote object EXACTLY; the trailing-slash
 // directory behaviour curl_ftps_upload_command warns about is avoided the same way, by never
 // emitting a URL that ends in "/".
+// STATUS-ONLY STDOUT. Pair with `-o` so the transfer body is not on stdout; then this format is
+// the whole stdout. ProbeServiceRoot keeps the body on stdout and must not reuse this row.
 data curl_http_code_write_out_format: String = "%\{http_code\}"
+
+// BODY THEN STATUS. curl appends a newline and the three-digit code after the body. The last
+// newline-delimited line is the status; it is not a trailing-three-character guess.
+data curl_http_code_after_newline_write_out_format: String = "\n%\{http_code\}"
+
+type CurlWriteOutHttpStatus
+  = CurlWroteHttpStatus { status: HttpStatus }
+  | CurlWroteNoHttpStatus { cause: NonEmptyStr }
+
+fn classify_curl_write_out_stdout(stdout: String) -> CurlWriteOutHttpStatus {
+  let code = trim(s: stdout)
+  match parse_int(s: code) {
+    Present { value: n } => match http_status_of(n: n) {
+      Present { value: status } => CurlWroteHttpStatus { status: status }
+      Absent => CurlWroteNoHttpStatus {
+        cause: "curl write-out printed a status outside HTTP's range" as NonEmptyStr,
+      }
+    }
+    Absent => CurlWroteNoHttpStatus {
+      cause: "curl write-out stdout was not an HTTP status" as NonEmptyStr,
+    }
+  }
+}
+
+fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStatus {
+  match split(s: stdout, delimiter: "\n").last() {
+    Absent => CurlWroteNoHttpStatus {
+      cause: "curl wrote no newline-delimited HTTP status" as NonEmptyStr,
+    }
+    Present { value: line } => classify_curl_write_out_stdout(stdout: line)
+  }
+}
 
 data curl_if_none_match_any_header: String = "If-None-Match: *"
 
