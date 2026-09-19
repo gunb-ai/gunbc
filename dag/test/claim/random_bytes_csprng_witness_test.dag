@@ -12,7 +12,10 @@ fn getrandom_octets(count: Int) -> List<std.integer.UInt8>? {
 pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
 {
   node cred = match getrandom_octets(count: byte_count) {
-    Present { value: bs } => base64_encode(octets: bs, variant: UrlSafe)
+    Present { value: bs } => match base64_octets(values: bs) {
+      QualifiedOctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: UrlSafe)
+      QualifiedOctetsRefused { cause: _ } => ""
+    }
     Absent => ""
   }
   return { credential: cred }
