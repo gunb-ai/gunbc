@@ -3,7 +3,7 @@ module std.encoding
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
 import std.integer { UInt8 }
-import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values }
+import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, OctetsReady, OctetsRefused, QualifiedWord, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import std.bytes { pure_dag_seam_unreachable }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
