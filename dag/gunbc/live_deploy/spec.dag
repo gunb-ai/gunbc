@@ -44,6 +44,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root, dashboard_instance_event_log_root,
+  dashboard_instance_provider_state_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -103,6 +104,7 @@ type EnsuredDependencyKind =
   | TmuxPackage
   | DevbootArtifactStoreDirectory
   | CodexRuntimeReleaseDirectory
+  | ProviderStateRootDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
 // the first. What Ensured means was already exactly right for the build service's artifact store:
@@ -865,6 +867,90 @@ fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDepe
   concat(deployment_ensured_packages(), target.ensured_directories)
 }
 
+// THE PROVIDER-STATE ROOT IS AN ENSURED MEMBER OF THE INSTANCE, NOT OF THE HOST (CONVERGENCE-ONE
+// C7, operator ruling 2026-09-19: live_deploy owns provider-state creation). The dashboard
+// launcher's provision plan was its only creator, so deleting that launcher without this member
+// would lose the creation silently: a fresh host would get a provider login with nowhere to write.
+//
+// It is Ensured rather than Owned for the reason the provision op already gave: the directory is
+// never torn down and never populated by the deploy. Credentials inside it are user-authored secret
+// state, so a retract that removed it would destroy a login the deploy did not create.
+//
+// It is PER INSTANCE rather than a row of target.ensured_directories because the path is the
+// instance's own fact: gunbc.roadmap_dashboard_instance dashboard_instance_provider_state_root,
+// the same projection the provider preflight reads. The owner is the service principal, the same
+// user whose process writes the login and the same one member_observe compares the read-back owner
+// against, so the ensured owner and the read-back owner cannot drift apart.
+//
+// The directory is installed with the ensured-directory arm's mode (install_d_shared_mode), the
+// same mode the provision op's mkdir produced. Credential files inside carry their own modes. A
+// tighter mode is a ManagedDirectory derivation, and adopting one would change what EnsuredHostDirectory
+// means for every kind.
+//
+// DISPOSITION CENSUS, stated here because deleting a creator with a blank row is the serve-binary
+// deadlock. After this change, the provider-state root of each instance is created by:
+//   srv1_live      -- this member, on the production route (deployment_spec_srv1 ->
+//                     live_deploy_apply_script_for), read back as a DirectoryRoot. The provision
+//                     plan's DashboardEnsureProviderStateRoot is now redundant for this instance
+//                     and goes with the launcher deletion, not before.
+//   srv1_lab       -- the provision plan (gunbc.roadmap_dashboard_instance
+//   srv2_lab          dashboard_instance_provision_plan DashboardEnsureProviderStateRoot) stays
+//   srv2_deploy       the ONLY creator. Their desired specs carry this member through
+//   macbook_local     deployment_spec_for, but no production caller applies those specs, so the
+//                     member does not create anything for them yet. The provision op may be deleted for
+//                     an instance only when a production caller applies its spec.
+fn deployment_provider_state_step(instance: HostDashboardInstance) -> DeploymentDependencyStep {
+  DeploymentDependencyStep {
+    kind: ProviderStateRootDirectory,
+    subject: EnsuredHostDirectory {
+      path: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
+      owner: gunbc_service_user,
+    },
+  }
+}
+
+// THE REFUSAL FOR A SPEC THAT CARRIES NO PROVIDER-STATE MEMBER. deployment_spec_for always builds
+// one, but DeploymentSpec is an ordinary record and a hand-assembled spec can omit it. The apply
+// refuses such a spec before it emits anything. Skipping the member instead would recreate the
+// silent loss this member exists to close. One member, owned by the service principal, is the only
+// admitted shape; two would be two answers for one directory.
+type ProviderStateMemberStanding
+  = ProviderStateMemberCarried { path: NonEmptyStr }
+  | ProviderStateMemberAbsent
+  | ProviderStateMemberDuplicated { count: Int }
+  | ProviderStateMemberWrongOwner { path: NonEmptyStr, owner: NonEmptyStr }
+  | ProviderStateMemberNotADirectory { subject: NonEmptyStr }
+
+fn provider_state_dependencies(spec: DeploymentSpec) -> List<DeploymentDependencyStep> {
+  spec.steps |> flat_map(s => match s {
+    ArtifactStep { step: _ } => []
+    Dependency { step: dep } => match dep.kind {
+      ProviderStateRootDirectory => [dep]
+      _ => []
+    }
+  })
+}
+
+fn provider_state_single_standing(spec: DeploymentSpec, dep: DeploymentDependencyStep) -> ProviderStateMemberStanding {
+  match dep.subject {
+    EnsuredHostDirectory { path, owner } =>
+      if (owner as String) == (spec.service.service_user as String) {
+        ProviderStateMemberCarried { path: path }
+      } else {
+        ProviderStateMemberWrongOwner { path: path, owner: owner }
+      }
+    EnsuredPackage { package } => ProviderStateMemberNotADirectory { subject: package }
+  }
+}
+
+fn deployment_provider_state_standing(spec: DeploymentSpec) -> ProviderStateMemberStanding {
+  fold(provider_state_dependencies(spec: spec), init: ProviderStateMemberAbsent, f: (acc, dep) => match acc {
+    ProviderStateMemberAbsent => provider_state_single_standing(spec: spec, dep: dep)
+    ProviderStateMemberDuplicated { count: n } => ProviderStateMemberDuplicated { count: n + 1 }
+    _ => ProviderStateMemberDuplicated { count: 2 }
+  })
+}
+
 // Apply order is dependency-honest: the binary lands before the tree, because the tree is published
 // by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
 // convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
@@ -888,7 +974,10 @@ fn deployment_steps_apply_order(
   names: DeploymentNames,
 ) -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
+    map(
+      concat(deployment_ensured_steps(target: target), [deployment_provider_state_step(instance: instance)]),
+      s => Dependency { step: s },
+    ),
     map(
       deployment_owned_steps(instance: instance, names: names),
       s => ArtifactStep { step: s },
