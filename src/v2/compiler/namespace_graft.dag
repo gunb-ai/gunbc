@@ -70,9 +70,10 @@ type ModuleRootEdgeDisposition
 // read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell
 // (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE
 // (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item
-// shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other
+// shells, fn/data/type decl Named edges, Positional repeat spines, and every other
 // non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never
-// an export subset).
+// an export subset). import_decl units DISSOLVE at the unit partition
+// (NamespaceGraftUnitDisposition UnitDissolved): admitted upstream as Admission.imports.
 
 fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
   if dag_surface_module_header_metadata_edge(name: name) {
@@ -393,41 +394,64 @@ type NamespaceGraftDeclPartition {
   residual_units: List<Node>
 }
 
-fn namespace_graft_partition_from_named_opt(
+// One disposition per collected top-level unit. UnitDissolved is the import_decl
+// arm: its members are admitted upstream as Admission.imports
+// (v2.compiler.name_resolve admit_imports), so the graft body owes it nothing --
+// the same disposition ModuleRootEdgeDissolve gives the module header. Carried
+// as a residual it is a raw shell resolve walks as bare mentions, which refuses
+// every ingest whose closure does not contain the imported module's spine.
+type NamespaceGraftUnitDisposition
+  = UnitNamed { edge: Edge }
+  | UnitResidual
+  | UnitDissolved
+
+fn namespace_graft_partition_step(
   acc: NamespaceGraftDeclPartition,
   unit: Node,
-  named: Edge?
+  disposition: NamespaceGraftUnitDisposition
 ) -> NamespaceGraftDeclPartition {
-  match named {
-    Present { value: edge } =>
+  match disposition {
+    UnitNamed { edge: edge } =>
       NamespaceGraftDeclPartition {
         named_edges: list_snoc_item(xs: acc.named_edges, item: edge),
         residual_units: acc.residual_units
       }
-    Absent =>
+    UnitResidual =>
       NamespaceGraftDeclPartition {
         named_edges: acc.named_edges,
         residual_units: list_snoc_item(xs: acc.residual_units, item: unit)
       }
+    UnitDissolved => acc
   }
 }
 
-fn namespace_graft_named_edge_for_unit(unit: Node, id: Symbol) -> Edge? {
-  match id == ^dag_surface_type_decl {
-    true => namespace_graft_type_decl_named_edge(unit: unit)
+fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUnitDisposition {
+  match named {
+    Present { value: edge } => UnitNamed { edge: edge }
+    Absent => UnitResidual
+  }
+}
+
+fn namespace_graft_unit_disposition(unit: Node, id: Symbol) -> NamespaceGraftUnitDisposition {
+  match id == ^dag_surface_import_decl {
+    true => UnitDissolved
     false =>
-      match id == ^dag_surface_data_decl {
-        true => namespace_graft_data_decl_named_edge(unit: unit)
+      match id == ^dag_surface_type_decl {
+        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_type_decl_named_edge(unit: unit))
         false =>
-          match id == ^dag_surface_fn_decl {
-            true => namespace_graft_fn_decl_named_edge(unit: unit)
+          match id == ^dag_surface_data_decl {
+            true => namespace_graft_disposition_from_named_opt(named: namespace_graft_data_decl_named_edge(unit: unit))
             false =>
-              match id == ^dag_surface_test_fn_decl {
-                true => namespace_graft_test_fn_named_edge(unit: unit)
+              match id == ^dag_surface_fn_decl {
+                true => namespace_graft_disposition_from_named_opt(named: namespace_graft_fn_decl_named_edge(unit: unit))
                 false =>
-                  match id == ^dag_surface_alias_decl {
-                    true => namespace_graft_kw_ident_named_edge(unit: unit)
-                    false => optional_absent()
+                  match id == ^dag_surface_test_fn_decl {
+                    true => namespace_graft_disposition_from_named_opt(named: namespace_graft_test_fn_named_edge(unit: unit))
+                    false =>
+                      match id == ^dag_surface_alias_decl {
+                        true => namespace_graft_disposition_from_named_opt(named: namespace_graft_kw_ident_named_edge(unit: unit))
+                        false => UnitResidual
+                      }
                   }
               }
           }
@@ -442,17 +466,13 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
     f: fn(acc, unit) {
       match parse_production_emitted_identity_optional(node: unit) {
         Present { value: id } =>
-          namespace_graft_partition_from_named_opt(
+          namespace_graft_partition_step(
             acc: acc,
             unit: unit,
-            named: namespace_graft_named_edge_for_unit(unit: unit, id: id)
+            disposition: namespace_graft_unit_disposition(unit: unit, id: id)
           )
         Absent =>
-          namespace_graft_partition_from_named_opt(
-            acc: acc,
-            unit: unit,
-            named: optional_absent()
-          )
+          namespace_graft_partition_step(acc: acc, unit: unit, disposition: UnitResidual)
       }
     }
   )
@@ -548,10 +568,10 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let combined = concat(from_decls, flattened)
   let residuals = partitioned.residual_units
   if count(combined) == 0 {
-    if count(units) == 0 {
+    if count(residuals) == 0 {
       []
     } else {
-      namespace_graft_reconstruct_declaration_forest(units: units)
+      namespace_graft_reconstruct_declaration_forest(units: residuals)
     }
   } else if count(residuals) == 0 {
     combined

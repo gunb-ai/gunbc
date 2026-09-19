@@ -132,6 +132,7 @@ data src_dag_user_fn: String = "module p\n\nfn dag_user(x: Int) -> Int { x }\n"
 data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
 
 data src_flag_and_fn: String = "module p\n\ntype Flag = On | Off\nfn f(x: Int) -> Int { x }\n"
+data src_import_and_fn: String = "module p\n\nimport v2.std.logic { Bool }\n\nfn f() -> Bool { true }\n"
 
 test fn declaration_graft_empty_module_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_a)
@@ -204,4 +205,19 @@ test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
 
 test fn declaration_graft_record_construct_does_not_accept_today() -> Bool {
   !declaration_graft_assemble_accepts(src: src_g)
+}
+
+// An import_decl unit dissolves at the partition (admitted upstream as
+// Admission.imports): it is neither Named nor a residual shell. The control is a
+// one-module ingest whose closure does NOT contain v2.std.logic: carried as a
+// residual shell, resolve walks `logic` / `Bool` as bare mentions and refuses
+// (v2.test.native_decl_selection went red on exactly this). Green on main via
+// the flatten; red on the partition until the UnitDissolved arm.
+test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() -> Bool {
+  match declaration_graft_assemble_for(src: src_import_and_fn) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      declaration_graft_label_present(root: root, lexeme: "f")
+        && !declaration_graft_atom_present(root: root, lexeme: "logic")
+  }
 }
