@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.bounded_natural_arithmetic_evaluated_as_unbounded_int
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data bounded_natural_arithmetic_evaluated_as_unbounded_int: RecurringFailureMode = RecurringFailureMode {
+  identity: "bounded_natural_arithmetic_evaluated_as_unbounded_int" as NonEmptyStr,
+
+  receipts: [
+    "bounded natural arithmetic evaluated as unbounded Int (the v1 interpreter evaluates infix + - * / % on std.integer's bounded naturals -- Compose<UInt, MachineWidth<N>>, e.g. UInt8 and UInt32 -- as ordinary 64-bit Int arithmetic, with no check that operands or results lie in [0, 2^N)). INVALID STATE: a value typed UInt32 that is not a 32-bit unsigned natural. HARM: the interpreter answers a program the declared types do not admit, silently, and the emitted realization of the same program disagrees -- std.operator_realization refuses infix arithmetic on a structural operand (the corpus's rule is that structural arithmetic is a call to a declared operation with a typed outcome), so a closure that passes every interpreted witness does not build natively, and nothing in the interpreted run said the arithmetic was outside its type.",
+
+    "RECEIPT, 2026-09-19 (lane A of the approval app, the .dag crypto): std.bitwise word32_xor is written `a + b - 2 * word32_and(a: a, b: b)` over a, b: UInt32, so `a + b` reaches 2^33 - 2 while typed UInt32; word32_or, word32_add ((a + b) % 2^32) and the rotations likewise pass through values above 2^32 - 1 typed UInt32. Under the interpreter every FIPS 180-2 SHA-256 vector passed (test.claim.sha256_fips_witness_test, 7/7) and the RFC 6979 A.2.5 P-256 verify answered true, while emitting the same closure produced 18 compile_error! operator refusals on UInt32/UInt8 (gunbc.recurring_failure_mode realization_refusal_surfaces_one_phase_late_at_rustc). The interpreter was the permissive side; the emitter was right.",
+
+    "DISTINGUISHING FACTS: not an overflow of the 64-bit Int (that refuses, IntegerOverflow); the refusal missing is at the DECLARED width, which the interpreter never consults -- MachineWidth<bits> is a bodiless type and std.machine_constraints Compose is a Phantom, so no evaluation path can see N (measured: a generic fn returning its width parameter N as a value refuses NoSuchVariable). RUNG FOUND AT: below the ladder -- silent wrongness at the declared type. CEILING: structurally impossible -- bounded naturals are a sole-constructed carrier whose range check is the only mint, with arithmetic as declared operations returning typed outcomes (std.integer IntegerOverflowSemantics), so an out-of-range value has no constructor. NEXT-RUNG TRIGGER: the width N of MachineWidth<N> readable as a value in .dag, SUFFICIENT FOR std.integer to declare one family of bounded-natural operations derived over N rather than a hand-restated width per type; until then the remedy can be spelled but not derived.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.machine_constraints", decl_name: "MachineWidth", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.integer", decl_name: "UInt32", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.integer", decl_name: "IntegerOverflowSemantics", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.operator_realization", decl_name: "operator_realization_refusal_message", field: WholeDeclaration },
+  ],
+}
