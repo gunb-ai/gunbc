@@ -247,7 +247,7 @@ fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption?
 // title may itself contain '!'.
 
 fn a1_sheet_title_wire(title: NonEmptyStr) -> String {
-  replace(title as String, "'", "''")
+  concat("'", concat(replace(title as String, "'", "''"), "'"))
 }
 
 fn a1_qualified_range_wire(title: NonEmptyStr, cells: String) -> String {
