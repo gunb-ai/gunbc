@@ -1,0 +1,634 @@
+module gunbc.auth.authorization_pattern_selection
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.interval { degenerate_interval }
+import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter, LowerIsBetter }
+import std.decision {
+  DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure,
+  ChoiceDomain, DecisionSubject, DecisionRegion, DecisionAssessment,
+  VariesAlong, RelationOtherwiseEstablished,
+  ConstraintDisposition, ConstraintSatisfied, ParameterDisposition, ParameterBound,
+  PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
+  HardConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  RealizationSelectionResult, SelectedWithin, CandidateFieldUnestablished, NoFeasibleRealization,
+  SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
+  SelectionReceipt, DecisionScope, SelectionEvidenceNeed,
+  select_realization,
+}
+import std.human_intervention {
+  HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
+  DischargedAt, NoDischargeSiteModeled,
+}
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── WHICH AUTHORIZATION PATTERN, AND WHEN ────────────────────────────────────────────────────
+//
+// THE QUESTION THIS MODULE ANSWERS WAS BEING ANSWERED BY EVERY LANE SEPARATELY. On 2026-09-19 the
+// R2 origin work (gunbc#11713, gunbc#11721) minted Cloudflare tokens and created Secret Manager
+// containers under an operator GCP access token pasted into chat three times and relayed between
+// sessions by message. The same day, the approval loop under gunbc.auth (approval_request_submission
+// -> approval_notification -> approval_broker redeem) executed on hardware for the Mt. Collins
+// approval-gated boot, and the workload identity federation (gunbc.auth.github_gcp_federation) had
+// been fetching credentials for dispatched runs for two days. Three patterns existed; nothing said
+// which one an author reaches for. Each lane improvised, and the improvisation that is cheapest to
+// type -- paste the operator's token -- is the one with the widest blast radius and no receipt.
+//
+// THIS IS §3d REALIZATION SELECTION AND NOT A NEW DECISION ALGEBRA. The privileged effect is the
+// subject; the authorization patterns are the candidate field; the effect's characteristics are
+// the bound context parameters; the laws ("a workflow run must never hold an operator credential",
+// "an irreversible effect is witnessed") are hard constraints that exclude a candidate BEFORE
+// dominance; and what survives is ranked on funded axes by std.pareto and chosen by
+// std.decision.select_realization under a unique-survivor policy. The output carries the
+// SelectionReceipt, so a stale choice -- a site whose effect characteristics changed after it was
+// classified -- is detectable by scope equality rather than by rereading prose.
+//
+// THE READINGS ARE DERIVED FROM REAL CASES, each named in authorization_pattern_evidence: the
+// federated fetch on boot run 35249658152 (no human action), the approval on fleet-converge run
+// 35447067113 (one phone tap, capability bound to one request revision), the Cloudflare bootstrap
+// token (dashboard-only, cloudflare_account_token_bootstrap_intervention), and the 2026-09-19
+// paste relay (pasted_token_relay_receipt). Nothing here is a weight somebody guessed.
+
+// ── The characteristics of a privileged effect: the context parameters ───────────────────────
+//
+// SURFACE. Whether a provider API exists for the effect at all. A dashboard-only action (Cloudflare
+// account-token bootstrap; R2 activation is checkout-only) carries the HumanIntervention row that
+// already models the step, so the selection can NAME the manual step in its refusal rather than
+// inventing a sentence.
+type ProviderSurface
+  = ApiSurface
+  | HumanSurfaceOnly { step: HumanIntervention }
+
+// WORKLOAD IDENTITY. Whether a federated principal can be bound to this effect. "Bindable" is a
+// claim about the PROVIDER'S admission, not about whether a service account exists: setIamPolicy on
+// a fleet secret is not bindable to the convergence principal by construction
+// (gunbc.auth.gcp_secret_access no_principal_can_both_grant_and_read), however many service
+// accounts the project has. The cause is carried so the census can say why.
+type WorkloadIdentityStanding
+  = WorkloadIdentityBindable { member: NonEmptyStr }
+  | WorkloadIdentityUnbindable { cause: NonEmptyStr }
+
+// REACH OF WHAT THE EFFECT MINTS. A read mints nothing; a per-bucket R2 token or a per-BMC password
+// is scoped to one resource; a control-plane token or an account-owner token is wider than any one
+// effect. Minting a wide credential is what makes an effect worth a human witness even when the
+// call itself is reversible.
+type MintedCredentialReach
+  = MintsNoCredential
+  | MintsResourceScopedCredential
+  | MintsProjectWideCredential
+  | MintsAccountWideCredential
+
+// REVERSIBILITY IS NOT IDEMPOTENCY. std.effects IdempotencyEvidence says whether a retry is safe,
+// which is the retry protocol's concern and not the consent question asked here; whether the world
+// can be put back is. DeleteSecret is idempotent and irreversible; a JIT runner config is
+// non-idempotent and reversible (it expires unused). Only the second fact selects a witness.
+type EffectReversibility
+  = ReversibleByReapply
+  | IrreversibleEffect { what_is_lost: NonEmptyStr }
+
+type BillingConsequence
+  = BillsExternally
+  | NoBillingConsequence
+
+type PrivilegedEffect {
+  subject: NonEmptyStr
+  frequency: HumanInterventionFrequency
+  reversibility: EffectReversibility
+  surface: ProviderSurface
+  workload_identity: WorkloadIdentityStanding
+  minted_reach: MintedCredentialReach
+  billing: BillingConsequence
+}
+
+// ── Two obligations DERIVED from the characteristics, never accepted as input ─────────────────
+//
+// A HUMAN MUST WITNESS an effect that cannot be undone, mints a credential wider than one
+// resource, bills a third party, or is break-glass by declaration. This is derived
+// rather than a field because a field named `needs_witness: false` is the cheapest edit in the
+// file, and §5 says a check that can be satisfied by editing the declaration while the realization
+// still lies was validation standing where construction was available.
+fn witness_required(e: PrivilegedEffect) -> Bool {
+  let irreversible = match e.reversibility {
+    IrreversibleEffect { what_is_lost: _ } => true
+    ReversibleByReapply => false
+  }
+  let wide = match e.minted_reach {
+    MintsProjectWideCredential => true
+    MintsAccountWideCredential => true
+    MintsResourceScopedCredential => false
+    MintsNoCredential => false
+  }
+  let bills = match e.billing {
+    BillsExternally => true
+    NoBillingConsequence => false
+  }
+  let break_glass = match e.frequency {
+    BreakGlassOnly => true
+    FleetOnce => false
+    DeviceOnce => false
+    EveryProvision => false
+  }
+  irreversible || wide || bills || break_glass
+}
+
+// AN EFFECT PAID ON EVERY PROVISION MUST RUN UNATTENDED. There is no human at the end of a cron, and
+// a pattern that needs one per effect turns a recurring effect into a queue of notifications the
+// operator learns to tap without reading.
+fn unattended_required(e: PrivilegedEffect) -> Bool {
+  match e.frequency {
+    EveryProvision => true
+    FleetOnce => false
+    DeviceOnce => false
+    BreakGlassOnly => false
+  }
+}
+
+// ── The candidate field: five patterns, of which three are ever selected ─────────────────────
+//
+// (a) FederatedScopedGrant -- a dispatched run's own identity (GitHub OIDC -> STS, the
+//     WorkloadIdentityToken arm of gunbc.auth.access_token_source) holding one cell per effect
+//     (gunbc.auth.gcp_secret_access SecretAccessGrant, rostered in
+//     gunbc.auth.fleet_secret_accessor_roster). Zero human actions per effect; receipt is the run.
+// (b) OperatorApprovedCapability -- one request (gunbc.auth.access_request) filed and notified
+//     (approval_request_submission, approval_notification), one tap on the operator's phone, one
+//     capability bound to that request's revision (approval_capability), redeemed once
+//     (approval_broker), the effect executed by the authority adapter under ITS identity. One human
+//     action per effect; the credential is scoped to the request; receipt is the decision store row.
+// (c) HumanOnlyStep -- the effect has no API. The selection cannot automate it and says so by naming
+//     the std.human_intervention row that models the step.
+// (d) OperatorOwnSession -- the operator's own interactive gcloud session, or the operator's own
+//     token written to a file the operator's own process reads (the GcloudPrintToken and
+//     OperatorSuppliedToken arms). ADMISSIBLE BUT ALWAYS DOMINATED: one human action like (b), a
+//     project-wide credential unlike (b), no receipt unlike (b). It is in the field so its
+//     exclusion is by dominance the fold computes, not by a rule someone could delete, and so a
+//     site still on it is classified diverges rather than unclassifiable.
+// (e) PastedOperatorToken -- (d)'s credential RELAYED: pasted into chat, forwarded by message,
+//     written into another session's token file. Excluded before Pareto by the custody constraint,
+//     every time, for every effect. The substrate cannot see how a token file was filled, so this
+//     row is the executed statement of the refusal and the census carries the tell.
+type AuthorizationPattern
+  = FederatedScopedGrant
+  | OperatorApprovedCapability
+  | HumanOnlyStep { step: HumanIntervention }
+  | OperatorOwnSession
+  | PastedOperatorToken
+
+data pattern_federated_scoped_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_federated_scoped_grant")
+data pattern_operator_approved_capability: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_approved_capability")
+data pattern_human_only_step: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_human_only_step")
+data pattern_operator_own_session: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_own_session")
+data pattern_pasted_operator_token: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_pasted_operator_token")
+
+fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
+  match p {
+    FederatedScopedGrant => pattern_federated_scoped_grant
+    OperatorApprovedCapability => pattern_operator_approved_capability
+    HumanOnlyStep { step: _ } => pattern_human_only_step
+    OperatorOwnSession => pattern_operator_own_session
+    PastedOperatorToken => pattern_pasted_operator_token
+  }
+}
+
+fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
+  match p {
+    FederatedScopedGrant => "workload identity federation with a scoped grant" as NonEmptyStr
+    OperatorApprovedCapability => "per-effect operator approval via the ntfy loop" as NonEmptyStr
+    HumanOnlyStep { step: s } => join(["human-only step: ", s.identity as String], "") as NonEmptyStr
+    OperatorOwnSession => "the operator's own interactive session or token file" as NonEmptyStr
+    PastedOperatorToken => "an operator token relayed through chat or between sessions" as NonEmptyStr
+  }
+}
+
+// THE HUMAN-ONLY CANDIDATE EXISTS ONLY WHEN THE CORPUS HAS MODELED THE STEP. A human can always do
+// anything through a console, but a candidate with no HumanIntervention row behind it would be
+// selected with nothing to name, and "do it by hand" is not a step.
+fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
+  let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession, PastedOperatorToken]
+  match e.surface {
+    ApiSurface => api_patterns
+    HumanSurfaceOnly { step: s } => concat(api_patterns, [HumanOnlyStep { step: s }])
+  }
+}
+
+// ── The axes ─────────────────────────────────────────────────────────────────────────────────
+// Five are GATES (a reading of 1 passes, 0 fails, and a hard constraint at 1 excludes the failing
+// candidate before dominance); three are the funded axes dominance is computed over. Every gate
+// reading is a function of the effect AND the pattern, which is the whole content of "when".
+data ax_surface_fit: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_surface_fit")
+data ax_identity_bound: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_identity_bound")
+data ax_credential_custody: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_credential_custody")
+data ax_witnessed: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_witnessed")
+data ax_unattended: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_unattended")
+data ax_human_actions_per_effect: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_human_actions_per_effect")
+data ax_credential_scoped_to_resource: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_credential_scoped_to_resource")
+data ax_receipt_in_substrate: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "ax_receipt_in_substrate")
+
+data authorization_pattern_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_surface_fit, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_identity_bound, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_credential_custody, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_witnessed, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_unattended, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_human_actions_per_effect, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_credential_scoped_to_resource, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_receipt_in_substrate, goal: HigherIsBetter },
+]
+
+fn gate(passes: Bool) -> Int {
+  if passes { 1 } else { 0 }
+}
+
+fn pattern_is_api_pattern(p: AuthorizationPattern) -> Bool {
+  match p {
+    HumanOnlyStep { step: _ } => false
+    FederatedScopedGrant => true
+    OperatorApprovedCapability => true
+    OperatorOwnSession => true
+    PastedOperatorToken => true
+  }
+}
+
+// SURFACE FIT: an API pattern needs an API; the human step fits any surface.
+fn surface_fit(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
+  match e.surface {
+    HumanSurfaceOnly { step: _ } => gate(passes: !pattern_is_api_pattern(p: p))
+    ApiSurface => 1
+  }
+}
+
+// IDENTITY BOUND: only the federated pattern needs a bindable workload identity.
+fn identity_bound(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
+  match p {
+    FederatedScopedGrant =>
+      match e.workload_identity {
+        WorkloadIdentityBindable { member: _ } => 1
+        WorkloadIdentityUnbindable { cause: _ } => 0
+      }
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: _ } => 1
+    OperatorOwnSession => 1
+    PastedOperatorToken => 1
+  }
+}
+
+// CUSTODY: the credential reaches the executing process on the path its issuer issued it on. A
+// federated token is exchanged in-process; a capability travels in the signed link to the broker;
+// the operator's own session is the operator's own process. A relayed token has left that path.
+fn credential_custody(p: AuthorizationPattern) -> Int {
+  match p {
+    PastedOperatorToken => 0
+    FederatedScopedGrant => 1
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: _ } => 1
+    OperatorOwnSession => 1
+  }
+}
+
+// WITNESSED: a human consented to THIS effect. An operator who pasted a token consented to a
+// session, not to any one of the effects it then performed; a federated run has no human at all.
+fn witnessed(p: AuthorizationPattern) -> Int {
+  match p {
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: _ } => 1
+    FederatedScopedGrant => 0
+    OperatorOwnSession => 0
+    PastedOperatorToken => 0
+  }
+}
+
+// UNATTENDED: the pattern completes with no human present. A pasted token expires in an hour and
+// needs a human to paste again, so it does not run unattended either.
+fn unattended(p: AuthorizationPattern) -> Int {
+  match p {
+    FederatedScopedGrant => 1
+    OperatorApprovedCapability => 0
+    HumanOnlyStep { step: _ } => 0
+    OperatorOwnSession => 0
+    PastedOperatorToken => 0
+  }
+}
+
+// THE TWO OBLIGATION GATES READ RELATIVE TO THE EFFECT. The axis is "the witness obligation is
+// met", not "a human witnessed": when the effect owes no witness every pattern meets the obligation
+// and the axis reads 1 across the field, so it cannot split dominance among survivors on a fact the
+// effect never asked about. The first cut funded the raw readings and two reads that owed no witness
+// came back SelectionNeedsPolicy -- the approval pattern "won" an axis nobody had funded.
+fn witness_obligation_met(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
+  if witness_required(e: e) { witnessed(p: p) } else { 1 }
+}
+
+fn attendance_obligation_met(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
+  if unattended_required(e: e) { unattended(p: p) } else { 1 }
+}
+
+fn human_actions_per_effect(p: AuthorizationPattern) -> Int {
+  match p {
+    FederatedScopedGrant => 0
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: _ } => 1
+    OperatorOwnSession => 1
+    PastedOperatorToken => 1
+  }
+}
+
+// SCOPED TO THE RESOURCE: a per-secret cell or a per-request capability is; an operator's
+// project-wide bearer token and an account login are not.
+fn credential_scoped_to_resource(p: AuthorizationPattern) -> Int {
+  match p {
+    FederatedScopedGrant => 1
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: _ } => 0
+    OperatorOwnSession => 0
+    PastedOperatorToken => 0
+  }
+}
+
+// RECEIPT: something the corpus can read afterwards -- the run and its cell roster, the decision
+// store row, or the intervention's discharge site when one is modeled. A chat message is not one.
+fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
+  match p {
+    FederatedScopedGrant => 1
+    OperatorApprovedCapability => 1
+    HumanOnlyStep { step: s } =>
+      match s.completion_evidence {
+        DischargedAt { evidence: _ } => 1
+        NoDischargeSiteModeled => 0
+      }
+    OperatorOwnSession => 0
+    PastedOperatorToken => 0
+  }
+}
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
+}
+
+fn pattern_entry(e: PrivilegedEffect, p: AuthorizationPattern) -> ParetoEntry {
+  ParetoEntry {
+    identity: pattern_identity(p: p),
+    display_label: pattern_label(p: p),
+    readings: [
+      reading(axis: ax_surface_fit, v: surface_fit(e: e, p: p)),
+      reading(axis: ax_identity_bound, v: identity_bound(e: e, p: p)),
+      reading(axis: ax_credential_custody, v: credential_custody(p: p)),
+      reading(axis: ax_witnessed, v: witness_obligation_met(e: e, p: p)),
+      reading(axis: ax_unattended, v: attendance_obligation_met(e: e, p: p)),
+      reading(axis: ax_human_actions_per_effect, v: human_actions_per_effect(p: p)),
+      reading(axis: ax_credential_scoped_to_resource, v: credential_scoped_to_resource(p: p)),
+      reading(axis: ax_receipt_in_substrate, v: receipt_in_substrate(p: p)),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn candidate_field(e: PrivilegedEffect) -> List<ParetoEntry> {
+  map(candidate_patterns(e: e), p => pattern_entry(e: e, p: p))
+}
+
+// ── The constraints: five gates, each at 1, and the two obligation gates are named on their own
+// so a refusal says WHICH law excluded the candidate ─────────────────────────────────────────
+data authorization_pattern_constraints: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_constraints")
+data constraint_witness_required: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "constraint_witness_required")
+data constraint_unattended_required: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "constraint_unattended_required")
+
+data authorization_pattern_hard_constraints: List<HardConstraint> = [
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_surface_fit, bound_micro: 1 },
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_identity_bound, bound_micro: 1 },
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_credential_custody, bound_micro: 1 },
+  HardConstraint { identity: constraint_witness_required, axis: ax_witnessed, bound_micro: 1 },
+  HardConstraint { identity: constraint_unattended_required, axis: ax_unattended, bound_micro: 1 },
+]
+
+fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef> {
+  fold(cs, init: [], f: (acc, c) =>
+    if any(acc, x => declaration_ref_eq(a: x, b: c.identity)) { acc } else { concat(acc, [c.identity]) })
+}
+
+// ── The subject closure ──────────────────────────────────────────────────────────────────────
+// ONE OBJECTIVE TERM: credential exposure -- how long, and how widely, a bearer credential exists
+// outside the boundary that issued it. The physical model is upstream's: GitHub's OIDC hardening
+// guidance is the cited statement that a federated job holds a short-lived token minted for that
+// job and no long-lived secret, which is the fact every reading on the custody, scope and receipt
+// axes descends from. The coupling between the term and the pattern variable is FLEET-OBSERVED, and
+// its receipt is the paste relay this module exists because of.
+data github_oidc_hardening_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect" },
+}
+
+data pasted_token_relay_receipt: NonEmptyStr = "2026-09-19: the R2 origin work (gunbc#11713, gunbc#11721) minted Cloudflare account tokens and created Secret Manager containers under an operator GCP access token pasted into chat three times and relayed between sessions by dashboard message. The token was a project-wide bearer with a one-hour lifetime; no receipt names which effects it authorized. The same day, fleet-converge run 35447067113 redeemed one approval capability for one request revision after one phone tap, and boot run 35249658152 fetched a BMC credential under the run's federated identity with no human action." as NonEmptyStr
+
+data authorization_pattern_evidence: NonEmptyStr = "Readings derived from: boot run 35249658152 (federated fetch, zero human actions, receipt is the run and the accessor cell in gunbc.auth.fleet_secret_accessor_roster); fleet-converge run 35447067113 (one tap, capability bound to one request revision, receipt is the approval decision store row); gunbc.cloudflare.r2_token_mint cloudflare_account_token_bootstrap_intervention (dashboard-only, NoDischargeSiteModeled); pasted_token_relay_receipt (project-wide bearer, no receipt, relayed custody)." as NonEmptyStr
+
+data authorization_pattern_subject: NonEmptyStr = "which authorization pattern performs this privileged effect" as NonEmptyStr
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "candidate_field")
+data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_evidence")
+data id_policy: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_policy")
+data id_var_pattern: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "var_authorization_pattern")
+data id_term_exposure: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "term_credential_exposure")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_region")
+data id_coupling: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pasted_token_relay_receipt")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_objective")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "authorization_pattern_domain")
+
+data id_param_frequency: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_frequency")
+data id_param_reversibility: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_reversibility")
+data id_param_surface: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_surface")
+data id_param_workload_identity: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_workload_identity")
+data id_param_minted_reach: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_minted_reach")
+data id_param_billing: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "param_billing")
+
+data var_authorization_pattern: DecisionVariable = DecisionVariable { identity: id_var_pattern }
+
+data term_credential_exposure: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term_exposure,
+  ground: CitedToAuthority { authority: github_oidc_hardening_authority },
+}
+
+data authorization_pattern_region: DecisionRegion = DecisionRegion { identity: id_region }
+
+data authorization_pattern_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: id_objective,
+  goal: LowerIsBetter,
+  terms: [term_credential_exposure],
+}
+
+data authorization_pattern_domain: ChoiceDomain = ChoiceDomain {
+  identity: id_domain,
+  variables: [var_authorization_pattern],
+}
+
+data authorization_pattern_policy: SelectionPolicy = UniqueSurvivorRequired { identity: id_policy }
+
+fn context_parameters() -> List<ContextParameter> {
+  [
+    ContextParameter { identity: id_param_frequency },
+    ContextParameter { identity: id_param_reversibility },
+    ContextParameter { identity: id_param_surface },
+    ContextParameter { identity: id_param_workload_identity },
+    ContextParameter { identity: id_param_minted_reach },
+    ContextParameter { identity: id_param_billing },
+  ]
+}
+
+fn frequency_text(f: HumanInterventionFrequency) -> String {
+  match f {
+    FleetOnce => "FleetOnce"
+    DeviceOnce => "DeviceOnce"
+    EveryProvision => "EveryProvision"
+    BreakGlassOnly => "BreakGlassOnly"
+  }
+}
+
+fn reversibility_text(r: EffectReversibility) -> String {
+  match r {
+    ReversibleByReapply => "ReversibleByReapply"
+    IrreversibleEffect { what_is_lost: w } => concat("IrreversibleEffect: ", w as String)
+  }
+}
+
+fn surface_text(s: ProviderSurface) -> String {
+  match s {
+    ApiSurface => "ApiSurface"
+    HumanSurfaceOnly { step: st } => concat("HumanSurfaceOnly: ", st.identity as String)
+  }
+}
+
+fn workload_identity_text(w: WorkloadIdentityStanding) -> String {
+  match w {
+    WorkloadIdentityBindable { member: m } => concat("WorkloadIdentityBindable: ", m as String)
+    WorkloadIdentityUnbindable { cause: c } => concat("WorkloadIdentityUnbindable: ", c as String)
+  }
+}
+
+fn minted_reach_text(m: MintedCredentialReach) -> String {
+  match m {
+    MintsNoCredential => "MintsNoCredential"
+    MintsResourceScopedCredential => "MintsResourceScopedCredential"
+    MintsProjectWideCredential => "MintsProjectWideCredential"
+    MintsAccountWideCredential => "MintsAccountWideCredential"
+  }
+}
+
+fn billing_text(b: BillingConsequence) -> String {
+  match b {
+    BillsExternally => "BillsExternally"
+    NoBillingConsequence => "NoBillingConsequence"
+  }
+}
+
+// THE PARAMETER EVIDENCE QUOTES THE ACTUAL VALUE, so the assessment cannot describe a closure other
+// than the one being decided (the same shape gunbc.spark.serving_deployment_selection uses).
+fn parameter_dispositions(e: PrivilegedEffect) -> List<ParameterDisposition> {
+  [
+    ParameterBound { parameter: id_param_frequency, evidence: frequency_text(f: e.frequency) as NonEmptyStr },
+    ParameterBound { parameter: id_param_reversibility, evidence: reversibility_text(r: e.reversibility) as NonEmptyStr },
+    ParameterBound { parameter: id_param_surface, evidence: surface_text(s: e.surface) as NonEmptyStr },
+    ParameterBound { parameter: id_param_workload_identity, evidence: workload_identity_text(w: e.workload_identity) as NonEmptyStr },
+    ParameterBound { parameter: id_param_minted_reach, evidence: minted_reach_text(m: e.minted_reach) as NonEmptyStr },
+    ParameterBound { parameter: id_param_billing, evidence: billing_text(b: e.billing) as NonEmptyStr },
+  ]
+}
+
+fn constraint_dispositions(cs: List<HardConstraint>) -> List<ConstraintDisposition> {
+  map(unique_constraint_identities(cs: cs), id =>
+    ConstraintSatisfied {
+      constraint: id,
+      evidence: join([
+        "hard constraint ", declaration_ref_display_key(ref: id),
+        " excluded its candidates before dominance",
+      ], "") as NonEmptyStr,
+    })
+}
+
+fn subject_for(cs: List<HardConstraint>) -> DecisionSubject {
+  DecisionSubject {
+    identity: id_subject,
+    question: authorization_pattern_subject,
+    parameters: context_parameters(),
+    constraints: map(unique_constraint_identities(cs: cs), id => DecisionConstraint { identity: id }),
+    objective: authorization_pattern_objective,
+    choice_domain: authorization_pattern_domain,
+  }
+}
+
+fn assessment_for(e: PrivilegedEffect, cs: List<HardConstraint>) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: subject_for(cs: cs),
+    sensitivities: [
+      VariesAlong {
+        term: id_term_exposure,
+        variable: id_var_pattern,
+        region: authorization_pattern_region,
+        relation: RelationOtherwiseEstablished {
+          note: "exposure is ordered by the custody, scope and receipt readings of the pattern, not monotone in any enumeration of the patterns" as NonEmptyStr,
+        },
+        coupling: CitedToAuthority { authority: github_oidc_hardening_authority },
+      },
+    ],
+    constraints: constraint_dispositions(cs: cs),
+    parameters: parameter_dispositions(e: e),
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term_exposure] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        FleetObservedCoupling {
+          receipt: id_coupling,
+          term: id_term_exposure,
+          variable: id_var_pattern,
+          subject: id_subject,
+        },
+      ],
+    },
+  }
+}
+
+// ── The result, with std.decision's arms carried through ─────────────────────────────────────
+// ManualStepRequired is the (c) arm: the fold SELECTED the human-only candidate, and from a caller
+// that wanted to automate the effect that selection is a typed refusal naming the step. It carries
+// the receipt because the refusal is a decision with a scope, exactly like a selection.
+type AuthorizationPatternSelection
+  = PatternSelected { pattern: AuthorizationPattern, receipt: SelectionReceipt }
+  | ManualStepRequired { step: HumanIntervention, receipt: SelectionReceipt }
+  | NoAdmissiblePattern { causes: List<NonEmptyStr>, scope: DecisionScope }
+  | PatternSelectionNeedsEvidence { needs: List<SelectionEvidenceNeed> }
+  | PatternSelectionNeedsPolicy { survivors: List<DeclarationRef> }
+  | PatternSelectionRefused { defects: List<NonEmptyStr> }
+
+fn pattern_by_identity(e: PrivilegedEffect, wanted: DeclarationRef) -> AuthorizationPattern? {
+  (filter(candidate_patterns(e: e), p => declaration_ref_eq(a: pattern_identity(p: p), b: wanted))).first()
+}
+
+fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSelection {
+  let cs = authorization_pattern_hard_constraints
+  match select_realization(
+    assessment: assessment_for(e: e, cs: cs),
+    candidate_field_identity: id_field,
+    field: candidate_field(e: e),
+    axes: authorization_pattern_axes,
+    constraints: cs,
+    constraint_authority: authorization_pattern_constraints,
+    policy: authorization_pattern_policy,
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: r } =>
+      match pattern_by_identity(e: e, wanted: c.identity) {
+        Absent => PatternSelectionRefused { defects: ["selected identity is not a candidate pattern" as NonEmptyStr] }
+        Present { value: p } =>
+          match p {
+            HumanOnlyStep { step: s } => ManualStepRequired { step: s, receipt: r }
+            FederatedScopedGrant => PatternSelected { pattern: p, receipt: r }
+            OperatorApprovedCapability => PatternSelected { pattern: p, receipt: r }
+            OperatorOwnSession => PatternSelected { pattern: p, receipt: r }
+            PastedOperatorToken => PatternSelected { pattern: p, receipt: r }
+          }
+      }
+    CandidateFieldUnestablished { causes: cs2 } => PatternSelectionRefused { defects: cs2 }
+    NoFeasibleRealization { causes: cs2, scope: sc } => NoAdmissiblePattern { causes: cs2, scope: sc }
+    SelectionNeedsEvidence { needs: ns } => PatternSelectionNeedsEvidence { needs: ns }
+    SelectionNeedsPolicy { survivors: sv } => PatternSelectionNeedsPolicy { survivors: sv }
+    RealizationSelectionRefused { defects: ds } => PatternSelectionRefused { defects: ds }
+  }
+}
