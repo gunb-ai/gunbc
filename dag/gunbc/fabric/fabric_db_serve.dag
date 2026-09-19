@@ -32,8 +32,8 @@ import gunbc.fabric_db_placement { fabric_db_placement, FabricDbPlaced, FabricDb
 // header is trustworthy exactly to the extent extdeps.tailscale.identity states. DECLARED GAP: no
 // principal is refused here. Every tailnet member that reaches the mount may append; the caller's
 // login is not yet joined to a writer roster, because no roster of fabric writers is modeled.
-// Restricting appends to named principals is the next rung, triggered by a modeled fabric writer
-// principal roster -- sufficient for this handler to refuse a login outside it.
+// This is a declared rung drop, rostered as gunbc.rung_drop.fabric_db_append_principal_unrefused, whose
+// restoration trigger is an observed fabric writer principal roster this handler refuses outside of.
 //
 // EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
 // body. A non-200 means the request itself was not this protocol (unknown operation, malformed
