@@ -183,10 +183,9 @@ data firecracker_guest_block_letters: String = "abcdefghijklmnopqrstuvwxyz"
 
 fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
   let scan = fold(drives, init: DriveIndexScan { next: 0, found: -1 }, f: fn(acc, d) {
-    DriveIndexScan {
-      next: acc.next + 1,
-      found: if acc.found < 0 && d.drive_id as String == drive_id as String { acc.next } else { acc.found },
-    }
+    let first_match = acc.found < 0 && d.drive_id == drive_id
+    let found = if first_match { acc.next } else { acc.found }
+    DriveIndexScan { next: acc.next + 1, found: found }
   })
   if scan.found < 0 || scan.found >= string_length(s: firecracker_guest_block_letters) {
     none
