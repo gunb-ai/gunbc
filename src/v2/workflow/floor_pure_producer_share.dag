@@ -537,6 +537,18 @@ import v2.std.collection { List }
 // CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
 // touch of this fill dies on the lane's margin and restarts per claim. The module is under
 // src/v2/extdeps, so it resolves in every required-floor subject.
+//
+// values are Nodes; no closure.
+// v2.test.claim.parse.test_marker_channel test_marker_distinct_parsed EARNS ITS ROW ON THE NEW-WITNESS
+// STEP BUDGET. Its consumer, a_different_declaration_moves_the_semantic_projection_holds, is the
+// red-capable control for the marker's projection equality: it parses a two-declaration module and
+// compares the two declarations' lowered hashes. The parse is most of its cost, and on the floor it
+// measured just over the 72,300-step new-witness budget. Re-derive with claim_batch --entry on that file
+// ([witness] eval_steps for the claim) and the floor run's COMPLETED-OVER-COST line for it. Serving the
+// parse leaves the claim paying only what it is about, the two normalize_node calls and their hashes.
+// Serve below recompute: the value is Outcome<ParseArtifact>, Nodes and the span index, portable to
+// the bottom. WARM: nullary, source inline in the witness. The claim is about lowering, not parsing,
+// so sharing the parse does not hand it its answer.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -580,7 +592,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.test.name_resolve.test_code_reference_wall.inhabitance_normalized",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
-  "v2.extdeps.languages.dag.dag_canonical_symbol_map"
+  "v2.extdeps.languages.dag.dag_canonical_symbol_map",
+  "v2.test.claim.parse.test_marker_channel.test_marker_distinct_parsed"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
