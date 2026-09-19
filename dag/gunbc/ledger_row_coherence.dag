@@ -8,7 +8,7 @@ import gunbc.generated_artifact {
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
-  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact,
@@ -128,6 +128,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     Stage0CrateLayoutGeneratedRsArtifact => []
     Stage0CratePartitionGeneratedDagArtifact => []
     Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    Stage0LinkedPartitionCratesArtifact => []
     SeedRetentionFrontierGeneratedRsArtifact => []
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []

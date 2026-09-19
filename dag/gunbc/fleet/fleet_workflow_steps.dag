@@ -19,8 +19,10 @@ module gunbc.fleet_workflow_steps
 // does not have.
 import std.measure { minute_count }
 import std.types { Duration }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlString }
+import extdeps.github.action_release { action_release_same_producer }
 import extdeps.github.actions {
+  Job,
   Step, RunStep, UsesStep, 
   max_job_timeout_minutes,
 }
@@ -685,3 +687,138 @@ fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
     + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
 }
 
+
+// ── THE RELEASE-BINS HANDOFF, JUDGED BY WHAT THE STEPS DO ─────────────────────────────────────
+//
+// A consumer that admits "this job of this workflow was handed the build job's executable" needs
+// the WORKFLOW MODEL to establish that handoff, and a witness over it must discriminate behaviour,
+// not display names: a step called "Download release-bins artifact" that runs `true` delivers
+// nothing (gunbc#11693 review). So the premise below identifies each step by the facts that make
+// it the handoff -- the cited action (extdeps.github.action_release action_release_same_producer),
+// the artifact name it names, the verify script it runs -- and refuses a step that carries an
+// `if:` or `continue-on-error:`, because a delivery that can be skipped or fail quietly is not one
+// the consumer may stand on. Order is part of the claim: upload in the producer, then in the
+// consumer download, then verify, then the step that consumes -- and the consumer job must `need`
+// the producer, or the download races the upload.
+//
+// Every fact here is read from the same declarations that PRODUCE the steps (ci_release_bins_*),
+// so a change to the handoff changes both sides at once; what the premise adds is that the JOBS
+// actually carry those steps, in that order, unconditionally.
+type ReleaseBinsDeliveryPremise
+  = ReleaseBinsDelivered { producer_job: String, consumer_job: String, consumer_step: String }
+  | ReleaseBinsDeliveryRefused { cause: String }
+
+fn both_absent(condition: String?, continue_on_error: Bool?) -> Bool {
+  match condition {
+    Present { value: _ } => false
+    Absent =>
+      match continue_on_error {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+fn step_is_unconditional(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: e, timeout_minutes: _ } =>
+      both_absent(condition: c, continue_on_error: e)
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: e, timeout_minutes: _ } =>
+      both_absent(condition: c, continue_on_error: e)
+  }
+}
+
+fn with_names_artifact(with: List<YamlKeyValue>?, artifact: String) -> Bool {
+  match with {
+    Absent => false
+    Present { value: entries } =>
+      entries |> any(e => e.key == "name" && (match e.value { YamlString { value: v } => v == artifact  _ => false }))
+  }
+}
+
+fn step_uploads_release_bins(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      action_release_same_producer(a: u, b: upload_artifact_action)
+        && with_names_artifact(with: w, artifact: ci_release_bins_artifact_name)
+        && step_is_unconditional(step: step)
+  }
+}
+
+fn step_downloads_release_bins(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      action_release_same_producer(a: u, b: download_artifact_action)
+        && with_names_artifact(with: w, artifact: ci_release_bins_artifact_name)
+        && step_is_unconditional(step: step)
+  }
+}
+
+fn step_verifies_release_bins(step: Step) -> Bool {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      r == ci_release_bins_unpack_verify_script() && step_is_unconditional(step: step)
+  }
+}
+
+fn id_is(id: String?, wanted: String) -> Bool {
+  match id {
+    Absent => false
+    Present { value: i } => i == wanted
+  }
+}
+
+fn step_has_id(step: Step, wanted: String) -> Bool {
+  match step {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => id_is(id: i, wanted: wanted)
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => id_is(id: i, wanted: wanted)
+  }
+}
+
+// The position of the first step satisfying `pred`, or Absent. Positions are what make order a
+// decidable claim rather than a reading of the YAML.
+type StepScan { index: Int, found: Int? }
+
+fn first_step_index(steps: List<Step>, pred: fn(Step) -> Bool) -> Int? {
+  let scan = fold(steps, init: StepScan { index: 0, found: none }, f: (acc, s) =>
+    match acc.found {
+      Present { value: _ } => StepScan { index: acc.index + 1, found: acc.found }
+      Absent => StepScan { index: acc.index + 1, found: if pred(s) { Present { value: acc.index } } else { none } }
+    })
+  scan.found
+}
+
+fn release_bins_delivery_premise(producer: Job, consumer: Job, consumer_step_id: String) -> ReleaseBinsDeliveryPremise {
+  if !(consumer.needs |> any(n => n == producer.id)) {
+    ReleaseBinsDeliveryRefused { cause: join(["job ", consumer.id, " does not need job ", producer.id, ", so its download would race the upload"], "") }
+  } else {
+    match first_step_index(steps: producer.steps, pred: s => step_uploads_release_bins(step: s)) {
+      Absent =>
+        ReleaseBinsDeliveryRefused { cause: join(["job ", producer.id, " has no unconditional step uploading artifact ", ci_release_bins_artifact_name, " through the cited upload action"], "") }
+      Present { value: _ } =>
+        match first_step_index(steps: consumer.steps, pred: s => step_downloads_release_bins(step: s)) {
+          Absent =>
+            ReleaseBinsDeliveryRefused { cause: join(["job ", consumer.id, " has no unconditional step downloading artifact ", ci_release_bins_artifact_name, " through the cited download action"], "") }
+          Present { value: download_at } =>
+            match first_step_index(steps: consumer.steps, pred: s => step_verifies_release_bins(step: s)) {
+              Absent =>
+                ReleaseBinsDeliveryRefused { cause: join(["job ", consumer.id, " has no unconditional step running the release-bins unpack + verify script"], "") }
+              Present { value: verify_at } =>
+                match first_step_index(steps: consumer.steps, pred: s => step_has_id(step: s, wanted: consumer_step_id)) {
+                  Absent =>
+                    ReleaseBinsDeliveryRefused { cause: join(["job ", consumer.id, " has no step with id ", consumer_step_id, " to deliver to"], "") }
+                  Present { value: consumer_at } =>
+                    if !(download_at < verify_at && verify_at < consumer_at) {
+                      ReleaseBinsDeliveryRefused { cause: join(["job ", consumer.id, " orders download, verify and ", consumer_step_id, " as positions ", to_string(download_at), ", ", to_string(verify_at), ", ", to_string(consumer_at), "; the consumer must run after the verified download"], "") }
+                    } else {
+                      ReleaseBinsDelivered { producer_job: producer.id, consumer_job: consumer.id, consumer_step: consumer_step_id }
+                    }
+                }
+            }
+        }
+    }
+  }
+}

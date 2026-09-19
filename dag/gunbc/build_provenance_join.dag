@@ -29,6 +29,7 @@ import gunbc.actions_run_binding {
   ExpectedRevisionAbsent,
 }
 import gunbc.generated_artifact { FleetConvergeYamlArtifact, artifact_path }
+import gunbc.repository { gunbc_repository }
 
 // THE EXECUTABLE THAT PERFORMS AN ASSESSMENT IS JOINED TO THE REVISION THE ASSESSMENT CLAIMS.
 //
@@ -112,15 +113,29 @@ type BuildDeliveryRoute
 // THE ROUTE IS ADMITTED FROM THE RUNNER'S COORDINATES, NOT DECLARED BY THE CALLER. `binding` is the
 // run this process is bound to (already admitted against R by the caller), `observed_job_id` is
 // what the runner says this job is, and the two expectations name the workflow file and job the
-// model hands release-bins to. Outside Actions both observations are absent, which is the
-// unestablished arm and not an error: the probe below runs there deliberately.
+// model hands release-bins to. The REPOSITORY is bound from its authority (gunbc.repository), not
+// from the binding: `run_binding_names_workflow_file` compares the workflow reference against the
+// binding's own repository, so a self-consistent set of coordinates from another repository with
+// the same file path and job id would otherwise define its own trust scope. Outside Actions the
+// observations are absent, which is the unestablished arm and not an error: the probe below runs
+// there deliberately.
+//
+// WHAT THESE COORDINATES ARE: GITHUB_WORKFLOW_REF and GITHUB_JOB are the runner's statement of
+// which workflow file and job this process is. They do not themselves report that an artifact was
+// downloaded; the workflow MODEL does (gunbc.fleet_workflow_steps release_bins_delivery_premise,
+// held by an enrolled claim), and the sentence the joined arm renders is read under that accepted
+// trusted-runner assumption, never as an authentication of the strings.
 fn admit_build_delivery_route(
   binding: ActionsRunBinding,
   observed_job_id: ActionsVariableRead,
   workflow_path: String,
   consumer_job_id: String,
 ) -> BuildDeliveryRoute {
-  if !run_binding_names_workflow_file(binding: binding, workflow_path: workflow_path) {
+  if binding.repository != gunbc_repository.full_name {
+    DeliveryRouteUnestablished {
+      cause: join(["this run belongs to repository ", binding.repository, ", not ", gunbc_repository.full_name, " (gunbc.repository), whose fleet-converge workflow is the admitted build route"], ""),
+    }
+  } else if !run_binding_names_workflow_file(binding: binding, workflow_path: workflow_path) {
     DeliveryRouteUnestablished {
       cause: join(["this run's workflow reference ", binding.workflow_ref, " does not name ", workflow_path, ", the workflow whose build job produces the release-bins artifact"], ""),
     }

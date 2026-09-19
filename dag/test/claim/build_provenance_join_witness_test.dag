@@ -2,7 +2,7 @@ module test.claim.build_provenance_join_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.types { String, CommitSha }
+import std.types { String, CommitSha, List }
 import gunbc.cli_dispatch_surface {
   CliCleanSourceCommit,
   CliDirtySourceCommit,
@@ -32,14 +32,22 @@ import gunbc.actions_run_binding { ActionsRunBinding, ActionsVariablePresent, Ac
 import gunbc.runner_slot_retire_run { runner_slot_retire_job_id }
 import gunbc.fleet_converge_workflow {
   fleet_converge_runner_slot_retire_job,
+  fleet_converge_runner_slot_retire_step_id,
   fleet_converge_build_job,
 }
 import gunbc.fleet_workflow_steps {
   ci_release_bins_download_step,
   ci_release_bins_unpack_verify_step,
   ci_release_bins_upload_step,
+  ci_release_bins_artifact_name,
+  ReleaseBinsDeliveryPremise,
+  ReleaseBinsDelivered,
+  ReleaseBinsDeliveryRefused,
+  release_bins_delivery_premise,
 }
-import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.action_use_admission { download_artifact_action }
+import extdeps.languages.yaml.types { kv, yaml_string }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -253,34 +261,171 @@ test fn the_retire_job_of_a_fleet_converge_run_establishes_the_route() -> Bool {
 //
 // The route admits "job J of workflow W" on the runner's word; what makes that an accepted
 // build-and-delivery boundary is the MODEL of W (gunbc.fleet_converge_workflow), from which the
-// YAML is projected: J needs the build job, J downloads and verifies the release-bins artifact, and
-// the build job uploads that same artifact. This claim reads those facts off the model, so removing
-// the download step, the `needs`, or the upload from the workflow model turns the route's premise
-// false HERE rather than leaving the runtime join trusting a delivery that no longer happens.
-fn step_name(s: Step) -> String? {
-  match s {
+// YAML is projected. gunbc.fleet_workflow_steps release_bins_delivery_premise judges the handoff
+// by what the steps DO -- the cited action, the artifact named, the verify script, no `if:`, no
+// `continue-on-error:`, in order, behind a `needs:` -- never by a step's display name. The green
+// runs it over the real jobs; every red below is a same-name mutation of the real consumer job
+// that the premise must refuse.
+
+fn retire_job_with_steps(steps: List<Step>) -> Job {
+  let real = fleet_converge_runner_slot_retire_job()
+  Job {
+    id: real.id, name: real.name, runner: real.runner, steps: steps, needs: real.needs, env: real.env,
+    outputs: real.outputs, if_condition: real.if_condition, timeout_minutes: real.timeout_minutes,
+    continue_on_error: real.continue_on_error, concurrency: real.concurrency, permissions: real.permissions,
+  }
+}
+
+fn retire_job_with_needs(needs: List<String>) -> Job {
+  let real = fleet_converge_runner_slot_retire_job()
+  Job {
+    id: real.id, name: real.name, runner: real.runner, steps: real.steps, needs: needs, env: real.env,
+    outputs: real.outputs, if_condition: real.if_condition, timeout_minutes: real.timeout_minutes,
+    continue_on_error: real.continue_on_error, concurrency: real.concurrency, permissions: real.permissions,
+  }
+}
+
+fn step_named(step: Step) -> String? {
+  match step {
     RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
     UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
   }
 }
 
-fn steps_carry(steps: List<Step>, wanted: Step) -> Bool {
-  steps |> any(s => step_name(s: s) == step_name(s: wanted))
+// Replace the step whose name matches `victim`'s with `replacement`, keeping every other step and
+// its position -- so the only thing a red changes is the behaviour behind one name.
+fn with_step_replaced(steps: List<Step>, victim: Step, replacement: Step) -> List<Step> {
+  steps |> map(s => if step_named(step: s) == step_named(step: victim) { replacement } else { s })
 }
 
+fn premise_refused(p: ReleaseBinsDeliveryPremise) -> Bool {
+  match p {
+    ReleaseBinsDeliveryRefused { cause: _ } => true
+    ReleaseBinsDelivered { producer_job: _, consumer_job: _, consumer_step: _ } => false
+  }
+}
+
+fn premise_over(consumer: Job) -> ReleaseBinsDeliveryPremise {
+  release_bins_delivery_premise(
+    producer: fleet_converge_build_job(),
+    consumer: consumer,
+    consumer_step_id: fleet_converge_runner_slot_retire_step_id,
+  )
+}
+
+// THE GREEN: the real build job hands the real retire job the artifact, verified, before the
+// assessment step, behind needs.
 test fn the_workflow_model_delivers_release_bins_from_the_build_job_to_the_retire_job() -> Bool {
-  let retire = fleet_converge_runner_slot_retire_job()
-  let build = fleet_converge_build_job()
-  retire.id == runner_slot_retire_job_id
-    && (retire.needs |> any(n => n == build.id))
-    && steps_carry(steps: retire.steps, wanted: ci_release_bins_download_step())
-    && steps_carry(steps: retire.steps, wanted: ci_release_bins_unpack_verify_step())
-    && steps_carry(steps: build.steps, wanted: ci_release_bins_upload_step())
+  match premise_over(consumer: fleet_converge_runner_slot_retire_job()) {
+    ReleaseBinsDelivered { producer_job: p, consumer_job: c, consumer_step: s } =>
+      p == fleet_converge_build_job().id && c == runner_slot_retire_job_id && s == fleet_converge_runner_slot_retire_step_id
+    ReleaseBinsDeliveryRefused { cause: _ } => false
+  }
 }
 
-// The control for the claim above: a job that does not carry the download step is not delivered to.
+// THE CRITICAL RED: the same name, the wrong behaviour. A RunStep called exactly what the
+// download step is called, running `true`, delivers nothing and must refuse.
+test fn a_same_name_step_that_does_not_download_refuses_the_premise() -> Bool {
+  let impostor = RunStep {
+    name: step_named(step: ci_release_bins_download_step()), id: none, run: "true", shell: none, env: none,
+    working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+  }
+  premise_refused(p: premise_over(consumer: retire_job_with_steps(
+    steps: with_step_replaced(steps: fleet_converge_runner_slot_retire_job().steps, victim: ci_release_bins_download_step(), replacement: impostor),
+  )))
+}
+
+// ARTIFACT SELECTION: the download step, same action and name, naming a different artifact.
+test fn a_download_of_a_different_artifact_refuses_the_premise() -> Bool {
+  let other = UsesStep {
+    name: step_named(step: ci_release_bins_download_step()), id: none, uses: download_artifact_action,
+    with: Present { value: [kv(key: "name", value: yaml_string(s: "release-bins-from-somewhere-else"))] },
+    env: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+  }
+  premise_refused(p: premise_over(consumer: retire_job_with_steps(
+    steps: with_step_replaced(steps: fleet_converge_runner_slot_retire_job().steps, victim: ci_release_bins_download_step(), replacement: other),
+  )))
+}
+
+// VERIFY AS A NO-OP: same name and id as the unpack + verify step, running something else.
+test fn a_same_name_verify_step_running_something_else_refuses_the_premise() -> Bool {
+  let noop = RunStep {
+    name: step_named(step: ci_release_bins_unpack_verify_step()), id: Present { value: "release_bins" }, run: "true",
+    shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+  }
+  premise_refused(p: premise_over(consumer: retire_job_with_steps(
+    steps: with_step_replaced(steps: fleet_converge_runner_slot_retire_job().steps, victim: ci_release_bins_unpack_verify_step(), replacement: noop),
+  )))
+}
+
+// A SKIPPABLE PREREQUISITE: the real download step, made conditional.
+test fn a_conditional_download_refuses_the_premise() -> Bool {
+  let skippable = UsesStep {
+    name: step_named(step: ci_release_bins_download_step()), id: none, uses: download_artifact_action,
+    with: Present { value: [kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name))] },
+    env: none, if_condition: Present { value: "false" }, continue_on_error: none, timeout_minutes: none,
+  }
+  premise_refused(p: premise_over(consumer: retire_job_with_steps(
+    steps: with_step_replaced(steps: fleet_converge_runner_slot_retire_job().steps, victim: ci_release_bins_download_step(), replacement: skippable),
+  )))
+}
+
+// A MISORDERED PREREQUISITE: the download and verify steps moved AFTER the assessment step.
+test fn a_download_after_the_consumer_refuses_the_premise() -> Bool {
+  let real = fleet_converge_runner_slot_retire_job().steps
+  let without = real |> filter(s => step_named(step: s) != step_named(step: ci_release_bins_download_step()) && step_named(step: s) != step_named(step: ci_release_bins_unpack_verify_step()))
+  premise_refused(p: premise_over(consumer: retire_job_with_steps(
+    steps: concat(without, [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]),
+  )))
+}
+
+// NO `needs:`: the download would race the upload.
+test fn a_consumer_that_does_not_need_the_producer_refuses_the_premise() -> Bool {
+  premise_refused(p: premise_over(consumer: retire_job_with_needs(needs: [])))
+}
+
+// THE PRODUCER SIDE: a build job whose upload step is a same-name no-op.
+test fn a_producer_whose_upload_is_a_same_name_noop_refuses_the_premise() -> Bool {
+  let real = fleet_converge_build_job()
+  let impostor = RunStep {
+    name: step_named(step: ci_release_bins_upload_step()), id: none, run: "true", shell: none, env: none,
+    working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+  }
+  let producer = Job {
+    id: real.id, name: real.name, runner: real.runner,
+    steps: with_step_replaced(steps: real.steps, victim: ci_release_bins_upload_step(), replacement: impostor),
+    needs: real.needs, env: real.env, outputs: real.outputs, if_condition: real.if_condition,
+    timeout_minutes: real.timeout_minutes, continue_on_error: real.continue_on_error, concurrency: real.concurrency, permissions: real.permissions,
+  }
+  premise_refused(p: release_bins_delivery_premise(
+    producer: producer, consumer: fleet_converge_runner_slot_retire_job(), consumer_step_id: fleet_converge_runner_slot_retire_step_id,
+  ))
+}
+
+// The build job is not itself a consumer: the premise refuses it as a consumer of its own upload.
 test fn the_build_job_is_not_itself_a_release_bins_consumer() -> Bool {
-  !steps_carry(steps: fleet_converge_build_job().steps, wanted: ci_release_bins_download_step())
+  premise_refused(p: release_bins_delivery_premise(
+    producer: fleet_converge_build_job(), consumer: fleet_converge_build_job(), consumer_step_id: fleet_converge_runner_slot_retire_step_id,
+  ))
+}
+
+// ── THE REPOSITORY IS BOUND FROM ITS AUTHORITY, NOT FROM THE BINDING ─────────────────────────
+
+test fn a_run_of_another_repository_with_the_same_file_and_job_does_not_establish_the_route() -> Bool {
+  match admit_build_delivery_route(
+    binding: ActionsRunBinding {
+      repository: "someone-else/gunbc",
+      workflow_ref: join(["someone-else/gunbc/", fleet_converge_workflow_file_path(), "@refs/heads/main"], ""),
+      run_id: "1",
+      run_revision: revision_r,
+    },
+    observed_job_id: ActionsVariablePresent { value: runner_slot_retire_job_id },
+    workflow_path: fleet_converge_workflow_file_path(),
+    consumer_job_id: runner_slot_retire_job_id,
+  ) {
+    DeliveryRouteUnestablished { cause: _ } => true
+    DeliveredByRunBuildJob { workflow_path: _, job_id: _, run_id: _ } => false
+  }
 }
 
 // ── THE VERSION LINE, READ BACK THROUGH THE GRAMMAR THAT RENDERED IT ─────────────────────────
