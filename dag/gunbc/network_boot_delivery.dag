@@ -99,6 +99,7 @@ type NetworkBootDeliveryStanding
   | NetworkBootDeliveryTrustUnestablished
   | NetworkBootDeliveryTrustRefused { cause: NetworkBootTrustRefusal }
   | NetworkBootDeliveryRouteMismatch { axis: NetworkBootRouteAxis, expected: Uri, observed: Uri }
+  | NetworkBootDeliveryBundleRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
 
 // A computed rejection of an observed ticket. Missing means no ticket was presented.
 type NetworkBootManifestVerificationClass
@@ -464,6 +465,28 @@ fn production_trust_admission(
   }
 }
 
+// THE MANIFEST VALIDITY WINDOW, adjudicated once, as a closed result: the window is open, not yet
+// open, or closed, and nothing else, so a consumer's mapping is total by construction. The join
+// refuses a ticket at the instant its manifest was observed. The redemption-time check in
+// gunbc.network_boot_manifest_broker (0D, #11605) is a named later consumer: the broker imports
+// this module (the join cannot import the broker), and that PR replaces its own copy of these
+// comparisons with a call here, mapping the two refusal arms onto its verification classes.
+type SignedBootManifestWindow
+  = ManifestWindowOpen
+  | ManifestWindowNotYetValid
+  | ManifestWindowExpired
+
+fn signed_boot_manifest_window(identity: SignedBootManifestIdentity, at: EpochMs) -> SignedBootManifestWindow {
+  match at < identity.not_before {
+    true => ManifestWindowNotYetValid
+    false =>
+      match at >= identity.expiry {
+        true => ManifestWindowExpired
+        false => ManifestWindowOpen
+      }
+  }
+}
+
 // BOOT BUNDLE AVAILABILITY: the kernel, initrd and root objects a verified manifest names, as
 // published to and read back from the boot origin. A signed manifest naming objects that were
 // never published would otherwise establish delivery of nothing. 0B produces this receipt; the
@@ -477,9 +500,19 @@ type BootBundleAvailabilityReceipt {
   readback_observation: DeclarationRef
 }
 
+// Unobserved means no publication or read-back was presented. Refused means one WAS observed
+// and disagreed, which is a different fact with a different remedy: an origin serving the wrong
+// bytes is not an unrun publisher, so it is refused with the member and cause located rather
+// than reported as a missing axis.
 type BootBundleAvailabilityStanding
   = BootBundleAvailable { receipt: BootBundleAvailabilityReceipt }
+  | BootBundleRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
   | BootBundleUnobserved
+
+type BootBundleObservedRefusal
+  = BootBundleReadBackServedOtherBytes
+  | BootBundleKeyOccupiedByOtherBytes
+  | BootBundleMemberInWrongSlot
 
 // Which bundle member disagrees with the manifest, so a refusal names the object to republish.
 type BootBundleMember
@@ -654,16 +687,16 @@ fn join_verified_ticket_after_trust(
                 if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
                   NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
                 } else {
-                  if manifest_at < id.not_before {
-                    NetworkBootDeliveryManifestRefused {
-                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
-                    }
-                  } else {
-                    if manifest_at >= id.expiry {
+                  match signed_boot_manifest_window(identity: id, at: manifest_at) {
+                    ManifestWindowNotYetValid =>
+                      NetworkBootDeliveryManifestRefused {
+                        cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
+                      }
+                    ManifestWindowExpired =>
                       NetworkBootDeliveryManifestRefused {
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
-                    } else {
+                    ManifestWindowOpen =>
                       if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
@@ -689,7 +722,6 @@ fn join_verified_ticket_after_trust(
                               }
                           }
                         }
-                      }
                     }
                   }
                 }
@@ -734,6 +766,8 @@ fn join_bound_routes(
               } else {
                 match inputs.bundle {
                   BootBundleUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                  BootBundleRefused { member: m, cause: c, observation: o } =>
+                    NetworkBootDeliveryBundleRefused { member: m, cause: c, observation: o }
                   BootBundleAvailable { receipt: bundle } =>
                     join_available_bundle(
                       inputs: inputs, fleet: fleet, site: site, client: client, control: control, manifest: manifest, bundle: bundle, trust: trust,
@@ -794,6 +828,13 @@ data network_boot_delivery_frontier_rows: List<FrontierRow> = [
     reason: "no intake assembler calls join_network_boot_delivery yet; BoundBootDeliveryEvidence.network_boot, read by gunbc.boot_artifact_delivery pxe_chain_candidate, is constructed only by witnesses over supplied inputs",
     dissolution: unbound_dissolution(
       description: "dissolves when the machine-intake assembler holding the fleet receipt, the site edge standing observed from the srv4 edge, the client, the control, SignedBootManifestVerified and the 0B BootBundleAvailabilityReceipt calls join_network_boot_delivery and binds its standing into BoundBootDeliveryEvidence.network_boot on a real boot attempt; a witness over supplied answers does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "BootBundleAvailabilityStanding"),
+    reason: "no producer in this tree mints BootBundleAvailable or BootBundleRefused; the join consumes the standing and witnesses supply it. Its producer is 0B's boot-origin publish/readback fold (gunbc.cloudflare.boot_origin boot_bundle_availability, #11603)",
+    dissolution: unbound_dissolution(
+      description: "dissolves when gunbc.cloudflare.boot_origin boot_bundle_availability lands and mints this standing from an executed publication and custom-domain readback, emitting BootBundleRefused with its member and cause for a stale readback, a key occupied by other bytes, or a member in the wrong slot, rather than BootBundleUnobserved; a producer that folds those observed disagreements into Unobserved does not fire this"
     )
   ),
 ]
