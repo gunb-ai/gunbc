@@ -345,18 +345,17 @@ import gunbc.srv3_boot_once_cd {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
 }
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
-import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_reconcile,
-  InstallMediaRemasterAlreadyPresent,
-  InstallMediaRemasterRemastered,
-  InstallMediaRemasterRefused,
+import gunbc.seeded_install_media_publish {
+  SeededImagePublished,
+  SeededImageAlreadyPublished,
+  SeededImagePublicationRefused,
 }
 import gunbc.hostname_read {
   hostname_short_read,
@@ -3354,31 +3353,31 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
 }
 
 fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
-    InstallMediaRemasterAlreadyPresent { path: p } =>
+  match srv3_seeded_install_media_publish() {
+    SeededImageAlreadyPublished { built: b, path: p } =>
       reconcile_grounded(
         apply_effect: intent,
         show_read: ReadObserved { value: p as String },
         grounding: Grounds {
           evidence: ConvergePlanApplied {
             exit_code: 0,
-            stdout: concat("install-media-remaster: already present at ", p as String),
+            stdout: concat("install-media-remaster: already published at ", p as String, " sha256 ", b.output_digest as String),
           }
         }
       )
-    InstallMediaRemasterRemastered { path: p } =>
+    SeededImagePublished { built: b, path: p } =>
       reconcile_grounded(
         apply_effect: intent,
         show_read: ReadObserved { value: p as String },
         grounding: Grounds {
           evidence: ConvergePlanApplied {
             exit_code: 0,
-            stdout: concat("install-media-remaster: remastered at ", p as String),
+            stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
           }
         }
       )
-    InstallMediaRemasterRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
+    SeededImagePublicationRefused { reason: why } =>
+      NotConverged { reason: concat("install-media-remaster: ", why), applied: intent }
   }
 }
 

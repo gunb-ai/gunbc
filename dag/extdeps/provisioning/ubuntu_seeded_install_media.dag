@@ -1,13 +1,8 @@
 module extdeps.provisioning.ubuntu_seeded_install_media
 
-import std.types { NonEmptyStr, String }
-import std.content_hash { ContentHash }
-import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged }
-import extdeps.provisioning.ubuntu_install_media {
-  UbuntuInstallMediaArtifactRow,
-  ubuntu_install_media_artifacts_dir,
-}
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
+import std.types { Int, List, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -18,15 +13,49 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type UbuntuSeededInstallMediaFlavor = | UbuntuLiveServerSeeded
+// A file the NoCloud seed directory carries beside user-data and meta-data. The seed directory is
+// the medium's only payload channel that needs no network at runtime, so a program the seed runs
+// rides here rather than being fetched.
+type NoCloudSeedFile {
+  name: NonEmptyStr
+  content: NonEmptyStr
+}
 
-type UbuntuSeededInstallMediaArtifactRow {
+// WHAT A DERIVED SEEDED IMAGE IS BUILT FROM, and nothing else: every field below reaches the output
+// bytes, so each one is in the derivation key. The payload is a PARAMETER -- an install autoinstall
+// (srv3) and a live-session census program (Mt. Collins) are both a rendered user-data body plus seed
+// files, rendered by their own layer; this module does not know which it is carrying. The volume id
+// is a parameter because it decides the block-device label the booted host reports, so a consumer
+// that checks the boot medium must expect the derived label, never the stock one.
+type UbuntuSeededInstallMediaBuildInput {
   stock_artifact: UbuntuInstallMediaArtifactRow
-  autoinstall: UbuntuAutoinstallPayload
-  autoinstall_user_data_body: NonEmptyStr
-  grub_kernel_cmdline: NonEmptyStr
   nocloud_dir_on_iso: NonEmptyStr
-  content_hash: ContentHash
+  user_data_body: NonEmptyStr
+  seed_files: List<NoCloudSeedFile>
+  grub_kernel_cmdline: NonEmptyStr
+  volume_id: NonEmptyStr
+  pinned_dates: SeededInstallMediaPinnedDates
+  image_stem: NonEmptyStr
+  builder_revision: NonEmptyStr
+}
+
+// THE DATES ARE PINNED so identical inputs reproduce identical bytes. The replay otherwise stamps the
+// build instant into the volume descriptors and into every mapped file, so each rebuild of the same
+// inputs would measure a different digest and create-only publication would mint a new name every
+// time. uuid is xorriso's 16-digit volume date (it is also the medium's blkid UUID); file_date is
+// the -alter_date timestring applied to every file.
+type SeededInstallMediaPinnedDates {
+  volume_uuid: NonEmptyStr
+  file_date: NonEmptyStr
+}
+
+// THE IDENTITY IS THE MEASURED OUTPUT, not this. The build key names the derivation (which inputs,
+// which builder) so a later reader can find what was built from them; the published name carries the
+// sha256 of the bytes the replay actually wrote, read after the build.
+type UbuntuSeededInstallMediaBuilt {
+  build_key: NonEmptyStr
+  output_digest: NonEmptyStr
+  image_name: NonEmptyStr
 }
 
 // The ds= NoCloud seedfrom carries a ';' (e.g. ds=nocloud;s=<path>). In a grub.cfg linux line ';' is grub's command separator, so the arg MUST be double-quoted or grub truncates the cmdline at ';' and the kernel never sees s=<seedfrom> — autoinstall then falls to interactive. These builders emit grub cmdline strings (injected by the remaster sed), so they quote the ds arg here; the List<KernelCmdlineArg> grub path quotes structurally in grub_cmdline_arg_render.
@@ -42,46 +71,80 @@ fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> Non
   concat("nocloud/", hostname as String) as NonEmptyStr
 }
 
-fn seeded_install_media_content_hash(
-  stock_content_sha256: NonEmptyStr,
-  autoinstall_user_data_body: NonEmptyStr,
-  grub_kernel_cmdline: NonEmptyStr,
-  nocloud_dir_on_iso: NonEmptyStr,
-) -> ContentHash {
-  content_hash_tagged(
-    tag: "ubuntu-seeded-install-media/v2",
-    payload: content_hash_combine_structural(
-      content_hash_combine_structural(
-        content_hash_combine_structural(
-          content_hash_atom(value: stock_content_sha256),
-          content_hash_atom(value: autoinstall_user_data_body),
-        ),
-        content_hash_atom(value: grub_kernel_cmdline),
-      ),
-      content_hash_atom(value: nocloud_dir_on_iso),
-    ),
+fn seeded_install_media_seed_file_key(file: NoCloudSeedFile) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: file.name),
+    content_hash_atom(value: file.content),
   )
 }
 
-fn ubuntu_seeded_install_media_filename(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+fn seeded_install_media_build_key(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  let seed = fold(
+    input.seed_files,
+    init: content_hash_combine_structural(
+      content_hash_atom(value: input.nocloud_dir_on_iso),
+      content_hash_atom(value: input.user_data_body),
+    ),
+    f: (acc, file) => content_hash_combine_structural(acc, seeded_install_media_seed_file_key(file: file)),
+  )
+  let boot = content_hash_combine_structural(
+    content_hash_combine_structural(
+      content_hash_atom(value: input.grub_kernel_cmdline),
+      content_hash_atom(value: input.volume_id),
+    ),
+    content_hash_combine_structural(
+      content_hash_atom(value: input.pinned_dates.volume_uuid),
+      content_hash_atom(value: input.pinned_dates.file_date),
+    ),
+  )
+  content_hash_tagged_structural(
+    tag: "ubuntu-seeded-install-media/v3",
+    payload: content_hash_combine_structural(
+      content_hash_combine_structural(
+        content_hash_atom(value: input.stock_artifact.content_sha256 as NonEmptyStr),
+        content_hash_combine_structural(seed, boot),
+      ),
+      content_hash_combine_structural(
+        content_hash_atom(value: input.image_stem),
+        content_hash_atom(value: input.builder_revision),
+      ),
+    ),
+  ).digest as NonEmptyStr
+}
+
+// Sixteen hex digits of the output sha256 name the image: enough to be unique across every image
+// this fleet will ever build, short enough to read on a BMC's virtual-media page. The full digest
+// travels in UbuntuSeededInstallMediaBuilt and is what every read-back compares.
+data seeded_install_media_name_digest_width: Int = 16
+
+fn ubuntu_seeded_install_media_image_name(image_stem: NonEmptyStr, output_digest: NonEmptyStr) -> NonEmptyStr {
   concat(
-    concat(
-      concat("ubuntu-", artifact.stock_artifact.point_release as String),
-      "-live-server-",
-    ),
-    concat(
-      concat(artifact.autoinstall.identity.hostname as String, "-seeded.iso"),
-    ),
+    image_stem as String,
+    "-",
+    substring(s: output_digest as String, start: 0, end: seeded_install_media_name_digest_width),
+    ".iso",
   ) as NonEmptyStr
 }
 
-fn ubuntu_seeded_install_media_install_path(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+fn ubuntu_seeded_install_media_built(input: UbuntuSeededInstallMediaBuildInput, output_digest: NonEmptyStr) -> UbuntuSeededInstallMediaBuilt {
+  UbuntuSeededInstallMediaBuilt {
+    build_key: seeded_install_media_build_key(input: input),
+    output_digest: output_digest,
+    image_name: ubuntu_seeded_install_media_image_name(image_stem: input.image_stem, output_digest: output_digest),
+  }
+}
+
+// The derivation record: build key -> measured output digest. It is how a consumer that did not run
+// the build (an actuator in another process) finds the image the inputs it holds produced, and every
+// consumer re-measures the named file against the recorded digest before trusting it.
+fn ubuntu_seeded_install_media_record_path(dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
   concat(
-    concat(ubuntu_install_media_artifacts_dir() as String, "/"),
-    ubuntu_seeded_install_media_filename(artifact: artifact) as String,
+    dir as String, "/.", input.image_stem as String, ".", seeded_install_media_build_key(input: input) as String, ".built",
   ) as NonEmptyStr
 }
 
-fn ubuntu_seeded_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {
-  concat(install_path as String, ".part") as NonEmptyStr
+fn ubuntu_seeded_install_media_staging_path(dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  concat(
+    dir as String, "/.", input.image_stem as String, ".", seeded_install_media_build_key(input: input) as String, ".staging",
+  ) as NonEmptyStr
 }

@@ -167,7 +167,7 @@ test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
 }
 
 test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       match host_effect_nbd_proxy_serve_apply_with_observation(
@@ -188,7 +188,7 @@ test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Boo
 }
 
 test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } => {
       let binding = host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k)
@@ -214,7 +214,7 @@ test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() ->
 }
 
 test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
       host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
@@ -234,7 +234,7 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
 // genuinely wrong" are different facts, and the apply refusal reason names the transport, not a
 // fabricated "port inaccessible" string.
 test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
@@ -249,7 +249,7 @@ test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fai
 }
 
 test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
-  let effect = srv3_nbd_proxy_serve_host_effect()
+  let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       match host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k) {
@@ -266,7 +266,7 @@ test fn witness_srv3_nbd_proxy_serve_session_binding_carries_lease() -> Bool {
 test fn witness_srv3_nbd_proxy_on_bmc_refuses_typed() -> Bool {
   match host_effect_apply(
     target: srv3_bmc_target(),
-    effect: srv3_nbd_proxy_serve_host_effect(),
+    effect: srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"),
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ) {

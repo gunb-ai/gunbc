@@ -1,0 +1,165 @@
+module test.claim.mtcollins1_census_image
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data census_capture_complete: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 begin 2026-09-19T00:00:00Z=====\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; echo workload-digest-stable=yes\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-before----\n----ARGV edac-before: find\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 end 2026-09-19T00:04:00Z=====\n"
+
+// THE FALSE GREEN THE RECONSTRUCTED PROGRAM WOULD HAVE OPENED. Its ARGV line prints the workload
+// command verbatim, and that command contains both tokens; the write failed and the passes did not
+// agree, so the section's OUTPUT carries neither token as a line of its own.
+data census_capture_workload_failed_argv_carries_tokens: String = "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; [ ok ] && echo workload-digest-stable=yes\nworkload-write-rc=1\n----EXIT workload: 1\n"
+
+data census_capture_workload_failed_exit_zero: String = "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; echo workload-digest-stable=yes\nworkload-write-rc=1\n----EXIT workload: 0\n"
+
+// A stock boot of the same medium with no seed: firmware, kernel, then the installer's interactive
+// language menu. Nothing in it is a census.
+data census_console_seed_absent_reaches_tui: String = "[    0.000000] Kernel command line: BOOT_IMAGE=/casper/vmlinuz --- console=ttyAMA0,115200\n[   17.340772] cloud-init: no datasource found\nWelcome!\nUse UP, DOWN and ENTER keys to select your language.\n[ English ]\n"
+
+test fn a_complete_envelope_parses_on_every_verdict_axis() -> Bool {
+  host_capture_envelope_complete(capture: census_capture_complete, machine: "mtcollins1")
+    && host_capture_nproc_exact(capture: census_capture_complete, threads: "160")
+    && host_capture_workload_stable(capture: census_capture_complete)
+    && host_capture_edac_clean_section(capture: census_capture_complete, name: "edac-before")
+}
+
+test fn a_workload_token_in_the_argv_line_is_not_a_result() -> Bool {
+  host_capture_workload_stable(capture: census_capture_workload_failed_argv_carries_tokens) == false
+    && host_capture_workload_stable(capture: census_capture_workload_failed_exit_zero) == false
+}
+
+test fn seed_absent_reaches_the_installer_and_is_never_census_complete() -> Bool {
+  host_capture_envelope_complete(capture: census_console_seed_absent_reaches_tui, machine: "mtcollins1") == false
+    && host_capture_nproc_exact(capture: census_console_seed_absent_reaches_tui, threads: "160") == false
+}
+
+test fn the_envelope_is_matched_against_its_own_machine() -> Bool {
+  host_capture_envelope_complete(capture: census_capture_complete, machine: "mtcollins2") == false
+}
+
+// The brief's sections in the brief's order, with attempt=3's remaining sections where attempt=3
+// carried them; dmesg-full is the one declared omission (see host_capture_census_stages).
+test fn the_census_roster_is_the_brief_order() -> Bool {
+  join(map(host_capture_census_stages, s => s.name as String), ",")
+    == "subject-system,subject-baseboard,subject-chassis,boot-id,boot-cmdline,kernel,boot-media,nproc,lscpu,numa,meminfo,dmidecode-type16,dmidecode-type17,edac-mc-name,edac-find,edac-before,workload,edac-after"
+}
+
+fn census_program_index(needle: String) -> Int {
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  split(s: program, delimiter: needle).first().length()
+}
+
+// HALT ONLY AFTER END. END is echoed after the last section, `sync` after END, and the power-off is
+// the program's last line; nothing the census reads can follow the halt.
+test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Bool {
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  let end_at = census_program_index(needle: "mtcollins1 attempt=$GUNBC_ATTEMPT end")
+  let last_section_at = census_program_index(needle: "----SECTION edac-after----")
+  let sync_at = census_program_index(needle: "\nsync\n")
+  let halt_at = census_program_index(needle: "\npoweroff -f\n")
+  string_contains(s: program, pattern: "exec >/dev/ttyAMA0 2>&1")
+    && last_section_at < end_at
+    && end_at < sync_at
+    && sync_at < halt_at
+    && ends_with(s: program, suffix: "\npoweroff -f\n")
+}
+
+// THE SEED RUNS THE PROGRAM BEFORE ANY INSTALLER SECTION AND LEAVES EVERY SECTION TO A HUMAN, so a
+// failed power-off parks the unit at the installer rather than letting an unattended install touch
+// storage. No storage or identity key is present for subiquity to act on.
+test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() -> Bool {
+  let ud = mtcollins1_census_image_input.user_data_body as String
+  string_contains(s: ud, pattern: "#cloud-config")
+    && string_contains(s: ud, pattern: "early-commands:")
+    && string_contains(s: ud, pattern: "sh /cdrom/gunbc-census/capture.sh")
+    && string_contains(s: ud, pattern: "interactive-sections:")
+    && string_contains(s: ud, pattern: "*")
+    && string_contains(s: ud, pattern: "storage") == false
+    && string_contains(s: ud, pattern: "identity") == false
+}
+
+test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> Bool {
+  let cmdline = mtcollins1_census_image_input.grub_kernel_cmdline as String
+  string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
+    && string_contains(s: cmdline, pattern: "console=ttyAMA0,115200")
+    && mtcollins1_census_image_input.seed_files.length() == 1
+    && (mtcollins1_census_image_input.volume_id as String).length() <= 32
+}
+
+fn census_input_varying(
+  program: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  pinned_dates: SeededInstallMediaPinnedDates,
+  builder_revision: NonEmptyStr,
+) -> UbuntuSeededInstallMediaBuildInput {
+  let base = mtcollins1_census_image_input
+  UbuntuSeededInstallMediaBuildInput {
+    stock_artifact: base.stock_artifact,
+    nocloud_dir_on_iso: base.nocloud_dir_on_iso,
+    user_data_body: base.user_data_body,
+    seed_files: [NoCloudSeedFile { name: mtcollins1_census_program_file, content: program }],
+    grub_kernel_cmdline: grub_kernel_cmdline,
+    volume_id: volume_id,
+    pinned_dates: pinned_dates,
+    image_stem: base.image_stem,
+    builder_revision: builder_revision,
+  }
+}
+
+fn census_key_varying(
+  program: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  pinned_dates: SeededInstallMediaPinnedDates,
+  builder_revision: NonEmptyStr,
+) -> NonEmptyStr {
+  seeded_install_media_build_key(input: census_input_varying(
+    program: program,
+    grub_kernel_cmdline: grub_kernel_cmdline,
+    volume_id: volume_id,
+    pinned_dates: pinned_dates,
+    builder_revision: builder_revision,
+  ))
+}
+
+// EVERY INPUT REACHES THE KEY. Reassembling the census input from its own fields reproduces the key
+// (the positive control), and one byte of the capture program, the boot configuration, the label,
+// either pinned date or the builder revision each move it, as does a roster with a stage appended.
+// The key names the derivation; the image's identity is its measured bytes (next claim), and whether
+// one changed input byte changes THOSE bytes is the wet build's control on srv2.
+test fn every_build_input_reaches_the_derivation_key() -> Bool {
+  let base = mtcollins1_census_image_input
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages)
+  let cmdline = base.grub_kernel_cmdline
+  let volid = base.volume_id
+  let dates = base.pinned_dates
+  let revision = base.builder_revision
+  let key = seeded_install_media_build_key(input: base)
+  key == census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: concat(program as String, " ") as NonEmptyStr, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: concat(cmdline as String, " quiet") as NonEmptyStr, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: "GUNBC_MTC1_CENSUS_OTHER", pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: "2025080615525001", file_date: dates.file_date }, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: dates.volume_uuid, file_date: "2025.08.06.155251" }, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: "xorriso-replay-pinned-dates/2")
+    && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
+      stages: append(host_capture_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
+      image_stem: mtcollins1_census_image_stem,
+      volume_id: mtcollins1_census_volume_id,
+    ))
+}
+
+test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
+  let a = ubuntu_seeded_install_media_built(
+    input: mtcollins1_census_image_input,
+    output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  )
+  let b = ubuntu_seeded_install_media_built(
+    input: mtcollins1_census_image_input,
+    output_digest: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+  )
+  a.image_name == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123456789abcdef.iso"
+    && a.image_name != b.image_name
+    && a.build_key == b.build_key
+    && a.image_name != mtcollins1_diskless_image_name
+}
