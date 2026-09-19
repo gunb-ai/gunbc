@@ -2,15 +2,19 @@ module v2.std.lens_verdict
 
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
+  ByteRange,
   CorrectionNotModeled,
   Diagnostic,
+  Extent,
   NodeLocus,
   InvariantPortLocus,
   SourcePortLocus,
   Textual,
   Unavailable,
+  WholeFile,
   textual_whole_file_diagnostic,
 }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -60,5 +64,30 @@ fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
     NodeLocus { anchor: _ } => ""
     SourcePortLocus { anchor: _, file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     InvariantPortLocus { anchor: _, invariant: _ } => ""
+  }
+}
+
+// File + extent, for a reader who has to act. The module-name fold above remains the identity
+// projection callers already consume; this sibling is the same Locus match with extent kept.
+fn lens_verdict_extent_text(e: Extent) -> String {
+  match e {
+    WholeFile => "(whole file)"
+    ByteRange { start: st, end: en } =>
+      concat(
+        concat("bytes ", integer_int_to_decimal_string(value: st)),
+        concat("..", integer_int_to_decimal_string(value: en))
+      )
+  }
+}
+
+fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
+  match d.at {
+    Textual { file: f, extent: e } =>
+      concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
+    SourcePortLocus { anchor: _, file: f, extent: e } =>
+      concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
+    NodeLocus { anchor: _ } => "<node locus, no file>"
+    InvariantPortLocus { anchor: _, invariant: inv } =>
+      concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
   }
 }

@@ -9,27 +9,33 @@ import extdeps.network.mcx4421a_acan { mcx4421a_acan_attachment }
 import extdeps.network.mcx4621a_acab { mcx4621a_acab_attachment }
 import extdeps.network.dell_0r887v { dell_0r887v_attachment }
 import extdeps.network.ibm_01ft753 { Ibm01ft753, ibm_01ft753 }
+import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
 import gunbc.machine_intake_mtcollins1_expansion_attachment { AttachmentVerdict, attachment_against_evidence }
 import gunbc.machine_intake_mtcollins1_expansion_observation { expansion_evidence_for_unit }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
+import gunbc.machine_intake_mtcollins1_connectx4lx_observation { connectx4lx_host_observation, Connectx4LxHostObservation }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications { mt_collins_1u_ocp_slot }
 
 // Procurement and relayed listing aliases are this workflow's facts, not an
 // assertion that IBM or Dell publishes those aliases. Full-height is what the
-// operator ordered; IBM's FRU alone allows either tailstock. Arrival and installed
-// fit must be observed separately. Consumer: candidate_verdicts -> witness, and
-// operator invocation of candidate_verdicts when evaluating these parts.
+// operator ordered; IBM's FRU alone allows either tailstock, so OrderedBracket
+// keeps both arms. The ordered-awaiting-arrival context is gone: the card is
+// seated. Consumer: candidate_verdicts -> witness, and operator invocation of
+// candidate_verdicts when evaluating these parts.
 type CandidateContext
   = CatalogEvaluation
   | RelayedListingAlias { alias: NonEmptyStr, relay_message: NonEmptyStr }
-  | OrderedAwaitingArrival {
-      reported_alias: NonEmptyStr,
-      bracket: OrderedBracket,
-      catalog: Ibm01ft753,
+  | InstalledUnobserved {
+      ordered: Ibm01ft753,
+      ordered_bracket: OrderedBracket,
+      arrived: Mcx4121aAcat,
+      host: Connectx4LxHostObservation,
       relay_message: NonEmptyStr,
     }
 
-type OrderedBracket = FullHeightBracket {}
+type OrderedBracket
+  = FullHeightBracket
+  | LowProfileBracket
 
 type ExpansionCandidate {
   catalog_scope: ExternalModelScope
@@ -43,13 +49,14 @@ data expansion_candidates: List<ExpansionCandidate> = [
   ExpansionCandidate { catalog_scope: extdeps.network.dell_0r887v.extdeps_model_scope, attachment: dell_0r887v_attachment, context: RelayedListingAlias { alias: "CX422A", relay_message: "node://adhoc-a4cde62f-b45: operator's Dell 0R887V / CX422A candidate" } },
   ExpansionCandidate { catalog_scope: extdeps.network.mcx4621a_acab.extdeps_model_scope, attachment: mcx4621a_acab_attachment, context: CatalogEvaluation },
   ExpansionCandidate {
-    catalog_scope: extdeps.network.ibm_01ft753.extdeps_model_scope,
-    attachment: ibm_01ft753.attachment,
-    context: OrderedAwaitingArrival {
-      reported_alias: "CX4121A",
-      bracket: FullHeightBracket {},
-      catalog: ibm_01ft753,
-      relay_message: "node://adhoc-a4cde62f-b45: operator reports IBM FRU 01FT753 / CX4121A, full-height bracket, ordered and arriving; no delivered-card inspection or installed qualification is reported.",
+    catalog_scope: extdeps.network.mcx4121a_acat.extdeps_model_scope,
+    attachment: mcx4121a_acat.attachment,
+    context: InstalledUnobserved {
+      ordered: ibm_01ft753,
+      ordered_bracket: FullHeightBracket,
+      arrived: mcx4121a_acat,
+      host: connectx4lx_host_observation,
+      relay_message: "node://adhoc-60bfb4b5-7bd: operator 2026-09-17 reports OEM Mellanox ConnectX-4 LX MCX4121A-ACAT seated; IBM FRU 01FT753 / CX4121A was the ordered catalog row. Same silicon class, independently governed products. Host mid first-boot: PCIe and mlx5_core remain unobserved until mtcollins1_boot / gunbc#11484.",
     },
   },
 ]

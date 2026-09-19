@@ -14,22 +14,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // non_fold_residue_discovery_roots_follow_layer_authority were dropped intentionally (census
 // receipts, not required for the class-4 always-on receipt gate).
 
-fn witness_non_fold_residue_synthetic_unrostered_red_holds() -> Bool {
-  non_fold_residue_synthetic_unrostered_red_holds()
-}
-
-fn witness_non_fold_residue_wildcard_red_fixture_holds() -> Bool {
-  non_fold_residue_wildcard_red_fixture_holds()
-}
+// THE TWO RED CONTROLS ARE INTERPRETER PRIMITIVES (std.primitives free_call rows
+// non_fold_residue_synthetic_unrostered_red_holds / non_fold_residue_wildcard_red_fixture_holds),
+// and the test fns that enrol them deliberately DO NOT share the primitive's spelling: a test fn
+// named exactly as the primitive made every call of that name in this module bind, at name
+// resolution, to the test fn rather than the primitive (a self-cycle through a helper), which the
+// test-reference refusal forbids. A free-call primitive is reached by its bare spelling only, so
+// the enrolling test fn carries a distinct name and calls the primitive directly.
 
 test fn non_fold_residue_no_unrostered_or_stale() -> Bool {
   return nfr_roster_receipt_holds()
 }
 
-test fn non_fold_residue_synthetic_unrostered_red_holds() -> Bool {
-  witness_non_fold_residue_synthetic_unrostered_red_holds()
+test fn non_fold_residue_synthetic_unrostered_red_control_holds() -> Bool {
+  non_fold_residue_synthetic_unrostered_red_holds()
 }
 
-test fn non_fold_residue_wildcard_red_fixture_holds() -> Bool {
-  witness_non_fold_residue_wildcard_red_fixture_holds()
+test fn non_fold_residue_wildcard_red_fixture_control_holds() -> Bool {
+  non_fold_residue_wildcard_red_fixture_holds()
 }

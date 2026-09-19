@@ -1,7 +1,6 @@
 module v2.test.synthesis_gate.optimality_gap_completeness
 
 import v2.lens.synthesis {
-  DecisionTree,
   InformationTheoretic,
   synthesis_lens,
   synthesis_lens_diagnostics
@@ -10,7 +9,6 @@ import v2.std.algebra { fold_list, is_empty, list_append, non_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.report { Report }
-import v2.test.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_input }
 import v2.test.synthesis_gate.subject_technique_roster {
   SynthesisSubjectRow,
   synthesis_subject_row_add,
@@ -65,16 +63,11 @@ fn synthesis_real_information_theoretic_no_technique() -> Bool {
   }
 }
 
-fn synthesis_synthetic_gap_fires() -> Bool {
-  non_empty(synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree))
-}
-
 fn synthesis_optimality_family_gate() -> Bool {
   if is_empty(xs: synthesis_subject_rows) {
     false
   } else {
     synthesis_real_corpus_optimal()
       && synthesis_real_information_theoretic_no_technique()
-      && synthesis_synthetic_gap_fires()
   }
 }

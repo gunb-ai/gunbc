@@ -156,6 +156,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps, the head-grain row's thread)"
   },
   CauseOwnership {
+    cause: ^resolve_reason_qualified_target_identity_unrepresentable,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve stage frontier on the self-host critical path, reachable since gunbc#11582 built the qualified-name spine for suffix-free dotted chains: a fully-qualified reference to a fn declaration (an Arrow) is FOUND and refused because the resolver carries no exact declaring identity (gunbc.compiler_frontend_program_status ResolverBoundDeclaringIdentity). Before that PR the same sources refused resolve_reason_unbound_symbol on the truncated `v2` atom, so this row's population is a re-attribution of part of that row's, not a new loss. Flips to Blocking when the count zeroes, which the exact-identity carrier owns (review 67716 on gunbc#11582)"
+  },
+  CauseOwnership {
     cause: ^resolve_reason_ambiguous_symbol,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
