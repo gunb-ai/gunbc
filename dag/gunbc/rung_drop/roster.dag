@@ -82,6 +82,7 @@ import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_f
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
 import gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format { persisted_resolved_graph_disk_probe_unqualified_format }
 import gunbc.rung_drop.self_host_emit_derisk_claim_unobserved { self_host_emit_derisk_claim_unobserved }
+import gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property { g0_type_decl_modifier_parse_without_sealing_property }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -146,6 +147,7 @@ data rung_drop_roster: List<RungDrop> = [
   type_reference_location_fallback_keys_production_realization,
   persisted_resolved_graph_disk_probe_unqualified_format,
   self_host_emit_derisk_claim_unobserved,
+  g0_type_decl_modifier_parse_without_sealing_property,
   approval_store_single_writer_by_agreement,
 ]
 
