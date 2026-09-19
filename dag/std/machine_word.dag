@@ -1,6 +1,9 @@
 module std.machine_word
 
 import std.induction { int_pow_bounded }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution, unbound_dissolution, DeclarationAppears }
 import std.measure { bits_per_byte }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
@@ -90,14 +93,30 @@ type CarryingSumResult
 // exceeds the Int bound to be REPRESENTED and operated on -- at which point Width64 stops refusing
 // and the big-integer substrate P-256/P-384 needs is the same carrier, not a second one.
 //
-// The power is int_pow_bounded rather than a literal table because std.induction already owns
-// integer exponentiation; a table of 2^8/2^16/2^32 here would be a second representation of a
-// derived constant, and a stale copy of a modulus is a silently wrong answer rather than an error.
-// COST SHAPE, stated rather than left to be discovered: int_pow_bounded is linear in the exponent,
-// so every operation below pays O(bits) multiplications to learn its own modulus on top of whatever
-// it does. That is a real cost on the interpreter route and it is reported, not bypassed.
+// THE MODULUS IS DERIVED ONCE PER WIDTH, NOT ONCE PER OPERATION, AND THAT IS A CORRECTNESS-GRADE
+// FIX RATHER THAN A TUNING ONE. The first cut called int_pow_bounded here, which is a non-tail
+// linear recursion with a checked multiply per step, so EVERY operation -- including shifts and
+// rotates that are otherwise a division -- paid a walk proportional to its width just to learn a
+// constant. WordWidth is a CLOSED four-member coproduct, so the fact being recomputed is one of
+// four numbers, and DESIGN section 2 is explicit that when repeated demands share a least common
+// ancestor the repetition is authored duplication to be carried rather than made cheap; section 6
+// forecloses the "n is small here" defence outright. Stating the shape in an annotation, which the
+// first cut did, is not discharging it.
+//
+// THE VALUES ARE DERIVED, NOT TRANSCRIBED, AND THE DERIVATION IS CHECKED BY EXECUTION. The reason
+// to avoid a literal table is that a second representation of a derived constant can go stale
+// silently; that objection is against TRANSCRIBING a value, not against materialising one. So
+// std.induction int_pow_bounded remains the authority for what 2^bits IS, and
+// word_modulus_agrees_with_the_power_authority_holds runs this function against it for every
+// member of the closed set, including Width64 where both must answer with nothing. A wrong number
+// here reds that claim; it does not wait to be noticed.
 fn word_modulus(w: WordWidth) -> Int? {
-  int_pow_bounded(base: 2, exp: word_width_bits(w: w))
+  match w {
+    Width8 => Present { value: 256 }
+    Width16 => Present { value: 65536 }
+    Width32 => Present { value: 4294967296 }
+    Width64 => none
+  }
 }
 
 fn word_of_int(width: WordWidth, value: Int) -> WordResult {
@@ -112,16 +131,8 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   }
 }
 
-fn word_zero(width: WordWidth) -> WordResult {
-  word_of_int(width: width, value: 0)
-}
-
 fn word_int_value(w: Word) -> Int {
   w.value
-}
-
-fn word_equal(a: Word, b: Word) -> Bool {
-  word_width_bits(w: a.width) == word_width_bits(w: b.width) && a.value == b.value
 }
 
 // BITWISE OPERATIONS ARE ONE FOLD, NOT THREE. The three connectives differ only in the two-bit
@@ -209,17 +220,13 @@ fn word_not(a: Word) -> WordResult {
 fn word_shift_left(a: Word, amount: Int) -> WordResult {
   match word_modulus(w: a.width) {
     Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
+    Present { value: m } =>
       if amount < 0 || amount >= word_width_bits(w: a.width) {
         WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
       } else {
         match int_pow_bounded(base: 2, exp: amount) {
           Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: factor } =>
-            match int_pow_bounded(base: 2, exp: word_width_bits(w: a.width) - amount) {
-              Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-              Present { value: kept } => word_of_int(width: a.width, value: (a.value % kept) * factor)
-            }
+          Present { value: factor } => word_of_int(width: a.width, value: (a.value % (m / factor)) * factor)
         }
       }
   }
@@ -472,3 +479,64 @@ fn word_from_octets(width: WordWidth, octets: List<Word>, endianness: Endianness
 fn octet_int_values(octets: List<Word>) -> List<Int> {
   octets |> map(o => o.value)
 }
+
+// THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
+//
+// DESIGN section 3c admits exactly three states for a new declaration: consumed by execution here,
+// consumed by a named later change with the trigger stated beside it, or dangling -- and only the
+// third is red. The operations below are the second state, and the first cut of this module put
+// that claim in a `//` block naming SHA-256 and P-256. Section 4c rules that an annotation is never
+// evidence a machine claim holds, because no Accepted program can read one, so a frontier stated in
+// prose is indistinguishable from a dangling declaration to everything except a human reader who
+// happens to look. These rows are the same statement in a carrier gunbc.dissolution_census reads.
+//
+// TWO SHAPES, AND THE DIFFERENCE IS WHETHER THE CONSUMER CAN BE CITED YET. Where the consuming
+// declaration EXISTS on a branch, the row binds DeclarationAppears to that exact symbol, so the
+// row retires when the symbol lands and by nothing else. Where the consuming change is named but
+// has authored no declaration to point at, the row is unbound and says so -- a forward reference to
+// a name nobody has written would be a citation that can never resolve, which is worse than an
+// honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
+// does not exist).
+//
+// WHAT IS NOT HERE IS AS DELIBERATE AS WHAT IS. word_rotate_left carries no row because
+// word_rotate_right consumes it inside this module -- it is executed, not awaited. word_zero and
+// word_equal were DELETED rather than given rows: no change named either one, and section 3c's
+// remedy for a declaration with no consumer at all is to remove it, not to describe it. They cost
+// one line each to reintroduce beside the first caller that wants them.
+data machine_word_consumer_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
+    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; extdeps.crypto.sha2 sha256_add_all is the fold that consumes this, ~1,000 calls per compression block.",
+    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_add_all") })
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
+    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; extdeps.crypto.sha2 sha256_sigma is the one fold all four go through.",
+    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_sigma") })
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
+    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; extdeps.crypto.sha2 sha256_xor3 is the three-way form they share.",
+    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_xor3") })
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
+    reason: "SHA-256 Ch complements its selector word; extdeps.crypto.sha2 sha256_ch is the only consumer of complement in that algorithm.",
+    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_ch") })
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
+    reason: "The FNV-1a kernel CONTENT-HASH-0 (gunbc#11637) models is a wrapping multiply against a prime, which is why the split-product form exists here at all. It is UNBOUND rather than bound to a symbol because that lane has authored no declaration to cite, and because FNV runs at Width64, which this substrate refuses until the multi-limb carrier lands -- so this row is retired by the FNV kernel consuming this function, not by the carrier alone.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the FNV-1a kernel in CONTENT-HASH-0 (gunbc#11637) calls word_wrapping_multiply. Not discharged by the multi-limb carrier landing, which is a precondition rather than the consumer.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_subtract"),
+    reason: "Multi-limb subtraction borrows, which is this operation at limb width. UNBOUND: the limb carrier is this module's own next cut and has authored no declaration to cite.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_wrapping_subtract for limb borrow. If that carrier lands without consuming it, this declaration is deleted rather than re-described.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_carrying_add"),
+    reason: "Multi-limb addition propagates carry between limbs, which is what makes the carry an answer rather than a discarded overflow; CarryingSum and CarryingSumResult exist only to give it one. UNBOUND for the same reason as the borrow.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_carrying_add to propagate carry between limbs. If that carrier lands without consuming it, this declaration and CarryingSum/CarryingSumResult are deleted rather than re-described.")
+  ),
+]

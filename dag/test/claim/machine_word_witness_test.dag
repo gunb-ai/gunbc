@@ -352,3 +352,69 @@ test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
     Present { value: s } => s == "/wD/"
   }
 }
+
+// THE MODULUS TABLE IS MATERIALISED, SO ITS AGREEMENT WITH THE AUTHORITY IS EXECUTED.
+//
+// word_modulus answers from the closed four-member width set instead of walking int_pow_bounded on
+// every operation. The objection to a literal table is that a second representation of a derived
+// constant goes stale silently -- so this claim removes the silence: std.induction int_pow_bounded
+// stays the authority for what 2^bits IS, and every member of the closed set is run against it
+// here, INCLUDING Width64, where both must answer with nothing. A wrong number in the table reds
+// this rather than waiting to be found by a consumer, and the Width64 arm is what stops the table
+// from quietly gaining a value the carrier cannot hold.
+fn modulus_agrees_at(w: WordWidth) -> Bool {
+  match word_modulus(w: w) {
+    Present { value: m } =>
+      match int_pow_bounded(base: 2, exp: word_width_bits(w: w)) {
+        Present { value: derived } => m == derived
+        Absent => false
+      }
+    Absent =>
+      match int_pow_bounded(base: 2, exp: word_width_bits(w: w)) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+test fn word_modulus_agrees_with_the_power_authority_holds() -> Bool {
+  modulus_agrees_at(w: Width8)
+    && modulus_agrees_at(w: Width16)
+    && modulus_agrees_at(w: Width32)
+    && modulus_agrees_at(w: Width64)
+}
+
+// THE FRONTIER ROWS ARE READ, NOT MERELY DECLARED. A frontier row that nothing executes is the
+// same dangling declaration it exists to excuse, one level up. These two claims are its consumer:
+// the first establishes that every row names a declaration in the module that owns it, so a row
+// cannot drift onto somebody else's surface; the second is an IDENTITY JOIN against the expected
+// key set rather than a count, because a count agrees while membership differs.
+fn frontier_subject_key(row: FrontierRow) -> String {
+  match row.subject {
+    DeclSubject { ref: r } => concat(r.module_path as String, concat(".", r.decl_name as String))
+    PathSubject { path: p } => p
+  }
+}
+
+test fn machine_word_frontier_rows_name_this_module_holds() -> Bool {
+  machine_word_consumer_frontier |> all(row =>
+    match row.subject {
+      DeclSubject { ref: r } => (r.module_path as String) == "std.machine_word"
+      PathSubject { path: _ } => false
+    })
+}
+
+test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool {
+  let keys = machine_word_consumer_frontier |> map(row => frontier_subject_key(row: row))
+  let expected = [
+    "std.machine_word.word_wrapping_add",
+    "std.machine_word.word_rotate_right",
+    "std.machine_word.word_xor",
+    "std.machine_word.word_not",
+    "std.machine_word.word_wrapping_multiply",
+    "std.machine_word.word_wrapping_subtract",
+    "std.machine_word.word_carrying_add"
+  ]
+  expected |> all(e => keys |> any(k => k == e))
+    && keys |> all(k => expected |> any(e => e == k))
+}
