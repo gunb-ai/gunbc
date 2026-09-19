@@ -452,12 +452,20 @@ fn sha256_render(h: List<Word>, acc: List<UInt8>) -> Result<List<UInt8>, Sha256R
   }
 }
 
+// THE CONSTANT TABLES AS WORDS, DERIVED ONCE. They are facts of the standard, not of any message,
+// so they are established once at module scope and every digest reads the same value (DESIGN §2:
+// a fact established once is never rebuilt per consumer). Decoding them inside sha256_octets
+// re-derived all 72 words on every call -- twice per HMAC. A malformed row still refuses: the
+// Result is the row's value, and every digest carries the refusal forward.
+data sha256_initial_hash_words: Result<List<Word>, Sha256Refusal> = sha256_words_of_hex(rows: sha256_initial_hash_hex, acc: [])
+data sha256_round_constant_words: Result<List<Word>, Sha256Refusal> = sha256_words_of_hex(rows: sha256_round_constant_hex, acc: [])
+
 // THE DIGEST: the 32 octets H_0 ‖ … ‖ H_7 of the final hash value, big-endian.
 fn sha256_octets(message: List<UInt8>) -> Result<List<UInt8>, Sha256Refusal> {
-  match sha256_words_of_hex(rows: sha256_initial_hash_hex, acc: []) {
+  match sha256_initial_hash_words {
     Err { value: e } => Err { value: e }
     Ok { value: h0 } =>
-      match sha256_words_of_hex(rows: sha256_round_constant_hex, acc: []) {
+      match sha256_round_constant_words {
         Err { value: e } => Err { value: e }
         Ok { value: ks } =>
           match sha256_pad(message: message) {
