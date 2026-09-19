@@ -25,9 +25,14 @@ import gunbc.auth.approval_cutover_posture {
 // construction and is the terminal shape: it makes the invalid state unrepresentable rather than
 // refused, and it survives a process that disagrees with the row. It also needs a durable
 // compare-and-set surface beside the 0600 generations and a holder identity that outlives a
-// restart, which is its own change. This row is the transition's decidable half and lands first;
-// the lease trigger is stated on approval_writer_authority_lease_frontier below rather than left as
-// an intention.
+// restart, which is its own change. This row is the transition's decidable half and lands first.
+//
+// THE TRIGGER THAT ENDS THIS ARRANGEMENT IS NOT RESTATED HERE. It is the restoration_trigger of
+// gunbc.rung_drop.approval_store_single_writer_by_agreement, which is rostered and projected into
+// docs/design-rung-drops.md. A second spelling beside this declaration was written first and
+// deleted (review 68420): it was a bare String carrying commentary, which DESIGN section 4c names
+// as misplaced or dead data, and it was the copy NOT reachable from the roster that owns it -- so
+// it was the one that would have rotted while the ledger moved.
 
 type ApprovalWriterAuthority
   = RoadmapWriter
@@ -119,18 +124,3 @@ fn approval_write_refusal_reason(holder: ApprovalWriterAuthority, asker: Approva
     "transaction (gunbc.auth.approval_broker_cutover), never by a request arriving somewhere new.",
   ], "") as NonEmptyStr
 }
-
-// THE FRONTIER, NAMED SO IT IS NOT AN INTENTION. This row is decidable and refuses correctly, and
-// it is NOT the terminal construction: it makes a second writer REFUSE rather than making it
-// unrepresentable, so it holds only while both processes read this declaration. A process running
-// an older release, or a hand-run binary, reads whatever it was built with.
-//
-// The terminal shape is an exclusive store-writer lease -- a durable compare-and-set over the
-// store root with a holder identity that survives a restart -- or a principal ACL under which only
-// the broker's account can open the generations at all, which is the same guarantee enforced by the
-// filesystem rather than by agreement. THE TRIGGER: this row retires when the store's generations
-// are writable by exactly one POSIX principal and the other serving process's account cannot open
-// them, verified by attempting the write as the non-writer and observing the OS refusal -- at which
-// point the admission above becomes a readback of a permission rather than a declaration consulted
-// by consent.
-data approval_writer_authority_lease_frontier: NonEmptyStr = "Retires when the approval store's generations are restricted to one POSIX principal and the non-writer serving account cannot open them -- verified by attempting the write as the non-writer and observing the OS refusal, not by reading this row. Until then the guarantee is by agreement between two processes that read the same declaration, and a process built from a different revision does not read it."

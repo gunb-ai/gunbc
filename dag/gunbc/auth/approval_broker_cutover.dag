@@ -545,8 +545,11 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
       join([
         "the broker already holds approval-store writer authority, so this is not a dark stage: ",
         "the stage whose purpose is to observe the broker while it CANNOT mutate the store would ",
-        "be observing the live writer. Writer authority moves in one modeled transaction after the ",
-        "demand is measured (gunbc.auth.approval_writer_authority approval_writer_authority).",
+        "be observing the live writer. The deployment's posture is: ",
+        approval_cutover_posture_label(p: approval_cutover_posture) as String,
+        " -- authority and routing both derive from that one row ",
+        "(gunbc.auth.approval_cutover_posture), and it moves in one modeled transaction after the ",
+        "demand is measured.",
       ], "") as NonEmptyStr
     ReleaseUnreadable { detail: d } =>
       join(["the dark broker did not read back a release revision: ", d as String,
@@ -588,18 +591,13 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
   }
 }
 
-// ── WHERE THE PLAN IS ────────────────────────────────────────────────────────────────────────
-// THE FURTHEST ADMITTED STAGE, derived from evidence rather than tracked as state. A recorded
-// position is a second authority for something the observations already determine, and it is the
-// one that goes stale when a stage is rolled back.
-fn approval_broker_cutover_position(e: ApprovalBrokerCutoverEvidence) -> ApprovalBrokerCutoverStage {
-  fold(approval_broker_cutover_stages(), init: DeployDark, f: (acc, stage) =>
-    match approval_broker_cutover_stage_discharged(stage: stage, e: e) {
-      StageAdmitted { stage: s } => s
-      StageRefused { stage: _, cause: _ } => acc
-    }
-  )
-}
+// WHERE THE PLAN IS, ASKED PER STAGE RATHER THAN ANSWERED AS ONE VALUE. A
+// approval_broker_cutover_position fold stood here, folding the roster to the furthest DISCHARGED
+// stage. Nothing consumed it (review 68420 found its sibling of the same class), and a declaration
+// nothing reads is DESIGN section 2's redundant work however well shaped it is. The question it
+// answered is still answerable and is strictly more useful asked directly:
+// approval_broker_cutover_stage_discharged names WHICH observation is missing, where a single
+// furthest-stage value would have said only how far along the plan is.
 
 // THE TERMINAL CONDITION, stated as the fact stage 6 establishes rather than as a stage that has
 // been performed: the roadmap no longer mounts an approval route. It reads roadmap_approval_mount

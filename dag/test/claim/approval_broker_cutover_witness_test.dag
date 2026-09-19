@@ -37,7 +37,6 @@ import gunbc.auth.approval_broker_cutover {
   approval_broker_cutover_stage_discharged,
   dark_install_release_discharged, dark_install_evidence,
   DarkUnitNotStarted,
-  approval_broker_cutover_position,
   approval_broker_cutover_complete,
   ApprovalRouteOwnership,
   ApprovalPathsRoutedToRoadmap, ApprovalPathsRoutedToBroker, ApprovalPathsOwnedByBroker,
