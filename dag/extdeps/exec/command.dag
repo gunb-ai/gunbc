@@ -159,7 +159,6 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_empty_file_command"),
-    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "truncate_to_size_command"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
