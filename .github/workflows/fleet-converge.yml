@@ -45,6 +45,10 @@ on:
         description: Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt
         required: false
         type: string
+      runner_ids:
+        description: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization"
+        required: false
+        type: string
       transaction_nonce:
         description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
         required: false
@@ -383,6 +387,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/organization_runner_roster_read.dag --function organization_runner_roster_observe_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          GUNBC_RUNNER_ID_PROBES: ${{ github.event.inputs.runner_ids }}
         if: github.event.inputs.mode == 'org_runner_roster_observe'
         timeout-minutes: 5
       - name: Upload org runner roster receipt

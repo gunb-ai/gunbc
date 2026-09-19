@@ -2,17 +2,21 @@ module test.claim.organization_runner_roster_read_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int, List }
-import std.page_fold {
-  PageBound, PageObservation, ContinuationClosed, ContinuationNext, LinkNext,
-  page_fold_begin, page_fold_observe
-}
-import extdeps.github.pagination { github_listing_subject, github_first_page_cursor }
+import std.page_fold { ContinuationClosed, ContinuationNext, LinkNext }
+import extdeps.uri { uri_from_wire }
+import extdeps.github.pagination { github_first_page_cursor }
 import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read {
-  OrganizationRunnerRosterPage,
-  OrganizationRunnerRosterWalk,
+  OrganizationRunnerScope,
+  RosterTransportResponse,
+  RosterRequestAt,
+  RosterRequestRefused,
+  GhTokenFromOrgAdminPrelude,
+  roster_request_target,
+  roster_walk_begin,
+  roster_walk_pump,
   RosterPageDelivered,
   RosterPageFailed,
   RunnerIdPresent,
@@ -22,6 +26,7 @@ import gunbc.fleet.organization_runner_roster_read {
   RunnersVisibilityUnestablished,
   roster_page_read_from_included,
   classify_roster_walk,
+  OrganizationRunnerRosterReport,
   runner_id_observation_from_included
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -44,7 +49,15 @@ fn included(status_line: String, link: String, body: String) -> String {
   join(concat(head, ["", body]), "\n")
 }
 
-data next_link: String = "<https://api.github.com/organizations/1/actions/runners?per_page=100&page=2>; rel=\"next\", <https://api.github.com/organizations/1/actions/runners?per_page=100&page=2>; rel=\"last\""
+data page_two_url: String = "https://api.github.com/organizations/1/actions/runners?per_page=100&page=2"
+data other_org_url: String = "https://api.github.com/orgs/other-org/actions/runners?per_page=100&page=2"
+data repo_runners_url: String = "https://api.github.com/repos/gunb-ai/gunbc/actions/runners?per_page=100&page=2"
+
+fn next_link_to(url: String) -> String {
+  join(["<", url, ">; rel=\"next\""], "")
+}
+
+data next_link: String = next_link_to(url: page_two_url)
 
 test fn a_page_with_a_next_link_continues() -> Bool {
   match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: next_link, body: page_body(total: 2, runners: [runner_one_json])), stderr: "") {
@@ -84,91 +97,178 @@ test fn output_without_a_status_line_observed_no_response() -> Bool {
   }
 }
 
-// THE WALK CLASSIFICATION, OVER PAGES SUPPLIED AS A TRANSPORT WOULD HAVE DELIVERED THEM.
+// OR-1: A CONTINUATION IS ADMITTED ONLY AS THIS ORGANIZATION'S RUNNERS LISTING.
 
-fn delivered_page(body: String, link: String) -> OrganizationRunnerRosterPage? {
-  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: link, body: body), stderr: "") {
-    RosterPageDelivered { page, continuation: _ } => Present { value: page }
-    RosterPageFailed { cause: _ } => none
+data scope_with_id: OrganizationRunnerScope = OrganizationRunnerScope { login: "gunb-ai" as NonEmptyStr, id: Present { value: 1 } }
+data scope_without_id: OrganizationRunnerScope = OrganizationRunnerScope { login: "gunb-ai" as NonEmptyStr, id: none }
+
+fn admitted(scope: OrganizationRunnerScope, url: String) -> Bool {
+  match uri_from_wire(url: url) {
+    Absent => false
+    Present { value: u } => match roster_request_target(scope: scope, cursor: LinkNext { target: u }) {
+      RosterRequestAt { target: _ } => true
+      RosterRequestRefused { cause: _ } => false
+    }
   }
 }
 
-// The fold state is driven as a closing listing; a failure, where supplied, is what the classifier
-// reads first, exactly as the pump leaves it when a later fetch fails.
-fn walk_over(pages: List<OrganizationRunnerRosterPage>, failure: NonEmptyStr?) -> OrganizationRunnerRosterWalk {
-  let begun = page_fold_begin(subject: github_listing_subject(operation: "ListOrgSelfHostedRunners"), bound: PageBound { max_pages: 60 }, first: github_first_page_cursor)
-  let state = fold(pages, init: begun, f: fn(st, p) {
-    page_fold_observe(state: st, page: PageObservation { items: p.registrations, continuation: ContinuationClosed })
-  })
-  OrganizationRunnerRosterWalk { state: state, pages: pages, failure: failure }
+test fn the_id_alias_of_this_organization_is_admitted() -> Bool {
+  admitted(scope: scope_with_id, url: page_two_url)
+    && admitted(scope: scope_with_id, url: "https://api.github.com/orgs/gunb-ai/actions/runners?per_page=100&page=2")
 }
 
-test fn a_closed_listing_whose_distinct_ids_meet_total_count_is_observed() -> Bool {
-  match delivered_page(body: page_body(total: 2, runners: [runner_one_json, runner_two_json]), link: "") {
-    Absent => false
-    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: none), observed_on: "2026-09-19" as NonEmptyStr).evidence {
-      RosterObserved { observed_on: _, registrations: regs } => length(xs: regs) == 2
-      _ => false
-    }
+test fn an_uncorroborated_id_alias_is_refused() -> Bool {
+  !admitted(scope: scope_without_id, url: page_two_url)
+    && !admitted(scope: OrganizationRunnerScope { login: "gunb-ai" as NonEmptyStr, id: Present { value: 2 } }, url: page_two_url)
+}
+
+test fn another_organization_or_resource_is_refused() -> Bool {
+  !admitted(scope: scope_with_id, url: other_org_url) && !admitted(scope: scope_with_id, url: repo_runners_url)
+}
+
+// THE WALK, DRIVEN THROUGH THE REAL PUMP: admission, framing, decode and std.page_fold, over
+// responses supplied per request target.
+fn respond_from(pages: List<ScriptedPage>) -> fn(NonEmptyStr) -> RosterTransportResponse {
+  fn(t) {
+    fold(pages, init: RosterTransportResponse { stdout: "no scripted response", stderr: "" }, f: fn(acc, p) {
+      if (t as String) == p.target { RosterTransportResponse { stdout: p.stdout, stderr: "" } } else { acc }
+    })
+  }
+}
+
+type ScriptedPage {
+  target: String
+  stdout: String
+}
+
+data first_target: String = "orgs/gunb-ai/actions/runners?per_page=100"
+
+fn ok(link: String, total: Int, runners: List<String>) -> String {
+  included(status_line: "HTTP/2.0 200 OK", link: link, body: page_body(total: total, runners: runners))
+}
+
+fn walk_evidence(scope: OrganizationRunnerScope, pages: List<ScriptedPage>) -> OrganizationRunnerRosterReport {
+  classify_roster_walk(
+    walk: roster_walk_pump(scope: scope, walk: roster_walk_begin(), respond: respond_from(pages: pages)),
+    observed_on: "2026-09-19" as NonEmptyStr
+  )
+}
+
+data runner_one_offline_json: String = "\{\"id\":11,\"name\":\"srv3-01\",\"os\":\"Linux\",\"status\":\"offline\",\"busy\":false,\"ephemeral\":true,\"labels\":[\{\"name\":\"self-hosted\"}]}"
+
+test fn a_two_page_listing_that_closes_is_observed() -> Bool {
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: next_link, total: 2, runners: [runner_one_json]) },
+    ScriptedPage { target: page_two_url, stdout: ok(link: "", total: 2, runners: [runner_two_json]) },
+  ]).evidence {
+    RosterObserved { observed_on: _, registrations: regs } => length(xs: regs) == 2
+    _ => false
+  }
+}
+
+// OR-1 AT THE WALK: another organization's page cannot complete this roster, although its rows would
+// make totals and distinct ids agree.
+test fn a_continuation_into_another_organization_contributes_no_members() -> Bool {
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: next_link_to(url: other_org_url), total: 2, runners: [runner_one_json]) },
+    ScriptedPage { target: other_org_url, stdout: ok(link: "", total: 2, runners: [runner_two_json]) },
+  ]).evidence {
+    RosterObservedPartial { observed_on: _, registrations: regs, observed_count: seen, authority_total: total } => length(xs: regs) == 1 && seen == 1 && total == 2
+    _ => false
+  }
+}
+
+// OR-3: one id read twice across a real two-page progression with DISAGREEING payloads. Distinct ids
+// (2) still meet the total (2); the disagreement must make the id disputed, not first-wins.
+test fn a_disagreeing_repeat_across_pages_is_disputed_not_first_wins() -> Bool {
+  let report = walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: next_link, total: 2, runners: [runner_one_offline_json]) },
+    ScriptedPage { target: page_two_url, stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_two_json]) },
+  ])
+  let disputed = report.disputed_ids == ["11"]
+  disputed && match report.evidence {
+    RosterObservedPartial { observed_on: _, registrations: regs, observed_count: _, authority_total: _ } =>
+      !any(regs, r => to_string(r.id) == "11") && length(xs: regs) == 1
+    _ => false
+  }
+}
+
+test fn an_agreeing_repeat_across_pages_deduplicates() -> Bool {
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: next_link, total: 2, runners: [runner_one_json]) },
+    ScriptedPage { target: page_two_url, stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_two_json]) },
+  ]).evidence {
+    RosterObserved { observed_on: _, registrations: regs } => length(xs: regs) == 2
+    _ => false
   }
 }
 
 // A REPEATED ROW IS NOT COVERAGE: two rows, one distinct id, against a total of two.
 test fn a_repeated_runner_id_does_not_count_toward_completeness() -> Bool {
-  match delivered_page(body: page_body(total: 2, runners: [runner_one_json, runner_one_json]), link: "") {
-    Absent => false
-    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: none), observed_on: "2026-09-19" as NonEmptyStr).evidence {
-      RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } => seen == 1 && total == 2
-      _ => false
-    }
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: "", total: 2, runners: [runner_one_json, runner_one_json]) },
+  ]).evidence {
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } => seen == 1 && total == 2
+    _ => false
   }
 }
 
 // A LATER PAGE FAILING KEEPS THE EARLIER MEMBERS AS PARTIAL -- never a population-wide absence.
 test fn a_failed_later_page_keeps_earlier_members_as_partial() -> Bool {
-  match delivered_page(body: page_body(total: 2, runners: [runner_one_json]), link: next_link) {
-    Absent => false
-    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: Present { value: "org runners page answered HTTP 502" as NonEmptyStr }), observed_on: "2026-09-19" as NonEmptyStr).evidence {
-      RosterObservedPartial { observed_on: _, registrations: regs, observed_count: seen, authority_total: total } => length(xs: regs) == 1 && seen == 1 && total == 2
-      _ => false
-    }
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: next_link, total: 2, runners: [runner_one_json]) },
+    ScriptedPage { target: page_two_url, stdout: included(status_line: "HTTP/2.0 502 Bad Gateway", link: "", body: "\{}") },
+  ]).evidence {
+    RosterObservedPartial { observed_on: _, registrations: regs, observed_count: seen, authority_total: total } => length(xs: regs) == 1 && seen == 1 && total == 2
+    _ => false
   }
 }
 
 test fn a_failed_first_page_is_unavailable() -> Bool {
-  match classify_roster_walk(walk: walk_over(pages: [], failure: Present { value: "org runners page answered HTTP 403" as NonEmptyStr }), observed_on: "2026-09-19" as NonEmptyStr).evidence {
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: included(status_line: "HTTP/2.0 403 Forbidden", link: "", body: "\{}") },
+  ]).evidence {
     RosterReadUnavailable { reason: _ } => true
     _ => false
   }
 }
 
-// PER-ID: 404 IS ABSENCE ONLY WHERE THE TOKEN WAS SHOWN ABLE TO LIST THE ORGANIZATION'S RUNNERS.
+// PER-ID: 404 IS ABSENCE ONLY WHERE THE SAME ORGANIZATION WAS SHOWN LISTABLE UNDER THE ADMITTED ROUTE.
 
 data not_found: String = "HTTP/2.0 404 Not Found\nContent-Type: application/json\n\n\{\"message\":\"Not Found\"}"
+data gunb_ai: NonEmptyStr = "gunb-ai"
 
 test fn a_404_under_an_established_listing_is_absent() -> Bool {
-  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
+  match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
     RunnerIdAbsent { org: o, runner_id: id } => (o as String) == "gunb-ai" && id == 11
     _ => false
   }
 }
 
 test fn a_404_without_an_established_listing_is_unobserved() -> Bool {
-  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisibilityUnestablished { reason: "org runners page answered HTTP 403" as NonEmptyStr }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
+  match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisibilityUnestablished { org: gunb_ai, reason: "org runners page answered HTTP 403" as NonEmptyStr }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
     RunnerIdUnobserved { org: _, runner_id: id, reason: _ } => id == 11
     _ => false
   }
 }
 
+// OR-2: visibility established for ANOTHER organization cannot make this one's 404 an absence.
+test fn visibility_for_another_organization_cannot_establish_absence() -> Bool {
+  match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: "other-org" as NonEmptyStr, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
+    RunnerIdUnobserved { org: o, runner_id: _, reason: _ } => (o as String) == "gunb-ai"
+    _ => false
+  }
+}
+
 test fn a_200_for_the_requested_id_is_present_in_its_org() -> Bool {
-  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 11, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
+  match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 11, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
     RunnerIdPresent { org: o, registration: r } => (o as String) == "gunb-ai" && (r.name as String) == "srv3-01"
     _ => false
   }
 }
 
 test fn a_200_for_a_different_id_is_unobserved() -> Bool {
-  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 12, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
+  match runner_id_observation_from_included(org: gunb_ai, visibility: RunnersVisible { org: gunb_ai, route: GhTokenFromOrgAdminPrelude {} }, runner_id: 12, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
     RunnerIdUnobserved { org: _, runner_id: _, reason: _ } => true
     _ => false
   }

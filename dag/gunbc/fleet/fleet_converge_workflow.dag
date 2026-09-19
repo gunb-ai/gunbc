@@ -16,7 +16,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
-import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
@@ -1082,6 +1082,7 @@ fn fleet_converge_org_runner_roster_step() -> Step {
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: runner_id_probes_env_name as String, value: yaml_string(s: "${{ github.event.inputs.runner_ids }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_org_runner_roster_step_if },
@@ -1794,6 +1795,13 @@ data fleet_converge_workflow: Workflow = Workflow {
         DispatchInput {
           name: "dashboard_workflow_run_id",
           description: Present { value: "Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "runner_ids",
+          description: Present { value: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization" },
           required: false,
           default: none,
           type: InputString,
