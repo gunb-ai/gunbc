@@ -14,7 +14,7 @@ import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import extdeps.uri { Uri, uri_https, uri_scheme_is_https }
+import extdeps.uri { Uri, uri_https }
 import gunbc.network_boot_delivery {
   FleetBootServiceReceipt,
   BootBundleMember,
@@ -175,7 +175,7 @@ type BootReadbackLocator
 
 fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> BootReadbackLocator {
   let domain = receipt.origin_custom_domain
-  if !uri_scheme_is_https(s: domain.scheme) {
+  if domain.scheme != extdeps.uri.Https {
     BootReadbackRefusedNotHttps {}
   } else {
     match parse_host_name(raw: domain.locator as String) {

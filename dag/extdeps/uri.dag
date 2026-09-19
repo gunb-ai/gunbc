@@ -46,25 +46,6 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
   }
 }
 
-// TLS-only, as distinct from uri_scheme_is_http which admits both HTTP schemes. It is a named match
-// rather than `s == Https` at the call site because a bare Https in gunbc.cloudflare.boot_origin's
-// closure evaluates to NoSuchVariable (v2.extdeps.coordination also declares an Http variant, and
-// whole-tree bare lookup collides); reproduced on review 68098. It dissolves into `s == Https` when that
-// evaluator lookup is fixed.
-fn uri_scheme_is_https(s: UriScheme) -> Bool {
-  match s {
-    Http => false
-    Https => true
-    Tftp => false
-    File => false
-    Ftp => false
-    Javascript => false
-    Data => false
-    Vbscript => false
-    Mailto => false
-  }
-}
-
 fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }

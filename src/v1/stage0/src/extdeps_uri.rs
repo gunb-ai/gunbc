@@ -69,20 +69,6 @@ pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     }
 }
 
-pub fn uri_scheme_is_https(s: UriScheme) -> bool {
-    match s.clone() {
-        UriScheme::Http => false,
-        UriScheme::Https => true,
-        UriScheme::Tftp => false,
-        UriScheme::File => false,
-        UriScheme::Ftp => false,
-        UriScheme::Javascript => false,
-        UriScheme::Data => false,
-        UriScheme::Vbscript => false,
-        UriScheme::Mailto => false,
-    }
-}
-
 pub fn uri_is_url(uri: Rc<Uri>) -> bool {
     uri_scheme_is_http(uri.scheme.clone())
 }
