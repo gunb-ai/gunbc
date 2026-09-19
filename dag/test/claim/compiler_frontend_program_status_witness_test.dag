@@ -630,12 +630,26 @@ test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base
   }
 }
 
+// XL-2 stays NotDerivable while the rehearsal residual has no honest producer on the v2
+// route: calls (callee and arguments) and bare field-position types never reach resolve, and the
+// whole-tree native census resolves nothing, so a failure roster taken after the strip is an
+// undercount by construction rather than the census. The delivery-kind fold below still keys on
+// RehearsalInstrumentDelivered; what this arm pins is that the empty roster is NOT read as
+// ordinary Outstanding work, which is the reading that dispatched a builder against it.
+test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> Bool {
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
+    && any(stages_awaiting(i: ExactOccurrenceResidualCensus),
+         l => l == namespace_cut_stage_label(s: StageXL2RootDeletionRehearsal))
+}
+
 // F3 -- XL-2 AND XL-4 CLEAR ON DELIVERY, NOT ON ACTIVATION, AND ACT-0 IS NOT THEIR PREREQUISITE.
 //
 // The circularity this closes was structural: the two stages read ACT-0's receipts, ACT-0 runs
 // after XL-4, so neither could ever clear. The rule that forbids its return is that each stage's
 // population is its OWN delivery kind -- checked here at fixture grain in both directions -- and
-// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either.
+// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either. XL-2's standing
+// is pinned NotDerivable by the arm above, so only its delivery FOLD is checked here; XL-4's
+// standing still follows the roster.
 test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> Bool {
   let both_delivered = [
     StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
@@ -644,9 +658,6 @@ test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> B
   count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: both_delivered)) == 0
     && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: both_delivered)) == 0
     && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: [])) == 1
-    && standing_agrees_with_population(
-         s: stage_status(s: StageXL2RootDeletionRehearsal),
-         expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts))
     && standing_agrees_with_population(
          s: stage_status(s: StageXL4ReferenceDerivedGraph),
          expected: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts))

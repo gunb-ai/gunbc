@@ -262,9 +262,54 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // the status carrier); the producer answers on the production route today, and the base-pinned run
 // of it is ACT-0's DenominatorRosterDigest, a separate later fact.
 //
+// XL-2 IS BLOCKED, AND UNTIL 2026-09-19 THIS BLOCK SAID NOTHING ABOUT IT. It explained XL-4's
+// refused receipt and XL-0's withdrawn one at length and was silent on XL-2, which read as
+// UNSTARTED -- and a lane (wise-pike-696) was dispatched to build the instrument on that reading.
+// The blocker had been named twice already, in carriers a reader of this roster does not open:
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering (its receipt is headed
+// NAMESPACE XL-2 scoping, still-eagle-447, 2026-09-12) and the 2026-09-14 wind-down note on
+// gunbc.roadmap.roadmap_authority. It is restated HERE because this is the row whose emptiness a
+// reader interprets, and an unexplained empty row beside two explained ones is an invitation to
+// the wrong reading. The stage arm in gunbc.compiler_frontend_program_status is NotDerivable on
+// the same cause (ExactOccurrenceResidualCensus), so the report no longer says Outstanding.
+//
+// WHAT XL-2 OWES: the cut executed in a throwaway tree, its failure roster captured AS the
+// census -- DESIGN section 3's delete-first premise that every real dependent refuses loudly.
+// The STRIP half exists and is typed: std.import strip_import_statements, applied per source by
+// gunbc.namespace_step0_strip_producer. The CENSUS half is the v2 production route -- ingest,
+// graft, normalize, resolve -- run over the stripped tree, its resolve refusals at occurrence
+// grain. That residual is XL-5's population (gunbc.compiler_frontend_program_status
+// ExactOccurrenceResidualCensus), which is why the producer must be the v2 route and not the
+// seed: the v1-compiled Step-0 canary (gunbc.namespace_step0_candidate_run over
+// tools.multi_module_compile_fixture, "through the v1 pipeline") judges the strip with the
+// resolver whose import universe IS the root being deleted, and DESIGN section 3 admits X as an
+// offline differential oracle only -- Y never derives its answer from it.
+//
+// WHY THE CENSUS HALF CANNOT BE DISCRIMINATED TODAY, three capabilities, each an undercount BY
+// CONSTRUCTION and none of them a missing file:
+//   1. CALLS. v2 body lowering erases a call's callee and arguments before resolve, so a
+//      dependent reached through a call is Accepted after the strip and never enters the roster;
+//      resolve fails OPEN for the whole call population and, in the failure-mode row's own words,
+//      "a refusal roster cannot establish completeness of affected call dependents from absence
+//      of refusals." The callee half is gunbc#11683's; the ARGUMENT half is recorded open on that
+//      PR and on the row. Function-not-found was the largest class of the August census
+//      (docs/plans/namespace-cut-replacement-plan.md, dated one-off), so this is not a corner.
+//   2. FIELD-POSITION TYPES. Cause 4 above: a bare type name in field position never reaches the
+//      containment tree, so a stripped module's field types cannot refuse (the grafting lane).
+//   3. WHOLE-TREE RESOLVE. The native whole-tree census (gunbc.witness.v2_native_route
+//      native_route_census) runs tokenize, parse and normalize per file and never calls resolve --
+//      the failure-mode row's CENSUS CONSEQUENCE -- so restoring 1 and 2 adds nothing to it until
+//      the census resolves per module; and the interpreted whole-closure compile is refused on
+//      budget by gunbc.whole_corpus_compile_admission.
+// A roster taken now would be a strict undercount wearing the name of the census: the rung
+// inflation of DESIGN section 4b(1), and the shape review 64925 refused on XL-4 one row up. The
+// instrument lands when the three capabilities land, as the strip fold composed with the route,
+// and its FIRST discriminated run on the production route is the receipt this row holds.
+//
 // Empty by construction again, and honestly so: no stage delivery instrument is delivered. XL-0's
 // producer exists and answers on the production route (gunbc#11582), but its declared identities
-// are spelling-derived, so it is not a delivery of XL-0's denominator (see above).
+// are spelling-derived, so it is not a delivery of XL-0's denominator (see above). XL-2's
+// instrument is unbuilt because its census half has no honest producer yet (see above).
 data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
