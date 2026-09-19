@@ -406,11 +406,10 @@ test fn machine_word_frontier_rows_name_this_module_holds() -> Bool {
 
 test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool {
   let keys = machine_word_consumer_frontier_rows |> map(row => frontier_subject_key(row: row))
+  // word_wrapping_add, word_rotate_right, word_xor and word_not left this set when gunbc#11647
+  // landed their consumer (extdeps.crypto.sha2); that they are consumed is now evidenced by
+  // execution in test.claim.sha256_fips180_witness_test, not by a row.
   let expected = [
-    "std.machine_word.word_wrapping_add",
-    "std.machine_word.word_rotate_right",
-    "std.machine_word.word_xor",
-    "std.machine_word.word_not",
     "std.machine_word.word_wrapping_multiply",
     "std.machine_word.word_wrapping_subtract",
     "std.machine_word.word_carrying_add"

@@ -630,20 +630,19 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
 // enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
 //
-// EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
-// bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required
-// declarations phase resolves it against THE TREE IT RUNS IN and refuses CITED-MODULE-ABSENT when
-// the module is not there. extdeps.crypto.sha2 exists on gunbc#11647 and nowhere else, so binding
-// these four rows to its symbols refused the whole parse phase -- "the symbol exists on a branch"
-// is not a fact this tree can check, and seeing it on a branch is exactly what made the citation
-// look safe. DeclarationAppears is still the right shape for a forward reference to a declaration
-// in a module that ALREADY EXISTS; it is the absent MODULE that cannot be cited. The consuming
-// symbols are named in prose in each description instead, where they are a reader's pointer rather
-// than a resolvable reference this tree would have to honour. Where the consuming change is named but
-// has authored no declaration to point at, the row is unbound and says so -- a forward reference to
-// a name nobody has written would be a citation that can never resolve, which is worse than an
-// honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
-// does not exist).
+// THE SHA-256 ROWS ARE GONE BECAUSE THEIR CONSUMER ARRIVED, NOT BECAUSE THEY WERE REBOUND. Rows for
+// word_wrapping_add, word_rotate_right, word_xor and word_not stood here, unbound, while
+// extdeps.crypto.sha2 existed only on gunbc#11647: a DeclarationRef is a CITATION resolved against
+// the tree it runs in, so citing an absent module refused CITED-MODULE-ABSENT. #11647 deletes them in
+// the transaction that lands sha256_add_all, sha256_sigma, sha256_xor3 and sha256_ch. Rebinding them
+// there would have produced rows whose DeclarationAppears trigger fires in the commit that writes
+// them -- a frontier discharged on arrival describes nothing, and section 3c's state for a
+// declaration whose consumer is in the closure is consumed-by-execution, which needs no row.
+//
+// Every row that remains is unbound for the other reason: the consuming change is named but has
+// authored no declaration to point at, and a forward reference to a name nobody has written would
+// be a citation that can never resolve, which is worse than an honest description (DESIGN section
+// 3: cite the symbol, not the position, and do not cite what does not exist).
 //
 // WHAT IS NOT HERE IS AS DELIBERATE AS WHAT IS. word_rotate_left carries no row because
 // word_rotate_right consumes it inside this module -- it is executed, not awaited. word_zero and
@@ -651,26 +650,6 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // remedy for a declaration with no consumer at all is to remove it, not to describe it. They cost
 // one line each to reintroduce beside the first caller that wants them.
 data machine_word_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
-    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; the consumer is extdeps.crypto.sha2 sha256_add_all on gunbc#11647, ~1,000 calls per compression block.",
-    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_add_all (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
-    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; the consumer is extdeps.crypto.sha2 sha256_sigma on gunbc#11647, the one fold all four go through.",
-    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_sigma (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
-    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; the consumer is extdeps.crypto.sha2 sha256_xor3 on gunbc#11647.",
-    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_xor3 (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
-    reason: "SHA-256 Ch complements its selector word; the consumer is extdeps.crypto.sha2 sha256_ch on gunbc#11647, the only consumer of complement in that algorithm.",
-    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_ch (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
-  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
     reason: "The FNV-1a kernel CONTENT-HASH-0 (gunbc#11637) models is a wrapping multiply against a prime, which is why the split-product form exists here at all. It is UNBOUND rather than bound to a symbol because that lane has authored no declaration to cite, and because FNV runs at Width64, which this substrate refuses until the multi-limb carrier lands -- so this row is retired by the FNV kernel consuming this function, not by the carrier alone.",
