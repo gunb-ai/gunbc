@@ -109,3 +109,42 @@ fn chain_event_decode<P>(text: String, schema: String, kind_decode: fn(JsonValue
       }
   }
 }
+
+// THE ENVELOPE ALONE, FOR ANY SCHEMA: the same walk as chain_event_decode without the schema check
+// and with the kind word as the payload. A reader that only needs the chain's shape -- the parent
+// links of a partition whose payload family it does not select, as the event-ref backfill does over
+// every live partition -- reads envelopes and nothing else; it decides nothing from a payload it did
+// not decode.
+fn chain_envelope_decode(text: String) -> EventDecode<String> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => EventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match member_string(doc: doc, key: "schema") {
+        Absent => EventUndecodable { reason: "schema missing" }
+        Present { value: _ } =>
+          match member_nonempty(doc: doc, key: "partition") {
+            Absent => EventUndecodable { reason: "partition missing" }
+            Present { value: part } =>
+              match member_nat(doc: doc, key: "recorded_at") {
+                Absent => EventUndecodable { reason: "recorded_at missing or not a non-negative integer" }
+                Present { value: at } =>
+                  match member_nonempty(doc: doc, key: "actor") {
+                    Absent => EventUndecodable { reason: "actor missing" }
+                    Present { value: actor } =>
+                      match member_string(doc: doc, key: "kind") {
+                        Absent => EventUndecodable { reason: "kind missing" }
+                        Present { value: kind } =>
+                          EventDecoded { event: ChainEvent {
+                            partition: (part as String) as PartitionId,
+                            parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
+                            recorded_at: at,
+                            actor: actor,
+                            payload: kind,
+                          } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}

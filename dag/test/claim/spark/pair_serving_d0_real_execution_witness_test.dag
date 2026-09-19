@@ -37,7 +37,7 @@ import gunbc.spark.pair_serving_authority {
   pair_serving_authority_for, pair_serving_successor_may_launch, pair_serving_may_finish,
 }
 import gunbc.spark.pair_serving_authority_log {
-  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, HostEffectRecord,
   AuthorityTransitionAppended, pair_serving_authority_transition, authority_eq,
   PairAuthorityEvent, EntryStateRecorded, pair_authority_partition, pair_authority_event_decode,
 }
@@ -865,14 +865,14 @@ test fn the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_
              AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
              _ => false
            })
-            && (match spark_host_standings_current(current: [current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001)]) {
+            && (match spark_host_standings_current(current: [current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001)], host_claims: [] as List<HostEffectRecord>) {
                   CurrentStandingsUnread { cause: _ } => false
                   CurrentStandingsRead { standings: st } =>
                     (match admit_unplaced_host_in(raw: "srv10", purpose: "witness build" as NonEmptyStr, standings: st) { SparkHostRefused { cause: _ } => true  SparkHostAdmitted { host: _ } => false })
                       && d0r_committed_to_group_a(standings: st, host: operator_host_srv10)
                       && !d0r_committed_to_group_a(standings: st, host: dropped)
                 })
-            && (match spark_host_standings_current(current: [CurrentAuthorityUnread { group: FabricGroupA, step: "witness" as String, reason: "unread on purpose" as String }]) { CurrentStandingsUnread { cause: _ } => true  CurrentStandingsRead { standings: _ } => false })
+            && (match spark_host_standings_current(current: [CurrentAuthorityUnread { group: FabricGroupA, step: "witness" as String, reason: "unread on purpose" as String }], host_claims: [] as List<HostEffectRecord>) { CurrentStandingsUnread { cause: _ } => true  CurrentStandingsRead { standings: _ } => false })
         }
       }
     })
