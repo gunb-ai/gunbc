@@ -15,8 +15,12 @@ import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over }
+import product.placement_supply { HostIdentity }
+import std.measure { second }
 import gunbc.spark.pair_serving_authority_log {
+  HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, pair_serving_host_effect_admit,
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
   authority_eq,
@@ -151,6 +155,71 @@ test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
               AuthorityTransitionRefused { group: _, step: s, reason: _ } => s == "claim"
               _ => false
             })
+    })
+  })
+}
+
+// ── THE HOST-EFFECT CLAIM IS A FENCE, BY REAL EXECUTION ────────────────────────────────────────
+//
+// Group A is released to the fleet (generation 1). The production effect admission over the
+// current authority (admit_unplaced_host_over, the fold admit_unplaced_host_live runs on the
+// executor's layout) admits srv5 and lands a CLAIM on the group's partition; the operator's
+// re-claim (Released → Active) is then REFUSED at the head -- the same head lease the claim
+// landed under -- until the claim is released; after the release it lands. A claim whose term
+// has expired fences nothing: a transition dated after it lands. And the admission refuses a host
+// of an Active group at the claim (the state read commits it), while a host of no claimed group
+// is admitted with no claim to make.
+fn alr_srv(s: String) -> HostIdentity {
+  s as HostIdentity
+}
+
+test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
+      let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+      let srv5 = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+          alr_witness_remote_ready(dir: dir)
+            && (match admit_unplaced_host_over(raw: srv5 as String, purpose: "a witness build" as NonEmptyStr, term: second(count: 100), layout: layout, executor: "executor-1" as NonEmptyStr, at: 1000) { SparkHostRefused { cause: _ } => true  SparkHostAdmitted { host: _, claim: _ } => false })
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1  _ => false })
+            && (match admit_unplaced_host_over(raw: srv5 as String, purpose: "a witness build" as NonEmptyStr, term: second(count: 100), layout: layout, executor: "executor-1" as NonEmptyStr, at: 1001) {
+                  SparkHostAdmitted { host: _, claim: Present { value: handle } } =>
+                    (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
+                       AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"
+                       _ => false
+                     })
+                      && (match release_host_effect_over(handle: Present { value: handle }, receipt: "exit 0", layout: layout, executor: "executor-1" as NonEmptyStr, at: 1003) { Absent => true  Present { value: _ } => false })
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1004) {
+                            AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2
+                            _ => false
+                          })
+                  _ => false
+                })
+            && (match admit_unplaced_host_over(raw: "srv10", purpose: "a witness build" as NonEmptyStr, term: second(count: 100), layout: layout, executor: "executor-1" as NonEmptyStr, at: 1005) { SparkHostAdmitted { host: _, claim: Absent } => true  _ => false })
+      }
+    })
+  })
+}
+
+test fn an_expired_host_effect_claim_fences_nothing_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
+      let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+      let srv5 = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+          alr_witness_remote_ready(dir: dir)
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
+            && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv5, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1001) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1012) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
+            && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv5, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1013) { HostEffectClaimRefused { group: _, step: st, reason: _ } => st == "committed"  _ => false })
+      }
     })
   })
 }

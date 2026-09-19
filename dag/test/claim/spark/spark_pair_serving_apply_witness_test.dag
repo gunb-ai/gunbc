@@ -9,14 +9,14 @@ import gunbc.spark.pair_serving_apply {
   spark_pair_apply_plan_current, spark_pair_apply_plans_current, spark_pair_apply_plan_refusals,
 }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord, HostEffectRecord }
 import product.capacity.event_chain { HeadAbsent }
 
 // THE CURRENT AUTHORITY IS SUPPLIED: the resting row of every claimed group at generation 0, which
 // is exactly what the log folds to when no transition has been recorded. The live read of the log
 // is executed by test.claim.spark.spark_pair_serving_apply_wet_witness on the local-repo wet lane.
 fn w_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, host_effects: [] as List<HostEffectRecord> })
 }
 
 fn w_plan() -> SparkPairApplyPlan {

@@ -217,7 +217,7 @@ fn collect_step<P>(layout: EventLogLayout, st: CollectState<P>, decode: fn(Strin
         HeadAt { id: h } => {
           let r = git.Core.CatFileBlobInRepo(repo: layout.mirror, oid: h as String)
           if !r.success {
-            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused"], "") } }
+            CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["cat-file ", h as String, " refused: the event is not in this mirror; an event written before per-event refs existed is fetchable only after event_log_backfill_event_refs has run on the placed host for this partition"], "") } }
           } else {
             match decode(r.content) {
               EventUndecodable { reason: why } => CollectState { current: st.current, collected: st.collected, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
@@ -483,5 +483,94 @@ fn fabric_event_log_placement_ensure_wet() -> ProcessExit {
   match event_log_placement_ensure(placement: fabric_event_log_placement) {
     MirrorReady => ExitSuccess
     MirrorRefused { step: s, reason: why } => exit_failure(reason: join(["fabric event log placement ensure refused at ", s, ": ", why], ""))
+  }
+}
+
+// ── BACKFILL: EVENT REFS FOR CHAINS WRITTEN BEFORE THEY EXISTED ────────────────────────────────
+//
+// Every event appended since the per-event refs landed is published under one; every event
+// appended BEFORE is reachable only through its partition head, and only the writer's own mirror
+// holds its parents' blobs. A fresh mirror walking such a chain fails at the first historical
+// parent (event_log_read_partition_with reports it, naming this obligation). The backfill runs
+// WHERE THE BLOBS ARE -- on the placed host, against the bare repository by its local path -- and
+// walks each partition from its head through the blobs' textual parents, creating the missing
+// event ref for each one in the bare repository directly (no push, no lease: the refs decide
+// nothing, they only make bytes fetchable). The receipt counts what it created and what already
+// existed; a chain it cannot walk to its origin is a refusal naming the event, never a partial
+// success. A layout whose remote is not a local path cannot backfill (the blobs are not here),
+// and says so.
+type EventRefBackfill
+  = EventRefsBackfilled { partition: PartitionId, created: Nat, present: Nat }
+  | EventRefBackfillRefused { partition: PartitionId, step: String, reason: String }
+
+fn event_ref_names_in(raw: String) -> List<String> {
+  flat_map(split(s: raw, delimiter: "\n"), line => match first(split(s: line, delimiter: "\0")) { Present { value: r } => if r == "" { [] as List<String> } else { [r] }  Absent => [] as List<String> })
+}
+
+type BackfillWalk {
+  current: HeadExpectation
+  created: Nat
+  present: Nat
+  refused: String?
+}
+
+fn backfill_step<P>(bare: FilePath, partition: PartitionId, existing: List<String>, st: BackfillWalk, decode: fn(String) -> EventDecode<P>) -> BackfillWalk {
+  match st.refused {
+    Present { value: _ } => st
+    Absent =>
+      match st.current {
+        HeadAbsent => st
+        HeadAt { id: h } => {
+          let r = git.Core.CatFileBlobInRepo(repo: bare, oid: h as String)
+          if !r.success {
+            BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["cat-file ", h as String, " refused in the placed repository"], "") } }
+          } else {
+            match decode(r.content) {
+              EventUndecodable { reason: why } => BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["event ", h as String, " undecodable: ", why], "") } }
+              EventDecoded { event: e } => {
+                let ref = event_ref(partition: partition, oid: h as String)
+                if any(existing, x => x == ref) {
+                  BackfillWalk { current: event_parent_expectation(e: e), created: st.created, present: st.present + 1, refused: none }
+                } else {
+                  let u = git.Core.UpdateRefCompareAndSwapInRepo(repo: bare, ref: ref, new_value: h as String, expected_old: "")
+                  if u.exit_code != 0 {
+                    BackfillWalk { current: st.current, created: st.created, present: st.present, refused: Present { value: join(["update-ref ", ref, " exit ", to_string(u.exit_code), ": ", trim(s: u.stderr)], "") } }
+                  } else {
+                    BackfillWalk { current: event_parent_expectation(e: e), created: st.created + 1, present: st.present, refused: none }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn event_log_backfill_event_refs<P>(layout: EventLogLayout, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> EventRefBackfill {
+  match layout.remote {
+    RemoteOverFleetSsh { url: _ } => EventRefBackfillRefused { partition: partition, step: "remote", reason: "the backfill walks the placed repository's own blobs, so it runs on the placed host over a local path, not over ssh" }
+    RemoteUnplaced => EventRefBackfillRefused { partition: partition, step: "remote", reason: "the event log is unplaced" }
+    RemoteLocalPath { path: bare } =>
+      match event_log_observe_head(layout: layout, partition: partition) {
+        HeadObservationRefused { step: s, reason: why } => EventRefBackfillRefused { partition: partition, step: s, reason: why }
+        HeadObserved { head: head } => {
+          let refs = git.Core.ForEachRefIn(repository_path: bare as String)
+          if refs.exit_code != 0 {
+            EventRefBackfillRefused { partition: partition, step: "for-each-ref", reason: join(["exit ", to_string(refs.exit_code), ": ", trim(s: refs.stderr)], "") }
+          } else {
+            let existing = event_ref_names_in(raw: refs.raw)
+            let final = fold(nat_range_inclusive(lo: 1, hi: budget), init: BackfillWalk { current: head, created: 0, present: 0, refused: none }, f: (acc, _i) => backfill_step(bare: bare, partition: partition, existing: existing, st: acc, decode: decode))
+            match final.refused {
+              Present { value: why } => EventRefBackfillRefused { partition: partition, step: "walk", reason: why }
+              Absent =>
+                match final.current {
+                  HeadAt { id: h } => EventRefBackfillRefused { partition: partition, step: "budget", reason: join(["the chain exceeded the backfill budget at ", h as String], "") }
+                  HeadAbsent => EventRefsBackfilled { partition: partition, created: final.created, present: final.present }
+                }
+            }
+          }
+        }
+      }
   }
 }

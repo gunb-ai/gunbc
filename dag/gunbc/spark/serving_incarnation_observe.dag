@@ -1,6 +1,6 @@
 module gunbc.spark.serving_incarnation_observe
 
-import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs, Port }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
@@ -626,11 +626,11 @@ fn observe_endpoint_incarnation(
 // tables; the enrolled address is reached through the host's namespace, and a port published from
 // a container appears there as the proxy's listener.
 type EndpointListenerReading
-  = EndpointNoListener { port: Int }
-  | EndpointListening { port: Int, rows: List<TcpSocketRow> }
-  | EndpointListenerUnread { port: Int, cause: String }
+  = EndpointNoListener { port: Port }
+  | EndpointListening { port: Port, rows: List<TcpSocketRow> }
+  | EndpointListenerUnread { port: Port, cause: String }
 
-fn read_endpoint_listener(transport: HostEffectTransport, port: Int) -> EndpointListenerReading {
+fn read_endpoint_listener(transport: HostEffectTransport, port: Port) -> EndpointListenerReading {
   match host_read_text(transport: transport, operation: ProcfsReadNetTcp) {
     HostTextRefused { cause: c } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp: ", c], "") }
     HostTextObserved { stdout: v4 } =>
@@ -643,7 +643,7 @@ fn read_endpoint_listener(transport: HostEffectTransport, port: Int) -> Endpoint
               match proc_net_tcp_table(text: v6) {
                 ProcNetTcpUnparseable { line: l } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp6 row could not be read: ", l], "") }
                 ProcNetTcpParsed { rows: rows6 } => {
-                  let listening = tcp_rows_listening_on(rows: concat(rows4, rows6), port: port)
+                  let listening = tcp_rows_listening_on(rows: concat(rows4, rows6), port: port as Int)
                   if length(listening) == 0 { EndpointNoListener { port: port } } else { EndpointListening { port: port, rows: listening } }
                 }
               }
