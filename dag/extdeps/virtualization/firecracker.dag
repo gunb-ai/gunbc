@@ -3,6 +3,7 @@ module extdeps.virtualization.firecracker
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -113,6 +114,13 @@ type FirecrackerBootSource {
   boot_args: NonEmptyStr
 }
 
+// A DRIVE IS EXPOSED TO THE GUEST IN WHOLE 512-BYTE SECTORS, AND A PARTIAL TAIL IS DROPPED.
+// firecracker v1.16.1 src/vmm/src/devices/virtio/block/virtio/mod.rs: SECTOR_SIZE = 1 << SECTOR_SHIFT
+// (9). device.rs, on opening the backing file: "If the image is not a multiple of the sector size,
+// the tail bits are not exposed" -- it logs a warning and the guest sees the size rounded down. A
+// backing file whose content matters to its last byte must therefore be a whole number of these.
+data firecracker_block_sector_size: ByteSize = byte_size(count: 512)
+
 // A drive is identified by a caller-chosen id and is EITHER the root device or not. Upstream lets
 // both flags be set independently; modelling is_root_device as a Bool beside is_read_only keeps
 // the upstream shape rather than inventing a coproduct the API does not have.
@@ -157,6 +165,42 @@ fn firecracker_root_drive_count(config: FirecrackerVmConfig) -> Int {
 
 fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
   firecracker_root_drive_count(config: config) == 1
+}
+
+// WHICH GUEST DEVICE A DRIVE BECOMES IS ITS POSITION IN `drives`. Firecracker attaches the
+// virtio-blk devices in the order of the configuration's drives array, and the Linux virtio_blk
+// driver names them vda, vdb, ... in the order it probes them (virtblk_name_format). On this fleet's
+// aarch64 hosts that order was observed, not only read: the Mt. Collins run
+// (gunbc.runner.runner_first_job_receipt execution_chain) booted root=/dev/vda and read its second
+// drive's credential off /dev/vdb. Only the first 26 drives are named here; a drive beyond them, or
+// one that is not attached, has no name rather than a guessed one.
+type DriveIndexScan {
+  next: Int
+  found: Int?
+}
+
+data firecracker_guest_block_letters: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn firecracker_guest_block_device_of_index(index: Int) -> String? {
+  if index >= string_length(s: firecracker_guest_block_letters) {
+    none
+  } else {
+    Present { value: concat("/dev/vd", substring(s: firecracker_guest_block_letters, start: index, end: index + 1)) }
+  }
+}
+
+fn firecracker_drive_guest_device(drives: List<FirecrackerDrive>, drive_id: NonEmptyStr) -> String? {
+  let scan = fold(drives, init: DriveIndexScan { next: 0, found: none }, f: fn(acc, d) {
+    let found = match acc.found {
+      Present { value: i } => Present { value: i }
+      Absent => if d.drive_id == drive_id { Present { value: acc.next } } else { none }
+    }
+    DriveIndexScan { next: acc.next + 1, found: found }
+  })
+  match scan.found {
+    Absent => none
+    Present { value: i } => firecracker_guest_block_device_of_index(index: i)
+  }
 }
 
 // --- the configuration FILE, which is upstream's own wire shape and not a rendering of ours ---

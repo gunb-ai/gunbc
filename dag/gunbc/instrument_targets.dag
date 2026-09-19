@@ -152,6 +152,31 @@ fn evaluation_store_address_exact_head_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
 }
 
+// O(corpus) identity-grain census of the live primitive population (gunbc#11642): every
+// realization surface joined to canonical identity, every resolver-produced primitive consumer
+// edge over dag, src/v2 and src/v1, and exactly one disposition per identity. Prints the
+// machine-readable receipt on every termination; not a floor witness, not a required CI job.
+// `gunbc test //gunbc/instruments:primitive-egress-census`.
+fn primitive_egress_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census" } }
+}
+
+// THE BOUNDED PROJECTIONS ARE LABELS OF THEIR OWN, not a flag on the full census: each is a
+// different walk (src/v2 entries, dag entries, src/v1 entries against dag), so a regression in one
+// is reported under a name that says which, and a run can be sized to the host it runs on. The
+// receipt's `scope` line carries the same fact.
+fn primitive_egress_census_v2_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-v2" } }
+}
+
+fn primitive_egress_census_dag_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-dag" } }
+}
+
+fn primitive_egress_census_seed_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -196,6 +221,22 @@ fn evaluation_store_address_exact_head_target() -> BuildTarget {
   instrument_test_target(label: evaluation_store_address_exact_head_label())
 }
 
+fn primitive_egress_census_target() -> BuildTarget {
+  instrument_test_target(label: primitive_egress_census_label())
+}
+
+fn primitive_egress_census_v2_target() -> BuildTarget {
+  instrument_test_target(label: primitive_egress_census_v2_label())
+}
+
+fn primitive_egress_census_dag_target() -> BuildTarget {
+  instrument_test_target(label: primitive_egress_census_dag_label())
+}
+
+fn primitive_egress_census_seed_target() -> BuildTarget {
+  instrument_test_target(label: primitive_egress_census_seed_label())
+}
+
 fn v2_native_cli_binding() -> TargetBinding {
   TargetBinding { target: v2_native_cli_label() producer: V2NativeCliProducer {} }
 }
@@ -229,6 +270,22 @@ fn compile_clean_diagnostic_census_binding() -> TargetBinding {
 
 fn evaluation_store_address_exact_head_binding() -> TargetBinding {
   TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
+}
+
+fn primitive_egress_census_binding() -> TargetBinding {
+  TargetBinding { target: primitive_egress_census_label() producer: PrimitiveEgressCensusProducer {} }
+}
+
+fn primitive_egress_census_v2_binding() -> TargetBinding {
+  TargetBinding { target: primitive_egress_census_v2_label() producer: PrimitiveEgressCensusV2Producer {} }
+}
+
+fn primitive_egress_census_dag_binding() -> TargetBinding {
+  TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
+}
+
+fn primitive_egress_census_seed_binding() -> TargetBinding {
+  TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -292,7 +349,8 @@ fn instrument_targets() -> List<Label> {
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
-    evaluation_store_address_exact_head_label()
+    evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
+    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(), primitive_egress_census_seed_label()
   ]
 }
 
@@ -301,7 +359,8 @@ fn instrument_bindings() -> List<TargetBinding> {
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
-    evaluation_store_address_exact_head_binding()
+    evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
+    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(), primitive_egress_census_seed_binding()
   ]
 }
 

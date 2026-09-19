@@ -1,0 +1,297 @@
+module gunbc.primitive_egress.receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
+import gunbc.primitive_egress.category { category_label }
+import gunbc.primitive_egress.disposition {
+  PrimitiveEvidence, PrimitiveDisposition, PureDagComputation, BoundHostEffect, TargetKernelRealization,
+  CompilerQueryFrontier, Unresolved, UnresolvedCause, MixedSemanticQuestions, ConflictingRealizations,
+  SubjectUnestablished, RefusalContractIncomplete, OperationAuthorityAbsent, TargetKernelUnqualified, SeedGrowthOwnershipAbsent,
+  ExternalSubjectUnverified, OwningFactUnresolved,
+  DispositionClass, disposition_class_label, disposition_class, row_owner_lane,
+  ExternalSubjectStanding, NoExternalSubject, ObservesOrMutates, ExternalSubjectUnestablished,
+  ComputationStanding, PureComputationOverInputs, NoPureComputationHalf, ComputationUnestablished,
+  RefusalStanding, RefusalsTyped, RefusalsUnmodeled, RefusalsNotApplicable,
+  RealizationStanding, NoNativeRealizationClaim, NativeRealizationOfModeledOperation,
+  CompilerQueryStanding, NotACompilerQuery, QueryOverAcceptedProduct,
+  MeaningConflict, NoMeaningConflict, SurfacesDisagree,
+  OperationAuthorityStanding, AuthorityDeclared, AuthorityRequired, ReferenceBodyStanding, ReferenceBodyExists, ReferenceBodyAbsent,
+  EquivalenceQualification, QualifiedByWitness, EquivalenceUnqualified,
+}
+import gunbc.primitive_egress.identity { JoinRoute, JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling, form_label }
+import gunbc.primitive_egress.census {
+  PrimitiveCensus, IdentityStanding, JoinedSurfaceFact, DispositionMatch, ExactlyOneDisposition, NoDisposition, MultipleDispositions,
+  SeedGrowthOwnership, SeedGrowthRows, NoSeedGrowthRow, ConsumerTally,
+  registry_without_contract, contract_without_interpreter_arm, interpreter_arm_without_contract, emitted_bridge_without_consumer,
+  unused_primitives, consumers_with_unresolved_callee, duplicate_realizations, interpreter_arm_without_emitted_route,
+  zero_disposition, multiple_disposition, exactly_one_disposition, unresolved_standings, v2_projection, v1_only_projection,
+  shared_v1_v2_identities, aliased_identities, compiler_query_without_seed_growth_row, standings_of_class,
+  consumer_only_identities, projection_only_identities, seed_growth_only_identities,
+  PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
+  census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
+}
+import std.primitive_identity { PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler }
+
+// MACHINE-READABLE RECEIPT: one JSON object per line. The first line is the summary whose every
+// count is the length of a list printed on a later line; then one `identity` line per canonical
+// identity; then one `population` line per named population carrying the identity names.
+
+fn strs(xs: List<String>) -> JsonValue {
+  json_array(elements: xs |> map(x => json_string(s: x)))
+}
+
+fn standing_names(ss: List<IdentityStanding>) -> List<String> {
+  ss |> map(s => s.name)
+}
+
+fn decl_keys(ds: List<DeclarationRef>) -> List<String> {
+  ds |> map(d => declaration_ref_display_key(ref: d))
+}
+
+fn surface_label(s: PrimitiveSurfaceAuthority) -> String {
+  match s {
+    BuiltinRegistry => "registry"
+    PrimitiveContractRow => "contract"
+    AlgebraTemplate => "algebra"
+    InterpreterDispatch => "interpreter"
+    EmitHandler => "emit"
+  }
+}
+
+fn route_label(r: JoinRoute) -> String {
+  match r {
+    JoinedByD0AliasTable => "d0_alias_table"
+    JoinedByEgressAliasRow { reason: _ } => "egress_alias_row"
+    JoinedBySpelling => "spelling"
+  }
+}
+
+fn fact_json(f: JoinedSurfaceFact) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "surface", value: json_string(s: surface_label(s: f.fact.surface))),
+    json_kv(key: "spelling", value: json_string(s: f.fact.spelling)),
+    json_kv(key: "form", value: json_string(s: form_label(form: f.fact.form))),
+    json_kv(key: "join", value: json_string(s: route_label(r: f.join.route))),
+  ])
+}
+
+fn kv_kind(kind: String, key: String, value: String) -> JsonValue {
+  json_object(members: [json_kv(key: "kind", value: json_string(s: kind)), json_kv(key: key, value: json_string(s: value))])
+}
+
+fn cause_json(c: UnresolvedCause) -> JsonValue {
+  match c {
+    MixedSemanticQuestions { questions: qs } => json_object(members: [json_kv(key: "kind", value: json_string(s: "MixedSemanticQuestions")), json_kv(key: "questions", value: strs(xs: qs |> map(q => q as String)))])
+    ConflictingRealizations { detail: d } => kv_kind(kind: "ConflictingRealizations", key: "detail", value: d as String)
+    SubjectUnestablished { detail: d } => kv_kind(kind: "SubjectUnestablished", key: "detail", value: d as String)
+    RefusalContractIncomplete { detail: d } => kv_kind(kind: "RefusalContractIncomplete", key: "detail", value: d as String)
+    OperationAuthorityAbsent { home: h } => kv_kind(kind: "OperationAuthorityAbsent", key: "home", value: h as String)
+    ExternalSubjectUnverified { detail: d } => kv_kind(kind: "ExternalSubjectUnverified", key: "detail", value: d as String)
+    OwningFactUnresolved { premise: p, reference: r, cause: c } => json_object(members: [json_kv(key: "kind", value: json_string(s: "OwningFactUnresolved")), json_kv(key: "premise", value: json_string(s: p as String)), json_kv(key: "reference", value: json_string(s: declaration_ref_display_key(ref: r))), json_kv(key: "cause", value: json_string(s: c as String))])
+    TargetKernelUnqualified { detail: d } => kv_kind(kind: "TargetKernelUnqualified", key: "detail", value: d as String)
+    SeedGrowthOwnershipAbsent { producer: p } => kv_kind(kind: "SeedGrowthOwnershipAbsent", key: "producer", value: declaration_ref_display_key(ref: p))
+  }
+}
+
+fn authority_json(a: OperationAuthorityStanding) -> JsonValue {
+  match a {
+    AuthorityDeclared { declaration: d } => kv_kind(kind: "AuthorityDeclared", key: "declaration", value: declaration_ref_display_key(ref: d))
+    AuthorityRequired { home: h } => kv_kind(kind: "AuthorityRequired", key: "home", value: h as String)
+  }
+}
+
+fn evidence_json(e: PrimitiveEvidence) -> JsonValue {
+  let external = match e.external_subject {
+    NoExternalSubject => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoExternalSubject"))])
+    ObservesOrMutates { operation: o, subject: s, provider: _, ambient_realization: a } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ObservesOrMutates")), json_kv(key: "operation", value: json_string(s: o as String)), json_kv(key: "subject", value: json_string(s: s as String)), json_kv(key: "ambient_realization", value: json_string(s: a as String))])
+    ExternalSubjectUnestablished { detail: d } => kv_kind(kind: "ExternalSubjectUnestablished", key: "detail", value: d as String)
+  }
+  let computation = match e.computation {
+    PureComputationOverInputs { authority: a, inputs: i, result: r, body: _ } => json_object(members: [json_kv(key: "kind", value: json_string(s: "PureComputationOverInputs")), json_kv(key: "authority", value: authority_json(a: a)), json_kv(key: "inputs", value: json_string(s: i as String)), json_kv(key: "result", value: json_string(s: r as String))])
+    NoPureComputationHalf => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoPureComputationHalf"))])
+    ComputationUnestablished { detail: d } => kv_kind(kind: "ComputationUnestablished", key: "detail", value: d as String)
+  }
+  let refusals = match e.refusals {
+    RefusalsTyped => json_string(s: "RefusalsTyped")
+    RefusalsUnmodeled { detail: d } => kv_kind(kind: "RefusalsUnmodeled", key: "detail", value: d as String)
+    RefusalsNotApplicable => json_string(s: "RefusalsNotApplicable")
+  }
+  let realization = match e.realization {
+    NoNativeRealizationClaim => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoNativeRealizationClaim"))])
+    NativeRealizationOfModeledOperation { authority: a, required_semantics: s, target_realization: t, reference: r, equivalence: q } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "NativeRealizationOfModeledOperation")),
+        json_kv(key: "authority", value: json_string(s: declaration_ref_display_key(ref: a))),
+        json_kv(key: "required_semantics", value: json_string(s: s as String)),
+        json_kv(key: "target_realization", value: json_string(s: t as String)),
+        json_kv(key: "reference_body", value: match r { ReferenceBodyExists { declaration: d } => json_string(s: declaration_ref_display_key(ref: d))  ReferenceBodyAbsent => json_string(s: "ReferenceBodyAbsent") }),
+        json_kv(key: "equivalence", value: match q { QualifiedByWitness { declaration: d } => json_string(s: declaration_ref_display_key(ref: d))  EquivalenceUnqualified { obligation: o } => kv_kind(kind: "EquivalenceUnqualified", key: "obligation", value: o as String) }),
+      ])
+  }
+  let query = match e.compiler_query {
+    NotACompilerQuery => json_object(members: [json_kv(key: "kind", value: json_string(s: "NotACompilerQuery"))])
+    QueryOverAcceptedProduct { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, deletion_trigger: t } => json_object(members: [json_kv(key: "kind", value: json_string(s: "QueryOverAcceptedProduct")), json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))])
+  }
+  let conflict = match e.conflict {
+    NoMeaningConflict => json_string(s: "NoMeaningConflict")
+    SurfacesDisagree { detail: d } => kv_kind(kind: "SurfacesDisagree", key: "detail", value: d as String)
+  }
+  json_object(members: [
+    json_kv(key: "external_subject", value: external),
+    json_kv(key: "computation", value: computation),
+    json_kv(key: "refusals", value: refusals),
+    json_kv(key: "realization", value: realization),
+    json_kv(key: "compiler_query", value: query),
+    json_kv(key: "conflict", value: conflict),
+    json_kv(key: "located_evidence", value: json_string(s: e.located_evidence as String)),
+    json_kv(key: "next_observation", value: json_string(s: e.next_observation as String)),
+  ])
+}
+
+fn disposition_json(row: PrimitiveEvidence, d: PrimitiveDisposition) -> JsonValue {
+  let lane = row_owner_lane(row: row)
+  let base = [
+    json_kv(key: "class", value: json_string(s: disposition_class_label(c: disposition_class(d: d)))),
+    json_kv(key: "category", value: json_string(s: category_label(category: row.category))),
+    json_kv(key: "owner_issue", value: json_int(n: lane.issue)),
+    json_kv(key: "owner_lane", value: json_string(s: lane.label as String)),
+    json_kv(key: "derived_from", value: evidence_json(e: row)),
+  ]
+  match d {
+    PureDagComputation { operation_authority: a, modeled_inputs: i, result_contract: r, dag_body: _ } =>
+      json_object(members: concat(base, [json_kv(key: "operation_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "modeled_inputs", value: json_string(s: i as String)), json_kv(key: "result_contract", value: json_string(s: r as String))]))
+    BoundHostEffect { operation_identity: o, logical_subject: s, provider_interface: _, current_ambient_realization: a } =>
+      json_object(members: concat(base, [json_kv(key: "operation", value: json_string(s: o as String)), json_kv(key: "logical_subject", value: json_string(s: s as String)), json_kv(key: "ambient_realization", value: json_string(s: a as String))]))
+    TargetKernelRealization { semantic_operation_authority: a, required_semantics: s, target_realization: t, reference_body: b, equivalence_witness: w } =>
+      json_object(members: concat(base, [json_kv(key: "semantic_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "required_semantics", value: json_string(s: s as String)), json_kv(key: "target_realization", value: json_string(s: t as String)), json_kv(key: "reference_body", value: json_string(s: declaration_ref_display_key(ref: b))), json_kv(key: "equivalence_witness", value: json_string(s: declaration_ref_display_key(ref: w)))]))
+    CompilerQueryFrontier { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, seed_growth_rows: rs, deletion_trigger: t } =>
+      json_object(members: concat(base, [json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "seed_growth_rows", value: strs(xs: decl_keys(ds: rs))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))]))
+    Unresolved { cause: c, candidate_classes: ks } =>
+      json_object(members: concat(base, [json_kv(key: "cause", value: cause_json(c: c)), json_kv(key: "candidate_classes", value: strs(xs: ks |> map(k => disposition_class_label(c: k))))]))
+  }
+}
+
+fn match_json(m: DispositionMatch) -> JsonValue {
+  match m {
+    ExactlyOneDisposition { evidence: r, qualified: _, disposition: d } => disposition_json(row: r, d: d)
+    NoDisposition => json_object(members: [json_kv(key: "class", value: json_string(s: "NONE")), json_kv(key: "matching_dispositions", value: json_int(n: 0))])
+    MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs))), json_kv(key: "matching_rows", value: json_array(elements: rs |> map(r => evidence_json(e: r))))])
+  }
+}
+
+fn tally_json(t: ConsumerTally) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "v2_sites", value: json_int(n: t.v2_sites)),
+    json_kv(key: "v1_sites", value: json_int(n: t.v1_sites)),
+    json_kv(key: "dag_sites", value: json_int(n: t.dag_sites)),
+    json_kv(key: "test_sites", value: json_int(n: t.test_sites)),
+    json_kv(key: "v2_modules", value: strs(xs: t.v2_modules)),
+    json_kv(key: "v1_modules", value: strs(xs: t.v1_modules)),
+    json_kv(key: "dag_modules", value: strs(xs: t.dag_modules)),
+    json_kv(key: "test_modules", value: strs(xs: t.test_modules)),
+    json_kv(key: "unresolved_sites", value: json_int(n: t.unresolved_sites)),
+    json_kv(key: "unresolved_callers", value: strs(xs: t.unresolved_callers)),
+  ])
+}
+
+fn seed_growth_json(s: SeedGrowthOwnership) -> JsonValue {
+  match s {
+    SeedGrowthRows { declarations: ds } => strs(xs: decl_keys(ds: ds))
+    NoSeedGrowthRow => json_array(elements: [])
+  }
+}
+
+fn identity_line(s: IdentityStanding) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "identity", value: json_string(s: s.name)),
+    json_kv(key: "spellings", value: strs(xs: s.spellings)),
+    json_kv(key: "surfaces", value: json_array(elements: s.facts |> map(f => fact_json(f: f)))),
+    json_kv(key: "route", value: json_object(members: [
+      json_kv(key: "contract", value: json_bool(b: s.contract)),
+      json_kv(key: "registry", value: json_bool(b: s.registry)),
+      json_kv(key: "algebra", value: json_bool(b: s.algebra)),
+      json_kv(key: "interpreter_arm", value: json_bool(b: s.interpreter_arm)),
+      json_kv(key: "interpreter_arm_count", value: json_int(n: s.interpreter_arm_count)),
+      json_kv(key: "emit_bridge", value: json_bool(b: s.emit_bridge)),
+      json_kv(key: "modeled_dag_bodies", value: strs(xs: decl_keys(ds: s.modeled_bodies))),
+      json_kv(key: "host_seams", value: strs(xs: decl_keys(ds: s.host_seams))),
+      json_kv(key: "divergent_bodies", value: strs(xs: decl_keys(ds: s.divergent_bodies))),
+      json_kv(key: "seed_growth_rows", value: seed_growth_json(s: s.seed_growth)),
+    ])),
+    json_kv(key: "consumers", value: tally_json(t: s.consumers)),
+    json_kv(key: "disposition", value: match_json(m: s.disposition)),
+  ]))
+}
+
+fn population_line(name: String, members: List<String>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "population", value: json_string(s: name)),
+    json_kv(key: "count", value: json_int(n: count(members))),
+    json_kv(key: "members", value: strs(xs: members)),
+  ]))
+}
+
+fn standing_label(s: CensusStanding) -> String {
+  match s {
+    CensusHeld => "held"
+    CensusDidNotHold { cause: _ } => "did_not_hold"
+    CensusRefused { cause: _ } => "refused"
+  }
+}
+
+// CONSUMER-ABSENCE POPULATIONS ARE SCOPE-QUALIFIED. `unused_primitives`, `emitted_bridge_without_
+// consumer` and `v1_only_projection` are claims about the WHOLE consumer population; a bounded
+// walk cannot establish them, so under a bounded scope they are rendered under names that say
+// so (`..._within_walked_scope`) and the v1-only projection -- which needs every other layer
+// walked -- is not rendered at all. Presence populations (reached, shared, unresolved callee) are
+// facts of the walked scope and keep their names.
+fn absence_population_name(base: String, scope_complete: Bool) -> String {
+  if scope_complete { base } else { concat(base, "_within_walked_scope") }
+}
+
+fn census_receipt_lines(c: PrimitiveCensus, scope: String, scope_complete: Bool, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
+  let v1_only = if scope_complete { [population_line(name: "v1_only_projection", members: standing_names(ss: v1_only_projection(c: c)))] } else { [] }
+  let populations = concat([
+    population_line(name: "expected_identities", members: standing_names(ss: c.standings)),
+    population_line(name: "exactly_one_disposition", members: standing_names(ss: exactly_one_disposition(c: c))),
+    population_line(name: "zero_disposition", members: standing_names(ss: zero_disposition(c: c))),
+    population_line(name: "multiple_disposition", members: standing_names(ss: multiple_disposition(c: c))),
+    population_line(name: "evidence_rows_naming_no_identity", members: c.dispositions_naming_no_identity |> map(r => r.identity.slug as String)),
+    population_line(name: "consumer_only_identities", members: standing_names(ss: consumer_only_identities(c: c))),
+    population_line(name: "projection_only_identities", members: standing_names(ss: projection_only_identities(c: c))),
+    population_line(name: "seed_growth_only_identities", members: standing_names(ss: seed_growth_only_identities(c: c))),
+    population_line(name: "pure_dag_computation", members: standing_names(ss: standings_of_class(c: c, wanted: PureDagComputationClass))),
+    population_line(name: "bound_host_effect", members: standing_names(ss: standings_of_class(c: c, wanted: BoundHostEffectClass))),
+    population_line(name: "target_kernel_realization", members: standing_names(ss: standings_of_class(c: c, wanted: TargetKernelRealizationClass))),
+    population_line(name: "compiler_query_frontier", members: standing_names(ss: standings_of_class(c: c, wanted: CompilerQueryFrontierClass))),
+    population_line(name: "unresolved", members: standing_names(ss: unresolved_standings(c: c))),
+    population_line(name: "registry_without_contract", members: standing_names(ss: registry_without_contract(c: c))),
+    population_line(name: "contract_without_interpreter_arm", members: standing_names(ss: contract_without_interpreter_arm(c: c))),
+    population_line(name: "interpreter_arm_without_contract", members: standing_names(ss: interpreter_arm_without_contract(c: c))),
+    population_line(name: absence_population_name(base: "emitted_bridge_without_consumer", scope_complete: scope_complete), members: standing_names(ss: emitted_bridge_without_consumer(c: c))),
+    population_line(name: absence_population_name(base: "unused_primitives", scope_complete: scope_complete), members: standing_names(ss: unused_primitives(c: c))),
+    population_line(name: "consumers_with_unresolved_callee", members: standing_names(ss: consumers_with_unresolved_callee(c: c))),
+    population_line(name: "duplicate_realizations", members: standing_names(ss: duplicate_realizations(c: c))),
+    population_line(name: "interpreter_arm_without_emitted_route_reached_by_v2", members: standing_names(ss: interpreter_arm_without_emitted_route(c: c))),
+    population_line(name: "compiler_query_without_seed_growth_row", members: standing_names(ss: compiler_query_without_seed_growth_row(c: c))),
+    population_line(name: "v2_projection", members: standing_names(ss: v2_projection(c: c))),
+    population_line(name: "shared_v1_v2", members: standing_names(ss: shared_v1_v2_identities(c: c))),
+    population_line(name: "aliased_identities", members: standing_names(ss: aliased_identities(c: c))),
+    population_line(name: "off_surface_call_spellings", members: c.consumer_fold.off_surface_spellings),
+    population_line(name: "hand_roster_missing_registry_rows", members: roster_missing),
+    population_line(name: "hand_roster_rows_absent_from_registry", members: roster_extra),
+    population_line(name: "entries_refused", members: c.entries_refused |> map(r => concat(r.entry, ": ", r.cause))),
+  ], v1_only)
+  let summary = serialize_json(v: json_object(members: [
+    json_kv(key: "census", value: json_string(s: "primitive-egress-census")),
+    json_kv(key: "standing", value: json_string(s: standing_label(s: census_standing(c: c)))),
+    json_kv(key: "scope", value: json_string(s: scope)),
+    json_kv(key: "consumer_population_complete", value: json_bool(b: scope_complete)),
+    json_kv(key: "entries_resolved", value: json_int(n: entries_resolved)),
+    json_kv(key: "identities", value: json_int(n: count(c.standings))),
+    json_kv(key: "service_operation_sites", value: json_int(n: c.consumer_fold.service_sites)),
+    json_kv(key: "off_surface_sites", value: json_int(n: c.consumer_fold.off_surface_sites)),
+  ]))
+  concat(concat([summary], c.standings |> map(s => identity_line(s: s))), populations)
+}

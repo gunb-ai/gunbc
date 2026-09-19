@@ -1,0 +1,16 @@
+module gunbc.primitive_egress.dispositions
+
+import std.types { List }
+import gunbc.primitive_egress.disposition { PrimitiveEvidence }
+import gunbc.primitive_egress.dispositions_text { dispositions_text_rows }
+import gunbc.primitive_egress.dispositions_collection { dispositions_collection_rows }
+import gunbc.primitive_egress.dispositions_hosts { dispositions_hosts_rows }
+import gunbc.primitive_egress.dispositions_seed_query { dispositions_seed_query_rows }
+
+// THE ONE EVIDENCE LEDGER the census joins and classifies. Rows are grouped by the lane that will
+// retire them, and the census refuses an identity that two files both describe
+// (MultipleEvidenceRows) or that no file describes (NoEvidence) -- the grouping is a browsing
+// convention, never a key, and no row names a class.
+fn primitive_evidence_rows() -> List<PrimitiveEvidence> {
+  concat(concat(concat(dispositions_text_rows(), dispositions_collection_rows()), dispositions_hosts_rows()), dispositions_seed_query_rows())
+}

@@ -15,7 +15,14 @@ import extdeps.transports.rest {
   classify_rest_outcome,
 }
 import extdeps.google.sheets
-import extdeps.google.sheets { ValueRange, ValueRangeWrite, SheetsValueInputOption }
+import extdeps.google.sheets {
+  ValueRange,
+  ValueRangeWrite,
+  SheetsValueInputOption,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+}
 import gunbc.review_sheet_projection {
   ObservedSheet,
   ReviewSheetProjection,
@@ -43,6 +50,7 @@ import gunbc.review_sheet_sheets {
   review_sheet_batch_value_input_option,
   sheet_request_cause_text,
   sheet_a1_range_wire,
+  TitleNotEncodable,
 }
 import gunbc.review_sheet_values_actuator {
   ValuesReadOutcome,
@@ -226,6 +234,10 @@ fn review_sheet_write_receipt(
 // issue -- review_sheet_get_values_request over the plan's tab -- so the assessment here is the
 // assessment the next pass would reach. A read that fails is carried as ReviewSheetReadbackRejected
 // with the read's cause, which is the assessment arm for a readback that could not be observed.
+// The request range is the A1 codec's encoding, never a raw concat; a title the codec refuses is
+// the same TitleNotEncodable review_sheet_ensure_assess answers before any read. On this route
+// that arm is unreachable in practice -- the lowering already carried the codec's refusal as
+// BatchNotIssued, and write_dispatch settles that without a read -- but the fold stays total.
 fn reassess_after_write(
   spreadsheet_id: NonEmptyStr,
   tab: NonEmptyStr,
@@ -233,15 +245,20 @@ fn reassess_after_write(
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetEnsureAssessment uses net: Network {
   let requested = review_sheet_get_values_request(tab: tab)
-  match read_values(spreadsheet_id: spreadsheet_id, a1: sheet_a1_range_wire(range: requested)) {
-    ValuesUnreadable { cause: c } => ReviewSheetReadbackRejected { reason: c }
-    ValuesRead { range: got } =>
-      review_sheet_ensure_assess(
-        requested: requested,
-        range: got,
-        projection: projection,
-        erasures: erasures,
-      )
+  match sheet_a1_range_wire(range: requested) {
+    A1TitleApostropheUnsupported { title: _ } =>
+      ReviewSheetRequestRejected { cause: TitleNotEncodable { range: requested } }
+    A1RangeEncoded { wire: a1 } =>
+      match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+        ValuesUnreadable { cause: c } => ReviewSheetReadbackRejected { reason: c }
+        ValuesRead { range: got } =>
+          review_sheet_ensure_assess(
+            requested: requested,
+            range: got,
+            projection: projection,
+            erasures: erasures,
+          )
+      }
   }
 }
 

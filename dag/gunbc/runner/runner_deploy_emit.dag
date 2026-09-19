@@ -7,11 +7,11 @@ import gunbc.ci_runner_placement {
   PrimaryCpuUnavailable, UsableRamUnavailable, SessionReservationUnestablished,
   FixedOverheadUnavailable, CompilePoolUnavailable,
   HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
-  ZeroRunnerWidth, JobserverCitationAbsent, HostCpuAllocationUnchargeable, RunnerCoreRatioUnresolved, HostNotEnrolledInFleet,
+  ZeroRunnerWidth, JobserverCitationAbsent, HostCpuAllocationUnchargeable, HostNotEnrolledInFleet,
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
   host_deployment_refusal_text,
   RunnerHostDeployment,
-  RunnerCpuBoundary, CapacityQuota,
+  RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
   SessionReservationPlan,
   SessionReservationDerived,
@@ -35,7 +35,7 @@ import gunbc.session_reservation_policy {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
-import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, DirectiveReset }
 import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
 import std.types { String, List, Bool }
 import std.layout {
@@ -74,6 +74,7 @@ fn runner_labels_text(spec: RunnerSpec) -> String {
 fn runner_cpu_boundary_text(b: RunnerCpuBoundary) -> String {
   match b {
     CapacityQuota { threads: t } => systemd_directive_value_wire(value: DirectiveCpuTime { threads: t })
+    NoCpuCeiling => systemd_directive_value_wire(value: DirectiveReset)
   }
 }
 

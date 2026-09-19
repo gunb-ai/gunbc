@@ -26,7 +26,6 @@ import gunbc.review_sheet_projection {
   ReviewSheetUnreadable,
   write_plan_preserves_operator_columns,
   write_plan_touches_column,
-  operator_column_names,
   write_plan_covers_column_letter,
   a1_row_span_includes_letter,
   classify_review_sheet,
@@ -41,10 +40,6 @@ import gunbc.review_sheet_projection {
   append_listing_row,
   columns_by_name,
   judgement_for_listing,
-  buyer_review_identity_column,
-  buyer_review_operator_columns,
-  buyer_review_sheet_schema,
-  buyer_review_sheet_projection,
   buyer_review_judgement_read_frontier,
   JudgementBlank,
   JudgementEntered,
@@ -84,6 +79,7 @@ import gunbc.review_sheet_sheets {
   lower_write_plan,
   WritePlanLowered,
   WritePlanUnlowerable,
+  TitleNotEncodable,
   value_range_includes_column_letter,
   TabBoundWritePlan,
   ReadbackObserved,
@@ -103,6 +99,7 @@ import gunbc.review_sheet_sheets {
   live_sheets_transport_frontier,
 }
 import extdeps.google.sheets {
+  a1_range_encoding_text,
   ValueRange,
   ValueRangeWrite,
   sheets_major_dimension_wire,
@@ -306,6 +303,7 @@ fn assessment_tag(a: ReviewSheetEnsureAssessment) -> String {
     ReviewSheetRequestRejected { cause: c } => match c {
       BoundedRequest { range: _ } => "request:bounded"
       ColumnBoundedRequest { range: _ } => "request:column-bounded"
+      TitleNotEncodable { range: _ } => "request:title"
     }
     ReviewSheetReadbackRejected { reason: _ } => "readback"
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => "classified"
@@ -331,8 +329,9 @@ test fn assess_refuses_each_request_shape_under_its_own_cause() -> Bool {
 fn request_cause_range_wire(a: ReviewSheetEnsureAssessment) -> String {
   match a {
     ReviewSheetRequestRejected { cause: c } => match c {
-      BoundedRequest { range: r } => concat("bounded:", sheet_a1_range_wire(range: r))
-      ColumnBoundedRequest { range: r } => concat("column:", sheet_a1_range_wire(range: r))
+      BoundedRequest { range: r } => concat("bounded:", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+      ColumnBoundedRequest { range: r } => concat("column:", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+      TitleNotEncodable { range: _ } => "title"
     }
     ReviewSheetReadbackRejected { reason: _ } => "readback"
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => "classified"
@@ -342,9 +341,9 @@ fn request_cause_range_wire(a: ReviewSheetEnsureAssessment) -> String {
 test fn assess_carries_the_whole_refused_range_not_only_its_tab() -> Bool {
   let empty = w_value_range(rows: [])
   request_cause_range_wire(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: empty))
-    == "bounded:Review!A1:E9"
+    == "bounded:'Review'!A1:E9"
     && request_cause_range_wire(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: empty))
-      == "column:Review!A1:E"
+      == "column:'Review'!A1:E"
 }
 
 fn rendered_request_refusal(requested: SheetA1Range) -> String {
@@ -361,9 +360,9 @@ fn rendered_request_refusal(requested: SheetA1Range) -> String {
 test fn the_request_refusal_reason_renders_the_range_it_refused_for_both_walls() -> Bool {
   let bounded = rendered_request_refusal(requested: w_bounded_request(tab: "Review" as NonEmptyStr))
   let column = rendered_request_refusal(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr))
-  string_contains(s: bounded, pattern: "Review!A1:E9")
+  string_contains(s: bounded, pattern: "'Review'!A1:E9")
     && string_contains(s: bounded, pattern: "unobserved rows")
-    && string_contains(s: column, pattern: "Review!A1:E")
+    && string_contains(s: column, pattern: "'Review'!A1:E")
     && string_contains(s: column, pattern: "unobserved columns")
     && !string_contains(s: column, pattern: "unobserved rows")
 }
@@ -1041,7 +1040,7 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
               && !string_contains(s: a1_cell_wire(cell: w.a1), pattern: "!")
               && match lowered_ranges(bound: bound) |> first {
                 Present { value: vr } =>
-                  vr.range == "Review!B2"
+                  vr.range == "'Review'!B2"
                     && !string_contains(s: vr.range, pattern: "Review!Review!")
                 Absent => false
               }
@@ -1064,7 +1063,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
       (bound.tab as String) == "OtherTab"
         && match lowered_ranges(bound: bound) |> first {
           Present { value: vr } =>
-            vr.range == "OtherTab!B2"
+            vr.range == "'OtherTab'!B2"
               && !string_contains(s: vr.range, pattern: "Review!")
           Absent => false
         }
@@ -1255,7 +1254,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"
         && match lowered_ranges(bound: bound) |> first {
-          Present { value: vr } => vr.range == "Review!B2"
+          Present { value: vr } => vr.range == "'Review'!B2"
           Absent => false
         }
     Noop => false
@@ -1486,7 +1485,7 @@ test fn absent_listing_appends_a_located_row() -> Bool {
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                   Present { value: vr } =>
-                                    vr.range == "Review!A2:C2"
+                                    vr.range == "'Review'!A2:C2"
                                       && match vr.values |> first {
                                         Present { value: cells } =>
                                           match cells.skip(n: 1).first() {
@@ -1652,11 +1651,11 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
       Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
       Terminal { reason: _ } => false
     }
-    && sheet_a1_range_wire(
+    && a1_range_encoding_text(e: sheet_a1_range_wire(
       range: review_sheet_get_values_request(
         tab: "Review" as NonEmptyStr,
       ),
-    ) == "Review"
+    )) == "'Review'"
     && match live_serviceusage_get_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.decl_name as String) == "service_enablement_from_state_wire"
@@ -1705,7 +1704,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                           },
                         ) |> first {
                           Present { value: vr } =>
-                            vr.range == "Review!B2"
+                            vr.range == "'Review'!B2"
                               && match vr.values |> first {
                                 Present { value: cells } =>
                                   match cells |> first {
@@ -2258,57 +2257,38 @@ test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool {
   }
 }
 
-fn w_buyer_title_derived() -> List<ReviewColumn> {
-  [ReviewColumn { name: "Title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } }]
+fn w_generic_operator_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Item" as NonEmptyStr,
+    columns: [
+      ReviewColumn { name: "Title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "Qty" as NonEmptyStr, kind: OperatorEntered },
+      ReviewColumn { name: "OperatorNote" as NonEmptyStr, kind: OperatorEntered },
+    ],
+  }
 }
 
-test fn buyer_review_sheet_schema_is_listing_identity_and_operator_entered_without_standing() -> Bool {
-  let schema = buyer_review_sheet_schema(derived_columns: w_buyer_title_derived())
-  (schema.identity_column as String) == (buyer_review_identity_column as String)
-    && (buyer_review_identity_column as String) == "Listing"
-    && (operator_column_names(schema: schema) |> count) == 4
-    && (operator_column_names(schema: schema)
-      |> filter(n => (n as String) == "Decision") |> count) == 1
-    && (operator_column_names(schema: schema)
-      |> filter(n => (n as String) == "Units to buy") |> count) == 1
-    && (operator_column_names(schema: schema)
-      |> filter(n => (n as String) == "Accepted on judgement") |> count) == 1
-    && (operator_column_names(schema: schema)
-      |> filter(n => (n as String) == "Note") |> count) == 1
-    && (buyer_review_operator_columns |> count) == 4
-    && match schema.columns |> filter(c => match c.kind {
-      ListingStanding => true
-      DerivedField { source_field: _ } => false
-      OperatorEntered => false
-      DerivedErasureMark => false
-    }) |> first {
-      Absent => true
-      Present { value: _ } => false
-    }
-}
-
-test fn buyer_review_projection_classify_does_not_write_operator_columns() -> Bool {
-  let projection = buyer_review_sheet_projection(
-    derived_columns: w_buyer_title_derived(),
+test fn classify_review_sheet_append_does_not_write_operator_columns() -> Bool {
+  let schema = w_generic_operator_schema()
+  let projection = ReviewSheetProjection {
+    schema: schema,
     rows: [ProjectionRow {
       listing_id: "v1|123" as NonEmptyStr,
       derived: [DerivedCell { column: "Title" as NonEmptyStr, value: "alpha" }],
     }],
-  )
+  }
   match classify_review_sheet(
     observed: w_observed(
-      headers: ["Listing", "Title", "Decision", "Units to buy", "Accepted on judgement", "Note"],
+      headers: ["Item", "Title", "Qty", "OperatorNote"],
       rows: [],
     ),
     projection: projection,
     erasures: [],
   ) {
     ReviewSheetNeedsWrite { plan: p } =>
-      write_plan_preserves_operator_columns(schema: projection.schema, plan: p)
-        && !write_plan_touches_column(plan: p, column: "Decision" as NonEmptyStr)
-        && !write_plan_touches_column(plan: p, column: "Units to buy" as NonEmptyStr)
-        && !write_plan_touches_column(plan: p, column: "Accepted on judgement" as NonEmptyStr)
-        && !write_plan_touches_column(plan: p, column: "Note" as NonEmptyStr)
+      write_plan_preserves_operator_columns(schema: schema, plan: p)
+        && !write_plan_touches_column(plan: p, column: "Qty" as NonEmptyStr)
+        && !write_plan_touches_column(plan: p, column: "OperatorNote" as NonEmptyStr)
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
     ReviewSheetUnreadable { reason: _ } => false

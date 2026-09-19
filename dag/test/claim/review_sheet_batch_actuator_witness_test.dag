@@ -127,8 +127,9 @@ fn w_full_plan() -> TabBoundWritePlan {
   )
 }
 
-// The wire an element of the plan must become. Cells carry no comma in this fixture, so a comma
-// join is injective over it; the claim is about WHICH ranges exist, and the encoding is local.
+// The wire an element of the plan must become: the A1 codec quotes every title, so the expected
+// spelling is 'Tab'!cells. Cells carry no comma in this fixture, so a comma join is injective over
+// it; the claim is about WHICH ranges exist, and the encoding is local.
 fn values_wire(rows: List<List<String>>) -> String {
   join(map(rows, r => join(r, ",")), ";")
 }
@@ -139,9 +140,9 @@ fn range_wire(vr: ValueRangeWrite) -> String {
 
 fn expected_wires(b: TabBoundWritePlan) -> List<String> {
   concat(
-    map(b.plan.patches, w => join([b.tab as String, "!", a1_cell_wire(cell: w.a1), "=", w.value], "")),
+    map(b.plan.patches, w => join(["'", b.tab as String, "'!", a1_cell_wire(cell: w.a1), "=", w.value], "")),
     fold(b.plan.appends, init: [], f: fn(acc, row) {
-      concat(acc, map(row.runs, r => join([b.tab as String, "!", a1_row_span_wire(span: r.a1), "=", join(r.cells, ",")], "")))
+      concat(acc, map(row.runs, r => join(["'", b.tab as String, "'!", a1_row_span_wire(span: r.a1), "=", join(r.cells, ",")], "")))
     }),
   )
 }
@@ -180,7 +181,7 @@ test fn the_identity_join_rejects_a_dropped_and_a_duplicated_range() -> Bool {
 fn refusal_tag(r: WritePlanRefusal) -> String {
   match r {
     EmptyWritePlan => "empty"
-    TabTitleUnquotable { tab: _ } => "tab"
+    TabTitleUnquotable { title: t } => join(["tab:", t as String], "")
     PatchMalformed { listing_id: id, a1: c, defect: d } =>
       join(["patch:", id as String, ":", a1_cell_wire(cell: c), ":", match d {
         PatchColumnUnreadable => "column-unreadable"
@@ -248,7 +249,33 @@ test fn lowering_refuses_an_empty_plan_rather_than_building_a_zero_range_batch()
 
 test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool {
   let b = bound(tab: "Bob's", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
-  sole_refusal_tag(b: b) == "tab"
+  sole_refusal_tag(b: b) == "tab:Bob's"
+}
+
+// THE TITLE GOES THROUGH THE A1 CODEC, NOT A CONCAT. A space-titled tab lowers to a QUOTED range
+// ('Buyer Review'!B2); a raw concat would send Buyer Review!B2, which Sheets reads as a different
+// range or refuses. The refusal for an apostrophe title above is the codec's, carried by name.
+test fn a_space_titled_tab_lowers_to_a_quoted_range() -> Bool {
+  let b = bound(tab: "Buyer Review", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
+  match lower_write_plan(bound: b) {
+    WritePlanLowered { ranges: rs } =>
+      match rs |> first {
+        Present { value: vr } => vr.range == "'Buyer Review'!B2" && count(rs) == 1
+        Absent => false
+      }
+    WritePlanUnlowerable { refusals: _ } => false
+  }
+}
+
+// One tab, one refusal: a four-range plan on an apostrophe title reports the codec's refusal once,
+// not once per range, and lowers nothing.
+test fn an_unencodable_title_is_refused_once_for_the_whole_plan() -> Bool {
+  let b = bound(
+    tab: "Bob's",
+    patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha"), patch(listing_id: "L2", letter: "B", row: 3, value: "beta")],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
+  )
+  sole_refusal_tag(b: b) == "tab:Bob's"
 }
 
 // COORDINATES ARE CHECKED, NOT TRUSTED. A patch at AA2 or B0, or an append on row 0, names no cell
