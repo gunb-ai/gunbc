@@ -1,0 +1,80 @@
+module test.claim.file_hold_plan_refusal_probe_witness_test
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED HOLD PLANS, ENROLLED AS EXECUTED REDS. The hold store's claim is that a caller cannot
+// author a plan -- an acquire plan around a forged "free at N", a release plan for a forged "held
+// by A at N" -- and that claim is structural on the acceptance path: the invalid state has no
+// constructor in ACCEPTED code. DESIGN 4b rules that this does not excuse the check: a state
+// unrepresentable in the accepted corpus is still representable as SOURCE HANDED TO THE COMPILER
+// BY A FIXTURE, and the compiler refusing it is the enrollable evidence. So test.probe.
+// file_hold_plan_forged_probe authors both forgeries as record literals, this witness hands that
+// source to the compiler through the same diagnostic-census harness the data-class probes use, and
+// requires a BLOCKING SoleConstructorViolation row at EACH plan type by name. A probe refusing for
+// any other reason would be measuring another wall, so the class and the subject are asserted, not
+// a nonzero exit. dag/test/probe/ sits under the whole-tree strict-resolve exclusion, so the probe
+// reaches the compiler only through this witness.
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// The harness control: a source that mints nothing and names nothing wrong yields a census that
+// RAN and carries zero blocking rows, so a zero below would be an observation rather than a
+// harness that could not run -- and the same module imported by the probe resolves cleanly, so the
+// probe's refusals are its own.
+data harness_control_source: String = "module probe_file_hold_plan_harness_control\nimport std.types { String }\nimport gunbc.durable_exclusive_hold_file_store { hold_held_tag }\nfn tag() -> String { hold_held_tag }\n"
+
+test fn the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean() -> Bool {
+  blocking_total(c: census_of(source: harness_control_source)) == 0
+}
+
+// (a) A FORGED ACQUIRE PLAN HAS NO CONSTRUCTOR OUTSIDE THE MINT. The literal carries the
+// expectation a forged free-at-4 observation would derive; the compiler refuses the record itself,
+// so the overwrite of a real held-at-4 slot is unwritable rather than caught at the store.
+test fn a_forged_acquire_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "FileHoldAcquirePlan",
+  ) >= 1
+}
+
+// (b) A FORGED RELEASE PLAN HAS NO CONSTRUCTOR OUTSIDE THE MINT, so a plan for "held by A at 4"
+// authored beside a real "held by B at 4" cannot reach file_hold_release_commit.
+test fn a_forged_release_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "FileHoldReleasePlan",
+  ) >= 1
+}

@@ -1,0 +1,39 @@
+module test.probe.file_hold_plan_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A hold plan is minted only by the live-read mints of
+// gunbc.durable_exclusive_hold_file_store -- file_hold_acquire_prepare and
+// file_hold_release_assess -- and both plan records are sole_constructor. The two literals below
+// are the two forgeries the side-chat review on gunbc#11661 named: (a) an acquire plan authored
+// around a FORGED "free at N" observation of a slot that is really held by B at N -- committed, it
+// would present ExpectSlotGeneration(N) and overwrite B's live hold; (b) a release plan authored
+// for a FORGED "held by A at N" -- committed, it would free B's real hold at N. Each refuses at the
+// record literal as SoleConstructorViolation. No mint in the store module is admit_callers-sealed:
+// the public mints perform the read themselves and take no observation, so there is no third
+// forgery to author -- the route does not exist rather than being refused. The witness
+// test.claim.file_hold_plan_refusal_probe_witness_test enrolls this probe and asserts the two
+// refusal classes at their subjects.
+
+import std.types { NonEmptyStr }
+import std.durable_compare_and_set { ExpectSlotGeneration }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHeld, DurableHoldFree }
+import gunbc.durable_exclusive_hold_file_store { FileHoldAcquirePlan, FileHoldReleasePlan, hold_slot_payload }
+
+fn forged_acquire_plan_over_a_forged_free_observation(root: NonEmptyStr) -> FileHoldAcquirePlan {
+  FileHoldAcquirePlan {
+    root: root,
+    slot_key: "srv3-06",
+    owner: "forger" as DurableHoldOwnerRef,
+    expected: ExpectSlotGeneration { generation: 4 },
+    held_payload: hold_slot_payload(state: DurableHoldHeld { owner: "forger" as DurableHoldOwnerRef }),
+  }
+}
+
+fn forged_release_plan_for_a_forged_held_observation(root: NonEmptyStr) -> FileHoldReleasePlan {
+  FileHoldReleasePlan {
+    root: root,
+    slot_key: "srv3-06",
+    owner: "A" as DurableHoldOwnerRef,
+    generation: 4,
+    free_payload: hold_slot_payload(state: DurableHoldFree { released_by: "forged release" as DurableHoldReleaseRef }),
+  }
+}
