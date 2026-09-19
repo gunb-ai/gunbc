@@ -72,7 +72,6 @@ type WordRefusal
   | WordWidthMismatch { left: WordWidth, right: WordWidth }
   | ShiftAmountOutOfRange { width: WordWidth, amount: Int }
   | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
-  | OctetWidthMismatch { observed: WordWidth }
   | IntegerDoesNotFitOctets { value: Int, octets: Int }
   | OctetCountOutOfRange { observed: Int }
 
@@ -702,7 +701,7 @@ fn octets_big_endian_value(octets: List<Octet>, radix: Int, acc: Int) -> Int {
 
 // ADMITTING A LIST OF RAW VALUES, ONE PLACE, CARRYING THE FIRST REFUSAL. The old form took
 // List<Word> and checked each member's WIDTH and then its value -- two propositions, one of which
-// the carrier was supposed to have settled. Octet settles the width structurally, so this admits
+// the carrier was supposed to have settled and did not. Octet settles the width structurally, so this admits
 // plain Ints and the only question left is range.
 fn octets_of_ints(octets: List<Octet>, remaining: List<Int>) -> OctetsResult {
   match remaining.first() {
@@ -718,9 +717,11 @@ fn octets_of_ints(octets: List<Octet>, remaining: List<Int>) -> OctetsResult {
 
 // The count check is EXACT, not a lower bound. A packing that accepted more octets than the width
 // holds would silently drop the excess, and one that accepted fewer would silently zero-extend --
-// two different fabricated answers to the same malformed input. The per-octet width check is what
-// makes the List<Word> argument mean what its type says: a caller can still build a Word record
-// directly, so the shape is checked at the boundary that consumes it.
+// two different fabricated answers to the same malformed input. It is the ONLY check left here:
+// the per-octet width check this sentence used to describe is gone with the List<Word> parameter,
+// because Octet has no width to disagree about. That is the carrier doing the work the check used
+// to do, which is why OctetWidthMismatch has no constructor any more and is deleted rather than
+// kept as a refusal nothing can raise.
 // THE WIDTH IS ESTABLISHED BEFORE ANY OCTET IS ACCUMULATED, AND THE HELPER CANNOT BE REACHED
 // WITHOUT IT.
 //
@@ -733,8 +734,9 @@ fn octets_of_ints(octets: List<Octet>, remaining: List<Int>) -> OctetsResult {
 // The first repair put the guard in the public wrapper and split the body into a helper named
 // "_realizable". That name asserted a property nothing enforced: .dag has no module-private, so the
 // helper was itself a callable boundary and `word_from_octets_realizable(Width64, ...)` walked
-// straight back into the overflow. The helper now takes RealizableWidth and List<QualifiedWord>,
-// so reaching it without both proofs does not typecheck.
+// straight back into the overflow. The helper now takes RealizableWidth and List<Octet>, so
+// reaching it without an established width does not typecheck, and its members cannot disagree
+// about being octets because Octet has no width field to disagree with.
 fn word_from_octets_realizable(width: RealizableWidth, octets: List<Octet>, endianness: Endianness) -> WordResult {
   let expected = word_octet_count(w: width.width)
   let observed = list_length(items: octets)
