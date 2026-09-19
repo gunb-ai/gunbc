@@ -1,0 +1,140 @@
+module test.claim.approval_broker_serve_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, HttpMethod, GET, POST, PUT }
+import extdeps.http.server {
+  ServedRouteTable,
+  ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+}
+import extdeps.uri_path { path_param_value }
+import gunbc.auth.approval_broker_serve {
+  ApprovalBrokerHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  approval_broker_route_specs,
+  approval_broker_route_table_build,
+  approval_broker_respond,
+}
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_confirm_path_template,
+  approval_broker_decide_path_template,
+  approval_broker_submit_path,
+  approval_broker_status_path_template,
+  approval_broker_confirm_path_prefix,
+  approval_broker_listen_port,
+  approval_broker_dark_listen_port,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A Refused build yields the EMPTY table here, so every selection claim below goes RED — the
+// discriminating direction. The production path never does this: approval_broker_respond answers
+// 500 naming the broken literal.
+fn broker_table_or_empty() -> ServedRouteTable<ApprovalBrokerHandler> {
+  match approval_broker_route_table_build() {
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+  }
+}
+
+fn broker_selects(method: HttpMethod, path: String, want: ApprovalBrokerHandler) -> Bool {
+  match serve_select_route(table: broker_table_or_empty(), method: method, path: path) {
+    SelectedDynamic { handler: h, params: _ } => h == want
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ROADMAP'S WALL. test.claim.roadmap_serve_witness
+// roadmap_serve_table_owns_no_approval_route asserts the roadmap answers NOTHING for these four
+// (method, path) pairs; on its own that claim is satisfiable by deleting the approval loop. This
+// one establishes the same four pairs are answered HERE, so the pair together says the routes
+// moved rather than vanished.
+test fn approval_broker_table_selects_the_four_routes() -> Bool {
+  broker_selects(method: GET, path: "/approve/esc-1.approve.0badc0de", want: ApprovalConfirmPageHandler)
+    && broker_selects(method: POST, path: "/approve/esc-1.approve.0badc0de", want: ApprovalDecideHandler)
+    && broker_selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
+    && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
+}
+
+// THE TABLE IS EXACTLY THE FOUR. A fifth row is not a neutral addition: every route this process
+// serves is one more thing whose demand shares the broker's slice, and the split exists because
+// co-tenancy is what made an approval poll depend on a dashboard render.
+test fn approval_broker_table_carries_no_other_route() -> Bool {
+  count(approval_broker_route_specs()) == 4
+    && match approval_broker_route_table_build() {
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 4
+      ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+    }
+}
+
+// A METHOD THE PAIR DOES NOT DEFINE IS 405 WITH THE ALLOWED SET, not a 404 and not a decision.
+// The GET/POST split on one path is the whole safety property of the approval pair, so the table
+// must distinguish "this path exists under other methods" from "no such path".
+test fn approval_broker_unsupported_method_on_the_pair_is_method_not_allowed() -> Bool {
+  match serve_select_route(table: broker_table_or_empty(), method: PUT, path: "/approve/esc-1.approve.0badc0de") {
+    MethodNotAllowed { allowed: ms } => count(ms) == 2
+    SelectedDynamic { handler: _, params: _ } => false
+    SelectedStatic { route: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// THE DECIDE PATH IS THE CONFIRM PATH. Two literals that agree today are a coincidence; one literal
+// read twice is the construction that keeps "same path, different consequence" true.
+test fn approval_broker_pair_is_one_path() -> Bool {
+  approval_broker_decide_path_template == approval_broker_confirm_path_template
+}
+
+// THE LINK PREFIX IS THE ROUTE'S OWN. gunbc.auth.approval_request_submission builds every
+// notification link from approval_broker_confirm_path_prefix; if that prefix and the route template
+// could disagree, an issued link would 404 at the broker while every claim over either side passed.
+test fn approval_broker_link_prefix_matches_the_confirm_route() -> Bool {
+  join([approval_broker_confirm_path_prefix as String, "\{capability\}"], "")
+    == approval_broker_confirm_path_template as String
+}
+
+// THE DARK PORT IS NOT THE SERVING PORT. Stage 1 of the cutover deploys the broker where nothing
+// routes to it; a deployment in which those coincide would run the measurement stage against live
+// traffic, which is the one thing the staging exists to prevent.
+test fn approval_broker_dark_port_is_distinct_from_the_serving_port() -> Bool {
+  !(approval_broker_dark_listen_port == approval_broker_listen_port)
+}
+
+// ── THE INHABITANCE CLAIM ────────────────────────────────────────────────────────────────────
+// Every claim above supplies a (method, path) at the ROUTE TABLE boundary and inspects what the
+// table answers. DESIGN section 3's pairing obligation is that some claim still runs the real path,
+// and it is discharged here: this one enters approval_broker_respond — the fold the serve entry
+// calls — with the bytes a request carries, and lets it build the table, select, bind the path
+// parameter, parse the capability segment and serialize the page.
+//
+// The confirm route is the one that can be run for real without a store: it renders and stops, by
+// construction, because a GET must never spend a decision. That is the same property being
+// asserted — a 200 with the decision word in it and NO write — so the claim exercises the route
+// rather than merely proving the adapter compiles.
+//
+// DELETE THE INTEGRATION AND THIS GOES RED: remove the confirm row from the specs and the same call
+// answers 404, not a differently-shaped 200.
+test fn approval_broker_confirm_route_renders_through_the_real_entry() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// THE ADAPTER'S 404 IS ITS OWN, not the table's absence: a path this process does not serve answers
+// not-found through the same entry rather than reaching a handler.
+test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
+  let r = approval_broker_respond(
+    method_label: "GET",
+    path: "/roadmap",
+    body: "",
+    tailscale_identity: "",
+  )
+  r.status == 404
+}

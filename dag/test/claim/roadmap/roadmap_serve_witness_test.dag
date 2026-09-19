@@ -10,12 +10,9 @@ import gunbc.roadmap_serve {
   InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
-  RoadmapServeRouteSpec,
-  RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
+  BeltPublishHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
-  roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
   roadmap_serve_respond,
@@ -46,6 +43,8 @@ import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
   ServedRouteTable,
+  ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  serve_build_route_table,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
@@ -72,8 +71,8 @@ import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source 
 
 fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => t
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
   }
 }
 
@@ -109,8 +108,6 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
-    && selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
-    && selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -277,9 +274,9 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
 
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } =>
+    ServedRouteTableBuilt { table: t } =>
       count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
   }
 }
 
@@ -289,12 +286,12 @@ test fn witness_live_table_builds_ready_routes() -> Bool {
 
 test fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
-    RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
+    ServedRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
+    ServedRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
   ]
-  match roadmap_serve_build_from_specs(specs: specs) {
-    RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
-    RoadmapServeTable { table: _ } => false
+  match serve_build_route_table(specs: specs) {
+    ServedRouteTableBuildRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
+    ServedRouteTableBuilt { table: _ } => false
   }
 }
 
@@ -604,4 +601,39 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
   md.status == 200
     && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
     && !string_contains(s: md.body, pattern: public_plan_section_title())
+}
+
+// ── THE WALL THE APPROVAL-BROKER SPLIT LEAVES BEHIND ─────────────────────────────────────────
+// The four approval routes moved to gunbc.auth.approval_broker_serve under their own unit and
+// slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
+// status poll because THIS process's heap was swapped and OOM-killed (side-chat ruling
+// 2026-09-19). Re-adding a route here would restore that dependency AND put a second process on the
+// single-writer 0600 approval store, whose whole discipline is that there is one writer.
+//
+// IT ASKS SELECTION, NOT THE SPEC LIST, and the difference is what makes it a wall rather than a
+// spelling check. A route re-added under any literal that MATCHES an approval request -- the same
+// path, a wildcard above it, a template that happens to cover it -- is caught, because what is
+// asserted is that this table answers nothing for those four (method, path) pairs. A witness over
+// the raw literals would go green against a re-added route spelled differently while the process
+// served it.
+//
+// THE RED IS EXACTLY THE PROHIBITED EDIT: add any of the four rows back to
+// roadmap_serve_route_specs and this claim fails. The positive control that these pairs are
+// reachable SOMEWHERE is the broker's own selection witness -- absent that, this claim would be
+// satisfiable by deleting the approval loop entirely.
+
+fn roadmap_table_answers_nothing_for(method: HttpMethod, path: String) -> Bool {
+  match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
+    SelectedDynamic { handler: _, params: _ } => false
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => true
+    NoRouteMatched => true
+  }
+}
+
+test fn roadmap_serve_table_owns_no_approval_route() -> Bool {
+  roadmap_table_answers_nothing_for(method: GET, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_table_answers_nothing_for(method: POST, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_table_answers_nothing_for(method: POST, path: "/approvals")
+    && roadmap_table_answers_nothing_for(method: GET, path: "/approvals/esc-1")
 }
