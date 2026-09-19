@@ -308,8 +308,8 @@ fn standing(kernel: BootBundleMemberEvidence, initrd: BootBundleMemberEvidence, 
     kernel: kernel,
     initrd: initrd,
     root: root,
-    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "publication_fixture"),
-    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "readback_fixture"),
+    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence_from"),
   )
 }
 
@@ -367,17 +367,17 @@ test fn bundle_unobserved_only_when_a_member_is_absent() -> Bool {
 // review 68011, one failing input per cause: each observed mismatch refuses naming the member.
 test fn bundle_refuses_a_readback_that_served_other_bytes() -> Bool {
   let stale_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
-  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: stale_root), member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation_decl: "readback_fixture")
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: stale_root), member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation_decl: "member_evidence_from")
 }
 
 test fn bundle_refuses_a_key_occupied_by_other_bytes() -> Bool {
   let occupied_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }, served_hex: digest_c_hex)
-  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: occupied_root), member: BootBundleRoot, cause: BootBundleKeyOccupiedByOtherBytes, observation_decl: "publication_fixture")
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: occupied_root), member: BootBundleRoot, cause: BootBundleKeyOccupiedByOtherBytes, observation_decl: "member_evidence")
 }
 
 test fn bundle_refuses_a_member_in_the_wrong_slot() -> Bool {
   let swapped = member_evidence(slot: BootBundleInitrd, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
-  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: swapped), member: BootBundleRoot, cause: BootBundleMemberInWrongSlot, observation_decl: "publication_fixture")
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: swapped), member: BootBundleRoot, cause: BootBundleMemberInWrongSlot, observation_decl: "member_evidence")
 }
 
 // review 68098: served_from is the observed readback origin, so a bundle read back from anywhere but
