@@ -67,11 +67,11 @@ import gunbc.auth.secret_ref_credential {
 // (extdeps.cloudflare.r2 r2_get_started_subscription_reading,
 // cloudflare_account_subscription_rate_plan_reading), so there is no gated effect to model: an
 // unentitled account classifies Inaccessible and Refuses with the dashboard step. The account's
-// entitlement is read as a byproduct of every bucket Get (R2BucketRead), so it costs no extra call
+// entitlement is read as a byproduct of every bucket Get (extdeps.cloudflare.r2_buckets R2BucketRead), so it costs no extra call
 // and cannot be skipped by a purpose that happens to already have a bucket.
 //
 // JURISDICTION IS THE STANDING'S, AND A NON-DEFAULT ONE REFUSES BEFORE CREATE. The Create surface
-// carries no jurisdiction header (extdeps.cloudflare.r2 cloudflare.R2Buckets), so a create for a
+// carries no jurisdiction header (extdeps.cloudflare.r2_buckets cloudflare.R2Buckets), so a create for a
 // non-default standing would silently make a default bucket under that name -- and a jurisdiction
 // cannot be changed after creation. Both current purposes declare default.
 
