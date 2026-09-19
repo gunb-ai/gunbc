@@ -1,0 +1,45 @@
+module extdeps.github.action.cache
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+  action_manifest_at_commit,
+}
+
+// actions/cache releases this repository has read.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/cache"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.cache",
+      decl_name: "cache_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cache_v5_1_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit (the
+// manifest citation on the row), 2026-09-18.
+data cache_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: cache_v5_1_0,
+    declared: JavaScriptAction { node_major: 24 },
+    manifest: action_manifest_at_commit(owner: "actions", repo: "cache", commit: "caa296126883cff596d87d8935842f9db880ef25"),
+  },
+]
