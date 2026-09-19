@@ -258,7 +258,11 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(Route.redeem, try surface("route_redeem"))
         XCTAssertEqual(Route.enrollmentPrefix, try surface("route_enrollment_prefix"))
         XCTAssertEqual(Route.push, try surface("route_push"))
-        XCTAssertEqual(rows.count, 9, "the surface gained a row the app does not spell: \(rows.keys.sorted())")
+        // Completeness is an identity join, not a count: the surface names must be exactly the ones
+        // the app spells, so a renamed row plus an added one cannot cancel out.
+        let spelled: Set<String> = ["header_enrollment", "header_requested_at", "header_assertion", "route_enrol", "route_pending",
+                                    "route_request_prefix", "route_redeem", "route_enrollment_prefix", "route_push"]
+        XCTAssertEqual(Set(rows.keys), spelled, "surface rows and the app's spelled set differ: \(Set(rows.keys).symmetricDifference(spelled).sorted())")
     }
 
     func testPathsMatchTheFixture() throws {
