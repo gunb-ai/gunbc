@@ -623,6 +623,15 @@ fn fixture_home_prefixes() -> List<String> {
 //
 // IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
 // that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.
+//
+// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its
+// every_realized_workflow_action_use_is_modeled_and_executed_exactly row is the only route that
+// admits hand-authored .github/workflows files, which no generator sees, and
+// gunbc.recurring_failure_mode.provider_substituted_action_runtime cites it as the executing wall.
+// Outside the gate it would disposition DeclinedOutsideRequiredGate, and changed-witness selection
+// fires only on edits to the witness's own test fns -- so a tag or node20 pin reintroduced into a
+// hand-authored workflow would merge unrefused. The module reads only committed checkout files and
+// its controls run in milliseconds, so admitting its siblings with it costs nothing.
 fn required_gate_prefixes() -> List<String> {
   [
     "v2.test.",
@@ -657,6 +666,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.docs_projection_gate_test",
     "test.claim.if_join_pool_binding_witness_test",
     "test.claim.runner_slot_provision",
+    "test.claim.action_use_admission_witness",
   ]
 }
 
@@ -871,7 +881,6 @@ fn required_floor_site_disposition(
 // exists to carry. `gunbc.discovery_census` `census_partition` now descends over these arms in one
 // pass and returns both sides, so a fifth arm must be classified rather than absorbed into
 // `false`, and the roster cannot be produced without its exclusions.
-
 
 
 
@@ -1159,6 +1168,15 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 // `v2.workflow.floor_grandfathered_roster` carries, cut once, whose rows leave by typed
 // disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
 // -- a toggle whose only effect is "proceed as if the refusal had not fired".
+//
+// ONE OTHER ROUTE REACHES THE GRANDFATHERED BUDGET, AND IT IS NOT THIS SELECTOR (operator ruling,
+// 2026-09-19). A CHANGED identity on the cost-debt roster (`v2.workflow.floor_cost_debt`) has no
+// tier of its own, and `v2.workflow.floor_cost_debt_edit` `cost_debt_edit_tier` gives it
+// `GrandfatheredTier` when -- and only when -- its edit is a pure deletion of test-fn call conjuncts,
+// decided from the base and head tokens of the declaration; every other edit takes
+// `NewWitnessTier`. It is not a caller-supplied toggle either: nothing an author writes selects it,
+// it admits only identities already on a shrink-only roster, and it can only weaken a body that was
+// withheld against that budget. This selector remains the only route for every other identity.
 //
 // THAT THE ROSTER MAY ONLY SHRINK IS NOT A PROPERTY TO CITE FROM HERE (review 65720). An earlier
 // revision of this sentence said it "may only shrink" as though the refusal were established.
@@ -1465,7 +1483,6 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // see cost that accrued without performing steps, which is the same opaque-host region named from
 // the other side.
 
-
 // THE POPULATION OF OPAQUE HOST OPERATIONS THE PREEMPTION-1 RUNG DROP IS DECLARED OVER, AND IT
 // IS EIGHT MEMBERS RATHER THAN ONE. CORRECTED 2026-09-02; the correction is a rung-honesty repair,
 // not a widening of what is tolerated.
@@ -1586,7 +1603,6 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
       )
   }
 }
-
 
 // FLAT-SCALAR MILLISECOND FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review
 // 53860 on gunbc#8584, BLOCKING on `observed_cpu_ms`/`observed_wall_ms`/`cpu_limit_ms`/

@@ -1,0 +1,99 @@
+module extdeps.github.action_runtime_policy
+
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionExecutionMechanism, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// WHAT GITHUB DOES WITH AN ACTION'S DECLARED EXECUTION MECHANISM. This is the platform's policy, a
+// fact separate from what the producer declared (extdeps.github.action_release) and from whether
+// this repository accepts the result (gunbc.action_use_admission). A runtime being AVAILABLE on the
+// runner is not the fact modeled here: the question is whether the runner executes the mechanism
+// the producer declared, or a different one in its place.
+//
+// The case that motivated this module: from the Node 20 deprecation onward the runner executes an
+// action declaring `runs.using: node20` under Node 24, annotating the job with "Node.js 20 is
+// deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24"
+// and continuing. The job succeeds; the mechanism that ran is not the one declared.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action_runtime_policy",
+      decl_name: "github_actions_execution_disposition",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `Exact` carries only the declaration: the realized mechanism IS the declared one, and a second
+// field that must equal the first would be a writable way to say they differ.
+type PlatformActionExecutionDisposition
+  = PlatformExecutesExact { declared: ActionExecutionMechanism }
+  | PlatformForcedSubstitution {
+      declared: ActionExecutionMechanism,
+      realized: ActionExecutionMechanism,
+      policy_authority: ExternalAuthority
+    }
+  | PlatformRefusesDeclaration { declared: ActionExecutionMechanism, reason: NonEmptyStr }
+  | PlatformDispositionUnmodeled { declared: ActionExecutionMechanism }
+
+// A NODE-RUNTIME POLICY EPOCH: the dated regime the platform executes JavaScript actions under. The
+// disposition is a function of the epoch AND the declaration, never of the declaration alone,
+// because GitHub has changed it on a schedule: runner v2.328.0 shipped both Node 20 and Node 24
+// with Node 20 the default; Node 24 became the default on 2026-06-16, from which a node20
+// declaration is forced onto Node 24; `override_variable` set to true -- in a workflow or on the
+// runner host -- keeps node20 executing as declared until Node 20's removal (announced for
+// 2026-09-23). Each epoch is a cited row; the next change is a new row, and a declaration no epoch
+// row answers is Unmodeled rather than guessed.
+type NodeRuntimePolicyEpoch {
+  effective_from: NonEmptyStr
+  minimum_runner_version: NonEmptyStr
+  default_node_major: Int
+  substituted_node_majors: List<Int>
+  override_variable: NonEmptyStr
+  authority: ExternalAuthority
+}
+
+data node24_default_epoch: NodeRuntimePolicyEpoch = NodeRuntimePolicyEpoch {
+  effective_from: "2026-06-16",
+  minimum_runner_version: "2.328.0",
+  default_node_major: 24,
+  substituted_node_majors: [20],
+  override_variable: "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION",
+  authority: extdeps_external_authority_anchor,
+}
+
+// The override is not an input here: it restores node20 as DECLARED, which is exact execution of a
+// declaration the repository refuses on other grounds, and whether a workflow sets it is a fact
+// about the workflow (gunbc.action_use_admission refuses it wherever it appears in a realized file).
+fn github_actions_execution_disposition(epoch: NodeRuntimePolicyEpoch, declared: ActionExecutionMechanism) -> PlatformActionExecutionDisposition {
+  match declared {
+    JavaScriptAction { node_major: n } =>
+      if n == epoch.default_node_major {
+        PlatformExecutesExact { declared: declared }
+      } else if any(epoch.substituted_node_majors, m => m == n) {
+        PlatformForcedSubstitution {
+          declared: declared,
+          realized: JavaScriptAction { node_major: epoch.default_node_major },
+          policy_authority: epoch.authority,
+        }
+      } else {
+        PlatformDispositionUnmodeled { declared: declared }
+      }
+    CompositeAction { nested: _ } => PlatformExecutesExact { declared: declared }
+    DockerAction { image: _ } => PlatformExecutesExact { declared: declared }
+  }
+}

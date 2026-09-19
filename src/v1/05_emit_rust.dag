@@ -5536,7 +5536,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       emitted_source: items_str
     )
   let reference_use_lines = reference_plan.lines
-  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
+  let merged_import_lines = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines))
+  let merged_imports = merged_import_lines |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -5553,8 +5554,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       Absent => []
     }
   )
-  let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
-    else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
+  let uncovered_svc_imports = service_import_lines_not_already_bound(svc_lines: extern_svc_imports, merged_lines: merged_import_lines)
+  let svc_imports_str = if uncovered_svc_imports |> count == 0 { "" }
+    else { concat("\n", uncovered_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
       && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
@@ -7046,6 +7048,26 @@ fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
         }
       }
     }
+  )
+}
+
+// A SERVICE IMPORT IS ONE MORE USE LINE, SO IT ANSWERS TO THE SAME DEDUPE. The per-module service
+// imports -- `use crate::<module>::<Service>;` for each service a function of this module demands --
+// were assembled beside the merged authored/carrier/derived lines and never compared with them. That
+// was harmless only while an authored import of the same service happened not to render: with
+// `std.resources` in the closure, the bare name `Filesystem` had two candidate providers (the
+// `std.resources` resource trait and the `extdeps.filesystem.filesystem_io` service struct), so the
+// authored `import extdeps.filesystem.filesystem_io { Filesystem }` line was declined and the service
+// import stood alone. Once that homonym left the closure, the authored line rendered as
+// `use crate::extdeps_filesystem_filesystem_io::{Filesystem};` beside the service import's
+// `use crate::extdeps_filesystem_filesystem_io::Filesystem;` -- the same item bound twice, rustc
+// E0252. A service import is dropped here exactly when a merged line already binds that item, by the
+// same coverage the merged dedupe applies to itself (an identical line, or a braced line naming it),
+// so every module without that overlap emits the same bytes it did.
+fn service_import_lines_not_already_bound(svc_lines: List<String>, merged_lines: List<String>) -> List<String> {
+  svc_lines |> filter(line =>
+    (merged_lines |> any(m => m == line)) == false
+      && rust_pub_use_singleton_covered(line: line, lines: merged_lines) == false
   )
 }
 
@@ -12771,9 +12793,21 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // is a fabricated realization. The arm now asks the same predicate the signature asks, so the two
 // agree by construction; where it declines, the op is a host seam with no realization in this
 // target and emits the generated refusal body the seam ruling prescribes -- a panic naming the seam,
-// never a call into a binding that does not exist. The realized arm is currently UNINHABITED by
-// the corpus (no `.dag` source in the seed or the closure spells a receiver the predicate accepts),
-// so its positive control is not authorable today; that is recorded, not papered over.
+// never a call into a binding that does not exist. The realized arm is INHABITED by a service
+// reached through its bare name (`Filesystem.Read`), which the predicate accepts since
+// infer_var_binding_kind recognizes the service-root local; its positive control is
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
+// IS STILL REACHABLE, and its discriminating red is enrolled beside that row
+// (w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding).
+// The stamp follows the service's NAME, while ServiceMethodSemantics follows the receiver's TYPE: a
+// `let fs = Filesystem` copies the nominal service type onto a different name, so `fs.Read(...)` is
+// a service op through an ordinary local, derived demand misses it, and this arm emits the refusal.
+// That residual is fail-closed -- loud and located, never an unbound `.await?` -- and it is the
+// remaining gap in derived demand for service calls. Next-rung trigger, as a capability: derived
+// service demand follows a service VALUE through bindings, not only its name, sufficient that an
+// aliased service call makes its fn effectful and this arm has no reachable input; the enrolled
+// red then flips to that construction's positive control rather than retiring (DESIGN 4b(4)).
 fn rust_unrealized_service_op_refusal(service_name: String, method: String, module_name: String) -> String {
   concat("panic!(\"unrealized host seam: service op ", service_name, ".", method, " in ", module_name, ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")")
 }

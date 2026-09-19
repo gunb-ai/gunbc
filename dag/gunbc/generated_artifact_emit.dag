@@ -1,10 +1,11 @@
 
 module gunbc.generated_artifact_emit
 
+import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_json }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -15,10 +16,11 @@ import gunbc.generated_artifact {
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   WholeCorpusCompileMeasuredRootDemandsArtifact,
+  ApprovalDeviceVectorsArtifact,
   artifact_path,
   artifact_commit_policy,
   CommitRequired, NotCommitted,
-  GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput,
+  GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest,
   committed_generated_artifacts,
   heal_regenerated_after_provisional_merge_paths
 }
@@ -30,6 +32,8 @@ import gunbc.generated_workflow_provenance {
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
+import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.cargo_config_emit { expected_cargo_config_toml }
@@ -43,7 +47,7 @@ import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.ci_spec { generated_artifact_author_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.runner_host_grants {
   runner_host_refused_sudoers_content, runner_host_sudoers_content }
@@ -97,6 +101,14 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       FleetDesiredGenerated { content } => artifact_generated(content: content)
       FleetDesiredGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
+    HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
+      HealWorkflowGenerated { content } => artifact_generated(content: content)
+      HealWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    HealPublisherWorkflowYamlArtifact => match expected_heal_publisher_workflow_yml() {
+      HealPublisherWorkflowGenerated { content } => artifact_generated(content: content)
+      HealPublisherWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     CargoConfigArtifact => artifact_generated(content: expected_cargo_config_toml())
     GitattributesArtifact => match expected_gitattributes() {
@@ -111,11 +123,12 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
-      regen_command: ci_heal_author_commit_regen_command,
+      regen_command: generated_artifact_author_regen_command,
       heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
     ))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
+    ApprovalDeviceVectorsArtifact => artifact_generated(content: approval_device_vectors_json())
     CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
       CouponProgramGenerated { content } => artifact_generated(content: content)
       CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -194,6 +207,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       CommitRequired { consumer: ProjectDocumentation } => generated
       CommitRequired { consumer: HostReconciler } => generated
       CommitRequired { consumer: CompilerRunInput } => generated
+      CommitRequired { consumer: CrossLanguageClientTest } => generated
       NotCommitted => generated
     }
   }
@@ -214,6 +228,8 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     CargoConfigArtifact => true
@@ -228,6 +244,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     RunnerDeployArtifact => true
     CouponCadQueryProgramArtifact => true
     WholeCorpusCompileMeasuredRootDemandsArtifact => true
+    ApprovalDeviceVectorsArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
