@@ -738,7 +738,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name_class()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -932,7 +932,8 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
 }
 
 // The identity-preserving sibling, for the two name sites that were dag_grammar_terminal
-// (StampClass) before the modifier classes were admitted: dag_grammar_caret_symbol_expr's
+// (StampClass) before the modifier classes were admitted, and that must keep publishing
+// what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
 // referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
 // two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
 // ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
@@ -947,10 +948,13 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
 //      ^dag_token_kw_sole_constructor instead. Holding the mode fixed does not hold the
 //      identity fixed.
 //
-// So the keyword arms bind the generic identifier identity explicitly: StampBinding
-// publishes a FIXED symbol (v2.std.grammar grammar_expr_terminal_bound), normalizing both
-// dedicated classes back onto ^dag_token_ident so a class-stamped site publishes exactly
-// what it published before promotion. That keeps
+// So THIS HELPER IS NO LONGER UNIFORMLY CLASS-STAMPED, and the arms differ on purpose:
+// the ordinary identifier arm stays StampClass, whose published identity IS
+// ^dag_token_ident; the two promoted keyword arms use a FIXED StampBinding of
+// ^dag_token_ident (v2.std.grammar grammar_expr_terminal_bound, published by
+// v2.compiler.02_parse as `StampBinding { binding: b } => b`). Both arms therefore publish
+// the SAME generic identifier identity and NEITHER publishes authored text, which is the
+// property these sites had before promotion -- reached by two mechanisms rather than one. That keeps
 // v2.lens.identity_captured_navigation.analyze node_source_symbol_note true as the
 // UNIVERSAL grammar property it states -- every caret literal carries the generic
 // ^dag_token_ident and never the particular spelling -- rather than true only of a corpus
@@ -958,7 +962,7 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
 // `^sole_constructor` legal and authors one in its own witness, so a census-relative
 // reading would not discharge the note (DESIGN section 4b(1): the reported rung must equal
 // the rung established by executed evidence).
-fn dag_grammar_ident_or_type_decl_modifier_name_class() -> GrammarExpr {
+fn dag_grammar_ident_or_type_decl_modifier_generic_ident_identity() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
     right: dag_grammar_choice(
@@ -1336,7 +1340,7 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
 fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
-    right: dag_grammar_ident_or_type_decl_modifier_name_class()
+    right: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()
   )
 }
 

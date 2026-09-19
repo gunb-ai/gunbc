@@ -69,16 +69,20 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
   parse_outcome(src: modifier_spelling_as_caret_source) == "ACCEPTED"
 }
 
-// STAMP MODE IS NOT PART OF THIS CHANGE (review 67851). Admitting two more token classes
-// at a name site must not also move that site StampClass -> StampLexeme: a lexeme stamp
-// makes the terminal carry its own text as the node's atom identity
-// (v2.compiler.02_parse symbol_intern_lexeme), which changes the identity every caret
-// literal and generic parameter carries corpus-wide and falsifies
-// v2.lens.identity_captured_navigation.analyze node_source_symbol_note. The two sites that
-// were class-stamped on main route through dag_grammar_ident_or_type_decl_modifier_name_class.
-// The pair below discriminates in both directions on ONE spelling: the same word is absent
-// from the caret tree's atom identities (class-stamped) and present in the data-decl tree's
-// (lexeme-stamped). Routing the caret site through the lexeme helper turns the first red.
+// THE ARRANGEMENT THESE CLAIMS MEASURE. Ordinary identifier tokens are StampClass, whose
+// published identity is the token class ^dag_token_ident. The two promoted keyword classes
+// are a FIXED StampBinding of ^dag_token_ident. So BOTH publish the same generic identifier
+// identity and NEITHER publishes authored text, by two different mechanisms -- which is the
+// property the class-stamped sites had before promotion. A lexeme stamp is the third
+// outcome: it publishes the authored text itself (v2.compiler.02_parse
+// symbol_intern_lexeme), which would change the identity every caret literal and generic
+// parameter carries corpus-wide and falsify
+// v2.lens.identity_captured_navigation.analyze node_source_symbol_note.
+//
+// The pair below discriminates on ONE spelling, in both directions: the word is absent from
+// the caret tree's atom identities and present in the data-decl tree's, the latter being
+// genuinely lexeme-stamped. Routing the caret site through the lexeme helper turns the
+// first red.
 
 fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   let lm = probe_cached_lm
@@ -102,7 +106,7 @@ fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   }
 }
 
-test fn caret_referenced_ident_stays_class_stamped_holds() -> Bool {
+test fn caret_referenced_ident_does_not_publish_the_lexeme_holds() -> Bool {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_caret_source,
     identity: ^sole_constructor
