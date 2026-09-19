@@ -795,7 +795,7 @@ fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.
     RestExchangeStatusRefused { status: status, body: body } =>
       exit_failure(reason: join([
         "GET /app/installations refused with status ", to_string(status),
-        ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; nothing in this corpus can sign one. Body: ", body,
+        ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; this instrument does not sign one itself, because the census App key is not custodied as a file where it runs. Body: ", body,
       ], ""))
     RestExchangeUnreached { cause: c } => exit_failure(reason: c as String)
     RestExchangeUndecodable { status: _, cause: c } => exit_failure(reason: c as String)
