@@ -81,6 +81,20 @@ fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }
 
+// %u AND %a AND %s AS COMMANDS, for a caller that reads back a file it just staged: numeric owner,
+// octal mode, size in bytes. One token each, for the reason the argv pair above states.
+fn stat_owner_uid_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%u", "--", path])
+}
+
+fn stat_mode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%a", "--", path])
+}
+
+fn stat_size_bytes_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
+}
+
 // THE TYPED OBSERVATION, BESIDE THE ARGV BUILDER THAT ALREADY SPELLS IT. `stat_file_type_command`
 // above builds the same words for a caller that needs an ArgvCommand; this operation is the
 // declared, transport-bound form a `.dag` caller can invoke directly. The corpus already carries
