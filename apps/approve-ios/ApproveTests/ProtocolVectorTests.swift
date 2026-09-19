@@ -195,14 +195,15 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(Route.enrollment(g.enrollment_id), try envelope("enrollment_path"))
     }
 
-    /// path_segment over every input -> encoded vector the .dag fold emitted: "." "%" "/" and
-    /// non-ASCII encode as upper-case %XX per UTF-8 byte, the kept alphabet passes through.
+    /// path_segment over every input -> encoded vector the .dag fold emitted: "id-" + padded
+    /// base64url of the UTF-8 bytes.
     func testPathSegmentMatchesEveryVector() throws {
         for v in try load().path_segment {
             XCTAssertEqual(Route.segment(v.input), v.encoded, v.input)
         }
-        // Injectivity control: an already-encoded input does not collide with its decoded twin.
-        XCTAssertNotEqual(Route.segment("a%2Fb"), Route.segment("a/b"))
+        // Alphabet control: the URL-safe variant, padded, never "+" or "/".
+        let seg = Route.segment("\u{FFFF}?>")
+        XCTAssertTrue(seg.hasPrefix("id-") && !seg.contains("+") && !seg.contains("/"))
     }
 
     /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.

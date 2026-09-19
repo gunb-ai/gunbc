@@ -374,17 +374,13 @@ enum Route {
     private static let requestPrefix = "/approve/device/requests/"
     private static let enrollmentPrefix = "/approve/device/enrollments/"
 
-    /// path_segment: encoded totally and injectively, never refused. A UTF-8 byte is kept only when
-    /// it is 0-9 A-Z a-z - _ ~ (is_path_kept_code_point: "." is always encoded so no id can form a
-    /// dot-segment); every other byte, "%" included, is "%" + two UPPERCASE hex digits. The encoded
-    /// path is transported verbatim (percentEncodedPath), so the assertion covers the bytes sent.
+    /// path_segment = "id-" + base64url(UTF-8(identity)), padded URL-safe alphabet (A-Z a-z 0-9 - _
+    /// with "=" padding): total and injective, never refused, no percent escape for any layer to
+    /// decode, never a dot segment, no case-equivalent spelling. Transported verbatim.
     static func segment(_ s: String) -> String {
-        var out = ""
-        for b in s.utf8 {
-            let kept = (48...57).contains(b) || (65...90).contains(b) || (97...122).contains(b) || b == 45 || b == 95 || b == 126
-            if kept { out.unicodeScalars.append(Unicode.Scalar(b)) } else { out += String(format: "%%%02X", b) }
-        }
-        return out
+        "id-" + Data(s.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
     }
     /// device_request_path
     static func request(_ escalationId: String) -> String { requestPrefix + segment(escalationId) }
@@ -418,8 +414,8 @@ struct ServerConfig {
         return ServerConfig(host: host, apnsEnvironment: env)
     }
 
-    /// path is a Route path whose segments are already percent-encoded; it is set as
-    /// percentEncodedPath so URLComponents transports it verbatim and never re-encodes it.
+    /// path is a Route path whose segments are already base64url; it is set as percentEncodedPath so
+    /// URLComponents transports it verbatim and never re-encodes it (the alphabet has nothing to escape).
     func url(_ path: String) throws -> URL {
         var c = URLComponents()
         c.scheme = "https"
