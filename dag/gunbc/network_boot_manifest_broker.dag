@@ -78,7 +78,7 @@ type SignedBootManifestTicket {
 }
 
 type BootManifestIssuanceRefusal
-  = ManifestIssuanceKeyIdDisagrees { claimed: NonEmptyStr, signing_key: MacKeyId }
+  = ManifestIssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
   | ManifestIssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | ManifestIssuanceWindowInverted { not_before: EpochMs, expiry: EpochMs }
   | ManifestIssuanceTrustUnestablished
@@ -194,9 +194,7 @@ fn issue_signed_boot_manifest(
 }
 
 fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key: MacKey) -> BootManifestIssuance {
-  let claimed_key = claims.identity.signing_key_identity
-  let signing_key = key.id as NonEmptyStr
-  if claimed_key != signing_key {
+  if claims.identity.signing_key_identity != key.id {
     BootManifestIssuanceRefused {
       cause: ManifestIssuanceKeyIdDisagrees {
         claimed: claims.identity.signing_key_identity,

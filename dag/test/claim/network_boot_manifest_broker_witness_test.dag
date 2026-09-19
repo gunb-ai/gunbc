@@ -95,7 +95,7 @@ fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, n
     kernel_cmdline: "console=ttyAMA0",
     not_before: nbf,
     expiry: exp,
-    signing_key_identity: broker_key_id as NonEmptyStr,
+    signing_key_identity: broker_key_id,
     callback_identity: "intake-callback-0d",
   }
 }
@@ -402,7 +402,7 @@ test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
     kernel_cmdline: "console=ttyS0",
     not_before: 1788000000000,
     expiry: 1788003600000,
-    signing_key_identity: broker_key_id as NonEmptyStr,
+    signing_key_identity: broker_key_id,
     callback_identity: "intake-callback-0d",
   }
   match issue_signed_boot_manifest(claims: claims_for(id: id), key: broker_key, trust: production_trust()) {
