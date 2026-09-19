@@ -1,0 +1,328 @@
+module gunbc.site_uefi_arm64_pxe_edge
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.uri { Uri, Tftp }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.network.mac { Eui48Address, MacParseResult, parse_mac_address, render_mac_address }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import product.placement_supply { SiteIdentity }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import extdeps.firmware.ipxe { ipxe_chainloading_authority, ipxe_arm64_efi_snponly, ipxe_build_target_path }
+import extdeps.formats.dnsmasq {
+  DnsmasqDirective,
+  DnsmasqComment,
+  DnsmasqPort,
+  DnsmasqDhcpRangeProxy,
+  DnsmasqDhcpMatchSet,
+  DnsmasqDhcpHostSetTag,
+  DnsmasqDhcpBootTags,
+  serialize_dnsmasq
+}
+import gunbc.network_boot_delivery {
+  SitePxeEdge,
+  SitePxeEdgeStanding,
+  SitePxeEdgeEstablished,
+  SitePxeEdgeUnestablished,
+  SitePxeEdgeClientArchitectureNotAdmitted,
+  SitePxeEdgeChainloaderMismatch,
+  SiteBootstrapDiscovery,
+  SiteBootstrapTransport,
+  ArchitectureChainloader,
+  BootDiscoveryHint,
+  DhcpFilenameHint,
+  GlobalHttpsReachability,
+  GlobalHttpsEndpointReachable,
+  GlobalHttpsEndpointUnreachable,
+  site_pxe_edge_standing
+}
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_architecture_code }
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+
+// THE SITE DISCOVERY EDGE for the first onboarding segment, UEFI ARM64 only. It consumes
+// gunbc.network_boot_delivery site_pxe_edge_standing and adds the three things that function
+// takes as given: HOW discovery was observed to answer, WHETHER the global HTTPS endpoint is
+// reachable from the boot network (as three independent observations, not one), and WHICH
+// machine is asking. Only the aarch64 chainloader lives here (extdeps.firmware.ipxe
+// ipxe_chainloading_authority, cited in the rendered config); every later stage is fetched over
+// global HTTPS.
+
+// DISCOVERY STANDING IS AN OBSERVED OFFER, NOT A CONFIGURED DAEMON. A mode (native DHCP,
+// ProxyDHCP, relay) answers only when an offer carrying the boot filename was seen reaching
+// the client on this segment. An offer with no boot filename is the mtcollins1 segment today
+// (gunbc.machine_intake_mtcollins1_netboot_client_observation: address, gateway, DNS, no option
+// 67), and it establishes nothing.
+type SiteDhcpOfferObservation
+  = BootOfferObserved { mode: SiteBootstrapDiscovery, offered_filename: NonEmptyStr, observation: DeclarationRef, observed_at: EpochMs }
+  | AddressOnlyOfferObserved { observation: DeclarationRef, observed_at: EpochMs }
+  | NoOfferObserved
+
+// WHY DISCOVERY DID NOT ANSWER IS KEPT, not collapsed into SiteDiscoveryUnobserved: no offer at all,
+// an address-only offer (the measured mtcollins1 segment), and an offer naming a different boot file
+// are three different facts about the segment with three different remedies, and the two observed
+// ones carry the observation that established them.
+type SiteDiscoveryRefusal
+  = NoBootOfferObserved
+  | AddressOnlyOffer { observation: DeclarationRef, observed_at: EpochMs }
+  | OfferedFilenameMismatch { offered: NonEmptyStr, observation: DeclarationRef, observed_at: EpochMs }
+
+type SiteDiscoveryOutcome
+  = SiteDiscoveryAnswered { mode: SiteBootstrapDiscovery }
+  | SiteDiscoveryRefused { refusal: SiteDiscoveryRefusal }
+
+fn site_discovery_outcome(offer: SiteDhcpOfferObservation, hint: BootDiscoveryHint) -> SiteDiscoveryOutcome {
+  match offer {
+    NoOfferObserved => SiteDiscoveryRefused { refusal: NoBootOfferObserved }
+    AddressOnlyOfferObserved { observation: o, observed_at: t } =>
+      SiteDiscoveryRefused { refusal: AddressOnlyOffer { observation: o, observed_at: t } }
+    BootOfferObserved { mode: mode, offered_filename: f, observation: o, observed_at: t } =>
+      if offered_filename_matches_hint(offered: f, hint: hint) {
+        SiteDiscoveryAnswered { mode: mode }
+      } else {
+        SiteDiscoveryRefused { refusal: OfferedFilenameMismatch { offered: f, observation: o, observed_at: t } }
+      }
+  }
+}
+
+fn offered_filename_matches_hint(offered: NonEmptyStr, hint: BootDiscoveryHint) -> Bool {
+  match hint {
+    DhcpFilenameHint { filename: expected } => offered as String == expected as String
+  }
+}
+
+// REACHABILITY FROM THE BOOT NETWORK is three facts with three producers: a resolver on the
+// segment answered for the endpoint host, the segment has a default route, and an HTTPS fetch
+// of the endpoint completed from the segment. None implies another -- a resolver can answer
+// with no route out, a route can exist with no resolver -- so each is observed separately and
+// GlobalHttpsEndpointReachable is minted only when all three are.
+type BootNetworkProbe
+  = BootNetworkProbeSucceeded { observation: DeclarationRef, observed_at: EpochMs }
+  | BootNetworkProbeFailed { observation: DeclarationRef, observed_at: EpochMs }
+  | BootNetworkProbeUnobserved
+
+// The probes name the endpoints they were aimed at, so the reachability the edge mints says WHICH
+// broker and origin answered from the boot network; the join then requires those to equal the
+// fleet receipt's https_boot_endpoint and origin_custom_domain.
+type BootNetworkReachabilityObservation {
+  broker_endpoint: Uri
+  artifact_origin: Uri
+  dns_resolution: BootNetworkProbe
+  default_route: BootNetworkProbe
+  global_https_fetch: BootNetworkProbe
+}
+
+type BootNetworkReachabilityAxis
+  = BootNetworkDns
+  | BootNetworkDefaultRoute
+  | BootNetworkGlobalHttps
+
+// A DEFICIT CARRIES ITS CAUSE: a probe that ran and failed keeps the observation that established the
+// failure, and an axis nobody probed says so. "Not observed" is a missing reading, not the deduced
+// fact "unreachable", so the two are never reported as one.
+type BootNetworkReachabilityDeficit
+  = BootNetworkAxisProbeFailed { axis: BootNetworkReachabilityAxis, observation: DeclarationRef, observed_at: EpochMs }
+  | BootNetworkAxisUnobserved { axis: BootNetworkReachabilityAxis }
+
+fn reachability_axis_missing(probe: BootNetworkProbe, axis: BootNetworkReachabilityAxis) -> List<BootNetworkReachabilityDeficit> {
+  match probe {
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => []
+    BootNetworkProbeFailed { observation: o, observed_at: t } => [BootNetworkAxisProbeFailed { axis: axis, observation: o, observed_at: t }]
+    BootNetworkProbeUnobserved => [BootNetworkAxisUnobserved { axis: axis }]
+  }
+}
+
+fn boot_network_reachability_missing(obs: BootNetworkReachabilityObservation) -> List<BootNetworkReachabilityDeficit> {
+  concat(
+    concat(
+      reachability_axis_missing(probe: obs.dns_resolution, axis: BootNetworkDns),
+      reachability_axis_missing(probe: obs.default_route, axis: BootNetworkDefaultRoute),
+    ),
+    reachability_axis_missing(probe: obs.global_https_fetch, axis: BootNetworkGlobalHttps),
+  )
+}
+
+fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObservation) -> GlobalHttpsReachability {
+  match obs.global_https_fetch {
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => GlobalHttpsEndpointUnreachable
+    BootNetworkProbeUnobserved => GlobalHttpsEndpointUnreachable
+    BootNetworkProbeSucceeded { observation: o, observed_at: t } =>
+      if (length(boot_network_reachability_missing(obs: obs)) == 0) {
+        GlobalHttpsEndpointReachable { broker_endpoint: obs.broker_endpoint, artifact_origin: obs.artifact_origin, observation: o, observed_at: t }
+      } else {
+        GlobalHttpsEndpointUnreachable
+      }
+  }
+}
+
+// THE CLIENT AS IT DESCRIBED ITSELF: the MAC it sent from and its DHCP option 93 architecture
+// code. Only the RFC 4578 UEFI ARM64 code is recognized (the code mtcollins1 presented is COMPARED
+// against it, never the source of it); any other code is carried as read and refused -- it is never
+// guessed onto an Architecture.
+type EdgeClientRequest {
+  mac: Eui48Address
+  arch_code: Int
+}
+
+data uefi_arm64_client_arch_code: Int = dhcp_processor_architecture_code(a: UefiArm64)
+
+// Known machines are named by the edge, not inferred from reaching it: a client absent from
+// this list gets no admitted boot even with the right architecture. The roster carries only
+// what the edge AUTHORS; discovery and reachability are never authored here, they are derived
+// from the observations beside them.
+type SiteEdgeRoster {
+  site: SiteIdentity
+  admitted_architectures: List<Architecture>
+  chainloader_digest: ContentHash
+  tftp_server_name: NonEmptyStr
+  tftp_server_address: Ipv4Address
+  known_client_macs: List<Eui48Address>
+}
+
+// What was OBSERVED on the segment for one admission, kept apart from what the edge authors so the
+// config (which renders only the roster) never needs an observation to exist.
+type SiteEdgeObservation {
+  offer: SiteDhcpOfferObservation
+  reachability: BootNetworkReachabilityObservation
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type SiteEdgeClientAdmission
+  = SiteEdgeClientAdmitted { standing: SitePxeEdgeStanding }
+  | SiteEdgeUnknownMachineRefused { mac: Eui48Address }
+  | SiteEdgeUnknownArchitectureRefused { arch_code: Int }
+  | SiteEdgeClientArchitectureNotAdmitted { architecture: Architecture }
+  | SiteEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
+  | SiteEdgeDiscoveryRefused { refusal: SiteDiscoveryRefusal }
+  | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityDeficit> }
+
+fn client_is_known(roster: SiteEdgeRoster, mac: Eui48Address) -> Bool {
+  roster.known_client_macs |> any(m => m == mac)
+}
+
+// THE TFTP ROUTE IDENTITY IS DERIVED FROM THE SERVER THE CONFIG NAMES. The dhcp-boot line renders
+// tftp_server_name and tftp_server_address, and the transport's tftp_root (which the join compares to
+// the manifest) is built from that same address, so the route the model checks is the route the
+// config tells firmware to use.
+fn site_edge_tftp_root(roster: SiteEdgeRoster) -> Uri {
+  Uri { scheme: Tftp, locator: concat(render_ipv4_address(addr: roster.tftp_server_address) as String, "/") }
+}
+
+// THE EDGE'S ONE CHAINLOADER, DERIVED. The architecture and the offered filename are the
+// extdeps.firmware.ipxe build target this edge serves, never authored beside it: the rendered
+// dhcp-boot line and the filename an observed offer is checked against are both this transport.
+fn site_edge_arm64_chainloader_transport(roster: SiteEdgeRoster) -> SiteBootstrapTransport {
+  ArchitectureChainloader {
+    architecture: Aarch64,
+    filename_hint: DhcpFilenameHint { filename: ipxe_arm64_efi_snponly.image },
+    chainloader_digest: roster.chainloader_digest,
+    tftp_root: site_edge_tftp_root(roster: roster),
+  }
+}
+
+fn observed_edge(roster: SiteEdgeRoster, observed: SiteEdgeObservation, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
+  SitePxeEdge {
+    site: roster.site,
+    admitted_architectures: roster.admitted_architectures,
+    discovery: discovery,
+    bootstrap_transport: site_edge_arm64_chainloader_transport(roster: roster),
+    global_endpoint_reachability: global_https_reachability_from_boot_network(obs: observed.reachability),
+  }
+}
+
+fn chainloader_hint(transport: SiteBootstrapTransport) -> BootDiscoveryHint {
+  match transport {
+    ArchitectureChainloader { architecture: _, filename_hint: h, chainloader_digest: _, tftp_root: _ } => h
+  }
+}
+
+fn site_edge_client_admission(roster: SiteEdgeRoster, observed: SiteEdgeObservation, request: EdgeClientRequest) -> SiteEdgeClientAdmission {
+  if (request.arch_code != uefi_arm64_client_arch_code) {
+    SiteEdgeUnknownArchitectureRefused { arch_code: request.arch_code }
+  } else {
+    if client_is_known(roster: roster, mac: request.mac) == false {
+      SiteEdgeUnknownMachineRefused { mac: request.mac }
+    } else {
+      match site_discovery_outcome(offer: observed.offer, hint: chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster))) {
+        SiteDiscoveryRefused { refusal: r } => SiteEdgeDiscoveryRefused { refusal: r }
+        SiteDiscoveryAnswered { mode: mode } =>
+          site_edge_admission_of_standing(
+            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, observed: observed, discovery: mode), client_architecture: Aarch64, observation: observed.observation, observed_at: observed.observed_at),
+            unreachable: boot_network_reachability_missing(obs: observed.reachability),
+          )
+      }
+    }
+  }
+}
+
+fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityDeficit>) -> SiteEdgeClientAdmission {
+  match standing {
+    SitePxeEdgeEstablished { receipt: _ } => SiteEdgeClientAdmitted { standing: standing }
+    SitePxeEdgeUnestablished => SiteEdgeNotEstablished { standing: standing, unreachable: unreachable }
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } => SiteEdgeClientArchitectureNotAdmitted { architecture: a }
+    SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } => SiteEdgeChainloaderMismatch { client: c, chainloader: l }
+  }
+}
+
+// THE PROXYDHCP REALIZATION, rendered through extdeps.formats.dnsmasq as a FORMAT: it is what an
+// edge on a segment with an existing DHCP server must say, and it is never evidence -- standing
+// comes only from the observed offer above. Only the aarch64 tag gets a boot line, and that line
+// also requires the known-machine tag, so the rendered edge offers nothing to an unknown machine
+// or architecture.
+data site_edge_arm64_tag: String = "efi-arm64"
+
+data site_edge_known_tag: String = "onboarding-known"
+
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdgeRoster) -> List<DnsmasqDirective> {
+  concat(
+    [
+      DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
+      DnsmasqPort { value: 0 },
+      DnsmasqDhcpRangeProxy { network_address: render_ipv4_address(addr: network_address) as String },
+      DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
+    ],
+    concat(
+      map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
+      [DnsmasqDhcpBootTags { first_tag: site_edge_arm64_tag, more_tags: [site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String }],
+    ),
+  )
+}
+
+// The config renders the SAME roster admission gates on: its known-machine tags are the roster's MACs
+// and its boot line is the roster's derived transport, so the offered file and the checked file are
+// one value.
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRoster) -> String {
+  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster))
+}
+
+fn site_edge_offered_filename(roster: SiteEdgeRoster) -> NonEmptyStr {
+  match chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster)) {
+    DhcpFilenameHint { filename: f } => f
+  }
+}
+
+// The first onboarding segment's only known client, parsed from the measured observation's wire text
+// rather than re-authored as octets, so the roster and the observation cannot disagree. A parse
+// failure is a MacParseFailed every consumer must refuse on, never an empty roster.
+data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
+
+// The two production routes this module provides and nothing in this change executes, as counted
+// rows (enrolled in gunbc.census_closure_frontier) rather than prose.
+data site_uefi_arm64_pxe_edge_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_client_admission"),
+    reason: "no route binds an observed srv4 boot offer into gunbc.network_boot_delivery NetworkBootJoinInputs.site; the admission verdict is constructed only by witnesses over supplied rosters",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the first boot offer observed from the converged srv4 edge is minted as a SiteDhcpOfferObservation and bound through site_edge_client_admission into NetworkBootJoinInputs.site on a real boot attempt; a witness over supplied offers does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
+    reason: "no production route writes the rendered ProxyDHCP config to the edge host in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to srv4 through the fleet-converge site_pxe_edge_converge mode (PXE-FABRIC 0C follow-up)"
+    )
+  ),
+]
