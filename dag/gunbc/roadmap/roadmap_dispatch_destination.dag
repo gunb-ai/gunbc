@@ -14,7 +14,7 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
 import gunbc.roadmap_model { RoadmapNodeIdentity }
 import extdeps.git.object_store { GitObjectId }
 import gunbc.merge_admission_subject { render_git_object_id_wire, parse_git_object_id_wire }
@@ -31,8 +31,11 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
-// It is read from NodeSizing.repo. destination_from_sizing matches Sized/Unsized.
-// The resolver itself does not change. After #10994 lands, this fold binds WorkItemDispatch.
+// It is read from the node's WorkItemDispatch: destination_from_dispatch matches Dispatchable,
+// whose repo slug is the destination, against NotDispatchable, which has none. The resolver
+// itself did not change when #10994 unbundled the carrier -- only what the fold reads did.
+// Sizing is no longer part of this question at all: a node's destination never depended on
+// intricacy or volume, which is precisely why the unbundling could separate them.
 //
 // THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
 // own owner/name via the repo slug; the public authority only knows gunbc_repository as an
@@ -168,19 +171,19 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   }
 }
 
-fn destination_from_sizing(sizing: NodeSizing) -> DispatchDestination {
-  match sizing {
-    Unsized =>
+fn destination_from_dispatch(dispatch: WorkItemDispatch) -> DispatchDestination {
+  match dispatch {
+    NotDispatchable =>
       DispatchDestinationMissing {
         reason: "the node carries no dispatch binding, so it has no destination repository" as NonEmptyStr,
       }
-    Sized { repo, intricacy: _, volume: _, acceptance: _ } =>
+    Dispatchable { repo, acceptance: _ } =>
       repository_from_repo_slug(repo: repo)
   }
 }
 
 fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
-  destination_from_sizing(sizing: node.sizing)
+  destination_from_dispatch(dispatch: node.dispatch)
 }
 
 // Destination identity and spawn actuation are different facts. repository_from_repo_slug

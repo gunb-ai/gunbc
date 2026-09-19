@@ -66,6 +66,7 @@ import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
+import gunbc.rung_drop.roadmap_sizing_authored_to_derived { roadmap_sizing_authored_to_derived }
 import gunbc.rung_drop.long_home_enrolment_margin_observed_only { long_home_enrolment_margin_observed_only }
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
@@ -76,6 +77,8 @@ import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accum
 import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
 import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
+import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
+import gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost { roadmap_page_style_new_witness_eval_step_cost }
 import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor { typescript_same_language_round_trip_leaves_off_required_floor }
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
@@ -131,6 +134,7 @@ data rung_drop_roster: List<RungDrop> = [
   main_per_commit_floor_verdict,
   v1_consumer_census_live_population_off_the_merge_path(),
   long_module_changed_witness_cpu_observed_only,
+  roadmap_sizing_authored_to_derived,
   long_home_enrolment_margin_observed_only,
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
@@ -141,6 +145,8 @@ data rung_drop_roster: List<RungDrop> = [
   seed_whole_corpus_demand_population_blind,
   roadmap_live_projection_new_witness_eval_step_cost,
   live_deploy_apply_render_new_witness_eval_step_cost,
+  roadmap_live_forecast_new_witness_eval_step_cost,
+  roadmap_page_style_new_witness_eval_step_cost,
   seam_monolith_control_unmeasured_derived_root,
   typescript_same_language_round_trip_leaves_off_required_floor,
   type_reference_location_fallback_keys_production_realization,
