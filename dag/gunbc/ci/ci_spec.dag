@@ -4,8 +4,16 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
-import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import gunbc.auth.ci_app_key_rotation {
+  app_key_version_env_name,
+  app_key_verify_record_env_name,
+  app_key_record_key_status_key,
+  app_key_record_resolved_name_key,
+  app_key_record_token_status_key,
+  app_key_verify_receipt_path,
+}
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
@@ -93,7 +101,7 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef }
+import std.types { GitRef, NonEmptyStr }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -1519,7 +1527,34 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 // but 201 refuses with the status line, so a revoked key, a removed installation and a missing
 // permission each surface as what they are rather than as a JSON decode traceback.
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
-  [
+  gunbc_ci_app_installation_token_mint_prelude(key: gunbai_ci_app_pem_secret, record: none)
+}
+
+// THE ONE PLACE THE APP KEY IS READ, SIGNED WITH AND WIPED, parameterized by WHICH version to read
+// and whether to leave an observation record. The org-admin step reads the key through its declared
+// SecretRef with no record, exactly as before; the app-key version verifier
+// (gunbc.auth.ci_app_key_rotation) reads an EXACT version and records what each boundary answered,
+// so its verdict is decided in .dag over typed observations instead of by this script's exit status.
+// The record carries statuses and a resource name, never key, JWT or token material, and it is not
+// in the cleanup trap because the verdict step after this one reads it. One prelude, two readers:
+// a second copy of this sequence for the verifier would be a second place key material is written,
+// and the two would drift in exactly the hygiene (umask, 0600, trap) that makes either safe.
+fn gunbc_ci_app_key_record_step(record: String?, key: String, value_expression: String) -> List<PipelineStep> {
+  match record {
+    Absent => []
+    Present { value: path_expression } =>
+      [
+        Do {
+          run: ci_retry_body_run(
+            command: join(["printf '", key, " %s\\n' ", value_expression, " >> ", path_expression], "")
+          )
+        }
+      ]
+  }
+}
+
+fn gunbc_ci_app_installation_token_mint_prelude(key: SecretRef, record: String?) -> List<PipelineStep> {
+  concat(concat(concat(concat(concat(concat([
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
     Do { run: ci_retry_body_run(command: "umask 077") },
     Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/org-admin-app-key\"") },
@@ -1539,24 +1574,34 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          secret_ref_access_url(ref: key),
           "\")\""
         ], "")
       )
     },
     Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
+  ],
+  gunbc_ci_app_key_record_step(record: record, key: app_key_record_key_status_key, value_expression: "\"$SM_CODE\"")),
+  [
     Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
           org_admin_app_key_unreadable_message(
-            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+            resource: secret_ref_version_resource(ref: key),
             http_status: "$SM_CODE"
           ),
           "\" >&2; exit 1; fi"
         ], "")
       )
     },
+  ]),
+  gunbc_ci_app_key_record_step(
+    record: record,
+    key: app_key_record_resolved_name_key,
+    value_expression: "\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"name\"])' \"$SM_BODY\")\""
+  )),
+  [
     Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\"") },
     Do { run: ci_retry_body_run(command: "rm -f \"$SM_BODY\"") },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
@@ -1589,6 +1634,13 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
       )
     },
     Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
+  ]),
+  gunbc_ci_app_key_record_step(
+    record: record,
+    key: app_key_record_token_status_key,
+    value_expression: "\"$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')\""
+  )),
+  [
     Do {
       run: ci_retry_body_run(
         command: join([
@@ -1616,7 +1668,7 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
         ], "")
       )
     }
-  ]
+  ])
 }
 
 // THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
@@ -1740,6 +1792,64 @@ fn gunbc_ci_app_control_plane_converge_invoke() -> String {
     function: "app_control_plane_converge_wet",
     claim_run: false,
     receipt_rel: Present { value: app_control_plane_receipt_path }
+  )
+}
+
+// THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
+// then a verdict over what that mint observed. They are two steps because the mint refuses by
+// exiting — as the org-admin step must — and a verdict that ran inside the same script would never
+// run on the refusals it exists to type. The verdict step runs on always() and reads the record.
+//
+// The version reaches the key's resource name as a RUNTIME parameter: the dispatch input is in
+// APP_KEY_VERSION, and the SecretRef the prelude reads carries that variable where a number would
+// be. That is why the selector guard comes FIRST and admits only a positive decimal integer — the
+// alias and anything else never reach the URL. The guard is the shell's copy of
+// extdeps.cloud.gcp.secret_manager sm_version_id_is_number, which the verdict re-applies in .dag
+// over the same input, so the two cannot disagree silently: a value one admits and the other
+// refuses reds the verdict.
+fn gunbc_ci_app_key_version_verify_key_ref() -> SecretRef {
+  SecretRef {
+    project: gunbai_ci_app_pem_secret.project,
+    secret: gunbai_ci_app_pem_secret.secret,
+    version: join(["$", app_key_version_env_name as String], "") as NonEmptyStr,
+    hash_state: gunbai_ci_app_pem_secret.hash_state,
+  }
+}
+
+fn gunbc_ci_app_key_version_verify_mint_script() -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: Pipeline {
+      steps: concat(
+        [
+          Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+          Do { run: ci_retry_body_run(command: join([": > \"$", app_key_verify_record_env_name as String, "\""], "")) },
+          Do {
+            run: ci_retry_body_run(
+              command: join([
+                "case \"$", app_key_version_env_name as String,
+                "\" in ''|0*|*[!0-9]*) echo \"AppKeyVersionSelectorRefused: '$", app_key_version_env_name as String,
+                "' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key.\" >&2; exit 1;; esac"
+              ], "")
+            )
+          },
+        ],
+        gunbc_ci_app_installation_token_mint_prelude(
+          key: gunbc_ci_app_key_version_verify_key_ref(),
+          record: Present { value: join(["\"$", app_key_verify_record_env_name as String, "\""], "") }
+        )
+      ),
+      on_failure: FailFast
+    }
+  )
+}
+
+fn gunbc_ci_app_key_version_verify_verdict_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/auth/ci_app_key_rotation.dag",
+    function: "ci_app_key_version_verify_wet",
+    claim_run: false,
+    receipt_rel: Present { value: app_key_verify_receipt_path }
   )
 }
 
