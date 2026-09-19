@@ -1193,7 +1193,7 @@ fn share_roster_pending_collisions(
 //
 // `BoundParameter` — the producer TAKES the acquired value as a named argument, so a claim's own
 // call already carries the content in its argument row and the stored key needs no help. This is
-// the shape gunbc#11303 is moving the roadmap projections to.
+// the shape the roadmap projections took in gunbc#11303.
 //
 // `ImplicitAcquisition` — the producer is nullary and reaches the acquisition INSIDE itself. The
 // carried input's content identity is folded into the key on both the warm and the serve, so the
@@ -1270,8 +1270,8 @@ data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
   CarriedInputWarmRow {
     producer: "gunbc.roadmap_authority.roadmap_authority_projection",
     carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
-    dependence: ImplicitAcquisition,
-    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. ImplicitAcquisition is the shape on main today: gunbc#11303 moves the live callers to the explicit-history spelling, at which point this row becomes BoundParameter and the producer's own nullary wrapper stops existing — the migration is a row edit, not a mechanism change."
+    dependence: BoundParameter { parameter: "history" },
+    measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. BoundParameter since gunbc#11303 landed the explicit-history spelling: the producer's nullary wrapper no longer exists, so the warm supplies `history` by name and the claim's own call already carries the content in its argument row. This row was authored ImplicitAcquisition with that transition written into it as the anticipated row edit, and the floor is what forced the edit rather than a reader noticing — the warm refused PureProducerShareWarmFailed with a call-contract mismatch naming the missing argument, which is the mechanism working."
   }
 ]
 
