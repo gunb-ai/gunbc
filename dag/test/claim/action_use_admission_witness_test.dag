@@ -340,6 +340,8 @@ test fn red_unmodeled_uses_spellings_refuse() -> Bool {
     && unreadable_scan(source: "jobs:\n  b:\n    steps: [{ uses: actions/checkout@v4 }]\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\tactions/checkout@v4\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses : actions/checkout@v4\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses  : actions/checkout@v4\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \"us\\u0065s\": actions/checkout@v4\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - name: x\n        with: { uses: y }\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo uses: not-a-key\n")
 }
