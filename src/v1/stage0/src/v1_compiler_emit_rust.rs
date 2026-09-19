@@ -10859,11 +10859,11 @@ pub fn emit_module_full(
             items_str.clone(),
         );
         let reference_use_lines = reference_plan.lines.clone();
-        let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
+        let merged_import_lines = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
             reference_use_lines.clone(),
-        ))
-        .join(&"\n".to_string());
+        ));
+        let merged_imports = merged_import_lines.clone().join(&"\n".to_string());
         let imports_section = if (merged_imports.clone() == "".to_string()) {
             "".to_string()
         } else {
@@ -10938,12 +10938,16 @@ pub fn emit_module_full(
             }
             __result
         });
-        let svc_imports_str = if ((extern_svc_imports.clone().len() as i64) == 0) {
+        let uncovered_svc_imports = service_import_lines_not_already_bound(
+            extern_svc_imports.clone(),
+            merged_import_lines.clone(),
+        );
+        let svc_imports_str = if ((uncovered_svc_imports.clone().len() as i64) == 0) {
             "".to_string()
         } else {
             v1_rt::concat(
                 "\n".to_string(),
-                extern_svc_imports.clone().join(&"\n".to_string()),
+                uncovered_svc_imports.clone().join(&"\n".to_string()),
             )
         };
         let local_enum_uses = Rc::new({
@@ -14806,6 +14810,32 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
             __result
         })
     }
+}
+
+pub fn service_import_lines_not_already_bound(
+    svc_lines: Rc<Vec<String>>,
+    merged_lines: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for line in svc_lines.iter().cloned() {
+            if (({
+                let mut __found = false;
+                for m in merged_lines.iter().cloned() {
+                    if (m.clone() == line.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } == false)
+                && (rust_pub_use_singleton_covered(line.clone(), merged_lines.clone()) == false))
+            {
+                __result.push(line);
+            }
+        }
+        __result
+    })
 }
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
