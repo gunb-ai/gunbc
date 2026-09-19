@@ -187,90 +187,21 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // still sole construction, which would make the forgery unwritable and delete word_qualified's
 // range arm along with it.
 //
-// THE WALL ITSELF IS UNWITNESSED, AND THAT IS A GAP RATHER THAN A CEILING. Everything above rests
-// on one property: handing a bare Word where a QualifiedWord is declared DOES NOT TYPECHECK. No
-// claim in this corpus establishes that. It cannot be established from the accepted corpus -- if
-// the bad call were writable there the tree would not compile -- so the evidence has to be fixture
-// source compiled through the real acceptance path, which DESIGN section 4b explicitly says is
-// available and therefore owed.
+// THE WALL IS WITNESSED BY FIXTURE, NOT BY THE ACCEPTED CORPUS. Everything above rests on one
+// property: handing the wrong carrier where a declared one is expected DOES NOT TYPECHECK. That
+// cannot be shown from the accepted corpus -- if the bad call were writable there the tree would
+// not build -- so the evidence is fixture source compiled through the real acceptance path, which
+// DESIGN section 4b names as available and therefore owed. It lives in
+// test.claim.machine_word_octet_typecheck.
 //
-// I WROTE THAT WITNESS AND WITHDREW IT, which is worth recording precisely because the approving
-// review cited it as a strength while it was not executing. test.claim.machine_word_qualification_
-// typecheck compiled three illegal sources plus an acceptance-asserting green control through
-// gunbc.compile_diagnostic_census. All four claims FAILED on every run: first uniformly, which the
-// 0 - 1 not-runnable sentinel is designed to produce when the harness is dead, and then still
-// uniformly after the probe sources' record-literal braces were unescaped to match the corpus
-// precedent -- the REDs failing a > 0 assertion and the green failing an == 0 assertion at the same
-// time, which no single count explains. The floor's own reach probe reports
-// reach=opaque_host_call_unbounded:compile_dag_diagnostic_census, last_builtin=census_total_count,
-// ~2.3s of shared fill per claim. Diagnosing further needs a harness that can print the census
-// cause, which is another cycle per hypothesis.
-//
-// Shipping four claims that cannot run would have been worse than none -- they would be cited as
-// coverage, which is exactly what happened in review before anyone looked at a run. Weakening them
-// until they passed would have been worse still. So the module is withdrawn and the obligation is
-// stated here, on the carrier whose property it was meant to establish.
-//
-// TRIGGER, at capability grain: a census probe in this lane that can report CompileDiagnosticCensus
-// CensusNotRunnable's cause string, sufficient to tell a harness that did not run from a source
-// that compiled clean. Nothing else retires this; re-adding the same four claims without that
-// discrimination reproduces the state being recorded.
-// THE OCTET CARRIER HAS NO WIDTH FIELD, AND THAT ABSENCE IS THE WHOLE POINT.
-//
-// The octet path previously carried QualifiedWord, which proves a value inhabits ITS OWN width --
-// not that the width is eight. Those are different propositions, and the gap was reachable without
-// any forgery: word_qualified(Word { width: Width16, value: 256 }) is a SANCTIONED QualifiedWord,
-// and it reached word_from_octets_realizable (which re-checks nothing), octet_int_values (which
-// projected 256 as an "octet value"), and base64_encode's divergence arm. My annotation claimed
-// that arm was reachable only by forging the carrier. It was false, and a counterexample built
-// entirely from the sanctioned constructor is the worst kind of false: the type looked like a proof
-// and proved a neighbouring fact (review by fierce-seal-607, 2026-09-19).
-//
-// Octet carries a value and NOTHING ELSE. There is no width to disagree with, so "this is an octet"
-// stops being a proof the carrier has to transport correctly and becomes a property of the type.
-// That is section 4b's construction rung rather than a validation one: the invalid state is not
-// refused on inspection, it has no field to be written in.
-type Octet {
-  value: Int
-}
-
-type OctetResult
-  = OctetReady { octet: Octet }
-  | OctetRefused { cause: WordRefusal }
-
-// The ONE producer of Octet. The bound is the Width8 modulus rather than a literal 256, so the
-// octet's range and the Width8 word's range cannot drift apart -- they are the same number read
-// from the same place.
-fn octet_of_int(value: Int) -> OctetResult {
-  match word_modulus(w: Width8) {
-    Absent => OctetRefused { cause: WordWidthUnrealizable { width: Width8 } }
-    Present { value: m } =>
-      if value < 0 || value >= m {
-        OctetRefused { cause: WordValueOutOfRange { width: Width8, value: value } }
-      } else {
-        OctetReady { octet: Octet { value: value } }
-      }
-  }
-}
-
-fn octet_value(o: Octet) -> Int {
-  o.value
-}
-
-// THE ONE HOME FOR WHAT Octet DOES AND DOES NOT ESTABLISH. Consumers with an arm reachable only by
-// a forged octet CITE this paragraph rather than restating it -- std.encoding base64_encode is the
-// current one -- because a fact with two statements is a fact that can disagree with itself, and
-// this pair already did so twice.
-//
-// WHAT IS STRUCTURAL: there is no width field, so "this is eight bits wide" cannot be written
-// wrongly. That is the repair for the defect QualifiedWord had here, where a SANCTIONED
-// Width16 value reached the octet path without any forgery at all.
-//
-// WHAT IS NOT: Octet is a record with a public field and .dag has no module-private construction,
-// so Octet { value: 300 } remains writable. Rung: mitigatable. Trigger, unchanged and shared with
-// the word carrier: sole construction, which makes the forgery unwritable and turns every refusal
-// derived from it into a state with no constructor.
-
+// THE FIRST ATTEMPT AT IT WAS WITHDRAWN, and the reason is worth keeping because it shaped the
+// second. Its probe sources carried record literals, which need brace escaping inside a .dag
+// string, and all four claims came back on the 0 - 1 not-runnable sentinel -- the harness was dead
+// and the sentinel failed in BOTH directions rather than letting the green pass, which is the one
+// piece of this module's evidence design that behaved correctly under pressure. An approving review
+// had meanwhile cited that module as a strength while it executed nothing, which is exactly why a
+// dead claim is worse than an absent one. The second attempt passes a parameter of the wrong
+// declared type instead, so no value is constructed and no brace is escaped.
 type QualifiedWord {
   word: Word
 }
@@ -783,10 +714,12 @@ fn word_from_octets(width: WordWidth, octets: List<Octet>, endianness: Endiannes
 //
 // octet_int_values mapped o.value over raw members with no qualification and no refusal arm, on the
 // base64 decode production route. The first repair gave it a typed refusal and re-checked its
-// members -- which is validation multiplied by helper count, the shape this carrier exists to
-// replace. Taking List<QualifiedWord> makes the bad call fail to typecheck, so there is nothing
-// left to refuse: the result is a plain List<Int> again, and it is honest this time because every
-// member arrived with its proof attached rather than being re-inspected here.
+// members -- validation multiplied by helper count, the shape a carrier exists to replace. The
+// second took List<QualifiedWord>, which was WORSE than it looked: that carrier proves a value
+// inhabits its own width, so a sanctioned Width16 member projected 256 as an octet value and the
+// re-check had been removed. Taking List<Octet> is what makes the bad call fail to typecheck,
+// because Octet has no width to disagree about -- so there is nothing left to refuse and the result
+// is a plain List<Int>, honest this time because the member type IS the proof.
 fn octet_int_values(octets: List<Octet>) -> List<Int> {
   octets |> map(o => octet_value(o: o))
 }
