@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.provider_substituted_action_runtime
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data provider_substituted_action_runtime: RecurringFailureMode = RecurringFailureMode {
+  identity: "provider_substituted_action_runtime" as NonEmptyStr,
+
+  receipts: [
+    "**provider-substituted action runtime** (an action release's own action.yml declares one execution mechanism, and the platform executes a different one in its place. GitHub ran every actions/upload-artifact@v4 and actions/download-artifact@v4 step in this repository -- action.yml `runs.using: node20` -- under Node 24, annotating each job \"Node.js 20 is deprecated ... being forced to run on Node.js 24\" and continuing green).",
+
+    "INVALID STATE: a workflow depends on an action whose declared mechanism is not the one that executes. The job's success is evidence about the substituted mechanism, never about the release the producer shipped.",
+
+    "WHY IT SURVIVES: execution succeeds, so no job fails; the only signal is a warning annotation, and a warning is the absorbing fallback DESIGN section 5 forbids -- the platform repairs our declared mechanism on our behalf and the line does not stop. Bumping the two artifact tags would silence this occurrence while leaving the next substitution (or a tag that moves back onto a node20 commit) equally silent.",
+
+    "THE PRODUCER MUST BE READ, NOT THE RELEASE NOTE: actions/download-artifact v6.0.0 is announced as its Node 24 release, and its action.yml at 018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 still declares node20; node24 is declared first at v7.0.0. A model keyed on the marketed major would have admitted a release the runner still substitutes.",
+
+    "RUNG: found BELOW the ladder (silent substitution, a warning only). Now MECHANICALLY PREVENTABLE -- the guarantee is CANNOT MERGE -- on two routes over one shared admission (gunbc.action_use_admission admit_selected_action_use: exact execution under repository_node_runtime_epoch AND a repository selection). Route 1: each generator refuses to emit a workflow model with a refused use (admit_workflow_action_uses). Route 2: EVERY file under .github/workflows, generated and hand-authored, is projected to its `uses:` lines and each is joined by commit to a producer manifest reading and admitted (test.claim.action_use_admission_witness every_realized_workflow_action_use_is_modeled_and_executed_exactly, enrolled in v2.workflow.required_floor required_gate_prefixes). A tag ref, an unread commit, an unselected release, a local/docker/subdirectory action, a reusable workflow, a composite with a substituted nested use, and the node20 runner override anywhere in a workflow all refuse. THE PROJECTION'S OWN BOUNDARY: it reads a use only as `uses: <value>` at the head of a line (optionally after `- `); every other non-comment line that spells `uses` followed by a colon (flow style anywhere, a tab, a space before the colon) refuses as unclassifiable. What it does not see is a `uses` key spelled without that token -- a YAML escape or a complex key (`? uses`) -- and script text is not exempt: a script line shaped like a `uses:` key is read as a use, and one that mentions `uses:` mid-line refuses -- both fail closed, at the cost of forbidding that spelling in scripts. The projection itself is a second YAML reader beside extdeps.languages.yaml.ingest, pending operator approval as a scaffold whose trigger is the modeled parser fitting the new-witness budget on the largest workflow. It does NOT reach a workflow executing on the pull request that introduces it: GitHub runs a PR's own workflow before any gate can refuse it, so a PR adding a node20 pin can show the warning once, on that PR, and cannot land.",
+
+    "CEILING 4, structurally impossible for modeled workflows: UsesStep.uses constructible only as an admitted release. It is not reached because admission is repository policy and UsesStep is the upstream shape in extdeps.github.actions; putting a gunbc admission type in that field is a layer inversion. The realized-file route stays at rung 2 permanently, because hand-authored YAML is outside the compiler's acceptance path.",
+
+    "NEXT-RUNG TRIGGER: the capability for a workflow generator to accept only an admitted-use carrier (a gunbc-side Step projection whose uses field is a sole_constructor admitted release, minted only by admit_action_release), sufficient for every generator in gunbc.generated_artifact to construct its steps through it.",
+
+    "PLATFORM POLICY IS A DATED EPOCH, NOT A TIMELESS ANSWER: extdeps.github.action_runtime_policy NodeRuntimePolicyEpoch carries effective date, minimum runner version, default major, substituted majors and the override variable, and the disposition is a function of (epoch, declaration). The repository names its epoch (repository_node_runtime_epoch). RESIDUE: nothing reads the date against a clock, and a runner-HOST override (the variable set in the runner's own environment rather than a workflow) is outside what a workflow census can see; both are the next trigger -- an observed runner-environment reading on gunbc's runner units, and an epoch standing that refuses once a newer cited epoch exists.",
+
+    "REVIEW TELL: a `uses:` spelled with a tag, or a runtime asserted on a release row without a manifest citation at its commit.",
+  ],
+
+  evidence: [],
+}

@@ -17,6 +17,7 @@ import std.types { NonEmptyStr, SecretName, Unit, String, List }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.github.action_release { ActionRelease }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -327,6 +328,24 @@ fn runner_arch_label(arch: Architecture) -> String {
   }
 }
 
+// LABEL EQUIVALENCE IS GITHUB'S, NOT STRING EQUALITY. Label matching is case-insensitive (cited
+// above), so "Linux"/"linux" and "SRV4"/"srv4" are one label. Every comparison of runner labels --
+// membership, union, selector satisfaction, registration readback -- goes through this key.
+//
+// THE FOLD IS ASCII A-Z ONLY. The cited page states case-insensitivity without naming a Unicode
+// case mapping, so a non-ASCII case variant is compared exactly: two such spellings read as
+// DIFFERENT labels, which surfaces as a loud divergence rather than a silent match.
+fn runner_label_match_key(label: String) -> String {
+  join(
+    label |> chars |> map(c => if c >= 65 && c <= 90 { from_code_point(cp: c + 32) } else { from_code_point(cp: c) }),
+    "",
+  )
+}
+
+fn runner_labels_equivalent(a: String, b: String) -> Bool {
+  runner_label_match_key(label: a) == runner_label_match_key(label: b)
+}
+
 fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
   concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
 }
@@ -356,7 +375,7 @@ type Step
   | UsesStep {
       name: String?,
       id: String?,
-      uses: ActionRef,
+      uses: ActionRelease,
 
       with: List<YamlKeyValue>?,
       env: List<YamlKeyValue>?,
@@ -367,60 +386,18 @@ type Step
 
 type ShellType = Bash | Sh | Pwsh | Python | Cmd
 
-type ActionRef {
-  owner: String
-  repo: String
-  ref: String
-}
-
 type ArtifactOp
   = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
   | Download { name: String, path: String? }
 
 type MissingFilesBehavior = Warn | ErrorOut | Ignore
 
-data checkout_action: ActionRef = ActionRef {
-  owner: "actions", repo: "checkout", ref: "v5"
-}
-
-data setup_rust_action: ActionRef = ActionRef {
-  owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0"
-}
-
-data cache_action: ActionRef = ActionRef {
-  owner: "actions", repo: "cache", ref: "v5"
-}
-
-data google_auth_action: ActionRef = ActionRef {
-  owner: "google-github-actions", repo: "auth", ref: "v2"
-}
-
-data upload_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "upload-artifact", ref: "v4"
-}
-
-data download_artifact_action: ActionRef = ActionRef {
-  owner: "actions", repo: "download-artifact", ref: "v4"
-}
-
-data action_ref_double_bound_finding_note: String = "review 44886 surfaced this while ActionRef was being used as the SECOND SUBJECT proving Pin<Subject> composes, and the defect it found has nothing to do with pinning. THE DEFECT: upload_artifact_action and download_artifact_action were EACH DECLARED TWICE in this module — an earlier pair at ref v2 and a later pair at ref v4 — so one name carried two different upstream versions and the module silently resolved it by declaration order. Introduced by #6472 (2026-07-11), which added the v4 rows without deleting the v2 rows it superseded. WHICH ONE WON, ESTABLISHED BY EXECUTION RATHER THAN BY READING THE RULE: the emitted .github/workflows/ci.yml carries actions/upload-artifact@v4 and actions/download-artifact@v4 at every occurrence, so the LAST binding wins and the v2 rows were dead. That is the only reason this was a latent defect rather than a live one — the corpus happened to be ordered so the intended version won. Reverse the two blocks and every artifact step in CI silently downgrades to a version GitHub has since deprecated, with nothing anywhere reporting a change. The v2 rows are deleted here and the emitted ci.yml is byte-identical, which is the proof they were genuinely unreachable. WHY THE FIX IS A DELETION AND NOT A RENAME: these were never two concepts needing two names. They are one concept that was edited by addition, so the correct end state is one binding per name (DESIGN section 3 single authority), not a disambiguated pair. WHAT THIS MODULE CANNOT DO ABOUT IT, which is the part worth carrying: a double-bound name is DECIDABLE — it is exactly the unbound/double-bound error the namespace authority already specifies (docs/plans/namespace-resolution-design.md, where a binding edge that is double-bound is an error rather than a last-wins resolution), so the class belongs to that lane as a construction wall, not to a reviewer noticing it. Until that lands, declaration order is load-bearing in every .dag module and nothing says so. dissolve-on: feature:double-bound-declaration-refuses — a second binding of a name in one module is a typed, located refusal at compile time; at that point this note deletes and the class becomes unwritable rather than reviewed. This is the same shape as pin_cited_symbol_verification_note in extdeps.pin: a defect that prose caught once and that only the substrate can stop repeating."
 
 data max_job_timeout_minutes: Int = 360
 
 data default_job_timeout_minutes: Int = 360
 
 data max_matrix_combinations: Int = 256
-
-// STRUCTURAL EQUALITY ON THE UPSTREAM REFERENCE. An action is identified by owner, repo and ref
-// together -- the same owner/repo at two refs is two different actions, which is the distinction
-// action_ref_double_bound_finding_note above records a live defect over.
-//
-// It lives here rather than in a consumer because it is a fact about THIS type. It was declared in
-// gunbc.ci_heal_credential first, and a second consumer asking that module what two ActionRefs mean
-// would have made a credential-healing module the authority on action identity.
-fn action_ref_eq(a: ActionRef, b: ActionRef) -> Bool {
-  a.owner == b.owner && a.repo == b.repo && a.ref == b.ref
-}
 
 // THE INTEGRATION (GitHub App) ID GITHUB ACTIONS PUBLISHES ITS CHECK RUNS UNDER. It is an upstream
 // identity rather than a policy choice: a required_status_checks rule may pin a context to the app

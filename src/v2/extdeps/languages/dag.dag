@@ -10,7 +10,8 @@ import v2.std.collection {
   Map,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -47,6 +48,8 @@ import v2.std.grammar {
   Terminal,
   VoidGrammar,
   grammar_carries_symbol,
+  grammar_carried_symbol_map,
+  grammar_symbol_list_put,
   formal_production_to_node,
   formal_productions_catalog_to_node,
   grammar_production_to_node,
@@ -83,6 +86,8 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
+  lex_rule_set_insert_token_classes,
+  lex_rule_set_token_class_map,
   lex_rule_set_token_class_member,
   symbol_intern_lexeme
 }
@@ -2240,16 +2245,35 @@ fn dag_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
 }
 
-fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
+fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol> {
   PointwisePower {
     member: fn(sym) {
-      sym == ^dag_c3_surface_sugar_service ||
-        sym == ^dag_c3_surface_sugar_fn ||
-        sym == ^dag_c3_surface_sugar_type ||
-        sym == ^dag_c3_surface_sugar_operation ||
-        dag_lex_token_symbol(sym: sym)
+      match map_lookup(m: m, key: sym) {
+        Present { value: _ } => true
+        Absent => false
+      }
     }
   }
+}
+
+fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
+  grammar_symbol_list_put(
+    m: m,
+    xs: [
+      ^dag_c3_surface_sugar_service,
+      ^dag_c3_surface_sugar_fn,
+      ^dag_c3_surface_sugar_type,
+      ^dag_c3_surface_sugar_operation
+    ]
+  )
+}
+
+fn dag_language_model_surface_prelude_map() -> Map<Symbol, Bool> {
+  dag_surface_sugar_symbol_map(m: lex_rule_set_token_class_map(rules: dag_lex_rules()))
+}
+
+fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
+  dag_pointwise_from_symbol_map(m: dag_language_model_surface_prelude_map())
 }
 
 fn dag_language_model_empty_canonical_symbol_set() -> PointwisePower<Symbol> {
@@ -2260,29 +2284,42 @@ fn dag_language_model_empty_canonical_symbol_set() -> PointwisePower<Symbol> {
   }
 }
 
-fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
-  sym == ^dag_binding_fn_add
-    || sym == ^dag_binding_param_x
-    || sym == ^dag_binding_param_y
-    || sym == ^dag_binding_type_int
-    || sym == ^dag_binding_fn_one_or_two
-    || sym == ^dag_binding_fn_one
-    || sym == ^dag_binding_bind_x
-    || sym == ^dag_binding_pick_lit_one
-    || sym == ^dag_binding_pick_lit_two
-    || sym == ^dag_binding_type_bool
-    || sym == ^bool_node_symbol
-    || sym == ^dag_loop_measure_sym
+fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
+  grammar_symbol_list_put(
+    m: m,
+    xs: [
+      ^dag_binding_fn_add,
+      ^dag_binding_param_x,
+      ^dag_binding_param_y,
+      ^dag_binding_type_int,
+      ^dag_binding_fn_one_or_two,
+      ^dag_binding_fn_one,
+      ^dag_binding_bind_x,
+      ^dag_binding_pick_lit_one,
+      ^dag_binding_pick_lit_two,
+      ^dag_binding_type_bool,
+      ^bool_node_symbol,
+      ^dag_loop_measure_sym
+    ]
+  )
+}
+
+// Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
+// floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
+// PointwisePower closure at the consumer; that closure is not the stored value.
+fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
+  dag_language_model_binding_canonical_map(
+    m: dag_surface_sugar_symbol_map(
+      m: lex_rule_set_insert_token_classes(
+        m: grammar_carried_symbol_map(grammar: dag_grammar()),
+        rules: dag_lex_rules()
+      )
+    )
+  )
 }
 
 fn dag_canonical_symbols() -> PointwisePower<Symbol> {
-  PointwisePower {
-    member: fn(sym) {
-      dag_language_model_surface_prelude_atoms().member(sym) ||
-        grammar_carries_symbol(grammar: dag_grammar(), sym: sym) ||
-        dag_language_model_binding_canonical(sym: sym)
-    }
-  }
+  dag_pointwise_from_symbol_map(m: dag_canonical_symbol_map())
 }
 
 fn dag_language_model_void() -> LanguageModel {
@@ -2313,10 +2350,6 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
     canonical_symbols: dag_language_model_empty_canonical_symbol_set(),
     core: bool_model_core()
   }
-}
-
-fn dag_language_model_canonical_symbols(lm: LanguageModel) -> PointwisePower<Symbol> {
-  lm.canonical_symbols
 }
 
 fn dag_lex_token_symbol(sym: Symbol) -> Bool {
@@ -3037,30 +3070,30 @@ data dag_loop_arrow_with_body_wrong_value_fixture: Node = dag_loop_arrow_with_bo
 data dag_fixture_emitted_loop_fn: Node = dag_loop_arrow_with_body_fixture
 
 fn dag_node_is_kw_true_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_true
+    Absent => false
   }
 }
 
 fn dag_node_is_kw_false_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_false
+    Absent => false
   }
 }
 
 fn dag_node_is_int_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_int_literal
+    Absent => false
   }
 }
 
 fn dag_node_is_float_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_float_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_float_literal
+    Absent => false
   }
 }
 
@@ -3098,10 +3131,9 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
-    || match node.kind {
-         TypeNode { connective: Atom { identity: id } } =>
-           dag_symbol_is_fixture_body_literal_atom(id: id)
-         _ => false
+    || match node_atom_identity_optional(node: node) {
+         Present { value: id } => dag_symbol_is_fixture_body_literal_atom(id: id)
+         Absent => false
        }
 }
 

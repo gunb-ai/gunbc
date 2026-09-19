@@ -93,6 +93,7 @@ mod native_lane_runner;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
+pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use native_lane_runner::{
     run_required_v2_native, run_self_host, run_v2_native_cli, SelfHostHeld, V2NativeCliHeld,
@@ -41023,6 +41024,21 @@ pub struct PreparedClaimScope {
     /// replacing them. Deciding the view's shape from the resident-byte delta would be picking
     /// a remedy from a quantity that cannot distinguish the candidates.
     pub build_split: ScopeBuildSplit,
+    /// THE SCOPE'S PRECEDENCE ORDER AND ITS AUTHORED BOUNDARY, retained because they are the
+    /// rank-view's only per-scope input (`docs/plans/scope-rank-view-design.md` §2).
+    ///
+    /// They are computed here already — `scope_identity` is a fold over `order`, and the registry
+    /// fold reads `authored_region` — and were discarded once the maps they decided were built.
+    /// Retaining them is what lets a reader resolve a name from the subject-wide claimant relation
+    /// instead of from a materialized winner map. The cost is the scope's MODULE count, not its
+    /// item count, and one scope is alive at a time -- `module_count` beside these fields is the
+    /// producer for the former and `[floor-scope-cost]` prints the latter per run, so neither is
+    /// transcribed here (DESIGN section 6).
+    ///
+    /// NOT a second authority for the order: this is the same `Vec` the fold used, moved rather
+    /// than recomputed, so nothing can derive a different one.
+    pub scope_order: Rc<Vec<String>>,
+    pub authored_region: usize,
 }
 
 impl PreparedClaimScope {
@@ -41917,6 +41933,8 @@ fn claim_scope_for_with_memos(
                 claimants: claimants.into_iter().collect(),
             })
             .collect(),
+        scope_order: Rc::new(order),
+        authored_region,
         build_split: ScopeBuildSplit {
             order_nanos,
             registry_nanos,

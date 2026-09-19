@@ -1,0 +1,171 @@
+module std.durable_exclusive_hold
+
+// THE DURABLE EXCLUSIVE HOLD: held-or-free over one keyed slot, as PURE
+// TRANSITION SEMANTICS with no store, no codec and no subject in it.
+//
+// This protocol was first written inside gunbc.fabric_control_plane, where it
+// decided whether a compute cell was held and by which reservation. A second
+// consumer needs exactly the same decisions over a slot that is not a cell and
+// carries no money. Copying the fold would have been a second authority for one
+// concept (DESIGN 3, and the leasing row of 3b), so the protocol is extracted
+// here and both consumers inhabit it.
+//
+// WHY THIS IS NOT INSIDE std.durable_compare_and_set. Compare-and-set judges
+// GENERATION: has the slot moved since it was observed. A hold judges
+// OCCUPANCY: is there a holder, and is it the one presenting. Those are two
+// questions, and the ruling that separates them is the first amendment below --
+// a caller presenting the correct generation for a slot that is HELD at that
+// generation must still be refused, which no CAS expectation can express. So
+// CAS stays the conditional-write primitive underneath, unchanged, and this
+// module is the layer that derives a CAS expectation FROM an occupancy
+// observation rather than accepting one from a caller.
+//
+// PARAMETERIZED BY THE HOLDER VALUE, NEVER BY A CALLER-SUPPLIED RENDERER,
+// PARSER OR EQUALITY. There is one holder type, one holder equality and (in the
+// realization) one durable codec. Letting each consumer bring its own "generic"
+// codec or comparison would return the fork one layer below a generic-looking
+// API, which is the same second authority wearing a type parameter.
+
+import std.types { NonEmptyStr, String, Bool }
+import std.durable_compare_and_set {
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasUnreadableSlot, cas_generation_count,
+}
+
+// Who holds the slot. A branded string rather than a structured identity
+// because the consumers' identities differ in shape (a fabric reservation is a
+// demand and an offer; a sheet lock is a process) and the protocol needs only
+// one thing of them: that two holders can be compared. Each consumer derives
+// its owner from its OWN identity authority and never authors one here.
+type DurableHoldOwnerRef = NonEmptyStr where brand("DurableHoldOwnerRef")
+
+// Why a hold was released. Carried in the free state so a freed slot is
+// attributable, exactly as a held one is.
+type DurableHoldReleaseRef = NonEmptyStr where brand("DurableHoldReleaseRef")
+
+// THE ONE HOLDER EQUALITY. Every comparison of two owners in the protocol routes
+// here, so a consumer cannot substitute a looser or stricter notion of "the same
+// holder" and have the release wall silently mean something else.
+fn durable_hold_owner_equal(left: DurableHoldOwnerRef, right: DurableHoldOwnerRef) -> Bool {
+  (left as String) == (right as String)
+}
+
+// What a slot says about itself once its payload has been read. Held carries
+// the owner; free carries who released it. There is deliberately no third arm
+// for "unknown": an unreadable payload is an OBSERVATION outcome below, not a
+// state, because answering either state for a payload nobody can interpret is
+// the fabricated plausible output DESIGN 5 forbids.
+type DurableHoldState
+  = DurableHoldHeld { owner: DurableHoldOwnerRef }
+  | DurableHoldFree { released_by: DurableHoldReleaseRef }
+
+// The typed observation the protocol decides over. Five arms, each with a
+// different remedy, and the two that are NOT states are the reason the type
+// exists: an undecodable slot at N is neither free nor held, and an observation
+// that could not be made says nothing about the slot at all. A caller that
+// read either as "free" would acquire over a hold it merely failed to read.
+type DurableHoldObservation
+  = HoldSlotAbsent
+  | HoldSlotFree { generation: CasGeneration, released_by: DurableHoldReleaseRef }
+  | HoldSlotHeld { generation: CasGeneration, owner: DurableHoldOwnerRef }
+  | HoldSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
+  | HoldObservationUnavailable { cause: CasUnreadableSlot }
+
+// ACQUIRE DERIVES ITS EXPECTATION FROM THE OBSERVATION -- THE FIRST AMENDMENT.
+//
+// The fabric broker used to accept a CasExpectation from its caller, so a
+// caller presenting ExpectSlotGeneration(N) against a slot HELD at N would
+// overwrite the hold: the CAS precondition was satisfied and nothing asked
+// about occupancy. Here only an absent or a free slot is eligible, and the
+// expectation a successful acquire will present is DERIVED from that
+// observation, so there is no parameter through which a caller can name a
+// generation the store never showed it.
+//
+// A HOLD ALREADY OWNED BY THE REQUESTING OWNER STILL REFUSES AS OCCUPIED. The
+// same spelling does not prove the old process is gone; it proves only that two
+// processes derived the same name. Treating it as re-entrant would let a
+// crashed holder's successor silently take over a slot the crashed holder's
+// settlement never ran for. That is why this assessment does not take the
+// requesting owner at all: no arm depends on it.
+type DurableHoldAcquireRefusal
+  = HoldAcquireOccupied { generation: CasGeneration, holder: DurableHoldOwnerRef }
+  | HoldAcquireSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
+  | HoldAcquireObservationUnavailable { cause: CasUnreadableSlot }
+
+type DurableHoldAcquireAssessment
+  = HoldAcquireEligible { expected: CasExpectation }
+  | HoldAcquireRefused { refusal: DurableHoldAcquireRefusal }
+
+fn durable_hold_acquire_assess(observed: DurableHoldObservation) -> DurableHoldAcquireAssessment {
+  match observed {
+    HoldSlotAbsent => HoldAcquireEligible { expected: ExpectSlotAbsent }
+    HoldSlotFree { generation: g, released_by: _ } =>
+      HoldAcquireEligible { expected: ExpectSlotGeneration { generation: g } }
+    HoldSlotHeld { generation: g, owner: holder } =>
+      HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: g, holder: holder } }
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: d } }
+    HoldObservationUnavailable { cause: c } =>
+      HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: c } }
+  }
+}
+
+// RELEASE VERIFIES OWNER AND ACQUISITION GENERATION -- THE SECOND AMENDMENT.
+//
+// The fabric release checked the holder and then presented the OBSERVED
+// generation to CAS; it was fenced against a stale release only by the money
+// ledger's lease generation beside it. A consumer with no money ledger has no
+// such second fence, and without one the ABA release is live: A acquires at
+// generation 1 and releases; a later A acquires at generation 3; the old
+// generation-1 process resumes, observes "held by A", and frees the NEW hold.
+// So eligibility requires BOTH that the slot is held by the presenting owner
+// AND that it is held at the generation this holder acquired. A hold at any
+// other generation is a different hold, whoever owns it.
+//
+// The refusals are kept apart because their remedies differ: an absent or
+// already-free slot means the caller's idea of what it holds is stale; another
+// owner's hold means it never held this slot; another generation means it once
+// did and no longer does; undecodable and unavailable send the caller to the
+// store rather than to its own bookkeeping.
+type DurableHoldReleaseRefusal
+  = HoldReleaseSlotAbsent
+  | HoldReleaseAlreadyFree { generation: CasGeneration, released_by: DurableHoldReleaseRef }
+  | HoldReleaseHeldByAnotherOwner { generation: CasGeneration, holder: DurableHoldOwnerRef }
+  | HoldReleaseAgainstAnotherGeneration { acquired: CasGeneration, observed: CasGeneration }
+  | HoldReleaseSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
+  | HoldReleaseObservationUnavailable { cause: CasUnreadableSlot }
+
+// The eligible arm carries the generation the release will present, taken from
+// the OBSERVATION and not from the caller's acquisition record -- the two are
+// equal by the time this arm is reached, and the observed one is the store's.
+type DurableHoldReleaseAssessment
+  = HoldReleaseEligible { generation: CasGeneration }
+  | HoldReleaseRefused { refusal: DurableHoldReleaseRefusal }
+
+fn durable_hold_release_assess(
+  observed: DurableHoldObservation,
+  owner: DurableHoldOwnerRef,
+  acquired_generation: CasGeneration,
+) -> DurableHoldReleaseAssessment {
+  match observed {
+    HoldSlotAbsent => HoldReleaseRefused { refusal: HoldReleaseSlotAbsent }
+    HoldSlotFree { generation: g, released_by: b } =>
+      HoldReleaseRefused { refusal: HoldReleaseAlreadyFree { generation: g, released_by: b } }
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      HoldReleaseRefused { refusal: HoldReleaseSlotUndecodable { generation: g, detail: d } }
+    HoldObservationUnavailable { cause: c } =>
+      HoldReleaseRefused { refusal: HoldReleaseObservationUnavailable { cause: c } }
+    HoldSlotHeld { generation: g, owner: holder } =>
+      if !durable_hold_owner_equal(left: holder, right: owner) {
+        HoldReleaseRefused { refusal: HoldReleaseHeldByAnotherOwner { generation: g, holder: holder } }
+      } else {
+        if cas_generation_count(g: g) != cas_generation_count(g: acquired_generation) {
+          HoldReleaseRefused {
+            refusal: HoldReleaseAgainstAnotherGeneration { acquired: acquired_generation, observed: g },
+          }
+        } else {
+          HoldReleaseEligible { generation: g }
+        }
+      }
+  }
+}

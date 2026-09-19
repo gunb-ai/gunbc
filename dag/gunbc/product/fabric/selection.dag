@@ -19,6 +19,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, f
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
+import product.fabric.capacity_admission { AdmittedCapacity, RouteExercisePlacement }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
   OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
@@ -287,6 +288,83 @@ type CandidateBinding<P>
 // ONLY in issue_grant, which the production broker never reaches - it selects and reserves
 // without ever issuing a grant - so the deciding path carried the offer and route halves of the
 // check and none of the use half. Binding here is what puts all four on one path.
+// SEALING A CANDIDATE FROM AN ALREADY-ADMITTED CAPACITY. product.fabric.capacity_admission ran every
+// screen and its sole constructor is the proof, so this does not re-run them: it adds the pricing
+// observations, and checks the ONE thing the capacity cannot know - that the dispatch inputs describe
+// the same offer.
+//
+// WHAT THIS SEAM DROPS, AND WHY IT IS NOT YET CLOSED (review 67832). CandidateOffer has no requirements
+// field, so the ExecutionRequirements capacity_admission proved fungibility against are left behind
+// here, and price_candidate screens fungibility AGAIN against select_supply's own requirements
+// parameter - two independently supplied values that nothing joins. It is REDUNDANT, not unsound:
+// fungibility is the only admission screen that depends on requirements (the permit and readiness
+// are per route, work and demand), and price_candidate re-runs it against the requirements actually
+// being priced, so a mismatch surfaces as a typed OfferNotFungible or prices correctly for the
+// requirements asked - never as capacity sold for a shape it was not checked against. What it costs
+// is the second screen, and the loss of any signal that the two values disagreed. The repair is for
+// select_supply to read requirements from the candidates rather than take its own, and that is
+// blocked by the frontier below: select_supply's production callers include the serving-seat spine,
+// whose candidates come from bind_candidate and carry no proved requirements to read. TRIGGER: the
+// same one as below - once first-party serving seats bind from an admitted carrier, CandidateOffer
+// carries the proved requirements, select_supply drops its parameter, and the second screen is
+// deleted.
+//
+// bind_candidate below IS STILL A SECOND WAY TO MINT A CandidateOffer, AND ONE PRODUCTION CALLER USES
+// IT - named here because an earlier revision of this note said only fixtures did, and a later author
+// deleting bind_candidate on the strength of that would break the serving spine (review 67583).
+//   - gunbc.harness.harness_seat harness_admit_bound_offer (reached from harness_bind_candidate) binds
+//     first-party Spark serving seats. It admits through spark_first_party_admission, the first-party
+//     serving realization authority, rather than product.fabric.capacity_admission, and so it does not
+//     pass the supply-evidence or route-readiness screens that authority runs.
+//   - the witnesses whose subject IS bind_candidate's refusal arms (fabric_selection_witness
+//     t_unadmitted_bound and its neighbours), which must keep calling it directly.
+// So "one authority for usable supply" holds for PROVIDER-ROUTE supply and does not yet hold for
+// first-party serving seats. That is a declared frontier, not a finished consolidation: serving seats
+// are a different occupancy subject (a seat on a replica with loaded state, per the serving capacity
+// home ruling), and forcing them through provider-route correspondence would model a route they do not
+// have. TRIGGER: first-party serving seats gain an admission carrier that consumes
+// capacity_admission's screens for the facts they share (evidence, readiness) - at which point
+// harness_admit_bound_offer binds from that carrier and bind_candidate keeps only its witnesses.
+// ITS OWN TWO-ARM RESULT RATHER THAN CandidateBinding, because the other five arms of that coproduct
+// are decided by capacity admission and cannot be reached from here. Returning the wider type would
+// force every caller to match five variants this function can never produce, and an unreachable arm
+// reads as coverage while establishing nothing (DESIGN section 4b).
+type AdmittedCapacityBinding<P>
+  = CapacityCandidateBound { candidate: CandidateOffer<P> }
+  | CapacityDispatchInputsNameAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      inputs_name: FabricIdentity<P, OfferKey>,
+    }
+
+fn bind_admitted_capacity<P>(
+  capacity: AdmittedCapacity<P>,
+  dispatch: DispatchInputs<P>,
+) -> AdmittedCapacityBinding<P> {
+  if !fabric_identity_eq(left: capacity.offer.id, right: dispatch.offer) {
+    CapacityDispatchInputsNameAnotherOffer { offer: capacity.offer.id, inputs_name: dispatch.offer }
+  } else {
+    CapacityCandidateBound {
+      candidate: CandidateOffer { offer: capacity.offer, dispatch: dispatch, permit: capacity.permit },
+    }
+  }
+}
+
+// THE EXERCISE PLACEMENT BINDS THE SAME WAY, because dispatching one is ordinary: someone has to run
+// the first exercise on a route. What it may not do is be summed as reserve, which is decided by the
+// scenario fold's parameter type rather than here.
+fn bind_exercise_placement<P>(
+  placement: RouteExercisePlacement<P>,
+  dispatch: DispatchInputs<P>,
+) -> AdmittedCapacityBinding<P> {
+  if !fabric_identity_eq(left: placement.offer.id, right: dispatch.offer) {
+    CapacityDispatchInputsNameAnotherOffer { offer: placement.offer.id, inputs_name: dispatch.offer }
+  } else {
+    CapacityCandidateBound {
+      candidate: CandidateOffer { offer: placement.offer, dispatch: dispatch, permit: placement.permit },
+    }
+  }
+}
+
 fn bind_candidate<P>(
   offer: SupplierOffer<P>,
   dispatch: DispatchInputs<P>,

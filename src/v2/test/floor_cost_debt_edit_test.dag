@@ -1,0 +1,224 @@
+module v2.test.floor_cost_debt_edit
+
+import v2.workflow.floor_cost_debt_edit {
+  CostDebtWitnessEdit, PureConjunctRemoval, ReJudgedAsNewWitness,
+  CostDebtEditReJudgeCause, WitnessNotDeclaredAtBase, WitnessNotDeclaredAtHead,
+  WitnessSourceDidNotTokenize, WitnessTokensUnchanged, EditIsNotAConjunctRemoval, RemovedCallIsNotATestFn,
+  cost_debt_edit_cause_label,
+  CostDebtChangedWitnessCeiling,
+  cost_debt_edit_from_sources,
+  cost_debt_changed_witness_ceiling,
+}
+import v2.workflow.required_floor {
+  GrandfatheredTier, NewWitnessTier,
+  claim_ceiling_eval_step_budget,
+  ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget, EvalStepsOverBudgetUnderDeclaredDrop,
+  claim_eval_step_standing,
+}
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.std.collection { List }
+import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RULE UNDER TEST is `v2.workflow.floor_cost_debt_edit` (operator ruling, 2026-09-19): a
+// changed cost-debt witness whose edit is purely the deletion of call conjuncts keeps the
+// grandfathered eval-step budget, and every other edit is judged at the new-witness budget.
+//
+// THE DISCRIMINATOR IS A 100,000-STEP CLAIM, chosen between the two budgets (72,300 and 361,500 at
+// this writing, both derived from `claim_ceiling_eval_step_budget`, never transcribed below). The
+// SAME observation is admitted under a pure removal and refused under any other edit, so each test
+// asserts the verdict the floor would reach and not only the arm a classifier returned.
+//
+// The fixtures are supplied SOURCES, not files read from the tree (DESIGN section 3, a witness
+// discriminates at one interface). The real path -- the host reading the head file and this module
+// showing the base at the floor's comparison base -- is exercised by the required floor itself on
+// any PR that edits a cost-debt row, first gunbc#11593.
+
+fn discriminating_claim_steps() -> EvalStepCount {
+  eval_step_count(count: 100000)
+}
+
+fn ceiling_admits_discriminating_claim(ceiling: CostDebtChangedWitnessCeiling) -> Bool {
+  match claim_eval_step_standing(observed_eval_steps: discriminating_claim_steps(), budget_steps: ceiling.budget) {
+    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => true
+    EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudgetUnderDeclaredDrop { observed_steps: _, budget_steps: _ } => false
+  }
+}
+
+fn ceiling_is_grandfathered(ceiling: CostDebtChangedWitnessCeiling) -> Bool {
+  eval_step_count_value(s: ceiling.budget)
+    == eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
+}
+
+fn ceiling_is_new_witness(ceiling: CostDebtChangedWitnessCeiling) -> Bool {
+  eval_step_count_value(s: ceiling.budget)
+    == eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+}
+
+fn edit_is_pure_removal_of(edit: CostDebtWitnessEdit, expected: Int) -> Bool {
+  match edit {
+    PureConjunctRemoval { removed_conjuncts: n } => n == expected
+    ReJudgedAsNewWitness { cause: _ } => false
+  }
+}
+
+fn edit_rejudged_for(edit: CostDebtWitnessEdit, cause: CostDebtEditReJudgeCause) -> Bool {
+  match edit {
+    PureConjunctRemoval { removed_conjuncts: _ } => false
+    ReJudgedAsNewWitness { cause: c } => cost_debt_edit_cause_label(cause: c) == cost_debt_edit_cause_label(cause: cause)
+  }
+}
+
+// A pure removal keeps the tier AND admits the claim; a rejected edit takes the new-witness tier
+// AND refuses it. Both halves are asserted so a tier that reads right with a budget that does not
+// cannot pass.
+fn kept_and_admitted(edit: CostDebtWitnessEdit) -> Bool {
+  let ceiling = cost_debt_changed_witness_ceiling(edit: edit)
+  ceiling_is_grandfathered(ceiling: ceiling) && ceiling_admits_discriminating_claim(ceiling: ceiling)
+}
+
+fn rejudged_and_refused(edit: CostDebtWitnessEdit) -> Bool {
+  let ceiling = cost_debt_changed_witness_ceiling(edit: edit)
+  ceiling_is_new_witness(ceiling: ceiling) && !ceiling_admits_discriminating_claim(ceiling: ceiling)
+}
+
+// ---- fixtures ----
+//
+// Each source carries a module header and an import block, because a removed call qualifies only
+// when it resolves -- through the witness's own module or an import -- to an identity in the test-fn
+// population the host passes. `fixture_test_fns` is that population here.
+
+fn fixture_test_fns() -> List<String> {
+  ["m.t", "lib.t2", "lib.e"]
+}
+
+// Each fixture carries only the header its case needs: the lexer's cost is per character and is
+// paid twice per claim, so a shared header of every import would be paid by every claim.
+fn src(body: String) -> String {
+  join(["module m ", body], "")
+}
+
+fn src_importing(items: String, body: String) -> String {
+  join(["module m import lib { ", items, " } ", body], "")
+}
+
+fn src_two_conjuncts() -> String { src(body: "test fn w() -> Bool { a() && t() }") }
+fn src_one_conjunct() -> String { src(body: "test fn w() -> Bool { a() }") }
+fn src_swapped_call() -> String { src(body: "test fn w() -> Bool { a() && u() }") }
+fn src_literal_base() -> String { src(body: "test fn w() -> Bool { a(x: 1) && t() }") }
+fn src_literal_head() -> String { src(body: "test fn w() -> Bool { a(x: 2) }") }
+fn src_precedence_base() -> String { src(body: "test fn w() -> Bool { a() && t() == b() }") }
+fn src_precedence_head() -> String { src(body: "test fn w() -> Bool { a() == b() }") }
+fn src_leading_base() -> String { src(body: "test fn w() -> Bool { t() && a() }") }
+fn src_negated_base() -> String { src(body: "test fn w() -> Bool { !t() && a() }") }
+fn src_negated_head() -> String { src(body: "test fn w() -> Bool { !a() }") }
+fn src_signature_head() -> String { src(body: "test fn w() -> Int { a() }") }
+fn src_renamed_head() -> String { src(body: "test fn w2() -> Bool { a() }") }
+fn src_imported_test_fn_base() -> String { src_importing(items: "t2", body: "test fn w() -> Bool { a() && t2() }") }
+fn src_helper_base() -> String { src_importing(items: "helper", body: "test fn w() -> Bool { a() && helper() }") }
+fn src_aliased_base() -> String { src_importing(items: "t2 as tt", body: "test fn w() -> Bool { a() && tt() }") }
+fn src_untokenizable_base() -> String { src(body: "test fn w() -> Bool { a() && t() } #") }
+fn src_other_witness_only() -> String { src(body: "test fn other() -> Bool { a() && t() }") }
+
+// The shape gunbc#11593 makes to `v2.test.manual.cross_language_add_python_to_typescript`
+// `cross_language_add_python_to_typescript_chain_status_holds` (there `ts_effect_io_emit_holds`,
+// imported from `v2.test.manual.typescript_effect_io_emit`; here `e` from `lib`): one trailing IMPORTED test-fn
+// conjunct deleted from a match arm whose next token opens the following arm.
+fn src_chain_status_base() -> String { src_importing(items: "e", body: "test fn h() -> Bool { match p { A => c() && e() R => false } }") }
+fn src_chain_status_head() -> String { src_importing(items: "e", body: "test fn h() -> Bool { match p { A => c() R => false } }") }
+
+fn decide(base: String, head: String, function: String) -> CostDebtWitnessEdit {
+  cost_debt_edit_from_sources(base_source: base, head_source: head, function: function, test_fn_identities: fixture_test_fns())
+}
+
+// ---- CONTROLS: a pure test-fn removal keeps the grandfathered budget ----
+
+test fn cost_debt_edit_trailing_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
+  let edit = decide(base: src_two_conjuncts(), head: src_one_conjunct(), function: "w")
+  edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
+}
+
+test fn cost_debt_edit_leading_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
+  let edit = decide(base: src_leading_base(), head: src_one_conjunct(), function: "w")
+  edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
+}
+
+test fn cost_debt_edit_imported_test_fn_removal_keeps_the_grandfathered_budget() -> Bool {
+  let edit = decide(base: src_imported_test_fn_base(), head: src_one_conjunct(), function: "w")
+  edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
+}
+
+test fn cost_debt_edit_the_11593_chain_status_removal_keeps_the_grandfathered_budget() -> Bool {
+  let edit = decide(base: src_chain_status_base(), head: src_chain_status_head(), function: "h")
+  edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
+}
+
+// ---- DISCRIMINATING REDS: any other edit is judged at the new-witness budget ----
+
+test fn cost_debt_edit_removed_conjunct_plus_added_call_is_rejudged_at_the_new_witness_budget() -> Bool {
+  let edit = decide(base: src_two_conjuncts(), head: src_swapped_call(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_changed_literal_is_rejudged_at_the_new_witness_budget() -> Bool {
+  let edit = decide(base: src_literal_base(), head: src_literal_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_removal_that_rebinds_precedence_is_rejudged() -> Bool {
+  let edit = decide(base: src_precedence_base(), head: src_precedence_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_removal_under_a_negation_is_rejudged() -> Bool {
+  let edit = decide(base: src_negated_base(), head: src_negated_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_signature_change_with_a_removal_is_rejudged() -> Bool {
+  let edit = decide(base: src_two_conjuncts(), head: src_signature_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_with_no_token_change_is_not_a_removal() -> Bool {
+  let edit = decide(base: src_two_conjuncts(), head: src_two_conjuncts(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessTokensUnchanged {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_renamed_witness_is_rejudged() -> Bool {
+  let edit = decide(base: src_two_conjuncts(), head: src_renamed_head(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtHead {}) && rejudged_and_refused(edit: edit)
+}
+
+// The ruling is NARROW: removing a call that is not a test fn -- here an imported helper -- must not
+// keep the tier, even though it is otherwise a clean conjunct deletion.
+test fn cost_debt_edit_removing_a_non_test_fn_call_is_rejudged() -> Bool {
+  let edit = decide(base: src_helper_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
+}
+
+// An aliased import is not followed, so a call through the alias cannot be shown to be a test fn --
+// even though `t2` IS one -- and the edit re-judges rather than keeping the tier on a guess.
+test fn cost_debt_edit_removing_a_call_through_an_alias_is_rejudged() -> Bool {
+  let edit = decide(base: src_aliased_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
+}
+
+// UNCLASSIFIABLE BODIES TAKE THE STRICTER TIER. A base the lexer refuses, and a witness the base does
+// not declare, are not pure removals.
+test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool {
+  let edit = decide(base: src_untokenizable_base(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessSourceDidNotTokenize {}) && rejudged_and_refused(edit: edit)
+}
+
+test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
+  let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
+  edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
+}

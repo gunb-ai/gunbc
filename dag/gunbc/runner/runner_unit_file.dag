@@ -59,8 +59,9 @@ import gunbc.runner_host_deploy {
 import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
-import gunbc.ci_fleet { fleet_compute_offer_for }
-import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.runner_registration_labels {
+  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+}
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache_unit {
   sccache_endpoint_env_assignment,
@@ -73,9 +74,9 @@ data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
 // THE RUNNER UNIT, MODELLED RATHER THAN COPIED.
 //
 // `gunbc.runner_unit` already owns what a runner unit is NAMED and, since #9235, what its teardown
-// must GUARANTEE -- `RunnerUnitLifecycleIntent` plus `lifecycle_intent_cannot_orphan`, which proves
-// that a stop cannot leave a live process behind only when the kill reaches the whole cgroup AND
-// systemd does not call the service finished while processes remain. That intent was declared and
+// must GUARANTEE -- `RunnerUnitLifecycleIntent` plus `lifecycle_intent_stops_finished_incarnation`, which holds
+// only when a finished incarnation makes systemd ISSUE a stop (the main process exits under
+// ExitType=main) AND that stop reaches the whole cgroup (KillMode=control-group). That intent was declared and
 // UNROUTED: nothing rendered a unit, so the fleet's live template still carries `KillMode=process`
 // and no `ExitType=` at all, and the property the repository had proved was true of nothing.
 //
@@ -115,8 +116,8 @@ data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
 //   this shape. Removing it would look like tidying and would stop the fleet under load.
 //
 //   TimeoutStopSec=5min -- how long a stop is allowed before SIGKILL. It becomes MORE load-bearing
-//   under the teardown fix below, not less: `ExitType=cgroup` means the stop now waits on the whole
-//   cgroup, so this is the bound on that wait.
+//   under the teardown fix below, not less: once the stop reaches the whole cgroup, this is the bound
+//   after which a survivor that ignores SIGTERM is SIGKILLed (measured on srv1 2026-09-18).
 
 // THE ON-HOST APP KEY PATH, WHICH IS THE MATERIALIZATION OF A SECRET THAT ALREADY HAS AN AUTHORITY.
 //
@@ -140,8 +141,13 @@ fn runner_slot_instance_directory() -> String {
 // A runner registers with a label set and a workflow's `runs-on` selects on it. If the unit spelled
 // its own list, the failure of a disagreement would be a job that is queued forever against a label
 // nothing advertises -- no diagnostic anywhere, because neither side is wrong on its own terms. So
-// the render takes the `RunnerSpec` that `gunbc.ci_deploy_target_host` `host_pinned_runner_spec`
-// derives, and this module spells no label literal.
+// the render takes its labels from `gunbc.runner_registration_labels` `runner_registration_labels`
+// -- the host's offer-derived platform labels, the slot's class label (gunbc-heavy) and the label of
+// the host the runner executes on -- and this module spells no label literal. The host-pinned selectors
+// (`gunbc.ci_deploy_target_host` `host_pinned_runner_spec`, the fleet-converge host input) spell the
+// host through the same `runner_host_label`, and a selector is satisfied by SET MEMBERSHIP
+// (`runner_labels_satisfy_selector`), so the registration carries every label each selector names
+// without the two being one list.
 //
 // THE TWO NON-SELF-HOSTED SPECS REFUSE, AND THEY REFUSE SEPARATELY, because they are different
 // facts with different remedies. A hosted-runner spec names a machine GitHub owns -- there is no
@@ -254,7 +260,7 @@ fn runner_unit_jobserver_wants(scope: CompileParallelismRealization) -> List<Sys
 //
 // Taking the intent as an argument is what lets a witness render the fleet's CURRENT teardown --
 // `ExitType=main` implied by its absence, `KillMode=process` -- and show that the same renderer
-// produces a unit whose property `lifecycle_intent_cannot_orphan` REFUSES. Fixing the pair here as a
+// produces a unit whose property `lifecycle_intent_stops_finished_incarnation` REFUSES. Fixing the pair here as a
 // constant would leave the discriminating case unauthorable, which §4b calls a check that cannot go
 // red.
 fn runner_unit_teardown_directives(intent: RunnerUnitLifecycleIntent) -> List<SystemdServiceDirective> {
@@ -480,16 +486,16 @@ fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIden
 }
 
 fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
-  match fleet_compute_offer_for(host: host) {
-    Absent =>
+  match runner_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: _, cause: c } =>
       RunnerUnitTextRefused {
-        reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
+        reason: concat("runner_unit_file: ", c as String) as NonEmptyStr,
       }
-    Present { value: offer } =>
+    RegistrationLabelsResolved { labels: labels } =>
       runner_unit_text(
         rendering: gunbc_runner_unit_file(
           deploy: deploy,
-          spec: host_pinned_runner_spec(offer: offer, host: host),
+          spec: SelfHosted { labels: labels },
           permit_scope: gunbc_fleet_runner_permit_scope(),
         ),
       )

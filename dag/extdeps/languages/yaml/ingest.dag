@@ -58,9 +58,20 @@ fn yaml_looks_like_int(s: String) -> Bool {
   }
 }
 
+// COUNTED IN CHUNKS, NOT ONE RECURSIVE CALL PER SPACE. Recursing per space copied the remaining line
+// at every leading space and ran several times per line, so indentation dominated the parse -- about
+// 235 eval steps a line, which put a census of one 143-line workflow file past a whole claim's
+// budget (gunb-ai/gunbc#11587). Consuming the largest run of 8, 4, 2 or 1 spaces per call gives the
+// identical count (spaces only; a tab still ends the indentation) in a handful of calls.
 fn yaml_indent_of(line: String) -> Int {
-  if starts_with(s: line, prefix: " ") {
-    1 + yaml_indent_of(line: substring(s: line, start: 1, end: line.length()))
+  if starts_with(s: line, prefix: "        ") {
+    8 + yaml_indent_of(line: substring(s: line, start: 8, end: line.length()))
+  } else if starts_with(s: line, prefix: "    ") {
+    4 + yaml_indent_of(line: substring(s: line, start: 4, end: line.length()))
+  } else if starts_with(s: line, prefix: "  ") {
+    2 + yaml_indent_of(line: substring(s: line, start: 2, end: line.length()))
+  } else if starts_with(s: line, prefix: " ") {
+    1
   } else {
     0
   }
@@ -96,22 +107,25 @@ fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
   }
 }
 
-fn yaml_line_is_full_comment_at_indent(lines: List<String>, index: Int, indent: Int) -> Bool {
+// OUTSIDE A SCALAR, A BLANK LINE OR A FULL-LINE COMMENT CARRIES NO CONTENT AT ANY INDENTATION
+// (YAML 1.2.2 section 6.6, l-comment). Block-literal bodies never pass through here -- they are
+// collected by yaml_collect_literal_lines_from, where blank and `#` lines ARE content -- so skipping
+// them between structural entries cannot drop scalar text. Before this, a blank line ended the
+// enclosing mapping and a comment indented differently from its siblings was refused, which made
+// every hand-authored workflow in .github/workflows unreadable.
+fn yaml_line_is_ignorable(lines: List<String>, index: Int) -> Bool {
   if !yaml_has_line_at(lines: lines, index: index) {
     false
-  } else if yaml_indent_at(lines: lines, index: index) != indent {
-    false
   } else {
-    starts_with(
-      s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent),
-      prefix: "#"
-    )
+    let l = yaml_line_at(lines: lines, index: index)
+    let t = yaml_strip_indent(line: l, indent: yaml_indent_of(line: l))
+    t == "" || starts_with(s: t, prefix: "#")
   }
 }
 
-fn yaml_skip_full_comments_at_indent(lines: List<String>, index: Int, indent: Int) -> Int {
-  if yaml_line_is_full_comment_at_indent(lines: lines, index: index, indent: indent) {
-    yaml_skip_full_comments_at_indent(lines: lines, index: index + 1, indent: indent)
+fn yaml_skip_ignorable_lines(lines: List<String>, index: Int) -> Int {
+  if yaml_line_is_ignorable(lines: lines, index: index) {
+    yaml_skip_ignorable_lines(lines: lines, index: index + 1)
   } else {
     index
   }
@@ -129,15 +143,27 @@ fn yaml_has_unmodeled_inline_comment(text: String) -> Bool {
   )
 }
 
+// A VALUE WITH NO BACKSLASH HAS NOTHING TO UNESCAPE, so it is returned whole. The per-character
+// recursion below copies the remainder at every character -- quadratic in the value's length -- and
+// generated workflows are made of long double-quoted command lines; running it only when an escape
+// is present gives the identical result.
 fn yaml_unescape_double_quoted(s: String) -> String {
+  if !string_contains(s: s, pattern: "\\") {
+    s
+  } else {
+    yaml_unescape_double_quoted_chars(s: s)
+  }
+}
+
+fn yaml_unescape_double_quoted_chars(s: String) -> String {
   if s == "" {
     ""
   } else if starts_with(s: s, prefix: "\\\"") {
-    concat("\"", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
+    concat("\"", yaml_unescape_double_quoted_chars(s: substring(s: s, start: 2, end: s.length())))
   } else if starts_with(s: s, prefix: "\\\\") {
-    concat("\\", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
+    concat("\\", yaml_unescape_double_quoted_chars(s: substring(s: s, start: 2, end: s.length())))
   } else {
-    concat(substring(s: s, start: 0, end: 1), yaml_unescape_double_quoted(s: substring(s: s, start: 1, end: s.length())))
+    concat(substring(s: s, start: 0, end: 1), yaml_unescape_double_quoted_chars(s: substring(s: s, start: 1, end: s.length())))
   }
 }
 
@@ -199,8 +225,9 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
     }
   } else if ends_with(s: content, suffix: ":") {
     let key = substring(s: content, start: 0, end: content.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 2) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 2) {
+    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
+    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 2) {
+      match yaml_parse_block(lines: lines, index: body, indent: indent + 2) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
           ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
@@ -230,8 +257,9 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
     }
   } else if ends_with(s: text, suffix: ":") {
     let key = substring(s: text, start: 0, end: text.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 4) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 4) {
+    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
+    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 4) {
+      match yaml_parse_block(lines: lines, index: body, indent: indent + 4) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
           ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
@@ -245,7 +273,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
 }
 
 fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
@@ -286,7 +314,7 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
 }
 
 fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
@@ -303,7 +331,7 @@ fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<
 }
 
 fn yaml_parse_block(lines: List<String>, index: Int, indent: Int) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     YamlBlockRejected { reason: "expected a YAML block, found end of input" }
   } else if yaml_indent_at(lines: lines, index: current) != indent {

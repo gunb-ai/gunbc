@@ -1,11 +1,13 @@
 module gunbc.generated_workflow_provenance
 
-import std.types { String }
+import std.types { String, List }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
 }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
@@ -21,6 +23,23 @@ type GeneratedWorkflowProvenance {
   authority: String
 }
 
+// THE SAME THREE WORKFLOWS AS A LIST, beside the match that gives each its provenance, for a consumer
+// that must ask which files under .github/workflows a generator owns without evaluating the whole
+// generated-artifact registry (its cost is re-derived by claim_batch's eval_steps on
+// test.claim.action_use_admission_witness). This list is NOT a second authority for that
+// population: test.claim.action_use_admission_witness
+// generated_workflow_artifacts_are_exactly_the_registry_workflows joins it to
+// gunbc.generated_artifact generated_artifact_registry by identity in BOTH directions, so a row
+// that outlives its generator (the direction that would let the census skip a hand-authored file)
+// refuses, as does a generated workflow missing here.
+data generated_workflow_artifacts: List<GeneratedArtifact> = [
+  WitnessFloorYamlArtifact,
+  FleetConvergeYamlArtifact,
+  FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
+]
+
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
   match a {
     WitnessFloorYamlArtifact => Present { value: GeneratedWorkflowProvenance {
@@ -34,6 +53,14 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
       authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
+    } }
+    HealWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_workflow expected_heal_workflow_yml",
+      authority: "gunbc.heal_workflow heal_workflow",
+    } }
+    HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
+      authority: "gunbc.heal_publisher_workflow heal_publisher_workflow",
     } }
     _ => none
   }

@@ -26,7 +26,8 @@ import std.realization_reconcile {
   EffectConverged,
   EffectNotConverged,
 }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { bound_dissolution }
 import gunbc.host_convergence_protocol {
   admit_protocol_phases,
   PhasesBound,
@@ -43,6 +44,23 @@ import gunbc.host_convergence_protocol {
   FrontierHonest,
   FrontierConsumerIsDeclaration,
   FrontierTriggerIsDeclaration,
+  FrontierAwaitingDischarge,
+  FrontierDischargeFired,
+  FrontierDischargeUnobservable,
+  ProtocolFrontierRow,
+  FrontierConsumerNamed,
+  FrontierConsumerAwaiting,
+  FrontierPresenceEvidence,
+  FrontierPresenceObserved,
+  FrontierPresenceUnobserved,
+  admit_frontier_row,
+  bind_declared_frontiers,
+  frontier_standing_is_honest,
+  canonical_protocol_gate,
+  CanonicalProtocolGate,
+  CanonicalProtocolAdmitted,
+  CanonicalProtocolRefused,
+  LayerRemedy,
   host_effect_observe_frontier,
   host_effect_decide_plan_frontier,
   host_effect_decide_apply_frontier,
@@ -309,51 +327,152 @@ test fn frontier_self_trigger_is_red() -> Bool {
   )
 }
 
-test fn canonical_protocol_binds() -> Bool {
+// THE PRODUCTION ROUTE. bind_canonical_protocol is what gunbc.fleet_converge_plan_cli
+// gates on. It binds with two honest rows and one row openly awaiting; the census
+// asserts the ROUTE, so an awaiting row read as honest (or a third honest row) is red.
+test fn canonical_protocol_binds_with_apply_awaiting() -> Bool {
   match bind_canonical_protocol() {
-    CanonicalFrontiersUnbound { frontiers: fs } =>
-      plan_side_frontiers_honest_apply_still_unbound(ss: fs)
-    CanonicalProtocolBound { frontiers: _ } => false
+    CanonicalProtocolBound { frontiers: fs } => two_honest_one_awaiting(ss: fs)
+    CanonicalFrontiersUnbound { frontiers: _ } => false
     CanonicalLayersUnbound { join: _ } => false
     CensusProtocolUnbound { standing: _ } => false
   }
 }
 
-fn plan_side_frontiers_honest_apply_still_unbound(ss: List<FrontierStanding>) -> Bool {
-  let c = fold(ss, init: StandingCensus { honest: 0, apply_unbound: 0 }, f: fn(acc, s) {
-    match s {
-      FrontierHonest => StandingCensus { honest: acc.honest + 1, apply_unbound: acc.apply_unbound }
-      FrontierTriggerIsTheConsumer { frontier: _ } =>
-        StandingCensus { honest: acc.honest, apply_unbound: acc.apply_unbound + 1 }
-      FrontierConsumerIsDeclaration { frontier: _ } => acc
-      FrontierTriggerIsDeclaration { frontier: _ } => acc
-    }
-  })
-  c.honest == 2 && c.apply_unbound == 1
+test fn production_gate_admits_the_canonical_protocol() -> Bool {
+  match canonical_protocol_gate(standing: bind_canonical_protocol()) {
+    CanonicalProtocolAdmitted { frontiers: _ } => true
+    CanonicalProtocolRefused { standing: _ } => false
+  }
 }
 
 type StandingCensus {
   honest: Int
-  apply_unbound: Int
+  awaiting: Int
+  other: Int
 }
 
-test fn plan_side_frontiers_are_honest_apply_is_not() -> Bool {
-  match admit_frontier(f: host_effect_observe_frontier) {
-    FrontierHonest => true
-    FrontierTriggerIsTheConsumer { frontier: _ } => false
-    FrontierConsumerIsDeclaration { frontier: _ } => false
-    FrontierTriggerIsDeclaration { frontier: _ } => false
-  }
-    && match admit_frontier(f: host_effect_decide_plan_frontier) {
-      FrontierHonest => true
-      FrontierTriggerIsTheConsumer { frontier: _ } => false
-      FrontierConsumerIsDeclaration { frontier: _ } => false
-      FrontierTriggerIsDeclaration { frontier: _ } => false
+fn two_honest_one_awaiting(ss: List<FrontierStanding>) -> Bool {
+  let c = fold(ss, init: StandingCensus { honest: 0, awaiting: 0, other: 0 }, f: fn(acc, s) {
+    match s {
+      FrontierHonest => StandingCensus { honest: acc.honest + 1, awaiting: acc.awaiting, other: acc.other }
+      FrontierAwaitingDischarge { declaration: _, discharge: _ } =>
+        StandingCensus { honest: acc.honest, awaiting: acc.awaiting + 1, other: acc.other }
+      FrontierTriggerIsTheConsumer { frontier: _ } => StandingCensus { honest: acc.honest, awaiting: acc.awaiting, other: acc.other + 1 }
+      FrontierConsumerIsDeclaration { frontier: _ } => StandingCensus { honest: acc.honest, awaiting: acc.awaiting, other: acc.other + 1 }
+      FrontierTriggerIsDeclaration { frontier: _ } => StandingCensus { honest: acc.honest, awaiting: acc.awaiting, other: acc.other + 1 }
+      FrontierDischargeFired { declaration: _, discharge: _ } => StandingCensus { honest: acc.honest, awaiting: acc.awaiting, other: acc.other + 1 }
+      FrontierDischargeUnobservable { declaration: _, discharge: _ } => StandingCensus { honest: acc.honest, awaiting: acc.awaiting, other: acc.other + 1 }
     }
-    && match admit_frontier(f: host_effect_decide_apply_frontier) {
-      FrontierTriggerIsTheConsumer { frontier: _ } => true
+  })
+  c.honest == 2 && c.awaiting == 1 && c.other == 0
+}
+
+test fn apply_row_is_awaiting_never_honest() -> Bool {
+  !frontier_standing_is_honest(
+    s: admit_frontier_row(row: host_effect_decide_apply_frontier, evidence: FrontierPresenceUnobserved),
+  )
+    && match admit_frontier_row(row: host_effect_decide_apply_frontier, evidence: FrontierPresenceUnobserved) {
+      FrontierAwaitingDischarge { declaration: _, discharge: _ } => true
       FrontierHonest => false
       FrontierConsumerIsDeclaration { frontier: _ } => false
       FrontierTriggerIsDeclaration { frontier: _ } => false
+      FrontierTriggerIsTheConsumer { frontier: _ } => false
+      FrontierDischargeFired { declaration: _, discharge: _ } => false
+      FrontierDischargeUnobservable { declaration: _, discharge: _ } => false
     }
+}
+
+// THE GATE'S REDS. Each fixture differs from the production roster by one row, and each
+// goes through the same bind_declared_frontiers and canonical_protocol_gate the CLI runs.
+fn fx(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.host_convergence_protocol_witness", decl_name: name)
+}
+
+fn roster_with(row: ProtocolFrontierRow) -> List<ProtocolFrontierRow> {
+  [
+    FrontierConsumerNamed { frontier: host_effect_observe_frontier },
+    FrontierConsumerNamed { frontier: host_effect_decide_plan_frontier },
+    row,
+  ]
+}
+
+fn gate_refuses(rows: List<ProtocolFrontierRow>, evidence: FrontierPresenceEvidence) -> Bool {
+  match canonical_protocol_gate(standing: bind_declared_frontiers(frontiers: rows, evidence: evidence)) {
+    CanonicalProtocolRefused { standing: CanonicalFrontiersUnbound { frontiers: _ } } => true
+    CanonicalProtocolRefused { standing: _ } => false
+    CanonicalProtocolAdmitted { frontiers: _ } => false
+  }
+}
+
+fn gate_admits(rows: List<ProtocolFrontierRow>, evidence: FrontierPresenceEvidence) -> Bool {
+  match canonical_protocol_gate(standing: bind_declared_frontiers(frontiers: rows, evidence: evidence)) {
+    CanonicalProtocolAdmitted { frontiers: _ } => true
+    CanonicalProtocolRefused { standing: _ } => false
+  }
+}
+
+// The row C4 replaced: consumer and trigger the same declaration.
+test fn gate_refuses_self_referential_trigger() -> Bool {
+  gate_refuses(
+    rows: roster_with(row: FrontierConsumerNamed {
+      frontier: ProtocolDeclaredFrontier { declaration: fx(name: "decl"), named_consumer: fx(name: "c"), trigger_capability: fx(name: "c") },
+    }),
+    evidence: FrontierPresenceUnobserved,
+  )
+}
+
+test fn gate_refuses_consumer_is_declaration() -> Bool {
+  gate_refuses(
+    rows: roster_with(row: FrontierConsumerNamed {
+      frontier: ProtocolDeclaredFrontier { declaration: fx(name: "decl"), named_consumer: fx(name: "decl"), trigger_capability: fx(name: "t") },
+    }),
+    evidence: FrontierPresenceUnobserved,
+  )
+}
+
+test fn gate_refuses_trigger_is_declaration() -> Bool {
+  gate_refuses(
+    rows: roster_with(row: FrontierConsumerNamed {
+      frontier: ProtocolDeclaredFrontier { declaration: fx(name: "decl"), named_consumer: fx(name: "c"), trigger_capability: fx(name: "decl") },
+    }),
+    evidence: FrontierPresenceUnobserved,
+  )
+}
+
+// Awaiting + Fired: the capability arrived and the row was never discharged.
+test fn gate_refuses_awaiting_whose_discharge_fired() -> Bool {
+  gate_refuses(
+    rows: roster_with(row: FrontierConsumerAwaiting { declaration: fx(name: "decl"), discharge: bound_dissolution(ref: fx(name: "arrived")) }),
+    evidence: FrontierPresenceObserved { present_decls: [fx(name: "arrived")] },
+  )
+}
+
+// The paired positive: the same bound row with its capability absent binds.
+test fn gate_admits_awaiting_whose_discharge_is_pending() -> Bool {
+  gate_admits(
+    rows: roster_with(row: FrontierConsumerAwaiting { declaration: fx(name: "decl"), discharge: bound_dissolution(ref: fx(name: "arrived")) }),
+    evidence: FrontierPresenceObserved { present_decls: [fx(name: "other")] },
+  )
+}
+
+// A bound discharge answered against no population refuses rather than reading Pending.
+test fn gate_refuses_bound_discharge_without_population() -> Bool {
+  gate_refuses(
+    rows: roster_with(row: FrontierConsumerAwaiting { declaration: fx(name: "decl"), discharge: bound_dissolution(ref: fx(name: "arrived")) }),
+    evidence: FrontierPresenceUnobserved,
+  )
+}
+
+test fn gate_refuses_a_malformed_layer_join() -> Bool {
+  match canonical_protocol_gate(standing: CanonicalLayersUnbound { join: CanonicalLayerMissing { layer: LayerRemedy } }) {
+    CanonicalProtocolRefused { standing: CanonicalLayersUnbound { join: _ } } => true
+    CanonicalProtocolRefused { standing: _ } => false
+    CanonicalProtocolAdmitted { frontiers: _ } => false
+  }
+}
+
+test fn plan_side_frontiers_are_honest() -> Bool {
+  frontier_standing_is_honest(s: admit_frontier(f: host_effect_observe_frontier))
+    && frontier_standing_is_honest(s: admit_frontier(f: host_effect_decide_plan_frontier))
 }
