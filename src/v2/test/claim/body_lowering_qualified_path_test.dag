@@ -1,0 +1,356 @@
+module v2.test.claim.body_lowering_qualified_path
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Node, Symbol, Transform }
+import v2.std.node_query {
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets
+}
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name {
+  qualified_name_from_node,
+  qualified_name_to_dotted_string
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A QUALIFIED REFERENCE IN A FN BODY IS ONE MENTION AND MUST REACH THE ARROW BODY WHOLE. Three
+// spellings of the same reference -- a value chain in an expression body, a call through the
+// chain in an expression body, and the same call in a brace body -- each lowered to the bare
+// atom `wall` before the repair, dropping the rest of the path and the call with no diagnostic
+// (gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering and
+// call_expression_erased_at_v2_body_lowering). The consumer that needs the whole path is
+// v2.compiler.resolve try_resolve_qualified_name_node: a qualified reference to test code can
+// reach its refusal door only if lowering keeps the path. `uses_local` is the positive control:
+// a bare same-module name in an expression body stays the atom it was.
+//
+// ONE FIXTURE PER SPELLING, BECAUSE EACH CLAIM PAYS THE NORMALIZE OF ITS WHOLE FIXTURE. The claims
+// are about lowering, which runs inside normalize, so normalize is the stage each claim executes
+// and is deliberately not shared (v2.workflow.floor_pure_producer_share: every normalize claim
+// executes the stage it names). One five-fn fixture normalized by four claims measured about four
+// times the new-witness eval-step line per claim with claim_batch; four two-fn fixtures keep
+// each claim near the sibling v2.test.claim.body_lowering_block_body_call row. Each parse is
+// a WARM row read by its inhabitance claim and its lowering claim(s).
+data body_lowering_local_value_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_local() -> Bool = peer_leaf\n"
+
+data body_lowering_qualified_value_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual() -> Bool = wall.peer.peer_leaf\n"
+
+data body_lowering_qualified_call_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+data body_lowering_qualified_block_call_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual_block() -> Bool {\n  wall.peer.peer_leaf()\n}\n"
+
+data body_lowering_qualified_path_dotted: String = "wall.peer.peer_leaf"
+
+// THE LOCAL-RECEIVER METHOD CALL IS PINNED, BECAUSE THE DOOR SITS ABOVE THE RECEIVER-METHOD ARM AT
+// ALL THREE SITES (review 68231 on gunbc#11683). Measured on main's fold on the normalize route:
+// `{ x.step(a: 1) }` reached the arrow body as Transform(x) -- operator `x`, method AND argument
+// erased (body_lower_try_primary_ident_call claims it before body_lower_try_postfix_projection in
+// body_lower_try_body_lowered) -- and `= x.step(a: 1)` as the atom `x`. So no executing lowering of
+// this shape is replaced; it now lowers like every other dotted chain, to a Transform whose
+// operator is the spine x.step, and what `x` denotes is the resolver's (a local head refuses
+// Unbound there, loud where the route was silent). This claim is red on main and pins the one
+// shape the reviewer named. IT ASSERTS THE CALLEE ONLY: the ARGUMENT row is the open half of
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering and is not this PR's
+// subject -- measured on the same route, a plain `{ step(a: x) }` reaches the arrow body as
+// Transform(step) with the argument dropped and `{ step(x, 1) }` as the literal `1`, on main and
+// after this change alike.
+data body_lowering_local_receiver_call_source: String = "module recv\n\nfn f(x: Int) -> Int {\n  x.step(a: 1)\n}\n"
+
+data body_lowering_local_receiver_dotted: String = "x.step"
+
+fn body_lowering_source_parsed(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn body_lowering_local_value_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_local_value_source,
+    file: ^body_lowering_local_value_file
+  )
+}
+
+fn body_lowering_qualified_value_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_qualified_value_source,
+    file: ^body_lowering_qualified_value_file
+  )
+}
+
+fn body_lowering_qualified_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_qualified_call_source,
+    file: ^body_lowering_qualified_call_file
+  )
+}
+
+fn body_lowering_qualified_block_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_qualified_block_call_source,
+    file: ^body_lowering_qualified_block_call_file
+  )
+}
+
+fn body_lowering_local_receiver_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_local_receiver_call_source,
+    file: ^body_lowering_local_receiver_call_file
+  )
+}
+
+fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: captured, diagnostics: _ } =>
+      match find_named_child(root: captured, name: ^wall) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: wall_n, diagnostics: _ } =>
+          find_named_child(root: wall_n, name: ^peer)
+      }
+  }
+}
+
+fn body_lowering_recv_members(root: Node) -> Outcome<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: captured, diagnostics: _ } => find_named_child(root: captured, name: ^recv)
+  }
+}
+
+// Normalize one parsed fixture, then read one member's arrow body.
+fn body_lowering_normalized_arrow_body(parsed_fixture: Outcome<Node>, name: Symbol) -> Outcome<Node> {
+  match parsed_fixture {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_qualified_members(root: tree.root) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: members, diagnostics: _ } =>
+              match find_named_child(root: members, name: name) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: member, diagnostics: _ } => find_arrow_body_child(root: member)
+              }
+          }
+      }
+  }
+}
+
+fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
+  match qualified_name_from_node(root: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: qn, diagnostics: _ } =>
+      (length(xs: qn) > 1) && (qualified_name_to_dotted_string(qn: qn) == dotted)
+  }
+}
+
+// A Transform whose first positional child is the whole path and whose argument row is empty:
+// the path is the operator, never an argument, and no segment is dropped. This reads the
+// NORMALIZED tree, before resolve replaces the spine with its canonical atom, so it reads the
+// positional row directly rather than through node_query node_is_call (whose callee reading is
+// the post-resolve Arrow-or-Atom shape).
+fn body_lowering_body_callee_is_path(body: Node, dotted: String) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: callee, tail: _ } => body_lowering_body_is_path(body: callee, dotted: dotted)
+        Empty => false
+      }
+    _ => false
+  }
+}
+
+fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: callee, tail: args } =>
+          body_lowering_body_is_path(body: callee, dotted: dotted) && (length(xs: args) == 0)
+        Empty => false
+      }
+    _ => false
+  }
+}
+
+fn body_lowering_parsed_holds(parsed_fixture: Outcome<Node>) -> Bool {
+  match parsed_fixture {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn body_lowering_local_value_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_local_value_parsed())
+}
+
+test fn body_lowering_qualified_value_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_qualified_value_parsed())
+}
+
+test fn body_lowering_qualified_call_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_qualified_call_parsed())
+}
+
+test fn body_lowering_local_receiver_call_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_local_receiver_call_parsed())
+}
+
+test fn body_lowering_qualified_block_call_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_qualified_block_call_parsed())
+}
+
+test fn body_lowering_expression_body_local_stays_atom() -> Bool {
+  match body_lowering_normalized_arrow_body(
+    parsed_fixture: body_lowering_local_value_parsed(),
+    name: ^uses_local
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match node_atom_identity_optional(node: body) {
+        Present { value: id } => id == ^peer_leaf
+        Absent => false
+      }
+  }
+}
+
+test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
+  match body_lowering_normalized_arrow_body(
+    parsed_fixture: body_lowering_qualified_value_parsed(),
+    name: ^uses_qual
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      body_lowering_body_is_path(body: body, dotted: body_lowering_qualified_path_dotted)
+  }
+}
+
+test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
+  match body_lowering_normalized_arrow_body(
+    parsed_fixture: body_lowering_qualified_call_parsed(),
+    name: ^uses_qual_call
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      body_lowering_body_is_call_through_path(body: body, dotted: body_lowering_qualified_path_dotted)
+  }
+}
+
+test fn body_lowering_qualified_block_call_callee_is_the_whole_path() -> Bool {
+  match body_lowering_normalized_arrow_body(
+    parsed_fixture: body_lowering_qualified_block_call_parsed(),
+    name: ^uses_qual_block
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      body_lowering_body_is_call_through_path(body: body, dotted: body_lowering_qualified_path_dotted)
+  }
+}
+
+test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
+  match body_lowering_local_receiver_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_recv_members(root: tree.root) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: members, diagnostics: _ } =>
+              match find_named_child(root: members, name: ^f) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: member, diagnostics: _ } =>
+                  match find_arrow_body_child(root: member) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: body, diagnostics: _ } =>
+                      body_lowering_body_callee_is_path(
+                        body: body,
+                        dotted: body_lowering_local_receiver_dotted
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A CALL BEFORE THE END OF THE CHAIN IS LIVE CORPUS IDIOM AND IS STILL ERASED TODAY. `fields.skip(n:
+// index).first()` is the shape of v2.workflow.floor_terminal_ledger_wire ledger_wire_field_at (and
+// three more sites review 68280 on gunbc#11683 named). The dotted door names it and DECLINES it,
+// so normalize keeps Accepting those modules; the existing arms then lower it to the head atom
+// with no diagnostic -- the open method-on-a-value shape of gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering. Two claims: the positive control that the module
+// still Accepts (the wall this PR must not lower), and the today-row pinning the erasure, which
+// flips loudly the day the shape is lowered or refused.
+data body_lowering_receiver_chain_mid_call_source: String = "module recv\n\nfn field_at(fields: List<Int>, index: Int) -> Int = fields.skip(n: index).first()\n"
+
+fn body_lowering_receiver_chain_mid_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_receiver_chain_mid_call_source,
+    file: ^body_lowering_receiver_chain_mid_call_file
+  )
+}
+
+fn body_lowering_receiver_chain_mid_call_body() -> Outcome<Node> {
+  match body_lowering_receiver_chain_mid_call_parsed() {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_recv_members(root: tree.root) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: members, diagnostics: _ } =>
+              match find_named_child(root: members, name: ^field_at) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: member, diagnostics: _ } => find_arrow_body_child(root: member)
+              }
+          }
+      }
+  }
+}
+
+test fn body_lowering_receiver_chain_with_mid_call_still_accepts_holds() -> Bool {
+  match body_lowering_receiver_chain_mid_call_body() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn body_lowering_receiver_chain_with_mid_call_is_erased_today_holds() -> Bool {
+  match body_lowering_receiver_chain_mid_call_body() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match node_atom_identity_optional(node: body) {
+        Present { value: id } => id == ^fields
+        Absent => false
+      }
+  }
+}
