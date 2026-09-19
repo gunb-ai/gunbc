@@ -21,7 +21,7 @@ import v2.extdeps.languages.python {
   python_source_text,
   python_target_model
 }
-import v2.test.manual.ingest_bridge { ingest_cross_language_compile_accepts_holds }
+import v2.test.manual.ingest_bridge { check_ingest_cross_language_compile_accepts }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization {
@@ -221,7 +221,7 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
 // the closed ingest set on 2026-09-07) -- an infer-lane change, not a neutralization one, which is
 // exactly the distinction this guard exists to draw.
 fn inhabitant_neutralization_same_language_cross_language_compile_accepts_holds() -> Bool {
-  ingest_cross_language_compile_accepts_holds()
+  check_ingest_cross_language_compile_accepts()
 }
 
 // FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._same_flavor_python_emit_refuses_underived_holds`,
