@@ -1,6 +1,7 @@
 module test.claim.floor_cold_build_receipt_witness_test
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, List }
+import std.decl_ref { DeclarationRef }
 import std.measure { byte_size, byte_size_count, second, second_count, minute, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_cold_build_receipt {
@@ -109,6 +110,13 @@ test fn a_warm_or_foreign_subject_is_refused_before_its_readings_are_read() -> B
   warm && unwiped && foreign
 }
 
+// AN IDENTITY JOIN OVER THE PLAN'S REFERENCES rather than a count: each producer the plan must
+// name is looked up by module path and declaration name, so a reference swapped for prose or for
+// a different declaration reds here.
+fn names_declaration(refs: List<DeclarationRef>, module_path: String, decl_name: String) -> Bool {
+  any(refs, r => (r.module_path as String) == module_path && (r.decl_name as String) == decl_name)
+}
+
 // THE PRODUCTION STANDING IS PENDING WITH THE PLAN, the plan's subject is the cold one, its warm
 // baseline is the 2026-09-19 wall receipt, and the prediction ceiling sits above that baseline and
 // under the lane timeout -- so the receipt, when taken, has a line to fall on either side of.
@@ -122,8 +130,11 @@ test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_bas
         && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline))
           > second_count(p.warm_baseline.whole_job_wall)
         && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline)) < 10800
-        && count(p.instruments) == 3
-        && count(p.revises) == 4
+        && names_declaration(refs: p.instruments, module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun")
+        && names_declaration(refs: p.instruments, module_path: "extdeps.linux.cgroup_v2_memory", decl_name: "CgroupMemoryInterfaceFile")
+        && names_declaration(refs: p.instruments, module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command")
+        && names_declaration(refs: p.revises, module_path: "gunbc.runner_microvm", decl_name: "runner_microvm_workspace_grant")
+        && names_declaration(refs: p.revises, module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components")
   }
 }
 

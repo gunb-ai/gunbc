@@ -10,7 +10,7 @@ import gunbc.fleet_intent {
 import product.fabric.customer_image { ExecutionTarget }
 import product.fabric.envelope {
   CpuRequirement, GpuRequirement, MemoryRequirement, StorageRequirement, NetworkRequirement,
-  ResourceEnvelope,
+  ResourceEnvelope, memory_envelope,
 }
 import extdeps.toolchain.types { Architecture, Linux, Os }
 import extdeps.gpu.types { GpuRuntime }
@@ -43,22 +43,12 @@ type FleetContainerType
   = GhaRunnerContainer { baseline: ContainerBaseline }
   | AgentSessionContainer { baseline: ContainerBaseline }
 
-fn idle_memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
-  ResourceEnvelope {
-    cpu: none,
-    gpu: none,
-    memory: Present { value: MemoryRequirement { min_bytes: min_bytes } },
-    storage: none,
-    network: none,
-  }
-}
-
 data gha_runner_container: FleetContainerType = GhaRunnerContainer {
-  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(314572800)) }
+  baseline: ContainerBaselineMeasured { idle: memory_envelope(min_bytes: byte_size(314572800)) }
 }
 
 data agent_session_container: FleetContainerType = AgentSessionContainer {
-  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
+  baseline: ContainerBaselineMeasured { idle: memory_envelope(min_bytes: byte_size(471859200)) }
 }
 
 

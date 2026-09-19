@@ -106,9 +106,18 @@ fn cold_build_receipt_verdict(
 // the rows a taken receipt revises. It is data a reader and the cutover lane both consume, and
 // the verdict fold above is its acceptance -- with production inputs, through
 // gunbc_floor_cold_build_verdict below.
+//
+// THE INSTRUMENTS ARE NAMED PRODUCERS, NOT DESCRIPTIONS (DESIGN 6; review 68382). Each reading
+// cites the declaration that re-derives it: the whole-job wall is the Actions job record's own
+// started_at/completed_at (extdeps.github.workflow_runs WorkflowJobRun); the memory peak is the
+// attempt cell's memory.peak file (extdeps.linux.cgroup_v2_memory CgroupMemoryInterfaceFile, the
+// MemoryPeak arm), read on the host by the lifecycle controller after the VMM exits and before the
+// cell is judged sane; the workspace's used bytes are the sparse work image's allocated blocks
+// (extdeps.tools.stat stat_allocated_blocks_command), read on the host before the image is
+// deleted. Nothing the guest prints is a reading.
 type ColdBuildReceiptPlan {
   subject: ColdBuildSubject
-  instruments: List<NonEmptyStr>
+  instruments: List<DeclarationRef>
   warm_baseline: FloorJobWallReceipt
   revises: List<DeclarationRef>
 }
@@ -117,9 +126,9 @@ fn gunbc_floor_cold_build_receipt_plan() -> ColdBuildReceiptPlan {
   ColdBuildReceiptPlan {
     subject: gunbc_floor_cold_build_subject(),
     instruments: [
-      "whole-job wall: the Actions job's startedAt to completedAt, and the build step's own Finished line for the cold compile alone",
-      "memory peak: the attempt cell's memory.peak and memory.events, read on the host by the lifecycle controller after the VMM exits and before the cell is judged sane",
-      "workspace used: allocated blocks of the sparse work image (stat %b * %B), read on the host before the image is deleted",
+      DeclarationRef { module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.linux.cgroup_v2_memory", decl_name: "CgroupMemoryInterfaceFile", field: WholeDeclaration },
+      DeclarationRef { module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command", field: WholeDeclaration },
     ],
     warm_baseline: gunbc_floor_job_wall_receipt_2026_09_19,
     revises: [
