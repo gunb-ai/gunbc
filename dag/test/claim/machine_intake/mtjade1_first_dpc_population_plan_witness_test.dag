@@ -10,6 +10,7 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
 }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
   HashNumberPrefix,
+  SlotLabelKindNotEstablished,
   mt_jade_gsg_one_dpc_empty_slot_labels,
 }
 import extdeps.memory.types { DualDiePackage, MonolithicDie, ThreeDimensionalStacked }
@@ -106,5 +107,6 @@ test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
         && list_length(jade_first_dpc_printed_slot_labels) == jade_first_dpc_dimm_count()
         && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
         && list_length(jade_first_dpc_slots) == jade_first_dpc_dimm_count()
+    ConnectorSilkFromGsgTable11 { prefix: SlotLabelKindNotEstablished { basis: _ }, socket0: _, socket1: _, citation: _ } => false
   }
 }

@@ -1,6 +1,6 @@
 module test.claim.mtjade1_coverage_frontier_witness
 
-import std.types { Bool, String, all, any }
+import std.types { Bool, String }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
 import std.roster_frontier {
@@ -33,7 +33,7 @@ test fn w_mtjade1_frontier_rows_are_keyed_scoped_and_unbound() -> Bool {
   frontier_rows_well_formed(rows: mtjade1_coverage_frontier_rows)
     && match frontier_rows_keyed_roster_build(rows: mtjade1_coverage_frontier_rows) {
       KeyedRosterBuilt { rows: _ } => true
-      KeyedRosterBuildDuplicateKey { key: _, first: _, second: _ } => false
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
     && all(
       mtjade1_coverage_frontier_rows,
