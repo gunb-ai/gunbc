@@ -513,15 +513,15 @@ test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
 // indistinguishable from a complete read that found none -- which is the empty-observation narrow
 // this module already carries a regression control for on the OBSERVED arm. The refusal is the wall;
 // this is the claim that the wall is connected.
-fn partial_roster_of(names: List<String>, authority_total: Int) -> OrganizationRunnerRosterEvidence {
+// THE IDS ARE SUPPLIED RATHER THAN COUNTED. Deriving them from the accumulator's length needed an
+// `Int as Nat` cast, which typechecks and then refuses at RUNTIME -- so the three claims below were
+// green on a typecheck and errored before reaching a verdict on the floor. A registration id is a
+// fact about the roster anyway, not a position in whatever list a fixture happened to build.
+fn partial_roster_of(registrations: List<GitHubSelfHostedRunnerRegistration>, authority_total: Int) -> OrganizationRunnerRosterEvidence {
   RosterObservedPartial {
     observed_on: "2026-09-19" as NonEmptyStr,
-    registrations: fold(
-      names,
-      init: [],
-      f: (acc, n) => concat(acc, [one_registration(name: n, id: (acc.length() + 1) as Nat)]),
-    ),
-    observed_count: names.length(),
+    registrations: registrations,
+    observed_count: registrations.length(),
     authority_total: authority_total,
   }
 }
@@ -529,7 +529,7 @@ fn partial_roster_of(names: List<String>, authority_total: Int) -> OrganizationR
 test fn a_partial_roster_is_unreadable_rather_than_an_observed_population() -> Bool {
   match observed_github_slot_identities(
     host: operator_host_srv3,
-    roster: partial_roster_of(names: ["srv3-01", "srv3-02"], authority_total: 522),
+    roster: partial_roster_of(registrations: [one_registration(name: "srv3-01", id: 1), one_registration(name: "srv3-02", id: 2)], authority_total: 522),
   ) {
     GitHubSlotPopulationUnreadable { reason: _ } => true
     GitHubSlotPopulationObserved { identities: _ } => false
@@ -559,7 +559,7 @@ test fn the_same_registrations_read_completely_are_a_population() -> Bool {
 test fn a_prefix_holding_none_of_this_hosts_slots_still_refuses() -> Bool {
   match observed_github_slot_identities(
     host: operator_host_srv3,
-    roster: partial_roster_of(names: ["srv4-01"], authority_total: 522),
+    roster: partial_roster_of(registrations: [one_registration(name: "srv4-01", id: 1)], authority_total: 522),
   ) {
     GitHubSlotPopulationUnreadable { reason: _ } => true
     GitHubSlotPopulationObserved { identities: _ } => false
@@ -574,7 +574,7 @@ test fn a_partial_roster_refuses_the_capacity_plan() -> Bool {
   match runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: partial_roster_of(names: ["srv3-01"], authority_total: 522),
+    roster: partial_roster_of(registrations: [one_registration(name: "srv3-01", id: 1)], authority_total: 522),
   ) {
     PlanRefused { reason: _ } => true
     PlanReady { hosts: _ } => false
