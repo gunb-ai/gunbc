@@ -5,7 +5,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueExact, SampleValueNotFinite, SampleValueUnreadable }
-import std.measure { token_count_value, millisecond, millisecond_count }
+import std.measure { token_count, token_count_value, tokens_per_second_count, millisecond, millisecond_count }
 import product.capacity.lease { lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
 import gunbc.fleet_intent_network { operator_host_srv9 }
@@ -172,17 +172,17 @@ test fn a_request_that_emitted_then_failed_cannot_be_denominated_in_tokens() -> 
 test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool {
   match generation_token_delta(before_body: fx_idle, after_body: fx_after) {
     TokenDeltaRead { tokens: t } =>
-      t == 128 &&
+      token_count_value(t: t) == 128 &&
         match derive_rate_honest(
           ledger: closed_ok(),
           scrape_millis: Present { value: millisecond(count: 2000) },
           client_output: ClientOutputTokensObserved { tokens: t },
         ) {
           RateFromClientOutputTokens { tokens: tok, scrape_millis: ms } =>
-            tok == 128 && millisecond_count(m: ms) == 2000 &&
+            token_count_value(t: tok) == 128 && millisecond_count(m: ms) == 2000 &&
               match tokens_per_observation_second(r: RateFromClientOutputTokens { tokens: tok, scrape_millis: ms }) {
                 Absent => false
-                Present { value: rate } => rate == 64
+                Present { value: rate } => tokens_per_second_count(r: rate) == 64
               }
           RateUndenominable { because: _ } => false
           RateUnreadable { because: _ } => false
@@ -238,7 +238,7 @@ test fn a_scoped_generation_delta_names_the_incarnation() -> Bool {
     after_body: fx_after,
   ) {
     TokenDeltaScoped { tokens: t, incarnation: i } =>
-      t == 128 && (i.container.id as String) == "0f3a9c1d2e4b" && i.node_rank == 0
+      token_count_value(t: t) == 128 && (i.container.id as String) == "0f3a9c1d2e4b" && i.node_rank == 0
     TokenDeltaRead { tokens: _ } => false
     TokenDeltaUnread { cause: _ } => false
     TokenDeltaReset { cause: _ } => false
@@ -311,12 +311,12 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
   match derive_rate_honest(
     ledger: closed_ok(),
     scrape_millis: Present { value: millisecond(count: 2000) },
-    client_output: ClientOutputTokensObserved { tokens: 128 },
+    client_output: ClientOutputTokensObserved { tokens: token_count(count: 128) },
   ) {
     RateFromClientOutputTokens { tokens: t, scrape_millis: _ } =>
-      t == 128 &&
-        match foreign_work_bound(generation: TokenDeltaRead { tokens: 200 }, client_output: ClientOutputTokensObserved { tokens: 128 }) {
-          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } => g == 200 && c == 128 && s == 72
+      token_count_value(t: t) == 128 &&
+        match foreign_work_bound(generation: TokenDeltaRead { tokens: token_count(count: 200) }, client_output: ClientOutputTokensObserved { tokens: token_count(count: 128) }) {
+          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } => token_count_value(t: g) == 200 && token_count_value(t: c) == 128 && token_count_value(t: s) == 72
           ForeignWorkUnread { because: _ } => false
           ForeignWorkContradiction { engine_generation: _, client_output: _, because: _ } => false
         }
@@ -326,8 +326,8 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
 }
 
 test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
-  match foreign_work_bound(generation: TokenDeltaRead { tokens: 100 }, client_output: ClientOutputTokensObserved { tokens: 512 }) {
-    ForeignWorkContradiction { engine_generation: g, client_output: c, because: _ } => g == 100 && c == 512
+  match foreign_work_bound(generation: TokenDeltaRead { tokens: token_count(count: 100) }, client_output: ClientOutputTokensObserved { tokens: token_count(count: 512) }) {
+    ForeignWorkContradiction { engine_generation: g, client_output: c, because: _ } => token_count_value(t: g) == 100 && token_count_value(t: c) == 512
     ForeignWorkBounded { engine_generation: _, client_output: _, surplus: _ } => false
     ForeignWorkUnread { because: _ } => false
   }
@@ -336,7 +336,7 @@ test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
 test fn occupancy_reads_prompt_tokens_that_are_not_an_integer_lexeme() -> Bool {
   match occupancy_from_body(body: fx_idle) {
     Absent => false
-    Present { value: s } => s.running == 0 && s.prompt_tokens == 0
+    Present { value: s } => s.running == 0 && token_count_value(t: s.prompt_tokens) == 0
   }
 }
 
@@ -411,7 +411,7 @@ test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
     LedgerClosed { offered: o, completed: c, failed: f } =>
       o == 4 && c == 4 && f == 0
         && match client_output_from_bench_stdout(body: body) {
-          ClientOutputTokensObserved { tokens: n } => n == 512
+          ClientOutputTokensObserved { tokens: n } => token_count_value(t: n) == 512
           ClientOutputTokensUnread { cause: _ } => false
         }
     LedgerIncomplete { because: _ } => false
@@ -462,7 +462,7 @@ test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
         && match client_output_from_bench_stdout(body: fx_bench_stdout) {
           ClientOutputTokensUnread { cause: _ } => false
           ClientOutputTokensObserved { tokens: n } =>
-            n == 512
+            token_count_value(t: n) == 512
               && match scrape_millis_from_bench_stdout(body: fx_bench_stdout) {
                 Absent => false
                 Present { value: ms } => millisecond_count(m: ms) == 22750
@@ -666,7 +666,7 @@ fn retained_stdout_replays_the_execution(e: BenchServeExecution, retained: Strin
               ClientOutputTokensObserved { tokens: a } =>
                 match client_output_from_bench_stdout(body: retained) {
                   ClientOutputTokensUnread { cause: _ } => false
-                  ClientOutputTokensObserved { tokens: b } => a == b
+                  ClientOutputTokensObserved { tokens: b } => token_count_value(t: a) == token_count_value(t: b)
                 }
             }
       }
@@ -723,7 +723,7 @@ test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1512.0", start: "1789300000.12")
   match generation_token_delta(before_body: before, after_body: after) {
-    TokenDeltaRead { tokens: t } => t == 512
+    TokenDeltaRead { tokens: t } => token_count_value(t: t) == 512
     TokenDeltaUnread { cause: _ } => false
     TokenDeltaScoped { tokens: _, incarnation: _ } => false
     TokenDeltaReset { cause: _ } => false

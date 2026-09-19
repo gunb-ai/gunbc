@@ -3,7 +3,7 @@ module gunbc.spark.serving_load_probe
 import std.types { Bool, String, NonEmptyStr, EpochSecs, Int }
 import std.nat { Nat }
 import std.measure {
-  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
+  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, TokensPerSecond, tokens_per_second, tokens_per_second_count,
 }
 import std.decimal { ExactDecimal, canonical_exact_decimal, checked_decimal_rescale, checked_decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, CheckedIntReady, CheckedIntOverflow }
@@ -429,12 +429,12 @@ fn ledger_admits_token_denomination(l: OperationLedger) -> Bool {
 }
 
 type TokenDelta
-  = TokenDeltaRead { tokens: Nat }
-  | TokenDeltaScoped { tokens: Nat, incarnation: ObservedRankIncarnation }
+  = TokenDeltaRead { tokens: TokenCount }
+  | TokenDeltaScoped { tokens: TokenCount, incarnation: ObservedRankIncarnation }
   | TokenDeltaUnread { cause: NonEmptyStr }
   | TokenDeltaReset { cause: NonEmptyStr }
 
-fn token_delta_tokens(d: TokenDelta) -> Nat? {
+fn token_delta_tokens(d: TokenDelta) -> TokenCount? {
   match d {
     TokenDeltaRead { tokens: t } => Present { value: t }
     TokenDeltaScoped { tokens: t, incarnation: _ } => Present { value: t }
@@ -460,7 +460,7 @@ fn generation_token_delta(before_body: String, after_body: String) -> TokenDelta
                     Absent => TokenDeltaReset { cause: "generation_tokens_total decreased; the exporter likely restarted" as NonEmptyStr }
                     Present { value: d } =>
                       if d % 1000 == 0 {
-                        TokenDeltaRead { tokens: d / 1000 }
+                        TokenDeltaRead { tokens: token_count(count: d / 1000) }
                       } else {
                         TokenDeltaUnread { cause: "generation_tokens_total delta was not a whole token count" as NonEmptyStr }
                       }
@@ -522,21 +522,21 @@ type OccupancySample {
   waiting: Nat
   capacity_waiting: Nat
   preemptions: Nat
-  prompt_tokens: Nat
+  prompt_tokens: TokenCount
 }
 
 type BoundaryOccupancyReceipt
   = OccupancyBoundariesUnread { cause: NonEmptyStr }
   | OccupancyBoundariesRead { before: OccupancySample, after: OccupancySample }
 
-fn metric_token_count(body: String, metric: VllmServingMetric) -> Nat? {
+fn metric_token_count(body: String, metric: VllmServingMetric) -> TokenCount? {
   match harness_gauge_value(body: body, metric: metric) {
     Absent => none
     Present { value: t } =>
       match field_to_milli(field: t) {
         Absent => none
         Present { value: m } =>
-          if m % 1000 == 0 { Present { value: m / 1000 } } else { none }
+          if m % 1000 == 0 { Present { value: token_count(count: m / 1000) } } else { none }
       }
   }
 }
@@ -573,11 +573,11 @@ fn occupancy_trace_from_endpoint_scrapes(before_body: String, after_body: String
 }
 
 type ClientOutputTokens
-  = ClientOutputTokensObserved { tokens: Nat }
+  = ClientOutputTokensObserved { tokens: TokenCount }
   | ClientOutputTokensUnread { cause: NonEmptyStr }
 
 type LedgerCounterAgreement
-  = LedgerAndCounterAgree { generation_tokens: Nat, completed_requests: Nat }
+  = LedgerAndCounterAgree { generation_tokens: TokenCount, completed_requests: Nat }
   | LedgerCounterDisagree { because: NonEmptyStr }
   | AgreementUnread { because: NonEmptyStr }
 
@@ -600,14 +600,14 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
       match ledger {
         LedgerIncomplete { because: c } => AgreementUnread { because: c }
         LedgerClosed { offered: _, completed: n, failed: _ } =>
-          if g > 0 && n == 0 {
+          if token_count_value(t: g) > 0 && n == 0 {
             LedgerCounterDisagree { because: "generation_tokens_total advanced while the client ledger completed zero requests; foreign load is the remaining explanation" as NonEmptyStr }
           } else {
             match client_output {
               ClientOutputTokensUnread { cause: c } =>
                 AgreementUnread { because: c }
               ClientOutputTokensObserved { tokens: c } =>
-                if nat_abs_diff(a: c, b: g) <= generation_client_token_agreement_bound {
+                if nat_abs_diff(a: token_count_value(t: c), b: token_count_value(t: g)) <= generation_client_token_agreement_bound {
                   LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
                 } else {
                   LedgerCounterDisagree { because: "generation_tokens_total includes foreign decode beside this client ledger; surplus bounds shared work and is not a refuse of the client rate" as NonEmptyStr }
@@ -620,8 +620,8 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
 
 type ForeignWorkBound
   = ForeignWorkUnread { because: NonEmptyStr }
-  | ForeignWorkBounded { engine_generation: Nat, client_output: Nat, surplus: Nat }
-  | ForeignWorkContradiction { engine_generation: Nat, client_output: Nat, because: NonEmptyStr }
+  | ForeignWorkBounded { engine_generation: TokenCount, client_output: TokenCount, surplus: TokenCount }
+  | ForeignWorkContradiction { engine_generation: TokenCount, client_output: TokenCount, because: NonEmptyStr }
 
 fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens) -> ForeignWorkBound {
   match token_delta_tokens(d: generation) {
@@ -636,8 +636,8 @@ fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens)
       match client_output {
         ClientOutputTokensUnread { cause: c } => ForeignWorkUnread { because: c }
         ClientOutputTokensObserved { tokens: c } =>
-          if g >= c {
-            ForeignWorkBounded { engine_generation: g, client_output: c, surplus: g - c }
+          if token_count_value(t: g) >= token_count_value(t: c) {
+            ForeignWorkBounded { engine_generation: g, client_output: c, surplus: token_count(count: token_count_value(t: g) - token_count_value(t: c)) }
           } else {
             ForeignWorkContradiction {
               engine_generation: g,
@@ -650,16 +650,16 @@ fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens)
 }
 
 type DerivedRate
-  = RateFromClientOutputTokens { tokens: Nat, scrape_millis: Millisecond }
+  = RateFromClientOutputTokens { tokens: TokenCount, scrape_millis: Millisecond }
   | RateUndenominable { because: NonEmptyStr }
   | RateUnreadable { because: NonEmptyStr }
 
-fn tokens_per_observation_second(r: DerivedRate) -> Nat? {
+fn tokens_per_observation_second(r: DerivedRate) -> TokensPerSecond? {
   match r {
     RateUndenominable { because: _ } => none
     RateUnreadable { because: _ } => none
     RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
-      if millisecond_count(m: ms) == 0 { none } else { Present { value: (t * 1000) / millisecond_count(m: ms) } }
+      if millisecond_count(m: ms) == 0 { none } else { Present { value: tokens_per_second(count: (token_count_value(t: t) * 1000) / millisecond_count(m: ms)) } }
   }
 }
 
@@ -700,13 +700,14 @@ type DecodeCorroboration
   = CorroborationNotApplicable { because: NonEmptyStr }
   | CorroborationUnread { because: NonEmptyStr }
 
-// A single-stream decode figure is produced by glm_native_serving_load_wet run with a
-// max_concurrency=1 protocol; this module holds no such figure. A multi-stream observation can
-// neither corroborate nor falsify one, and a single-stream observation has not yet been captured here.
+// A single-stream decode figure would need a future single-stream protocol variant of the
+// serving-load capture; glm_native_serving_load_wet today runs only the c=2 smoke protocol, and
+// this module holds no such figure. A multi-stream observation can neither corroborate nor
+// falsify one, and a single-stream observation has not yet been captured here.
 fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorroboration {
   match req.max_concurrency {
     Present { value: 1 } =>
-      CorroborationUnread { because: "a single-stream run is the producer of a decode figure; this observation has not yet produced one" as NonEmptyStr }
+      CorroborationUnread { because: "a single-stream decode figure would need a future single-stream protocol variant of the serving-load capture, which today runs only the c=2 smoke protocol; this observation holds no such figure" as NonEmptyStr }
     Present { value: _ } =>
       CorroborationNotApplicable { because: "a multi-stream protocol is not a single-stream measurement, so it cannot corroborate or falsify a single-stream decode figure" as NonEmptyStr }
     Absent =>
@@ -1054,9 +1055,9 @@ fn foreign_work_text(f: ForeignWorkBound) -> String {
   match f {
     ForeignWorkUnread { because: c } => join(["unread ", c as String], "")
     ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } =>
-      join(["engine=", to_string(g), " client=", to_string(c), " surplus=", to_string(s)], "")
+      join(["engine=", to_string(token_count_value(t: g)), " client=", to_string(token_count_value(t: c)), " surplus=", to_string(token_count_value(t: s))], "")
     ForeignWorkContradiction { engine_generation: g, client_output: c, because: b } =>
-      join(["contradiction engine=", to_string(g), " client=", to_string(c), " ", b as String], "")
+      join(["contradiction engine=", to_string(token_count_value(t: g)), " client=", to_string(token_count_value(t: c)), " ", b as String], "")
   }
 }
 
@@ -1112,7 +1113,7 @@ fn occupancy_sample_text(s: OccupancySample) -> String {
   join([
     "running=", to_string(s.running),
     " waiting=", to_string(s.waiting),
-    " prompt_tokens=", to_string(s.prompt_tokens),
+    " prompt_tokens=", to_string(token_count_value(t: s.prompt_tokens)),
     " preemptions=", to_string(s.preemptions),
   ], "")
 }
@@ -1128,7 +1129,7 @@ fn occupancy_text(t: BoundaryOccupancyReceipt) -> String {
 fn agreement_text(a: LedgerCounterAgreement) -> String {
   match a {
     LedgerAndCounterAgree { generation_tokens: g, completed_requests: n } =>
-      join(["agree generation=", to_string(g), " completed=", to_string(n)], "")
+      join(["agree generation=", to_string(token_count_value(t: g)), " completed=", to_string(n)], "")
     LedgerCounterDisagree { because: c } => join(["disagree ", c as String], "")
     AgreementUnread { because: c } => join(["unread ", c as String], "")
   }
@@ -1210,9 +1211,9 @@ fn ledger_text(l: OperationLedger) -> String {
 fn token_delta_text(d: TokenDelta) -> String {
   match d {
     TokenDeltaRead { tokens: n } =>
-      join(["delta tokens=", to_string(n), " incarnation=unscoped — generation_token_delta_scoped did not bind this reading"], "")
+      join(["delta tokens=", to_string(token_count_value(t: n)), " incarnation=unscoped — generation_token_delta_scoped did not bind this reading"], "")
     TokenDeltaScoped { tokens: n, incarnation: i } =>
-      join(["delta tokens=", to_string(n), " incarnation=", observed_rank_incarnation_text(i: i)], "")
+      join(["delta tokens=", to_string(token_count_value(t: n)), " incarnation=", observed_rank_incarnation_text(i: i)], "")
     TokenDeltaUnread { cause: c } => join(["unread ", c as String], "")
     TokenDeltaReset { cause: c } => join(["reset ", c as String], "")
   }
@@ -1224,12 +1225,12 @@ fn rate_text(r: DerivedRate) -> String {
     RateUnreadable { because: c } => join(["unreadable ", c as String], "")
     RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
       join([
-        "completed_output_tokens=", to_string(t),
+        "completed_output_tokens=", to_string(token_count_value(t: t)),
         " scrape_millis=", to_string(millisecond_count(m: ms)),
         " output_tokens_per_s=",
         match tokens_per_observation_second(r: r) {
           Absent => "none"
-          Present { value: v } => to_string(v)
+          Present { value: v } => to_string(tokens_per_second_count(r: v))
         },
       ], "")
   }
@@ -1320,7 +1321,7 @@ fn ledger_from_bench_stdout(body: String, offered: Nat) -> OperationLedger {
 fn client_output_from_bench_stdout(body: String) -> ClientOutputTokens {
   match bench_labeled_nat(body: body, label: "Total generated tokens") {
     Absent => ClientOutputTokensUnread { cause: "vllm bench serve stdout carried no unique Total generated tokens line" as NonEmptyStr }
-    Present { value: t } => ClientOutputTokensObserved { tokens: t }
+    Present { value: t } => ClientOutputTokensObserved { tokens: token_count(count: t) }
   }
 }
 
