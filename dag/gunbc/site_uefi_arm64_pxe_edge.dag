@@ -185,6 +185,11 @@ type SiteEdgeRoster {
   chainloader_digest: ContentHash
   tftp_root: Uri
   known_client_macs: List<Eui48Address>
+}
+
+// What was OBSERVED on the segment for one admission, kept apart from what the edge authors so the
+// config (which renders only the roster) never needs an observation to exist.
+type SiteEdgeObservation {
   offer: SiteDhcpOfferObservation
   reachability: BootNetworkReachabilityObservation
   observation: DeclarationRef
@@ -216,13 +221,13 @@ fn site_edge_arm64_chainloader_transport(roster: SiteEdgeRoster) -> SiteBootstra
   }
 }
 
-fn observed_edge(roster: SiteEdgeRoster, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
+fn observed_edge(roster: SiteEdgeRoster, observed: SiteEdgeObservation, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
   SitePxeEdge {
     site: roster.site,
     admitted_architectures: roster.admitted_architectures,
     discovery: discovery,
     bootstrap_transport: site_edge_arm64_chainloader_transport(roster: roster),
-    global_endpoint_reachability: global_https_reachability_from_boot_network(obs: roster.reachability),
+    global_endpoint_reachability: global_https_reachability_from_boot_network(obs: observed.reachability),
   }
 }
 
@@ -232,19 +237,19 @@ fn chainloader_hint(transport: SiteBootstrapTransport) -> BootDiscoveryHint {
   }
 }
 
-fn site_edge_client_admission(roster: SiteEdgeRoster, request: EdgeClientRequest) -> SiteEdgeClientAdmission {
+fn site_edge_client_admission(roster: SiteEdgeRoster, observed: SiteEdgeObservation, request: EdgeClientRequest) -> SiteEdgeClientAdmission {
   if (request.arch_code != uefi_arm64_client_arch_code) {
     SiteEdgeUnknownArchitectureRefused { arch_code: request.arch_code }
   } else {
     if client_is_known(roster: roster, mac: request.mac) == false {
       SiteEdgeUnknownMachineRefused { mac: request.mac }
     } else {
-      match site_discovery_outcome(offer: roster.offer, hint: chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster))) {
+      match site_discovery_outcome(offer: observed.offer, hint: chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster))) {
         SiteDiscoveryRefused { refusal: r } => SiteEdgeDiscoveryRefused { refusal: r }
         SiteDiscoveryAnswered { mode: mode } =>
           site_edge_admission_of_standing(
-            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, discovery: mode), client_architecture: Aarch64, observation: roster.observation, observed_at: roster.observed_at),
-            unreachable: boot_network_reachability_missing(obs: roster.reachability),
+            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, observed: observed, discovery: mode), client_architecture: Aarch64, observation: observed.observation, observed_at: observed.observed_at),
+            unreachable: boot_network_reachability_missing(obs: observed.reachability),
           )
       }
     }
