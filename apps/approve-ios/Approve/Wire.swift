@@ -376,6 +376,23 @@ struct RedemptionOutcome: Equatable {
     var message: String
 }
 
+/// gunbc.auth.approval_device_redemption device_redemption_outcome_wire: the arm names, spelled
+/// here and nowhere else. The two the app BRANCHES on end the enrolment's authority; the rest are
+/// rendered as returned. The test joins every name to the fixture's redemption_response_* envelopes.
+enum OutcomeName {
+    static let enrollmentUnknown = "DeviceEnrollmentUnknown"
+    static let enrollmentRevoked = "DeviceEnrollmentRevoked"
+    /// Every arm of DeviceRedemptionOutcome, for the identity join with the emitted envelopes.
+    static let all: Set<String> = [
+        "DeviceRedeemed", "DeviceAlreadyDecided", enrollmentUnknown, enrollmentRevoked,
+        "DeviceEnrollmentForAnotherOperator", "DeviceEscalationNotFiled", "DeviceStoreUnreadable",
+        "DeviceKeyringUnavailable", "DeviceSignedForAnotherRequest", "DeviceChallengeExpired",
+        "DeviceChallengeNotIssuedHere", "DeviceCapabilityTagMalformed", "DeviceCapabilityRefused",
+        "DeviceSignatureRefused", "DevicePlatformProofRefused", "DevicePlatformProofForOtherBytes",
+        "DevicePlatformProofWrongKey", "DevicePlatformUnrealized", "DeviceLostTheRace", "DeviceCommitRefused",
+    ]
+}
+
 // ── Headers, paths ───────────────────────────────────────────────────────────────────────────
 enum ReadHeader {
     static let enrollment = "X-Approval-Enrollment"

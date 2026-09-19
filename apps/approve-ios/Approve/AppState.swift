@@ -327,7 +327,7 @@ final class AppState: ObservableObject {
         let proof = try await AppAttest.assert(keyId: e.attest_key_id, clientData: bytes)
         let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature: signature, platform_proof: proof))
         // DeviceRedemptionOutcome arms that end this enrolment's authority, by their wire name.
-        if outcome.outcome == "DeviceEnrollmentRevoked" || outcome.outcome == "DeviceEnrollmentUnknown" {
+        if outcome.outcome == OutcomeName.enrollmentRevoked || outcome.outcome == OutcomeName.enrollmentUnknown {
             try transition(.revoked(e, reason: outcome.message))
         }
         await refresh()

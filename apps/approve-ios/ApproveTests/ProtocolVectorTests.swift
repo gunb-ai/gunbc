@@ -185,14 +185,20 @@ final class ProtocolVectorTests: XCTestCase {
         let f = try WireDecode.fetchedRequest(Data(try envelope("fetched_request").utf8))
         XCTAssertNotEqual(f.approve, f.deny)
         XCTAssertEqual(try WireDecode.enrolmentReadback(Data(try envelope("enrolment_readback").utf8)).standing, .active)
-        // Every redemption_response_* envelope decodes and names its DeviceRedemptionOutcome arm.
+        // Every redemption_response_* envelope decodes to an outcome name the app spells (an arm
+        // renamed in the .dag reds here), and the two names the app BRANCHES on are joined to their
+        // own envelopes, so a renamed revoked/unknown arm cannot leave the phone a live decider.
         let responses = try load().envelope.filter { $0.name.hasPrefix("redemption_response_") }
         XCTAssertFalse(responses.isEmpty, "no redemption_response_* envelopes")
         for r in responses {
             let o = try WireDecode.redemptionResponse(Data(r.body.utf8))
-            XCTAssertTrue(o.outcome.hasPrefix("Device"), r.name + ": " + o.outcome)
+            XCTAssertTrue(OutcomeName.all.contains(o.outcome), r.name + ": unspelled outcome " + o.outcome)
             XCTAssertFalse(o.message.isEmpty, r.name)
         }
+        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_revoked").utf8)).outcome,
+                       OutcomeName.enrollmentRevoked)
+        XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome,
+                       OutcomeName.enrollmentUnknown)
     }
 
     /// The detail screen's strict read, joined to the store's own rendering: every stored_request
