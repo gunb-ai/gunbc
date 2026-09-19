@@ -526,3 +526,118 @@ test fn word_to_octets_refuses_width64_holds() -> Bool {
     OctetsReady { octets: _ } => false
   }
 }
+
+// THE PREMISE CONTROLS. Word is an ordinary record and .dag has no module-private construction, so
+// a caller can write a word its own type says cannot exist. These supply exactly that and require a
+// refusal naming the VALUE -- each is red against the pre-fix code, where the operation computed
+// from the bad operand and answered successfully because its OUTPUT happened to land in range.
+fn unqualified_width8_256() -> Word {
+  Word { width: Width8, value: 256 }
+}
+
+test fn shift_refuses_an_unqualified_operand_holds() -> Bool {
+  match word_shift_right(a: unqualified_width8_256(), amount: 1) {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+// One control per exported family, because the premise check is per-boundary: a repair applied to
+// some entries and not others is exactly the state the first cut was in.
+test fn every_exported_family_refuses_an_unqualified_operand_holds() -> Bool {
+  let bad = unqualified_width8_256()
+  let good = match word_of_int(width: Width8, value: 1) {
+    WordReady { word: w } => w
+    WordRefused { cause: _ } => Word { width: Width8, value: 0 }
+  }
+  word32_refused(result: word_and(a: bad, b: good))
+    && word32_refused(result: word_or(a: good, b: bad))
+    && word32_refused(result: word_xor(a: bad, b: good))
+    && word32_refused(result: word_not(a: bad))
+    && word32_refused(result: word_shift_left(a: bad, amount: 1))
+    && word32_refused(result: word_rotate_left(a: bad, amount: 1))
+    && word32_refused(result: word_rotate_right(a: bad, amount: 1))
+    && word32_refused(result: word_wrapping_add(a: bad, b: good))
+    && word32_refused(result: word_wrapping_subtract(a: bad, b: good))
+    && word32_refused(result: word_wrapping_multiply(a: bad, b: good))
+}
+
+test fn carrying_add_refuses_an_unqualified_operand_holds() -> Bool {
+  match word_carrying_add(a: unqualified_width8_256(), b: unqualified_width8_256()) {
+    CarryingSumRefused { cause: WordValueOutOfRange { width: _, value: _ } } => true
+    CarryingSumRefused { cause: _ } => false
+    CarryingSumReady { result: _ } => false
+  }
+}
+
+test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool {
+  match word_to_octets(a: unqualified_width8_256(), endianness: BigEndian) {
+    OctetsRefused { cause: WordValueOutOfRange { width: _, value: _ } } => true
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
+  }
+}
+
+// The packing counterexample: both members have the right WIDTH and one has an impossible VALUE,
+// and the packed result (512) is in range for Width16, so nothing downstream would have fired.
+test fn packing_refuses_an_unqualified_member_holds() -> Bool {
+  let members = [Word { width: Width8, value: 1 }, Word { width: Width8, value: 256 }]
+  match word_from_octets(width: Width16, octets: members, endianness: BigEndian) {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+// THE OCTET-COUNT TRIPLE. A negative count is not a small capacity, and reading it as one returned
+// a successful empty rendering. The three cases together are what separate "refused as nonsense"
+// from "rendered nothing because nothing fits" from "rendered nothing because nothing was asked".
+test fn negative_octet_count_refuses_holds() -> Bool {
+  match int_to_octets(value: 0, count: 0 - 1, endianness: BigEndian) {
+    OctetsRefused { cause: OctetCountOutOfRange { observed: n } } => n == (0 - 1)
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
+  }
+}
+
+test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool {
+  match int_to_octets(value: 0, count: 0, endianness: BigEndian) {
+    OctetsReady { octets: o } => list_length(items: o) == 0
+    OctetsRefused { cause: _ } => false
+  }
+}
+
+test fn zero_octet_count_refuses_a_nonzero_value_holds() -> Bool {
+  match int_to_octets(value: 1, count: 0, endianness: BigEndian) {
+    OctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 1 && c == 0
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
+  }
+}
+
+// THE REFUSAL ORDER, pinned so the four shift and rotate arms cannot drift apart again. A width
+// that cannot exist is the wider fact; naming the amount instead answers a narrower question.
+test fn rotate_right_refuses_width_before_amount_holds() -> Bool {
+  match word_rotate_right(a: Word { width: Width64, value: 0 }, amount: 64) {
+    WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+test fn all_shift_and_rotate_arms_agree_on_refusal_order_holds() -> Bool {
+  let w64 = Word { width: Width64, value: 0 }
+  word_refuses_unrealizable(result: word_shift_left(a: w64, amount: 64))
+    && word_refuses_unrealizable(result: word_shift_right(a: w64, amount: 64))
+    && word_refuses_unrealizable(result: word_rotate_left(a: w64, amount: 64))
+    && word_refuses_unrealizable(result: word_rotate_right(a: w64, amount: 64))
+}
+
+fn word_refuses_unrealizable(result: WordResult) -> Bool {
+  match result {
+    WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}

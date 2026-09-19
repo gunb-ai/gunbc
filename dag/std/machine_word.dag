@@ -63,6 +63,7 @@ type WordRefusal
   | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
   | OctetWidthMismatch { observed: WordWidth }
   | IntegerDoesNotFitOctets { value: Int, octets: Int }
+  | OctetCountOutOfRange { observed: Int }
 
 type WordResult
   = WordReady { word: Word }
@@ -146,6 +147,51 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   }
 }
 
+// EVERY EXPORTED OPERATION QUALIFIES ITS WORD ARGUMENTS, BECAUSE THE CARRIER CANNOT STOP A CALLER
+// BUILDING A LIE.
+//
+// Word { width, value } is an ordinary record and .dag has no module-private construction, so
+// `Word { width: Width8, value: 256 }` is writable anywhere. The first cut said word_of_int was the
+// "sanctioned entry" and left it there, which is an unfalsifiable claim: nothing refuses the other
+// route, so the sanction existed only in prose. The consequence was silent and exported --
+// word_shift_right(Word { width: Width8, value: 256 }, 1) answered WordReady 128, a number the
+// operation computed from an input its own type says cannot exist, and no arm fired because the
+// OUTPUT was in range. An operation that trusts an unqualified operand is validating its result
+// instead of its premise.
+//
+// So qualification is a PREMISE CHECK at every exported boundary, not a constructor convention: the
+// operand is re-established against its own declared width before any arithmetic reads it, and a
+// word that was never inhabitable refuses with WordValueOutOfRange naming the value. This is
+// mitigation, and it is honest about being mitigation -- the invalid state is still writable.
+// NEXT-RUNG TRIGGER, unchanged and now load-bearing rather than decorative: sole construction over
+// this carrier, at which point the premise holds by construction and every one of these checks
+// DELETES rather than being kept as belt-and-braces.
+fn word_qualified(w: Word) -> WordResult {
+  word_of_int(width: w.width, value: w.value)
+}
+
+type WordPairResult
+  = WordPairReady { left: Word, right: Word }
+  | WordPairRefused { cause: WordRefusal }
+
+// The width disagreement is decided BEFORE either operand is qualified, because a mismatch is a
+// fact about the call and an out-of-range value is a fact about one operand; reporting the operand
+// first would answer a narrower question than the one that is wrong.
+fn word_pair_qualified(a: Word, b: Word) -> WordPairResult {
+  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
+    WordPairRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
+  } else {
+    match word_qualified(w: a) {
+      WordRefused { cause: c } => WordPairRefused { cause: c }
+      WordReady { word: qa } =>
+        match word_qualified(w: b) {
+          WordRefused { cause: c } => WordPairRefused { cause: c }
+          WordReady { word: qb } => WordPairReady { left: qa, right: qb }
+        }
+    }
+  }
+}
+
 fn word_int_value(w: Word) -> Int {
   w.value
 }
@@ -184,17 +230,13 @@ fn bitwise_fold(op: BitwiseOp, a: Int, b: Int, remaining: Int, place: Int, acc: 
 }
 
 fn word_bitwise(op: BitwiseOp, a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: _ } =>
-        word_of_int(
-          width: a.width,
-          value: bitwise_fold(op: op, a: a.value, b: b.value, remaining: word_width_bits(w: a.width), place: 1, acc: 0)
-        )
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      word_of_int(
+        width: x.width,
+        value: bitwise_fold(op: op, a: x.value, b: y.value, remaining: word_width_bits(w: x.width), place: 1, acc: 0)
+      )
   }
 }
 
@@ -214,9 +256,13 @@ fn word_xor(a: Word, b: Word) -> WordResult {
 // value. It needs no bit walk: every place flips, and flipping every place of a residue below 2^w
 // is exactly subtracting it from the all-ones value.
 fn word_not(a: Word) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: m } => word_of_int(width: a.width, value: m - 1 - a.value)
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: m - 1 - x.value)
+      }
   }
 }
 
@@ -233,31 +279,39 @@ fn word_not(a: Word) -> WordResult {
 // whatever the realization did about an overflow it had already suffered. Dropping the bits that
 // the shift discards FIRST keeps every intermediate inside the width.
 fn word_shift_left(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: m } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        match int_pow_bounded(base: 2, exp: amount) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: factor } => word_of_int(width: a.width, value: (a.value % (m / factor)) * factor)
-        }
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+              Present { value: factor } => word_of_int(width: x.width, value: (x.value % (m / factor)) * factor)
+            }
+          }
       }
   }
 }
 
 fn word_shift_right(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        match int_pow_bounded(base: 2, exp: amount) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: factor } => word_of_int(width: a.width, value: a.value / factor)
-        }
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+              Present { value: factor } => word_of_int(width: x.width, value: x.value / factor)
+            }
+          }
       }
   }
 }
@@ -267,40 +321,54 @@ fn word_shift_right(a: Word, amount: Int) -> WordResult {
 // disjunction agree and addition does not walk the bits. The zero amount is its own arm because
 // the complementary shift would then be by the full width, which shifts refuse.
 fn word_rotate_left(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        if amount == 0 {
-          WordReady { word: a }
-        } else {
-          match word_shift_left(a: a, amount: amount) {
-            WordRefused { cause: c } => WordRefused { cause: c }
-            WordReady { word: high } =>
-              match word_shift_right(a: a, amount: word_width_bits(w: a.width) - amount) {
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: x }
+            } else {
+              match word_shift_left(a: x, amount: amount) {
                 WordRefused { cause: c } => WordRefused { cause: c }
-                WordReady { word: low } => word_of_int(width: a.width, value: high.value + low.value)
+                WordReady { word: high } =>
+                  match word_shift_right(a: x, amount: word_width_bits(w: x.width) - amount) {
+                    WordRefused { cause: c } => WordRefused { cause: c }
+                    WordReady { word: low } => word_of_int(width: x.width, value: high.value + low.value)
+                  }
               }
+            }
           }
-        }
       }
   }
 }
 
+// THE WIDTH IS ESTABLISHED BEFORE THE AMOUNT, which is what the other three shift and rotate arms
+// already did and this one did not: a Width64 rotate by 64 reported ShiftAmountOutOfRange, naming
+// the amount, when the width itself is the thing that cannot exist. Two operations disagreeing
+// about which refusal a caller sees for the same malformed call is a fork in the refusal
+// vocabulary, and the narrower answer is the wrong one.
 fn word_rotate_right(a: Word, amount: Int) -> WordResult {
-  if amount < 0 || amount >= word_width_bits(w: a.width) {
-    WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-  } else {
-    if amount == 0 {
-      match word_modulus(w: a.width) {
-        Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-        Present { value: _ } => WordReady { word: a }
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: x }
+            } else {
+              word_rotate_left(a: x, amount: word_width_bits(w: x.width) - amount)
+            }
+          }
       }
-    } else {
-      word_rotate_left(a: a, amount: word_width_bits(w: a.width) - amount)
-    }
   }
 }
 
@@ -309,24 +377,24 @@ fn word_rotate_right(a: Word, amount: Int) -> WordResult {
 // undefined; these functions ARE that rule applied at the declared width, and a caller that wants
 // the crossing reported instead uses word_carrying_add, which returns the carry as a value.
 fn word_wrapping_add(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => word_of_int(width: a.width, value: (a.value + b.value) % m)
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: (x.value + y.value) % m)
+      }
   }
 }
 
 fn word_wrapping_subtract(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => word_of_int(width: a.width, value: (a.value - b.value + m) % m)
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: (x.value - y.value + m) % m)
+      }
   }
 }
 
@@ -336,38 +404,38 @@ fn word_wrapping_subtract(a: Word, b: Word) -> WordResult {
 // products at most bits + bits/2 wide, and reducing the high partial product before scaling it
 // keeps the scaled term inside the width. Every width here is even, so the half is exact.
 fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } =>
-        match word_half_radix(w: a.width) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: half } => {
-            let low_term = ((a.value % half) * b.value) % m
-            let high_term = (((a.value / half) * b.value) % half) * half
-            word_of_int(width: a.width, value: (low_term + high_term) % m)
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } =>
+          match word_half_radix(w: x.width) {
+            Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+            Present { value: half } => {
+              let low_term = ((x.value % half) * y.value) % m
+              let high_term = (((x.value / half) * y.value) % half) * half
+              word_of_int(width: x.width, value: (low_term + high_term) % m)
+            }
           }
-        }
-    }
+      }
   }
 }
 
 fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    CarryingSumRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => CarryingSumRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => {
-        let total = a.value + b.value
-        match word_of_int(width: a.width, value: total % m) {
-          WordRefused { cause: c } => CarryingSumRefused { cause: c }
-          WordReady { word: s } => CarryingSumReady { result: CarryingSum { sum: s, carry: total >= m } }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => CarryingSumRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => CarryingSumRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => {
+          let total = x.value + y.value
+          match word_of_int(width: x.width, value: total % m) {
+            WordRefused { cause: c } => CarryingSumRefused { cause: c }
+            WordReady { word: sum } => CarryingSumReady { result: CarryingSum { sum: sum, carry: total >= m } }
+          }
         }
       }
-    }
   }
 }
 
@@ -414,6 +482,17 @@ fn octets_little_endian_accumulate(value: Int, remaining: Int, radix: Int, acc: 
 // represent, every nonnegative Int is BELOW it by construction, so the honest answer is that it
 // fits -- an absent capacity here is ignorance about the bound, not an answer about the value, and
 // the two are only interchangeable in the direction that happens to be safe.
+// AN ABSENT CAPACITY HAS TWO CAUSES AND ONLY ONE OF THEM IS SAFE TO READ AS "IT FITS". The
+// annotation below already said an absent capacity is ignorance about the bound rather than an
+// answer about the value -- and this function then treated EVERY absent capacity as "does not
+// exceed". int_pow_bounded answers Absent both when the power overflows the Int bound (where every
+// representable value genuinely is below it) and when the EXPONENT IS NEGATIVE, which is not a
+// statement about capacity at all. So count = -1 fell through to an accumulator that stops at
+// remaining <= 0 and returned OctetsReady [] -- a successful empty rendering of a nonsense request,
+// which is the fabricated plausible output DESIGN section 5 forbids, produced by the exact
+// conflation the neighbouring annotation warned about. The count is now decided on its own terms
+// BEFORE the capacity is asked, so the remaining Absent has only the one meaning the reading
+// assumes.
 fn int_exceeds_octet_capacity(value: Int, count: Int, radix: Int) -> Bool {
   match int_pow_bounded(base: radix, exp: count) {
     Absent => false
@@ -429,7 +508,9 @@ fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> OctetsResult
   match octet_radix() {
     Absent => OctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
     Present { value: radix } =>
-      if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
+      if count < 0 {
+        OctetsRefused { cause: OctetCountOutOfRange { observed: count } }
+      } else if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
         OctetsRefused { cause: IntegerDoesNotFitOctets { value: value, octets: count } }
       } else {
         let little = octets_little_endian_accumulate(value: value, remaining: count, radix: radix, acc: [])
@@ -442,9 +523,9 @@ fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> OctetsResult
 }
 
 fn word_to_octets(a: Word, endianness: Endianness) -> OctetsResult {
-  match word_modulus(w: a.width) {
-    Absent => OctetsRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } => int_to_octets(value: a.value, count: word_octet_count(w: a.width), endianness: endianness)
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => OctetsRefused { cause: c }
+    WordReady { word: x } => int_to_octets(value: x.value, count: word_octet_count(w: x.width), endianness: endianness)
   }
 }
 
@@ -456,14 +537,21 @@ fn octets_big_endian_value(octets: List<Word>, radix: Int, acc: Int) -> Int {
   }
 }
 
-fn octets_first_non_octet_width(octets: List<Word>) -> WordWidth? {
+// THE MEMBERS ARE QUALIFIED, NOT JUST MEASURED. The first cut checked each member's WIDTH and
+// trusted its VALUE, so word_from_octets(Width16, [Word{Width8,1}, Word{Width8,256}]) packed to 512
+// -- an answer assembled from an octet that cannot exist, and in range for the target width, so
+// nothing downstream fired. Width agreement is not inhabitance.
+fn octets_first_unqualified(octets: List<Word>) -> WordRefusal? {
   match octets.first() {
     Absent => none
     Present { value: head } =>
-      if word_width_bits(w: head.width) == octet_bit_width() {
-        octets_first_non_octet_width(octets: octets.skip(n: 1))
+      if word_width_bits(w: head.width) != octet_bit_width() {
+        Present { value: OctetWidthMismatch { observed: head.width } }
       } else {
-        Present { value: head.width }
+        match word_qualified(w: head) {
+          WordRefused { cause: c } => Present { value: c }
+          WordReady { word: _ } => octets_first_unqualified(octets: octets.skip(n: 1))
+        }
       }
   }
 }
@@ -503,8 +591,8 @@ fn word_from_octets_realizable(width: WordWidth, octets: List<Word>, endianness:
   if observed != expected {
     WordRefused { cause: OctetCountMismatch { width: width, expected: expected, observed: observed } }
   } else {
-    match octets_first_non_octet_width(octets: octets) {
-      Present { value: offender } => WordRefused { cause: OctetWidthMismatch { observed: offender } }
+    match octets_first_unqualified(octets: octets) {
+      Present { value: offender } => WordRefused { cause: offender }
       Absent =>
         match octet_radix() {
           Absent => WordRefused { cause: WordWidthUnrealizable { width: Width8 } }
