@@ -124,7 +124,8 @@ type ReadVector {
 
 data read_vectors: List<ReadVector> = [
   ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "request", path: join([approval_device_request_path_prefix as String, "esc-mtc1-boot-1"], "") as NonEmptyStr, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
 ]
 
 fn read_vector_json(v: ReadVector) -> JsonValue {

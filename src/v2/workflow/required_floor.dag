@@ -1169,6 +1169,15 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 // disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
 // -- a toggle whose only effect is "proceed as if the refusal had not fired".
 //
+// ONE OTHER ROUTE REACHES THE GRANDFATHERED BUDGET, AND IT IS NOT THIS SELECTOR (operator ruling,
+// 2026-09-19). A CHANGED identity on the cost-debt roster (`v2.workflow.floor_cost_debt`) has no
+// tier of its own, and `v2.workflow.floor_cost_debt_edit` `cost_debt_edit_tier` gives it
+// `GrandfatheredTier` when -- and only when -- its edit is a pure deletion of test-fn call conjuncts,
+// decided from the base and head tokens of the declaration; every other edit takes
+// `NewWitnessTier`. It is not a caller-supplied toggle either: nothing an author writes selects it,
+// it admits only identities already on a shrink-only roster, and it can only weaken a body that was
+// withheld against that budget. This selector remains the only route for every other identity.
+//
 // THAT THE ROSTER MAY ONLY SHRINK IS NOT A PROPERTY TO CITE FROM HERE (review 65720). An earlier
 // revision of this sentence said it "may only shrink" as though the refusal were established.
 // `roster_change_verdict` models it and fixtures exercise it, but no acceptance-path caller runs
