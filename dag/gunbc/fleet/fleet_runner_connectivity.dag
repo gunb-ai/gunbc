@@ -448,6 +448,12 @@ fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> St
 // ONE LOOKUP, TWO UNSEEN ANSWERS. The complete and truncated arms must read the prefix the SAME way
 // or they are two decodings of one fact; the only thing that legitimately differs between them is
 // what absence MEANS, so that is the only thing passed in.
+//
+// AN ONLINE REGISTRATION IS HEALTHY ONLY UNDER THE SLOT'S OWN LABELS. The desired side is
+// gunbc.runner_registration_labels of the slot's host, compared as a set under GitHub's label
+// equivalence (a host whose labels do not resolve is Unknown, not Healthy); a runner online under a
+// missing class label, a missing host label, or ANOTHER host's label is online and still unreachable
+// by the selectors meant for this slot, so it is not counted healthy.
 fn registration_verdict_or(
   registrations: List<GitHubSelfHostedRunnerRegistration>,
   incarnation: LocalRunnerSlotIncarnation,
@@ -457,11 +463,6 @@ fn registration_verdict_or(
     Absent => unseen
     Present { value: reg } =>
       match reg.status {
-        // AN ONLINE REGISTRATION IS HEALTHY ONLY UNDER THE SLOT'S OWN LABELS. The desired side is
-        // gunbc.runner_registration_labels of the slot's host, compared as a set (a host whose labels do
-        // not resolve is Unknown, not Healthy); a runner online under a
-        // missing class label, a missing host label, or ANOTHER host's label is online and still
-        // unreachable by the selectors meant for this slot, so it is not counted healthy.
         GitHubRunnerOnline =>
           match runner_registration_labels(host: incarnation.slot.host) {
             RegistrationLabelsRefused { host: _, cause: c } =>

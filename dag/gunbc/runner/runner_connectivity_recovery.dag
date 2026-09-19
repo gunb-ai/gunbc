@@ -593,6 +593,9 @@ fn plan_slot_connectivity_action(
   )
 }
 
+// THE DESIRED SIDE IS THE SLOT'S OWN REGISTRATION LABELS (platform, class and the host it runs
+// on), compared as a SET: order is not a fact GitHub schedules on, and a successor that registered
+// under another host's label is not this slot's runner.
 // A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
 // fails the postcondition rather than accepting whatever the successor registered with.
 fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
@@ -623,9 +626,6 @@ fn verify_incarnation_replace_postcondition(
       Present { value: reg } =>
         match reg {
           RunnerRemoteOnline { runner_name: name, labels: labels } =>
-            // THE DESIRED SIDE IS THE SLOT'S OWN REGISTRATION LABELS (platform, class and the host
-            // it runs on), compared as a SET: order is not a fact GitHub schedules on, and a
-            // successor that registered under another host's label is not this slot's runner.
             if replace_successor_labels_conform(slot: slot, observed: labels) {
               ReplaceVerified {
                 slot: slot,
