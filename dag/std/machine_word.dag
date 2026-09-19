@@ -119,6 +119,21 @@ fn word_modulus(w: WordWidth) -> Int? {
   }
 }
 
+// THE SPLIT POINT OF A WIDTH, DERIVED ONCE FOR THE SAME REASON THE MODULUS IS. word_wrapping_multiply
+// splits its left operand at half the width and walked int_pow_bounded per call to find where. The
+// reviewer named word_modulus, but the defect is the CLASS -- a constant over a closed coproduct
+// recomputed per demand -- and fixing only the instance that was cited would be repairing the
+// symptom rather than the boundary (DESIGN section 6b). Checked against the authority by
+// word_half_radix_agrees_with_the_power_authority_holds, exactly as the modulus is.
+fn word_half_radix(w: WordWidth) -> Int? {
+  match w {
+    Width8 => Present { value: 16 }
+    Width16 => Present { value: 256 }
+    Width32 => Present { value: 65536 }
+    Width64 => none
+  }
+}
+
 fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   match word_modulus(w: width) {
     Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
@@ -327,7 +342,7 @@ fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
     match word_modulus(w: a.width) {
       Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
       Present { value: m } =>
-        match int_pow_bounded(base: 2, exp: word_width_bits(w: a.width) / 2) {
+        match word_half_radix(w: a.width) {
           Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
           Present { value: half } => {
             let low_term = ((a.value % half) * b.value) % m
@@ -366,8 +381,13 @@ fn octet_bit_width() -> Int {
   bits_per_byte()
 }
 
+// AN OCTET'S RADIX IS THE Width8 MODULUS. It was a separate int_pow_bounded walk, paid by every
+// packing and unpacking call, to arrive at a number this module already answers. That is the same
+// closed-set recomputation review 68053 named at word_modulus, one function along, and it is fixed
+// by REUSE rather than by a second constant: nothing new is introduced here, so nothing new can go
+// stale. octet_radix_is_the_width8_modulus_holds is its executing check.
 fn octet_radix() -> Int? {
-  int_pow_bounded(base: 2, exp: octet_bit_width())
+  word_modulus(w: Width8)
 }
 
 fn word_octet_count(w: WordWidth) -> Int {

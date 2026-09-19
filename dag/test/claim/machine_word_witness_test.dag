@@ -418,3 +418,56 @@ test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool {
   expected |> all(e => keys |> any(k => k == e))
     && keys |> all(k => expected |> any(e => e == k))
 }
+
+// THE SAME AGREEMENT CHECK FOR THE OTHER TWO CLOSED-SET CONSTANTS. Review 68053 named the modulus;
+// the defect is the class, so the split point and the octet radix are derived once for the same
+// reason and are checked the same way. The octet radix needs no agreement claim against
+// int_pow_bounded because it introduces NO constant -- it reads the Width8 modulus, which is
+// already checked -- so what is claimed here is the identity itself, which is the thing that would
+// break if either side moved.
+fn half_radix_agrees_at(w: WordWidth) -> Bool {
+  match word_half_radix(w: w) {
+    Present { value: h } =>
+      match int_pow_bounded(base: 2, exp: word_width_bits(w: w) / 2) {
+        Present { value: derived } => h == derived
+        Absent => false
+      }
+    Absent =>
+      match int_pow_bounded(base: 2, exp: word_width_bits(w: w) / 2) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+test fn word_half_radix_agrees_with_the_power_authority_holds() -> Bool {
+  half_radix_agrees_at(w: Width8)
+    && half_radix_agrees_at(w: Width16)
+    && half_radix_agrees_at(w: Width32)
+}
+
+// Width64's half is 2^32, which IS representable, so the power authority answers where this module
+// must not: a Width64 word has no residue the carrier can hold, and handing back a split point for
+// one would be answering a question whose subject does not exist. The two therefore disagree here
+// BY CONSTRUCTION, and that disagreement is claimed rather than left to look like an oversight.
+test fn word_half_radix_refuses_width64_although_the_power_exists_holds() -> Bool {
+  match word_half_radix(w: Width64) {
+    Present { value: _ } => false
+    Absent =>
+      match int_pow_bounded(base: 2, exp: 32) {
+        Present { value: p } => p == 4294967296
+        Absent => false
+      }
+  }
+}
+
+test fn octet_radix_is_the_width8_modulus_holds() -> Bool {
+  match octet_radix() {
+    Absent => false
+    Present { value: r } =>
+      match word_modulus(w: Width8) {
+        Absent => false
+        Present { value: m } => r == m && r == 256
+      }
+  }
+}
