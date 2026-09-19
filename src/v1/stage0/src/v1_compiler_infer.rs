@@ -3630,11 +3630,11 @@ pub fn list_literal_optional_member_diags(
                                         DeclaredTypePosition::PositionListElement,
                                         "".to_string(),
                                     ),
-                                    expected: crate::v1_compiler_infer_types::node_type_shape(
+                                    expected: obligation_type_shape(
                                         head_type.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     ),
-                                    got: crate::v1_compiler_infer_types::node_type_shape(
+                                    got: obligation_type_shape(
                                         crate::v1_compiler_infer_types::resolved_type(te.clone()),
                                         scope.type_env.clone().source_indices.clone(),
                                     ),
@@ -5732,6 +5732,24 @@ pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason
 }
 }
 
+pub fn obligation_type_shape(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let shape =
+            crate::v1_compiler_infer_types::node_type_shape(n.clone(), source_indices.clone());
+        if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+            v1_rt::concat(
+                v1_rt::concat("Optional<".to_string(), shape.clone()),
+                ">".to_string(),
+            )
+        } else {
+            shape.clone()
+        }
+    }
+}
+
 pub fn declared_type_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
@@ -5758,11 +5776,11 @@ pub fn declared_type_obligation_diags(
                         obligation.position.clone(),
                         obligation.subject.clone(),
                     ),
-                    expected: crate::v1_compiler_infer_types::node_type_shape(
+                    expected: obligation_type_shape(
                         obligation.declared.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),
-                    got: crate::v1_compiler_infer_types::node_type_shape(
+                    got: obligation_type_shape(
                         obligation.produced.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),

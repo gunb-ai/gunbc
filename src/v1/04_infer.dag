@@ -2671,8 +2671,8 @@ fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferSc
           [make_error_node(
             diagnostic: DeclaredTypeNotInhabited {
               position: declared_type_position_label(position: PositionListElement, subject: ""),
-              expected: node_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
+              expected: obligation_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
+              got: obligation_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
               span: te.span
             },
             module_name: scope.module_name
@@ -4186,6 +4186,18 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
   }
 }
 
+// The refusal names BOTH types as judged, including cardinality: node_type_shape reads the type
+// node alone, so an optional String and a required String render identically and the refusal
+// would print two equal names for two different facts.
+fn obligation_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let shape = node_type_shape(n: n, source_indices: source_indices)
+  if (n.return_cardinality == CardOptional) {
+    concat(concat("Optional<", shape), ">")
+  } else {
+    shape
+  }
+}
+
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   match declared_type_inhabitance(obligation: obligation, scope: scope) {
     Inhabits => []
@@ -4202,8 +4214,8 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
       [make_error_node(
         diagnostic: DeclaredTypeNotInhabited {
           position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
-          expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
-          got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+          expected: obligation_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+          got: obligation_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
           span: obligation.span
         },
         module_name: scope.module_name
