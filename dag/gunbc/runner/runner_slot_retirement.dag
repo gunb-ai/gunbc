@@ -987,18 +987,36 @@ fn transition_baseline_rows(host: HostIdentity) -> List<String> {
 // cgroup could not be read is not refused for lack of permission -- the permission question has not
 // been reached, because we do not yet know whether anything needs doing. Reporting it as refused
 // would send an operator to mint an authorization when the remedy is to restore a reading.
+// THE SUBJECT OF THE STANDING MUST BE THE SUBJECT OF THE INVOCATION, AND THE FOLD ESTABLISHES THAT
+// RATHER THAN ASSUMING ITS CALLER DID.
+//
+// Both parameters name a unit and nothing made them agree. Handing this fold srv2-02 with srv2-01's
+// `RetirementComplete` returned `SlotRetirementAlreadySatisfied` FOR srv2-02 -- a neighbour's
+// completion settling a subject nobody observed, which is the identity-join failure this whole lane
+// exists to refuse, committed inside the fold that asserts the join.
+//
+// The production route happened to be safe because `standing_for_required` selects by identity, but a
+// shared fold that depends on every caller having been careful is a wall made of its callers. The
+// mismatch is now a typed refusal, so the invalid pairing produces a located diagnostic instead of a
+// plausible answer about the wrong machine.
 type SlotRetirementInvocation
   = SlotRetirementAlreadySatisfied { unit: String }
   | SlotRetirementActuate { unit: NonEmptyStr, method_label: String, operation: HostOperation }
   | SlotRetirementPending { unit: String, cause: String }
   | SlotRetirementRefused { unit: String, cause: String }
+  | SlotRetirementSubjectMismatch { unit: String, standing_unit: String }
 
 fn slot_retirement_invocation(
   evidence: SlotRetirementEvidence,
   unit: NonEmptyStr,
   standing: RunnerRetirementStanding,
 ) -> SlotRetirementInvocation {
-  if retirement_is_complete(s: standing) {
+  if retirement_unit(s: standing) != (unit as String) {
+    SlotRetirementSubjectMismatch {
+      unit: unit as String,
+      standing_unit: retirement_unit(s: standing),
+    }
+  } else if retirement_is_complete(s: standing) {
     SlotRetirementAlreadySatisfied { unit: unit as String }
   } else if retirement_is_unobserved(s: standing) {
     SlotRetirementPending {
@@ -1026,29 +1044,43 @@ fn slot_retirement_invocation(
   }
 }
 
-// A RECEIPT CANNOT NAME A METHOD THAT DID NOT RUN, BECAUSE THE SATISFIED ARM HAS NO FIELD FOR ONE.
+// SELECTING A METHOD IS NOT PERFORMING IT, AND THE EARLIER SHAPE HERE CONFLATED THEM.
 //
-// This is the shape the ruling asked for, and a `method_label: String` beside a `performed: Bool`
-// would not have been it: that record is writable with a real label and a false flag, and every
-// downstream reader then depends on remembering which field disarms the other. The label exists only
-// on the arm where a method was selected.
+// This fold returned `MethodPerformed { method_label }` on the actuate arm, derived from the
+// SELECTION alone -- no execution outcome is an input to it, and the route that consumes it observes
+// and decides without executing anything. So a receipt written by an assessment-only run asserted
+// that a disruptive retirement method had run. That is the fabricated-plausible-output class aimed at
+// the one sentence an operator most needs to be true, and the satisfied arm being careful about it
+// made the actuate arm's claim read as deliberate.
 //
-// `MethodNotPerformed` CARRIES ITS OWN REASON rather than being a bare absence, because three
-// different invocations reach it -- satisfied, pending, refused -- and a reader of the receipt needs
-// to tell "nothing was owed" from "nothing was legible" from "nothing was permitted".
-type RetirementMethodPerformance
-  = MethodPerformed { method_label: String }
-  | MethodNotPerformed { reason: String }
+// THERE IS NO `MethodPerformed` ARM HERE ANY MORE, and its absence is the construction. Performance
+// is establishable only from an execution outcome, and this module has none to offer: the mask is
+// executed by fleet apply out of the reviewed plan artifact. An arm nobody in this closure could
+// construct would be a decoration that the next reader cites as coverage, so the type carries the two
+// answers an assessment can actually reach and the executing route mints its own when it exists.
+//
+// `MethodNotSelected` CARRIES ITS OWN REASON rather than being a bare absence, because four different
+// invocations reach it -- satisfied, pending, refused, subject mismatch -- and a reader of the receipt
+// needs to tell "nothing was owed" from "nothing was legible" from "nothing was permitted" from "this
+// reading was about a different machine".
+type RetirementMethodDisposition
+  = MethodSelectedNotPerformed { method_label: String }
+  | MethodNotSelected { reason: String }
 
-fn invocation_method_performance(i: SlotRetirementInvocation) -> RetirementMethodPerformance {
+fn invocation_method_disposition(i: SlotRetirementInvocation) -> RetirementMethodDisposition {
   match i {
     SlotRetirementAlreadySatisfied { unit: u } =>
-      MethodNotPerformed {
+      MethodNotSelected {
         reason: join(["the slot retirement postcondition already held for ", u, " when this invocation observed it; no method was selected and no stop was emitted"], ""),
       }
-    SlotRetirementPending { unit: _, cause: c } => MethodNotPerformed { reason: c }
-    SlotRetirementRefused { unit: _, cause: c } => MethodNotPerformed { reason: c }
-    SlotRetirementActuate { unit: _, method_label: l, operation: _ } => MethodPerformed { method_label: l }
+    SlotRetirementPending { unit: _, cause: c } => MethodNotSelected { reason: c }
+    SlotRetirementRefused { unit: _, cause: c } => MethodNotSelected { reason: c }
+    SlotRetirementSubjectMismatch { unit: u, standing_unit: su } =>
+      MethodNotSelected {
+        reason: join(["the standing supplied for ", u, " describes ", su, ", so this invocation established nothing about its own subject"], ""),
+      }
+    SlotRetirementActuate { unit: _, method_label: l, operation: _ } =>
+      MethodSelectedNotPerformed { method_label: l }
   }
 }
 
@@ -1058,15 +1090,17 @@ fn slot_retirement_invocation_unit(i: SlotRetirementInvocation) -> String {
     SlotRetirementActuate { unit: u, method_label: _, operation: _ } => u as String
     SlotRetirementPending { unit: u, cause: _ } => u
     SlotRetirementRefused { unit: u, cause: _ } => u
+    SlotRetirementSubjectMismatch { unit: u, standing_unit: _ } => u
   }
 }
 
 fn slot_retirement_invocation_wire(i: SlotRetirementInvocation) -> String {
   match i {
     SlotRetirementAlreadySatisfied { unit: _ } => "already-satisfied"
-    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => "actuate"
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => "selected-not-performed"
     SlotRetirementPending { unit: _, cause: _ } => "PENDING"
     SlotRetirementRefused { unit: _, cause: _ } => "REFUSED"
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => "SUBJECT-MISMATCH"
   }
 }
 
@@ -1079,5 +1113,6 @@ fn slot_retirement_invocation_settled(i: SlotRetirementInvocation) -> Bool {
     SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
     SlotRetirementPending { unit: _, cause: _ } => false
     SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
   }
 }

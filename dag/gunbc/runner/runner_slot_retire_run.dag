@@ -5,10 +5,23 @@ import std.algebra { trim }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.systemd { UnitFileState }
+import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState }
 import product.placement_supply { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.actions_run_binding {
+  actions_variable_read,
+  ActionsVariablePresent,
+  ActionsVariableAbsent,
+  observe_actions_run_binding,
+  ActionsRunBound,
+  ActionsRunUnbound,
+  read_expected_revision,
+  ExpectedRevisionPresent,
+  ExpectedRevisionAbsent,
+  admit_run_revision,
+  RunRevisionAdmitted,
+  RunRevisionRefused,
+}
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -50,16 +63,18 @@ import gunbc.runner_slot_retirement {
   slot_retirement_invocation_wire,
   slot_retirement_invocation_unit,
   slot_retirement_invocation_settled,
-  invocation_method_performance,
-  MethodPerformed,
-  MethodNotPerformed,
+  invocation_method_disposition,
+  MethodSelectedNotPerformed,
+  MethodNotSelected,
+  SlotRetirementSubjectMismatch,
 }
 import gunbc.runner_host_retirement {
   HostRetirementStanding,
   HostRetirementDeclared,
   HostNotRetiring,
   host_retirement_standing,
-  SurplusIdentityDisposition,
+  host_retirement_obligation_basis,
+  retiree_obligation_basis_wire,
   EstateObligationStanding,
   EstateObligationOutstanding,
   EstateObligationUnobserved,
@@ -69,15 +84,22 @@ import gunbc.runner_host_retirement {
   estate_cleanup_standing,
   runner_liveness_reconcile_timer_intent,
   runner_liveness_reconcile_timer_unit,
+  runner_liveness_reconcile_service_unit,
   reconcile_timer_intent_wire,
   reconcile_timer_estate_standing,
+  ReconcileMechanismReading,
+  ReconcilePropertyReading,
+  ReconcilePropertyValue,
+  ReconcilePropertyUnreadable,
+  reconcile_reading_text,
 }
 import gunbc.runner_retirement_closure {
   PlannerDisposition,
   PlannerSawCompleteSubject,
   PlannerRefusedAccess,
-  retirement_closure_verdict,
-  closure_verdict_text,
+  planner_disposition_wire,
+  retirement_assessment_verdict,
+  assessment_verdict_text,
 }
 
 // THE RETIREMENT ROUTE, WHOSE EXECUTOR IS NOT ITS TARGET.
@@ -107,7 +129,6 @@ import gunbc.runner_retirement_closure {
 // defect wearing the repair's result.
 data runner_retirement_executor_env_name: String = "RUNNER_RETIREMENT_EXECUTOR"
 data runner_retirement_target_env_name: String = "RUNNER_RETIREMENT_TARGET"
-data runner_slot_retire_revision_env_name: String = "GITHUB_SHA"
 data runner_slot_retire_attempt_raw: String = "runner-slot-retire-ci"
 data runner_slot_retire_receipt_path: String = "target/runner-slot-retire-receipt.txt"
 
@@ -275,53 +296,46 @@ fn retirement_evidence_for(target: HostIdentity) -> SlotRetirementEvidence {
   }
 }
 
-// ── The reconcile timer reading ──────────────────────────────────────────────────────────────────
+// ── The reconcile mechanism reading ─────────────────────────────────────────────────────────────
 
-type ReconcileTimerReading
-  = ReconcileTimerRead { unit_file_state: String }
-  | ReconcileTimerUnread { cause: String }
-
-// `UnitFileState` IS THE RIGHT PROPERTY AND `ActiveState` IS NOT. A timer that is currently inactive
-// but still ENABLED is armed: the manager starts it at the next boot or the next reload, which is
-// exactly the "manual retirement undone by a legitimate pass" the intent model exists to prevent.
-// Enablement is the fact; whether it happens to be ticking right now is not.
+// THREE PROPERTIES, BECAUSE ENABLEMENT ALONE CANNOT ANSWER THE QUESTION. The first version of this
+// read only `UnitFileState` and mapped everything that was not `enabled` onto "retired" -- which
+// discharges on a blank string, on a spelling it did not recognize, and on a timer that had been
+// disabled while still running. systemd documents that `disable` does not stop a unit. The reading is
+// now the triple `gunbc.runner_host_retirement` folds, and every leg is three-valued so a refused
+// read blocks instead of defaulting to off.
 //
-// A BLANK STATE IS `static` OR ABSENT AND IS READ AS NOT ENABLED. A REFUSED show stays unread, and an
-// unread timer cannot discharge its obligation.
-fn observe_reconcile_timer(transport: HostEffectTransport) -> ReconcileTimerReading
+// THE TRIGGERED SERVICE IS READ BY NAME, derived from the timer's stem, because a reconcile
+// invocation already in flight keeps restoring runners after its timer is gone.
+fn reconcile_property_read(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> ReconcilePropertyReading
   uses net: Network
 {
-  match systemctl_show_property_read(
-    transport: transport,
-    unit: runner_liveness_reconcile_timer_unit,
-    property: UnitFileState,
-  ) {
-    SystemdPropertyCaptureRefused { reason: r } => ReconcileTimerUnread { cause: r }
-    SystemdPropertyBlank => ReconcileTimerRead { unit_file_state: "" }
-    SystemdPropertyCaptured { value: v } => ReconcileTimerRead { unit_file_state: trim(s: v) }
+  match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
+    SystemdPropertyCaptureRefused { reason: r } => ReconcilePropertyUnreadable { cause: r }
+    SystemdPropertyBlank => ReconcilePropertyValue { value: "" }
+    SystemdPropertyCaptured { value: v } => ReconcilePropertyValue { value: trim(s: v) }
   }
 }
 
-fn reconcile_timer_state_is_enabled(state: String) -> Bool {
-  state == "enabled" || state == "enabled-runtime"
-}
-
-fn reconcile_timer_standing(
-  target: HostIdentity,
-  reading: ReconcileTimerReading,
-) -> EstateObligationStanding {
-  match reading {
-    ReconcileTimerUnread { cause: c } =>
-      EstateObligationUnobserved {
-        obligation: LivenessReconcileTimerRetired,
-        cause: join([runner_liveness_reconcile_timer_unit as String, " on ", target as String, " could not be read: ", c], ""),
-      }
-    ReconcileTimerRead { unit_file_state: s } =>
-      reconcile_timer_estate_standing(
-        intent: runner_liveness_reconcile_timer_intent(host: target),
-        observed_enabled: reconcile_timer_state_is_enabled(state: s),
-        observed: join(["UnitFileState=", if s == "" { "<blank>" } else { s }], ""),
-      )
+fn observe_reconcile_mechanism_reading(transport: HostEffectTransport) -> ReconcileMechanismReading
+  uses net: Network
+{
+  ReconcileMechanismReading {
+    timer_unit_file_state: reconcile_property_read(
+      transport: transport,
+      unit: runner_liveness_reconcile_timer_unit,
+      property: UnitFileState,
+    ),
+    timer_active_state: reconcile_property_read(
+      transport: transport,
+      unit: runner_liveness_reconcile_timer_unit,
+      property: ActiveState,
+    ),
+    service_active_state: reconcile_property_read(
+      transport: transport,
+      unit: runner_liveness_reconcile_service_unit,
+      property: ActiveState,
+    ),
   }
 }
 
@@ -333,7 +347,7 @@ type RetirementRouteRun {
   standings: List<RunnerRetirementStanding>
   invocations: List<SlotRetirementInvocation>
   timer: EstateObligationStanding
-  timer_reading: ReconcileTimerReading
+  timer_reading: ReconcileMechanismReading
 }
 
 fn run_retirement_route(
@@ -346,7 +360,7 @@ fn run_retirement_route(
   let required = transition_required_retiring(host: subject.target)
   let standings = observe_retirement_standings(transport: transport, units: required)
   let evidence = retirement_evidence_for(target: subject.target)
-  let timer_reading = observe_reconcile_timer(transport: transport)
+  let timer_reading = observe_reconcile_mechanism_reading(transport: transport)
   RetirementRouteRun {
     subject: subject,
     required: required,
@@ -357,7 +371,10 @@ fn run_retirement_route(
         unit: u,
         standing: standing_for_required(standings: standings, unit: u),
       )),
-    timer: reconcile_timer_standing(target: subject.target, reading: timer_reading),
+    timer: reconcile_timer_estate_standing(
+      intent: runner_liveness_reconcile_timer_intent(host: subject.target),
+      reading: timer_reading,
+    ),
     timer_reading: timer_reading,
   }
 }
@@ -397,10 +414,6 @@ fn retirement_route_roster_evidence() -> OrganizationRunnerRosterEvidence {
   }
 }
 
-fn retirement_route_surplus_dispositions() -> List<SurplusIdentityDisposition> {
-  []
-}
-
 // THE SUBJECTS WHOSE ONLY REMAINING MODELLED METHOD IS THE UNIMPLEMENTED ONE.
 //
 // When no operator interruption authorization is bound to this convergence, the disruptive method is
@@ -438,6 +451,7 @@ fn retirement_route_planner_disposition(run: RetirementRouteRun) -> PlannerDispo
           SlotRetirementAlreadySatisfied { unit: _ } => false
           SlotRetirementPending { unit: _, cause: _ } => false
           SlotRetirementRefused { unit: _, cause: _ } => false
+          SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
         }),
       ),
     }
@@ -457,9 +471,9 @@ fn invocation_line(i: SlotRetirementInvocation) -> String {
   join([
     "invocation unit=", slot_retirement_invocation_unit(i: i),
     " disposition=", slot_retirement_invocation_wire(i: i),
-    " method=", match invocation_method_performance(i: i) {
-      MethodPerformed { method_label: l } => l
-      MethodNotPerformed { reason: r } => join(["<none> ", r], "")
+    " method=", match invocation_method_disposition(i: i) {
+      MethodSelectedNotPerformed { method_label: l } => join(["SELECTED-NOT-PERFORMED ", l, " (executed by fleet apply out of the reviewed plan artifact, not by this assessment)"], "")
+      MethodNotSelected { reason: r } => join(["<none> ", r], "")
     },
     "\n",
   ], "")
@@ -468,14 +482,13 @@ fn invocation_line(i: SlotRetirementInvocation) -> String {
 fn retirement_route_text(run: RetirementRouteRun) -> String {
   join([
     "executor=", run.subject.executor as String, " target=", run.subject.target as String, "\n",
-    "required-subjects=", to_string(list_length(items: run.required)), "\n",
+    "required-subjects=", to_string(list_length(items: run.required)),
+    " basis=", retiree_obligation_basis_wire(b: host_retirement_obligation_basis(host: run.subject.target)), "\n",
     join(map(run.standings, s => join(["standing unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
     join(map(run.invocations, i => invocation_line(i: i)), ""),
     "reconcile-timer intent=", reconcile_timer_intent_wire(i: runner_liveness_reconcile_timer_intent(host: run.subject.target)),
-    " reading=", match run.timer_reading {
-      ReconcileTimerRead { unit_file_state: s } => join(["UnitFileState=", if s == "" { "<blank>" } else { s }], "")
-      ReconcileTimerUnread { cause: c } => join(["UNREAD ", c], "")
-    }, "\n",
+    " reading=", reconcile_reading_text(reading: run.timer_reading), "\n",
+    "planner=", planner_disposition_wire(d: retirement_route_planner_disposition(run: run)), "\n",
     "graceful-method=", match retirement_method_availability(method: GracefulRetirement, unit: run.subject.target as String) {
       MethodAvailable { method: _ } => "available"
       MethodUnavailable { method_label: l, cause: c } => join([l, " UNAVAILABLE ", c], "")
@@ -496,7 +509,42 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
 // narrower question this run can actually answer: is every required subject of THIS host settled.
 //
 // NEITHER MAY BE READ AS THE OTHER, which is why the terminal line prints both words.
+// THE REVISION ON THE RECEIPT IS THE ONE THIS RUN EXECUTED, CORROBORATED, NOT `GITHUB_SHA`.
+//
+// The first version read `GITHUB_SHA` and used it as the assessment revision. But this job checks out
+// `${{ github.event.inputs.expected_revision || github.ref }}`, and GitHub defines `GITHUB_SHA` as
+// the commit of the TRIGGERING EVENT. Those are the same only when nobody passed an expected
+// revision; a dispatch at S naming `expected_revision=R` executes R and would have labelled the
+// receipt S. Selecting a different checkout revision does not make the event's commit that
+// checkout's identity, and a receipt carrying the wrong revision is worse than one carrying none --
+// it is exactly the artifact a closure joins ON.
+//
+// SO IT REUSES THE EXACT-REVISION BINDING THE PLAN ROUTE ALREADY USES, unchanged:
+// `observe_actions_run_binding` reads the run's own facts, `read_expected_revision` reads the
+// operator-selected R, and `admit_run_revision` REFUSES when the two disagree rather than picking
+// one. The event SHA stays a separate fact inside the binding; it is corroboration, never the answer.
 fn runner_slot_retire_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match observe_actions_run_binding() {
+    ActionsRunUnbound { variable: v, detail: d } =>
+      exit_failure(reason: join(["runner_slot_retire: RunUnbound -- ", v, " ", d, "; this mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
+    ActionsRunBound { binding: run } =>
+      match read_expected_revision() {
+        ExpectedRevisionAbsent { variable: v, detail: d } =>
+          exit_failure(reason: join(["runner_slot_retire: ExpectedRevisionAbsent -- ", v, " ", d, "; an assessment whose revision is not the operator-selected R cannot be joined into a closure at R"], ""))
+        ExpectedRevisionPresent { revision: expected_r } =>
+          match admit_run_revision(binding: run, expected: expected_r) {
+            RunRevisionRefused { expected: e, observed: o } =>
+              exit_failure(reason: join(["runner_slot_retire: RunRevisionRefused -- the operator selected ", e, " but this run's own revision is ", o, "; refusing rather than attaching an uncorroborated revision to the receipt"], ""))
+            RunRevisionAdmitted { revision: revision } =>
+              runner_slot_retire_bound_wet(revision: revision)
+          }
+      }
+  }
+}
+
+fn runner_slot_retire_bound_wet(revision: String) -> ProcessExit
   uses net: Network
 {
   match actions_variable_read(name: runner_retirement_executor_env_name) {
@@ -507,46 +555,41 @@ fn runner_slot_retire_ci_wet() -> ProcessExit
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["runner_slot_retire: ", v, " ", d], ""))
         ActionsVariablePresent { value: target_raw } =>
-          match actions_variable_read(name: runner_slot_retire_revision_env_name) {
-            ActionsVariableAbsent { variable: v, detail: d } =>
-              exit_failure(reason: join(["runner_slot_retire: ", v, " ", d, "; a closure verdict that does not name its revision is a claim about whichever tree the reader has"], ""))
-            ActionsVariablePresent { value: revision } =>
-              match retirement_route_admission(executor_raw: executor_raw, target_raw: target_raw) {
-                RetirementRouteRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
-                RetirementRouteAdmitted { subject: subject } =>
-                  match prepare_fleet_ssh_agent_context(attempt_raw: runner_slot_retire_attempt_raw) {
-                    FleetSshContextRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
-                    FleetSshContextReady { context: context, receipt: context_receipt } => {
-                      let run = run_retirement_route(subject: subject, context: context)
-                      let verdict = retirement_closure_verdict(
-                        revision: trim(s: revision) as NonEmptyStr,
-                        host: subject.target,
-                        roster: retirement_route_roster_evidence(),
-                        surplus: retirement_route_surplus_dispositions(),
-                        required: run.required,
-                        standings: run.standings,
-                        method_subjects: retirement_route_graceful_subjects(run: run),
-                        method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
-                        planner: retirement_route_planner_disposition(run: run),
-                        estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
-                      )
-                      let body = join([
-                        "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
-                        context_receipt,
-                        retirement_route_text(run: run),
-                        closure_verdict_text(v: verdict),
-                        "terminal=", if retirement_route_succeeded(run: run) { "settled" } else { "REFUSED" }, "\n",
-                      ], "")
-                      let w = Filesystem.Write(path: runner_slot_retire_receipt_path, content: body)
-                      if w.success == false {
-                        exit_failure(reason: join(["runner_slot_retire: receipt write failed: ", w.error, "\n", body], ""))
-                      } else if retirement_route_succeeded(run: run) == false {
-                        exit_failure(reason: body)
-                      } else {
-                        ExitSuccess
-                      }
-                    }
+          match retirement_route_admission(executor_raw: executor_raw, target_raw: target_raw) {
+            RetirementRouteRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
+            RetirementRouteAdmitted { subject: subject } =>
+              match prepare_fleet_ssh_agent_context(attempt_raw: runner_slot_retire_attempt_raw) {
+                FleetSshContextRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
+                FleetSshContextReady { context: context, receipt: context_receipt } => {
+                  let run = run_retirement_route(subject: subject, context: context)
+                  let verdict = retirement_assessment_verdict(
+                    revision: revision as NonEmptyStr,
+                    host: subject.target,
+                    roster: retirement_route_roster_evidence(),
+                    required: run.required,
+                    standings: run.standings,
+                    method_subjects: retirement_route_graceful_subjects(run: run),
+                    method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
+                    planner: retirement_route_planner_disposition(run: run),
+                    estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
+                  )
+                  let body = join([
+                    "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                    "revision=", revision, "\n",
+                    context_receipt,
+                    retirement_route_text(run: run),
+                    assessment_verdict_text(v: verdict),
+                    "terminal=", if retirement_route_succeeded(run: run) { "settled" } else { "REFUSED" }, "\n",
+                  ], "")
+                  let w = Filesystem.Write(path: runner_slot_retire_receipt_path, content: body)
+                  if w.success == false {
+                    exit_failure(reason: join(["runner_slot_retire: receipt write failed: ", w.error, "\n", body], ""))
+                  } else if retirement_route_succeeded(run: run) == false {
+                    exit_failure(reason: body)
+                  } else {
+                    ExitSuccess
                   }
+                }
               }
           }
       }

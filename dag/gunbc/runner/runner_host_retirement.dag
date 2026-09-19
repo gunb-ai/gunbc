@@ -4,7 +4,8 @@ import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
-import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
+import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner_unit { runner_unit_prefix, runner_unit_suffix }
 import gunbc.fleet_runner_connectivity {
   RegistrationSlotDecoding,
   RegistrationNamesCommittedSlot,
@@ -48,32 +49,56 @@ import gunbc.fleet_runner_connectivity {
 // registrations are part of the estate. Every one of those is on `RunnerHostSpec`, which
 // `RunnerHostDeployWidthRefused` already carries precisely so a refused host stays fully named. This
 // row consumes that spec rather than re-spelling an address.
+// THREE DIFFERENT POPULATIONS WERE CALLED "owned_width", AND ONLY ONE OF THEM WAS EVER ESTABLISHED.
+//
+// The first version of this row carried `owned_width: 21` and called it srv2's owned population. That
+// name asserts captured history -- these identities existed and this host owned them -- and nothing
+// in this repository establishes it. What 21 actually is: the slot count of the provisioning template
+// srv2 was built from, which is a statement about how far to LOOK, not about what is there.
+//
+// So the three are separated, because they have different evidence and different consequences:
+//
+//   SEARCH BOUND      -- how many slot indices this retirement enumerates. Authored, because no
+//                        surviving width authority answers for srv2. Being wrong high costs readings;
+//                        being wrong low leaves identities outside every gate.
+//   CAPTURED OWNED    -- identities a snapshot actually observed. NOT AVAILABLE HERE: this route reads
+//                        no GitHub roster and no census, so the retirement carries none and says so.
+//                        The field exists so the population can be grounded when the roster read lands
+//                        rather than being retro-fitted into the bound.
+//   AUTHORIZED SCOPE  -- which identities an operator permits interrupting. Lives in
+//                        `gunbc.runner_slot_retirement`'s `InterruptionAuthorization` and is
+//                        deliberately not here; permission must never be an input to obligation.
+//
+// AND THE HARMLESSNESS ARGUMENT THE FIRST VERSION GAVE WAS FALSE. It said an over-stated bound costs
+// one reading because a never-created member reads `RetirementComplete` immediately. It does not:
+// `retirement_observation_from_readings` sets `replacement_inhibited` from `UnitFileState == "masked"`,
+// and a unit that never existed reports blank, not masked. Such an identity therefore reads
+// `RetirementPendingDrain` -- replacement is not inhibited -- and blocks the closure forever. The
+// invented obligation is not free, and the two ways to "fix" it are both worse than the bound being
+// honest: weakening the inhibition test would let a real unmasked slot pass, and masking a unit that
+// was never created would be an effect performed to satisfy a number somebody authored.
+//
+// SO A NEVER-CREATED IDENTITY IS AN EXPLICIT ANSWER rather than an accident of the fold, below.
 type HostRetirement sole_constructor {
   retirement_id: NonEmptyStr
   host: HostIdentity
   spec: RunnerHostSpec
-  owned_width: Int
+  search_bound: Int
+  captured_owned: List<NonEmptyStr>
   operator_reason: NonEmptyStr
 }
 
-// THE DECLARED RETIREMENTS. One row, and the width is srv2's owned local population rather than an
-// admitted one -- the distinction the type's note above turns on.
-//
-// WHY 21. srv2 was provisioned on the same 21-slot template as srv3 and srv4 under the 15 GiB
-// ceiling; that is the population whose units and trees are still on the machine and therefore the
-// population this retirement is an obligation over. It is authored rather than derived because
-// nothing in the model still answers a width for srv2 -- which is the whole reason the row exists.
-// AN OVERSTATED WIDTH IS THE SAFE DIRECTION AND AN UNDERSTATED ONE IS NOT. A member named here that
-// the host never carried enters the obligation and reads `RetirementComplete` immediately on a live
-// observation -- masked-absent, no cgroup -- so it costs one reading. A member omitted here is
-// outside every gate: no standing is taken for it, no evidence is required of it, and the closure
-// could claim convergence with it still running.
+// THE DECLARED RETIREMENTS. `search_bound` is the provisioning template srv2 was built from and is a
+// SEARCH RANGE; `captured_owned` is empty because no snapshot has been taken through this route, and
+// an empty list here is the honest statement that the population is ungrounded rather than a claim
+// that srv2 owns nothing.
 data srv2_host_retirement: HostRetirement = HostRetirement {
   retirement_id: "srv2-runner-estate-retirement" as NonEmptyStr,
   host: operator_host_srv2,
   spec: srv2_runner_host_spec,
-  owned_width: 21,
-  operator_reason: "srv2 leaves the runner estate: its session denominator is unestablished, so gunbc.runner_host_deploy refuses to derive any admitted width for it and it carries no width transition. The retirement is declared here as its own decision rather than read off that refusal -- a capacity refusal states that the model cannot say what this host should run, and is not an instruction to delete what it is running" as NonEmptyStr,
+  search_bound: 21,
+  captured_owned: [],
+  operator_reason: "srv2 leaves the runner estate: its session denominator is unestablished, so gunbc.runner_host_deploy refuses to derive any admitted width for it and it carries no width transition. The retirement is declared here as its own decision rather than read off that refusal -- a capacity refusal states that the model cannot say what this host should run, and is not an instruction to delete what it is running. The search bound of 21 is the provisioning template srv2 was built from; it is where to LOOK and is not evidence that 21 slots were created" as NonEmptyStr,
 }
 
 data declared_host_retirements: List<HostRetirement> = [srv2_host_retirement]
@@ -104,15 +129,64 @@ fn host_retirement_standing(host: HostIdentity) -> HostRetirementStanding {
   }
 }
 
-// THE OBLIGATION, IN THE SAME SHAPE THE TRANSITION AUTHORITY PRODUCES. A retiring host owes every one
-// of its owned slot identities, from 1, because it is leaving entirely -- there is no surviving
-// committed population to subtract, which is exactly what distinguishes a retirement from a shrink.
-fn host_retirement_required_retirees(host: HostIdentity) -> List<NonEmptyStr> {
+// THE OBLIGATION, IN THE SAME SHAPE THE TRANSITION AUTHORITY PRODUCES, AND IT SAYS WHICH POPULATION
+// IT CAME FROM. A retiring host owes every one of its owned slot identities from 1, because it is
+// leaving entirely -- there is no surviving committed population to subtract, which is what
+// distinguishes a retirement from a shrink.
+//
+// A CAPTURED POPULATION SUPERSEDES THE BOUND WHEN ONE EXISTS. Until then the bound is enumerated and
+// the standing below reports that the set is ungrounded, so a reader is never told that an authored
+// range is observed history.
+type RetireeObligationBasis
+  = ObligationFromCapturedSnapshot { units: List<NonEmptyStr> }
+  | ObligationFromSearchBound { units: List<NonEmptyStr>, bound: Int }
+  | ObligationAbsent { host: HostIdentity }
+
+fn host_retirement_obligation_basis(host: HostIdentity) -> RetireeObligationBasis {
   match host_retirement_standing(host: host) {
-    HostNotRetiring { host: _, cause: _ } => []
+    HostNotRetiring { host: h, cause: _ } => ObligationAbsent { host: h }
     HostRetirementDeclared { retirement: r } =>
-      desired_unit_names_range(host: r.host, slot: 1, limit: r.owned_width) |> map(u => u as NonEmptyStr)
+      if list_length(items: r.captured_owned) > 0 {
+        ObligationFromCapturedSnapshot {
+          units: r.captured_owned |> map(n => unit_name_for_owned_registration(name: n)),
+        }
+      } else {
+        ObligationFromSearchBound {
+          units: desired_unit_names_range(host: r.host, slot: 1, limit: r.search_bound) |> map(u => u as NonEmptyStr),
+          bound: r.search_bound,
+        }
+      }
   }
+}
+
+fn retiree_obligation_units(b: RetireeObligationBasis) -> List<NonEmptyStr> {
+  match b {
+    ObligationAbsent { host: _ } => []
+    ObligationFromCapturedSnapshot { units: us } => us
+    ObligationFromSearchBound { units: us, bound: _ } => us
+  }
+}
+
+fn retiree_obligation_basis_wire(b: RetireeObligationBasis) -> String {
+  match b {
+    ObligationAbsent { host: _ } => "none"
+    ObligationFromCapturedSnapshot { units: _ } => "captured-snapshot"
+    ObligationFromSearchBound { units: _, bound: n } => join(["search-bound=", to_string(n), " UNGROUNDED"], "")
+  }
+}
+
+// AN OBLIGATION DERIVED FROM A SEARCH BOUND IS NOT GROUNDED, AND THE CLOSURE IS TOLD SO. This is what
+// keeps the authored 21 from being laundered into observed history by passing through one more fold.
+fn retiree_obligation_is_grounded(b: RetireeObligationBasis) -> Bool {
+  match b {
+    ObligationFromCapturedSnapshot { units: _ } => true
+    ObligationFromSearchBound { units: _, bound: _ } => false
+    ObligationAbsent { host: _ } => false
+  }
+}
+
+fn host_retirement_required_retirees(host: HostIdentity) -> List<NonEmptyStr> {
+  retiree_obligation_units(b: host_retirement_obligation_basis(host: host))
 }
 
 fn host_retirement_spec(host: HostIdentity) -> List<RunnerHostSpec> {
@@ -149,18 +223,50 @@ type OwnedIdentityEvidence
   = OwnershipEstablished { host: HostIdentity, basis: String }
   | OwnershipUnestablished { name: NonEmptyStr, cause: String }
 
+// A REGISTRATION IS NAMED IN THE REGISTRATION GRAMMAR, AND THIS ASKED IT IN THE SYSTEMD ONE.
+//
+// The first version of this function handed a registration name straight to `unit_is_owned_by_host`,
+// whose prefix is built from `runner_unit_prefix` -- it tests for `actions-runner@srv2-`. A GitHub
+// self-hosted runner registration is named `srv2-07` (`host_registration_name_for_slot`), so every
+// real owned registration answered UNOWNED, which is the arm that blocks and never deletes. The
+// direction was safe and the predicate was still wrong about every input it will ever see.
+//
+// WORSE, THE WITNESS AGREED WITH IT. The positive control put `actions-runner@srv2-07.service` into a
+// field that holds registration names, so it established that a systemd-shaped string is recognized
+// in a registration-shaped field -- a designed fixture reaching the right verdict through the wrong
+// mechanism, which is exactly the failure DESIGN's pairing obligation names. The replacement carries a
+// real-shaped registration through the real decoder.
+//
+// THE PREFIX IS DERIVED FROM THE REGISTRATION NAMING AUTHORITY rather than spelled here. Slot one's
+// registration name is this host's own first name, and its host segment is what ownership tests --
+// so the rule is read backward out of the same function that writes it forward, and a change to the
+// naming scheme moves both ends together.
+fn host_registration_prefix(host: HostIdentity) -> String {
+  join([host as String, "-"], "")
+}
+
+// OWNERSHIP IS A POSITIVE FACT ABOUT THE NAME, NOT THE ABSENCE OF A FACT ABOUT THE ROSTER. It says
+// this estate's naming authority issued this name; it does not say the registration is still desired,
+// still connected, or may be deleted.
 fn registration_ownership(host: HostIdentity, name: NonEmptyStr) -> OwnedIdentityEvidence {
-  if unit_is_owned_by_host(host: host, unit: name as String) {
+  if starts_with(s: name as String, prefix: host_registration_prefix(host: host)) {
     OwnershipEstablished {
       host: host,
-      basis: join(["the registration name carries ", host as String, "'s own instance prefix, which is the naming authority that issued it"], ""),
+      basis: join(["the registration name carries ", host as String, "'s own registration-name prefix `", host_registration_prefix(host: host), "`, which is the naming authority that issued it (gunbc.fleet_runner_connectivity host_registration_name_for_slot)"], ""),
     }
   } else {
     OwnershipUnestablished {
       name: name,
-      cause: join(["no declared host in this estate issued the name ", name as String, "; it is a registration in the organization whose owner is unestablished, and an unestablished owner authorizes neither its removal nor its silent omission"], ""),
+      cause: join(["no declared host in this estate issued the registration name ", name as String, "; its owner is unestablished, and an unestablished owner authorizes neither its removal nor its silent omission"], ""),
     }
   }
+}
+
+// THE UNIT IDENTITY IS DERIVED FROM THE OWNED REGISTRATION, not assumed to be the same string. The two
+// grammars name one slot and a consumer that needs the systemd side -- a retirement standing, a mask --
+// must cross the boundary explicitly rather than by the two happening to look alike.
+fn unit_name_for_owned_registration(name: NonEmptyStr) -> NonEmptyStr {
+  join([runner_unit_prefix, name as String, runner_unit_suffix], "") as NonEmptyStr
 }
 
 fn ownership_is_established(e: OwnedIdentityEvidence) -> Bool {
@@ -200,11 +306,20 @@ fn surplus_identity_disposition(
   }
 }
 
-// DELETION NEEDS BOTH FACTS AND IT IS THE CONJUNCTION THAT IS THE WALL. Ownership says the identity is
-// ours; the declared retirement says somebody decided it should go. Either alone is the misreading
-// this section names -- ownership alone deletes the estate of a host that is merely quiet, and a
-// declared retirement alone deletes whatever happens to be near it.
-fn surplus_identity_deletable(d: SurplusIdentityDisposition) -> Bool {
+// THIS IS SCOPE, NOT A DELETION AUTHORIZATION, AND THE NAME SAYS SO BECAUSE THE PREVIOUS ONE DID NOT.
+//
+// It was called `surplus_identity_deletable` and answered true from ownership plus a declared
+// retirement. Both facts are necessary and neither is sufficient: nothing here consults the
+// retirement POSTCONDITION for the identity, and nothing here holds the authorization to write to
+// GitHub or to the host. A second predicate that answers "deletable" beside the real teardown
+// admission is a competing authorization, and the one that disagrees quietly is the one that never
+// runs.
+//
+// WHAT IT ACTUALLY ESTABLISHES: this identity falls inside the scope of a declared retirement, so it
+// is a subject this transaction is entitled to reason about. Final deletion admission stays where it
+// already lives -- `slot_removal_realization`'s `RemovalTeardownAuthorized`, which requires an exact
+// `RetirementComplete` for the unit and the operator's interruption coverage.
+fn surplus_identity_within_retirement_scope(d: SurplusIdentityDisposition) -> Bool {
   match d {
     CommittedSlotIdentity { name: _ } => false
     UnownedRegistration { name: _, cause: _ } => false
@@ -337,6 +452,11 @@ fn estate_cleanup_standing(standings: List<EstateObligationStanding>) -> EstateC
 // its timer back by the same act.
 data runner_liveness_reconcile_timer_unit: NonEmptyStr = "runner-liveness-reconcile.timer" as NonEmptyStr
 
+// THE SERVICE THE TIMER STARTS, NAMED BESIDE IT RATHER THAN DERIVED BY STRING SURGERY ON THE TIMER.
+// systemd's default pairing is the same stem with a .service suffix, and both names are written here
+// so a reader sees the pair rather than inferring one from the other at a call site.
+data runner_liveness_reconcile_service_unit: NonEmptyStr = "runner-liveness-reconcile.service" as NonEmptyStr
+
 type ReconcileTimerIntent
   = ReconcileTimerActive { host: HostIdentity }
   | ReconcileTimerRetired { host: HostIdentity, unit: NonEmptyStr, reason: NonEmptyStr }
@@ -364,10 +484,104 @@ fn reconcile_timer_intent_wire(i: ReconcileTimerIntent) -> String {
 // is the exact regression this section exists to catch, and it is reported as an OUTSTANDING estate
 // obligation rather than as a converged difference -- a retirement is not satisfied while the
 // mechanism that reverses it is armed.
+// DISABLING A UNIT DOES NOT STOP IT, AND THE FIRST VERSION OF THIS DISCHARGED ON EXACTLY THAT.
+//
+// It read one property, `UnitFileState`, and treated everything that was not `enabled` or
+// `enabled-runtime` as retired -- including a blank string and any spelling it did not recognize.
+// systemd documents the inverse case plainly: `disable` removes the enablement symlinks and does not
+// stop a running unit. So a timer that had been disabled while still active discharged the
+// obligation, and so did a reading nobody could parse.
+//
+// AND ENABLEMENT IS NOT THE WHOLE MECHANISM ANYWAY. A reconcile timer that is inhibited and inactive
+// still leaves the question the obligation is actually about: whether the SERVICE it triggers is
+// still running, because an invocation already in flight goes on restoring runners after its timer is
+// gone. That is the same unit-versus-workload separation the slot observer makes for cgroups, and it
+// was missing here.
+//
+// THREE INDEPENDENT FACTS, AND THE DISCHARGE IS THEIR CONJUNCTION:
+//
+//   PERSISTENT INHIBITION -- UnitFileState. `masked` or `disabled` means the manager will not arm it
+//                            again; anything unrecognized is unobserved, never off.
+//   TIMER ACTIVITY        -- ActiveState of the timer. Inactive or absent; `active` means it is still
+//                            armed for its next elapse whatever its enablement says.
+//   TRIGGERED RECONCILER  -- ActiveState of the service the timer starts. A reconcile invocation that
+//                            is still running can restore the population this retirement removes.
+//
+// EVERY READING IS THREE-VALUED, so a property that could not be read blocks rather than defaulting.
+type ReconcileMechanismReading {
+  timer_unit_file_state: ReconcilePropertyReading
+  timer_active_state: ReconcilePropertyReading
+  service_active_state: ReconcilePropertyReading
+}
+
+type ReconcilePropertyReading
+  = ReconcilePropertyValue { value: String }
+  | ReconcilePropertyUnreadable { cause: String }
+
+// THE ADMITTED INHIBITED SPELLINGS ARE ENUMERATED, AND EVERYTHING ELSE IS UNKNOWN. An allowlist of
+// states that mean "will not be armed again" fails closed on a spelling systemd adds later; a denylist
+// of states that mean "armed" fails open on exactly the same change.
+fn reconcile_unit_file_state_inhibits(state: String) -> Bool {
+  state == "masked" || state == "masked-runtime" || state == "disabled"
+}
+
+fn reconcile_unit_file_state_is_known(state: String) -> Bool {
+  reconcile_unit_file_state_inhibits(state: state)
+    || state == "enabled"
+    || state == "enabled-runtime"
+    || state == "static"
+    || state == "indirect"
+}
+
+// A UNIT WITH NO FRAGMENT ANSWERS BLANK, AND BLANK IS NOT INHIBITED. An absent timer is a real and
+// good state, but it is established by the ACTIVE-STATE reading being `inactive` alongside it, not by
+// an empty enablement string that a refused read would produce just as well.
+fn reconcile_active_state_is_running(state: String) -> Bool {
+  state == "active" || state == "activating" || state == "deactivating" || state == "reloading"
+}
+
+fn reconcile_active_state_is_known(state: String) -> Bool {
+  reconcile_active_state_is_running(state: state)
+    || state == "inactive"
+    || state == "failed"
+    || state == ""
+}
+
+fn reconcile_property_value(r: ReconcilePropertyReading) -> String {
+  match r {
+    ReconcilePropertyValue { value: v } => v
+    ReconcilePropertyUnreadable { cause: _ } => ""
+  }
+}
+
+fn reconcile_property_is_readable(r: ReconcilePropertyReading) -> Bool {
+  match r {
+    ReconcilePropertyValue { value: _ } => true
+    ReconcilePropertyUnreadable { cause: _ } => false
+  }
+}
+
+fn reconcile_reading_text(reading: ReconcileMechanismReading) -> String {
+  join([
+    "UnitFileState=", reconcile_reading_field_text(r: reading.timer_unit_file_state),
+    " timer.ActiveState=", reconcile_reading_field_text(r: reading.timer_active_state),
+    " service.ActiveState=", reconcile_reading_field_text(r: reading.service_active_state),
+  ], "")
+}
+
+fn reconcile_reading_field_text(r: ReconcilePropertyReading) -> String {
+  match r {
+    ReconcilePropertyValue { value: v } => if v == "" { "<blank>" } else { v }
+    ReconcilePropertyUnreadable { cause: c } => join(["<unreadable: ", c, ">"], "")
+  }
+}
+
+// THE FOLD. Unobserved comes first and covers both a refused read and a value this model does not
+// recognize, because "I do not know what systemd just told me" and "I could not ask" have the same
+// consequence and the opposite of the one a default would give them.
 fn reconcile_timer_estate_standing(
   intent: ReconcileTimerIntent,
-  observed_enabled: Bool,
-  observed: String,
+  reading: ReconcileMechanismReading,
 ) -> EstateObligationStanding {
   match intent {
     ReconcileTimerActive { host: h } =>
@@ -375,17 +589,45 @@ fn reconcile_timer_estate_standing(
         obligation: LivenessReconcileTimerRetired,
         cause: join([h as String, " carries no declared retirement, so its reconcile timer is intended ACTIVE. This fold refuses to discharge rather than answering that the obligation is met, because a discharged reconcile-timer obligation records a RETIRED timer, and recording one against a host still in the estate would be a false fact about a machine that needs its reconciliation running"], ""),
       }
-    ReconcileTimerRetired { host: h, unit: u, reason: _ } =>
-      if observed_enabled {
+    ReconcileTimerRetired { host: h, unit: u, reason: _ } => {
+      let file_state = reconcile_property_value(r: reading.timer_unit_file_state)
+      let timer_active = reconcile_property_value(r: reading.timer_active_state)
+      let service_active = reconcile_property_value(r: reading.service_active_state)
+      if !reconcile_property_is_readable(r: reading.timer_unit_file_state)
+        || !reconcile_property_is_readable(r: reading.timer_active_state)
+        || !reconcile_property_is_readable(r: reading.service_active_state) {
+        EstateObligationUnobserved {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join(["the reconcile mechanism on ", h as String, " could not be fully read (", reconcile_reading_text(reading: reading), "), so whether it can still restore runners is unknown"], ""),
+        }
+      } else if !reconcile_unit_file_state_is_known(state: file_state)
+        || !reconcile_active_state_is_known(state: timer_active)
+        || !reconcile_active_state_is_known(state: service_active) {
+        EstateObligationUnobserved {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join(["the reconcile mechanism on ", h as String, " reported a state this model does not recognize (", reconcile_reading_text(reading: reading), "); an unrecognized state is unknown, not off"], ""),
+        }
+      } else if !reconcile_unit_file_state_inhibits(state: file_state) {
         EstateObligationOutstanding {
           obligation: LivenessReconcileTimerRetired,
-          cause: join([u as String, " on ", h as String, " reads enabled (", observed, ") while this host's declared intent is retired; the next reconciliation tick can restore the population this retirement is removing"], ""),
+          cause: join([u as String, " on ", h as String, " is not persistently inhibited (", reconcile_reading_text(reading: reading), "); the manager can arm it again and the next tick restores the population this retirement removes"], ""),
+        }
+      } else if reconcile_active_state_is_running(state: timer_active) {
+        EstateObligationOutstanding {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join([u as String, " on ", h as String, " is still ACTIVE despite being inhibited (", reconcile_reading_text(reading: reading), "); disabling a unit does not stop it, and an armed timer elapses whatever its enablement says"], ""),
+        }
+      } else if reconcile_active_state_is_running(state: service_active) {
+        EstateObligationOutstanding {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join(["the reconcile service triggered by ", u as String, " on ", h as String, " is still running (", reconcile_reading_text(reading: reading), "); an invocation already in flight goes on restoring runners after its timer is gone"], ""),
         }
       } else {
         EstateObligationDischarged {
           obligation: LivenessReconcileTimerRetired,
-          evidence: join([u as String, " on ", h as String, " reads ", observed, " against a declared retired intent"], ""),
+          evidence: join([u as String, " on ", h as String, " is inhibited, inactive, and its triggered reconciler is not running (", reconcile_reading_text(reading: reading), ") against a declared retired intent"], ""),
         }
       }
+    }
   }
 }

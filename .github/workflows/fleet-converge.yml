@@ -773,6 +773,7 @@ jobs:
         env:
           RUNNER_RETIREMENT_EXECUTOR: ${{ github.event.inputs.retirement_executor }}
           RUNNER_RETIREMENT_TARGET: ${{ github.event.inputs.retirement_target }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'runner_slot_retire'
         timeout-minutes: 5
       - name: Upload runner slot retirement receipt

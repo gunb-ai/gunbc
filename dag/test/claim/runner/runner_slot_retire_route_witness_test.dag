@@ -13,15 +13,6 @@ import gunbc.runner_slot_retire_run {
   RetirementDispatchUnnamed,
   admit_retirement_dispatch,
   runner_slot_retire_dispatch_mode_wire,
-  ReconcileTimerRead,
-  ReconcileTimerUnread,
-  reconcile_timer_state_is_enabled,
-  reconcile_timer_standing,
-}
-import gunbc.runner_host_retirement {
-  EstateObligationDischarged,
-  EstateObligationOutstanding,
-  EstateObligationUnobserved,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,52 +100,5 @@ test fn a_well_formed_retirement_dispatch_is_admitted() -> Bool {
     RetirementDispatchAdmitted { executor: e, target: t } => e == "srv1" && t == "srv2"
     RetirementDispatchUnnamed { cause: _ } => false
     RetirementDispatchNotThisMode { mode: _ } => false
-  }
-}
-
-// ── THE TIMER READING ────────────────────────────────────────────────────────────────────────
-
-// `enabled-runtime` IS ARMED TOO. A reading that treated only the exact word `enabled` as armed would
-// discharge the obligation against a timer systemd will start at the next boot.
-test fn both_enabled_spellings_read_as_armed() -> Bool {
-  reconcile_timer_state_is_enabled(state: "enabled")
-    && reconcile_timer_state_is_enabled(state: "enabled-runtime")
-    && !reconcile_timer_state_is_enabled(state: "masked")
-    && !reconcile_timer_state_is_enabled(state: "disabled")
-    && !reconcile_timer_state_is_enabled(state: "")
-}
-
-// A REFUSED READ IS UNOBSERVED, NOT RETIRED. Defaulting an unreadable timer to disabled would
-// manufacture exactly the discharge this obligation exists to withhold.
-test fn an_unreadable_timer_is_unobserved_rather_than_retired() -> Bool {
-  match reconcile_timer_standing(
-    target: operator_host_srv2,
-    reading: ReconcileTimerUnread { cause: "ssh refused" },
-  ) {
-    EstateObligationUnobserved { obligation: _, cause: _ } => true
-    EstateObligationDischarged { obligation: _, evidence: _ } => false
-    EstateObligationOutstanding { obligation: _, cause: _ } => false
-  }
-}
-
-test fn a_masked_timer_on_a_retiring_host_discharges() -> Bool {
-  match reconcile_timer_standing(
-    target: operator_host_srv2,
-    reading: ReconcileTimerRead { unit_file_state: "masked" },
-  ) {
-    EstateObligationDischarged { obligation: _, evidence: _ } => true
-    EstateObligationOutstanding { obligation: _, cause: _ } => false
-    EstateObligationUnobserved { obligation: _, cause: _ } => false
-  }
-}
-
-test fn an_enabled_timer_on_a_retiring_host_stays_outstanding() -> Bool {
-  match reconcile_timer_standing(
-    target: operator_host_srv2,
-    reading: ReconcileTimerRead { unit_file_state: "enabled" },
-  ) {
-    EstateObligationOutstanding { obligation: _, cause: _ } => true
-    EstateObligationDischarged { obligation: _, evidence: _ } => false
-    EstateObligationUnobserved { obligation: _, cause: _ } => false
   }
 }

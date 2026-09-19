@@ -603,6 +603,7 @@ fn fleet_converge_runner_slot_retire_step() -> Step {
       value: [
         kv(key: runner_retirement_executor_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_executor }}")),
         kv(key: runner_retirement_target_env_name, value: yaml_string(s: "${{ github.event.inputs.retirement_target }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
       ]
     },
     working_directory: none,

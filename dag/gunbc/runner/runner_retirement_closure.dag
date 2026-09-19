@@ -3,6 +3,7 @@ module gunbc.runner_retirement_closure
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_runner_connectivity {
+  decode_registration_slot,
   OrganizationRunnerRosterEvidence,
   RosterObserved,
   RosterObservedPartial,
@@ -18,6 +19,7 @@ import gunbc.runner_slot_retirement {
 }
 import gunbc.runner_host_retirement {
   SurplusIdentityDisposition,
+  surplus_identity_disposition,
   surplus_identity_blocks_closure,
   surplus_identity_name,
   EstateCleanupStanding,
@@ -107,6 +109,33 @@ fn roster_blockers(roster: OrganizationRunnerRosterEvidence) -> List<ClosureBloc
   }
 }
 
+// THE DISPOSITIONS ARE DERIVED FROM THE ROSTER SNAPSHOT, NOT SUPPLIED BESIDE IT.
+//
+// The first version took this list as its own parameter while `roster_blockers` accepted
+// `RosterObserved` and threw its registrations away. So a COMPLETE roster carrying an owned surplus
+// registration could be paired with `surplus: []` and every other input satisfied, and the fold
+// converged without ever looking at the member it was supposed to find. A witness passing
+// `PlannerFilteredSubjects` explicitly tests the refusal arm; it establishes nothing about whether a
+// real omission reaches it.
+//
+// One observed roster is now the single source of both answers, so an omission has nowhere to happen:
+// there is no second list a caller could shorten.
+fn roster_surplus_dispositions(
+  host: HostIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+) -> List<SurplusIdentityDisposition> {
+  match roster {
+    RosterReadUnavailable { reason: _ } => []
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => []
+    RosterObserved { observed_on: _, registrations: regs } =>
+      regs |> map(r => surplus_identity_disposition(
+        host: host,
+        decoding: decode_registration_slot(reg: r),
+        name: r.name,
+      ))
+  }
+}
+
 fn surplus_blockers(dispositions: List<SurplusIdentityDisposition>) -> List<ClosureBlocker> {
   dispositions
     |> filter(d => surplus_identity_blocks_closure(d: d))
@@ -147,9 +176,23 @@ fn method_blockers(
   }
 }
 
+// A COMPLETE ASSESSMENT WITH WORK REMAINING IS NOT A CONVERGED ONE, and the first version discarded
+// the count that says which it is. `PlannerSawCompleteSubject { operations_emitted: _ } => []` meant
+// the converging control stayed green when its operation count moved from 0 to 1. "Zero hunks alone
+// is insufficient" is a statement that zero is not ENOUGH; it never made a non-zero count harmless.
 fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
   match d {
-    PlannerSawCompleteSubject { operations_emitted: _ } => []
+    PlannerSawCompleteSubject { operations_emitted: n } =>
+      if n == 0 {
+        []
+      } else {
+        [
+          ClosureBlocker {
+            subject: "retirement-planner",
+            cause: join(["the assessment is complete and ", to_string(n), " operation(s) remain to be executed; a subject with outstanding actions is assessed, not converged"], ""),
+          },
+        ]
+      }
     PlannerRefusedAccess { cause: c } => [
       ClosureBlocker {
         subject: "retirement-planner",
@@ -176,29 +219,45 @@ fn estate_blockers(host: HostIdentity, estate: EstateCleanupStanding) -> List<Cl
   }
 }
 
-// THE VERDICT CARRIES THE BLOCKERS RATHER THAN A COUNT OF THEM, and `ClosureConverged` carries the
-// revision it was established at. A convergence claim that does not name its own revision is a claim
-// about whichever tree the reader happens to have, which is the one thing the contract's opening
-// clause -- "at revision R" -- exists to forbid.
-type RetirementClosureVerdict
-  = ClosureConverged { revision: NonEmptyStr, required_subjects: Int }
-  | ClosureBlocked { revision: NonEmptyStr, blockers: List<ClosureBlocker> }
+// THE VERDICT CARRIES THE BLOCKERS RATHER THAN A COUNT OF THEM, and it carries the revision it was
+// established at. A verdict that does not name its own revision is a claim about whichever tree the
+// reader happens to have, which is the one thing the contract's opening clause -- "at revision R" --
+// exists to forbid.
+//
+// THIS FOLD RETURNS AN ASSESSMENT, NOT A CLOSURE, AND THE RENAME IS THE CORRECTION.
+//
+// The controlling contract's package is four joined things at one revision: a plan artifact,
+// authorized apply receipts, an independent readback, and a complete second assessment. This function
+// has inputs for NONE of them -- a revision string names the tree the assessment ran against and
+// supplies no relationship to any of the four. So `ClosureConverged` asserted the whole package from
+// evidence about one pass, which is the strongest sentence in the lane minted by the fold least able
+// to establish it.
+//
+// `AssessmentClearOfBlockers` says exactly what was established: at this revision, over this host,
+// nothing in what was read blocks. Joining that to the plan artifact, the apply receipts and the
+// readback is the closure, and it is a different fold with different inputs that does not exist yet.
+// Naming this one honestly is what keeps a later reader from citing it as the closure.
+type RetirementAssessmentVerdict
+  = AssessmentClearOfBlockers { revision: NonEmptyStr, required_subjects: Int }
+  | AssessmentBlocked { revision: NonEmptyStr, blockers: List<ClosureBlocker> }
 
-fn retirement_closure_verdict(
+fn retirement_assessment_verdict(
   revision: NonEmptyStr,
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
-  surplus: List<SurplusIdentityDisposition>,
   required: List<NonEmptyStr>,
   standings: List<RunnerRetirementStanding>,
   method_subjects: List<String>,
   method_availability: RetirementMethodAvailability,
   planner: PlannerDisposition,
   estate: EstateCleanupStanding,
-) -> RetirementClosureVerdict {
+) -> RetirementAssessmentVerdict {
   let blockers = concat(
     concat(
-      concat(roster_blockers(roster: roster), surplus_blockers(dispositions: surplus)),
+      concat(
+        roster_blockers(roster: roster),
+        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster)),
+      ),
       concat(
         retiree_blockers(required: required, standings: standings),
         flat_map(method_subjects, u => method_blockers(unit: u, availability: method_availability)),
@@ -207,26 +266,26 @@ fn retirement_closure_verdict(
     concat(planner_blockers(d: planner), estate_blockers(host: host, estate: estate)),
   )
   if list_length(items: blockers) == 0 {
-    ClosureConverged { revision: revision, required_subjects: list_length(items: required) }
+    AssessmentClearOfBlockers { revision: revision, required_subjects: list_length(items: required) }
   } else {
-    ClosureBlocked { revision: revision, blockers: blockers }
+    AssessmentBlocked { revision: revision, blockers: blockers }
   }
 }
 
-fn closure_verdict_is_converged(v: RetirementClosureVerdict) -> Bool {
+fn assessment_is_clear_of_blockers(v: RetirementAssessmentVerdict) -> Bool {
   match v {
-    ClosureConverged { revision: _, required_subjects: _ } => true
-    ClosureBlocked { revision: _, blockers: _ } => false
+    AssessmentClearOfBlockers { revision: _, required_subjects: _ } => true
+    AssessmentBlocked { revision: _, blockers: _ } => false
   }
 }
 
-fn closure_verdict_text(v: RetirementClosureVerdict) -> String {
+fn assessment_verdict_text(v: RetirementAssessmentVerdict) -> String {
   match v {
-    ClosureConverged { revision: r, required_subjects: n } =>
-      join(["closure=CONVERGED revision=", r as String, " required-subjects=", to_string(n), "\n"], "")
-    ClosureBlocked { revision: r, blockers: bs } =>
+    AssessmentClearOfBlockers { revision: r, required_subjects: n } =>
+      join(["assessment=CLEAR-OF-BLOCKERS revision=", r as String, " required-subjects=", to_string(n), " (this is one pass over one host; the closure package -- plan artifact, authorized apply receipts, independent readback, second assessment -- is a separate join and is NOT claimed here)\n"], "")
+    AssessmentBlocked { revision: r, blockers: bs } =>
       join([
-        "closure=BLOCKED revision=", r as String, " blockers=", to_string(list_length(items: bs)), "\n",
+        "assessment=BLOCKED revision=", r as String, " blockers=", to_string(list_length(items: bs)), "\n",
         join(map(bs, b => closure_blocker_line(b: b)), ""),
       ], "")
   }
