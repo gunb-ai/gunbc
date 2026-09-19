@@ -412,7 +412,7 @@ fn fleet_converge_reset_subject_map_json() -> String {
 // rather than braces; until then the observer exposure is real and undefended, and saying so is the
 // difference between a declared gap and the silent one review 62030 found.
 data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = join([
-  "gunbc-host-mutation-${{ fromJSON('",
+  fleet_host_mutation_group_prefix, "${{ fromJSON('",
   fleet_converge_reset_subject_map_json(),
   "')[github.event.inputs.reset_observer] }}",
 ], "")
@@ -749,7 +749,7 @@ data fleet_converge_mutation_concurrency_group_expression: String = join([
   "${{ github.event.inputs.mode == '",
   fleet_converge_workflow_mode_wire(mode: SparkNativeServingApply),
   "' && '", fleet_arm_mutation_group_glm_group_b_native,
-  "' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}",
+  "' || format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
 ], "")
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
