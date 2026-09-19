@@ -467,6 +467,37 @@ import v2.std.collection { List }
 // reason the parse rows above keep normalize out: the claims in that file are ABOUT the collector,
 // so sharing the collection would hand each one a precomputed answer to the question it asks. The
 // walk stays per claim; only the stage no claim names is shared.
+// THE LAST ROW IS THE NAMESPACE-XL-0 RESOLUTION-SIDE FIXTURE, THE SAME SHAPE AS THE ROW BEFORE IT
+// AND ENROLLED FOR THE SAME REASON. v2.test.claim.namespace_xl0.cross_module_reference_resolution
+// drives the real parse-and-normalize of eleven inline modules and then resolves ONE subject per
+// claim (v2.compiler.name_resolve resolve_with_admission_context_policy resolves the admitted root alone; the
+// other roots feed the symbol index), so the ingest is the stage no claim names and the resolve is
+// the stage every claim names. Re-derived with `claim_batch --entry` on that file before enrolment:
+// every row measured above the 500ms per-claim ceiling with the fill inside its own budget, and its
+// fill (`[floor-shared-fill] ... fill_cpu_ms`) is the same order as the sibling row's. Re-derive
+// rather than trust: the run's [floor-shared-fill] ledger must show this fill landing at
+// preparation with disposition=Stored and the claims serving hits. Nullary, pure, inline sources,
+// and the value is the same Outcome<FreeMonoid<NormalizedTree>> carrier the row before it stores.
+//
+// AND THE EIGHT ROWS AFTER IT ARE THAT FILE'S RESOLVED SUBJECTS, ONE PRODUCER PER SUBJECT, EARNED BY
+// TWO FLOOR REFUSALS RATHER THAN PREDICTED. gunbc#11582 run 35317696454: every resolve row reached
+// its verdict and was refused COMPLETED-OVER-COST-REQUIREMENT at ~92k eval steps against the
+// 72,300-step new-witness line, with the ingest fill served. Run 35327371663 then tried to share
+// v2.compiler.name_resolve resolution_context and was refused PureProducerShareWarmNotStored --
+// ServeCacheValueNotPortable at .value.lm.canonical_symbols.member kind=Closure: the LanguageModel
+// carries a function, and this store serves VALUES. Measured beside it with claim_batch: the
+// context is ~12k steps and resolving a one-fn subject ~64k, so no portable context share puts a
+// resolve row under the line. The share point is therefore the resolved Outcome<Node> per subject
+// -- the shape direct_rust_door_specimen_resolved above already inhabits -- executed once by
+// preparation (the real path, refused there if it cannot run) and read by the rows. Nullary, pure,
+// inline sources; Nodes and located diagnostics, no closure. Re-derive rather than trust: the run's
+// [floor-shared-fill] ledger must show all eight Stored at preparation and the rows serving hits.
+// AND THE TWO ROWS AFTER THOSE ARE THE ENUMERATOR-DIFFERENTIAL FIXTURE, parsed and normalized, for
+// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
+// site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
+// values are Nodes; no closure.
+//
+// AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
 // CANNOT SEE. Sibling floor run 35340819603 (#11580 merging the resolve-cost head that
 // establishes this map once per ResolutionContext) passed eval-steps and refused every
@@ -515,6 +546,17 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_undeclared_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_data_target_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_field_access_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_shadowing_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_a",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
+  "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
+  "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map"
 ]
 
