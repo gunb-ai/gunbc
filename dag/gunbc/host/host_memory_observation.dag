@@ -13,7 +13,7 @@ import gunbc.fleet_intent_network {
 }
 
 // WHAT A HOST HAS, READ FROM THE HOST -- SEPARATED FROM WHAT CI DOES WITH IT. Every declaration
-// here was extracted verbatim from gunbc.ci_floor_measurement, and the extraction is the whole
+// here came from gunbc.ci_floor_measurement and the extraction is the whole
 // change: these are per-host kernel observations and operator allowances that depend on nothing
 // about a runner slot, while the rows they sat beside (the cgroup caps, the floor peak receipts)
 // derive from gunbc.runner_slot_allocation gunbc_runner_slot_desired. Co-locating the two made
@@ -33,6 +33,20 @@ import gunbc.fleet_intent_network {
 // these live and is kept anyway: the corpus cites several of these rows BY NAME in prose that
 // argues about them, and a rename would turn every such citation stale in the same commit that
 // moved them. Renaming is its own change, with its own sweep.
+//
+// THREE STRINGS DID CHANGE IN THE MOVE, AND SAYING SO MATTERS BECAUSE AN EARLIER REVISION OF THIS
+// NOTE CLAIMED THE EXTRACTION WAS VERBATIM. It was not: one `provenance` string cited this row's own
+// module by name, and TWO DeclarationRef bind targets named the module a scaffold's successor would
+// land in. All three said "gunbc.ci_floor_measurement" and now say "gunbc.host_memory_observation".
+//
+// EACH IS CORRECT AFTER THE MOVE and none was decided deliberately at the time -- they were swept up
+// by a proximity rewrite over citations, which is a blunt instrument to point at a bind target. The
+// provenance is self-citation and follows the row. The successors -- a QUIESCENT /proc/meminfo read
+// and the modeled legacy residents -- are host memory observations, so they belong beside the rows
+// they would ground rather than back in the CI measurement module. The retarget is ratified here
+// rather than left as an accident, and v2.test.lens_disposition_redundancy's locator for the managed
+// successor moved with it; without that the lens stops firing and reports zero violations where it
+// should report one.
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }

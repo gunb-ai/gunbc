@@ -783,6 +783,98 @@ type DerivedRunnerWidth
   = DerivedRunnerWidthSlots { slots: Int }
   | DerivedRunnerWidthUnresolved { cause: String }
 
+// WHY A WIDTH IS ZERO IS A FACT OF THIS MODULE, NOT A GUESS ITS CONSUMER MAY MAKE (review 67902).
+// gunbc_runner_slots_per_host reaches zero by FOUR independent routes -- a refused slot shape, a
+// held width of zero, an unresolved derivation, or a derived three-axis minimum in which some axis
+// admits nothing -- and nothing outside this function can tell them apart. An earlier revision of
+// this change had gunbc.ci_runner_placement infer the reason from the memory envelope alone, which
+// named the one cause LEAST likely to be true on the live fleet: memory binds nowhere today, as
+// test.claim.host_allocation_conservation memory_is_not_the_binding_axis asserts on srv1, srv3 and
+// srv4. That is DESIGN 5's fabricated plausible output, and it is worse than the bare refusal it
+// replaced because it reads as a located diagnosis.
+//
+// SO THE CAUSE IS DERIVED BY WALKING THE SAME TREE THE WIDTH WALKS. Each arm reports what it
+// actually observed, the unresolved arm carries its upstream cause verbatim, and the axis arm names
+// the axis that bound rather than asserting one. A width that is NOT zero has no cause to report and
+// says so, so this function cannot be used to manufacture an explanation for a healthy host.
+type RunnerWidthZeroCause
+  = WidthZeroFromSlotShape { cause: String }
+  | WidthZeroFromHeldWidth { cause: String }
+  | WidthZeroFromUnresolvedDerivation { cause: String }
+  | WidthZeroFromBindingAxis { axis: String, cause: String }
+  | WidthIsNotZero { slots: Int }
+
+fn runner_width_zero_cause(host: HostIdentity) -> RunnerWidthZeroCause {
+  match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
+    RunnerSlotShapeRefusedZeroMemoryMax =>
+      WidthZeroFromSlotShape {
+        cause: "the fleet slot shape declares a zero MemoryMax, so no host admits any runner at all"
+      }
+    RunnerSlotShapeAdmitted =>
+      match host_held_runner_width(host: host) {
+        Present { value: held } =>
+          if held == 0 {
+            WidthZeroFromHeldWidth {
+              cause: "this host carries an authored held runner width of zero, which outranks the derivation"
+            }
+          } else {
+            WidthIsNotZero { slots: held }
+          }
+        Absent =>
+          match gunbc_derived_runner_slots_per_host(host: host) {
+            DerivedRunnerWidthUnresolved { cause: why } =>
+              WidthZeroFromUnresolvedDerivation { cause: why }
+            DerivedRunnerWidthSlots { slots: n } =>
+              if n == 0 { zero_binding_axis(host: host) } else { WidthIsNotZero { slots: n } }
+          }
+      }
+  }
+}
+
+// THE AXIS IS REPORTED IN THE ORDER THE MINIMUM IS TAKEN, and a tie names the first that binds
+// rather than inventing a combined cause: two axes admitting zero is two readings to take, and the
+// operator needs one of them named, not a sentence that averages them.
+fn zero_binding_axis(host: HostIdentity) -> RunnerWidthZeroCause {
+  match host_cpu_admitted_width(host: host) {
+    CpuWidthUnresolved { cause: c } => WidthZeroFromUnresolvedDerivation { cause: c }
+    CpuAdmitsWidth { slots: by_cpu } =>
+      if by_cpu == 0 {
+        WidthZeroFromBindingAxis {
+          axis: "cpu",
+          cause: "the CPU axis admits no slot on this host at the declared cores-per-slot"
+        }
+      } else if host_memory_admitted_width(host: host) == 0 {
+        WidthZeroFromBindingAxis {
+          axis: "memory",
+          cause: "the memory axis admits no slot on this host: its runner memory envelope divided by the slot MemoryMax is zero"
+        }
+      } else {
+        match host_disk_admitted_width(host: host) {
+          DiskAdmitsWidth { slots: d, provenance: prov } =>
+            if d == 0 {
+              WidthZeroFromBindingAxis { axis: "disk", cause: concat("the disk axis admits no slot on this host: ", prov) }
+            } else {
+              WidthIsNotZero { slots: d }
+            }
+          DiskWidthUnconstrained { reason: _ } =>
+            WidthZeroFromUnresolvedDerivation {
+              cause: "the width is zero but no axis reports zero, which is a disagreement between the minimum and its terms rather than a host fact"
+            }
+        }
+      }
+  }
+}
+
+fn runner_width_zero_cause_text(c: RunnerWidthZeroCause) -> String {
+  match c {
+    WidthZeroFromSlotShape { cause: why } => concat("zero runner width from the slot shape: ", why)
+    WidthZeroFromHeldWidth { cause: why } => concat("zero runner width from a held allocation: ", why)
+    WidthZeroFromUnresolvedDerivation { cause: why } => concat("zero runner width from an unresolved derivation: ", why)
+    WidthZeroFromBindingAxis { axis: a, cause: why } => concat(concat(concat("zero runner width bound by the ", a), " axis: "), why)
+    WidthIsNotZero { slots: _ } => "the width is not zero on this host, so no zero-width cause exists to report"
+  }
+}
+
 fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> DerivedRunnerWidth {
   match host_cpu_admitted_width(host: host) {
     CpuWidthUnresolved { cause: c } => DerivedRunnerWidthUnresolved { cause: c }

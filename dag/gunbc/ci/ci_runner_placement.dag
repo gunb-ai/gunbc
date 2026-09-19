@@ -11,9 +11,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation {
-  host_runner_memory_envelope_resolution,
-  RunnerMemoryEnvelopeDerived,
-  RunnerMemoryEnvelopeUnestablished,
+  runner_width_zero_cause,
+  runner_width_zero_cause_text,
   CoresPerSlotResolved,
   CoresPerSlotUnresolved,
   gunbc_runner_slot_desired,
@@ -326,6 +325,23 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 // derivation is the one that survives, because it is the one that charges memory: a purely
 // core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
 // own header records as the reason the memory bound exists.
+// A REPORTED DEFECT THIS CHANGE DELIBERATELY DOES NOT FIX, recorded so the next reader does not
+// have to rediscover it (side-analyst review, 2026-09-18). runner_count is the host's total
+// committed slot width, while gunbc.runner_slot_provision desired_runner_slot_members materializes
+// only the slots that are NOT fabric members -- so placement and runner_deploy_emit report one
+// runner per fabric cell that the provisioner never creates. The two populations have disagreed
+// since the first fabric cell landed; at one cell on one host that was a single phantom runner, and
+// widening to two cells on each of srv3 and srv4 makes it four.
+//
+// SUBSTITUTING host_github_slot_count HERE WAS TRIED AND REVERTED, and the reason is the useful
+// part. Two witnesses in test.claim.runner_placement_witness assert the CURRENT subject outright --
+// witness_live_effective_runners_derives_declared_count compares this field to
+// gunbc_runner_slots_per_host and its note says "THE SUBJECT IS srv3'S DECLARED WIDTH", and
+// witness_live_plan_is_conservation_sound folds it. So the field is not mislabelled by accident: it
+// means the width, and something else needs to mean the deployable Actions count. That is a subject
+// SEPARATION -- a new field, its emit surface, and the witnesses moving with it -- not a one-line
+// substitution, and doing it inside an envelope-derivation change would have been the third subject
+// this PR carries.
 fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
@@ -513,7 +529,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     CompilePoolUnavailable { cause: t } => concat("compile_pool_unavailable ", t)
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
-    ZeroRunnerWidth { cause: _ } => "zero_runner_width"
+    ZeroRunnerWidth { cause: t } => concat("zero_runner_width ", t)
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     RunnerCoreRatioUnresolved { cause: t } => concat("runner_core_ratio_unresolved ", t)
@@ -540,13 +556,15 @@ fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) 
   }
 }
 
+// THE CAUSE IS READ FROM THE WIDTH AUTHORITY, NOT INFERRED HERE (review 67902). An earlier revision
+// of this function matched the memory envelope and, on its derived arm, ASSERTED that a zero width
+// must have come from the envelope being smaller than one slot. That is a cause it did not compute:
+// gunbc_runner_slots_per_host reaches zero by four routes and the envelope resolving rules out only
+// one of them. On the live fleet it named the least likely of the four, because memory is not the
+// binding axis on any host this PR's own witnesses measure. gunbc.runner_slot_allocation
+// runner_width_zero_cause walks the same tree the width walks and reports what it observed.
 fn zero_width_cause(host: HostIdentity) -> String {
-  match host_runner_memory_envelope_resolution(host: host) {
-    RunnerMemoryEnvelopeUnestablished { cause: why } =>
-      concat("runner memory envelope is unestablished on this host: ", why)
-    RunnerMemoryEnvelopeDerived { bytes: _ } =>
-      "runner memory envelope derives on this host, so a zero width came from the derived envelope being smaller than one slot rather than from an unestablished input"
-  }
+  runner_width_zero_cause_text(c: runner_width_zero_cause(host: host))
 }
 
 fn refuse_host(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRunnerDeploymentStanding {
