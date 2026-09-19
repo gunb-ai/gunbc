@@ -473,7 +473,31 @@ fn octets_first_non_octet_width(octets: List<Word>) -> WordWidth? {
 // two different fabricated answers to the same malformed input. The per-octet width check is what
 // makes the List<Word> argument mean what its type says: a caller can still build a Word record
 // directly, so the shape is checked at the boundary that consumes it.
+// THE WIDTH IS REFUSED BEFORE ANY OCTET IS ACCUMULATED, AND THE ORDER IS THE WHOLE POINT.
+//
+// This was the one exported operation that did arithmetic before guarding on its own width. It
+// guarded on octet_radix, which asks about Width8 and therefore always answers, so a Width64 call
+// passed the count check (8 == 8), passed the per-octet check, and then ran
+// octets_big_endian_value eight times to a value up to 2^64 - 1 IN THE Int THE SEED REALIZES AS
+// i64 -- and only then did word_of_int refuse. The refusal was inspecting a number the realization
+// had already wrapped or trapped on, which is the exact thing word_wrapping_multiply's annotation
+// forbids in the same file ("an overflow inspected after the fact rather than a check") and which
+// makes the module's own Width64 sentence false: every operation refuses a Width64 word, except
+// that this one computed first and refused afterwards (review 68118).
+//
+// Guarding on word_modulus(width) first also means a Width64 call with the WRONG octet count now
+// reports WordWidthUnrealizable rather than OctetCountMismatch. That is the right order of
+// refusals: the width having no residue this carrier can hold is the more fundamental fact, and
+// reporting a count mismatch for a width that cannot exist would answer a narrower question than
+// the one that is actually wrong.
 fn word_from_octets(width: WordWidth, octets: List<Word>, endianness: Endianness) -> WordResult {
+  match word_modulus(w: width) {
+    Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
+    Present { value: _ } => word_from_octets_realizable(width: width, octets: octets, endianness: endianness)
+  }
+}
+
+fn word_from_octets_realizable(width: WordWidth, octets: List<Word>, endianness: Endianness) -> WordResult {
   let expected = word_octet_count(w: width)
   let observed = list_length(items: octets)
   if observed != expected {

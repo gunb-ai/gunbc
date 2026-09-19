@@ -490,3 +490,39 @@ test fn machine_word_frontier_rows_are_enrolled_in_the_census_holds() -> Bool {
   machine_word_consumer_frontier_rows |> all(row =>
     census_keys |> any(k => k == frontier_subject_key(row: row)))
 }
+
+// THE WIDTH64 ARMS OF THE PACKING OPERATIONS, WHICH HAD NO WITNESS AT ALL.
+//
+// Every other operation's Width64 refusal was claimed through word_of_int; the two packing entries
+// were not, and word_from_octets was the one that computed before it refused -- eight octets
+// accumulated to as much as 2^64 - 1 in the i64 the realization uses, and the refusal then
+// inspected whatever that had become (review 68118). An unwitnessed arm is why that stood: nothing
+// reds on a path no claim runs. These pin both directions of the packing boundary, and the
+// from_octets arm is RED against the pre-fix code rather than merely green against the new code,
+// because it is supplied the exact eight-octet input that made the accumulator overflow.
+test fn packing_refuses_width64_before_accumulating_holds() -> Bool {
+  let all_ones = octet_words(values: [255, 255, 255, 255, 255, 255, 255, 255])
+  match word_from_octets(width: Width64, octets: all_ones, endianness: BigEndian) {
+    WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+// A width that cannot exist is refused as such, not as a count disagreement -- the wider fact wins,
+// and this claim is what keeps the refusal ORDER from silently inverting.
+test fn packing_refuses_width64_ahead_of_the_count_check_holds() -> Bool {
+  match word_from_octets(width: Width64, octets: octet_words(values: [1, 2, 3]), endianness: BigEndian) {
+    WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+test fn word_to_octets_refuses_width64_holds() -> Bool {
+  match word_to_octets(a: Word { width: Width64, value: 0 }, endianness: BigEndian) {
+    OctetsRefused { cause: WordWidthUnrealizable { width: _ } } => true
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
+  }
+}
