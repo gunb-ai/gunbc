@@ -9,11 +9,27 @@ module test.probe.file_hold_plan_forged_probe
 // for a FORGED "held by A at N" -- committed, it would free B's real hold at N. Each refuses at the
 // record literal as SoleConstructorViolation. No mint in the store module is admit_callers-sealed:
 // the public mints perform the read themselves and take no observation, so there is no third
-// forgery to author -- the route does not exist rather than being refused. The witness
-// test.claim.file_hold_plan_refusal_probe_witness_test enrolls this probe and asserts the two
-// refusal classes at their subjects.
+// forgery to author there -- the route does not exist rather than being refused.
+//
+// THE FABRIC SIDE HAS THREE SEALED ROUTES, AND THE LAST THREE FUNCTIONS CALL EACH ONE FROM OUTSIDE.
+// gunbc.fabric_control_plane end_cell_hold, commit_hold_end and free_cell_slot each reach
+// file_hold_release_commit while taking a MoneyOutcome or a MoneyAccount -- values anyone can
+// construct, not receipts that release_money or settle_money ran. Called from here with an authored
+// AccountAdvanced (or a genuine plan and an authored account), each would free a cell while its
+// encumbrance stands. They are admit_callers-sealed to release_reserved_cell_at /
+// settle_reserved_cell_at -> end_cell_hold -> commit_hold_end -> free_cell_slot, so each call below
+// refuses as ConstructorCallAdmissionRefused. The witness
+// test.claim.file_hold_plan_refusal_probe_witness_test enrolls this probe and asserts every refusal
+// class at its subject.
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int }
+import extdeps.currency.currency { Usd }
+import std.measure { money_amount_micro }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.budget { MoneyAccount, MoneyOutcome, AccountAdvanced }
+import product.fabric.execution { ReservationRef }
+import gunbc.fabric_control_plane { CellHoldEnd, end_cell_hold, commit_hold_end, free_cell_slot }
 import std.durable_compare_and_set { ExpectSlotGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store { FileHoldAcquirePlan, FileHoldReleasePlan, hold_slot_payload }
@@ -36,4 +52,32 @@ fn forged_release_plan_for_a_forged_held_observation(root: NonEmptyStr) -> FileH
     generation: 4,
     free_payload: hold_slot_payload(state: DurableHoldFree { released_by: "forged release" as DurableHoldReleaseRef }),
   }
+}
+
+fn authored_account() -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: Usd,
+    ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: money_amount_micro(count: 1) }, entries: [] },
+    leases: [],
+  }
+}
+
+fn free_the_cell_with_an_authored_advanced_account(root: NonEmptyStr, reservation: ReservationRef, generation: Int) -> CellHoldEnd {
+  end_cell_hold(
+    root: root,
+    slot_key: "srv3-06",
+    reservation: reservation,
+    acquired_generation: generation,
+    money: AccountAdvanced { account: authored_account() },
+    reason: "no money transition ran",
+  )
+}
+
+fn commit_a_genuine_plan_with_an_authored_outcome(plan: FileHoldReleasePlan) -> CellHoldEnd {
+  commit_hold_end(plan: plan, money: AccountAdvanced { account: authored_account() })
+}
+
+fn free_a_genuine_plan_with_an_authored_account(plan: FileHoldReleasePlan) -> CellHoldEnd {
+  free_cell_slot(plan: plan, account: authored_account())
 }

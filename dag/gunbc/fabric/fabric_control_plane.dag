@@ -2,6 +2,7 @@ module gunbc.fabric_control_plane
 
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { Fnv1a64StructuralDigestHex }
+import std.decl_ref { decl_ref }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set { CasStoreFailure, CasSlotObservationRefused, cas_generation_count }
@@ -615,8 +616,12 @@ fn end_cell_hold(
   acquired_generation: Int,
   money: MoneyOutcome,
   reason: NonEmptyStr,
-) -> CellHoldEnd {
-  match file_hold_release_assess(
+) -> CellHoldEnd
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "release_reserved_cell_at"),
+    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
+  ]
+  = match file_hold_release_assess(
     root: root,
     slot_key: slot_key,
     owner: fabric_hold_owner(reservation: reservation),
@@ -658,7 +663,6 @@ fn end_cell_hold(
       }
     FileHoldReleasePlanned { plan: plan } => commit_hold_end(plan: plan, money: money)
   }
-}
 
 // The half that runs once the store has confirmed THIS reservation holds the
 // cell at the generation it acquired. The plan carries the generation the store
@@ -679,19 +683,36 @@ fn end_cell_hold(
 // It is also effect-free to pass: the substrate is lazy, so an unreached money
 // transition is never forced, and the refusal arms above return before this
 // function is entered at all.
-fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd {
-  match money {
+//
+// THE THREE HELPERS ARE CALLER-SEALED, AND THAT IS WHAT MAKES THE MONEY ARGUMENT
+// A RECEIPT RATHER THAN A CLAIM (side-chat review on gunbc#11661). MoneyOutcome,
+// AccountAdvanced and MoneyAccount are freely constructible, so an unrestricted
+// end_cell_hold that frees the slot on AccountAdvanced would let any caller
+// author the advanced account and free a cell while its encumbrance stands --
+// the state this module says has no constructor. admit_callers confines
+// end_cell_hold to release_reserved_cell_at and settle_reserved_cell_at, which
+// derive the outcome from release_money / settle_money; commit_hold_end to
+// end_cell_hold; free_cell_slot to commit_hold_end. A call from anywhere else
+// refuses as ConstructorCallAdmissionRefused, enrolled in
+// test.probe.file_hold_plan_forged_probe.
+fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "end_cell_hold"),
+  ]
+  = match money {
     MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: plan.slot_key, refusal: f }
     AccountAdvanced { account: advanced } => free_cell_slot(plan: plan, account: advanced)
   }
-}
 
 // The commit still tells a lost race from an unavailable store: a plan assessed
 // at generation N and committed after the slot moved is HoldEndLost, which
 // tells the caller its settlement and the slot have come apart, and a store
 // fault would not tell it that.
-fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd {
-  match file_hold_release_commit(plan: plan) {
+fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "commit_hold_end"),
+  ]
+  = match file_hold_release_commit(plan: plan) {
     FileHoldReleased { slot_key: k, generation: g } =>
       CellHoldEnded { slot_key: k, generation: cas_generation_count(g: g), account: account }
     FileHoldReleaseLost { slot_key: k } => HoldEndLost { slot_key: k }
@@ -699,7 +720,6 @@ fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldE
     FileHoldReleaseKeyNotSlotAddressable { slot_key: k } =>
       HoldEndAttemptRefused { slot_key: k, detail: "allocation key is not slot-addressable" }
   }
-}
 
 // THE TWO ENDINGS, AND WHY THEY ARE ONE OUTCOME TYPE RATHER THAN TWO.
 //

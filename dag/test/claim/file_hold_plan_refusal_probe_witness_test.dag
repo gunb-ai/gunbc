@@ -42,6 +42,16 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
   }
 }
 
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
 fn blocking_total(c: CompileDiagnosticCensus) -> Int {
   match c {
     CensusNotRunnable { cause: _ } => -1
@@ -77,4 +87,17 @@ test fn a_forged_release_plan_cannot_be_authored_outside_the_live_read_mint() ->
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "FileHoldReleasePlan",
   ) >= 1
+}
+
+// THE FABRIC'S THREE SEALED RELEASE HELPERS REFUSE A CALLER FROM OUTSIDE. end_cell_hold with an
+// authored AccountAdvanced, commit_hold_end with a genuine plan and an authored outcome, and
+// free_cell_slot with a genuine plan and an authored account would each free a cell while its
+// encumbrance stands; each is admit_callers-sealed and each call refuses as
+// ConstructorCallAdmissionRefused -- three unadmitted calls, three refusals, so the count is the
+// assertion rather than a bare nonzero.
+test fn the_fabric_release_helpers_cannot_be_called_with_an_authored_money_outcome_from_outside() -> Bool {
+  blocking_count_for_class(
+    c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
+    wanted: "ConstructorCallAdmissionRefused",
+  ) >= 3
 }
