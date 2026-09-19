@@ -43,6 +43,7 @@ import gunbc.runner_host_retirement {
   retiree_obligation_ungrounded_cause,
   host_retirement_obligation_basis,
   host_retirement_obligation_basis_of,
+  host_retirement_local_population,
   ReconcileMechanismReading,
   ReconcilePropertyValue,
   ReconcilePropertyUnreadable,
@@ -69,6 +70,12 @@ import gunbc.runner_host_retirement {
 import gunbc.runner_slot_retirement { transition_required_retiring }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_registration_capture {
+  LocalSlotObservation,
+  LocalSlotPopulation,
+  LocalPopulationComplete,
+  LocalPopulationPartial,
+  SlotRegistrationPositivelyAbsent,
+  capture_expected_path,
   CaptureProvenance,
   RunnerRegistrationBinding,
   CaptureCensus,
@@ -642,11 +649,24 @@ test fn an_unavailable_capture_yields_an_ungrounded_cause() -> Bool {
   }
 }
 
-// A COMPLETE CAPTURE THAT FOUND NOTHING IS GROUNDED AND EMPTY -- the case a bare list could not
-// express, and the direction the repair must not break.
-test fn a_complete_but_empty_capture_is_grounded() -> Bool {
+// A LOCAL SLOT WITH NO REGISTRATION FILE: enough to be a local subject, and carrying no remote
+// identity to fabricate one from.
+fn witness_local_slot(slot: String) -> LocalSlotObservation {
+  LocalSlotObservation {
+    host: operator_host_srv2,
+    slot_instance: slot as NonEmptyStr,
+    installation_path: capture_expected_path(slot_instance: slot as NonEmptyStr),
+    registrations: SlotRegistrationPositivelyAbsent { evidence: "the directory was read and holds no .runner" },
+  }
+}
+
+// A COMPLETE LOCAL READ THAT FOUND NO SLOTS IS GROUNDED AND EMPTY -- the case a bare list could not
+// express, and the direction the repair must not break. The subject is now the LOCAL population:
+// what the host owes locally is what trees exist on it, and a complete read that found none is a
+// real answer rather than a gap.
+test fn a_complete_but_empty_local_read_is_grounded() -> Bool {
   match host_retirement_obligation_basis_of(
-    capture: CaptureCensusComplete { observed_on: "2026-09-19" as NonEmptyStr, bindings: [], unresolved: [] },
+    local_population: LocalPopulationComplete { observed_on: "2026-09-19" as NonEmptyStr, slots: [] },
     host: operator_host_srv2,
     bound: 21,
   ) {
@@ -656,15 +676,15 @@ test fn a_complete_but_empty_capture_is_grounded() -> Bool {
   }
 }
 
-// A PARTIAL CAPTURE IS NOT GROUNDED HOWEVER MANY MEMBERS IT CARRIES, because the members it missed
-// are exactly the ones an assessment would stop looking for.
-test fn a_partial_capture_is_not_grounded() -> Bool {
+// A PARTIAL LOCAL READ IS NOT GROUNDED HOWEVER MANY SLOTS IT CARRIES, because the trees it missed
+// are exactly the ones an assessment would stop looking for. It falls back to the declared search
+// bound, which over-covers and says so, rather than reporting the prefix as the estate.
+test fn a_partial_local_read_is_not_grounded() -> Bool {
   match host_retirement_obligation_basis_of(
-    capture: CaptureCensusPartial {
+    local_population: LocalPopulationPartial {
       observed_on: "2026-09-19" as NonEmptyStr,
-      bindings: [witness_binding(slot: "srv2-01", agent_id: 11, name: "srv2-01")],
-      unresolved: [],
-      cause: "page 1 of 3",
+      slots: [witness_local_slot(slot: "srv2-01")],
+      cause: "read four of seven directories",
     },
     host: operator_host_srv2,
     bound: 21,

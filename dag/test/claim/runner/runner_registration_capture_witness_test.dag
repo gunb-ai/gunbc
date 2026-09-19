@@ -12,6 +12,19 @@ import gunbc.runner_registration_capture {
   CaptureContextRefused,
   capture_context_for,
   capture_expected_path,
+  SlotRegistrationStanding,
+  SlotRegistrationsObserved,
+  SlotRegistrationPositivelyAbsent,
+  SlotRegistrationUnresolved,
+  LocalSlotObservation,
+  LocalSlotPopulation,
+  LocalPopulationComplete,
+  LocalPopulationPartial,
+  LocalPopulationKnown,
+  LocalPopulationIncomplete,
+  local_slot_unit_obligations,
+  local_population_remote_obligations,
+  local_population_standing,
   CaptureIdNameConflict,
   RunnerRegistrationBinding,
   CaptureAdmission,
@@ -397,5 +410,134 @@ test fn the_lookup_refuses_a_conflicting_id() -> Bool {
   ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// ── IJ-3: SEVEN LOCAL TREES, FOUR REMOTE REGISTRATIONS ──────────────────────────────────────
+
+// THE CENSUS OF 2026-09-19 IS THE DISCRIMINATOR, AND THE TWO SIDES DO NOT AGREE BY CONSTRUCTION:
+// trees 01-05, 11 and 12 exist; only 02, 05, 11 and 12 carry a .runner. Deriving local obligations
+// from the registration bindings yielded four and omitted three, and could not have done better --
+// a slot whose .runner is positively absent has no binding to be the image of.
+fn census_slot(slot: String, registrations: SlotRegistrationStanding) -> LocalSlotObservation {
+  LocalSlotObservation {
+    host: operator_host_srv2,
+    slot_instance: slot as NonEmptyStr,
+    installation_path: capture_expected_path(slot_instance: slot as NonEmptyStr),
+    registrations: registrations,
+  }
+}
+
+fn registered(slot: String, agent_id: Int) -> SlotRegistrationStanding {
+  SlotRegistrationsObserved {
+    bindings: [witness_binding_for(slot: slot, agent_id: agent_id)],
+  }
+}
+
+fn witness_binding_for(slot: String, agent_id: Int) -> RunnerRegistrationBinding {
+  RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: slot as NonEmptyStr,
+    capture_path: capture_expected_path(slot_instance: slot as NonEmptyStr),
+    organization: "gunb-ai" as NonEmptyStr,
+    agent_id: agent_id,
+    agent_name: join([slot, "-1789774588-3693107"], "") as NonEmptyStr,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: census_provenance(),
+  }
+}
+
+fn no_runner_file() -> SlotRegistrationStanding {
+  SlotRegistrationPositivelyAbsent { evidence: "the installation holds no .runner and the directory was read" }
+}
+
+fn srv2_census_population() -> LocalSlotPopulation {
+  LocalPopulationComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    slots: [
+      census_slot(slot: "srv2-01", registrations: no_runner_file()),
+      census_slot(slot: "srv2-02", registrations: registered(slot: "srv2-02", agent_id: 251463)),
+      census_slot(slot: "srv2-03", registrations: no_runner_file()),
+      census_slot(slot: "srv2-04", registrations: no_runner_file()),
+      census_slot(slot: "srv2-05", registrations: registered(slot: "srv2-05", agent_id: 251484)),
+      census_slot(slot: "srv2-11", registrations: registered(slot: "srv2-11", agent_id: 91529)),
+      census_slot(slot: "srv2-12", registrations: registered(slot: "srv2-12", agent_id: 91513)),
+    ],
+  }
+}
+
+test fn seven_local_trees_yield_seven_local_subjects_and_four_remote() -> Bool {
+  list_length(items: local_slot_unit_obligations(p: srv2_census_population())) == 7
+    && list_length(items: local_population_remote_obligations(p: srv2_census_population())) == 4
+}
+
+// AND THE LOCAL SUBJECTS ARE THE UNITS, DERIVED FROM THE SLOT, including the three with no
+// registration at all -- no AgentId is fabricated for them.
+test fn a_slot_with_no_registration_file_is_still_a_local_subject() -> Bool {
+  any(local_slot_unit_obligations(p: srv2_census_population()), u => (u as String) == "actions-runner@srv2-01.service")
+    && any(local_slot_unit_obligations(p: srv2_census_population()), u => (u as String) == "actions-runner@srv2-03.service")
+}
+
+// AN EMPTY REGISTRATION LIST DOES NOT ESTABLISH AN EMPTY LOCAL ESTATE: seven trees, none registered,
+// is seven local subjects and zero remote ones.
+test fn an_empty_registration_list_does_not_empty_the_local_estate() -> Bool {
+  let unregistered = LocalPopulationComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    slots: [
+      census_slot(slot: "srv2-01", registrations: no_runner_file()),
+      census_slot(slot: "srv2-02", registrations: no_runner_file()),
+    ],
+  }
+  list_length(items: local_slot_unit_obligations(p: unregistered)) == 2
+    && list_length(items: local_population_remote_obligations(p: unregistered)) == 0
+}
+
+// TWO INCARNATIONS ON ONE TREE STAY ONE LOCAL SUBJECT AND TWO REMOTE ONES, which is the same
+// one-to-many the binding fold carries, now reached through the local population.
+test fn one_tree_with_two_incarnations_is_one_unit_and_two_registrations() -> Bool {
+  let two = LocalPopulationComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    slots: [
+      census_slot(slot: "srv2-02", registrations: SlotRegistrationsObserved {
+        bindings: [
+          witness_binding_for(slot: "srv2-02", agent_id: 251463),
+          witness_binding_for(slot: "srv2-02", agent_id: 301000),
+        ],
+      }),
+    ],
+  }
+  list_length(items: local_slot_unit_obligations(p: two)) == 1
+    && list_length(items: local_population_remote_obligations(p: two)) == 2
+}
+
+// THE COMPLETE CENSUS ESTABLISHES THE POPULATION, so the standing is not permanently incomplete.
+test fn the_complete_census_establishes_the_local_population() -> Bool {
+  match local_population_standing(p: srv2_census_population()) {
+    LocalPopulationKnown { observed_on: _, slots: ss } => list_length(items: ss) == 7
+    LocalPopulationIncomplete { cause: _ } => false
+  }
+}
+
+// A SLOT WHOSE REGISTRATION STANDING IS UNRESOLVED BLOCKS THE POPULATION: the tree is known and what
+// it owes remotely is not.
+test fn an_unresolved_slot_registration_blocks_the_local_population() -> Bool {
+  match local_population_standing(p: LocalPopulationComplete {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    slots: [census_slot(slot: "srv2-02", registrations: SlotRegistrationUnresolved { cause: "name disagrees with directory" })],
+  }) {
+    LocalPopulationIncomplete { cause: _ } => true
+    LocalPopulationKnown { observed_on: _, slots: _ } => false
+  }
+}
+
+// AND A PARTIAL LOCAL READ CANNOT SAY THESE ARE ALL THE TREES.
+test fn a_partial_local_read_cannot_establish_the_population() -> Bool {
+  match local_population_standing(p: LocalPopulationPartial {
+    observed_on: "2026-09-19T10:34Z" as NonEmptyStr,
+    slots: [census_slot(slot: "srv2-02", registrations: no_runner_file())],
+    cause: "four of seven directories read",
+  }) {
+    LocalPopulationIncomplete { cause: _ } => true
+    LocalPopulationKnown { observed_on: _, slots: _ } => false
   }
 }

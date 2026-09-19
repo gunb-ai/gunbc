@@ -11,6 +11,16 @@ import gunbc.runner_registration_capture {
   registration_discovery_bound,
   canonical_slot_index_of,
   CaptureCensus,
+  LocalSlotPopulation,
+  LocalPopulationComplete,
+  LocalPopulationPartial,
+  LocalPopulationUnavailable,
+  LocalPopulationKnown,
+  LocalPopulationIncomplete,
+  local_population_standing,
+  local_slot_unit_obligations,
+  local_population_remote_obligations,
+  local_population_wire,
   CaptureCensusComplete,
   CaptureCensusPartial,
   CaptureCensusUnavailable,
@@ -19,7 +29,6 @@ import gunbc.runner_registration_capture {
   CapturePopulationIncomplete,
   capture_population_standing,
   census_binding_for_agent,
-  local_unit_obligations,
 }
 import std.nat { Nat }
 import extdeps.systemd {
@@ -127,6 +136,7 @@ type HostRetirement sole_constructor {
   spec: RunnerHostSpec
   search_bound: Int
   capture: CaptureCensus
+  local_population: LocalSlotPopulation
   operator_reason: NonEmptyStr
 }
 
@@ -139,6 +149,9 @@ data srv2_host_retirement: HostRetirement = HostRetirement {
   host: operator_host_srv2,
   spec: srv2_runner_host_spec,
   search_bound: 21,
+  local_population: LocalPopulationUnavailable {
+    cause: "no local slot population read has been admitted for srv2: the retirement assessment performs no directory observation of /opt/actions-runner, so which trees exist is UNGROUNDED rather than empty. The operator-authorized census of 2026-09-19T10:34Z observed seven (01-05, 11, 12) against four .runner files; admitting that observation as a declared population is a separate change from modelling the shape it produces",
+  },
   capture: CaptureCensusUnavailable {
     cause: "no capture census has been admitted for srv2 in this repository: the retirement assessment holds no GitHub App credential and performs no host capture read, so the population is UNGROUNDED rather than empty. The operator-authorized census of 2026-09-19T10:34Z observed four .runner files; admitting that observation as a declared census is a separate change from modelling the shape it produces",
   },
@@ -194,18 +207,23 @@ type RetireeObligationBasis
 // or a partial one, so a witness could only assert what the single declared row already produces --
 // which is the supplied-inputs obligation DESIGN states: the boundary is the capture standing, and
 // the claims about it supply that value instead of computing it from a roster lookup.
+// THE LOCAL OBLIGATION COMES FROM THE LOCAL POPULATION, NOT FROM THE REGISTRATION BINDINGS.
+//
+// This mapped captured registrations through the unit projection, which on srv2's real estate would
+// have produced FOUR local units against SEVEN observed trees -- and could not have done better,
+// because a slot whose `.runner` is positively absent has no binding to be the image of.
 fn host_retirement_obligation_basis_of(
-  capture: CaptureCensus,
+  local_population: LocalSlotPopulation,
   host: HostIdentity,
   bound: Int,
 ) -> RetireeObligationBasis {
-  match capture_population_standing(c: capture) {
-    CapturePopulationKnown { observed_on: on, bindings: bs } =>
+  match local_population_standing(p: local_population) {
+    LocalPopulationKnown { observed_on: on, slots: _ } =>
       ObligationFromCapturedSnapshot {
         observed_on: on,
-        units: local_unit_obligations(bindings: bs),
+        units: local_slot_unit_obligations(p: local_population),
       }
-    CapturePopulationIncomplete { cause: c } =>
+    LocalPopulationIncomplete { cause: c } =>
       ObligationFromSearchBound {
         units: desired_unit_names_range(host: host, slot: 1, limit: bound) |> map(u => u as NonEmptyStr),
         bound: bound,
@@ -214,11 +232,21 @@ fn host_retirement_obligation_basis_of(
   }
 }
 
+fn host_retirement_local_population(host: HostIdentity) -> LocalSlotPopulation {
+  match host_retirement_standing(host: host) {
+    HostRetirementDeclared { retirement: r } => r.local_population
+    HostNotRetiring { host: h, cause: _ } =>
+      LocalPopulationUnavailable {
+        cause: join([h as String, " carries no declared retirement, so no local slot population is declared for it"], ""),
+      }
+  }
+}
+
 fn host_retirement_obligation_basis(host: HostIdentity) -> RetireeObligationBasis {
   match host_retirement_standing(host: host) {
     HostNotRetiring { host: h, cause: _ } => ObligationAbsent { host: h }
     HostRetirementDeclared { retirement: r } =>
-      host_retirement_obligation_basis_of(capture: r.capture, host: r.host, bound: r.search_bound)
+      host_retirement_obligation_basis_of(local_population: r.local_population, host: r.host, bound: r.search_bound)
   }
 }
 

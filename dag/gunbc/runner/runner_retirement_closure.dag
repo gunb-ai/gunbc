@@ -35,6 +35,12 @@ import gunbc.runner_host_retirement {
   RetireeObligationBasis,
   retiree_obligation_ungrounded_cause,
 }
+import gunbc.runner_registration_capture {
+  LocalSlotPopulation,
+  LocalPopulationKnown,
+  LocalPopulationIncomplete,
+  local_population_standing,
+}
 
 // THE CLOSURE CLAIM IS A CONJUNCTION, AND EVERY WAY OF NOT KNOWING IS A CONJUNCT.
 //
@@ -272,6 +278,22 @@ fn obligation_coverage_blockers(
   )
 }
 
+// THE LOCAL POPULATION IS ITS OWN BLOCKER, SEPARATE FROM THE REGISTRATION CAPTURE. Registration
+// completeness cannot settle which TREES exist: srv2's census observed seven local slots against
+// four `.runner` files, so a complete registration capture would still leave three trees unaccounted
+// for. The two questions have different producers and different remedies, so they refuse separately.
+fn local_population_blockers(host: HostIdentity, population: LocalSlotPopulation) -> List<ClosureBlocker> {
+  match local_population_standing(p: population) {
+    LocalPopulationKnown { observed_on: _, slots: _ } => []
+    LocalPopulationIncomplete { cause: c } => [
+      ClosureBlocker {
+        subject: join([host as String, "/local-slot-population"], ""),
+        cause: join(["which owned local slots exist on this host is not established: ", c, ". A registration capture does not answer it -- a slot whose .runner is positively absent is still a tree that owes a retirement"], ""),
+      },
+    ]
+  }
+}
+
 fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
   match d {
     PlannerSawCompleteSubject { operations_emitted: n } =>
@@ -344,6 +366,7 @@ fn retirement_assessment_verdict(
   method_availability: RetirementMethodAvailability,
   planner: PlannerDisposition,
   basis: RetireeObligationBasis,
+  local_population: LocalSlotPopulation,
   obligation_population: List<NonEmptyStr>,
   estate: EstateCleanupStanding,
   extra: List<ClosureBlocker>,
@@ -361,7 +384,10 @@ fn retirement_assessment_verdict(
     ),
     concat(
       concat(
-        concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+        concat(
+          concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+          local_population_blockers(host: host, population: local_population),
+        ),
         obligation_coverage_blockers(obligation_population: obligation_population, required: required),
       ),
       concat(estate_blockers(host: host, estate: estate), extra),

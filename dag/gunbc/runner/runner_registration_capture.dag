@@ -372,6 +372,126 @@ fn capture_coherence(bindings: List<RunnerRegistrationBinding>) -> CaptureCohere
 }
 
 
+// ── THE LOCAL SLOT POPULATION IS NOT THE IMAGE OF THE REGISTRATION BINDINGS ───────────────────
+//
+// THE CENSUS IS THE DISCRIMINATOR AND IT DOES NOT AGREE WITH ITSELF ACROSS THE TWO SIDES:
+//
+//     observed local trees        01 02 03 04 05 11 12      (seven)
+//     captured registration ids      02       05 11 12      (four)
+//
+// Deriving local obligations from `local_unit_obligations(bindings)` yields FOUR local units and
+// silently omits three trees that exist on the machine. The only way that fold could have covered
+// them is if every local slot had a registration record, and `RunnerRegistrationBinding` requires an
+// AgentId, an AgentName and an organization -- so a slot whose `.runner` is POSITIVELY ABSENT has no
+// shape in it at all. Calling those three captures "unresolved" instead would avoid the omission by
+// making a genuinely absent registration permanently unresolvable, which is the opposite error.
+// Neither reading describes the estate.
+//
+// SO A LOCAL SLOT IS ITS OWN SUBJECT AND ITS REGISTRATION ASSOCIATIONS HANG OFF IT. Zero, one or
+// several: a slot with no registration is a local retirement subject with nothing owed remotely, and
+// a slot that has registered several times is one local subject with several remote ones. The two
+// obligation grains stay what they were -- unit locally, scoped id remotely -- and neither is derived
+// from the other's list.
+type SlotRegistrationStanding
+  = SlotRegistrationsObserved { bindings: List<RunnerRegistrationBinding> }
+  | SlotRegistrationPositivelyAbsent { evidence: String }
+  | SlotRegistrationUnresolved { cause: String }
+
+type LocalSlotObservation {
+  host: HostIdentity
+  slot_instance: NonEmptyStr
+  installation_path: NonEmptyStr
+  registrations: SlotRegistrationStanding
+}
+
+type LocalSlotPopulation
+  = LocalPopulationComplete { observed_on: NonEmptyStr, slots: List<LocalSlotObservation> }
+  | LocalPopulationPartial { observed_on: NonEmptyStr, slots: List<LocalSlotObservation>, cause: String }
+  | LocalPopulationUnavailable { cause: String }
+
+fn local_population_slots(p: LocalSlotPopulation) -> List<LocalSlotObservation> {
+  match p {
+    LocalPopulationComplete { observed_on: _, slots: ss } => ss
+    LocalPopulationPartial { observed_on: _, slots: ss, cause: _ } => ss
+    LocalPopulationUnavailable { cause: _ } => []
+  }
+}
+
+// ONE LOCAL SUBJECT PER OBSERVED SLOT, whatever its registration standing. This is the fold the
+// obligation consumes, and it never consults a binding: a tree with no `.runner` is exactly as much a
+// retirement subject as one with three.
+fn local_slot_unit_obligations(p: LocalSlotPopulation) -> List<NonEmptyStr> {
+  fold(
+    local_population_slots(p: p),
+    init: [],
+    f: (acc, sl) => {
+      let u = runner_unit_name_of_registration(registration_name: sl.slot_instance)
+      if any(acc, x => (x as String) == (u as String)) { acc } else { concat(acc, [u]) }
+    },
+  )
+}
+
+// THE REMOTE SUBJECTS ARE THE UNION OF EACH SLOT'S ASSOCIATIONS, deduplicated by scoped id. A slot
+// contributes none when its registration is positively absent, which is a real answer rather than a
+// gap: there is nothing to delist and no receipt to write.
+fn local_population_bindings(p: LocalSlotPopulation) -> List<RunnerRegistrationBinding> {
+  fold(
+    local_population_slots(p: p),
+    init: [],
+    f: (acc, sl) =>
+      match sl.registrations {
+        SlotRegistrationsObserved { bindings: bs } => concat(acc, bs)
+        SlotRegistrationPositivelyAbsent { evidence: _ } => acc
+        SlotRegistrationUnresolved { cause: _ } => acc
+      },
+  )
+}
+
+fn local_population_remote_obligations(p: LocalSlotPopulation) -> List<RemoteRegistrationSubject> {
+  remote_registration_obligations(bindings: local_population_bindings(p: p))
+}
+
+// THE POPULATION CLAIM IS ITS OWN QUESTION, exactly as it is for registrations: a partial local read
+// can carry sound per-slot facts and cannot say these are all the trees. A slot whose registration
+// standing is UNRESOLVED also blocks -- the tree is known, and what it owes remotely is not.
+type LocalPopulationStanding
+  = LocalPopulationKnown { observed_on: NonEmptyStr, slots: List<LocalSlotObservation> }
+  | LocalPopulationIncomplete { cause: String }
+
+fn local_population_standing(p: LocalSlotPopulation) -> LocalPopulationStanding {
+  match p {
+    LocalPopulationUnavailable { cause: c } => LocalPopulationIncomplete { cause: c }
+    LocalPopulationPartial { observed_on: _, slots: _, cause: c } =>
+      LocalPopulationIncomplete {
+        cause: join(["the local slot population read is partial (", c, "), so it cannot establish that no further owned trees exist"], ""),
+      }
+    LocalPopulationComplete { observed_on: on, slots: ss } => {
+      let unresolved = ss |> filter(sl => match sl.registrations {
+        SlotRegistrationUnresolved { cause: _ } => true
+        SlotRegistrationsObserved { bindings: _ } => false
+        SlotRegistrationPositivelyAbsent { evidence: _ } => false
+      })
+      if list_length(items: unresolved) > 0 {
+        LocalPopulationIncomplete {
+          cause: join([to_string(list_length(items: unresolved)), " observed local slot(s) have an unresolved registration standing, so what they owe remotely is not established"], ""),
+        }
+      } else {
+        LocalPopulationKnown { observed_on: on, slots: ss }
+      }
+    }
+  }
+}
+
+fn local_population_wire(p: LocalSlotPopulation) -> String {
+  match p {
+    LocalPopulationComplete { observed_on: on, slots: ss } =>
+      join(["complete observed_on=", on as String, " slots=", to_string(list_length(items: ss))], "")
+    LocalPopulationPartial { observed_on: on, slots: ss, cause: c } =>
+      join(["PARTIAL observed_on=", on as String, " slots=", to_string(list_length(items: ss)), " cause=", c], "")
+    LocalPopulationUnavailable { cause: c } => join(["UNAVAILABLE ", c], "")
+  }
+}
+
 // ── COMPLETENESS IS A DIFFERENT QUESTION FROM PER-MEMBER EVIDENCE ─────────────────────────────
 //
 // An earlier shape refused ownership from ANY partial capture, which is too coarse and was corrected

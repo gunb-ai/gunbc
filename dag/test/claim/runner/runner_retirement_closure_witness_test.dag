@@ -71,6 +71,9 @@ import gunbc.runner_retirement_closure {
 }
 
 import gunbc.runner_registration_capture {
+  LocalSlotPopulation,
+  LocalPopulationComplete,
+  LocalPopulationUnavailable,
   CaptureProvenance,
   RunnerRegistrationBinding,
   CaptureCensusComplete,
@@ -113,6 +116,13 @@ fn unreadable_slot() -> RunnerRetirementObservation {
 // discriminating red for the ordering inside the fold: the evidence handed in is ABSENT -- nobody
 // authorized interrupting anything -- and a slot whose postcondition already holds is still recorded
 // satisfied. A fold that tested coverage first would answer REFUSED here, reporting "not permitted
+
+// THE LOCAL POPULATION MOST OF THESE CLAIMS ARE NOT ABOUT: a complete read, so it contributes no
+// blocker and each claim below keeps discriminating on its own subject rather than on this one.
+fn settled_local_population() -> LocalSlotPopulation {
+  LocalPopulationComplete { observed_on: "2026-09-19T10:34Z" as NonEmptyStr, slots: [] }
+}
+
 // to interrupt" about a slot with nothing left to interrupt.
 test fn an_already_retired_slot_is_satisfied_without_any_authorization() -> Bool {
   match slot_retirement_invocation(
@@ -260,6 +270,7 @@ test fn a_complete_assessment_is_clear_of_blockers() -> Bool {
   assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -282,6 +293,7 @@ test fn an_unavailable_roster_blocks_the_closure() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: RosterReadUnavailable { reason: "no app credential" },
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -304,6 +316,7 @@ test fn a_partial_roster_blocks_the_closure() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: RosterObservedPartial {
         observed_on: "2026-09-19" as NonEmptyStr,
@@ -330,6 +343,7 @@ test fn an_unimplemented_graceful_method_blocks_the_closure() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -353,6 +367,7 @@ test fn a_refused_planner_emitting_zero_operations_does_not_converge() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -373,6 +388,7 @@ test fn a_filtering_planner_emitting_zero_operations_does_not_converge() -> Bool
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -398,6 +414,7 @@ test fn a_required_retiree_with_no_standing_blocks_the_closure() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -421,6 +438,7 @@ test fn settled_slots_with_an_outstanding_estate_do_not_converge() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -509,6 +527,7 @@ test fn a_complete_assessment_with_operations_remaining_is_not_clear() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -535,6 +554,7 @@ test fn an_owned_surplus_member_of_a_complete_roster_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: RosterObserved {
         observed_on: "2026-09-19" as NonEmptyStr,
@@ -571,6 +591,7 @@ test fn a_foreign_member_of_a_complete_roster_also_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: RosterObserved {
         observed_on: "2026-09-19" as NonEmptyStr,
@@ -609,6 +630,7 @@ test fn a_contradictory_retiree_reading_blocks_the_assessment() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -633,6 +655,7 @@ test fn a_contradictory_retiree_reading_blocks_in_either_order() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -661,6 +684,7 @@ test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -670,7 +694,7 @@ test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: host_retirement_obligation_basis_of(
-        capture: CaptureCensusUnavailable { cause: "no snapshot has been taken" },
+        local_population: LocalPopulationUnavailable { cause: "no local read has been taken" },
         host: operator_host_srv2,
         bound: 21,
       ),
@@ -687,6 +711,7 @@ test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -712,6 +737,7 @@ test fn an_obligation_identity_missing_from_the_assessment_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -742,6 +768,7 @@ test fn an_assessed_identity_no_authority_names_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -767,6 +794,7 @@ test fn a_complete_empty_capture_covers_an_empty_population() -> Bool {
   assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -794,6 +822,7 @@ test fn a_width_transition_identity_is_supported_by_its_own_authority() -> Bool 
   assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -825,6 +854,7 @@ test fn omitting_the_width_transition_identity_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -849,6 +879,7 @@ test fn an_assessed_identity_no_authority_names_still_blocks() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "abc123" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
       roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
@@ -860,6 +891,34 @@ test fn an_assessed_identity_no_authority_names_still_blocks() -> Bool {
         RetirementComplete { unit: "actions-runner@srv2-01.service" },
         RetirementComplete { unit: "actions-runner@srv2-99.service" },
       ],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      obligation_population: one_required(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ── IJ-3: THE LOCAL ESTATE IS ITS OWN CLOSURE BLOCKER ────────────────────────────────────────
+
+// srv2's LOCAL trees are a separate population from its REMOTE registrations, and the census that
+// prompted this claim is the proof: seven directories, four .runner files. So a closure that knows
+// the roster perfectly still cannot claim srv2's estate is settled while the local read is
+// unavailable -- it does not know what is on the host to remove. Every other input here is clear,
+// so this claim discriminates on the local population alone.
+test fn an_unavailable_local_population_blocks_the_closure() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      local_population: LocalPopulationUnavailable { cause: "no census has been taken of srv2's installations" },
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
+      required: one_required(),
+      standings: settled_standings(),
       method_subjects: [],
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
