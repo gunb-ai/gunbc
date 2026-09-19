@@ -7,12 +7,13 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, ActionRef, action_ref_eq,
+  Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool,
-  checkout_action, upload_artifact_action, google_auth_action
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
 }
+import gunbc.action_use_admission { checkout_action, upload_artifact_action, google_auth_action }
+import extdeps.github.action_release { ActionRelease, action_release_same_producer }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
@@ -349,10 +350,10 @@ fn job_permissions_carry_write(permissions: WorkflowPermissions?) -> Bool {
   }
 }
 
-fn step_uses_action(step: Step, action: ActionRef) -> Bool {
+fn step_uses_action(step: Step, action: ActionRelease) -> Bool {
   match step {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-    UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => action_ref_eq(a: u, b: action)
+    UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => action_release_same_producer(a: u, b: action)
   }
 }
 

@@ -22,7 +22,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout the exact pull request head this candidate will describe
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -35,7 +35,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
@@ -91,7 +91,7 @@ jobs:
           HEAL_BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAL_RUN_ID: ${{ github.run_id }}
       - name: Upload the sealed repair candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: heal-repair-candidate
           path: target/heal-repair-candidate

@@ -24,12 +24,12 @@ jobs:
       id-token: write
     steps:
       - name: Checkout the default branch this publisher runs from
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: Download the candidate the triggering heal run produced
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           pattern: heal-repair-candidate
           path: heal-candidate
@@ -44,7 +44,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
@@ -88,7 +88,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Federate to the publisher's own identity (access token only, five minutes)
         id: heal_publisher_wif
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-heal-publisher/providers/github-heal-publisher-oidc
           service_account: heal-publisher@gunbai-secrets.iam.gserviceaccount.com

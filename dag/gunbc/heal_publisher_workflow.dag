@@ -7,13 +7,14 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, ActionRef, action_ref_eq,
+  Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunCompleted,
   WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueMax, CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse,
-  RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm,
-  checkout_action, download_artifact_action, google_auth_action
+  RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm
 }
+import gunbc.action_use_admission { checkout_action, download_artifact_action, google_auth_action }
+import extdeps.github.action_release { ActionRelease, action_release_same_producer }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
