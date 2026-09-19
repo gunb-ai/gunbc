@@ -25,12 +25,8 @@ import product.fabric.isolation {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
-  gunbc_runner_cores_per_slot,
-  RunnerCoresPerSlotResolution,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -313,13 +309,15 @@ fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
   }
 }
 
-// THE CPU AXIS IS THE CELL'S SURVEYED QUOTA, READ HERE RATHER THAN RESTATED.
+// THE CPU AXIS IS THE CELL'S DECLARED QUOTA, READ HERE RATHER THAN RESTATED.
 //
-// On memory the quantity may exist and merely be uncited. On CPU the cell now emits CPUQuota= when
-// gunbc_runner_slot_cpu_quota resolves, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
-// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute,
-// Refused is RelativeOnly carrying the survey cause -- never a second invented ceiling, and never
-// the CPUWeight-only story that was true before the slice directive existed.
+// On memory the quantity may exist and merely be uncited. On CPU the cell emits the CPUQuota= line
+// gunbc_runner_slot_cpu_quota declares, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
+// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute;
+// SlotCpuQuotaUnbounded is RelativeOnly, and its cause names the 2026-09-19 policy that put the
+// row there -- never a second invented ceiling. Since that ruling the production path IS
+// RelativeOnly: the slot carries CPUWeight and no ceiling, so the declared guest size below is
+// the answer served rather than a withdrawn one.
 //
 // THE DECLARED PRODUCT SIZE WITHDRAWS THE MOMENT THIS RETURNS ABSOLUTE. That is
 // runner_microvm_size_decision's job: a stale declaration that kept succeeding would hide that
@@ -332,15 +330,18 @@ type CellCpuEntitlement
 fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
   match gunbc_runner_slot_desired().cpu_quota {
     CpuQuotaResolved { threads: t } => CpuEntitlementAbsolute { threads: t }
-    CpuQuotaRefused { cause: c } => CpuEntitlementRelativeOnly { cause: c }
+    SlotCpuQuotaUnbounded =>
+      CpuEntitlementRelativeOnly {
+        cause: "the slot row declares no absolute CPU ceiling (gunbc.runner_slot_allocation gunbc_runner_slot_cpu_quota, operator ruling 2026-09-19), so the cell grants a relative share only"
+      }
   }
 }
 
 // THE GUEST'S TOPOLOGY WAS A DECLARED PRODUCT DECISION WHILE THE CELL GRANTED NO ABSOLUTE
 // ENTITLEMENT. That declaration withdraws the moment gunbc_runner_microvm_cell_cpu_entitlement
-// returns Absolute -- which is now the production path when the slot survey resolves. The numbers
-// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm still
-// serves, not as a sizing anyone may provision against once Absolute is inhabited.
+// returns Absolute -- which it does only if the slot row ever declares a CpuQuotaResolved ceiling
+// again; under the 2026-09-19 no-ceiling policy the production path is RelativeOnly. The numbers
+// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm serves.
 data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
   vcpu_count: hardware_thread_count(count: 4),
   memory: mebibyte(count: 4096),
