@@ -222,6 +222,29 @@ test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_ex
   planted.success && wh_acquire_store_unavailable(o: outcome) && !wh_acquire_lost(o: outcome) && removed.success
 }
 
+// THE SAME DISTINCTION AT THE WRITE, NOT ONLY AT THE READ. The row above reaches the store fault
+// while OBSERVING (the root is a file, so nothing can be read), and a mutation that collapsed only
+// the write's CasStoreRefused arm into a lost race passed it -- measured on this PR's mutation
+// table. So this row supplies a genuine observation (absent, read from a real empty directory)
+// and attempts the publication into the unwritable root: the write itself is refused by the
+// store, and that must surface as unavailable, not as a race lost after observation.
+test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let empty_dir = wh_fresh_root()
+  let blocker = concat(root_path, "/not-a-directory")
+  let planted = Filesystem.Write(path: blocker, content: "not a store root")
+  let observed = observe_cas_slot_state(root: empty_dir as NonEmptyStr, key: "cell")
+  let outcome = file_hold_acquire_observed(
+    root: blocker as NonEmptyStr, slot_key: "cell", observed: observed, requested_owner: wh_owner(text: "demand-7|offer-1"),
+  )
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  let removed_dir = shell.Remove.RecursiveForce(path: empty_dir)
+  planted.success
+    && wh_acquire_store_unavailable(o: outcome)
+    && !wh_acquire_lost(o: outcome)
+    && removed.success && removed_dir.success
+}
+
 // FOUR RELEASE REFUSALS, AND NONE OF THEM FREES. Each refusal is checked
 // against the disk as well as the outcome: the next generation must not exist
 // afterwards. Absent, already free, another owner's hold, and the right owner at
