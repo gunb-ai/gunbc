@@ -96,10 +96,24 @@ type A1RowSpan {
   end: A1Cell
 }
 
+// WHY THE CONFLICT CARRIES A CAUSE. Three conditions produced this value and all three discarded
+// what distinguished them: a derived field occupied by a value that is not the desired one, a
+// listing-standing cell holding a token the standing reader does not recognise, and an erasure-mark
+// cell holding a token the mark reader does not recognise. Each decide_*_cell arm BOUND the
+// distinguishing value and threw it away -- two of them literally as StandingForeign { raw: _ } --
+// so every one of them arrived here as the same nullary CellConflict and the renderer called all
+// three "derived cell conflict". Two of the three causes needed no new vocabulary: ListingStandingRead
+// and DerivedErasureMarkRead already carry the foreign token, and this type stops discarding it.
+type ReviewCellConflictCause
+  = DerivedFieldOccupied { observed: String, desired: String }
+  | ListingStandingForeignValue { raw: String }
+  | DerivedErasureMarkForeignValue { raw: String }
+
 type LocatedDerivedConflict {
   listing_id: NonEmptyStr
   column: NonEmptyStr
   a1: A1Cell
+  cause: ReviewCellConflictCause
 }
 
 type DerivedCellWrite {
@@ -680,12 +694,12 @@ fn write_plan_preserves_operator_columns(schema: ReviewSheetSchema, plan: Review
 type CellDecision
   = CellSkip
   | CellWrite { value: String }
-  | CellConflict
+  | CellConflict { cause: ReviewCellConflictCause }
 
 fn decide_standing_cell(observed: String, desired: ListingStandingState) -> CellDecision {
   match read_listing_standing(cell: observed) {
     StandingBlank => CellWrite { value: listing_standing_label(state: desired) }
-    StandingForeign { raw: _ } => CellConflict
+    StandingForeign { raw: r } => CellConflict { cause: ListingStandingForeignValue { raw: r } }
     StandingKnown { state: observed_state } =>
       if listing_standing_eq(a: observed_state, b: desired) {
         CellSkip
@@ -702,7 +716,7 @@ fn decide_derived_field_cell(observed: String, desired: String) -> CellDecision 
     if observed == "" {
       CellWrite { value: desired }
     } else {
-      CellConflict
+      CellConflict { cause: DerivedFieldOccupied { observed: observed, desired: desired } }
     }
   }
 }
@@ -717,7 +731,7 @@ fn decide_derived_erasure_cell(observed: String) -> CellDecision {
 
 fn decide_erasure_mark_cell(observed: String, erase_derived: Bool) -> CellDecision {
   match read_derived_erasure_mark(cell: observed) {
-    ErasureMarkForeign { raw: _ } => CellConflict
+    ErasureMarkForeign { raw: r } => CellConflict { cause: DerivedErasureMarkForeignValue { raw: r } }
     ErasureMarkApplied => CellSkip
     ErasureMarkBlank =>
       if erase_derived {
@@ -756,7 +770,7 @@ fn classification_from_cell_decision(
             )
           }
       }
-    CellConflict =>
+    CellConflict { cause: cause } =>
       match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
         Absent => ReviewSheetUnreadable {
           reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
@@ -767,6 +781,7 @@ fn classification_from_cell_decision(
               listing_id: listing_id,
               column: column,
               a1: a1,
+              cause: cause,
             }
           }
       }
@@ -1368,6 +1383,17 @@ fn finish_classify(
   }
 }
 
+fn cell_conflict_cause_text(cause: ReviewCellConflictCause) -> String {
+  match cause {
+    DerivedFieldOccupied { observed: o, desired: d } =>
+      join(["derived field occupied observed=", o, " desired=", d], "")
+    ListingStandingForeignValue { raw: r } =>
+      join(["listing standing value unrecognised raw=", r], "")
+    DerivedErasureMarkForeignValue { raw: r } =>
+      join(["derived erasure mark unrecognised raw=", r], "")
+  }
+}
+
 fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
   join(
     [
@@ -1377,6 +1403,8 @@ fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
       conflict.column as String,
       " cell=",
       a1_cell_wire(cell: conflict.a1),
+      " cause=",
+      cell_conflict_cause_text(cause: conflict.cause),
     ],
     "",
   ) as NonEmptyStr

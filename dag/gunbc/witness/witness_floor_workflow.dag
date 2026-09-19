@@ -7,6 +7,7 @@ import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -39,8 +40,7 @@ import gunbc.compile_permit_scope {
   fleet_compile_cancellation_standing
 }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  upload_artifact_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
@@ -48,11 +48,14 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
-  RunnerSpec,
-  checkout_action, setup_rust_action,
+  RunnerSpec, 
   github_event_name_pull_request,
   github_event_name_merge_group,
   github_event_name_workflow_dispatch
+}
+import gunbc.action_use_admission {
+  checkout_action, setup_rust_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -762,6 +765,12 @@ fn witness_floor_checkout_step() -> Step {
 //
 // `gunbc.fleet_workflow_steps` `ci_setup_rust_step` already passes this same key to this same
 // action; this step was the one that did not.
+// THE DENIAL IS DECLARED HERE, NOT INHERITED FROM THE ACTION'S DEFAULT. Until this row the
+// `rustflags` input was omitted, so every required job's RUSTFLAGS was whatever
+// setup-rust-toolchain happens to default to -- a value this repository never declared and an
+// upstream bump may change, which would silently un-deny warnings for every cargo the job
+// spawns. The value is the repository's own policy row rather than a literal, so this step and
+// the clippy command cannot drift apart (gunbc.repo_self_warning_policy).
 fn witness_floor_toolchain_step() -> Step {
   UsesStep {
     name: Present { value: "Install Rust toolchain" },
@@ -771,6 +780,7 @@ fn witness_floor_toolchain_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: repo_self_warning_denial_rustflags())),
       ]
     },
     env: none,
@@ -3045,16 +3055,21 @@ fn floor_attempt_production_wraps_are_renderable() -> Bool {
 }
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
-        WitnessFloorGenerated {
-          content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
-        }
-      } else {
-        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+  match admit_workflow_action_uses(workflow: witness_floor_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted =>
+          if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
+            WitnessFloorGenerated {
+              content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+            }
+          } else {
+            WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+          }
       }
   }
 }

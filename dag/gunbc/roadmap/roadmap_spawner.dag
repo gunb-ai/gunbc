@@ -36,6 +36,7 @@ import extdeps.languages.json.emit {
   json_null,
   json_string,
   json_int,
+  json_bool,
   json_array,
   json_object,
   json_kv,

@@ -100,13 +100,13 @@ test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool {
 }
 
 
-// THE POPULATION CONTROL THE EIGHT-TO-TWO REPAIR DID NOT HAVE. The fleet witness only asserts that
-// the switch inherits a refusal, which would pass with one leg read, six, or none -- so it does not
-// protect the cardinality that repair introduced. This does: exactly two legs carry readings, six do
-// not, and the two are the endpoints actually dumped on 2026-09-08.
-//
-// It reds if anyone re-broadens the plant to map every lane to one coding, which is the specific
-// regression that motivated the repair.
+// THE POPULATION CONTROL THE EIGHT-TO-TWO REPAIR DID NOT HAVE, NOW AT THE CURRENT-STANDING GRAIN.
+// The plant carries a live reading ONLY for a leg whose acquisition is current. Two legs were dumped
+// on 2026-09-08 (a3ee, ac79); a3ee was re-read post-recode (AcquisitionCurrent) and ac79 was not
+// (AcquisitionInvalidatedByReflash), so exactly ONE leg carries a current plant reading and seven do
+// not -- six never read plus ac79 whose pre-recode reading the re-flash invalidated. It reds if
+// anyone re-broadens the plant to map every lane to one coding, or promotes an invalidated reading
+// back to a live one.
 fn plant_readings_taken() -> Nat {
   length(flat_map(fabric_lane_observations, o =>
     match fabric_leg_reading(o: o) {
@@ -123,8 +123,24 @@ fn plant_readings_never() -> Nat {
     }))
 }
 
-test fn exactly_two_of_eight_legs_carry_a_reading() -> Bool {
-  plant_readings_taken() == 2 && plant_readings_never() == 6
+test fn exactly_one_leg_carries_a_current_reading() -> Bool {
+  plant_readings_taken() == 1 && plant_readings_never() == 7
+}
+
+// THE INVALIDATED LEG IS NOT A LIVE READING. ac79 was re-flashed and not re-read, so the plant must
+// answer LegNeverRead for it -- NOT LegReadingTaken(0x0B), which would present a known-false current
+// coding (§5). This is the discriminating red for the acquisition-standing repair: if the projection
+// ever promotes an AcquisitionInvalidatedByReflash row back to a live reading, ac79 becomes taken and
+// this fails.
+test fn the_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bool {
+  let ac79 = filter(fabric_lane_observations, o => o.spark_hostname as String == "spark-ac79")
+  match ac79.first() {
+    Present { value: o } => match fabric_leg_reading(o: o) {
+      LegNeverRead { endpoint: _ } => true
+      LegReadingTaken { endpoint: _, observation: _ } => false
+    }
+    Absent => false
+  }
 }
 
 // AND THE TWO RECEIPTS ARE INDEPENDENT ROWS, not one value read twice. Distinct vendor serials are

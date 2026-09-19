@@ -668,7 +668,7 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
 
 fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
     function: "witness_deleted_history_event_refuses" as NonEmptyStr,
   )
 }
