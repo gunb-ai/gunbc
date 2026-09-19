@@ -66,7 +66,7 @@ import gunbc.spark.pair_serving_authority {
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire,
   AuthorityTransitionRecord, transitions_by,
-  AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
+  AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition, pair_serving_authority_transition_at,
   EntryStateRecord, EntryStateRecordedAt, EntryStateRecordStale, EntryStateRecordRefused, pair_serving_authority_record_entry_state,
 }
 
@@ -90,11 +90,14 @@ import gunbc.spark.pair_serving_authority_log {
 // and uncompared; the incumbent's key stays minted nowhere until the image axis is compared --
 // and when the answer is anything else the group is fenced for an operator. The only Keyed
 // realization D0 writes is the SUCCESSOR's, on the suspended authority, from the admitted grant's
-// keyed candidate. Second, with nothing answering: does the
-// unit population on the four ranks reconcile with the declared realization? DeclaredOccupantObserved
-// (our units, our bytes, all running) and DeclaredOccupantDrifted (our units, not all running or
-// not all our bytes -- THE EXPECTED ANSWER on the readings the redesign records) are both eligible,
-// the drift recorded and never a restoration target; OccupancyUnread fences.
+// keyed candidate. Second, with nothing answering and the head host quiet: does the unit
+// population on the four ranks reconcile with the declared realization? The head's declared unit
+// is read first -- ACTIVE is OccupancyNotQuiet, a listener the route did not reach, and it fences
+// as unidentified -- and with the head inactive, DeclaredOccupantDrifted (our units, not all
+// running or not all our bytes -- THE EXPECTED ANSWER on the readings the redesign records, and
+// the only reconciled answer, since the head was just read inactive) is eligible, the drift
+// recorded and never a restoration target; OccupancyUnread fences. There is no "observed
+// converged" answer here: a running declared occupant is the incumbent question's answer.
 //
 // WHAT THIS TRANSACTION READS AND WHAT IT DOES NOT, stated because the redesign's fourth answer is
 // not produced here. ForeignOccupantObserved -- a container, process or device allocation we do
@@ -545,7 +548,7 @@ type RankOccupancyReading {
 
 // FOUR ARMS, BECAUSE "NO LAUNCH OBSERVED" IS SEVERAL FACTS. A failed connect within the bound is
 // the only reading under which absence can still be established -- and the decision establishes
-// it on the head host (head_rank_corroborates_absence), never from the transport; the door
+// it on the head host (reconcile_occupancy: the head's unit first), never from the transport; the door
 // answering with any HTTP status, or the metrics naming no launch, is an incumbent that IS there
 // and could not be identified, and it fences; a deadline, or a transport that could not be read,
 // says nothing about the door and is RouteUnread, which fences too. An earlier shape folded every
@@ -576,8 +579,8 @@ type D0Observation {
 // ── THE RECONCILIATION ─────────────────────────────────────────────────────────────────────────
 
 type OccupancyReconciliation
-  = DeclaredOccupantObserved
-  | DeclaredOccupantDrifted { drifted: List<HostIdentity> }
+  = DeclaredOccupantDrifted { drifted: List<HostIdentity> }
+  | OccupancyNotQuiet { head: HostIdentity }
   | OccupancyUnread { hosts: List<HostIdentity>, cause: NonEmptyStr }
 
 type RankVerdict
@@ -635,18 +638,34 @@ fn unread_cause(v: RankVerdict) -> List<String> {
   }
 }
 
-// Every declared rank against its reading. One unread rank makes the whole occupancy unread --
-// a pair three-quarters reconciled is not reconciled -- and only with every rank read does drift
-// or convergence get decided. Readings for hosts the declaration does not name are ignored here
-// and kept on the receipt.
+// THE HEAD FIRST, THEN EVERY RANK. Reconciliation is asked when the front door could not be
+// connected and the head host's socket table and process scan were quiet; what it establishes on
+// top of that is the declared UNIT on the head: readable and not active (inactive or not
+// installed) corroborates absence, ACTIVE is a listener the route did not reach (OccupancyNotQuiet
+// -- an unidentified incumbent, never a reconciled answer), unread fences. With the head quiet,
+// every declared rank is read against its unit: one unread rank makes the whole occupancy unread
+// -- a pair three-quarters reconciled is not reconciled -- and with every rank read the drift is
+// decided. Because the head was just read inactive, the head rank is drifted (declared bytes, not
+// running) or unread (not installed), so the reconciled answer this route reaches is always
+// DeclaredOccupantDrifted: the declared occupant, observed not running, which is exactly the
+// population the suspension records and D1 cleans.
 fn reconcile_occupancy(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> OccupancyReconciliation {
-  let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
-  let unread = flat_map(verdicts, v => verdict_unread(v: v))
-  if length(unread) != 0 {
-    OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
-  } else {
-    let drifted = flat_map(verdicts, v => verdict_drifted_host(v: v))
-    if length(drifted) == 0 { DeclaredOccupantObserved } else { DeclaredOccupantDrifted { drifted: drifted } }
+  match first(filter(ranks, r => host_identity_eq(a: r.host, b: declared.head.host))) {
+    Absent => OccupancyUnread { hosts: [declared.head.host], cause: "no occupancy reading was taken for the head rank" as NonEmptyStr }
+    Present { value: r } =>
+      match r.occupancy {
+        UnitOccupancyUnread { refusal: why } => OccupancyUnread { hosts: [declared.head.host], cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
+        UnitInstalled { active: true, unit_digest: _ } => OccupancyNotQuiet { head: declared.head.host }
+        _ => {
+          let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
+          let unread = flat_map(verdicts, v => verdict_unread(v: v))
+          if length(unread) != 0 {
+            OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
+          } else {
+            DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
+          }
+        }
+      }
   }
 }
 
@@ -716,17 +735,9 @@ fn d0_decide(
             HeadEndpointEngineProcess { listing: l } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and an engine process is running on the head: ", trim(s: l)], "") as NonEmptyStr })
             HeadEndpointUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and the head's socket table or process scan could not be read: ", c as String], "") as NonEmptyStr })
             HeadEndpointQuiet =>
-          match head_rank_corroborates_absence(declared: d, ranks: observation.ranks) {
-            HeadUnitActive { host: h } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and the declared serving unit on the head ", h as String, " is ACTIVE, so a listener may exist behind the failed connect"], "") as NonEmptyStr })
-            HeadUnitUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and absence could not be corroborated on the head: ", c as String], "") as NonEmptyStr })
-            HeadUnitQuiet =>
           match reconcile_occupancy(declared: d, ranks: observation.ranks) {
-            OccupancyUnread { hosts: _, cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: c })
-            DeclaredOccupantObserved =>
-              D0DecidedSuspend {
-                next: SuspendedForAuthorizedSuccessor { group: group, hosts: hosts, authorization: authorization, exact_candidate_realization: candidate, lease: lease, cleanup: cleanup },
-                reconciliation: DeclaredOccupantObserved,
-              }
+            OccupancyUnread { hosts: _, cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and ", c as String], "") as NonEmptyStr })
+            OccupancyNotQuiet { head: h } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and the declared serving unit on the head ", h as String, " is ACTIVE, so a listener may exist behind the failed connect"], "") as NonEmptyStr })
             DeclaredOccupantDrifted { drifted: ds } =>
               D0DecidedSuspend {
                 next: SuspendedForAuthorizedSuccessor { group: group, hosts: hosts, authorization: authorization, exact_candidate_realization: candidate, lease: lease, cleanup: cleanup },
@@ -734,30 +745,6 @@ fn d0_decide(
               }
           }
           }
-          }
-      }
-  }
-}
-
-// ABSENCE IS ESTABLISHED ON THE HEAD HOST, NOT BY THE TRANSPORT, AND IN TWO HALVES. The first is
-// the head's endpoint reading (HeadEndpointReading: no LISTEN on the enrolled port in the host's
-// socket tables and no engine process), decided before this fn is asked. The second, here, is the
-// declared serving unit: a failed connect is corroborated as absence only when that unit is
-// readable and not active (inactive or not installed). An active unit behind a failed connect is
-// a listener the route did not reach -- unidentified, so it fences; an unread head fences.
-type HeadCorroboration
-  = HeadUnitQuiet
-  | HeadUnitActive { host: HostIdentity }
-  | HeadUnitUnread { cause: NonEmptyStr }
-
-fn head_rank_corroborates_absence(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> HeadCorroboration {
-  match first(filter(ranks, r => host_identity_eq(a: r.host, b: declared.head.host))) {
-    Absent => HeadUnitUnread { cause: "no occupancy reading was taken for the head rank" as NonEmptyStr }
-    Present { value: r } =>
-      match r.occupancy {
-        UnitOccupancyUnread { refusal: why } => HeadUnitUnread { cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
-        UnitNotInstalled => HeadUnitQuiet
-        UnitInstalled { active: a, unit_digest: _ } => if a { HeadUnitActive { host: declared.head.host } } else { HeadUnitQuiet }
       }
   }
 }
@@ -833,7 +820,7 @@ fn head_endpoint_line(h: HeadEndpointReading) -> String {
 
 fn reconciliation_line(r: OccupancyReconciliation) -> String {
   match r {
-    DeclaredOccupantObserved => "  reconciliation: declared-occupant-observed"
+    OccupancyNotQuiet { head: h } => join(["  reconciliation: occupancy-not-quiet head ", h as String, " active"], "")
     DeclaredOccupantDrifted { drifted: ds } => join(["  reconciliation: declared-occupant-drifted ", join(map(ds, h => h as String), ",")], "")
     OccupancyUnread { hosts: hs, cause: c } => join(["  reconciliation: occupancy-unread ", join(map(hs, h => h as String), ","), ": ", c as String], "")
   }
@@ -1068,7 +1055,11 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, head: H
 // pending under the SAME transaction AND the same authorization binding resumes from the readings
 // and restores, if it restores, the EXACT Active state the first write left (the log's `previous`
 // for the pending state -- never the resting row, which may not be what was suspended); anything
-// else refuses without a write.
+// else refuses without a write. THE LEASE EPOCH IS MINTED FOR THE GENERATION THE READ SAW, and the
+// first write is a transition AT THAT READ'S HEAD (pair_serving_authority_transition_at): a state
+// that left and came back is the same value at another generation, and a value-only compare-and-set
+// would land a pending state whose lease epoch is not the generation that landed -- a grant fence
+// the genealogy then refuses, stranding the group. Head-exact, the landed generation is gen + 1.
 fn d0_transaction(layout: EventLogLayout, group: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
   match current_pair_serving_authority(layout: layout, group: group, at: at) {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => D0Refused { cause: join(["authority unread at ", st, ": ", why], "") }
@@ -1081,7 +1072,7 @@ fn d0_transaction(layout: EventLogLayout, group: FabricGroup, current_hosts: Lis
             D0PopulationAgrees => {
               let lease = d0_held_lease(group: group, transaction: transaction, executor: executor, generation: gen + 1)
               let pending = SuspensionPendingReconciliation { group: group, hosts: admitted.grant.subject.hosts, transaction: transaction, authorization_binding: admitted.binding, lease: lease }
-              match pair_serving_authority_transition(layout: layout, group: group, expected: cur, next: pending, transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: none, entry_state: none, actor: executor, at: at) {
+              match pair_serving_authority_transition_at(layout: layout, group: group, expected: cur, expected_head: Present { value: head }, next: pending, transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: none, entry_state: none, actor: executor, at: at) {
                 AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _ } =>
                   d0_settle(layout: layout, pending: pending, head: HeadAt { id: admitting }, active: cur, lease: lease, admitted: admitted, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
                 AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
