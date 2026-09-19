@@ -207,7 +207,8 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
-  expand_scrut_type_for_variant_lookup
+  expand_scrut_type_for_variant_lookup,
+  pattern_matches_constructor
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -2662,6 +2663,29 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 // Every other disagreement between members stays unjudged at this seam, because the head's type is
 // an elected representative rather than an authored contract, and refusing on the relation's other
 // arms against it would be a fabricated obligation.
+// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE. `match opt { null => a
+// v => b }` is the corpus idiom for eliminating an optional: the absent case is taken first, so
+// the bare binding in a later arm can only ever hold a present value. Typing that binding at the
+// scrutinee's own CardOptional type would make optional_produced_at_required_declared refuse
+// correct code (std.serialize serialize_value_doc was the measured specimen) -- a fabricated
+// refusal. The narrowing is positive: it requires an earlier UNGUARDED `null` / `Absent` arm, a
+// bare Bind pattern, and a CardOptional scrutinee; anything else keeps the scrutinee's type.
+fn match_unguarded_absent_arm_index(arm_nodes: List<Node>) -> Int {
+  arm_nodes |> enumerate |> fold(init: -1, f: (acc, pair) =>
+    if acc >= 0 { acc }
+    else if arm_guard(n: pair.second) == none && pattern_matches_constructor(p: arm_pattern(n: pair.second), ctor: "Absent") { pair.first }
+    else { acc }
+  )
+}
+
+fn optional_scrutinee_binding_is_present(scrut_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
+  let is_bind = match arm_pattern {
+    Bind { declaration: _ } => true
+    _ => false
+  }
+  is_bind && absent_arm_index >= 0 && arm_index > absent_arm_index && scrut_type.return_cardinality == CardOptional
+}
+
 fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferScope) -> List<ErrorNode> {
   match typed_elements |> first {
     Present { value: head } =>
@@ -7409,12 +7433,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let scrut_rt = resolved_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_inferred(n: scrut_typed.inferred)
       let scrut_provenance = classify_binding_provenance(val: scrut, scope: scope)
-      let arm_infer_results = arm_nodes |> map(arm_node =>
+      let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_nodes)
+      let arm_infer_results = arm_nodes |> enumerate |> map(arm_pair =>
+        let arm_node = arm_pair.second
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
-        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
+        let arm_subject = if optional_scrutinee_binding_is_present(
+            scrut_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
+          pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
+        } else { scrut_subject }
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm_g != none {

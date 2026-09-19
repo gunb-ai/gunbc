@@ -156,7 +156,7 @@ use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
     check_match_exhaustiveness, expand_scrut_type_for_variant_lookup, lookup_field_in_variant,
     lookup_result_subject, lookup_variant_in_type, pattern_binding_type,
-    pattern_subject_from_inferred, pattern_subject_from_node,
+    pattern_matches_constructor, pattern_subject_from_inferred, pattern_subject_from_node,
 };
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
@@ -3596,6 +3596,53 @@ pub fn infer_expr(
         expected.clone(),
         scope.clone(),
     )
+}
+
+pub fn match_unguarded_absent_arm_index(arm_nodes: Rc<Vec<Rc<Node>>>) -> i64 {
+    Rc::new(
+        arm_nodes
+            .clone()
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, v)| (i as i64, v))
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(-1, |acc: i64, pair: (i64, Rc<Node>)| {
+        if (acc.clone() >= 0) {
+            acc.clone()
+        } else {
+            if ((crate::v1_std_core::arm_guard(pair.1.clone()) == std::option::Option::None)
+                && crate::v1_compiler_infer_patterns::pattern_matches_constructor(
+                    crate::v1_std_core::arm_pattern(pair.1.clone()),
+                    "Absent".to_string(),
+                ))
+            {
+                pair.0.clone()
+            } else {
+                acc.clone()
+            }
+        }
+    })
+}
+
+pub fn optional_scrutinee_binding_is_present(
+    scrut_type: Rc<Node>,
+    arm_pattern: Rc<MatchPattern>,
+    arm_index: i64,
+    absent_arm_index: i64,
+) -> bool {
+    {
+        let is_bind = match (*arm_pattern.clone()).clone() {
+            MatchPattern::Bind { declaration: _, .. } => true,
+            _ => false,
+        };
+        (((is_bind.clone() && (absent_arm_index.clone() >= 0))
+            && (arm_index.clone() > absent_arm_index.clone()))
+            && (scrut_type.return_cardinality.clone() == Cardinality::CardOptional))
+    }
 }
 
 pub fn list_literal_optional_member_diags(
@@ -11628,22 +11675,47 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scrut_typed.inferred.clone(),
             );
             let scrut_provenance = classify_binding_provenance(scrut.clone(), scope.clone());
+            let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes.clone());
             let arm_infer_results = Rc::new({
                 let mut __result = Vec::new();
-                for arm_node in arm_nodes.iter().cloned() {
+                for arm_pair in Rc::new(
+                    arm_nodes
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
                     __result.push({
+                        let arm_node = arm_pair.1.clone();
                         let arm_pat = crate::v1_std_core::arm_pattern(arm_node.clone());
                         let arm_g = crate::v1_std_core::arm_guard(arm_node.clone());
                         let arm_b = crate::v1_std_core::arm_body(arm_node.clone());
+                        let arm_subject = if optional_scrutinee_binding_is_present(
+                            scrut_rt.clone(),
+                            arm_pat.clone(),
+                            arm_pair.0.clone(),
+                            absent_arm_index.clone(),
+                        ) {
+                            crate::v1_compiler_infer_patterns::pattern_subject_from_node(
+                                crate::v1_std_core::with_required_cardinality(scrut_rt.clone()),
+                            )
+                        } else {
+                            scrut_subject.clone()
+                        };
                         let typed_pattern = annotate_pattern_parent_enums(
                             arm_pat.clone(),
-                            scrut_subject.clone(),
+                            arm_subject.clone(),
                             scope.clone(),
                         );
                         let pattern_result = extend_scope_with_pattern_node(
                             scope.clone(),
                             typed_pattern.clone(),
-                            scrut_subject.clone(),
+                            arm_subject.clone(),
                             scrut_provenance.clone(),
                         );
                         let arm_scope = pattern_result.scope.clone();
