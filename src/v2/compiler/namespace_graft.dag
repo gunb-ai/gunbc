@@ -44,6 +44,7 @@ import v2.extdeps.languages.dag {
   dag_grammar_top_level_item_expr,
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
+  namespace_graft_module_body_identity,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -633,10 +634,21 @@ fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
   }
 }
 
+// The body carries its identity projection first (namespace_graft_module_body_identity):
+// the producer marks where the spine ends. See the reader note beside
+// namespace_graft_node_is_module_body in v2.extdeps.languages.dag.
 fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: edges,
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^grammar_production_identity_node_projection,
+          target: namespace_graft_atom_node(id: namespace_graft_module_body_identity)
+        )
+      ],
+      edges
+    ),
     occurrence_id: OccurrenceSynthetic
   }
 }
