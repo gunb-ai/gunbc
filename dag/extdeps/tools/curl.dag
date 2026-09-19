@@ -58,6 +58,17 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data curl_program: NonEmptyStr = "curl"
 
+// A bounded GET as argv words: -f makes an HTTP error a non-zero exit instead of a body, -sS keeps
+// the error text on stderr while suppressing the progress meter.
+fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second) -> List<String> {
+  [
+    curl_program as String, "-fsS",
+    "--connect-timeout", to_string(second_count(s: connect_timeout)),
+    "--max-time", to_string(second_count(s: max_time)),
+    url,
+  ]
+}
+
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
 }
