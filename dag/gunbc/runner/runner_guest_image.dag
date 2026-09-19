@@ -33,7 +33,7 @@ import extdeps.virtualization.firecracker {
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
-  Description, After, Wants, SuccessAction, FailureAction,
+  Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
   ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
@@ -419,7 +419,7 @@ fn runner_guest_listener_command() -> NonEmptyStr {
 // gunbc.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
 // `poweroff-force` skips the orderly stop of other units but still kills every process and unmounts
 // before powering off -- a one-job VM has nothing else whose orderly stop matters.
-data runner_guest_agent_end_action: NonEmptyStr = "poweroff-force" as NonEmptyStr
+data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
 
 fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
   ServiceUnitFile {

@@ -125,12 +125,55 @@ type SystemdUnitDirective
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
-  | SuccessAction { action: NonEmptyStr }
-  | FailureAction { action: NonEmptyStr }
+  | SuccessAction { action: SystemdUnitStateAction }
+  | FailureAction { action: SystemdUnitStateAction }
 
-// systemd.unit(5), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops cleanly
-// or enters the failed state (none, reboot, poweroff, exit, halt, kexec, each with -force and
-// -immediate strengths). Carried as the upstream value string, as Restart= and Type= are here.
+// systemd.unit(5) (v255), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops
+// cleanly or enters the failed state. The value set is upstream's and CLOSED, so it is a coproduct
+// here, exactly as ExitType= and KillMode= are: a misspelled action has no constructor, rather than
+// rendering a unit systemd refuses at load inside a guest nobody is watching. The -force strengths
+// skip the orderly stop of other units but still kill every process and unmount; -immediate skips
+// even that.
+type SystemdUnitStateAction
+  = UnitActionNone
+  | UnitActionReboot
+  | UnitActionRebootForce
+  | UnitActionRebootImmediate
+  | UnitActionPoweroff
+  | UnitActionPoweroffForce
+  | UnitActionPoweroffImmediate
+  | UnitActionExit
+  | UnitActionExitForce
+  | UnitActionSoftReboot
+  | UnitActionSoftRebootForce
+  | UnitActionKexec
+  | UnitActionKexecForce
+  | UnitActionKexecImmediate
+  | UnitActionHalt
+  | UnitActionHaltForce
+  | UnitActionHaltImmediate
+
+fn systemd_unit_state_action_wire(action: SystemdUnitStateAction) -> String {
+  match action {
+    UnitActionNone => "none"
+    UnitActionReboot => "reboot"
+    UnitActionRebootForce => "reboot-force"
+    UnitActionRebootImmediate => "reboot-immediate"
+    UnitActionPoweroff => "poweroff"
+    UnitActionPoweroffForce => "poweroff-force"
+    UnitActionPoweroffImmediate => "poweroff-immediate"
+    UnitActionExit => "exit"
+    UnitActionExitForce => "exit-force"
+    UnitActionSoftReboot => "soft-reboot"
+    UnitActionSoftRebootForce => "soft-reboot-force"
+    UnitActionKexec => "kexec"
+    UnitActionKexecForce => "kexec-force"
+    UnitActionKexecImmediate => "kexec-immediate"
+    UnitActionHalt => "halt"
+    UnitActionHaltForce => "halt-force"
+    UnitActionHaltImmediate => "halt-immediate"
+  }
+}
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
@@ -540,8 +583,8 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
-    SuccessAction { action: a } => join(["SuccessAction=", a as String], "")
-    FailureAction { action: a } => join(["FailureAction=", a as String], "")
+    SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
+    FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
 }
 
