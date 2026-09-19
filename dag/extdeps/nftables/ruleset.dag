@@ -48,19 +48,23 @@ fn nft_chain_type_wire(t: NftChainType) -> String {
 type NftHook
   = NftForward
   | NftPostrouting
+  | NftPrerouting
 
 // PRIORITY IS AN INTEGER WITH NAMED LANDMARKS, and the landmarks are the ones nftables itself
-// documents: filter is 0, srcnat is 100. They are named rather than written as literals at the call
+// documents: filter is 0, srcnat is 100, raw is -300. raw runs BEFORE connection tracking (-200), so
+// a packet dropped there never creates a conntrack entry at all. They are named rather than written as literals at the call
 // site because a rule installed at the wrong priority still loads, still matches, and simply runs
 // on the wrong side of another subsystem's rules -- a silent misordering rather than a refusal.
 type NftChainPriority
   = NftPriorityFilter
   | NftPrioritySrcnat
+  | NftPriorityRaw
 
 fn nft_chain_priority_wire(p: NftChainPriority) -> String {
   match p {
     NftPriorityFilter => "0"
     NftPrioritySrcnat => "100"
+    NftPriorityRaw => "-300"
   }
 }
 
@@ -75,6 +79,7 @@ fn nft_hook_wire(h: NftHook) -> String {
   match h {
     NftForward => "forward"
     NftPostrouting => "postrouting"
+    NftPrerouting => "prerouting"
   }
 }
 

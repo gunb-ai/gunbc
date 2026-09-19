@@ -26,21 +26,36 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // conntrack(8) from conntrack-tools, the userspace reader and writer of the kernel's connection
-// tracking table. Only the two operations a table keyed by ORIGINAL SOURCE needs are modeled: delete
-// the flows a source opened, and list them. `-s` filters on the original-direction source, which for
-// a masqueraded guest is the guest's own address -- the translated address appears only on the
-// reply tuple, so filtering on it would miss every flow a guest opened.
+// tracking table. Only deleting and listing flows by an original-tuple address are modeled. For a
+// masqueraded guest the original tuple carries the guest's own address -- the translated address
+// appears only on the reply tuple, so filtering on it would miss every flow a guest opened.
 data conntrack_program: NonEmptyStr = "conntrack"
+
+// A FLOW HAS TWO ADDRESSES IN ITS ORIGINAL TUPLE AND conntrack(8) FILTERS EACH SEPARATELY: `-s` is
+// the original source, `-d` the original destination. A guest that opened a flow is its original
+// source; a flow the HOST opened toward the guest has the guest as original destination. Flushing by
+// one filter leaves every flow of the other kind, so the filter is a parameter rather than a choice
+// baked into the command.
+type ConntrackOriginalAddress
+  = ConntrackOriginalSource
+  | ConntrackOriginalDestination
+
+fn conntrack_original_address_flag(f: ConntrackOriginalAddress) -> String {
+  match f {
+    ConntrackOriginalSource => "-s"
+    ConntrackOriginalDestination => "-d"
+  }
+}
 
 // `-D` WITH NO MATCHING ENTRY EXITS NONZERO ("0 flow entries have been deleted"), so its exit status
 // is not a success signal a caller may gate on. The deletion's outcome is established by the list
 // that follows it, never by this command's exit.
-fn conntrack_delete_by_source_command(source: String) -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: ["-D", "-s", source])
+fn conntrack_delete_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-D", conntrack_original_address_flag(f: filter), address])
 }
 
 // `-L` prints one line per flow on stdout and a summary on stderr, so the count of stdout lines is
 // the number of surviving flows and an empty stdout with exit zero is the empty reading.
-fn conntrack_list_by_source_command(source: String) -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: ["-L", "-s", source])
+fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-L", conntrack_original_address_flag(f: filter), address])
 }

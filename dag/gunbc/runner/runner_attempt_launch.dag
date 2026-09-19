@@ -474,8 +474,12 @@ fn work_standing_from_vmm_exit(exit_code: Int) -> WorkNotEstablished {
 //
 // The image lives under the attempt's jail root (runner_microvm_attempt_jail_base), so teardown's
 // one subtree to prove absent already contains it; nothing here adds a second location.
+// THE READING NAMES THE IMAGE IT READ. A superblock read of some other image -- the previous
+// attempt's, another slot's -- says nothing about this plan's workspace, so the path travels with
+// the reading and staging compares it against the plan's own workspace_path (sunny-ant-606 ruling on
+// #11675). The path is attempt-bound by construction: it sits under the attempt's jail root.
 type WorkspaceReadback
-  = WorkspaceSuperblockRead { ext_magic: Bool, bytes: ByteSize }
+  = WorkspaceSuperblockRead { image_path: String, ext_magic: Bool, bytes: ByteSize }
   | WorkspaceReadbackFailed { reason: NonEmptyStr }
 
 type WorkspaceStagingObservation {
@@ -491,6 +495,7 @@ type WorkspaceStanding
   | WorkspaceNotExtFilesystem
   | WorkspaceSizeMismatch { observed: ByteSize, expected: ByteSize }
   | WorkspaceUnreadable { reason: NonEmptyStr }
+  | WorkspaceReadbackOfDifferentImage { read: String, planned: String }
 
 fn runner_attempt_workspace_bytes() -> ByteSize {
   mebibyte_to_byte_size(m: runner_attempt_workspace_size)
@@ -498,7 +503,7 @@ fn runner_attempt_workspace_bytes() -> ByteSize {
 
 // THE ORDER IS CAUSAL: a failed create makes the format's exit meaningless, and a failed format
 // makes the superblock reading meaningless, so the earliest failure is the one reported.
-fn workspace_standing(obs: WorkspaceStagingObservation) -> WorkspaceStanding {
+fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) -> WorkspaceStanding {
   if obs.create_exit != 0 {
     WorkspaceCreateFailed { exit: obs.create_exit }
   } else if obs.format_exit != 0 {
@@ -506,8 +511,10 @@ fn workspace_standing(obs: WorkspaceStagingObservation) -> WorkspaceStanding {
   } else {
     match obs.readback {
       WorkspaceReadbackFailed { reason: r } => WorkspaceUnreadable { reason: r }
-      WorkspaceSuperblockRead { ext_magic: m, bytes: b } =>
-        if !m {
+      WorkspaceSuperblockRead { image_path: read, ext_magic: m, bytes: b } =>
+        if read != planned_path {
+          WorkspaceReadbackOfDifferentImage { read: read, planned: planned_path }
+        } else if !m {
           WorkspaceNotExtFilesystem
         } else if byte_size_count(b: b) != byte_size_count(b: runner_attempt_workspace_bytes()) {
           WorkspaceSizeMismatch { observed: b, expected: runner_attempt_workspace_bytes() }
@@ -536,14 +543,14 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       stage_jail_root: _,
       stage_kernel: _,
       stage_rootfs: _,
-      workspace_path: _,
+      workspace_path: planned,
       workspace_create: _,
       workspace_format: _,
       kvm_device: _,
       vm_config: _,
       jailer: j,
     } => {
-      let s = workspace_standing(obs: obs)
+      let s = workspace_standing(obs: obs, planned_path: planned)
       match s {
         WorkspaceReady => StagingAdmitsJailer { jailer: j }
         WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
@@ -551,6 +558,7 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
         WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
         WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
         WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+        WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
       }
     }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized

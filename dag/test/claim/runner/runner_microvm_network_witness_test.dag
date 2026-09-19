@@ -6,7 +6,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_scope, render_mac_address }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv1 }
 import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_tap_device_name, runner_slot_guest_mac,
   runner_slot_host_address, runner_slot_guest_address,
@@ -16,11 +16,15 @@ import gunbc.runner_microvm_network {
   netmask_of_prefix, runner_microvm_network_supernet,
   runner_microvm_network_prefix_length, runner_microvm_network_supernet_prefix,
   SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted, SlotNetworkUnobservable,
-  SlotNetworkFact, TapUnheldFact, GuestConntrackEmptyFact, RulesetMatchesConvergedFact,
+  SlotNetworkFact, TapUnheldFact, GuestOriginatedConntrackEmptyFact, GuestDestinedConntrackEmptyFact,
+  RulesetMatchesConvergedFact,
+  SlotNetworkSubject, slot_network_subject, ConvergedRuleset,
+  TapReading, GuestConntrackReading, RulesetReading,
   TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
   GuestConntrackEmptyAfterFlush, GuestConntrackResidue, GuestConntrackUnreadable,
   RulesetListed, RulesetUnreadable, slot_network_readback,
-  runner_slot_conntrack_flush_command, runner_slot_conntrack_list_command,
+  runner_slot_conntrack_flush_commands,
+  runner_slot_guest_originated_conntrack_list_command, runner_slot_guest_destined_conntrack_list_command,
   runner_microvm_nft_list_command, slot_network_readback_consumer_frontier,
   runner_microvm_guest_resolver, guest_resolver_configuration_frontier,
   runner_microvm_nft_ruleset_text_for,
@@ -28,6 +32,7 @@ import gunbc.runner_microvm_network {
 import gunbc.runner.runner_host_filtered_egress { runner_host_egress_policy }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.runner_microvm_network { TapHolderObservation, GuestConntrackObservation }
 import extdeps.exec.command { argv_words }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -199,10 +204,31 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 // default-deny into default-accept for every port nobody named.
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
   let text = runner_microvm_shared_host_nft_ruleset_text()
-  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
-    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
+  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
+    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
+}
+
+// THE GUEST-SIDE ESTABLISHED ACCEPT SITS BELOW EVERY INVARIANT DENIAL. The red is the previous order,
+// where `iifname tap ct state established,related accept` came first: an established or related flow
+// toward a denied range (a related ICMP, a flow predating a ruleset change) was accepted before the
+// denial could see it. Only the reply-direction (oifname) established rule precedes the denials.
+test fn no_guest_side_accept_precedes_an_invariant_denial() -> Bool {
+  let text = runner_microvm_shared_host_nft_ruleset_text()
+  !string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop")
+    && string_contains(s: text, pattern: "oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop")
+}
+
+// v6 FROM A TAP IS REFUSED BEFORE CONNECTION TRACKING, SO NO v6 STATE CAN OUTLIVE AN ATTEMPT. The drop
+// is in a prerouting chain at raw priority (-300, below conntrack's -200), which also covers v6 the
+// guest sends to the HOST, which forward never sees. The red is the v6 drop living in forward, after
+// conntrack has already created the entry.
+test fn tap_ipv6_is_refused_at_raw_before_conntrack_and_not_in_forward() -> Bool {
+  let text = runner_microvm_shared_host_nft_ruleset_text()
+  string_contains(s: text, pattern: "type filter hook prerouting priority -300; policy accept;\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
+    && !string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" meta nfproto ipv6")
+    && length(split(s: text, delimiter: "meta nfproto ipv6")) == 2
 }
 
 data converged_digest: Sha256Digest = Sha256Digest {
@@ -213,13 +239,56 @@ data drifted_digest: Sha256Digest = Sha256Digest {
   hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex,
 }
 
+fn subject(i: Nat) -> SlotNetworkSubject {
+  slot_network_subject(slot: slot(i: i))
+}
+
+data converged_generation: Int = 7
+
+fn converged() -> ConvergedRuleset {
+  ConvergedRuleset { host: operator_host_srv2, generation: converged_generation, digest: converged_digest }
+}
+
+fn tap(i: Nat, o: TapHolderObservation) -> TapReading {
+  TapReading { subject: subject(i: i), observation: o }
+}
+
+fn ct(i: Nat, o: GuestConntrackObservation) -> GuestConntrackReading {
+  GuestConntrackReading { subject: subject(i: i), observation: o }
+}
+
+fn listed(d: Sha256Digest) -> RulesetReading {
+  RulesetReading { host: operator_host_srv2, generation: converged_generation, observation: RulesetListed { digest: d } }
+}
+
+fn clean_ct(i: Nat) -> GuestConntrackReading {
+  ct(i: i, o: GuestConntrackEmptyAfterFlush)
+}
+
+// Sanitizes slot 1 from the given readings.
+fn readback_for_slot_1(t: TapReading, from_guest: GuestConntrackReading, to_guest: GuestConntrackReading, r: RulesetReading) -> SlotNetworkReadback {
+  slot_network_readback(
+    expected: subject(i: 1),
+    converged: converged(),
+    tap: t,
+    guest_originated: from_guest,
+    guest_destined: to_guest,
+    ruleset: r,
+  )
+}
+
+fn fact_name(f: SlotNetworkFact) -> String {
+  match f {
+    TapUnheldFact => "tap"
+    GuestOriginatedConntrackEmptyFact => "conntrack-from"
+    GuestDestinedConntrackEmptyFact => "conntrack-to"
+    RulesetMatchesConvergedFact => "ruleset"
+  }
+}
+
 fn refuted_fact(r: SlotNetworkReadback) -> String {
   match r {
-    SlotNetworkRefuted { fact: f, detail: _ } => match f {
-      TapUnheldFact => "tap"
-      GuestConntrackEmptyFact => "conntrack"
-      RulesetMatchesConvergedFact => "ruleset"
-    }
+    SlotNetworkRefuted { fact: f, detail: _ } => fact_name(f: f)
     SlotNetworkConfirmed => "confirmed"
     SlotNetworkUnobservable { fact: _, reason: _ } => "unobservable"
   }
@@ -227,89 +296,89 @@ fn refuted_fact(r: SlotNetworkReadback) -> String {
 
 fn unobservable_fact(r: SlotNetworkReadback) -> String {
   match r {
-    SlotNetworkUnobservable { fact: f, reason: _ } => match f {
-      TapUnheldFact => "tap"
-      GuestConntrackEmptyFact => "conntrack"
-      RulesetMatchesConvergedFact => "ruleset"
-    }
+    SlotNetworkUnobservable { fact: f, reason: _ } => fact_name(f: f)
     SlotNetworkConfirmed => "confirmed"
     SlotNetworkRefuted { fact: _, detail: _ } => "refuted"
   }
 }
 
-// THE POSITIVE CONTROL: all three facts hold, and only then is the readback confirmed.
-test fn a_clean_slot_network_is_confirmed_only_when_all_three_facts_hold() -> Bool {
-  refuted_fact(r: slot_network_readback(
-    tap: TapPresentUnheld,
-    conntrack: GuestConntrackEmptyAfterFlush,
-    ruleset: RulesetListed { digest: converged_digest },
-    converged_ruleset: converged_digest,
+// THE POSITIVE CONTROL: every fact holds for the subject being sanitized, and only then is it confirmed.
+test fn a_clean_slot_network_is_confirmed_only_when_every_fact_holds() -> Bool {
+  refuted_fact(r: readback_for_slot_1(
+    t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
   )) == "confirmed"
 }
 
-// EACH FACT REFUTES ON ITS OWN, AND THE REFUTATION NAMES IT. A VMM fd still on the tap, a flow that
-// survived the flush (the next attempt reuses this guest address), and a ruleset some process edited
-// are three different remedies, so the fact is carried rather than a bare false.
+// EACH FACT REFUTES ON ITS OWN, AND THE REFUTATION NAMES IT. A VMM fd still on the tap, a flow in
+// either original direction that survived the flush, and an edited ruleset are different remedies.
 test fn each_fact_refutes_alone_and_names_itself() -> Bool {
-  refuted_fact(r: slot_network_readback(
-    tap: TapHeld { holders: 1 },
-    conntrack: GuestConntrackEmptyAfterFlush,
-    ruleset: RulesetListed { digest: converged_digest },
-    converged_ruleset: converged_digest,
+  refuted_fact(r: readback_for_slot_1(
+    t: tap(i: 1, o: TapHeld { holders: 1 }), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
   )) == "tap"
-    && refuted_fact(r: slot_network_readback(
-      tap: TapMissing,
-      conntrack: GuestConntrackEmptyAfterFlush,
-      ruleset: RulesetListed { digest: converged_digest },
-      converged_ruleset: converged_digest,
+    && refuted_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapMissing), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
     )) == "tap"
-    && refuted_fact(r: slot_network_readback(
-      tap: TapPresentUnheld,
-      conntrack: GuestConntrackResidue { entries: 2 },
-      ruleset: RulesetListed { digest: converged_digest },
-      converged_ruleset: converged_digest,
-    )) == "conntrack"
-    && refuted_fact(r: slot_network_readback(
-      tap: TapPresentUnheld,
-      conntrack: GuestConntrackEmptyAfterFlush,
-      ruleset: RulesetListed { digest: drifted_digest },
-      converged_ruleset: converged_digest,
+    && refuted_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: ct(i: 1, o: GuestConntrackResidue { entries: 2 }), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
+    )) == "conntrack-from"
+    && refuted_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: ct(i: 1, o: GuestConntrackResidue { entries: 1 }), r: listed(d: converged_digest),
+    )) == "conntrack-to"
+    && refuted_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1), r: listed(d: drifted_digest),
     )) == "ruleset"
 }
 
-// "COULD NOT READ" IS NOT "REFUTED" -- and a refutation elsewhere outranks it. The red for the first
-// half is an unreadable conntrack table reported as residue; for the second, a drifted ruleset
-// hidden behind a probe failure on another fact.
+// "COULD NOT READ" IS NOT "REFUTED" -- and a refutation elsewhere outranks it.
 test fn an_unreadable_fact_is_unobservable_and_a_refutation_elsewhere_outranks_it() -> Bool {
-  unobservable_fact(r: slot_network_readback(
-    tap: TapPresentUnheld,
-    conntrack: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr },
-    ruleset: RulesetListed { digest: converged_digest },
-    converged_ruleset: converged_digest,
-  )) == "conntrack"
-    && unobservable_fact(r: slot_network_readback(
-      tap: TapHoldersUnreadable { reason: "fd scan refused" as NonEmptyStr },
-      conntrack: GuestConntrackEmptyAfterFlush,
-      ruleset: RulesetUnreadable { reason: "nft list refused" as NonEmptyStr },
-      converged_ruleset: converged_digest,
-    )) == "tap"
-    && refuted_fact(r: slot_network_readback(
-      tap: TapPresentUnheld,
-      conntrack: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr },
-      ruleset: RulesetListed { digest: drifted_digest },
-      converged_ruleset: converged_digest,
+  unobservable_fact(r: readback_for_slot_1(
+    t: tap(i: 1, o: TapPresentUnheld),
+    from_guest: ct(i: 1, o: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr }),
+    to_guest: clean_ct(i: 1),
+    r: listed(d: converged_digest),
+  )) == "conntrack-from"
+    && refuted_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld),
+      from_guest: ct(i: 1, o: GuestConntrackUnreadable { reason: "conntrack table not readable" as NonEmptyStr }),
+      to_guest: clean_ct(i: 1),
+      r: listed(d: drifted_digest),
     )) == "ruleset"
 }
 
-// THE FLUSH AND THE LIST ARE KEYED BY THE GUEST'S ORIGINAL SOURCE. A masqueraded flow carries the
-// host's address only on its reply tuple, so a flush keyed any other way leaves every flow the guest
-// opened -- and the next attempt in this slot inherits them. The red is a slot's commands naming a
-// different slot's guest address.
-test fn conntrack_commands_are_keyed_by_this_slots_guest_source() -> Bool {
+// SLOT A'S CLEAN READINGS CANNOT SANITIZE SLOT B. Every reading below is clean, but one fact at a time
+// is read about slot 2 -- or, for the ruleset, on another host or at another converge generation --
+// while slot 1 is the subject. Each yields Unobservable for exactly that fact, never Confirmed. The red
+// is a fold that inspects only the observation (sunny-ant-606 ruling on #11675).
+test fn readings_about_another_subject_never_sanitize_this_one() -> Bool {
+  unobservable_fact(r: readback_for_slot_1(
+    t: tap(i: 2, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
+  )) == "tap"
+    && unobservable_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 2), to_guest: clean_ct(i: 1), r: listed(d: converged_digest),
+    )) == "conntrack-from"
+    && unobservable_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 2), r: listed(d: converged_digest),
+    )) == "conntrack-to"
+    && unobservable_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1),
+      r: RulesetReading { host: operator_host_srv1, generation: converged_generation, observation: RulesetListed { digest: converged_digest } },
+    )) == "ruleset"
+    && unobservable_fact(r: readback_for_slot_1(
+      t: tap(i: 1, o: TapPresentUnheld), from_guest: clean_ct(i: 1), to_guest: clean_ct(i: 1),
+      r: RulesetReading { host: operator_host_srv2, generation: 6, observation: RulesetListed { digest: converged_digest } },
+    )) == "ruleset"
+}
+
+// THE FLUSHES AND LISTS COVER BOTH ORIGINAL DIRECTIONS FOR THIS SLOT'S GUEST. A flow the guest opened
+// has it as original source; a flow the host opened toward it has it as original destination. The
+// reds: a single-direction flush, or commands naming another slot's guest.
+test fn conntrack_commands_cover_both_directions_for_this_slots_guest() -> Bool {
   let net = runner_slot_network(slot: slot(i: 6))
   let guest = render_ipv4_address(addr: net.guest_address) as String
-  argv_words(command: runner_slot_conntrack_flush_command(net: net)) == ["conntrack", "-D", "-s", guest]
-    && argv_words(command: runner_slot_conntrack_list_command(net: net)) == ["conntrack", "-L", "-s", guest]
+  map(runner_slot_conntrack_flush_commands(net: net), c => join(argv_words(command: c), " "))
+    == [join(["conntrack -D -s ", guest], ""), join(["conntrack -D -d ", guest], "")]
+    && argv_words(command: runner_slot_guest_originated_conntrack_list_command(net: net)) == ["conntrack", "-L", "-s", guest]
+    && argv_words(command: runner_slot_guest_destined_conntrack_list_command(net: net)) == ["conntrack", "-L", "-d", guest]
     && guest == "172.30.6.2"
 }
 

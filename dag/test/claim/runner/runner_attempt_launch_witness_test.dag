@@ -45,7 +45,7 @@ import gunbc.runner_attempt_launch {
   WorkspaceStagingObservation, WorkspaceSuperblockRead, WorkspaceReadbackFailed,
   AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedWorkspace, StagingNotAuthorized,
   WorkspaceStanding, WorkspaceReady, WorkspaceCreateFailed, WorkspaceFormatFailed,
-  WorkspaceNotExtFilesystem, WorkspaceSizeMismatch, WorkspaceUnreadable,
+  WorkspaceNotExtFilesystem, WorkspaceSizeMismatch, WorkspaceUnreadable, WorkspaceReadbackOfDifferentImage,
   staging_verdict, runner_attempt_workspace_bytes,
   workspace_readback_command, workspace_staging_consumer_frontier,
 }
@@ -337,11 +337,19 @@ test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
 }
 
 
+fn planned_ws_path() -> String {
+  match accepted_attempt(i: 2, id: "ws1") {
+    Cons { head: a, tail: _ } =>
+      join([attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_workspace_path as String], "")
+    Empty {} => ""
+  }
+}
+
 fn good_workspace() -> WorkspaceStagingObservation {
   WorkspaceStagingObservation {
     create_exit: 0,
     format_exit: 0,
-    readback: WorkspaceSuperblockRead { ext_magic: true, bytes: runner_attempt_workspace_bytes() },
+    readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: runner_attempt_workspace_bytes() },
   }
 }
 
@@ -356,6 +364,7 @@ fn staging_label(v: AttemptStagingVerdict) -> String {
       WorkspaceNotExtFilesystem => "not-ext"
       WorkspaceSizeMismatch { observed: _, expected: _ } => "size"
       WorkspaceUnreadable { reason: _ } => "unreadable"
+      WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => "other-image"
     }
   }
 }
@@ -384,13 +393,13 @@ test fn the_jailer_is_admitted_only_onto_a_read_back_workspace() -> Bool {
       create_exit: 1, format_exit: 1, readback: WorkspaceReadbackFailed { reason: "absent" as NonEmptyStr },
     }, ground: GroundClear) == "create"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 1, readback: WorkspaceSuperblockRead { ext_magic: true, bytes: runner_attempt_workspace_bytes() },
+      create_exit: 0, format_exit: 1, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: runner_attempt_workspace_bytes() },
     }, ground: GroundClear) == "format"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { ext_magic: false, bytes: runner_attempt_workspace_bytes() },
+      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: false, bytes: runner_attempt_workspace_bytes() },
     }, ground: GroundClear) == "not-ext"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { ext_magic: true, bytes: byte_size(count: 1048576) },
+      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: byte_size(count: 1048576) },
     }, ground: GroundClear) == "size"
     && staging_for(obs: WorkspaceStagingObservation {
       create_exit: 0, format_exit: 0, readback: WorkspaceReadbackFailed { reason: "dumpe2fs exited 1" as NonEmptyStr },
@@ -411,4 +420,20 @@ test fn the_workspace_readback_reads_the_planned_image_and_its_consumer_is_a_fro
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
+}
+
+// ANOTHER IMAGE'S READBACK DOES NOT AUTHORIZE THIS PLAN. A clean ext superblock of the right size, read
+// from any path but the one this plan formatted -- the previous attempt's image, another slot's --
+// refuses. The red is a staging gate that reads only magic and size (sunny-ant-606 ruling on #11675).
+test fn another_images_readback_does_not_authorize_this_plan() -> Bool {
+  planned_ws_path() != ""
+    && staging_for(obs: WorkspaceStagingObservation {
+      create_exit: 0,
+      format_exit: 0,
+      readback: WorkspaceSuperblockRead {
+        image_path: "/srv/jailer/firecracker/other-attempt/root/work.img",
+        ext_magic: true,
+        bytes: runner_attempt_workspace_bytes(),
+      },
+    }, ground: GroundClear) == "other-image"
 }
