@@ -24,8 +24,14 @@ import v2.std.logic { Bool }
 // disposition reads it (`test.claim.namespace_` is a row there and is not a segment); every
 // other ground is an AUTHORED MODULE NAME and matches itself or a module it contains by name
 // (`a.b` seeds `a.b` and `a.b.c`, never `a.bc`).
+//
+// THE GATE ITSELF HAS BOTH KINDS (`v2.workflow.required_floor` `RequiredGateSelector`): a family
+// row is `SeedRequiredGatePrefix`, an authored-module row is `SeedRequiredGateAuthoredModule`
+// and takes the module-name rule -- the same rule site disposition applies to it, so a module
+// the gate names is prepared and planned under one reading.
 type PreparedSubjectSeedGround
   = SeedRequiredGatePrefix { prefix: String }
+  | SeedRequiredGateAuthoredModule { module_path: String }
   | SeedFloorRuntimeAuthority { module_path: String }
   | SeedChangedWitnessModule { module_path: String }
   | SeedLocalRepoWetSchedule { module_path: String }
@@ -147,6 +153,7 @@ type TouchedEntrySeedDisposition
 fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
   match ground {
     SeedRequiredGatePrefix { prefix: _ } => "SeedRequiredGatePrefix"
+    SeedRequiredGateAuthoredModule { module_path: _ } => "SeedRequiredGateAuthoredModule"
     SeedFloorRuntimeAuthority { module_path: _ } => "SeedFloorRuntimeAuthority"
     SeedChangedWitnessModule { module_path: _ } => "SeedChangedWitnessModule"
     SeedLocalRepoWetSchedule { module_path: _ } => "SeedLocalRepoWetSchedule"
@@ -168,6 +175,7 @@ fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
 fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
   match ground {
     SeedRequiredGatePrefix { prefix: _ } => true
+    SeedRequiredGateAuthoredModule { module_path: _ } => false
     SeedFloorRuntimeAuthority { module_path: _ } => false
     SeedChangedWitnessModule { module_path: _ } => false
     SeedLocalRepoWetSchedule { module_path: _ } => false
