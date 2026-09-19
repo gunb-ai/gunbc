@@ -598,7 +598,10 @@ data webhook_events_citation: ExternalAuthority = ExternalAuthority {
 // default_permissions object; a caller rendering a manifest would otherwise spell "read" itself,
 // which is the second representation of a closed sum DESIGN 3 forbids. The from_wire direction is
 // total and REFUSES an unrecognized access rather than defaulting to read: a default there would
-// silently downgrade a write permission the API actually granted (DESIGN 5).
+// silently downgrade a write permission the API actually granted (DESIGN 5). BOTH HALVES OF A PERMISSION ROW
+// cross the wire as text -- `{"contents":"write"}` -- so a caller COMPOSING a request body needs the
+// same authority for the value as for the key; gunbc.auth.heal_publisher_federation's down-scoped
+// installation-token body is one such caller.
 fn permission_access_wire_name(access: GitHubAppPermissionAccess) -> NonEmptyStr {
   match access {
     AppAccessRead => "read"

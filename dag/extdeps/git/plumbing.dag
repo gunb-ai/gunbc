@@ -128,6 +128,9 @@ fn git_commit_parents_argv(parents: GitCommitParents) -> List<String> {
   }
 }
 
+// HashObjectStdinNoWrite is the third form and the only one needing no repository: it computes the id
+// git WOULD give those exact bytes (--no-filters, so no attribute-driven conversion applies) and writes
+// no object, which is what a consumer verifying a claimed blob id against bytes it holds wants.
 // HASH-OBJECT HAS TWO FORMS HERE AND THEY ARE NOT INTERCHANGEABLE. HashObjectWrite hashes a FILE,
 // which is right when the bytes ARE a file another process produced; HashObjectWriteStdin is
 // git-hash-object(1)'s --stdin mode, whose object is exactly the bytes handed to the process, so
@@ -154,6 +157,20 @@ service git.Plumbing {
     }
     transport shell {
       argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--stdin"]
+      stdin: content
+    }
+  }
+
+  operation HashObjectStdinNoWrite {
+    input { content: String }
+    output {
+      oid: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "hash-object", "--no-filters", "--stdin"]
       stdin: content
     }
   }
