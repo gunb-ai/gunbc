@@ -4,8 +4,9 @@ import std.types { String, Bool, List, Timestamp }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance {
-  process_identity_eq, RunnerSlotIdentity, ProcessIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+  process_identity_eq, RunnerSlotIdentity, ProcessIdentity, runner_slot_instance_name }
+import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_broker_progress_watchdog {
   RemoteRegistrationEvidence,
   RemoteRegistrationObserved,
@@ -76,12 +77,15 @@ fn fixture_incarnation(slot: RunnerSlotIdentity, pid: Int, start: String) -> Run
       pid: pid,
       start_time: start as NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    unit: fixture_unit_name(slot: slot),
   }
 }
 
+// srv1's registration label set, spelled independently of runner_registration_labels and in a
+// DIFFERENT ORDER than the composition produces, so the positive control also establishes that the
+// postcondition compares by set membership rather than by list equality.
 fn fixture_labels() -> List<String> {
-  ["self-hosted", "linux", "arm64", "gunbc-heavy"]
+  ["srv1", "gunbc-heavy", "self-hosted", "linux", "arm64"]
 }
 
 fn remote_offline_evidence() -> RemoteRegistrationEvidence {
@@ -92,10 +96,20 @@ fn remote_offline_evidence() -> RemoteRegistrationEvidence {
   }
 }
 
-fn remote_online_evidence(labels: List<String>) -> RemoteRegistrationEvidence {
+// THE REMOTE'S NAME IS THE SLOT'S INSTANCE NAME (gunbc.build_cache_instance
+// runner_slot_instance_name, e.g. srv4-01) and the LOCAL UNIT is the unit named for that
+// registration (gunbc.runner_unit runner_unit_name_of_registration, e.g.
+// actions-runner@srv4-01.service), both derived from the specimen slot. The
+// postcondition does NOT join the remote name to the slot -- an inherited limitation this fixture
+// does not repair -- so no witness here establishes replacement IDENTITY; they establish labels.
+fn fixture_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: slot) as NonEmptyStr)
+}
+
+fn remote_online_evidence(slot: RunnerSlotIdentity, labels: List<String>) -> RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+      runner_name: runner_slot_instance_name(slot: slot) as NonEmptyStr,
       labels: labels,
     },
     registration_id: "reg-1",
@@ -156,7 +170,7 @@ fn connected_snapshot(act_at: Timestamp, pid: Int, start: String) -> RunnerSlotC
       observed_at: act_at,
     },
     remote: RunnerRemoteObservation {
-      evidence: remote_online_evidence(labels: fixture_labels()),
+      evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
       observed_at: act_at,
       control_plane_error_burst: false,
     },
@@ -409,7 +423,7 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    evidence: remote_online_evidence(labels: fixture_labels()),
+    evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -418,7 +432,6 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
-    expected_labels: fixture_labels(),
   ) {
     ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
     ReplacePostconditionFailed { slot: _, reason: _ } => false
@@ -435,7 +448,7 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    evidence: remote_online_evidence(labels: fixture_labels()),
+    evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -444,7 +457,6 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
-    expected_labels: fixture_labels(),
   ) {
     ReplacePostconditionFailed { slot: _, reason: _ } => true
     ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => false
@@ -629,5 +641,77 @@ test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> B
     RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
     RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
     RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
+  }
+}
+
+// ── registration-label reds for the replace postcondition ─────────────────────────────────────────
+// Each red changes ONLY the labels the successor registered with; process identity, systemd state
+// and online status are the positive control's, so a refusal here can only come from the label join.
+fn replace_postcondition_with_labels(host: HostIdentity, labels: List<String>) -> Bool {
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: host, index: 1)
+  let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
+  let after_local = RunnerLocalObservation {
+    incarnation: fixture_incarnation(slot: slot, pid: 5151, start: "91000000"),
+    systemd_active: true,
+    observed_at: act,
+  }
+  let after_remote = RunnerRemoteObservation {
+    evidence: remote_online_evidence(slot: slot, labels: labels),
+    observed_at: act,
+    control_plane_error_burst: false,
+  }
+  match verify_incarnation_replace_postcondition(
+    slot: slot,
+    prior: prior,
+    after_local: after_local,
+    after_remote: after_remote,
+  ) {
+    ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
+    ReplacePostconditionFailed { slot: _, reason: _ } => false
+  }
+}
+
+test fn postcondition_refuses_successor_missing_the_class_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv1, labels: ["self-hosted", "linux", "arm64", "srv1"])
+}
+
+test fn postcondition_refuses_successor_missing_the_host_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv1, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"])
+}
+
+// WRONG HOST: an srv3 registration must not satisfy an srv4 slot's postcondition, even though it
+// carries every class label and a host label of the right shape.
+test fn postcondition_refuses_successor_registered_under_another_hosts_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv3"])
+}
+
+test fn postcondition_accepts_the_srv4_registration_for_an_srv4_slot() -> Bool {
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv4"])
+}
+
+// GITHUB LABEL EQUIVALENCE: a mixed-case, shuffled spelling of srv4's own set is the SAME set and
+// must verify -- a case-only difference proposes no repair.
+test fn postcondition_accepts_a_case_and_order_variant_of_the_slots_labels() -> Bool {
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["SRV4", "gunbc-heavy", "ARM64", "Self-Hosted", "Linux"])
+}
+
+// ...and case folding does not launder a wrong host: SRV3 is still not srv4.
+test fn postcondition_refuses_a_mixed_case_wrong_host_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "Linux", "ARM64", "gunbc-heavy", "SRV3"])
+}
+
+// FIXTURE FIDELITY ONLY: the srv4 specimen's remote carries the instance name and its local
+// incarnation carries the unit name, and the two are distinct. This checks the fixture; it does not
+// claim production rejects a wrong remote identity.
+test fn srv4_specimen_remote_name_is_the_instance_and_local_unit_is_the_unit() -> Bool {
+  let slot = fixture_slot(host: operator_host_srv4, index: 1)
+  let unit = fixture_incarnation(slot: slot, pid: 1, start: "1").unit as String
+  match remote_online_evidence(slot: slot, labels: fixture_labels()) {
+    RemoteRegistrationObserved { registration: RunnerRemoteOnline { runner_name: name, labels: _ }, registration_id: _, grade: _ } =>
+      (name as String) == "srv4-01"
+        && unit == "actions-runner@srv4-01.service"
+        && (name as String) != unit
+    _ => false
   }
 }

@@ -809,6 +809,69 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
     }
 }
 
+/// The ceiling a CHANGED cost-debt witness is judged against, read from
+/// `v2.workflow.floor_cost_debt_edit` `cost_debt_changed_witness_ceiling_at_base` (operator ruling,
+/// 2026-09-19). The `.dag` shows the base, tokenizes both declarations, decides whether the edit
+/// is a pure conjunct removal and selects the tier and its budget. THE HOST'S SHARE ENDS AT TWO
+/// READS the fold cannot perform from here: the head file's bytes, and which comparison base the
+/// floor already resolved -- plus the floor's own discovered test-fn identities, which the model
+/// resolves a removed call against. Returns the model's edit label (for the receipt) and the budget in steps.
+pub(crate) fn cost_debt_changed_witness_ceiling(
+    base: &str,
+    rel_path: &str,
+    function: &str,
+    head_source: &str,
+    test_fn_identities: &[String],
+) -> Result<(String, u64), String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_cost_debt_edit.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_cost_debt_edit resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (Some("base".to_string()), str_value(base)),
+        (Some("path".to_string()), str_value(rel_path)),
+        (Some("function".to_string()), str_value(function)),
+        (Some("head_source".to_string()), str_value(head_source)),
+        (
+            Some("test_fn_identities".to_string()),
+            list_value_from_vec(test_fn_identities.iter().map(str_value).collect()),
+        ),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "cost_debt_changed_witness_ceiling_at_base",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("cost_debt_changed_witness_ceiling_at_base: {e}"))?;
+    let Value::Record { fields, .. } = &result else {
+        return Err(format!(
+            "cost_debt_changed_witness_ceiling_at_base returned `{}`, expected \
+             CostDebtChangedWitnessCeiling",
+            ctx.format_value(&result)
+        ));
+    };
+    // THE LABEL IS THE MODEL'S (`cost_debt_edit_label`); the host prints it and mints no wording.
+    let edit = match ctx.field(fields, "label") {
+        Some(Value::Str(label)) => label.to_string(),
+        _ => return Err("CostDebtChangedWitnessCeiling carries no `label` String".to_string()),
+    };
+    let budget = match ctx.field(fields, "budget") {
+        Some(Value::Record {
+            fields: measure, ..
+        }) => match ctx.field(measure, "count") {
+            Some(Value::Int(n)) if *n > 0 => *n as u64,
+            _ => {
+                return Err("CostDebtChangedWitnessCeiling.budget has no positive count".to_string())
+            }
+        },
+        _ => return Err("CostDebtChangedWitnessCeiling carries no budget Measure".to_string()),
+    };
+    Ok((edit, budget))
+}
+
 /// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
@@ -6651,6 +6714,25 @@ pub fn run_required_floor(
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
+    // THE TEST-FN POPULATION a changed cost-debt witness's removed calls are resolved against
+    // (`v2.workflow.floor_cost_debt_edit` `removed_call_is_test_fn`): the discovery's own
+    // identities, taken before the loop consumes `files`. Built only when some changed witness is
+    // on the cost-debt roster, since only that arm reads it.
+    let discovered_test_fn_identities: Vec<String> = if changed_witness_set
+        .iter()
+        .any(|identity| cost_debt_roster.contains(identity))
+    {
+        files
+            .iter()
+            .flat_map(|f| {
+                f.functions
+                    .iter()
+                    .map(move |function| format!("{}.{}", f.module_path, function))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     for file in files {
         let matched_prefix = long_home_prefixes
             .iter()
@@ -6760,11 +6842,42 @@ pub fn run_required_floor(
                 } else {
                     ChangedWitnessCostPolicy::Ordinary
                 };
-                // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE
-                // (`v2.workflow.required_floor` `claim_ceiling_tier`). Computed before the claim is
-                // built because the identity moves into it.
+                // THE TIER, DERIVED FROM ROSTER MEMBERSHIP (`v2.workflow.required_floor`
+                // `claim_ceiling_tier`) -- AND, FOR A CHANGED COST-DEBT ROW, FROM THE EDIT
+                // (`v2.workflow.floor_cost_debt_edit`, operator ruling 2026-09-19). A debt row has no
+                // tier of its own; a pure conjunct removal keeps the grandfathered budget and every
+                // other edit takes the new-witness one. The decision and the budget are the .dag's;
+                // the host supplies the head bytes and the comparison base it already resolved.
+                // Computed before the claim is built because the identity moves into it.
                 let eval_step_budget = if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
+                } else if cost_debt_roster.contains(&identity) {
+                    let base = floor_diff_comparison_readout()?.base().to_string();
+                    let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
+                    let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
+                        format!(
+                            "changed cost-debt witness {identity}: read {}: {e}",
+                            file.path
+                        )
+                    })?;
+                    let (edit, budget) = cost_debt_changed_witness_ceiling(
+                        &base,
+                        &rel_path,
+                        function,
+                        &head_source,
+                        &discovered_test_fn_identities,
+                    )
+                    .map_err(|e| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved \
+                                     identity={identity} — {e}"
+                        )
+                    })?;
+                    eprintln!(
+                        "[floor-cost-debt-edit] identity={identity} base={base} edit={edit} \
+                         eval_step_budget={budget}"
+                    );
+                    budget
                 } else {
                     new_witness_eval_step_budget
                 };
