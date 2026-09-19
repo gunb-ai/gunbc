@@ -2637,11 +2637,12 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // resolver's canonical atom takes its occurrence from the root it replaces; the segment atoms are
 // the mention's spelling, not mentions of their own (the collector says the same).
 //
-// SCOPE, STATED SO THE NEXT CLASS IS NOT MISTAKEN FOR THIS ONE: every suffix slot must be EMPTY. A
-// chain whose last segment carries a call or brace suffix (`a.b.f(x)`, `a.b.C { f: v }`) is the
-// call class, gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, and is
-// deliberately left to that row's trigger: this reader answers Absent for it and the existing arms
-// run unchanged.
+// SCOPE, STATED SO THE NEXT CLASS IS NOT MISTAKEN FOR THIS ONE: this reader answers only for a
+// chain whose every suffix slot is EMPTY. A chain whose LAST segment carries a CALL suffix
+// (`a.b.f(x)`) is the call class, gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, and is now read by body_lower_dotted_call_optional
+// off the same walk. A brace suffix (`a.b.C { f: v }`) still answers Absent here and there, and
+// the existing arms run unchanged for it.
 fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -2682,12 +2683,28 @@ fn body_lower_dotted_suffix_slot_is_empty(repeat_elem: Node) -> Bool {
   }
 }
 
-fn body_lower_dotted_suffix_segments_optional(
+// ONE DOTTED CHAIN, TWO LOWERED SHAPES, ONE READER. The postfix grammar admits a head followed by
+// dot-suffixes, each with an optional call slot; a chain whose slots are all EMPTY denotes a
+// qualified name and a chain whose LAST slot carries a call denotes a call on that qualified name.
+// Both readings come from this one walk so the two shapes cannot drift apart: the segment list is
+// derived once and the arm decides only how to present it.
+type BodyDottedChain
+  = BodyDottedPath { segments: List<Symbol> }
+  | BodyDottedCall { segments: List<Symbol>, call_suffix: Node }
+
+fn body_lower_dotted_suffix_tail_is_exhausted(repeat_capture: Node) -> Bool {
+  match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+    Absent => true
+    Present { value: rest } => is_empty_conj_root(n: rest)
+  }
+}
+
+fn body_lower_dotted_suffix_chain_optional(
   repeat_capture: Node,
   acc: List<Symbol>
-) -> Optional<List<Symbol>> {
+) -> Optional<BodyDottedChain> {
   if is_empty_conj_root(n: repeat_capture) {
-    optional_present(value: acc)
+    optional_present(value: BodyDottedPath { segments: acc })
   } else {
     match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
       Absent => optional_absent()
@@ -2699,9 +2716,19 @@ fn body_lower_dotted_suffix_segments_optional(
               let grown = list_snoc_item(xs: acc, item: segment)
               match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
                 Present { value: rest } =>
-                  body_lower_dotted_suffix_segments_optional(repeat_capture: rest, acc: grown)
-                Absent => optional_present(value: grown)
+                  body_lower_dotted_suffix_chain_optional(repeat_capture: rest, acc: grown)
+                Absent => optional_present(value: BodyDottedPath { segments: grown })
               }
+            } else if body_lower_dotted_suffix_tail_is_exhausted(repeat_capture: repeat_capture)
+              && body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+              optional_present(
+                value: BodyDottedCall {
+                  segments: list_snoc_item(xs: acc, item: segment),
+                  call_suffix: body_lower_postfix_projection_call_suffix_capture(
+                    repeat_elem: repeat_elem
+                  )
+                }
+              )
             } else {
               optional_absent()
             }
@@ -2720,7 +2747,7 @@ fn body_lower_qualified_name_spine_node(segments: List<Symbol>, source: Node) ->
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: source.occurrence_id)
 }
 
-fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
+fn body_lower_dotted_chain_optional(node: Node) -> Optional<BodyDottedChain> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => optional_absent()
@@ -2728,19 +2755,78 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
       match body_lower_dotted_head_symbol_optional(node: pair.left) {
         Absent => optional_absent()
         Present { value: head } =>
-          match body_lower_dotted_suffix_segments_optional(repeat_capture: pair.right, acc: Empty) {
+          match body_lower_dotted_suffix_chain_optional(repeat_capture: pair.right, acc: Empty) {
             Absent => optional_absent()
-            Present { value: suffixes } =>
-              match suffixes {
-                Empty => optional_absent()
-                Cons { head: _, tail: _ } =>
+            Present { value: chain } =>
+              match chain {
+                BodyDottedPath { segments: suffixes } =>
+                  match suffixes {
+                    Empty => optional_absent()
+                    Cons { head: _, tail: _ } =>
+                      optional_present(
+                        value: BodyDottedPath { segments: Cons { head: head, tail: suffixes } }
+                      )
+                  }
+                BodyDottedCall { segments: suffixes, call_suffix: call_suffix } =>
                   optional_present(
-                    value: body_lower_qualified_name_spine_node(
+                    value: BodyDottedCall {
                       segments: Cons { head: head, tail: suffixes },
-                      source: node
-                    )
+                      call_suffix: call_suffix
+                    }
                   )
               }
+          }
+      }
+  }
+}
+
+fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
+  match body_lower_dotted_chain_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: chain } =>
+      match chain {
+        BodyDottedPath { segments: segments } =>
+          optional_present(
+            value: body_lower_qualified_name_spine_node(segments: segments, source: node)
+          )
+        BodyDottedCall { segments: _, call_suffix: _ } => optional_absent()
+      }
+  }
+}
+
+// THE DOTTED CALLEE. `wall.peer.peer_leaf()` is one mention applied to arguments, so it lowers to a
+// Transform whose OPERATOR is the same qualified-name spine a bare chain lowers to -- not to the
+// first atom with the rest dropped, which is what happened before this arm and is the class
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering names.
+//
+// WHERE THIS ARM SITS, AND WHY IT IS NOT A SECOND AUTHORITY FOR THE RECEIVER-METHOD CALL. The
+// postfix authority is body_lower_try_postfix_projection, and it reads a call slot on the FIRST
+// suffix: `r.method(x)` is its case and is untouched here. What it cannot read -- a chain that
+// CONTINUES past that first suffix -- is what this reader reads, and it is consulted in exactly the
+// arm where that authority would otherwise refuse. The partition is structural (does the chain
+// continue), not a threshold, so neither reader can claim the other's shape.
+//
+// WHAT IS STILL OUT OF SCOPE: a brace suffix (`a.b.C { f: v }`) and a call slot on a NON-final
+// segment (`a.f().b`) both answer Absent and reach the existing refusal unchanged.
+fn body_lower_dotted_call_optional(node: Node) -> Optional<Node> {
+  match body_lower_dotted_chain_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: chain } =>
+      match chain {
+        BodyDottedPath { segments: _ } => optional_absent()
+        BodyDottedCall { segments: segments, call_suffix: call_suffix } =>
+          match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
+            Absent => optional_absent()
+            Present { value: args } =>
+              optional_present(
+                value: body_lower_transform_call(
+                  operator: body_lower_qualified_name_spine_node(
+                    segments: segments,
+                    source: node
+                  ),
+                  args: args
+                )
+              )
           }
       }
   }
@@ -2863,12 +2949,17 @@ fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
                       )
                     )
                   } else {
-                    outcome_rejected(
-                      d: body_lower_diagnostic(
-                        reason: ^body_lowering_reason_postfix_field_access_refused,
-                        n: node
-                      )
-                    )
+                    match body_lower_dotted_call_optional(node: node) {
+                      Present { value: call } =>
+                        outcome_accepted(value: optional_present(value: call))
+                      Absent =>
+                        outcome_rejected(
+                          d: body_lower_diagnostic(
+                            reason: ^body_lowering_reason_postfix_field_access_refused,
+                            n: node
+                          )
+                        )
+                    }
                   }
               }
           }
