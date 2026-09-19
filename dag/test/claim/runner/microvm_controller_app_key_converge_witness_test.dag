@@ -1,0 +1,190 @@
+module test.claim.microvm_controller_app_key_converge_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.github_effect_perform { lifecycle_controller_app_key_path }
+import gunbc.runner_host_file_converge {
+  HostFileIdentical,
+  HostFileDiffers,
+  PathsRootOnly,
+  PathsNotRootOnly,
+}
+import gunbc.microvm_controller_app_key_converge {
+  ControllerAppKeyPlaced,
+  ControllerAppKeyPlacementRefused,
+  controller_app_key_placement,
+  KeyPathFindReading,
+  KeyFileRootOwnerRead,
+  KeyFileWrongOwner,
+  KeyFileGroupOrOtherAccess,
+  KeyFileModeNotOwnerReadOnly,
+  KeyFileAbsent,
+  KeyDirRootOnly,
+  KeyDirGroupOrOtherAccess,
+  classify_key_file_metadata,
+  classify_key_dir_metadata,
+  StagingAbsent,
+  StagingResiduePresent,
+  StagingUnobservable,
+  classify_staging_residue,
+  ControllerAppKeyReadback,
+  ControllerAppKeyHeld,
+  ControllerAppKeyNotHeld,
+  controller_app_key_custody,
+  AppKeyLeaveInPlace,
+  AppKeyWrite,
+  AppKeyActionRefused,
+  controller_app_key_action,
+  key_path_find_argv,
+  key_path_exactly_owner_read_clause,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT OF EVERY CLAIM HERE IS ONE PURE INTERFACE, with its inputs SUPPLIED (DESIGN §3, a
+// witness discriminates at one interface): the far-side find answers and the cmp/test exits are
+// constructed rather than produced by a host. The execution route (fleet SSH, sudo, Secret Manager)
+// has no hermetic seam that returns distinct answers per leg, so its inhabitance is the dispatched
+// fleet-converge mode's receipt, not a claim in this file.
+
+data held_file: KeyPathFindReading = KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: true }
+
+data held_dir: KeyPathFindReading = KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: false }
+
+fn readback_with(file: KeyPathFindReading, staging_exit: Int, content_identical: Bool) -> ControllerAppKeyReadback {
+  ControllerAppKeyReadback {
+    file: classify_key_file_metadata(reading: file),
+    dir: classify_key_dir_metadata(reading: held_dir),
+    upper_ancestors: PathsRootOnly,
+    content: if content_identical { HostFileIdentical } else { HostFileDiffers },
+    staging: classify_staging_residue(path: "/etc/gunbc/microvm-controller/app.pem.gunbc-staging", exit_code: staging_exit, stderr: ""),
+  }
+}
+
+fn is_held(r: ControllerAppKeyReadback) -> Bool {
+  match controller_app_key_custody(readback: r) {
+    ControllerAppKeyHeld => true
+    ControllerAppKeyNotHeld { causes: _ } => false
+  }
+}
+
+// ── positive control ────────────────────────────────────────────────────────────────────────────
+
+test fn a_root_owned_0400_identical_key_with_no_staging_is_held() -> Bool {
+  is_held(r: readback_with(file: held_file, staging_exit: 1, content_identical: true))
+}
+
+// ── discriminating reds, each changing ONE input from the control and asserting the REASON ──────
+
+test fn a_runner_owned_key_is_not_held_and_is_named_wrong_owner() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: false, group_or_other_bits: false, exactly_owner_read: true }, staging_exit: 1, content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileWrongOwner => true
+    _ => false
+  }
+}
+
+test fn a_group_readable_key_is_not_held_and_is_named_group_or_other_access() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: true, group_or_other_bits: true, exactly_owner_read: false }, staging_exit: 1, content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileGroupOrOtherAccess => true
+    _ => false
+  }
+}
+
+test fn an_owner_writable_key_is_not_held_and_is_named_mode_not_0400() -> Bool {
+  let r = readback_with(file: KeyPathFindReading { root_owned: true, group_or_other_bits: false, exactly_owner_read: false }, staging_exit: 1, content_identical: true)
+  !is_held(r: r) && match r.file {
+    KeyFileModeNotOwnerReadOnly => true
+    _ => false
+  }
+}
+
+test fn a_key_whose_bytes_differ_from_the_sm_version_is_not_held() -> Bool {
+  !is_held(r: readback_with(file: held_file, staging_exit: 1, content_identical: false))
+}
+
+test fn a_surviving_staging_sibling_is_not_held_and_is_named_residue() -> Bool {
+  let r = readback_with(file: held_file, staging_exit: 0, content_identical: true)
+  !is_held(r: r) && match r.staging {
+    StagingResiduePresent { path: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unrunnable_staging_test_is_unobservable_not_absent() -> Bool {
+  let r = readback_with(file: held_file, staging_exit: 2, content_identical: true)
+  !is_held(r: r) && match r.staging {
+    StagingUnobservable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_group_traversable_directory_is_not_held() -> Bool {
+  let r = ControllerAppKeyReadback {
+    file: classify_key_file_metadata(reading: held_file),
+    dir: classify_key_dir_metadata(reading: KeyPathFindReading { root_owned: true, group_or_other_bits: true, exactly_owner_read: false }),
+    upper_ancestors: PathsRootOnly,
+    content: HostFileIdentical,
+    staging: StagingAbsent,
+  }
+  !is_held(r: r) && match r.dir {
+    KeyDirGroupOrOtherAccess => true
+    _ => false
+  }
+}
+
+// ── the decision before a write ─────────────────────────────────────────────────────────────────
+
+test fn an_identical_key_with_wrong_owner_is_rewritten_not_left() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsRootOnly, content: HostFileIdentical, file: KeyFileWrongOwner) {
+    AppKeyWrite => true
+    _ => false
+  }
+}
+
+test fn a_held_key_is_left_in_place() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsRootOnly, content: HostFileIdentical, file: KeyFileRootOwnerRead) {
+    AppKeyLeaveInPlace => true
+    _ => false
+  }
+}
+
+test fn an_unsafe_directory_refuses_before_any_write() -> Bool {
+  match controller_app_key_action(dir: KeyDirGroupOrOtherAccess, upper_ancestors: PathsRootOnly, content: HostFileDiffers, file: KeyFileAbsent) {
+    AppKeyActionRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_writable_ancestor_refuses_before_any_write() -> Bool {
+  match controller_app_key_action(dir: KeyDirRootOnly, upper_ancestors: PathsNotRootOnly { paths: ["/etc/gunbc"], detail: "" }, content: HostFileDiffers, file: KeyFileAbsent) {
+    AppKeyActionRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// ── placement ───────────────────────────────────────────────────────────────────────────────────
+
+// THE REAL PATH, not a fixture: this reddens if lifecycle_controller_app_key_path moves somewhere
+// with no dedicated root-only directory or into the fabric-cell tree.
+test fn the_modeled_key_path_places_in_its_own_directory_under_etc() -> Bool {
+  match controller_app_key_placement(key_path: lifecycle_controller_app_key_path) {
+    ControllerAppKeyPlaced { key_path: _, key_dir: d, upper_ancestors: ua } =>
+      (d as String) == "/etc/gunbc/microvm-controller" && ua == ["/etc", "/etc/gunbc"]
+    ControllerAppKeyPlacementRefused { cause: _ } => false
+  }
+}
+
+test fn a_key_path_under_the_attempt_tree_is_refused() -> Bool {
+  match controller_app_key_placement(key_path: "/opt/fabric-cells/slot-1/attempts/a1/app.pem" as NonEmptyStr) {
+    ControllerAppKeyPlacementRefused { cause: c } => string_contains(s: c as String, pattern: "fabric-cell tree")
+    ControllerAppKeyPlaced { key_path: _, key_dir: _, upper_ancestors: _ } => false
+  }
+}
+
+test fn the_mode_leg_asks_for_exactly_0400() -> Bool {
+  key_path_find_argv(path: "/p", kind: "f", clause: key_path_exactly_owner_read_clause)
+    == ["find", "/p", "-maxdepth", "0", "-type", "f", "-perm", "0400"]
+}

@@ -105,6 +105,13 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
       }
   }
 }
+
+// THE ONE MILLIS-TO-SECONDS CONVERSION, beside the read that produces millis. Truncation toward the
+// epoch is POSIX seconds' own rounding (date +%s truncates), and both carriers are non-negative, so
+// a reading that satisfied EpochMs yields one that satisfies EpochSecs.
+fn epoch_secs_of_millis(millis: EpochMs) -> EpochSecs {
+  millis / 1000
+}
 // SAME OUTPUT-SHAPE DISCIPLINE AS clock_unix_millis_read: the operation's
 // output stays String, and this typed wrapper parses it with proper refusal.
 // Uses EpochSecs (std.types), the same pattern clock_unix_millis_read uses

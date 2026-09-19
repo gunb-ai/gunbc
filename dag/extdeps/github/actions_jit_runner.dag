@@ -1,6 +1,8 @@
 module extdeps.github.actions_jit_runner
 
-import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus }
+import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus, Secret }
+import extdeps.github.github { default_api_base }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -120,6 +122,57 @@ fn jit_config_mint_outcome(status: HttpStatus, encoded: String, runner_id: Int, 
           JitConfigMintRefused { status: status, reason: error_body }
         }
       }
+    }
+  }
+}
+
+// THE MINT IS ONE OPERATION ON GitHub's REST SURFACE, bound to the shape above. The Bearer is an
+// INSTALLATION access token (extdeps.github.app github.AppInstallationAccessTokens), taken as a
+// Secret input and never an argv word. The body is JitRunnerConfigRequest's wire: labels arrive as
+// the JSON array the endpoint documents, projected by jit_runner_label_wire. 201 decodes the runner
+// identity and the opaque blob; every other status is RestStatusRefused and is mapped through
+// jit_config_mint_outcome, the one authority for what a non-201 means.
+type JitConfigCreatedRunner {
+  id: Int
+}
+
+type JitConfigCreatedBody {
+  runner: JitConfigCreatedRunner
+  encoded_jit_config: String
+}
+
+service github.ActionsJitRunners {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: installation_token
+  }
+
+  operation GenerateOrganizationJitConfig {
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      name: NonEmptyStr
+      runner_group_id: Int
+      labels: List<String>
+      work_folder: NonEmptyStr
+    }
+    output {
+      result: JitConfigCreatedBody
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/orgs/\{org\}/actions/runners/generate-jitconfig",
+      body: {
+        name: name,
+        runner_group_id: runner_group_id,
+        labels: labels,
+        work_folder: work_folder
+      }
+    }
+    response {
+      201 => JitConfigCreatedBody
     }
   }
 }

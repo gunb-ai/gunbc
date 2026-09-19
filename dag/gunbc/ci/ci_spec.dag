@@ -11,7 +11,9 @@ import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
 }
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
+import extdeps.auth.jws { jws_rs256_protected_header_json }
 import extdeps.github.org_admin_auth {
+  github_app_jwt_claims_json_of,
   github_app_installation_access_token_url,
   github_app_jwt_backdate_seconds,
   github_app_jwt_lifetime_seconds,
@@ -820,6 +822,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
   function: "runner_password_session_tool_converge_ci_wet",
 }
 
+data gunbc_ci_microvm_controller_app_key_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/microvm_controller_app_key_converge.dag",
+  function: "microvm_controller_app_key_converge_ci_wet",
+}
+
 // THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
 // step hands that label over by environment, and the subject is derived from the label through the
 // modeled assignment. There is no input of any kind through which a caller could name a subject,
@@ -1011,6 +1018,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
+    gunbc_ci_microvm_controller_app_key_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
@@ -1625,9 +1633,9 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
       app_mint_step(command: "NOW=$(date +%s)"),
       app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)"),
+      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | b64url)"], "")),
       app_mint_step(command: join([
-        "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
+        "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
         to_string(github_app_jwt_backdate_seconds),
         "))\" \"$((NOW+",
         to_string(github_app_jwt_lifetime_seconds),
@@ -1768,11 +1776,11 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
     Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
     Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
-    Do { run: ci_retry_body_run(command: "APP_JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | app_b64url)") },
+    Do { run: ci_retry_body_run(command: join(["APP_JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | app_b64url)"], "")) },
     Do {
       run: ci_retry_body_run(
         command: join([
-          "APP_JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((APP_NOW-",
+          "APP_JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((APP_NOW-",
           to_string(github_app_jwt_backdate_seconds),
           "))\" \"$((APP_NOW+",
           to_string(github_app_jwt_lifetime_seconds),
@@ -1898,6 +1906,16 @@ fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
     function: gunbc_ci_runner_password_session_tool_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-password-session-tool-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_microvm_controller_app_key_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_app_key_converge_target.entry,
+    function: gunbc_ci_microvm_controller_app_key_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/microvm-controller-app-key-converge-receipt.txt"
   )
 }
 
