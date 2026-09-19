@@ -508,7 +508,15 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // that claim in a `//` block naming SHA-256 and P-256. Section 4c rules that an annotation is never
 // evidence a machine claim holds, because no Accepted program can read one, so a frontier stated in
 // prose is indistinguishable from a dangling declaration to everything except a human reader who
-// happens to look. These rows are the same statement in a carrier gunbc.dissolution_census reads.
+// happens to look.
+//
+// DECLARING THE ROWS IS HALF OF IT; BEING FOLDED IS THE OTHER HALF, AND THE FIRST CUT OF THIS
+// ROSTER HAD ONLY THE FIRST. It asserted in prose that gunbc.dissolution_census reads these rows
+// while the census folded one roster this was not a member of, so the expiry of every row below
+// was computed by nothing -- an inert lens, and the same 4c violation this roster exists to
+// correct, committed in the sentence claiming to correct it (review 68088). Membership is
+// gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
+// enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
 //
 // TWO SHAPES, AND THE DIFFERENCE IS WHETHER THE CONSUMER CAN BE CITED YET. Where the consuming
 // declaration EXISTS on a branch, the row uses std.dissolution bound_dissolution, which takes the
@@ -524,7 +532,7 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // word_equal were DELETED rather than given rows: no change named either one, and section 3c's
 // remedy for a declaration with no consumer at all is to remove it, not to describe it. They cost
 // one line each to reintroduce beside the first caller that wants them.
-data machine_word_consumer_frontier: List<FrontierRow> = [
+data machine_word_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
     reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; extdeps.crypto.sha2 sha256_add_all is the fold that consumes this, ~1,000 calls per compression block.",
