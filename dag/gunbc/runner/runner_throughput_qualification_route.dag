@@ -227,8 +227,8 @@ data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
 }
 
 data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "the CENSUS-IMAGE lane (dashboard adhoc-6b13c807-a40): the content-addressed derived live-server ISO whose NoCloud seed carries a typed stage roster" as NonEmptyStr,
-  sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is a row after the census's end stage rather than a second ISO authority" as NonEmptyStr,
+  lands_with: "gunbc#11731 (CENSUS-IMAGE 0A): extdeps.provisioning.ubuntu_seeded_install_media UbuntuSeededInstallMediaBuildInput, whose NoCloud payload is a parameter, with the built identity measured off the written ISO" as NonEmptyStr,
+  sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is rendered user-data and NoCloudSeedFile rows after the census's end stage rather than a second ISO authority" as NonEmptyStr,
 }
 
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
