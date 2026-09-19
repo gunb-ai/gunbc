@@ -64,77 +64,35 @@ fn member_nat(doc: JsonValue, key: String) -> Nat? {
   }
 }
 
-// THE DECODE, generic in the payload: the envelope is read here and the kind word and document are
-// handed to the payload's own decoder, which answers a payload or nothing. A schema that is not
-// this kind's, a missing envelope member, or a payload that did not decode are each a typed
-// refusal naming what was missing -- never a skipped event.
-fn chain_event_decode<P>(text: String, schema: String, kind_decode: fn(JsonValue, String) -> P?) -> EventDecode<P> {
-  match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap } => EventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
-    JsonDocumentParsed { value: doc } =>
-      match member_string(doc: doc, key: "schema") {
-        Absent => EventUndecodable { reason: "schema missing" }
-        Present { value: s } =>
-          if s != schema {
-            EventUndecodable { reason: join(["schema ", s, " is not ", schema], "") }
-          } else {
-            match member_nonempty(doc: doc, key: "partition") {
-              Absent => EventUndecodable { reason: "partition missing" }
-              Present { value: part } =>
-                match member_nat(doc: doc, key: "recorded_at") {
-                  Absent => EventUndecodable { reason: "recorded_at missing or not a non-negative integer" }
-                  Present { value: at } =>
-                    match member_nonempty(doc: doc, key: "actor") {
-                      Absent => EventUndecodable { reason: "actor missing" }
-                      Present { value: actor } =>
-                        match member_string(doc: doc, key: "kind") {
-                          Absent => EventUndecodable { reason: "kind missing" }
-                          Present { value: kind } =>
-                            match kind_decode(doc, kind) {
-                              Absent => EventUndecodable { reason: join(["kind ", kind, " did not decode"], "") }
-                              Present { value: payload } =>
-                                EventDecoded { event: ChainEvent {
-                                  partition: (part as String) as PartitionId,
-                                  parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
-                                  recorded_at: at,
-                                  actor: actor,
-                                  payload: payload,
-                                } }
-                            }
-                        }
-                    }
-                }
-            }
-          }
-      }
-  }
-}
+// THE ENVELOPE IS READ ONCE. One walk over the members every event carries -- schema, partition,
+// parent (the empty string is "no parent"), recorded_at, actor, kind -- answers the envelope with
+// the kind word as its payload, the schema word beside it and the document for a payload decoder.
+// Both decoders below consume this and nothing else spells the envelope: a member added here is
+// added for every reader (DESIGN §2).
+type EnvelopeRead
+  = EnvelopeReadAt { schema: String, doc: JsonValue, event: ChainEvent<String> }
+  | EnvelopeUnreadable { reason: String }
 
-// THE ENVELOPE ALONE, FOR ANY SCHEMA: the same walk as chain_event_decode without the schema check
-// and with the kind word as the payload. A reader that only needs the chain's shape -- the parent
-// links of a partition whose payload family it does not select, as the event-ref backfill does over
-// every live partition -- reads envelopes and nothing else; it decides nothing from a payload it did
-// not decode.
-fn chain_envelope_decode(text: String) -> EventDecode<String> {
+fn chain_envelope_read(text: String) -> EnvelopeRead {
   match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap } => EventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentUnreadable { gap } => EnvelopeUnreadable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
     JsonDocumentParsed { value: doc } =>
       match member_string(doc: doc, key: "schema") {
-        Absent => EventUndecodable { reason: "schema missing" }
-        Present { value: _ } =>
+        Absent => EnvelopeUnreadable { reason: "schema missing" }
+        Present { value: s } =>
           match member_nonempty(doc: doc, key: "partition") {
-            Absent => EventUndecodable { reason: "partition missing" }
+            Absent => EnvelopeUnreadable { reason: "partition missing" }
             Present { value: part } =>
               match member_nat(doc: doc, key: "recorded_at") {
-                Absent => EventUndecodable { reason: "recorded_at missing or not a non-negative integer" }
+                Absent => EnvelopeUnreadable { reason: "recorded_at missing or not a non-negative integer" }
                 Present { value: at } =>
                   match member_nonempty(doc: doc, key: "actor") {
-                    Absent => EventUndecodable { reason: "actor missing" }
+                    Absent => EnvelopeUnreadable { reason: "actor missing" }
                     Present { value: actor } =>
                       match member_string(doc: doc, key: "kind") {
-                        Absent => EventUndecodable { reason: "kind missing" }
+                        Absent => EnvelopeUnreadable { reason: "kind missing" }
                         Present { value: kind } =>
-                          EventDecoded { event: ChainEvent {
+                          EnvelopeReadAt { schema: s, doc: doc, event: ChainEvent {
                             partition: (part as String) as PartitionId,
                             parent: match member_string(doc: doc, key: "parent") { Present { value: p } => if p == "" { none } else { Present { value: p as EventId } }  Absent => none },
                             recorded_at: at,
@@ -146,5 +104,37 @@ fn chain_envelope_decode(text: String) -> EventDecode<String> {
               }
           }
       }
+  }
+}
+
+// THE DECODE, generic in the payload: the envelope is read once and the kind word and document are
+// handed to the payload's own decoder, which answers a payload or nothing. A schema that is not
+// this kind's, a missing envelope member, or a payload that did not decode are each a typed
+// refusal naming what was missing -- never a skipped event.
+fn chain_event_decode<P>(text: String, schema: String, kind_decode: fn(JsonValue, String) -> P?) -> EventDecode<P> {
+  match chain_envelope_read(text: text) {
+    EnvelopeUnreadable { reason: why } => EventUndecodable { reason: why }
+    EnvelopeReadAt { schema: s, doc: doc, event: env } =>
+      if s != schema {
+        EventUndecodable { reason: join(["schema ", s, " is not ", schema], "") }
+      } else {
+        match kind_decode(doc, env.payload) {
+          Absent => EventUndecodable { reason: join(["kind ", env.payload, " did not decode"], "") }
+          Present { value: payload } =>
+            EventDecoded { event: ChainEvent { partition: env.partition, parent: env.parent, recorded_at: env.recorded_at, actor: env.actor, payload: payload } }
+        }
+      }
+  }
+}
+
+// THE ENVELOPE ALONE, FOR ANY SCHEMA: the same read without the schema check and with the kind word
+// as the payload. A reader that only needs the chain's shape -- the parent links of a partition
+// whose payload family it does not select, as the event-ref backfill does over every live
+// partition -- reads envelopes and nothing else; it decides nothing from a payload it did not
+// decode.
+fn chain_envelope_decode(text: String) -> EventDecode<String> {
+  match chain_envelope_read(text: text) {
+    EnvelopeUnreadable { reason: why } => EventUndecodable { reason: why }
+    EnvelopeReadAt { schema: _, doc: _, event: env } => EventDecoded { event: env }
   }
 }
