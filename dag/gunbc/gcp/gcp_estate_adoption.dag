@@ -13,6 +13,13 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
+import gunbc.auth.heal_publisher_federation {
+  heal_publisher_wif_pool_id,
+  heal_publisher_wif_provider_id,
+  heal_publisher_wif_attribute_condition,
+  heal_publisher_wif_principal_set,
+  heal_publisher_service_account,
+}
 import gunbc.auth.github_gcp_federation {
   github_wif_pool_id,
   github_wif_provider_id,
@@ -137,11 +144,42 @@ fn gcp_estate_desired_convergence_binding() -> DesiredPrincipalSetBinding {
   }
 }
 
+// THE PUBLISHER'S FEDERATION IS A SECOND POOL ON PURPOSE, AND THE ROSTER SAYS SO. The repository
+// pool's provider admits any job in this repository, which is the right grain for the fleet's own
+// domains and the wrong one for a key that can write to this repository -- a pull request's job is a
+// job in this repository. The heal publisher therefore has its own pool, whose single provider pins
+// the workflow file, its ref, the event and a GitHub-hosted runner, and its own service account,
+// reachable from that pool alone (gunbc.auth.heal_publisher_federation).
+fn gcp_estate_desired_heal_publisher_pool() -> DesiredWifPool {
+  DesiredWifPool {
+    project_number: fleet_secrets_project_number,
+    pool_id: heal_publisher_wif_pool_id,
+  }
+}
+
+fn gcp_estate_desired_heal_publisher_provider() -> DesiredWifProvider {
+  DesiredWifProvider {
+    project_number: fleet_secrets_project_number,
+    pool_id: heal_publisher_wif_pool_id,
+    provider_id: heal_publisher_wif_provider_id,
+    issuer_uri: github_wif_issuer_uri as String,
+    attribute_condition: heal_publisher_wif_attribute_condition(),
+  }
+}
+
+fn gcp_estate_desired_heal_publisher_binding() -> DesiredPrincipalSetBinding {
+  DesiredPrincipalSetBinding {
+    account: heal_publisher_service_account,
+    role: role_iam_workload_identity_user,
+    member: heal_publisher_wif_principal_set(),
+  }
+}
+
 fn gcp_estate_desired_roster() -> GcpEstateDesiredRoster {
   GcpEstateDesiredRoster {
-    wif_pools: [gcp_estate_desired_github_actions_pool()],
-    wif_providers: [gcp_estate_desired_github_oidc_provider()],
-    principal_set_bindings: [gcp_estate_desired_convergence_binding()],
+    wif_pools: [gcp_estate_desired_github_actions_pool(), gcp_estate_desired_heal_publisher_pool()],
+    wif_providers: [gcp_estate_desired_github_oidc_provider(), gcp_estate_desired_heal_publisher_provider()],
+    principal_set_bindings: [gcp_estate_desired_convergence_binding(), gcp_estate_desired_heal_publisher_binding()],
   }
 }
 
