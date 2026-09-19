@@ -122,20 +122,6 @@ type ProbeWindowStanding
   | ForeignTrafficNotObserved { drain: DrainReceipt }
   | ForeignTrafficUnread { cause: NonEmptyStr, drain: DrainReceipt }
 
-fn window_isolated_requires_exclusion(s: ProbeWindowStanding) -> Bool {
-  match s {
-    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: e } =>
-      match e {
-        ExclusionEstablished { how: _, protected: _ } => true
-        ExclusionNotEstablished { cause: _ } => false
-      }
-    WindowIsolationNotEstablished { cause: _, drain: _ } => false
-    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
-    ForeignTrafficNotObserved { drain: _ } => false
-    ForeignTrafficUnread { cause: _, drain: _ } => false
-  }
-}
-
 fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
   match q {
     QueueDepthUnread { obligation: o } => DrainUnread { cause: o }
@@ -512,14 +498,6 @@ fn generation_token_delta_scoped(
   }
 }
 
-fn scrape_interval_millis(before_at: EpochSecs, after_at: EpochSecs) -> Nat? {
-  if after_at <= before_at {
-    none
-  } else {
-    nat_from_nonneg_int(n: (after_at - before_at) * 1000)
-  }
-}
-
 type ArrivalSkew
   = ArrivalSkewObserved { max_stagger_millis: Millisecond }
   | ArrivalSkewUnread { cause: NonEmptyStr }
@@ -543,16 +521,6 @@ fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
     ArrivalPolicyPoisson { request_rate: _, burstiness: _ } =>
       ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
   }
-}
-
-fn send_all_without_start_events_is_not_zero_skew(num_prompts: Nat, cap: Nat, start_event_count: Nat) -> Bool {
-  num_prompts == 4
-    && cap == 2
-    && start_event_count == 0
-    && match arrival_from_protocol(req: glm_native_smoke_protocol) {
-      ArrivalSkewUnread { cause: _ } => true
-      ArrivalSkewObserved { max_stagger_millis: _ } => false
-    }
 }
 
 data arrival_skew_comparison_bound_millis: Millisecond = millisecond(count: 250)
@@ -605,13 +573,6 @@ fn occupancy_from_body(body: String) -> OccupancySample? {
               }
           }
       }
-  }
-}
-
-fn metric_count(body: String, metric: VllmServingMetric) -> Nat? {
-  match harness_gauge_value(body: body, metric: metric) {
-    Absent => none
-    Present { value: t } => harness_gauge_count(text: t)
   }
 }
 
@@ -703,24 +664,6 @@ fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens)
   }
 }
 
-type CapacityClaim
-  = CapacityClaimUnavailable { because: NonEmptyStr }
-
-fn capacity_claim_for_window(window: ProbeWindowStanding) -> CapacityClaim {
-  match window {
-    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
-      CapacityClaimUnavailable { because: "one run does not decide saturation even under isolation" as NonEmptyStr }
-    WindowIsolationNotEstablished { cause: _, drain: _ } =>
-      CapacityClaimUnavailable { because: "this arm has no exclusive window; a latency distribution beside unattributed load is real, an aggregate capacity claim is not" as NonEmptyStr }
-    ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
-      CapacityClaimUnavailable { because: "foreign traffic was attributed on this window, so an aggregate capacity claim is not available" as NonEmptyStr }
-    ForeignTrafficNotObserved { drain: _ } =>
-      CapacityClaimUnavailable { because: "one run does not decide saturation even when foreign traffic was not observed" as NonEmptyStr }
-    ForeignTrafficUnread { cause: _, drain: _ } =>
-      CapacityClaimUnavailable { because: "foreign-traffic standing is unread, so no capacity claim is available" as NonEmptyStr }
-  }
-}
-
 type DerivedRate
   = RateFromClientOutputTokens { tokens: Nat, scrape_millis: Millisecond }
   | RateUndenominable { because: NonEmptyStr }
@@ -754,9 +697,6 @@ fn derive_rate_honest(
   }
 }
 
-type QualifiedClientRate
-  = ClientRateUnqualified { because: NonEmptyStr }
-
 type ClientRateQualificationFrontier sole_constructor {
   request_start_events: NonEmptyStr
   reserved_window: NonEmptyStr
@@ -769,66 +709,6 @@ data glm_native_qualification_frontier: ClientRateQualificationFrontier = Client
   reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over ProtectedSubjectField; the follow-up PR needs the operator to grant an exclusive Group B window" as NonEmptyStr,
   interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
   serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py file or package digest inside the running image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
-}
-
-fn occupancy_does_not_count_positively(occupancy: BoundaryOccupancyReceipt) -> QualifiedClientRate {
-  match occupancy {
-    OccupancyBoundariesUnread { cause: c } => ClientRateUnqualified { because: c }
-    OccupancyBoundariesRead { before: _, after: _ } =>
-      ClientRateUnqualified { because: "boundary occupancy is two scrapes, not a time-series over the interval; it cannot count positively toward a qualified rate" as NonEmptyStr }
-  }
-}
-
-fn qualify_client_rate(
-  subject: ServingPerformanceSubjectStanding,
-  continuity: CounterContinuity,
-  arrival: ArrivalSkew,
-  window: ProbeWindowStanding,
-  agreement: LedgerCounterAgreement,
-  occupancy: BoundaryOccupancyReceipt,
-  foreign_work: ForeignWorkBound,
-  rate: DerivedRate,
-) -> QualifiedClientRate {
-  match rate {
-    RateUndenominable { because: b } => ClientRateUnqualified { because: b }
-    RateUnreadable { because: b } => ClientRateUnqualified { because: b }
-    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } =>
-      match subject {
-        SubjectPartial { subject: _, unknown_axes: _, believed: _, would_settle: s } =>
-          ClientRateUnqualified { because: s }
-        SubjectEstablished { subject: _ } =>
-          match continuity {
-            ContinuityUnread { cause: c } => ClientRateUnqualified { because: c }
-            ExporterChanged { before: _, after: _ } =>
-              ClientRateUnqualified { because: "the exporter changed across the window, so the rate is not a single-incarnation observation" as NonEmptyStr }
-            SameExporter { start_field: _ } =>
-              if !arrival_admits_rate_comparison(s: arrival) {
-                ClientRateUnqualified { because: "arrival standing does not admit a rate comparison" as NonEmptyStr }
-              } else {
-                match window {
-                  WindowIsolationNotEstablished { cause: c, drain: _ } => ClientRateUnqualified { because: c }
-                  ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
-                    ClientRateUnqualified { because: "foreign traffic was attributed on this window, so the client rate is not a qualified comparable observation" as NonEmptyStr }
-                  ForeignTrafficUnread { cause: c, drain: _ } => ClientRateUnqualified { because: c }
-                  ForeignTrafficNotObserved { drain: _ } =>
-                    match agreement {
-                      AgreementUnread { because: c } => ClientRateUnqualified { because: c }
-                      LedgerCounterDisagree { because: c } => ClientRateUnqualified { because: c }
-                      LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
-                        occupancy_does_not_count_positively(occupancy: occupancy)
-                    }
-                  WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
-                    match agreement {
-                      AgreementUnread { because: c } => ClientRateUnqualified { because: c }
-                      LedgerCounterDisagree { because: c } => ClientRateUnqualified { because: c }
-                      LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
-                        occupancy_does_not_count_positively(occupancy: occupancy)
-                    }
-                }
-              }
-          }
-      }
-  }
 }
 
 type DecodeCorroboration
@@ -1112,9 +992,7 @@ type ServingLoadObservation sole_constructor {
   provenance: ProbeProvenance
   client_latency: ClientBenchLatency
   foreign_work: ForeignWorkBound
-  capacity_claim: CapacityClaim
   rate: DerivedRate
-  qualified_rate: QualifiedClientRate
   qualification_frontier: ClientRateQualificationFrontier
   evidence: ServingLoadEvidence
 }
@@ -1170,29 +1048,10 @@ fn serving_load_observation(
     provenance: glm_native_live_probe_provenance,
     client_latency: bench_serve_latency(e: bench, window: window),
     foreign_work: foreign,
-    capacity_claim: capacity_claim_for_window(window: window),
     rate: rate,
-    qualified_rate: qualify_client_rate(
-      subject: subject,
-      continuity: continuity,
-      arrival: arrival,
-      window: window,
-      agreement: agreement,
-      occupancy: occupancy,
-      foreign_work: foreign,
-      rate: rate,
-    ),
     qualification_frontier: glm_native_qualification_frontier,
     evidence: serving_load_evidence(before_body: before_body, after_body: after_body, bench: bench),
   }
-}
-
-fn observation_rate_is_stored_separately(_: ServingLoadObservation) -> Bool {
-  false
-}
-
-fn saturation_from_one_run(_: ServingLoadObservation) -> Bool {
-  false
 }
 
 fn observation_evidence_replays_client_facts(o: ServingLoadObservation) -> Bool {
@@ -1241,11 +1100,8 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "provenance: ", provenance_text(p: o.provenance), "\n",
     "client latency: ", client_latency_text(c: o.client_latency), "\n",
     "foreign work: ", foreign_work_text(f: o.foreign_work), "\n",
-    "capacity claim: ", capacity_claim_text(c: o.capacity_claim), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
-    "qualified rate: ", qualified_rate_text(q: o.qualified_rate), "\n",
     "qualification frontier: ", qualification_frontier_text(f: o.qualification_frontier), "\n",
-    "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
     serving_load_evidence_text(ev: o.evidence),
   ], "")
 }
@@ -1257,18 +1113,6 @@ fn foreign_work_text(f: ForeignWorkBound) -> String {
       join(["engine=", to_string(g), " client=", to_string(c), " surplus=", to_string(s)], "")
     ForeignWorkContradiction { engine_generation: g, client_output: c, because: b } =>
       join(["contradiction engine=", to_string(g), " client=", to_string(c), " ", b as String], "")
-  }
-}
-
-fn qualified_rate_text(q: QualifiedClientRate) -> String {
-  match q {
-    ClientRateUnqualified { because: b } => join(["unqualified ", b as String], "")
-  }
-}
-
-fn capacity_claim_text(c: CapacityClaim) -> String {
-  match c {
-    CapacityClaimUnavailable { because: b } => join(["unavailable ", b as String], "")
   }
 }
 
@@ -1566,14 +1410,6 @@ data glm_native_smoke_client_latency: TranscribedClientLatency = TranscribedClie
 
 data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "re-read calm-bat-65 docker-exec stdout for glm_native_smoke_protocol (256-in/128-out/prefix 0/4 prompts/inf/c=2/ignore-eos) on 192.168.1.236" as NonEmptyStr
-}
-
-data glm_native_wet_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
-  output_throughput: milli_tokens_per_second(count: 22510)
-  tpot_milli: millisecond(count: 82)
-  itl_milli: Present { value: millisecond(count: 83) }
-  ttft_milli: millisecond(count: 996)
-  standing: glm_native_wet_smoke_standing
 }
 
 fn bench_labeled_nat(body: String, label: String) -> Nat? {

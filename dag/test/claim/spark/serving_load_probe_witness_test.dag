@@ -39,19 +39,14 @@ import gunbc.spark.serving_load_probe {
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
   TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, TokenDeltaScoped, generation_token_delta, generation_token_delta_scoped,
   derive_rate_honest, serving_load_observation, serving_load_observation_text, ServingLoadObservation, tokens_per_observation_second,
-  saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
-  ClientRateUnqualified,
   occupancy_from_body, occupancy_trace_from_endpoint_scrapes, 
   itl_latency_delta, iteration_tokens_booked_delta,
   LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset,
   TokenHistogramRead, TokenHistogramUnread, TokenHistogramReset,
-  CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
   OccupancyBoundariesRead, OccupancyBoundariesUnread, OccupancySample,
-  occupancy_does_not_count_positively, qualify_client_rate,
-  send_all_without_start_events_is_not_zero_skew,
   glm_native_sweep_ttft_c8, glm_native_sweep_ttft_c16,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
   ClientBenchLatencyUnread, ClientBenchLatencyReported,
@@ -405,18 +400,6 @@ test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
   }
 }
 
-test fn one_run_does_not_decide_saturation() -> Bool {
-  let obs = fx_obs()
-  !saturation_from_one_run(obs: obs)
-    && !observation_rate_is_stored_separately(obs: obs)
-    && match obs.capacity_claim {
-      CapacityClaimUnavailable { because: _ } => true
-    }
-    && match obs.qualified_rate {
-      ClientRateUnqualified { because: _ } => true
-    }
-}
-
 test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
   match foreign_work_bound(generation: TokenDeltaRead { tokens: 100 }, client_output: ClientOutputTokensObserved { tokens: 512 }) {
     ForeignWorkContradiction { engine_generation: g, client_output: c, because: _ } => g == 100 && c == 512
@@ -691,23 +674,6 @@ test fn mixing_two_bench_stdout_bodies_cannot_write_one_receipt() -> Bool {
     a: fx_bench_receipt(stdout: fx_bench_stdout),
     b: fx_bench_receipt(stdout: fx_bench_stdout_short),
   )
-}
-
-test fn send_all_at_cap_2_with_no_start_events_is_not_zero_skew() -> Bool {
-  send_all_without_start_events_is_not_zero_skew(
-    num_prompts: 4,
-    cap: 2,
-    start_event_count: 0,
-  )
-}
-
-test fn qualify_client_rate_refuses_two_boundary_occupancy() -> Bool {
-  match occupancy_does_not_count_positively(occupancy: OccupancyBoundariesRead {
-    before: OccupancySample { running: 0, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 0 },
-    after: OccupancySample { running: 0, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 1 },
-  }) {
-    ClientRateUnqualified { because: _ } => true
-  }
 }
 
 test fn live_subject_consumes_the_derived_gb10_runtime_row() -> Bool {
