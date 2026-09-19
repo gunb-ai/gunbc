@@ -48,11 +48,11 @@ fn blocking_count_for(source: String, wanted: String) -> Int {
 // THE FOUR SOURCES DIFFER FROM THE GREEN ON ONE AXIS EACH: whether the argument handed to a
 // carrier-typed parameter is the carrier or the bare value it used to accept. Same module, same
 // callee, same arity, same field names -- so a verdict cannot be attributed to anything else.
-data projection_bare_word_red_source: String = "module probe_machine_word_projection_bare\nimport std.machine_word { Word, Width8, octet_int_values }\nimport std.types { List, Int }\nfn f() -> List<Int> { octet_int_values(octets: [Word \{ width: Width8, value: 1 \}]) }\n"
+data projection_bare_word_red_source: String = "module probe_machine_word_projection_bare\nimport std.machine_word { Word, Width8, octet_int_values }\nimport std.types { List, Int }\nfn f() -> List<Int> { octet_int_values(octets: [Word { width: Width8, value: 1 }]) }\n"
 
 data from_octets_bare_width_red_source: String = "module probe_machine_word_realizable_bare_width\nimport std.machine_word { Word, Width8, Width32, WordResult, word_from_octets_realizable }\nimport extdeps.toolchain.architecture_profile { BigEndian }\nfn f() -> WordResult { word_from_octets_realizable(width: Width32, octets: [], endianness: BigEndian) }\n"
 
-data big_endian_value_bare_member_red_source: String = "module probe_machine_word_be_value_bare\nimport std.machine_word { Word, Width8, octets_big_endian_value }\nimport std.types { Int }\nfn f() -> Int { octets_big_endian_value(octets: [Word \{ width: Width8, value: 1 \}], radix: 256, acc: 0) }\n"
+data big_endian_value_bare_member_red_source: String = "module probe_machine_word_be_value_bare\nimport std.machine_word { Word, Width8, octets_big_endian_value }\nimport std.types { Int }\nfn f() -> Int { octets_big_endian_value(octets: [Word { width: Width8, value: 1 }], radix: 256, acc: 0) }\n"
 
 // THE GREEN CONTROL, and it is load-bearing rather than decorative: three REDs alone are satisfied
 // by a compiler that has stopped judging argument types at all, or by a harness that reports a
