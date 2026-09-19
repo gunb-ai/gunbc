@@ -52,14 +52,6 @@ enum WireError: Error, LocalizedError {
     /// No answer at all: the request MAY have taken effect.
     case transport(String)
 
-    /// True for the arms after which the server's state is unknown to the app.
-    var outcomeUnknown: Bool {
-        switch self {
-        case .refused, .transport: return true
-        case .configMissing, .status: return false
-        }
-    }
-
     var errorDescription: String? {
         switch self {
         case .configMissing(let m): return m
@@ -291,9 +283,41 @@ enum WireDecode {
         guard let standing = EnrolmentStandingWire(rawValue: s) else { throw WireError.refused(at: "standing", cause: "not an enrolment standing") }
         return EnrolmentReadback(enrollment_id: try o.string("enrollment_id"), standing: standing)
     }
+    /// approval_push_custom_keys: the hint travels as the top-level custom key "notification_id"
+    /// beside aps. It is decoded and then used for NOTHING but being present: the push wakes the
+    /// list and never selects what is shown.
+    static func pushHint(_ userInfo: [AnyHashable: Any]) throws -> ApprovalPushHint {
+        guard let id = userInfo["notification_id"] as? String, !id.isEmpty else {
+            throw WireError.refused(at: "notification_id", cause: "missing")
+        }
+        return ApprovalPushHint(notification_id: id)
+    }
+
     static func redemptionResponse(_ data: Data) throws -> RedemptionOutcome {
         let o = try WireObject.document(data, allowed: ["outcome", "message"])
         return RedemptionOutcome(outcome: try o.string("outcome"), message: try o.string("message"))
+    }
+}
+
+// ── The stored request the operator decides on ───────────────────────────────────────────────
+/// gunbc.auth.approval_decision_store stored_request_json, read STRICTLY from the exact text that is
+/// signed: requester, purpose, destructive and the request's own expires_at are required, the other
+/// members the store renders are admitted and unread. A missing member or a failed parse refuses the
+/// presentation. Typed ApprovalTarget and the access lifetime wait on approval_target_frontier.
+struct StoredRequestSummary: Equatable {
+    var requester: String
+    var purpose: String
+    var destructive: Bool
+    var expires_at: String
+}
+
+extension WireDecode {
+    static func storedRequest(_ text: String) throws -> StoredRequestSummary {
+        let o = try WireObject.document(Data(text.utf8), allowed: ["kind", "escalation_id", "request_revision", "attempt", "requester", "purpose", "destructive", "issued_at", "expires_at", "key_id"])
+        guard let d = o.members["destructive"] as? Bool else { throw WireError.refused(at: "destructive", cause: "missing or not a bool") }
+        return StoredRequestSummary(
+            requester: try o.string("requester"), purpose: try o.string("purpose"),
+            destructive: d, expires_at: try o.string("expires_at"))
     }
 }
 

@@ -111,34 +111,6 @@ struct InboxView: View {
     }
 }
 
-/// What the operator decides on: the stored request's requester, purpose, destructive and expires_at
-/// (gunbc.auth.approval_decision_store stored_request_json), decoded STRICTLY from the exact text
-/// that is signed. Any missing member or a failed parse REFUSES the presentation, and the decision
-/// buttons stay disabled: the app never asks for a signature over something it could not read.
-/// Typed ApprovalTarget and the access lifetime wait on approval_target_frontier.
-struct StoredRequestSummary {
-    var requester: String
-    var purpose: String
-    var destructive: Bool
-    var expires_at: String
-
-    init(json: String) throws {
-        let v: Any
-        do { v = try JSONSerialization.jsonObject(with: Data(json.utf8)) }
-        catch { throw WireError.refused(at: "stored_request_text", cause: error.localizedDescription) }
-        guard let o = v as? [String: Any] else { throw WireError.refused(at: "stored_request_text", cause: "not an object") }
-        func string(_ k: String) throws -> String {
-            guard let s = o[k] as? String, !s.isEmpty else { throw WireError.refused(at: "stored_request_text." + k, cause: "missing") }
-            return s
-        }
-        requester = try string("requester")
-        purpose = try string("purpose")
-        guard let d = o["destructive"] as? Bool else { throw WireError.refused(at: "stored_request_text.destructive", cause: "missing") }
-        destructive = d
-        expires_at = try string("expires_at")
-    }
-}
-
 struct DetailView: View {
     @EnvironmentObject var state: AppState
     let pending: PendingApproval
@@ -194,7 +166,7 @@ struct DetailView: View {
             do {
                 let f = try await state.fetch(pending.escalation_id)
                 fetched = f
-                do { summary = try StoredRequestSummary(json: f.stored_request_text) }
+                do { summary = try WireDecode.storedRequest(f.stored_request_text) }
                 catch { self.error = error.localizedDescription }
             } catch { self.error = error.localizedDescription }
         }

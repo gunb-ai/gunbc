@@ -54,6 +54,18 @@ struct Vectors: Decodable {
         var name: String
         var value: String
     }
+    struct StoredRequest: Decodable {
+        struct Input: Decodable {
+            var requester: String
+            var purpose: String
+            var destructive: Bool
+            var expires_at: String
+        }
+        var name: String
+        var input: Input
+        /// stored_request_json over a StoredApprovalRequest carrying `input`, emitted by the witness.
+        var json: String
+    }
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
@@ -63,6 +75,8 @@ struct Vectors: Decodable {
     var path_segment: [PathSegment]
     /// surface: the header names and route paths, by name.
     var surface: [Surface]
+    /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
+    var stored_request: [StoredRequest]
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -77,6 +91,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
         XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
         XCTAssertFalse(v.surface.isEmpty, "no surface vectors")
+        XCTAssertFalse(v.stored_request.isEmpty, "no stored_request vectors")
         return v
     }
 
@@ -178,15 +193,26 @@ final class ProtocolVectorTests: XCTestCase {
         }
     }
 
-    /// The detail screen's strict read of the stored request: the store's rendering decodes, and a
-    /// record missing any of requester / purpose / destructive / expires_at is refused.
-    func testStoredRequestSummaryIsStrict() throws {
-        let full = #"{"kind":"request","escalation_id":"e","request_revision":"r","attempt":"a","requester":"ops","purpose":"Boot","destructive":true,"issued_at":"2026-09-18T12:00:00Z","expires_at":"2026-09-18T12:10:00Z","key_id":"k"}"#
-        let s = try StoredRequestSummary(json: full)
-        XCTAssertEqual(s.requester, "ops"); XCTAssertTrue(s.destructive); XCTAssertEqual(s.expires_at, "2026-09-18T12:10:00Z")
-        XCTAssertThrowsError(try StoredRequestSummary(json: #"{"kind":"request"}"#))
-        XCTAssertThrowsError(try StoredRequestSummary(json: #"{"requester":"ops","purpose":"Boot","destructive":true}"#))
-        XCTAssertThrowsError(try StoredRequestSummary(json: "not json"))
+    /// The detail screen's strict read, joined to the store's own rendering: every stored_request
+    /// vector (stored_request_json over the witness's input) decodes to exactly that input. No
+    /// rendering is typed here.
+    func testStoredRequestReadMatchesEveryVector() throws {
+        for v in try load().stored_request {
+            let s = try WireDecode.storedRequest(v.json)
+            XCTAssertEqual(s, StoredRequestSummary(requester: v.input.requester, purpose: v.input.purpose,
+                                                   destructive: v.input.destructive, expires_at: v.input.expires_at), v.name)
+        }
+        // Refusals: a record missing a required member, an unknown member, or no JSON at all.
+        XCTAssertThrowsError(try WireDecode.storedRequest(#"{"kind":"request"}"#))
+        XCTAssertThrowsError(try WireDecode.storedRequest(#"{"requester":"ops","purpose":"Boot","destructive":true,"expires_at":"x","extra":1}"#))
+        XCTAssertThrowsError(try WireDecode.storedRequest("not json"))
+    }
+
+    /// The push hint decodes from the APNs custom key and refuses its absence.
+    func testPushHintDecodesTheCustomKey() {
+        XCTAssertEqual(try? WireDecode.pushHint(["notification_id": "n-1", "aps": ["alert": "Approval requested"]]),
+                       ApprovalPushHint(notification_id: "n-1"))
+        XCTAssertThrowsError(try WireDecode.pushHint(["aps": ["alert": "x"]]))
     }
 
     /// The strict reader refuses an unknown member, an empty string, an unadmitted kind, and a

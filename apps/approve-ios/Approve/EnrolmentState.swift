@@ -55,7 +55,9 @@ enum EnrolmentStore {
         return try JSONDecoder().decode(EnrolmentState.self, from: d)
     }
 
+    /// Unenrolled is the ABSENCE of the item, never a written record: there is nothing to keep.
     static func save(_ s: EnrolmentState) throws {
+        if case .unenrolled = s { try KeychainItem.delete(account); return }
         try KeychainItem.write(account, try JSONEncoder().encode(s))
     }
 }

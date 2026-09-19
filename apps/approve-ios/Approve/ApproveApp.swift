@@ -55,9 +55,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// Background delivery: the result is the real one from re-listing, never a constant.
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
-        // The hint is opaque; it selects nothing. A push wakes the list.
-        _ = userInfo["notification_id"] as? String
-        guard let state else { return .noData }
+        // The hint is decoded (a push without one is not this protocol's) and selects nothing:
+        // a push wakes the list.
+        guard (try? WireDecode.pushHint(userInfo)) != nil, let state else { return .noData }
         switch await state.refresh() {
         case .changed: return .newData
         case .unchanged: return .noData
