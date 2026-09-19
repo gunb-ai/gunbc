@@ -19,6 +19,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.harness.harness_backend { harness_queue_from_body }
 import gunbc.spark.serving_load_probe {
+  SamePrincipal, DriverObserverSplit, provenance_text, ProbeProvenance,
   DrainObservedIdle, DrainNotIdle, ExclusionNotEstablished, ExclusionEstablished, WindowIsolated,
   WindowIsolationNotEstablished, ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread, window_from_drain,
   isolated_window, drain_from_queue, OperationLedger, LedgerClosed, LedgerIncomplete,
@@ -278,6 +279,7 @@ fn fx_obs_for(subject: ServingPerformanceSubjectStanding) -> ServingLoadObservat
     before_incarnation: fx_same_incarnation(),
     after_incarnation: fx_same_incarnation(),
     bench: fx_bench_receipt(stdout: fx_bench_stdout),
+    provenance: fx_provenance,
   )
 }
 
@@ -540,6 +542,7 @@ fn fx_obs_between(before: String, after: String) -> ServingLoadObservation {
     before_incarnation: fx_same_incarnation(),
     after_incarnation: fx_same_incarnation(),
     bench: fx_bench_receipt(stdout: fx_bench_stdout),
+    provenance: fx_provenance,
   )
 }
 
@@ -687,6 +690,7 @@ test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool {
     before_incarnation: fx_same_incarnation(),
     after_incarnation: fx_same_incarnation(),
     bench: bench,
+    provenance: fx_provenance,
   )
   let ev = obs.evidence
   ev.metrics_before.body == fx_idle
@@ -724,4 +728,13 @@ test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool {
     TokenDeltaScoped { tokens: _, incarnation: _ } => false
     TokenDeltaReset { cause: _ } => false
   }
+}
+
+data fx_provenance: ProbeProvenance = SamePrincipal { principal: "fixture principal" as NonEmptyStr }
+
+test fn the_receipt_prints_the_provenance_its_caller_supplied() -> Bool {
+  let same = serving_load_observation_text(o: fx_obs())
+  string_contains(s: same, pattern: "same-principal fixture principal")
+    && !string_contains(s: same, pattern: "driver-observer-split")
+    && string_contains(s: provenance_text(p: DriverObserverSplit { driver: "d" as NonEmptyStr, observer: "o" as NonEmptyStr }), pattern: "driver-observer-split driver=d observer=o")
 }

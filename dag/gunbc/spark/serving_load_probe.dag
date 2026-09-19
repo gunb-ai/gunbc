@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure {
   Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
 }
-import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, checked_decimal_rescale, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
+import std.decimal { ExactDecimal, canonical_exact_decimal, checked_decimal_rescale, checked_decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, CheckedIntReady, CheckedIntOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -274,7 +274,10 @@ fn milli_floor_from_exact(d: ExactDecimal) -> Nat? {
   if c.units < 0 {
     none
   } else if c.fraction_digits > 3 {
-    nat_from_nonneg_int(n: c.units / decimal_pow10(exponent: c.fraction_digits - 3))
+    match checked_decimal_pow10(exponent: c.fraction_digits - 3) {
+      CheckedIntReady { value: p } => nat_from_nonneg_int(n: c.units / p)
+      CheckedIntOverflow { cause: _ } => none
+    }
   } else {
     match checked_decimal_rescale(units: c.units, by: 3 - c.fraction_digits) {
       CheckedIntReady { value: scaled } => nat_from_nonneg_int(n: scaled)
@@ -947,6 +950,7 @@ fn serving_load_observation(
   before_incarnation: ObservedRankIncarnation?,
   after_incarnation: ObservedRankIncarnation?,
   bench: BenchServeExecution,
+  provenance: ProbeProvenance,
 ) -> ServingLoadObservation {
   let protocol = bench_execution_protocol(e: bench)
   let before_p = preemption_count(body: before_body)
@@ -985,7 +989,7 @@ fn serving_load_observation(
     ledger: ledger,
     admission: glm_native_workload_admission,
     corroboration: decode_corroboration_for_protocol(req: protocol),
-    provenance: glm_native_live_probe_provenance,
+    provenance: provenance,
     client_latency: bench_serve_latency(e: bench, window: window),
     foreign_work: foreign,
     rate: rate,
@@ -1278,11 +1282,6 @@ data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request
   ignore_eos: true,
   seed: glm_native_bench_seed,
 )
-
-data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
-  driver: "calm-bat-65 via srv1 docker exec of vllm bench serve" as NonEmptyStr,
-  observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
-}
 
 fn bench_labeled_nat(body: String, label: String) -> Nat? {
   text_labeled_count(body: text_without_sudo_prompt(body: body), label: label)

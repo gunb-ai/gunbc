@@ -24,6 +24,7 @@ import gunbc.spark.serving_arm { glm_native_concurrent_profile }
 import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_load_probe {
+  SamePrincipal,
   glm_native_live_subject_standing,
   glm_native_smoke_protocol,
   serving_load_observation, serving_load_observation_text,
@@ -154,6 +155,7 @@ fn glm_native_serving_load_run() -> ProcessExit
               before_incarnation: before_incarnation,
               after_incarnation: after_incarnation,
               bench: bench,
+              provenance: SamePrincipal { principal: join(["group-B administrator ssh session on ", operator_host_srv9 as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
             )
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
