@@ -1,6 +1,7 @@
 module gunbc.review_sheet_identity
 
 import std.types { NonEmptyStr, String, List, Bool }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -80,10 +81,58 @@ type ReviewSheetIdentitySubject {
 // forward as a standing claim that later empty answers from the same client are meaningful: a
 // different file may have been marked by a different application, so visibility is not a property
 // the client acquires once.
+// THE COMPATIBLE ARM IS MINTED FROM A COMPARISON, NEVER WRITTEN. An earlier cut gave it a free-text
+// basis: `ClientIdentityObservedCompatible { basis: NonEmptyStr }`. That arm flips this module's
+// entire hinge -- an empty legacy search becomes a SETTLED-EMPTY extent, which is the verdict that
+// authorizes adopt and create -- so a producer could mint the state that lost data in gunbc#11596
+// BY WRITING A SENTENCE. It was named ...Observed and carried no observation.
+//
+// That is the same laundering this module forbids one type below, arriving from the other side. The
+// rule there is that an operator's statement about the WORLD may not become a statement about what
+// this CREDENTIAL CAN SEE; keeping LegacyExtentAbsentByOperator out of the visibility channel is
+// worth nothing if the visibility channel itself accepts prose.
+//
+// THE FACT IS DECIDABLE AND THE CORPUS ALREADY NAMES IT. extdeps.google.drive records the
+// discriminator exactly: which OAuth principal WROTE the marker against which one is SEARCHING --
+// the bootstrap under an operator's Cloud SDK credential, the recurrence under review-sheet-writer@.
+// So the arm carries both principals in a sealed record that only this file can construct, and
+// observed_client_visibility is the only thing that constructs it, from comparing them.
+type ObservedClientMatch sole_constructor {
+  marker_writer: ServiceAccountEmail
+  searching_client: ServiceAccountEmail
+}
+
 type LegacySearchVisibilityBasis
-  = ClientIdentityObservedCompatible { basis: NonEmptyStr }
+  = ClientIdentityObservedCompatible { observed: ObservedClientMatch }
   | PositiveFindEstablishesVisibility
   | SearchVisibilityUnresolved { cause: NonEmptyStr }
+
+// TWO PRINCIPALS IN, A VERDICT OUT. A producer that cannot name the client that wrote the marker
+// cannot reach the compatible arm at all, which is the correct outcome: not knowing who wrote it is
+// precisely the state in which an empty search establishes nothing.
+fn observed_client_visibility(
+  marker_writer: ServiceAccountEmail,
+  searching_client: ServiceAccountEmail,
+) -> LegacySearchVisibilityBasis {
+  if (marker_writer as String) == (searching_client as String) {
+    ClientIdentityObservedCompatible {
+      observed: ObservedClientMatch { marker_writer: marker_writer, searching_client: searching_client },
+    }
+  } else {
+    SearchVisibilityUnresolved {
+      cause: join(
+        [
+          "the superseded marker was written by ",
+          marker_writer as String,
+          " and this search is issued by ",
+          searching_client as String,
+          "; an app-private property is invisible across OAuth clients, so an empty result from this client establishes nothing about the extent",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
 
 // AN OPERATOR'S CHOICE OF FILE IS NOT EVIDENCE ABOUT THE EXTENT, AND IT LIVES OUTSIDE THE EVIDENCE
 // CARRIER FOR THAT REASON. Selecting file A establishes WHICH FILE THE OPERATOR SELECTED. It does
@@ -283,7 +332,7 @@ fn legacy_extent_verdict(evidence: LegacyExtentEvidence) -> LegacyExtentVerdict 
           }
         SheetAbsent =>
           match v {
-            ClientIdentityObservedCompatible { basis: _ } => LegacyExtentSettledEmpty
+            ClientIdentityObservedCompatible { observed: _ } => LegacyExtentSettledEmpty
             PositiveFindEstablishesVisibility =>
               LegacyExtentUnsettled {
                 cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,

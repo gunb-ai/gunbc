@@ -1,6 +1,7 @@
 module test.claim.review_sheet_identity_witness
 
 import std.types { NonEmptyStr, String, List, Bool }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.review_sheet_drive_converge {
   ReviewSpreadsheetObservation,
   SheetObservedOne,
@@ -14,6 +15,8 @@ import gunbc.review_sheet_identity {
   ReviewSheetIdentitySubject,
   LegacySearchVisibilityBasis,
   ClientIdentityObservedCompatible,
+  ObservedClientMatch,
+  observed_client_visibility,
   PositiveFindEstablishesVisibility,
   SearchVisibilityUnresolved,
   LegacyExtentEvidence,
@@ -66,8 +69,13 @@ fn w_search(o: ReviewSpreadsheetObservation, v: LegacySearchVisibilityBasis) -> 
   LegacySearchObserved { subject: w_subject(), observation: o, visibility_basis: v }
 }
 
+// THE FIXTURE GOES THROUGH THE PRODUCTION CONSTRUCTOR, so these claims exercise the comparison the
+// producers will call rather than an arm authored to be convenient. Deleting that fold reds them.
 fn w_visible() -> LegacySearchVisibilityBasis {
-  ClientIdentityObservedCompatible { basis: "fixture: the searching client is the one that wrote the superseded marker" as NonEmptyStr }
+  observed_client_visibility(
+    marker_writer: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
+    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
+  )
 }
 
 fn w_unknown_visibility() -> LegacySearchVisibilityBasis {
@@ -404,5 +412,37 @@ test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_inste
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
+  }
+}
+
+
+// TWO DIFFERENT CLIENTS CANNOT ESTABLISH VISIBILITY, which is the whole discriminator
+// extdeps.google.drive records: the bootstrap create ran under an operator Cloud SDK credential and
+// the recurrence runs as review-sheet-writer@, so an app-private property written by the first is
+// invisible to the second. This is the case that produced the incident.
+test fn a_search_by_a_different_client_than_the_marker_writer_is_unresolved() -> Bool {
+  match observed_client_visibility(
+    marker_writer: "operator-cloud-sdk@example.iam.gserviceaccount.com" as ServiceAccountEmail,
+    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
+  ) {
+    SearchVisibilityUnresolved { cause: c } =>
+      string_contains(s: c as String, pattern: "invisible across OAuth clients")
+    ClientIdentityObservedCompatible { observed: _ } => false
+    PositiveFindEstablishesVisibility => false
+  }
+}
+
+// THE CONTROL: the same client on both sides DOES establish it, so the wall has not made the
+// compatible arm unreachable -- which would close the steady state once a producer can name the
+// writer.
+test fn a_search_by_the_marker_writer_itself_is_compatible() -> Bool {
+  match observed_client_visibility(
+    marker_writer: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
+    searching_client: "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com" as ServiceAccountEmail,
+  ) {
+    ClientIdentityObservedCompatible { observed: o } =>
+      (o.marker_writer as String) == (o.searching_client as String)
+    SearchVisibilityUnresolved { cause: _ } => false
+    PositiveFindEstablishesVisibility => false
   }
 }
