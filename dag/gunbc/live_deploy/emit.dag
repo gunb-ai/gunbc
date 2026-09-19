@@ -499,12 +499,21 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
 // The two byte bounds this unit carries are declared in gunbc.live_deploy.slice_bounds, and the
 // derivation of each number lives with the row rather than here.
 //
-// MemorySwapMax=0 IS THE RECEIPT'S OWN LESSON WRITTEN INTO THE UNIT. Boot 15 did not fail because
-// the roadmap process was large; it failed because that process was SWAPPED and then OOM-killed,
-// and a swapped process is one whose latency is unbounded while it still looks alive. An approval
-// poll answered after the swap-in is a poll that has already timed out. Denying swap converts that
-// into an immediate, attributable kill at a declared bound -- a loud failure with a restart, rather
-// than a silent hours-long stall (DESIGN section 5: refuse, never widen).
+// THE SWAP DENIAL IS THE DEPLOYMENT'S POLICY, CONSUMED, NOT RESTATED HERE (review 68287). This slice
+// used to inline byte_size(0) while the roadmap slice one function above consumed the declared row,
+// so "this deployment's served slices forbid swap" had two sources that could drift in either
+// direction invisibly -- admitting swap on the row would have left this one silently pinned at
+// zero, and the reverse edit would have been just as quiet.
+//
+// WHY IT IS ONE FACT AND NOT TWO EQUAL NUMBERS, which is the distinction this corpus keeps having
+// to make: the max and high bounds are PER-SLICE and genuinely differ, because they are sized from
+// each process's own demand. The swap denial is not sized from anything -- it follows from both
+// processes being latency-bound and operator-facing, which is one argument covering both. Declaring
+// a second zero beside this one would be two names for that argument.
+//
+// The receipt is the same receipt: boot 15 did not fail because the roadmap process was large, it
+// failed because that process was SWAPPED and then OOM-killed, and a swapped process is one whose
+// latency is unbounded while it still looks alive.
 fn approval_broker_slice_unit_file() -> SystemdUnitFile {
   SliceUnitFile {
     unit: [
@@ -513,7 +522,7 @@ fn approval_broker_slice_unit_file() -> SystemdUnitFile {
     slice: [
       slice_memory_max(bytes: approval_broker_slice_memory_max),
       slice_memory_high(bytes: approval_broker_slice_memory_high),
-      slice_memory_swap_max(bytes: byte_size(0)),
+      slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
     ],
     install: NotInstallable,
   }

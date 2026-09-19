@@ -6,6 +6,7 @@ import std.layout { render }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   live_deploy_slice_memory_high,
+  live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max,
   approval_broker_slice_memory_high,
 }
@@ -880,4 +881,22 @@ test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
   service_has(file: broker, target: broker_slice)
     && !service_has(file: roadmap, target: broker_slice)
     && !service_has(file: belt, target: broker_slice)
+}
+
+// ── THE SWAP DENIAL IS ONE ROW, READ BY BOTH SLICES ─────────────────────────────────────────
+// The broker slice used to inline byte_size(0) while the roadmap slice consumed the declared row,
+// so one policy fact had two sources that could drift in either direction invisibly (review 68287).
+// The byte oracles above each pin their own slice's rendered text; what neither can see is whether
+// the two zeros came from the same place.
+//
+// THE RED IS THE EDIT THAT WOULD REOPEN IT: admit any swap on live_deploy_slice_memory_swap_max and
+// BOTH conjuncts fail together, which is the joint a pair of independent literals would not have.
+// Inlining a zero at either site fails it too, because the expected text is derived from the row
+// rather than transcribed.
+test fn both_served_slices_deny_swap_from_the_same_row() -> Bool {
+  let roadmap = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+  let broker = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
+  let expected = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+  string_contains(s: roadmap, pattern: expected)
+    && string_contains(s: broker, pattern: expected)
 }

@@ -74,6 +74,12 @@ data live_deploy_slice_memory_high: ByteSize = byte_size(25769803776)
 // plane. Lowering swap.max below existing usage does NOT drain what is already paged out: the live
 // closure is a new service incarnation whose MainPID reads VmSwap 0 kB and answers /healthz and
 // one status GET inside the client bound.
+// THIS ROW IS DEPLOYMENT-WIDE WHILE THE TWO ABOVE IT ARE PER-SLICE, and the distinction is worth
+// stating because they sit together and share a prefix (review 68287). MemoryMax and MemoryHigh are
+// sized from each process's own demand and genuinely differ between the roadmap slice and the
+// approval broker's. The swap denial is sized from nothing: it follows from both processes being
+// latency-bound and operator-facing, so it is ONE argument covering every served slice this
+// deployment installs, and both slice unit files consume this row rather than restating a zero.
 data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 
 // ── THE APPROVAL BROKER'S OWN BOUND ─────────────────────────────────────────────────────────
