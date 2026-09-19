@@ -157,9 +157,10 @@ fn legacy_extent_evidence_subject(e: LegacyExtentEvidence) -> ReviewSheetIdentit
 //
 //   sole_constructor IS DISCARDED ON A COPRODUCT RHS. v1.02_parse parse_type_body_after_eq threads
 //   it into the anonymous-record arm and drops it on every other `=` right-hand side -- a leaf
-//   alias, a coproduct -- and says so in its own note. The hole is a declared drop with a live
-//   probe (test.fixture.sole_constructor_variant_probe.definer) and an expected-red row. So any
-//   module could still author an arm directly.
+//   alias, a coproduct -- and says so in its own note. The hole is the rostered class
+//   gunbc.recurring_failure_mode modifier_accepted_on_a_shape_its_check_cannot_see, which carries
+//   its probe (test.fixture.sole_constructor_variant_probe.definer) and its next-rung trigger. So
+//   any module could still author an arm directly.
 //
 //   THERE IS NO FUNCTION VISIBILITY IN THIS LANGUAGE. v1.03_resolve get_exported_names exports
 //   every module item unconditionally, so the internal_ prefix those helpers carry is a NAMING
