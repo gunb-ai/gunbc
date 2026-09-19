@@ -46,7 +46,7 @@ import gunbc.floor_demand {
   gunbc_floor_measured_peak_is_uncensored,
   gunbc_floor_uncensored_demand_receipt,
   gunbc_floor_throttle_pin_receipt_2026_09_19,
-  gunbc_floor_memory_demand_lower_bound,
+  gunbc_floor_cgroup_charge_ceiling,
   floor_peak_reading_kind,
   UncensoredPeak, ThrottlePin, PeakUnmeasured,
 }
@@ -286,17 +286,17 @@ test fn witness_the_uncensored_receipt_and_the_pin_classify_differently() -> Boo
   uncensored && pinned
 }
 
-// THE DECLARED THROTTLE LINE IS NOT ABOVE THE FLOOR'S DEMONSTRATED DEMAND, AND THE WITNESS SAYS SO
-// RATHER THAN THE ROW PRETENDING OTHERWISE. gunbc_floor_memory_demand_lower_bound folds every
-// receipt's peak, pins included, and the 2026-09-19 pin peaked 5.9 MiB OVER this row's memory_high.
-// This is deliberately NOT a conjunct of the wall: a wall that required memory_high to clear a
-// censored peak would move the row on every pin and is exactly the sizing-to-the-last-pin loop the
-// 2026-09-12 ruling ended. It is a standing observation with an authorable red -- a row raised
-// above the bound, or a demand reduction that retires the pin receipt, flips it -- so the fact that
-// the floor is welded to the line again is executed rather than remembered.
-test fn witness_declared_high_sits_below_the_demonstrated_demand_lower_bound() -> Bool {
+// THE DECLARED THROTTLE LINE SITS BELOW THE CHARGE THE FLOOR REACHED, AND THE WITNESS SAYS SO
+// RATHER THAN THE ROW PRETENDING OTHERWISE. gunbc_floor_cgroup_charge_ceiling folds every receipt's
+// peak, pins included, and the 2026-09-19 pin peaked 5.9 MiB OVER this row's memory_high. The
+// charge includes reclaimable cache, so this is NOT a statement that the row is too small -- the
+// run finished clean under reclaim -- and it is deliberately NOT a conjunct of the wall. It is a
+// standing observation with an authorable red -- a row raised above the ceiling, or a demand
+// reduction that retires the pin receipt, flips it -- so the fact that the floor is welded to the
+// line again is executed rather than remembered.
+test fn witness_declared_high_sits_below_the_floor_charge_ceiling() -> Bool {
   byte_size_count(b: gunbc_runner_slot_desired().memory_high)
-    < byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
+    < byte_size_count(b: gunbc_floor_cgroup_charge_ceiling())
 }
 
 // RENAMED 2026-09-12, AND THE RENAME IS THE POINT RATHER THAN BOOKKEEPING. The old name --

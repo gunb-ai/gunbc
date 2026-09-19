@@ -1,9 +1,9 @@
 module gunbc.floor_demand
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Second, second,
+  ByteSize, byte_size, byte_size_count, Second, second, Gibibyte, gibibyte, gibibyte_to_byte_size,
   gibibyte_scale_factor_bytes,
 }
 import std.disposition { Disposition, SingleAuthority }
@@ -95,9 +95,8 @@ fn floor_run_peak_within_throttle_overshoot(peak: ByteSize, high: ByteSize) -> B
 // strictly below the line it was armed under is UNCENSORED: the workload stopped growing on its
 // own, so the peak is the demand of that run. A peak at or over its armed line is a THROTTLE PIN:
 // the kernel was holding the workload at the line, so the reading says the demand is AT LEAST
-// that and says nothing about how far past it the workload wanted to go. Both are lower bounds on
-// demand -- a run that touched 25 GiB wanted at least 25 GiB whether or not it was held there --
-// so both feed the lower-bound fold. Only an uncensored reading may SIZE anything, which is why
+// that and says nothing about how far past it the workload wanted to go. Both bound the CHARGE the
+// cgroup reached, so both feed the charge-ceiling fold. Only an uncensored reading may SIZE anything, which is why
 // gunbc_floor_measured_peak_observation is drawn from the uncensored receipt alone and
 // gunbc.runner_slot_allocation's wall guards its input with gunbc_floor_measured_peak_is_uncensored.
 type FloorPeakReadingKind
@@ -195,21 +194,80 @@ fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
   }
 }
 
-// THE LOWER BOUND IS THE LARGEST PEAK ANY RECEIPT REACHED, CENSORED OR NOT. A pin's peak is a
-// weaker fact than an uncensored one -- it bounds demand from below without locating it -- but it
-// is still a fact the workload demonstrated, and a bound that ignored it would be a bound chosen
-// to fit. This is the figure the floor's Work states as its memory requirement: a MemoryRequirement
-// is a minimum, and a lower bound is exactly what a minimum honestly is.
-fn floor_memory_demand_lower_bound(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
+// THE CHARGE CEILING IS THE LARGEST PEAK ANY RECEIPT REACHED, CENSORED OR NOT -- AND IT IS NOT THE
+// DEMAND. memory.peak charges page cache beside anonymous memory, and a run held at its
+// memory.high line finishes clean precisely because the cache half of that charge is reclaimable:
+// the 2026-09-19 pin's 1928 high events are the kernel giving that half back. So this figure bounds
+// what the cgroup was CHARGED, which is the fact the throttle-line witnesses want, and sizing a
+// machine to it would consume a bet as a fact (DESIGN 4d; operator ruling sunny-ant-606,
+// 2026-09-19, which withdrew an earlier revision of this module that stated it as the Work's
+// minimum). The Work's minimum is the non-reclaimable partition below.
+fn floor_cgroup_charge_ceiling(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
   byte_size(fold(receipts, init: 0, f: (acc, r) => nat_max(acc, byte_size_count(b: floor_peak_receipt_peak(receipt: r)))))
 }
 
-fn gunbc_floor_memory_demand_lower_bound() -> ByteSize {
-  floor_memory_demand_lower_bound(receipts: gunbc_floor_demand_receipts())
+fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
+  floor_cgroup_charge_ceiling(receipts: gunbc_floor_demand_receipts())
 }
 
-fn floor_memory_requirement() -> MemoryRequirement {
-  MemoryRequirement { min_bytes: gunbc_floor_memory_demand_lower_bound() }
+// ── the non-reclaimable demand ─────────────────────────────────────────────────────────────────
+//
+// WHAT A MACHINE HAS TO HOLD is the part of the charge reclaim cannot give back: anonymous pages,
+// unevictable pages, shmem, and the kernel's unreclaimable slab, stacks, page tables, per-cpu and
+// socket memory. The instrument is the floor heartbeat's own `[floor-cgroup] stat_level=` line
+// (v1_compiler cli_run required_floor_runner floor_cgroup_stat_partition), which reads the leaf's
+// memory.stat once per beat and prints that partition beside the reclaimable file figures. A
+// receipt is the MAXIMUM of the partition over one run's beats, with the file bytes read at that
+// same beat, so the allowance below can be checked against what the cache actually held when the
+// anonymous demand peaked. memory.stat has no peak counter, so a per-beat maximum is a lower
+// bound on the true anonymous peak by whatever a sub-minute spike hid; the cadence is carried so
+// a reader knows the grain.
+type FloorNonReclaimableReceipt {
+  run_id: NonEmptyStr
+  runner_unit: NonEmptyStr
+  beat_cadence: Second
+  beats_sampled: Int
+  nonreclaimable_peak: ByteSize
+  file_at_peak: ByteSize
+  charge_at_peak: ByteSize
+}
+
+type FloorNonReclaimableStanding
+  = NonReclaimableUnmeasured { instrument: NonEmptyStr }
+  | NonReclaimableMeasured { receipt: FloorNonReclaimableReceipt }
+
+// THE PAGE-CACHE ALLOWANCE IS OPERATOR POLICY, NOT A MEASUREMENT, AND IT IS NAMED AS SUCH. A guest
+// kernel with only the non-reclaimable demand as RAM would run the floor with no file cache at
+// all, re-reading every source and object from the workspace image on each touch; the allowance
+// is how much cache the guest is granted above what it must hold. Its evidence is the receipt's
+// file_at_peak -- what the host slot's cache held at the moment anonymous demand peaked, under
+// reclaim pressure at the 25 GiB line -- and its revision trigger is the in-guest cold receipt
+// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest.
+data gunbc_floor_page_cache_allowance: Gibibyte = gibibyte(count: 4)
+
+fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding, allowance: Gibibyte) -> MemoryRequirement? {
+  match standing {
+    NonReclaimableUnmeasured { instrument: _ } => none
+    NonReclaimableMeasured { receipt: r } =>
+      Present {
+        value: MemoryRequirement {
+          min_bytes: byte_size(byte_size_count(b: r.nonreclaimable_peak) + byte_size_count(b: gibibyte_to_byte_size(allowance))),
+        },
+      }
+  }
+}
+
+// UNMEASURED UNTIL THE FIRST FLOOR RUN CARRYING THE INSTRUMENT REPORTS; the Work states no memory
+// requirement while this arm stands, and the guest shape refuses on that absence rather than being
+// sized to the charge ceiling.
+fn gunbc_floor_non_reclaimable_standing() -> FloorNonReclaimableStanding {
+  NonReclaimableUnmeasured {
+    instrument: "the required-witnesses-floor job's [floor-cgroup] stat_level= heartbeat lines on the host slot, maximum of the nonreclaimable partition over the run's beats",
+  }
+}
+
+fn floor_memory_requirement() -> MemoryRequirement? {
+  floor_memory_requirement_of(standing: gunbc_floor_non_reclaimable_standing(), allowance: gunbc_floor_page_cache_allowance)
 }
 
 // ── storage ────────────────────────────────────────────────────────────────────────────────────

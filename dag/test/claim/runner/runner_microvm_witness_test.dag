@@ -64,6 +64,7 @@ import gunbc.runner_microvm {
   gunbc_runner_microvm_shape,
   runner_microvm_workspace_grant,
   runner_microvm_task_ceiling_boot_arg,
+  runner_microvm_shape_refusal_text,
   RunnerMicroVmNetworking,
   GuestNetworkTap,
   GuestNetworkAbsent,
@@ -86,8 +87,7 @@ import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, Con
 import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import extdeps.storage.types { Ephemeral }
-import gunbc.fabric_witness_run { floor_execution_requirements }
-import gunbc.floor_demand { floor_storage_requirement, gunbc_floor_memory_demand_lower_bound }
+import gunbc.floor_demand { floor_storage_requirement, floor_memory_requirement }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
   CoresPerSlotResolved,
@@ -616,41 +616,66 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 //
 // It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
 // nothing; no Firecracker process is involved at any step.
-// PRODUCTION SIZING NOW DERIVES, AND IT REFUSES ON THE FLOOR'S OWN RECEIPTS. The declared size no
-// longer answers on the production path: gunbc_runner_microvm_shape reads the floor's Work, the
-// cell row and the reserve, and at the 26 GiB cell with a 1 GiB reserve the remainder is
-// 26843545600 bytes while the floor's demonstrated demand (gunbc.floor_demand, the 2026-09-19 pin)
-// is 26849763328. The shape refuses by 6217728 bytes, and the refusal carries both numbers so a
-// reader sees which authority has to move. This is the expecting-red probe of DESIGN 4b(4): the day
-// the cell row rises above demand + reserve, or the demand falls, it goes green and flips to the
-// regression control that production RESOLVES -- it is not retired.
-test fn the_production_vm_config_refuses_because_the_floor_demand_exceeds_the_cell_remainder() -> Bool {
-  match gunbc_runner_microvm_vm_config(
+// PRODUCTION SIZING NOW DERIVES, AND WHAT IT ANSWERS IS DECIDED BY THE FLOOR'S DEMAND STANDING.
+// While the non-reclaimable demand is unmeasured the Work states no memory and the shape must
+// refuse on exactly that absence -- not on the charge ceiling, which is a bet (operator ruling
+// 2026-09-19). Once a receipt stands, the shape must resolve iff the stated requirement fits the
+// cell's remainder beside the reserve, and refuse with both figures otherwise. Both arms are
+// written so the witness is discriminating in whichever state production is in, rather than a
+// probe that has to be rewritten the day the receipt lands.
+test fn the_production_shape_answers_according_to_the_floor_demand_standing() -> Bool {
+  let remainder = byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+  match floor_memory_requirement() {
+    Absent =>
+      match gunbc_runner_microvm_shape() {
+        MicroVmShapeResolved { shape: _ } => false
+        MicroVmShapeRefused { refusal: r } =>
+          match r {
+            ShapeRefusedWorkMemoryUnstated => true
+            _ => false
+          }
+      }
+    Present { value: need } =>
+      if byte_size_count(b: need.min_bytes) <= remainder {
+        match gunbc_runner_microvm_shape() {
+          MicroVmShapeResolved { shape: s } =>
+            mebibyte_count(m: s.size.memory) == remainder / (1024 * 1024)
+              && hardware_thread_count_value(t: s.size.vcpu_count) == 8
+          MicroVmShapeRefused { refusal: _ } => false
+        }
+      } else {
+        match gunbc_runner_microvm_shape() {
+          MicroVmShapeResolved { shape: _ } => false
+          MicroVmShapeRefused { refusal: r } =>
+            match r {
+              ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, remainder: m } =>
+                byte_size_count(b: n) == byte_size_count(b: need.min_bytes) && byte_size_count(b: m) == remainder
+              _ => false
+            }
+        }
+      }
+  }
+}
+
+// THE FLEET VM CONFIG CARRIES THE SHAPE'S ANSWER AND NOT A DEFAULT: unresolved exactly when the
+// shape refuses, with the refusal's text, and resolved exactly when it resolves.
+test fn the_production_vm_config_mirrors_the_shape_resolution() -> Bool {
+  let config = gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
     kernel_path: "/var/lib/gunbc/cell/vmlinux",
     net: GuestNetworkAbsent { cause: "this control judges sizing, not the per-slot tap" },
-  ) {
-    MicroVmConfigResolved { config: _ } => false
-    MicroVmConfigUnresolved { cause: c } =>
-      cause_mentions(cause: c, needle: "memory demand")
-        && cause_mentions(cause: c, needle: to_string(byte_size_count(b: gunbc_floor_memory_demand_lower_bound())))
-        && cause_mentions(cause: c, needle: "raise the cell row or reduce the demand")
-  }
-}
-
-// THE SAME REFUSAL AT THE SHAPE'S OWN GRAIN, so the numbers are compared as numbers rather than
-// found in a string: the required figure is the demand fold's, the remainder is MemoryMax less the
-// declared allowance, and no other arm is taken.
-test fn the_production_shape_refuses_on_the_memory_remainder_and_nothing_earlier() -> Bool {
+  )
   match gunbc_runner_microvm_shape() {
-    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeResolved { shape: s } =>
+      match config {
+        MicroVmConfigResolved { config: c } => c.machine_config.mem_size_mib == mebibyte_count(m: s.size.memory)
+        MicroVmConfigUnresolved { cause: _ } => false
+      }
     MicroVmShapeRefused { refusal: r } =>
-      match r {
-        ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, remainder: rem } =>
-          byte_size_count(b: need) == byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
-            && byte_size_count(b: rem) == (byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance)))
-        _ => false
+      match config {
+        MicroVmConfigResolved { config: _ } => false
+        MicroVmConfigUnresolved { cause: c } => c == runner_microvm_shape_refusal_text(r: r)
       }
   }
 }
@@ -745,6 +770,15 @@ fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements 
   }
 }
 
+// A WORK SHAPED LIKE THE FLOOR'S -- eight threads, a 25 GiB memory minimum -- SUPPLIED rather than
+// read from gunbc.fabric_witness_run, because the production Work states memory only once the
+// non-reclaimable receipt stands (gunbc.floor_demand) and these controls are about the fold's
+// arms, not about that standing. The production route is judged by
+// the_production_shape_answers_according_to_the_floor_demand_standing.
+fn floor_like_work() -> ExecutionRequirements {
+  work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 25))))
+}
+
 fn shape_of(
   work: ExecutionRequirements,
   storage: StorageRequirement,
@@ -763,11 +797,11 @@ fn shape_of(
   )
 }
 
-// THE ACCEPT ARM, ON THE REAL WORK: eight vCPUs from the Work's own thread row, 27 GiB of guest
+// THE ACCEPT ARM: eight vCPUs from the Work's thread row, 27 GiB of guest
 // memory as the whole remainder in MiB, the workspace grant, and the cell's task row.
 test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: floor_storage_requirement(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
@@ -787,7 +821,7 @@ test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool
 // the existing containment law admits it with the same reserve and envelope it was derived from.
 test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: floor_storage_requirement(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
@@ -809,7 +843,7 @@ test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -
 
 test fn a_relative_only_entitlement_refuses_the_shape() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: floor_storage_requirement(),
     cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
     envelope: fixture_cell(),
@@ -899,7 +933,7 @@ test fn a_work_demanding_exactly_the_cell_remainder_is_admitted() -> Bool {
 
 test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: floor_storage_requirement(),
     cpu: fixture_entitlement(),
     envelope: CellMemoryEnvelope { bytes: byte_size(count: 1) },
@@ -916,7 +950,7 @@ test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() 
 
 test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: floor_storage_requirement(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
@@ -933,7 +967,7 @@ test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
 
 test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool {
   match shape_of(
-    work: floor_execution_requirements(),
+    work: floor_like_work(),
     storage: StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 5)), persistence: Ephemeral },
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),

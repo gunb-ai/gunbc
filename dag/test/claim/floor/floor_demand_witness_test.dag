@@ -1,15 +1,17 @@
 module test.claim.floor_demand_witness_test
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second_count }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
   FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
   floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
-  floor_memory_demand_lower_bound, gunbc_floor_memory_demand_lower_bound,
+  floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
+  FloorNonReclaimableStanding, NonReclaimableUnmeasured, NonReclaimableMeasured, FloorNonReclaimableReceipt,
+  floor_memory_requirement_of, gunbc_floor_non_reclaimable_standing, gunbc_floor_page_cache_allowance,
   gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
   gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
-  floor_memory_requirement, floor_storage_requirement,
+  floor_storage_requirement,
   StorageComponentReceipt, storage_components_total, round_up_to_gibibyte_grain,
   gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
 }
@@ -48,40 +50,79 @@ test fn a_peak_under_its_line_is_uncensored_and_a_peak_at_or_over_it_is_a_pin() 
   under && at && over && unmeasured
 }
 
-// THE LOWER BOUND IS THE LARGEST PEAK, PINS INCLUDED, AND AN UNMEASURED RECEIPT CONTRIBUTES ZERO
-// RATHER THAN REFUSING THE FOLD: absence of a reading is not a demand.
-test fn the_demand_lower_bound_is_the_largest_peak_across_receipts() -> Bool {
-  byte_size_count(b: floor_memory_demand_lower_bound(receipts: [
+// THE CHARGE CEILING IS THE LARGEST PEAK, PINS INCLUDED, AND AN UNMEASURED RECEIPT CONTRIBUTES
+// ZERO RATHER THAN REFUSING THE FOLD: absence of a reading is not a charge.
+test fn the_charge_ceiling_is_the_largest_peak_across_receipts() -> Bool {
+  byte_size_count(b: floor_cgroup_charge_ceiling(receipts: [
     receipt(peak: 7, high: 100),
     FloorRunCgroupPeakUnmeasured,
     receipt(peak: 42, high: 40),
     receipt(peak: 9, high: 100),
   ])) == 42
-    && byte_size_count(b: floor_memory_demand_lower_bound(receipts: [] as List<FloorRunCgroupPeakReceipt>)) == 0
+    && byte_size_count(b: floor_cgroup_charge_ceiling(receipts: [] as List<FloorRunCgroupPeakReceipt>)) == 0
 }
 
 // THE PRODUCTION ROWS: the sizing input is the uncensored receipt's peak and is classified
-// uncensored; the lower bound is the 2026-09-19 pin's peak, which is the larger; and the floor's
-// Work carries that bound as its memory requirement -- the route from receipt to Work executed.
-test fn the_floor_work_states_the_demand_lower_bound_read_from_the_receipts() -> Bool {
+// uncensored; the charge ceiling is the 2026-09-19 pin's peak, which is the larger.
+test fn the_charge_ceiling_is_the_pin_and_the_sizing_input_is_the_uncensored_receipt() -> Bool {
   let sizing_input_kind = match floor_peak_reading_kind(receipt: gunbc_floor_uncensored_demand_receipt) {
     UncensoredPeak { peak: p } => byte_size_count(b: p) == byte_size_count(b: gunbc_floor_measured_peak_observation)
     _ => false
   }
-  let sizing_input_is_uncensored = gunbc_floor_measured_peak_is_uncensored() && sizing_input_kind
-  let bound_is_the_pin = match floor_peak_reading_kind(receipt: gunbc_floor_throttle_pin_receipt_2026_09_19) {
+  let ceiling_is_the_pin = match floor_peak_reading_kind(receipt: gunbc_floor_throttle_pin_receipt_2026_09_19) {
     ThrottlePin { peak: p, armed_line: _ } =>
-      byte_size_count(b: p) == byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
+      byte_size_count(b: p) == byte_size_count(b: gunbc_floor_cgroup_charge_ceiling())
         && byte_size_count(b: p) > byte_size_count(b: gunbc_floor_measured_peak_observation)
     _ => false
   }
-  let work_states_it = match floor_execution_requirements().shape.envelope.memory {
+  gunbc_floor_measured_peak_is_uncensored() && sizing_input_kind && ceiling_is_the_pin
+}
+
+// THE WORK'S MEMORY REQUIREMENT IS THE NON-RECLAIMABLE PEAK PLUS THE ALLOWANCE, AND NOTHING WHILE
+// THAT PEAK IS UNMEASURED. Both arms driven: an unmeasured standing yields no requirement, a
+// fixture receipt yields peak + allowance exactly, and the Work's envelope carries whatever the
+// production standing yields -- so the route from standing to Work is executed in either state.
+test fn the_work_memory_requirement_is_the_non_reclaimable_peak_plus_the_allowance_or_absent() -> Bool {
+  let unmeasured = match floor_memory_requirement_of(
+    standing: NonReclaimableUnmeasured { instrument: "fixture" },
+    allowance: gibibyte(count: 4),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let measured = match floor_memory_requirement_of(
+    standing: NonReclaimableMeasured {
+      receipt: FloorNonReclaimableReceipt {
+        run_id: "fixture",
+        runner_unit: "fixture",
+        beat_cadence: second(count: 60),
+        beats_sampled: 10,
+        nonreclaimable_peak: byte_size(1000),
+        file_at_peak: byte_size(500),
+        charge_at_peak: byte_size(1500),
+      },
+    },
+    allowance: gibibyte(count: 1),
+  ) {
     Absent => false
     Present { value: m } =>
-      byte_size_count(b: m.min_bytes) == byte_size_count(b: gunbc_floor_memory_demand_lower_bound())
-        && byte_size_count(b: m.min_bytes) == byte_size_count(b: floor_memory_requirement().min_bytes)
+      byte_size_count(b: m.min_bytes) == 1000 + byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 1)))
   }
-  sizing_input_is_uncensored && bound_is_the_pin && work_states_it
+  let work_carries_the_standing = match gunbc_floor_non_reclaimable_standing() {
+    NonReclaimableUnmeasured { instrument: _ } =>
+      match floor_execution_requirements().shape.envelope.memory {
+        Absent => true
+        Present { value: _ } => false
+      }
+    NonReclaimableMeasured { receipt: r } =>
+      match floor_execution_requirements().shape.envelope.memory {
+        Absent => false
+        Present { value: m } =>
+          byte_size_count(b: m.min_bytes)
+            == byte_size_count(b: r.nonreclaimable_peak) + byte_size_count(b: gibibyte_to_byte_size(gunbc_floor_page_cache_allowance))
+      }
+  }
+  unmeasured && measured && work_carries_the_standing
 }
 
 // THE PIN WAS TAKEN UNDER THE CURRENT ROW, which is what makes it a finding about the row rather
