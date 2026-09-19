@@ -3,10 +3,10 @@ module gunbc.spark.serving_load_probe
 import std.types { Bool, String, NonEmptyStr, EpochSecs, Int }
 import std.nat { Nat }
 import std.measure {
-  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, Measure, Dimensionless, Milli, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, MilliRequestsPerSecond,
+  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
 }
-import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, checked_decimal_rescale, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, CheckedIntReady, CheckedIntOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
@@ -250,16 +250,36 @@ fn nat_from_nonneg_int(n: Int) -> Nat? {
   }
 }
 
+// EXACT THOUSANDTHS OR NOTHING. Scaling up goes through std.decimal checked_decimal_rescale, so an
+// overflow refuses rather than wrapping; a value with a nonzero digit past the third decimal refuses
+// rather than truncating. Counters and bench figures read through this may not lose precision.
 fn milli_from_exact(d: ExactDecimal) -> Nat? {
   let c = canonical_exact_decimal(d: d)
   if c.units < 0 {
     none
   } else if c.fraction_digits > 3 {
-    let extra = c.fraction_digits - 3
-    nat_from_nonneg_int(n: c.units / decimal_pow10(exponent: extra))
+    none
   } else {
-    let scaled = c.units * decimal_pow10(exponent: 3 - c.fraction_digits)
-    nat_from_nonneg_int(n: scaled)
+    match checked_decimal_rescale(units: c.units, by: 3 - c.fraction_digits) {
+      CheckedIntReady { value: scaled } => nat_from_nonneg_int(n: scaled)
+      CheckedIntOverflow { cause: _ } => none
+    }
+  }
+}
+
+// WHOLE MILLISECONDS, FLOORED ON PURPOSE. A latency sum carries sub-millisecond digits the receipt
+// does not keep; flooring is the declared projection here, and only here. Scaling up is still checked.
+fn milli_floor_from_exact(d: ExactDecimal) -> Nat? {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    none
+  } else if c.fraction_digits > 3 {
+    nat_from_nonneg_int(n: c.units / decimal_pow10(exponent: c.fraction_digits - 3))
+  } else {
+    match checked_decimal_rescale(units: c.units, by: 3 - c.fraction_digits) {
+      CheckedIntReady { value: scaled } => nat_from_nonneg_int(n: scaled)
+      CheckedIntOverflow { cause: _ } => none
+    }
   }
 }
 
@@ -359,7 +379,7 @@ type TokenHistogramDelta
 fn itl_latency_delta(before_body: String, after_body: String) -> LatencyHistogramDelta {
   match histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds) {
     HistogramDeltaRead { sum: s, count: c } =>
-      match milli_from_exact(d: s) {
+      match milli_floor_from_exact(d: s) {
         Absent => LatencyHistogramUnread { cause: "inter-token latency sum delta did not project to milliseconds" as NonEmptyStr }
         Present { value: ms } => LatencyHistogramRead { sum: millisecond(count: ms), observations: c }
       }
@@ -485,23 +505,11 @@ type ArrivalSkew
   = ArrivalSkewObserved { max_stagger_millis: Millisecond }
   | ArrivalSkewUnread { cause: NonEmptyStr }
 
-type ArrivalPolicy
-  = ArrivalPolicySendAll
-  | ArrivalPolicyPoisson { request_rate: MilliRequestsPerSecond, burstiness: Measure<Dimensionless, Milli, Nat> }
-
-fn arrival_policy_from_request(req: VllmBenchServeRequest) -> ArrivalPolicy {
-  match req.arrival {
-    SendAllImmediately => ArrivalPolicySendAll
-    PoissonProcess { request_rate: n, burstiness: b } =>
-      ArrivalPolicyPoisson { request_rate: n, burstiness: b }
-  }
-}
-
 fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
-  match arrival_policy_from_request(req: req) {
-    ArrivalPolicySendAll =>
-      ArrivalSkewUnread { cause: "ArrivalPolicySendAll is input policy, not observed skew; vLLM's max_concurrency semaphore can run prompts in waves, and per-request start times were not retained" as NonEmptyStr }
-    ArrivalPolicyPoisson { request_rate: _, burstiness: _ } =>
+  match req.arrival {
+    SendAllImmediately =>
+      ArrivalSkewUnread { cause: "SendAllImmediately is input policy, not observed skew; vLLM's max_concurrency semaphore can run prompts in waves, and per-request start times were not retained" as NonEmptyStr }
+    PoissonProcess { request_rate: _, burstiness: _ } =>
       ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
   }
 }

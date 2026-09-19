@@ -707,3 +707,25 @@ test fn a_truncated_retained_stdout_does_not_replay_the_execution() -> Bool {
   retained_stdout_replays_the_execution(e: bench, retained: fx_bench_stdout)
     && !retained_stdout_replays_the_execution(e: bench, retained: "Total generated tokens:                  512\n")
 }
+
+test fn a_counter_with_a_fourth_decimal_digit_is_unread_not_truncated() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1512.0005", start: "1789300000.12")
+  match generation_token_delta(before_body: before, after_body: after) {
+    TokenDeltaUnread { cause: _ } => true
+    TokenDeltaRead { tokens: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
+    TokenDeltaReset { cause: _ } => false
+  }
+}
+
+test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1512.0", start: "1789300000.12")
+  match generation_token_delta(before_body: before, after_body: after) {
+    TokenDeltaRead { tokens: t } => t == 512
+    TokenDeltaUnread { cause: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
+    TokenDeltaReset { cause: _ } => false
+  }
+}
