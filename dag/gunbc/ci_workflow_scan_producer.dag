@@ -3,7 +3,6 @@ module gunbc.ci_workflow_scan_producer
 import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
-import std.content_hash { Fnv1a64Structural }
 import extdeps.github.code_search {
   CodeSearchPage,
   CodeSearchHit,
