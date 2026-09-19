@@ -65,6 +65,7 @@ import gunbc.runner_microvm {
   runner_microvm_workspace_grant,
   runner_microvm_task_ceiling_boot_arg,
   runner_microvm_shape_refusal_text,
+  gunbc_runner_microvm_guest_cache_allowance,
   RunnerMicroVmNetworking,
   GuestNetworkTap,
   GuestNetworkAbsent,
@@ -636,7 +637,7 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
           }
       }
     Present { value: need } =>
-      if byte_size_count(b: need.min_bytes) <= remainder {
+      if byte_size_count(b: need.min_bytes) + byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_guest_cache_allowance)) <= remainder {
         match gunbc_runner_microvm_shape() {
           MicroVmShapeResolved { shape: s } =>
             mebibyte_count(m: s.size.memory) == remainder / (1024 * 1024)
@@ -648,8 +649,10 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
           MicroVmShapeResolved { shape: _ } => false
           MicroVmShapeRefused { refusal: r } =>
             match r {
-              ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, remainder: m } =>
-                byte_size_count(b: n) == byte_size_count(b: need.min_bytes) && byte_size_count(b: m) == remainder
+              ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+                byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
+                  && byte_size_count(b: a) == byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_guest_cache_allowance))
+                  && byte_size_count(b: m) == remainder
               _ => false
             }
         }
@@ -792,6 +795,7 @@ fn shape_of(
     cpu: cpu,
     envelope: envelope,
     reserve: reserve,
+    cache_allowance: gibibyte(count: 1),
     task_ceiling: 16384,
     workspace: runner_microvm_workspace_grant,
   )
@@ -897,7 +901,7 @@ test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool 
   }
 }
 
-test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_both_figures() -> Bool {
+test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_figures() -> Bool {
   match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 28)))),
     storage: floor_storage_requirement(),
@@ -908,19 +912,22 @@ test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_both_figur
     MicroVmShapeResolved { shape: _ } => false
     MicroVmShapeRefused { refusal: r } =>
       match r {
-        ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, remainder: m } =>
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
           byte_size_count(b: n) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 28)))
+            && byte_size_count(b: a) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 1)))
             && byte_size_count(b: m) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 27)))
         _ => false
       }
   }
 }
 
-// THE BOUNDARY: a demand equal to the remainder is admitted. Below this the previous control
-// refuses; a fold that used a strict comparison would red here.
-test fn a_work_demanding_exactly_the_cell_remainder_is_admitted() -> Bool {
-  match shape_of(
-    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 27)))),
+// THE BOUNDARY, WITH THE ALLOWANCE COUNTED: a demand of 26 GiB plus the fixture's 1 GiB allowance
+// equals the 27 GiB remainder and is admitted; 27 GiB plus the allowance is one gibibyte over and
+// refuses. A fold that forgot the allowance would admit the second, and one that used a strict
+// comparison would refuse the first.
+test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitted_and_one_over_is_not() -> Bool {
+  let exact = match shape_of(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 26)))),
     storage: floor_storage_requirement(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
@@ -929,7 +936,23 @@ test fn a_work_demanding_exactly_the_cell_remainder_is_admitted() -> Bool {
     MicroVmShapeRefused { refusal: _ } => false
     MicroVmShapeResolved { shape: s } => mebibyte_count(m: s.size.memory) == 27 * 1024
   }
+  let over = match shape_of(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 27)))),
+    storage: floor_storage_requirement(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: _, allowance: _, remainder: _ } => true
+        _ => false
+      }
+  }
+  exact && over
 }
+
 
 test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool {
   match shape_of(

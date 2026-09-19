@@ -3,7 +3,7 @@ module gunbc.floor_demand
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Second, second, Gibibyte, gibibyte, gibibyte_to_byte_size,
+  ByteSize, byte_size, byte_size_count, Second, second,
   gibibyte_scale_factor_bytes,
 }
 import std.disposition { Disposition, SingleAuthority }
@@ -230,44 +230,61 @@ type FloorNonReclaimableReceipt {
   nonreclaimable_peak: ByteSize
   file_at_peak: ByteSize
   charge_at_peak: ByteSize
+  run_completed: Bool
 }
 
 type FloorNonReclaimableStanding
   = NonReclaimableUnmeasured { instrument: NonEmptyStr }
   | NonReclaimableMeasured { receipt: FloorNonReclaimableReceipt }
 
-// THE PAGE-CACHE ALLOWANCE IS OPERATOR POLICY, NOT A MEASUREMENT, AND IT IS NAMED AS SUCH. A guest
-// kernel with only the non-reclaimable demand as RAM would run the floor with no file cache at
-// all, re-reading every source and object from the workspace image on each touch; the allowance
-// is how much cache the guest is granted above what it must hold. Its evidence is the receipt's
-// file_at_peak -- what the host slot's cache held at the moment anonymous demand peaked, under
-// reclaim pressure at the 25 GiB line -- and its revision trigger is the in-guest cold receipt
-// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest.
-data gunbc_floor_page_cache_allowance: Gibibyte = gibibyte(count: 4)
+// THE FIRST RECEIPT, FROM THE FIRST FLOOR RUN CARRYING THE INSTRUMENT (this change's own CI run
+// 35419304682, job 105838037678, srv4-04, 2026-09-19, sixteen beats at sixty seconds). The run
+// REFUSED in strict-preparation on an unrelated latent resolve defect fifteen minutes in, so the
+// maximum is over a partial run and is a lower bound for that reason as well as for the cadence.
+// What it shows is the opposite of the hypothesis that motivated it: at the peak beat the cgroup
+// held 26725773568 bytes of NON-RECLAIMABLE memory -- 26664632320 of it anonymous -- against a
+// charge of 26841255936, with 13160448 bytes of file cache left. The cache had already been
+// reclaimed to nothing; what was being held at the 25 GiB line was anonymous memory, and the
+// heartbeat beside it reads 66940 major faults per minute with host swap-in rising, which is
+// that anonymous memory going to swap. The reading is therefore censored in the same sense as
+// the charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim
+// cannot answer. Beat 13, one minute earlier, is the evidence for the allowance below: 24736395264
+// bytes anonymous beside 1895120896 bytes of file cache at zero stall, then the cache squeezed
+// to 13 MiB and the run began to thrash.
+data gunbc_floor_non_reclaimable_receipt_2026_09_19: FloorNonReclaimableReceipt = FloorNonReclaimableReceipt {
+  run_id: "35419304682",
+  runner_unit: "actions-runner@srv4-04.service",
+  beat_cadence: second(count: 60),
+  beats_sampled: 16,
+  nonreclaimable_peak: byte_size(26725773568),
+  file_at_peak: byte_size(13160448),
+  charge_at_peak: byte_size(26841255936),
+  run_completed: false,
+}
 
-fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding, allowance: Gibibyte) -> MemoryRequirement? {
+// THE WORK STATES WHAT IT MUST HOLD AND NOTHING MORE. The cache a guest is granted above this is a
+// fact about the GUEST -- how much room its kernel gets for file pages before it starts to thrash
+// -- and it lives with the guest shape (gunbc.runner_microvm
+// gunbc_runner_microvm_guest_cache_allowance), where the receipt above is cited as its evidence.
+// Putting it here would make every offer in the fleet answer for a policy about one realization.
+fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding) -> MemoryRequirement? {
   match standing {
     NonReclaimableUnmeasured { instrument: _ } => none
     NonReclaimableMeasured { receipt: r } =>
-      Present {
-        value: MemoryRequirement {
-          min_bytes: byte_size(byte_size_count(b: r.nonreclaimable_peak) + byte_size_count(b: gibibyte_to_byte_size(allowance))),
-        },
-      }
+      Present { value: MemoryRequirement { min_bytes: r.nonreclaimable_peak } }
   }
 }
 
-// UNMEASURED UNTIL THE FIRST FLOOR RUN CARRYING THE INSTRUMENT REPORTS; the Work states no memory
-// requirement while this arm stands, and the guest shape refuses on that absence rather than being
-// sized to the charge ceiling.
+// MEASURED, BY THE RECEIPT ABOVE. The Unmeasured arm is what this returned until that run, and
+// it stays constructible because a fresh corpus without the instrument's receipt is exactly the
+// state it represents; the Work states no memory while it stands, and the guest shape refuses on
+// that absence rather than being sized to the charge ceiling.
 fn gunbc_floor_non_reclaimable_standing() -> FloorNonReclaimableStanding {
-  NonReclaimableUnmeasured {
-    instrument: "the required-witnesses-floor job's [floor-cgroup] stat_level= heartbeat lines on the host slot, maximum of the nonreclaimable partition over the run's beats",
-  }
+  NonReclaimableMeasured { receipt: gunbc_floor_non_reclaimable_receipt_2026_09_19 }
 }
 
 fn floor_memory_requirement() -> MemoryRequirement? {
-  floor_memory_requirement_of(standing: gunbc_floor_non_reclaimable_standing(), allowance: gunbc_floor_page_cache_allowance)
+  floor_memory_requirement_of(standing: gunbc_floor_non_reclaimable_standing())
 }
 
 // ── storage ────────────────────────────────────────────────────────────────────────────────────

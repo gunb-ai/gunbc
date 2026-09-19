@@ -102,7 +102,7 @@ fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOf
         rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
         receipt: "gunbc.observation.power-1",
       },
-      opportunity: NoFeasibleAlternativeUse,
+      opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" },
     },
   ) {
     CandidateBound { candidate: c } => [c]

@@ -373,13 +373,15 @@ data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
 //                -- draw on the same CPUQuota, and a guest holding every entitled thread leaves
 //                them nothing, exactly as a guest holding the whole MemoryMax left the VMM nothing.
 //   memory       the cell's MemoryMax less the realization reserve: everything the cell admits
-//                beside the VMM, admitted only if it is at least the Work's stated minimum. The
-//                guest is granted the REMAINDER rather than the minimum because the minimum is a
-//                lower bound (gunbc.floor_demand: receipts, one of them a throttle pin) and guest
-//                RAM is lazily faulted, so headroom above a bound known to be too low costs
-//                nothing until touched. Floor division to MiB keeps guest + reserve <= MemoryMax by
-//                construction, so guest_memory_fits admits the derived guest without a second
-//                relation.
+//                beside the VMM, admitted only if it is at least the Work's stated minimum PLUS
+//                the guest's cache allowance. The Work's minimum is what it must hold
+//                (gunbc.floor_demand: the non-reclaimable partition); the allowance is what this
+//                realization grants its kernel for file pages above that, because a guest with
+//                exactly its anonymous demand as RAM thrashes. The guest is granted the whole
+//                REMAINDER rather than the sum because the minimum is a censored lower bound and
+//                guest RAM is lazily faulted, so headroom costs nothing until touched. Floor
+//                division to MiB keeps guest + reserve <= MemoryMax by construction, so
+//                guest_memory_fits admits the derived guest without a second relation.
 //   workspace    the attempt's workspace grant, admitted only if it holds the Work's stated
 //                storage minimum.
 //   task ceiling the cell's TasksMax, carried INTO the guest as kernel.pid_max. In the lifecycle-
@@ -406,7 +408,7 @@ type RunnerMicroVmShapeRefusal
   | ShapeRefusedWorkMemoryUnstated
   | ShapeRefusedReserveUnmodeled { cause: String }
   | ShapeRefusedReserveExceedsCell { reserve: ByteSize, envelope: ByteSize }
-  | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, remainder: ByteSize }
+  | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, allowance: ByteSize, remainder: ByteSize }
   | ShapeRefusedWorkStorageExceedsWorkspace { required: ByteSize, workspace: ByteSize }
 
 type RunnerMicroVmShapeResolution
@@ -425,8 +427,8 @@ fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
       concat("the realization reserve is unmodeled, so the cell's remainder cannot be computed: ", c)
     ShapeRefusedReserveExceedsCell { reserve: r, envelope: e } =>
       join(["the realization reserve of ", to_string(byte_size_count(b: r)), " bytes exceeds the cell's MemoryMax of ", to_string(byte_size_count(b: e))], "")
-    ShapeRefusedWorkMemoryExceedsCellRemainder { required: r, remainder: m } =>
-      join(["the work's memory demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: m)), " bytes the cell admits beside the realization reserve; raise the cell row or reduce the demand"], "")
+    ShapeRefusedWorkMemoryExceedsCellRemainder { required: r, allowance: a, remainder: m } =>
+      join(["the work's memory demand of ", to_string(byte_size_count(b: r)), " bytes plus the guest's cache allowance of ", to_string(byte_size_count(b: a)), " bytes exceeds the ", to_string(byte_size_count(b: m)), " bytes the cell admits beside the realization reserve; raise the cell row, lower the allowance or reduce the demand"], "")
     ShapeRefusedWorkStorageExceedsWorkspace { required: r, workspace: w } =>
       join(["the work's storage demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: w)), " byte workspace grant"], "")
   }
@@ -438,6 +440,7 @@ fn runner_microvm_shape(
   cpu: CellCpuEntitlement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
+  cache_allowance: Gibibyte,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -459,6 +462,7 @@ fn runner_microvm_shape(
               storage: storage,
               envelope: envelope,
               reserve: reserve,
+              cache_allowance: cache_allowance,
               task_ceiling: task_ceiling,
               workspace: workspace,
             )
@@ -475,6 +479,7 @@ fn runner_microvm_shape_after_cpu(
   storage: StorageRequirement,
   envelope: CellMemoryEnvelope,
   reserve: RealizationReserve,
+  cache_allowance: Gibibyte,
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
@@ -486,9 +491,10 @@ fn runner_microvm_shape_after_cpu(
         MicroVmShapeRefused { refusal: ShapeRefusedReserveExceedsCell { reserve: r, envelope: envelope.bytes } }
       } else {
         let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: r)
-        if remainder < byte_size_count(b: need) {
+        let allowance = gibibyte_to_byte_size(cache_allowance)
+        if remainder < byte_size_count(b: need) + byte_size_count(b: allowance) {
           MicroVmShapeRefused {
-            refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, remainder: byte_size(remainder) },
+            refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
           }
         } else {
           let workspace_bytes = mebibyte_to_byte_size(m: workspace)
@@ -513,8 +519,20 @@ fn runner_microvm_shape_after_cpu(
   }
 }
 
-// THE FLEET'S OWN SHAPE: the floor's Work against this fleet's cell, reserve, task row and
-// workspace grant. Every input is read from the authority that owns it; nothing here is a
+// THE GUEST'S CACHE ALLOWANCE IS OPERATOR POLICY, NOT A MEASUREMENT, AND IT IS NAMED AS SUCH. A
+// guest whose RAM equals the Work's non-reclaimable demand runs the floor with no file cache at
+// all, re-reading every source and object from the workspace image on each touch. ITS EVIDENCE IS
+// THE DEMAND RECEIPT'S OWN TWO BEATS (gunbc.floor_demand gunbc_floor_non_reclaimable_receipt_2026_09_19):
+// with about 1.8 GiB of cache beside the anonymous peak the host slot stalled zero faults per
+// minute, and with that cache reclaimed to 13 MiB it took sixty-seven thousand a minute -- so two
+// gibibytes is the smallest whole-gibibyte grain above the cache the run held while it was not
+// thrashing. It is a floor on a working operating point, not a measured optimum; the operator may
+// revise it, and its revision trigger is the in-guest cold receipt
+// (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest.
+data gunbc_runner_microvm_guest_cache_allowance: Gibibyte = gibibyte(count: 2)
+
+// THE FLEET'S OWN SHAPE: the floor's Work against this fleet's cell, reserve, cache allowance,
+// task row and workspace grant. Every input is read from the authority that owns it; nothing here is a
 // parameter a caller could use to hand the guest an envelope the cell did not declare.
 fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
   let cell = gunbc_runner_slot_desired()
@@ -524,6 +542,7 @@ fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
     cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
     envelope: CellMemoryEnvelope { bytes: cell.memory_max },
     reserve: gunbc_runner_microvm_realization_reserve(),
+    cache_allowance: gunbc_runner_microvm_guest_cache_allowance,
     task_ceiling: cell.tasks_max,
     workspace: runner_microvm_workspace_grant,
   )
