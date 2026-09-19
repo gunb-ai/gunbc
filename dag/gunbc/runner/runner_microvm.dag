@@ -601,6 +601,12 @@ fn runner_microvm_shape_after_cpu(
   }
 }
 
+// THE FIT IS DECIDED BY SUBTRACTION, NEVER BY need + allowance: that sum is the one expression
+// here that can cross the realization's bound, and a wrapped sum reads as a small demand that
+// FITS. So the two demands are subtracted from the remainder one at a time, each comparison
+// pre-checked so no intermediate leaves the range -- the same construction guest_memory_fits uses
+// against the reserve. RED: need = int_inclusive_max, allowance = 1, remainder = int_inclusive_max
+// refuses here; a sum would have wrapped to a negative and admitted.
 fn runner_microvm_shape_after_allowance(
   vcpus: HardwareThreadCount,
   need: ByteSize,
@@ -611,12 +617,6 @@ fn runner_microvm_shape_after_allowance(
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
-  // THE FIT IS DECIDED BY SUBTRACTION, NEVER BY need + allowance: that sum is the one expression
-  // here that can cross the realization's bound, and a wrapped sum reads as a small demand that
-  // FITS. So the two demands are subtracted from the remainder one at a time, each comparison
-  // pre-checked so no intermediate leaves the range -- the same construction guest_memory_fits uses
-  // against the reserve. RED: need = int_inclusive_max, allowance = 1, remainder = int_inclusive_max
-  // refuses here; a sum would have wrapped to a negative and admitted.
   let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: reserve)
   let need_count = byte_size_count(b: need)
   let allowance_count = byte_size_count(b: allowance)
