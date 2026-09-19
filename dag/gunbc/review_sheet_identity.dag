@@ -163,7 +163,7 @@ type ReviewSheetIdentityDisposition
   = ReviewSheetIdentityAbsent
   | ReviewSheetSingleLineage { file_id: NonEmptyStr }
   | ReviewSheetLegacyOnlyLineage { file_id: NonEmptyStr }
-  | ReviewSheetConflictingLineages { current_file_ids: List<String>, legacy_file_ids: List<String> }
+  | ReviewSheetConflictingLineages { current_file_ids: List<String>, legacy: LegacyExtentVerdict }
   | CurrentMarkerObservedLegacyExtentUnresolved { file_id: NonEmptyStr, cause: NonEmptyStr }
   | ReviewSheetIdentityUnreadable { cause: NonEmptyStr }
 
@@ -229,7 +229,7 @@ fn internal_disposition_over_matching_subject(
     SheetDuplicated { file_ids: ids } =>
       ReviewSheetConflictingLineages {
         current_file_ids: ids,
-        legacy_file_ids: legacy_extent_found_ids(verdict: legacy_extent_verdict(evidence: legacy)),
+        legacy: legacy_extent_verdict(evidence: legacy),
       }
     SheetObservedOne { file_id: current_id } =>
       internal_disposition_over_current_hit(current_id: current_id, legacy: legacy)
@@ -251,6 +251,14 @@ fn internal_disposition_over_matching_subject(
 // So the observation and its visibility collapse to one verdict here, and the two dispositions
 // differ only in what they NAME that verdict when a current-marked file was or was not found --
 // which is the only thing that actually differs between them.
+//
+// AND THE CONFLICT ARM CARRIES THE VERDICT RATHER THAN A LIST OF IDS, which closes the last place
+// the collapse survived. An earlier cut kept a file-id extractor beside this fold, and it answered
+// the SAME empty list for a settled-empty legacy extent and an unsettled one -- so an operator
+// reading ReviewSheetConflictingLineages { current: [A,B], legacy_file_ids: [] } could not tell
+// "there is definitely nothing on the old marker" from "the old marker could not be read". That is
+// this module's filed class surviving at the one site whose annotation said it was closed, which is
+// worse than surviving somewhere unremarked. The extractor is deleted; there is no second reading.
 type LegacyExtentVerdict
   = LegacyExtentSettledEmpty
   | LegacyExtentFound { file_ids: List<String> }
@@ -300,7 +308,10 @@ fn internal_disposition_over_current_hit(
       if ids == [current_id as String] {
         ReviewSheetSingleLineage { file_id: current_id }
       } else {
-        ReviewSheetConflictingLineages { current_file_ids: [current_id as String], legacy_file_ids: ids }
+        ReviewSheetConflictingLineages {
+          current_file_ids: [current_id as String],
+          legacy: LegacyExtentFound { file_ids: ids },
+        }
       }
   }
 }
@@ -320,7 +331,7 @@ fn internal_disposition_over_current_absence(
           if ids == [only] {
             ReviewSheetLegacyOnlyLineage { file_id: only as NonEmptyStr }
           } else {
-            ReviewSheetConflictingLineages { current_file_ids: [], legacy_file_ids: ids }
+            ReviewSheetConflictingLineages { current_file_ids: [], legacy: LegacyExtentFound { file_ids: ids } }
           }
         Absent =>
           ReviewSheetIdentityUnreadable {
@@ -358,10 +369,3 @@ data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = [
   ),
 ]
 
-fn legacy_extent_found_ids(verdict: LegacyExtentVerdict) -> List<String> {
-  match verdict {
-    LegacyExtentFound { file_ids: ids } => ids
-    LegacyExtentSettledEmpty => []
-    LegacyExtentUnsettled { cause: _ } => []
-  }
-}

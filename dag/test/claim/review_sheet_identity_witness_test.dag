@@ -90,7 +90,7 @@ test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unreso
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
   }
 }
@@ -108,7 +108,7 @@ test fn an_empty_legacy_search_under_established_visibility_is_a_single_lineage(
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
   }
 }
@@ -127,7 +127,7 @@ test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool {
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
   }
 }
@@ -139,8 +139,13 @@ test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool {
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
     legacy: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
   ) {
-    ReviewSheetConflictingLineages { current_file_ids: c, legacy_file_ids: l } =>
-      any(c, i => i == "current-A") && any(l, i => i == "legacy-B")
+    ReviewSheetConflictingLineages { current_file_ids: c, legacy: l } =>
+      any(c, i => i == "current-A")
+        && match l {
+          LegacyExtentFound { file_ids: ids } => any(ids, i => i == "legacy-B")
+          LegacyExtentSettledEmpty => false
+          LegacyExtentUnsettled { cause: _ } => false
+        }
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
@@ -158,7 +163,7 @@ test fn one_file_under_both_markers_is_a_single_lineage() -> Bool {
     legacy: w_search(o: SheetObservedOne { file_id: "same" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
   ) {
     ReviewSheetSingleLineage { file_id: f } => (f as String) == "same"
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
@@ -177,7 +182,7 @@ test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool 
     ReviewSheetLegacyOnlyLineage { file_id: f } => (f as String) == "legacy-B"
     ReviewSheetIdentityAbsent => false
     ReviewSheetSingleLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
   }
@@ -195,7 +200,7 @@ test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bo
     ReviewSheetIdentityAbsent => false
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
   }
 }
@@ -216,7 +221,7 @@ test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool 
     ReviewSheetIdentityUnreadable { cause: _ } => false
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
   }
 }
@@ -238,7 +243,7 @@ test fn evidence_naming_another_subject_is_unreadable() -> Bool {
     ReviewSheetIdentityAbsent => false
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
   }
 }
@@ -268,7 +273,7 @@ test fn a_subject_differing_only_in_the_superseded_field_is_unreadable() -> Bool
     ReviewSheetIdentityAbsent => false
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
   }
 }
@@ -293,7 +298,7 @@ test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
     ReviewSheetSingleLineage { file_id: _ } => false
     ReviewSheetIdentityAbsent => false
     ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: _ } => false
     ReviewSheetIdentityUnreadable { cause: _ } => false
   }
 }
@@ -352,5 +357,52 @@ test fn a_legacy_find_is_found_whatever_basis_is_offered() -> Bool {
     LegacyExtentFound { file_ids: ids } => any(ids, i => i == "legacy-B")
     LegacyExtentSettledEmpty => false
     LegacyExtentUnsettled { cause: _ } => false
+  }
+}
+
+
+// AN UNSETTLED LEGACY SIDE IS DISTINGUISHABLE FROM A SETTLED-EMPTY ONE, which is the collapse that
+// survived in a file-id extractor until this round: both rendered as an empty id list, so an
+// operator reading a conflict could not tell "there is definitely nothing on the old marker" from
+// "the old marker could not be read". These two claims are the same current-side duplication under
+// the two legacy verdicts, and they must not agree.
+test fn a_current_duplication_beside_an_unsettled_legacy_side_says_so() -> Bool {
+  match review_sheet_identity_standing_disposition(
+    subject: w_subject(),
+    current: SheetDuplicated { file_ids: ["dup-A", "dup-B"] },
+    legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
+  ) {
+    ReviewSheetConflictingLineages { current_file_ids: c, legacy: l } =>
+      any(c, i => i == "dup-A")
+        && match l {
+          LegacyExtentUnsettled { cause: _ } => true
+          LegacyExtentSettledEmpty => false
+          LegacyExtentFound { file_ids: _ } => false
+        }
+    ReviewSheetIdentityAbsent => false
+    ReviewSheetSingleLineage { file_id: _ } => false
+    ReviewSheetLegacyOnlyLineage { file_id: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { cause: _ } => false
+  }
+}
+
+test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_instead() -> Bool {
+  match review_sheet_identity_standing_disposition(
+    subject: w_subject(),
+    current: SheetDuplicated { file_ids: ["dup-A", "dup-B"] },
+    legacy: w_search(o: SheetAbsent, v: w_visible()),
+  ) {
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy: l } =>
+      match l {
+        LegacyExtentSettledEmpty => true
+        LegacyExtentUnsettled { cause: _ } => false
+        LegacyExtentFound { file_ids: _ } => false
+      }
+    ReviewSheetIdentityAbsent => false
+    ReviewSheetSingleLineage { file_id: _ } => false
+    ReviewSheetLegacyOnlyLineage { file_id: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { cause: _ } => false
   }
 }
