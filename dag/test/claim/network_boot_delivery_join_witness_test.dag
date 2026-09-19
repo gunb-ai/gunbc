@@ -873,8 +873,8 @@ test fn controlled_network_is_not_production_trust() -> Bool {
       && match production_trust() {
         ProductionTrustedBootstrap { grounds: g } =>
           match g {
-            FirmwareHttpsTrusted { firmware_https: _ } => true
-            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => false
+            SecureBootChainloaderTrusted { secure_boot_chainloader: _ } => true
+            FirmwareHttpsTrusted { firmware_https: _ } => false
             FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
           }
         ControlledNetworkBootstrap { evidence: _ } => false
