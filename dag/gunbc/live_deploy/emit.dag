@@ -62,6 +62,10 @@ import gunbc.live_deploy.member_identity {
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
 import extdeps.crypto.hash { digest_shell_verify_line }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_max, live_deploy_slice_memory_high,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+}
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
@@ -418,38 +422,6 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
 // directive list the emission serializes, rather than re-parsing the rendered text. The doc
 // producers below delegate here; behaviour is unchanged.
-// THE DEPLOYMENT'S BOUND IS ITS OWN, AND THE SHARED-IDENTITY ARGUMENT THAT MADE IT THE RUNNER
-// SLOT'S IS FALSIFIED RATHER THAN OVERRULED (2026-09-12).
-//
-// WHAT THIS ROW USED TO SAY, and it was true when written: "the bound is the runner slot's, BY
-// IDENTITY OF WORKLOAD rather than by coincidence of number -- the deployment's oneshots run
-// `gunbc run` over the same corpus a CI job resolves, and the server is the same binary, so
-// gunbc_runner_slot_desired is the fleet's one authored allowance for that process and a second
-// literal here would be the section-3 fork."
-//
-// WHAT FALSIFIED IT: the runner row stopped being an allowance for "a gunbc process". The
-// 2026-09-12 demand ruling sizes it from the REQUIRED FLOOR'S measured peak -- one prepared subject
-// over the whole corpus, 22.74 GiB uncensored -- which is work this deployment never performs. The
-// same 2026-09-04 measurement the old note cited for scale is the refutation at this size: serve
-// peaked at 3.46 GB and the belt at 0.97 GB. Sharing one number with the floor was a coincidence of
-// magnitude that read as an identity of workload, and the moment the floor's number moved, the
-// coincidence ended while the sentence asserting the identity did not. That is the pattern this
-// corpus keeps finding -- a name that states a coincidence as a law.
-//
-// THE VALUES DO NOT CHANGE TODAY, deliberately. They are the bytes this deployment already runs
-// with, restated as its own fact with its own justification rather than re-derived to something
-// tighter in the same change that decouples them. Whether 16 GiB is the right bound for a 4.43 GB
-// workload is a separate question with its own evidence; this change only stops the answer being
-// decided by the floor's memory demand.
-//
-// IT ALSO CLOSES A CAP-WRITER BYPASS. `live_deploy` writes this slice with no host admission
-// consulted, so while the number was the runner row's, any move to that row propagated to a host
-// whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
-// gating it: there is no longer a runner-derived number here to leak.
-data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
-
-data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
-
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   SliceUnitFile {
     unit: [
@@ -523,37 +495,8 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
 }
 
 // ── THE APPROVAL BROKER'S SLICE AND UNIT ─────────────────────────────────────────────────────
-// THE BOUND IS DERIVED FROM A MEASURED UPPER BOUND, NOT GUESSED AND NOT COPIED. DESIGN section 5's
-// oracle rule admits a numeric literal grounded in an explicit policy budget and rejects one
-// grounded in a measurement of the current tree, so the basis is recorded beside the policy:
-//
-//   Before this split, the roadmap serve process served these four routes. Its closure therefore
-//   CONTAINED the broker's closure, and that process's resident peak was measured at 3.46 GB on
-//   srv1 (2026-09-04, the same measurement live_deploy_slice_memory_max cites). A strict subset of
-//   a closure cannot demand more than the whole of it, so 3.46 GB is a sound UPPER BOUND on the
-//   broker's cold-load and steady demand rather than an analogy from a similar workload.
-//
-// The cap is set above that bound with headroom and far below the roadmap's, which is the property
-// that matters: the roadmap's demand has no route by which it can reach this slice's allowance.
-//
-// IT IS AN UPPER BOUND AND THE MODEL SAYS SO. What is NOT established is the broker's OWN demand at
-// the six points the split was asked to size against -- cold bind and load peak, idle resident,
-// submission-plus-notification peak, confirm-page peak, redemption peak, status-poll peak -- and a
-// bound derived from a superset is a ceiling, not a measurement. Stage 2 of
-// gunbc.auth.approval_broker_cutover is the instrument that produces those readings against the
-// dark deployment, and tightening these two rows from them is that stage's product. Until it runs,
-// a ceiling proved by containment is the honest arm, and asserting the tighter number the six
-// readings would probably support would be exactly the deduced-from-inferred move DESIGN 4d forbids.
-data approval_broker_slice_memory_max: ByteSize = byte_size(6442450944)
-
-data approval_broker_slice_memory_high: ByteSize = byte_size(5368709120)
-
-// MemorySwapMax=0 IS THE RECEIPT'S OWN LESSON WRITTEN INTO THE UNIT. Boot 15 did not fail because
-// the roadmap process was large; it failed because that process was SWAPPED and then OOM-killed,
-// and a swapped process is one whose latency is unbounded while it still looks alive. An approval
-// poll answered after the swap-in is a poll that has already timed out. Denying swap converts that
-// into an immediate, attributable kill at a declared bound -- a loud failure with a restart, rather
-// than a silent hours-long stall (DESIGN section 5: refuse, never widen).
+// The two bounds this unit carries are declared in gunbc.live_deploy.slice_bounds; the reasoning
+// for each number lives with the row rather than here.
 fn approval_broker_slice_unit_file() -> SystemdUnitFile {
   SliceUnitFile {
     unit: [

@@ -5,7 +5,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.live_deploy.emit {
+import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   approval_broker_slice_memory_max,
 }

@@ -3,10 +3,14 @@ module test.claim.live_deploy_unit_emission_oracle_witness
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
 import std.measure { ByteSize, byte_size_count }
 import std.layout { render }
-import gunbc.live_deploy.emit {
-  emit_slice_unit_doc,
+import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   live_deploy_slice_memory_high,
+  approval_broker_slice_memory_max,
+  approval_broker_slice_memory_high,
+}
+import gunbc.live_deploy.emit {
+  emit_slice_unit_doc,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
   emit_belt_timer_unit_doc,
@@ -23,8 +27,6 @@ import gunbc.live_deploy.emit {
   emit_approval_broker_unit_doc,
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file,
-  approval_broker_slice_memory_max,
-  approval_broker_slice_memory_high,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
