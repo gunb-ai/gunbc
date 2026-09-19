@@ -950,6 +950,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
+      function: "a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution" },
       entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
       function: "the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution",
