@@ -34,8 +34,7 @@ import extdeps.crypto.mac {
 import gunbc.machine_intake_subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
-  ManifestVerificationNotYetValid,
-  ManifestVerificationExpired,
+  signed_boot_manifest_window_refusal,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestVerified,
@@ -252,20 +251,6 @@ fn join_verified_mac(
       Present { value: window_class } => refused(class: window_class)
       Absent => BootManifestAuthentic { claims: ticket.claims }
     }
-  }
-}
-
-// Redemption-time window. The 0A join re-adjudicates the same identity at the
-// observation time it alone holds (ManifestJoinNotYetValid / ManifestJoinExpired);
-// this is the broker's own stop at the moment a ticket is presented, so a
-// stale ticket is refused before any join input is built from it.
-fn signed_boot_manifest_window_refusal(identity: SignedBootManifestIdentity, at: EpochMs) -> NetworkBootManifestVerificationClass? {
-  if at < identity.not_before {
-    Present { value: ManifestVerificationNotYetValid }
-  } else if at >= identity.expiry {
-    Present { value: ManifestVerificationExpired }
-  } else {
-    none
   }
 }
 
