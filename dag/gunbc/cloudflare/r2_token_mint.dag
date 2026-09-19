@@ -58,13 +58,7 @@ import std.roster_frontier { frontier_row_decl }
 // gunbc.secret_provision, and the write credential pinned in gunbc.cloudflare.r2_origin -- and on
 // nothing weaker.
 data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_bucket_admin_api_mint"),
-    reason: "the bucket-admin mint is admitted by the pure fold and has an executing entry (gunbc.cloudflare.r2_token_mint_run run_bucket_admin) that has not yet performed AccountTokens.Create against the account",
-    dissolution: unbound_dissolution(
-      description: "dissolves when run_bucket_admin has executed with ExitSuccess, the token value is stored through gunbc.secret_provision, and gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential is OriginCredentialPinned at the stored version; a witness that the admission fold answers Admitted does not fire this"
-    )
-  ),
+
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint"),
     reason: "the object-write mint is admitted by the pure fold and has an executing entry (gunbc.cloudflare.r2_token_mint_run run_object_write) that has not yet performed AccountTokens.Create against the account",

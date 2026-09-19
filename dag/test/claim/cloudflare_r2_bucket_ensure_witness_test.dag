@@ -1,6 +1,7 @@
 module test.claim.cloudflare_r2_bucket_ensure
 
 import std.types { String, NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
 import std.upsert_decision {
   ObservationVerdict, Converged, Absent, Conflict, Inaccessible, UnknownRefused,
   Noop, Apply, Refuse,
@@ -199,12 +200,26 @@ test fn every_allocated_purpose_converges_against_its_own_bucket() -> Bool {
 
 // ── THE SIGNING CREDENTIAL: THE BUCKET-ADMIN TOKEN, NEVER THE BOOTSTRAP ────────────────────────
 
-// The fleet's declared standing is unminted today, so the ensure refuses naming the mint entry and
-// calls nothing. Red if the standing were silently pinned to the bootstrap locus.
-test fn the_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
-  match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+// An unminted credential refuses naming its mint entry and calls nothing.
+test fn an_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
+  let unminted = OriginCredentialUnminted {
+    mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_bucket_admin"),
+  }
+  match r2_ensure_signing_locus(credential: unminted) {
     R2EnsureSigningRefused { cause: cause } => string_contains(s: cause as String, pattern: "run_bucket_admin")
     R2EnsureSigningPinned { locus: _ } => false
+  }
+}
+
+// The fleet's real standing (pinned on the executed mint) signs with the bucket-admin locus and
+// never the bootstrap's. Red if the pin were pointed at the bootstrap custody.
+test fn the_fleet_bucket_admin_credential_signs_with_its_own_locus_not_the_bootstrap() -> Bool {
+  match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+    R2EnsureSigningPinned { locus: locus } =>
+      (locus.secret as String) == (cloudflare_r2_bucket_admin_secret_id as String)
+        && (locus.secret as String) != (cloudflare_bootstrap_custody_secret_id as String)
+        && (locus.version as String) != "latest"
+    R2EnsureSigningRefused { cause: _ } => false
   }
 }
 

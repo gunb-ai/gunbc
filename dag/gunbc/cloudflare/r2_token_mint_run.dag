@@ -85,6 +85,7 @@ import gunbc.secret_provision_actuator {
   CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   OwnedCredentialSnapshot,
   observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
+  create_secret_container, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
   ObservedSecretContainer, version_add_capability_for_observed_container,
   add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
   VersionAddedButUnverified,
@@ -282,6 +283,16 @@ fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2Mi
   }
 }
 
+// THE CONTAINER IS ENSURED BY THE MINT FLOW: OBSERVED, AND CREATED WHEN ABSENT (operator direction,
+// 2026-09-19). The create runs BEFORE the Cloudflare Create, so a refused or ambiguous create spends
+// nothing at Cloudflare. Whether it succeeds is a fact about the RUNNING identity, not a choice made
+// here: an operator identity holds project-wide secrets.create and converges in one run; the fleet
+// convergence identity holds only per-secret cells and is refused, and the refusal names the
+// project-level permission it lacks rather than widening that identity. An ambiguous create is not
+// retried (gunbc.secret_provision_actuator SecretCreationOutcome: a later GET cannot establish
+// absence).
+data r2_mint_container_create_permission: NonEmptyStr = "secretmanager.secrets.create"
+
 data r2_mint_custody_container_intervention_identity: String = "cloudflare-r2-origin-write-custody-container"
 
 // THIS BURDEN HAS A REAL DISCHARGE SITE, WHICH IS WHY IT IS NOT NoDischargeSiteModeled. The two
@@ -296,9 +307,10 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
     subject: join(["the Secret Manager custody container ", secret_id as String], "") as NonEmptyStr,
     instruction: join([
       "THE CUSTODY CONTAINER COULD NOT BE OBSERVED: ", cause as String,
-      " -- create the empty secret ", secret_id as String,
+      " -- the mint flow creates ", secret_id as String,
       " in ", fleet_secrets_gcp_project as String,
-      " from an operator gcloud session and converge the cells declared in gunbc.cloudflare.r2_mint_secret_access, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
+      " itself when its identity holds ", r2_mint_container_create_permission as String,
+      "; run it as an identity that does, or resolve the stated cause, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
     ], "") as NonEmptyStr,
     completion_evidence: DischargedAt {
       evidence: decl_ref(
@@ -323,9 +335,30 @@ fn observe_r2_mint_custody_container(
       R2MintCustodyContainerUnobserved {
         intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: cause),
       }
-    SecretContainerAbsent { project: _, secret_id: absent_id } =>
-      R2MintCustodyContainerUnobserved {
-        intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: concat("no custody container named ", concat(absent_id as String, " exists in the project; this run does not create it")) as NonEmptyStr),
+    SecretContainerAbsent { project: project, secret_id: _ } =>
+      match create_secret_container(project: project, secret_id: secret_id, token: gcp_token) {
+        SecretContainerCreated { container: container } =>
+          R2MintCustodyContainerPresent { container: container }
+        SecretContainerCreationRefused { cause: cause } =>
+          R2MintCustodyContainerUnobserved {
+            intervention: r2_mint_custody_container_intervention(
+              secret_id: secret_id,
+              cause: join([
+                "the container is absent and this run's identity could not create it (",
+                cause as String,
+                "); creating a secret needs the PROJECT-level permission ",
+                r2_mint_container_create_permission as String,
+                ", which the fleet convergence identity deliberately does not hold -- it carries per-secret cells only",
+              ], "") as NonEmptyStr,
+            ),
+          }
+        SecretContainerCreationOutcomeUnknown { cause: cause } =>
+          R2MintCustodyContainerUnobserved {
+            intervention: r2_mint_custody_container_intervention(
+              secret_id: secret_id,
+              cause: concat("the container create's outcome is unknown and is not retried, because a later GET cannot establish absence: ", cause as String) as NonEmptyStr,
+            ),
+          }
       }
     SecretContainerObserved { container: container } =>
       R2MintCustodyContainerPresent { container: container }

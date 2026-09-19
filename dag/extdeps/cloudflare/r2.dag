@@ -616,13 +616,7 @@ data r2_no_such_bucket_error_code: NonEmptyStr = "10006"
 // the digest that cites it is reached only from the dead ProviderRouteObserved arm and the claim
 // witness, which is the unread-outside-witness condition the row already recorded.
 data cloudflare_r2_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
-    reason: "account IAM resource name is consumed by r2_account_storage_create_request, whose mint entry (gunbc.cloudflare.r2_token_mint_run run_bucket_admin) has not yet executed against the account",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration consumes r2_account_resource_name in an executing token policy or S3 IAM grant; a witness that the fold exists does not fire this"
-    )
-  ),
+
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_tokens_doc_as_of"),
     reason: "as-of pin is unread outside the claim witness; ExternalAuthority has no as-of field",
