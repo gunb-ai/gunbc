@@ -538,6 +538,7 @@ test fn w_never_acquired_with_a_code_applies_and_carries_the_custody_sites() -> 
     Apply { plan: p } =>
       (classified.verdict == Absent)
         && ((p.code as String) == "a-live-code")
+        && ((p.custody_name as String) == (census_app_identity.name as String))
         && ((p.custody.pem.secret as String) == "github-app-gunbc-global-census-pem")
         && ((p.custody.webhook_secret.secret as String) == "github-app-gunbc-global-census-webhook-secret")
     Noop => false
