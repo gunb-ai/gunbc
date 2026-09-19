@@ -4,6 +4,7 @@ import v2.std.logic { Bool }
 import v2.workflow.floor_subject_seed {
   PreparedSubjectSeedGround,
   SeedRequiredGatePrefix,
+  SeedRequiredGateAuthoredModule,
   SeedTouchedEntryModule,
   SeedArmSetChangedMatchConsumer,
   ArmSetMatchConsumerBinding,
@@ -70,6 +71,9 @@ test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
 // seed in: only the gate prefix is textual.
 test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
   seed_ground_is_textual_prefix(ground: SeedRequiredGatePrefix { prefix: "v2.test." })
+    && !seed_ground_is_textual_prefix(
+      ground: SeedRequiredGateAuthoredModule { module_path: "test.claim.runner_capacity_plan_witness" }
+    )
     && !seed_ground_is_textual_prefix(
       ground: SeedTouchedEntryModule { path: "src/v2/workflow/x.dag", module_path: "v2.workflow.x" }
     )
