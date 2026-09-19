@@ -7,7 +7,7 @@ module test.probe.review_sheet_tab_forged_probe
 // and each one reinstates the defect the locator exists to remove.
 //
 // (a) THE RECORD ITSELF. A hand-built LocatedReviewTab { sheet_id: 0 } is the constant
-// extdeps.google.sheets spreadsheet_first_sheet_id wearing the name of an observation: handed to
+// the first-sheet constant 0 wearing the name of an observation: handed to
 // converge_review_sheet_format it addresses tab zero again, and every refusal downstream of it
 // reads "the located tab" while the located tab was a literal. LocatedReviewTab is
 // sole_constructor, so this refuses at the record as SoleConstructorViolation.

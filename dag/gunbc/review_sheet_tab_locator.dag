@@ -33,7 +33,7 @@ import v2.std.algebra { fold_list }
 // about which of the tabs inside it is the review tab, and a spreadsheet is a container of tabs:
 // gunbc.review_sheet_sheets already refuses an unqualified A1 range with "BatchUpdate would hit the
 // first tab", and gunbc.review_sheet_format_actuator addressed extdeps.google.sheets
-// spreadsheet_first_sheet_id -- the constant 0 -- on every one of its batchUpdate steps. Both were
+// a first-sheet constant of 0 on every one of its batchUpdate steps. Both were
 // assuming the answer to a question nobody had asked upstream.
 //
 // THE ADMISSION RULE IS EXACTLY-ONE, AND IT IS CHOSEN RATHER THAN DEFAULTED.

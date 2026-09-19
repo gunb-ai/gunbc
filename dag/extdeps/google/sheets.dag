@@ -307,7 +307,6 @@ fn sheets_field_mask(paths: List<String>) -> String {
   join(paths, ",")
 }
 
-data spreadsheet_first_sheet_id: Int = 0
 
 // THE READ SIDE OF A COLOUR, AND IT IS NOT THE WRITE SIDE'S TYPE. Google's JSON omits a field whose
 // value equals the proto3 default, so a channel of zero comes back ABSENT rather than 0.0 -- the

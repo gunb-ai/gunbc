@@ -38,6 +38,7 @@ import extdeps.google.sheets {
   sheets_field_frozen_row_count,
   sheets_field_conditional_formats,
   sheets_field_user_entered_format,
+  sheets_sheet_id_read,
   SpreadsheetRead,
   SheetsSheetRead,
   SheetsColorRead,
@@ -218,7 +219,7 @@ fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOu
 
 // THE REQUESTS ARE DERIVED BEFORE ANY OF THEM IS SENT, AND THAT IS WHAT MAKES THE ADDRESSING
 // WITNESSABLE. Every batchUpdate below names a sheetId, and until this change every one of them
-// named the constant extdeps.google.sheets spreadsheet_first_sheet_id -- so the formatter wrote to
+// named a first-sheet constant of 0 (since deleted with its last consumer) -- so the formatter wrote to
 // whatever tab happened to be first, in a file whose tab identity nothing had established. The
 // sheetId now comes from a gunbc.review_sheet_tab_locator LocatedReviewTab, which has no
 // constructor outside the function that read the workbook's metadata.
@@ -655,14 +656,18 @@ fn first_cell(items: List<SheetsCellDataRead>) -> SheetsCellDataRead? {
 // address the located one would report UNVERIFIED for a correctly formatted sheet, or -- worse, in
 // the case the two happen to coincide today -- report VERIFIED for a tab nobody wrote to. The
 // readback and the write must address the same tab for the readback to be evidence at all.
+// THE ABSENT-IS-ZERO RULE IS CALLED, NOT RESTATED. An earlier cut of this predicate spelled the
+// proto3 omission inline as `Absent => sheet_id == 0`, in the same change that declared
+// extdeps.google.sheets sheets_sheet_id_read as the single authority for exactly that fact
+// (review 68663). Two spellings of one rule is the fork DESIGN section 3 exists to prevent, and it
+// is the same defect shape this change already repaired between the field masks and the decode:
+// correcting or widening the omission rule must be ONE edit, not an edit plus a search. Absent
+// PROPERTIES stays distinct and stays here -- a sheet whose properties were never read is not a
+// sheet whose sheetId was omitted, and only the second is a zero.
 fn sheet_read_has_id(sheet: SheetsSheetRead, sheet_id: Int) -> Bool {
   match sheet.properties {
     Absent => false
-    Present { value: props } =>
-      match props.sheetId {
-        Absent => sheet_id == 0
-        Present { value: id } => id == sheet_id
-      }
+    Present { value: props } => sheets_sheet_id_read(id: props.sheetId) == sheet_id
   }
 }
 
