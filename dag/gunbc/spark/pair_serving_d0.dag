@@ -67,6 +67,8 @@ import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire,
   AuthorityTransitionRecord, transitions_by,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition, pair_serving_authority_transition_at,
+  PlacementCleanup, PlacementFinalizedAt, PlacementAbortedAt, PlacementCleanupStillFencing, placement_cleanup_line, placement_repair_pending,
+  preparation_consumption, placement_finalize,
   EntryStateRecord, EntryStateRecordedAt, EntryStateRecordStale, EntryStateRecordRefused, pair_serving_authority_record_entry_state,
 }
 
@@ -979,14 +981,19 @@ fn refuse(reason: String) -> ProcessExit {
   exit_failure(reason: join(["pair_serving_d0: ", reason], ""))
 }
 
+// THE AUTHORITY MOVED BUT ITS PLACEMENT DID NOT FINALIZE is its own terminal: the group's saga is
+// still pending (fencing its hosts, refusing every later saga), so the consent is NOT complete --
+// the claim stays held, and a rerun finalizes the placement from the join before it completes.
 type D0Outcome
   = D0Settled { decision: D0Decision, generation: Nat, receipt_path: String, entry_state: ContentHash }
+  | D0PlacementStillFencing { decision: D0Decision?, generation: Nat, entry_state: ContentHash?, preparation: EventId, cause: String }
   | D0Refused { cause: String }
 
 
 fn d0_outcome_is_eligible(o: D0Outcome) -> Bool {
   match o {
     D0Settled { decision: d, generation: _, receipt_path: _, entry_state: _ } => d0_decision_is_eligible(d: d)
+    D0PlacementStillFencing { decision: _, generation: _, entry_state: _, preparation: _, cause: _ } => false
     D0Refused { cause: _ } => false
   }
 }
@@ -995,15 +1002,18 @@ fn d0_outcome_text(o: D0Outcome) -> String {
   match o {
     D0Settled { decision: d, generation: g, receipt_path: p, entry_state: es } =>
       join(concat(decision_lines(d: d), [join(["  settled at generation ", to_string(g), " entry-state ", serialize_content_hash(hash: es) as String, " receipt ", p], "")]), "\n")
+    D0PlacementStillFencing { decision: d, generation: g, entry_state: es, preparation: pr, cause: c } =>
+      join(concat(match d { Absent => ["  (the transfer into suspension landed; nothing was read yet)"]  Present { value: dd } => decision_lines(d: dd) }, [join(["  the authority moved at generation ", to_string(g), match es { Absent => ""  Present { value: h } => join([" entry-state ", serialize_content_hash(hash: h) as String], "") }, " but its placement preparation ", pr as String, " did not finalize: ", c, "; the consent is not complete -- a rerun under this transaction finalizes it from the join"], "")]), "
+")
     D0Refused { cause: c } => join(["pair_serving_d0 refused: ", c], "")
   }
 }
 
 fn transition_text(t: AuthorityTransition) -> String {
   match t {
-    AuthorityTransitionAppended { id: i, generation: g, next: _ } => join(["appended ", i as String, " at generation ", to_string(g)], "")
-    AuthorityTransitionStale { expected: e, current: c } => join(["stale: expected ", authority_wire(a: e), " but the authority is ", authority_wire(a: c)], "")
-    AuthorityTransitionRefused { group: _, step: st, reason: why } => join(["refused at ", st, ": ", why], "")
+    AuthorityTransitionAppended { id: i, generation: g, next: _, placement: pl } => join(["appended ", i as String, " at generation ", to_string(g), "; ", placement_cleanup_line(c: pl)], "")
+    AuthorityTransitionStale { expected: e, current: c, placement: pl } => join(["stale: expected ", authority_wire(a: e), " but the authority is ", authority_wire(a: c), match pl { Absent => ""  Present { value: x } => join(["; ", placement_cleanup_line(c: x)], "") }], "")
+    AuthorityTransitionRefused { group: _, step: st, reason: why, placement: pl } => join(["refused at ", st, ": ", why, match pl { Absent => ""  Present { value: x } => join(["; ", placement_cleanup_line(c: x)], "") }], "")
   }
 }
 
@@ -1038,10 +1048,14 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, head: H
             D0DecidedFence { next: _, cause: _ } => none
           }
           match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
-            AuthorityTransitionAppended { id: _, generation: g, next: _ } =>
+            AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } =>
               D0Settled { decision: decision, generation: g, receipt_path: if wr.success { path } else { join(["(local copy not written: ", wr.error, ")"], "") }, entry_state: digest }
-            AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
-            AuthorityTransitionRefused { group: gr, step: st, reason: why } => D0Refused { cause: join(["the settling write did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why })], "") }
+            AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementCleanupStillFencing { preparation: pr, cause: c } } =>
+              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: pr, cause: c }
+            AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementAbortedAt { preparation: pr, id: _ } } =>
+              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: pr, cause: "the authority landed but its preparation reads aborted -- the placement and the authority disagree; operator" }
+            AuthorityTransitionStale { expected: e, current: c, placement: pl } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c, placement: pl })], "") }
+            AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl } => D0Refused { cause: join(["the settling write did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl })], "") }
           }
         }
       }
@@ -1073,10 +1087,14 @@ fn d0_transaction(layout: EventLogLayout, group: FabricGroup, current_hosts: Lis
               let lease = d0_held_lease(group: group, transaction: transaction, executor: executor, generation: gen + 1)
               let pending = SuspensionPendingReconciliation { group: group, hosts: admitted.grant.subject.hosts, transaction: transaction, authorization_binding: admitted.binding, lease: lease }
               match pair_serving_authority_transition_at(layout: layout, group: group, expected: cur, expected_head: Present { value: head }, next: pending, transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: none, entry_state: none, actor: executor, at: at) {
-                AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _ } =>
+                AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } =>
                   d0_settle(layout: layout, pending: pending, head: HeadAt { id: admitting }, active: cur, lease: lease, admitted: admitted, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
-                AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
-                AuthorityTransitionRefused { group: gr, step: st, reason: why } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why })], "") }
+                AuthorityTransitionAppended { id: _, generation: pending_generation, next: _, placement: PlacementCleanupStillFencing { preparation: pr, cause: c } } =>
+                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: pr, cause: c }
+                AuthorityTransitionAppended { id: _, generation: pending_generation, next: _, placement: PlacementAbortedAt { preparation: pr, id: _ } } =>
+                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: pr, cause: "the placement and the authority disagree; operator" }
+                AuthorityTransitionStale { expected: e, current: c, placement: pl } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c, placement: pl })], "") }
+                AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl })], "") }
               }
             }
           }
@@ -1264,6 +1282,17 @@ fn d0_run_admitted(layout: EventLogLayout, g: FabricGroup, current_hosts: List<H
 }
 
 fn d0_settle_admitted(layout: EventLogLayout, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
+  match placement_repair_pending(layout: layout, group: g, actor: executor, at: at) {
+    Present { value: PlacementCleanupStillFencing { preparation: pr, cause: c } } => exit_failure(reason: join(["the group's pending placement preparation ", pr as String, " cannot be repaired by this run: ", c, "\n  the authorization claim stays held"], ""))
+    _ => d0_settle_admitted_over(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: observe)
+  }
+}
+
+// THE SAGA'S PENDING PREPARATION IS REPAIRED BEFORE THE TRANSACTION RUNS: a previous run of this
+// transaction that died after its group append left a consumed, unfinalized preparation, which
+// the join finalizes here; one no authority event consumed is the operator's, and the run refuses
+// rather than sitting on it.
+fn d0_settle_admitted_over(layout: EventLogLayout, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
   let outcome = d0_transaction(layout: layout, group: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, at: at, now: now, observe: observe)
   match outcome {
     D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => {
@@ -1277,6 +1306,7 @@ fn d0_settle_admitted(layout: EventLogLayout, g: FabricGroup, current_hosts: Lis
         exit_failure(reason: join([d0_outcome_text(o: outcome), claim_terminal_text(t: terminal)], ""))
       }
     }
+    D0PlacementStillFencing { decision: _, generation: _, entry_state: _, preparation: _, cause: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  the authorization claim stays held; a rerun under this transaction finalizes the placement from the join and then completes"], ""))
     D0Refused { cause: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  the authorization claim stays held; a rerun under this transaction recovers from the claim and the log"], ""))
   }
 }
@@ -1344,6 +1374,10 @@ fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, current_ho
             _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
           }
         D0RecoverComplete { claim_generation: cg, settled: st } =>
+          match placement_finalize(layout: layout, consumed: preparation_consumption(layout: layout, preparation: st.placement.id), actor: executor, at: at) {
+            PlacementCleanupStillFencing { preparation: pr, cause: c } => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the settling write's placement preparation ", pr as String, " is not finalized: ", c, "; the claim stays held until it is"], ""))
+            PlacementAbortedAt { preparation: pr, id: _ } => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the settling write's placement preparation ", pr as String, " reads aborted -- the placement and the authority disagree; operator"], ""))
+            PlacementFinalizedAt { preparation: _, id: _ } =>
           match d0_terminate_claim(layout: layout, escalation_id: esc, transaction: tx, held: cg, completed: true, cause: "", executor: executor, at: at, now: now) {
             D0ClaimTerminated =>
               match st.next {
@@ -1351,6 +1385,7 @@ fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, current_ho
                 _ => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
               }
             other => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
+          }
           }
         D0RecoverAbort { claim_generation: cg, cause: c } =>
           match d0_terminate_claim(layout: layout, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: c, executor: executor, at: at, now: now) {

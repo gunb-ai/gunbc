@@ -7,7 +7,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
-import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable }
+import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, HeadAbsent, HeadAt }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import std.measure { second, second_count }
@@ -178,9 +178,9 @@ test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool {
 // The fold from the durable genesis with `resting` established as event e0: what the resting row
 // used to be to the fold is now the first event on the chain.
 // The preparation an authority event must carry: the populations of the states it leaves and
-// enters, under its operation, id p0 (the fold fixtures' preparation).
+// enters, under its operation, with an id unique to that write (a preparation is consumed once).
 fn alw_ref(previous: PairServingGroupAuthority, next: PairServingGroupAuthority, operation: String) -> PlacementPreparationRef {
-  PlacementPreparationRef { id: "p0" as EventId, group: FabricGroupA, previous_hosts: committed_population(a: previous), next_hosts: committed_population(a: next), operation: operation as NonEmptyStr }
+  PlacementPreparationRef { id: (join(["p-", operation, "-", authority_wire(a: previous), ">", authority_wire(a: next)], "") as NonEmptyStr) as EventId, group: FabricGroupA, previous_hosts: committed_population(a: previous), next_hosts: committed_population(a: next), operation: operation as NonEmptyStr }
 }
 
 fn alw_establish_ref(a: PairServingGroupAuthority) -> PlacementPreparationRef {
@@ -362,7 +362,7 @@ fn alw_finalize(parent: EventId?, preparation: String, at: Int) -> ChainEvent<Pa
 
 // The writer's append claim (actor witness) and its own abort.
 fn alw_claim(parent: EventId?, preparation: String, at: Int) -> ChainEvent<PairAuthorityEvent> {
-  ChainEvent { partition: host_placement_partition, parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: (preparation as NonEmptyStr) as EventId, claimant: "witness" as NonEmptyStr } }
+  ChainEvent { partition: host_placement_partition, parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: (preparation as NonEmptyStr) as EventId, claimant: "witness" as NonEmptyStr, expected_head: HeadAbsent } }
 }
 
 fn alw_abort_by(parent: EventId?, preparation: String, at: Int, actor: String) -> ChainEvent<PairAuthorityEvent> {
@@ -484,7 +484,7 @@ test fn placement_events_round_trip_through_the_wire() -> Bool {
     && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_finalize(parent: none, preparation: "p1", at: 1002))) { EventDecoded { event: back } => match back.payload { PlacementFinalized { preparation: pr, authority_event: ae } => (pr.id as String) == "p1" && (ae as String) == "g1" && length(pr.next_hosts) == 1  _ => false }  EventUndecodable { reason: _ } => false })
     && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_abort(parent: none, preparation: "p1", at: 1002))) { EventDecoded { event: back } => match back.payload { PlacementAborted { preparation: pr, reason: r, provenance: ClaimantTerminal { claim: c, claimant_executor: _ } } => (pr as String) == "p1" && (c as String) == "p1" && r.contains("did not land")  _ => false }  EventUndecodable { reason: _ } => false })
     && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_establish(a: alw_w_active_unestablished())).replace(from: "\"prep_id\"", to: "\"prep_di\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
-    && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_claim(parent: none, preparation: "p1", at: 1002))) { EventDecoded { event: back } => match back.payload { PlacementAppendClaimed { preparation: pr, claimant: c } => (pr as String) == "p1" && (c as String) == "witness"  _ => false }  EventUndecodable { reason: _ } => false })
+    && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_claim(parent: none, preparation: "p1", at: 1002))) { EventDecoded { event: back } => match back.payload { PlacementAppendClaimed { preparation: pr, claimant: c, expected_head: HeadAbsent } => (pr as String) == "p1" && (c as String) == "witness"  _ => false }  EventUndecodable { reason: _ } => false })
 }
 
 // THE OBSERVER: quiet is minted only from a process scan that matched nothing and, when a
@@ -594,8 +594,8 @@ test fn the_partition_folds_from_an_unestablished_genesis_through_the_establishm
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
     let elsewhere = PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }
     let to_active = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, placement: alw_ref(previous: released, next: resting, operation: "tx-op") } }
-    (match authority_fold(oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityUnestablished => true  _ => false })
-      && (match alw_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityFolded { current: c, generation: g, preparations_consumed: pcs } => g == 0 && authority_eq(a: c, b: resting) && length(pcs) == 1 && (match first(pcs) { Present { value: pp } => (pp.id as String) == "p0"  Absent => false })  _ => false })
+    (match authority_fold(oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityUnestablished { cancelled: _ } => true  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityFolded { current: c, generation: g, preparations_consumed: pcs } => g == 0 && authority_eq(a: c, b: resting) && length(pcs) == 1 && (match first(pcs) { Present { value: pp } => (pp.preparation.id as String) == "p0"  Absent => false })  _ => false })
       && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_establish(a: released))]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e1" && r.contains("already established")  _ => false })
       && (match authority_fold(oldest_first: [alw_env(id: "e1", e: to_active)]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e1" && r.contains("before any authority")  _ => false })
       && (match authority_fold(oldest_first: [alw_env(id: "e0", e: alw_establish(a: pending))]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e0" && r.contains("lease")  _ => false })

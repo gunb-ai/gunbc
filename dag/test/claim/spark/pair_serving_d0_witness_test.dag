@@ -42,7 +42,8 @@ import gunbc.spark.pair_serving_d0 {
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
 }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
-import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord }
+import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord, PlacementPreparationRef, committed_population,
+}
 import product.capacity.event_chain { EventId }
 import extdeps.linux.proc_net_tcp { TcpSocketRow }
 
@@ -397,7 +398,7 @@ test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
 // ── RECOVERY: THE JOIN OVER THE CLAIM AND THE AUTHORITY HISTORY ────────────────────────────────
 
 fn d0w_rec_of(id: String, tx: String, lifecycle: ContentHash?, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
-  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, lifecycle: lifecycle, next: next }
+  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, lifecycle: lifecycle, next: next, placement: PlacementPreparationRef { id: (join(["p-", id], "") as NonEmptyStr) as EventId, group: FabricGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: next), operation: tx as NonEmptyStr } }
 }
 
 // A record written by THIS lifecycle (binding c, the same hash the claims pass as the lifecycle).
