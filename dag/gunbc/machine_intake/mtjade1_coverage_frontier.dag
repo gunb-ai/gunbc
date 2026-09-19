@@ -97,8 +97,11 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
 data mtjade1_first_dpc_plan_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: "gunbc.machine_intake_mtjade1_first_dpc_population_plan",
   decl_names: [
+    "jade_first_dpc_topology",
+    "jade_first_dpc_slot",
     "jade_first_dpc_slots",
-    "jade_first_dpc_empty_slot_labels",
+    "jade_first_dpc_dimm_count",
+    "jade_channel_slot",
     "jade_first_dpc_printed_slot_labels",
     "jade_first_dpc_silk_standing",
     "jade_first_dpc_preferred_class",
@@ -116,6 +119,7 @@ data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_d
     "mtjade1_failsafe_window_close",
     "mtjade1_first_post_fan_capture",
     "mtjade1_host_thermal_before_next_power_on",
+    "jade_fan_policy_convergence",
     "jade_current_fan_policy_convergence",
   ],
   reason: "The fan standing for Mt. Jade unit 1, recorded from one operator receipt and read by no production fold. FirstPostFanCapture is AwaitingFirstPostWithDimms and HostThermalTelemetry is HostThermalAbsentBeforePost, so there is nothing yet for a realizer to converge against.",

@@ -120,7 +120,6 @@ data jade_first_dpc_silk_standing: JadeFirstDpcSilkStanding = ConnectorSilkFromG
 
 data jade_first_dpc_printed_slot_labels: List<Nat> = mt_jade_gsg_population_2s2p_16_dimms.populated_slot_labels
 
-data jade_first_dpc_empty_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_empty_slot_labels
 
 // Same-channel Table 3 cells are not engaged at 1DPC. Cross-channel 1R+2R is MixingUndetermined
 // (TBD). First fill therefore uses sixteen identical modules: one rank, one width, one density,

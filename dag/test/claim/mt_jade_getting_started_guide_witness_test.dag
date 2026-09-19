@@ -6,11 +6,9 @@ import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_authority,
   mt_jade_gsg_content_digest,
   mt_jade_gsg_issue,
+  mt_jade_gsg_model_scope,
   mt_jade_gsg_operator_drive_mirror_authority,
   mt_jade_gsg_publication_status,
-}
-import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  mt_jade_gsg_chassis_model_scope,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
 import extdeps.publication { publication_status_is_publicly_published }
@@ -25,7 +23,6 @@ import gunbc.specification_citation_read_provenance {
 }
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
-  mt_jade_gsg_memory_population_model_scope,
   mt_jade_gsg_one_dpc_empty_slot_labels,
   mt_jade_gsg_population_2s2p_16_dimms,
   mt_jade_gsg_socket0_channel_pairs,
@@ -70,10 +67,8 @@ fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority)
 
 test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool {
   (mt_jade_gsg_authority.uri.locator as String) == "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.pdf&type=technical-document&doc_id=631"
-    && mt_jade_gsg_chassis_model_scope.first_citation == mt_jade_gsg_authority
-    && mt_jade_gsg_memory_population_model_scope.first_citation == mt_jade_gsg_authority
-    && jade_gsg_scope_cites(scope: mt_jade_gsg_chassis_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
-    && jade_gsg_scope_cites(scope: mt_jade_gsg_memory_population_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
+    && mt_jade_gsg_model_scope.first_citation == mt_jade_gsg_authority
+    && jade_gsg_scope_cites(scope: mt_jade_gsg_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
     && mt_jade_gsg_operator_drive_mirror_authority != mt_jade_gsg_authority
     && publication_status_is_publicly_published(status: mt_jade_gsg_publication_status)
     && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_jade_gsg_publication_status))

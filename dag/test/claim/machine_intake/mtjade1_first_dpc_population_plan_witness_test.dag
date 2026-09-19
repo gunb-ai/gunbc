@@ -8,7 +8,10 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   TwoDimmsPerChannel,
   dimms_per_channel_count,
 }
-import extdeps.ampere.mt_jade_getting_started_guide.memory_population { HashNumberPrefix }
+import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  HashNumberPrefix,
+  mt_jade_gsg_one_dpc_empty_slot_labels,
+}
 import extdeps.memory.types { DualDiePackage, MonolithicDie, ThreeDimensionalStacked }
 import extdeps.ocp.mt_jade.platform { MasterSocket, SlaveSocket }
 import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
@@ -23,7 +26,6 @@ import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
   jade_first_dpc_admits_die_stacking,
   jade_first_dpc_cross_channel_1r_2r,
   jade_first_dpc_dimm_count,
-  jade_first_dpc_empty_slot_labels,
   jade_first_dpc_preferred_class,
   jade_first_dpc_printed_slot_labels,
   jade_first_dpc_silk_standing,
@@ -102,7 +104,7 @@ test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
       list_length(a) == 8
         && list_length(b) == 8
         && list_length(jade_first_dpc_printed_slot_labels) == jade_first_dpc_dimm_count()
-        && list_length(jade_first_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
+        && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
         && list_length(jade_first_dpc_slots) == jade_first_dpc_dimm_count()
   }
 }
