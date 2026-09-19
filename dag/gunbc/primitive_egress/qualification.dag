@@ -1,0 +1,301 @@
+module gunbc.primitive_egress.qualification
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import v2.std.decl_index { ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution, DeclarationRefResolved, DeclarationRefModuleAbsent, DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent, DeclarationRefAmbiguous, DeclarationIdentity,
+}
+import gunbc.primitive_egress.disposition {
+  PrimitiveEvidence, ExternalSubjectStanding, NoExternalSubject, ObservesOrMutates, ExternalSubjectUnestablished,
+  ComputationStanding, PureComputationOverInputs, NoPureComputationHalf, ComputationUnestablished,
+  RefusalStanding, RefusalsTyped, RefusalsUnmodeled, RefusalsNotApplicable,
+  RealizationStanding, NoNativeRealizationClaim, NativeRealizationOfModeledOperation,
+  MeaningConflict, NoMeaningConflict, SurfacesDisagree, CompilerQueryStanding, QueryOverAcceptedProduct, NotACompilerQuery,
+  OperationAuthorityStanding, AuthorityDeclared, AuthorityRequired, DagBodyStanding, DagBodyExists, DagBodyRequired,
+  ProviderInterfaceStanding, ProviderInterfaceDeclared, ProviderInterfaceRequired,
+  ReferenceBodyStanding, ReferenceBodyExists, ReferenceBodyAbsent, EquivalenceQualification, QualifiedByWitness, EquivalenceUnqualified,
+  QualifiedEvidence, QualifiedAuthority, AuthorityVerified, AuthorityRequiredHome, AuthorityUnresolved,
+  QualifiedBody, BodyVerified, BodyRequired, BodyUnresolved,
+  QualifiedComputation, ComputationVerified, NoComputationHalf, ComputationNotEstablished,
+  QualifiedExternal, ExternalAbsentVerified, ExternalPresentVerified, ExternalUnverified,
+  QualifiedRefusals, RefusalsVerified, RefusalsUnverified,
+  QualifiedRealization, NoRealizationClaim, RealizationVerified, RealizationUnqualified,
+  QualifiedConflict, NoConflictDerived, ConflictDerived,
+}
+
+// THE PREMISE JOIN. An authored evidence row is a set of CLAIMS; nothing in it reaches the
+// classifier until each claim has joined the fact that owns it. A declaration reference resolves
+// through the declaration index (v2.std.decl_ref_resolution) or it does not; an absence of
+// external subject is established by an algebra template (an algebra law is an owning purity
+// contract) or by the authority resolving to a .dag fn/data declaration (the substrate's pure
+// carrier); a typed refusal contract is established by the algebra template that declares the
+// operation's result; a witness resolves to a claim declaration under the discovery scan dirs;
+// a conflict is DERIVED from the joined surfaces. A claim that fails its join becomes the
+// unverified arm, and the classifier turns every unverified arm into a typed Unresolved -- so an
+// author who asserts a premise the corpus does not own can only lower a class, never raise it.
+//
+// WHAT IS NOT JOINED YET, STATED RATHER THAN FAKED: the D13 DependencyDemand carrier (EFFECTS-1
+// cut (c)) is not in the tree, so an external subject is verified through its PROVIDER declaration
+// (a service or provider type) and the ServiceDispatch surface form, not through a derived demand.
+// When the carrier lands, `qualify_external` consumes it and this note deletes.
+
+type QualificationContext {
+  resolve: fn(DeclarationRef) -> DeclarationRefResolution
+  has_algebra_template: Bool
+  has_interpreter_arm: Bool
+  has_service_dispatch_form: Bool
+  arm_shared_with_another_identity: Bool
+  projection_declarations: List<DeclarationRef>
+  witness_module_prefixes: List<String>
+}
+
+fn kind_label(k: ItemKind) -> String {
+  match k { FnItem => "fn"  TypeItem => "type"  DataItem => "data"  ServiceItem => "service"  OtherItem => "other" }
+}
+
+fn resolution_failure(r: DeclarationRefResolution) -> String {
+  match r {
+    DeclarationRefResolved { declaration_identity: _ } => "resolved"
+    DeclarationRefModuleAbsent { reference: _ } => "module absent"
+    DeclarationRefDeclarationAbsent { reference: _ } => "declaration absent"
+    DeclarationRefFieldAbsent { reference: _ } => "field absent"
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => "ambiguous"
+  }
+}
+
+fn resolved_kind(r: DeclarationRefResolution) -> ItemKind? {
+  match r {
+    DeclarationRefResolved { declaration_identity: id } => Present { value: id.kind }
+    DeclarationRefModuleAbsent { reference: _ } => none
+    DeclarationRefDeclarationAbsent { reference: _ } => none
+    DeclarationRefFieldAbsent { reference: _ } => none
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => none
+  }
+}
+
+fn is_dag_computation_kind(k: ItemKind) -> Bool {
+  match k { FnItem => true  DataItem => true  TypeItem => false  ServiceItem => false  OtherItem => false }
+}
+
+fn is_fn_kind(k: ItemKind) -> Bool {
+  match k { FnItem => true  DataItem => false  TypeItem => false  ServiceItem => false  OtherItem => false }
+}
+
+fn is_provider_kind(k: ItemKind) -> Bool {
+  match k { ServiceItem => true  TypeItem => true  FnItem => false  DataItem => false  OtherItem => false }
+}
+
+fn qualify_authority(a: OperationAuthorityStanding, ctx: QualificationContext) -> QualifiedAuthority {
+  match a {
+    AuthorityRequired { home: h } => AuthorityRequiredHome { home: h }
+    AuthorityDeclared { declaration: d } => {
+      let r = ctx.resolve(d)
+      match resolved_kind(r: r) {
+        Present { value: k } => AuthorityVerified { declaration: d, kind: k }
+        Absent => AuthorityUnresolved { reference: d, cause: resolution_failure(r: r) as NonEmptyStr }
+      }
+    }
+  }
+}
+
+fn qualify_body(b: DagBodyStanding, ctx: QualificationContext) -> QualifiedBody {
+  match b {
+    DagBodyRequired => BodyRequired
+    DagBodyExists { declaration: d } =>
+      match resolved_kind(r: ctx.resolve(d)) {
+        Present { value: k } =>
+          match k {
+            FnItem => BodyVerified { declaration: d }
+            _ => BodyUnresolved { reference: d, cause: "resolves to a declaration that is not a fn" as NonEmptyStr }
+          }
+        Absent => BodyUnresolved { reference: d, cause: resolution_failure(r: ctx.resolve(d)) as NonEmptyStr }
+      }
+  }
+}
+
+fn qualify_computation(c: ComputationStanding, ctx: QualificationContext) -> QualifiedComputation {
+  match c {
+    NoPureComputationHalf => NoComputationHalf
+    ComputationUnestablished { detail: d } => ComputationNotEstablished { detail: d }
+    PureComputationOverInputs { authority: a, inputs: i, result: r, body: b } =>
+      ComputationVerified { authority: qualify_authority(a: a, ctx: ctx), inputs: i, result: r, body: qualify_body(b: b, ctx: ctx) }
+  }
+}
+
+// An absent external subject is VERIFIED by an owning purity fact; the author's NoExternalSubject
+// is a claim until one of those joins. Compiler state is not external: for a query the owning
+// fact is the seed-growth row owning its producer, which the classifier requires. A present external subject is verified by a provider
+// declaration that resolves to a service or provider type, or by the ServiceDispatch form.
+fn qualify_external(e: ExternalSubjectStanding, computation: QualifiedComputation, is_query: Bool, ctx: QualificationContext) -> QualifiedExternal {
+  match e {
+    ExternalSubjectUnestablished { detail: d } => ExternalUnverified { detail: d }
+    NoExternalSubject =>
+      if is_query {
+        ExternalAbsentVerified { by: "the subject is a compiler product (QueryOverAcceptedProduct); the producer's seed-growth ownership is joined by the classifier" as NonEmptyStr }
+      } else if ctx.has_algebra_template {
+        ExternalAbsentVerified { by: "an algebra template declares the operation as a law over its carrier (std.algebra)" as NonEmptyStr }
+      } else {
+        match computation {
+          ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
+            match a {
+              AuthorityVerified { declaration: d, kind: k } =>
+                if is_dag_computation_kind(k: k) {
+                  ExternalAbsentVerified { by: concat("the operation authority resolves to a .dag ", kind_label(k: k), " declaration (", d.module_path as String, " ", d.decl_name as String, ")") as NonEmptyStr }
+                } else {
+                  ExternalUnverified { detail: concat("the operation authority resolves to a ", kind_label(k: k), " declaration, which is not a computation carrier") as NonEmptyStr }
+                }
+              AuthorityRequiredHome { home: _ } => ExternalUnverified { detail: "no owning purity fact: no algebra template and the operation authority is only required" as NonEmptyStr }
+              AuthorityUnresolved { reference: _, cause: c } => ExternalUnverified { detail: concat("no owning purity fact: the operation authority did not resolve (", c as String, ")") as NonEmptyStr }
+            }
+          NoComputationHalf => ExternalUnverified { detail: "no external subject claimed and no computation half: nothing owns the purity claim" as NonEmptyStr }
+          ComputationNotEstablished { detail: d } => ExternalUnverified { detail: d }
+        }
+      }
+    ObservesOrMutates { operation: op, subject: subj, provider: prov, ambient_realization: amb } =>
+      match prov {
+        ProviderInterfaceRequired { shape: s } =>
+          if ctx.has_service_dispatch_form {
+            ExternalUnverified { detail: concat("the ServiceDispatch form establishes an external operation, but its provider interface is only required: ", s as String) as NonEmptyStr }
+          } else {
+            ExternalUnverified { detail: concat("provider interface only required: ", s as String) as NonEmptyStr }
+          }
+        ProviderInterfaceDeclared { declaration: d } =>
+          match resolved_kind(r: ctx.resolve(d)) {
+            Present { value: k } =>
+              if is_provider_kind(k: k) {
+                ExternalPresentVerified { operation: op, subject: subj, provider: d, ambient: amb }
+              } else {
+                ExternalUnverified { detail: concat("the provider declaration resolves to a ", kind_label(k: k), ", not a service or provider type") as NonEmptyStr }
+              }
+            Absent => ExternalUnverified { detail: concat("the provider declaration did not resolve: ", resolution_failure(r: ctx.resolve(d))) as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// A typed refusal contract is owned by the algebra template that declares the operation's result
+// (total, Optional, or Outcome); an author's RefusalsTyped without one is unverified, and an
+// author's RefusalsUnmodeled is carried as its own reason.
+fn qualify_refusals(r: RefusalStanding, computation: QualifiedComputation, ctx: QualificationContext) -> QualifiedRefusals {
+  match r {
+    RefusalsUnmodeled { detail: d } => RefusalsUnverified { detail: d }
+    RefusalsNotApplicable =>
+      match computation {
+        NoComputationHalf => RefusalsVerified { by: "no computation half: the refusal contract is the provider's or the query's" as NonEmptyStr }
+        ComputationNotEstablished { detail: _ } => RefusalsVerified { by: "no established computation to own a refusal contract" as NonEmptyStr }
+        ComputationVerified { authority: _, inputs: _, result: _, body: _ } => RefusalsUnverified { detail: "a computation over modeled inputs whose refusal standing was recorded as not applicable" as NonEmptyStr }
+      }
+    RefusalsTyped =>
+      if ctx.has_algebra_template {
+        RefusalsVerified { by: "the algebra template declares the operation's result type (std.algebra)" as NonEmptyStr }
+      } else {
+        RefusalsUnverified { detail: "no owning result contract: no algebra template declares the operation's result; a std.primitives contract row prices work and output size and declares no result or refusal" as NonEmptyStr }
+      }
+  }
+}
+
+fn declaration_under_witness_prefix(d: DeclarationRef, prefixes: List<String>) -> Bool {
+  prefixes |> any(p => starts_with(d.module_path as String, p))
+}
+
+fn qualify_witness(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body: DeclarationRef, w: DeclarationRef, ctx: QualificationContext) -> QualifiedRealization {
+  match resolved_kind(r: ctx.resolve(w)) {
+    Absent => RealizationUnqualified { detail: concat("the equivalence witness did not resolve: ", resolution_failure(r: ctx.resolve(w))) as NonEmptyStr }
+    Present { value: witness_kind } =>
+      if !is_fn_kind(k: witness_kind) {
+        RealizationUnqualified { detail: "the equivalence witness resolves to a declaration that is not a fn" as NonEmptyStr }
+      } else if !declaration_under_witness_prefix(d: w, prefixes: ctx.witness_module_prefixes) {
+        RealizationUnqualified { detail: concat("the equivalence witness ", w.module_path as String, " ", w.decl_name as String, " is not under an enrolled witness module prefix") as NonEmptyStr }
+      } else {
+        match resolved_kind(r: ctx.resolve(a)) {
+          Present { value: _ } => RealizationVerified { authority: a, required_semantics: sem, target_realization: tr, reference: body, witness: w }
+          Absent => RealizationUnqualified { detail: concat("the semantic operation authority did not resolve: ", resolution_failure(r: ctx.resolve(a))) as NonEmptyStr }
+        }
+      }
+  }
+}
+
+fn qualify_reference(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body: DeclarationRef, eq: EquivalenceQualification, ctx: QualificationContext) -> QualifiedRealization {
+  match resolved_kind(r: ctx.resolve(body)) {
+    Absent => RealizationUnqualified { detail: concat("the reference body did not resolve: ", resolution_failure(r: ctx.resolve(body))) as NonEmptyStr }
+    Present { value: body_kind } =>
+      if !is_fn_kind(k: body_kind) {
+        RealizationUnqualified { detail: "the reference body resolves to a declaration that is not a fn" as NonEmptyStr }
+      } else {
+        match eq {
+          EquivalenceUnqualified { obligation: o } => RealizationUnqualified { detail: o }
+          QualifiedByWitness { declaration: w } => qualify_witness(a: a, sem: sem, tr: tr, body: body, w: w, ctx: ctx)
+        }
+      }
+  }
+}
+
+fn qualify_realization(r: RealizationStanding, ctx: QualificationContext) -> QualifiedRealization {
+  match r {
+    NoNativeRealizationClaim => NoRealizationClaim
+    NativeRealizationOfModeledOperation { authority: a, required_semantics: sem, target_realization: tr, reference: ref, equivalence: eq } =>
+      match ref {
+        ReferenceBodyAbsent => RealizationUnqualified { detail: "no reference body: the modeled operation has no .dag body the native kernel could be qualified against" as NonEmptyStr }
+        ReferenceBodyExists { declaration: body } => qualify_reference(a: a, sem: sem, tr: tr, body: body, eq: eq, ctx: ctx)
+      }
+  }
+}
+
+// A conflict is DERIVED from the joined surfaces: (a) an interpreter arm this identity dispatches
+// through also carries a spelling of a different identity (std.primitive_identity's
+// SurfaceJoinsTwoIdentities, one arm two meanings); (b) the operation authority resolves to a
+// modeled .dag fn AND an interpreter arm realizes the same identity with no std.primitive_projection
+// row relating them (two realizations, no stated relation). An authored SurfacesDisagree is
+// carried in addition; an authored NoMeaningConflict is not evidence and is ignored.
+fn qualify_conflict(authored: MeaningConflict, computation: QualifiedComputation, ctx: QualificationContext) -> QualifiedConflict {
+  let authored_conflict = match authored {
+    SurfacesDisagree { detail: d } => Present { value: d }
+    NoMeaningConflict => none
+  }
+  match authored_conflict {
+    Present { value: d } => ConflictDerived { detail: d }
+    Absent =>
+      if ctx.arm_shared_with_another_identity {
+        ConflictDerived { detail: "an interpreter arm this identity dispatches through also carries a spelling that joins a different identity (one arm, two meanings)" as NonEmptyStr }
+      } else {
+        match computation {
+          ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
+            match a {
+              AuthorityVerified { declaration: d, kind: k } =>
+                if ctx.has_interpreter_arm && is_dag_computation_kind(k: k) && !ctx.has_algebra_template
+                  && !(ctx.projection_declarations |> any(p => declaration_ref_eq(a: p, b: d))) {
+                  ConflictDerived { detail: concat("the operation authority resolves to a modeled .dag ", kind_label(k: k), " (", d.module_path as String, " ", d.decl_name as String, ") AND an interpreter arm realizes the same identity, with no std.primitive_projection row relating them") as NonEmptyStr }
+                } else {
+                  NoConflictDerived
+                }
+              AuthorityRequiredHome { home: _ } => NoConflictDerived
+              AuthorityUnresolved { reference: _, cause: _ } => NoConflictDerived
+            }
+          NoComputationHalf => NoConflictDerived
+          ComputationNotEstablished { detail: _ } => NoConflictDerived
+        }
+      }
+  }
+}
+
+fn qualify_evidence(e: PrimitiveEvidence, ctx: QualificationContext) -> QualifiedEvidence {
+  let computation = qualify_computation(c: e.computation, ctx: ctx)
+  let is_query = match e.compiler_query {
+    QueryOverAcceptedProduct { judgment_subject: _, accepted_compiler_product: _, current_host_producer: _, deletion_trigger: _ } => true
+    NotACompilerQuery => false
+  }
+  QualifiedEvidence {
+    identity: e.identity,
+    category: e.category,
+    external: qualify_external(e: e.external_subject, computation: computation, is_query: is_query, ctx: ctx),
+    computation: computation,
+    refusals: qualify_refusals(r: e.refusals, computation: computation, ctx: ctx),
+    realization: qualify_realization(r: e.realization, ctx: ctx),
+    compiler_query: e.compiler_query,
+    conflict: qualify_conflict(authored: e.conflict, computation: computation, ctx: ctx),
+    located_evidence: e.located_evidence,
+    next_observation: e.next_observation,
+  }
+}

@@ -18,8 +18,10 @@ import gunbc.primitive_egress.identity {
   JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling,
   canonical_join, identity_name, form_label,
 }
+import v2.std.decl_ref_resolution { DeclarationRefResolution }
+import gunbc.primitive_egress.qualification { QualificationContext, qualify_evidence }
 import gunbc.primitive_egress.disposition {
-  PrimitiveEvidence, PrimitiveDisposition, QueryOverAcceptedProduct, NotACompilerQuery, DispositionClass, UnresolvedClass, PureDagComputationClass, BoundHostEffectClass,
+  PrimitiveEvidence, QualifiedEvidence, PrimitiveDisposition, QueryOverAcceptedProduct, NotACompilerQuery, DispositionClass, UnresolvedClass, PureDagComputationClass, BoundHostEffectClass,
   TargetKernelRealizationClass, CompilerQueryFrontierClass, SeedGrowthOwnership, SeedGrowthRows, NoSeedGrowthRow,
   derive_disposition, disposition_class, disposition_class_label, row_owner_lane,
 }
@@ -39,10 +41,17 @@ type SurfaceFact {
   surface: PrimitiveSurfaceAuthority
   spelling: String
   form: CallForm
+  arm: String?
 }
 
 fn surface_fact(surface: PrimitiveSurfaceAuthority, spelling: String, form: CallForm) -> SurfaceFact {
-  SurfaceFact { surface: surface, spelling: spelling, form: form }
+  SurfaceFact { surface: surface, spelling: spelling, form: form, arm: none }
+}
+
+// An interpreter fact carries its arm identity so the qualification can see when one arm
+// dispatches spellings of two identities (the D0 SurfaceJoinsTwoIdentities class).
+fn surface_fact_on_arm(surface: PrimitiveSurfaceAuthority, spelling: String, form: CallForm, arm: String) -> SurfaceFact {
+  SurfaceFact { surface: surface, spelling: spelling, form: form, arm: Present { value: arm } }
 }
 
 fn arm_call_form(form: InterpreterDispatchForm) -> CallForm {
@@ -56,7 +65,7 @@ fn arm_call_form(form: InterpreterDispatchForm) -> CallForm {
 }
 
 fn interpreter_arm_fact(arm: InterpreterPrimitiveDispatchArm) -> SurfaceFact {
-  surface_fact(surface: InterpreterDispatch, spelling: arm.authored_spelling as String, form: arm_call_form(form: arm.form))
+  surface_fact_on_arm(surface: InterpreterDispatch, spelling: arm.authored_spelling as String, form: arm_call_form(form: arm.form), arm: arm.arm.identity as String)
 }
 
 // A roster row whose spelling names several operations with `|` (the Filesystem checkout
@@ -69,10 +78,11 @@ fn interpreter_arm_facts(arm: InterpreterPrimitiveDispatchArm) -> List<SurfaceFa
     let head = match parts |> first { Present { value: h } => h  Absent => spelling }
     let prefix = match head |> split(".") |> first { Present { value: p } => concat(p, ".")  Absent => "" }
     parts |> enumerate |> map(pair =>
-      surface_fact(
+      surface_fact_on_arm(
         surface: InterpreterDispatch,
         spelling: if pair.first == 0 { pair.second } else { concat(prefix, pair.second) },
         form: arm_call_form(form: arm.form),
+        arm: arm.arm.identity as String,
       )
     )
   } else {
@@ -197,7 +207,10 @@ fn tally_total_sites(t: ConsumerTally) -> Int {
 
 // How one edge joins: to a canonical identity as an ESTABLISHED consumer, to a canonical identity
 // as a site the resolver left unresolved, to a service operation (not a primitive), or to a
-// spelling on no surface at all (a record-field closure invoked as a method, an unresolved
+// spelling on no surface at all. A service operation the interpreter realizes with a primitive
+// arm of its own ("Filesystem.Read", "Filesystem.List") is a primitive identity at OPERATION
+// grain; every other service operation is a bound-provider call by construction and a receipt
+// count only (a record-field closure invoked as a method, an unresolved
 // free call to nothing the census knows -- reported as a receipt count, never as an identity).
 type EdgeJoin
   = EstablishedConsumer { identity: PrimitiveIdentity }
@@ -212,9 +225,6 @@ fn edge_join(edge: PrimitiveCallEdge, on_surface: fn(PrimitiveIdentity) -> Bool)
     AlgebraMethodCallee { template_name: t } =>
       EstablishedConsumer { identity: canonical_join(surface: none, spelling: t, form: MethodForm).identity }
     ServiceOperationCallee { service_name: s, operation: op } => {
-      // A service operation the interpreter realizes with a primitive arm of its own is a
-      // primitive identity at OPERATION grain ("Filesystem.Read", "Filesystem.List"); every other
-      // service operation is a bound-provider call by construction and a receipt count only.
       let id = canonical_join(surface: none, spelling: concat(s, ".", op), form: FormlessSurface).identity
       if on_surface(id) { EstablishedConsumer { identity: id } } else { ServiceOperationSite { service_name: s, operation: op } }
     }
@@ -274,7 +284,7 @@ fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentit
 // The evidence join, then the DERIVED disposition. Exactly one evidence row per identity is the
 // precondition; the class is a function of that row and the derived seed-growth ownership.
 type DispositionMatch
-  = ExactlyOneDisposition { evidence: PrimitiveEvidence, disposition: PrimitiveDisposition }
+  = ExactlyOneDisposition { evidence: PrimitiveEvidence, qualified: QualifiedEvidence, disposition: PrimitiveDisposition }
   | NoDisposition
   | MultipleDispositions { rows: List<PrimitiveEvidence> }
 
@@ -329,17 +339,47 @@ fn is_divergent(f: ProjectionFidelity) -> Bool {
   match f { DivergentProjection { divergence: _ } => true  ModeledProjection => false  HostRealizedSeam => false }
 }
 
-fn disposition_match(rows: List<PrimitiveEvidence>, identity: PrimitiveIdentity, ownership: SeedGrowthOwnership) -> DispositionMatch {
+fn disposition_match(rows: List<PrimitiveEvidence>, identity: PrimitiveIdentity, ownership: SeedGrowthOwnership, ctx: QualificationContext) -> DispositionMatch {
   let matches = rows |> filter(fn(r) { primitive_identity_eq(left: r.identity, right: identity) })
   let n = count(matches)
   if n == 0 { NoDisposition }
   else if n == 1 {
     match matches |> first {
-      Present { value: r } => ExactlyOneDisposition { evidence: r, disposition: derive_disposition(e: r, ownership: ownership) }
+      Present { value: r } => {
+        let qualified = qualify_evidence(e: r, ctx: ctx)
+        ExactlyOneDisposition { evidence: r, qualified: qualified, disposition: derive_disposition(e: qualified, ownership: ownership) }
+      }
       Absent => NoDisposition
     }
   }
   else { MultipleDispositions { rows: matches } }
+}
+
+// THE QUALIFICATION CONTEXT FOR ONE IDENTITY: the resolver the census was handed, and the facts
+// the surface join established for this identity (algebra template present, interpreter arm
+// present, a ServiceDispatch arm, an arm shared with another identity, its projection rows).
+fn arm_shared_with_another_identity(joined: List<JoinedSurfaceFact>, identity: PrimitiveIdentity) -> Bool {
+  let own_arms = joined
+    |> filter(fn(j) { primitive_identity_eq(left: j.join.identity, right: identity) })
+    |> fold(init: [], f: fn(acc, j) { match j.fact.arm { Present { value: a } => push_distinct(xs: acc, x: a)  Absent => acc } })
+  joined |> any(fn(j) {
+    match j.fact.arm {
+      Present { value: a } => (own_arms |> any(x => x == a)) && !primitive_identity_eq(left: j.join.identity, right: identity)
+      Absent => false
+    }
+  })
+}
+
+fn qualification_context_for(identity: PrimitiveIdentity, facts: List<JoinedSurfaceFact>, joined: List<JoinedSurfaceFact>, projections: List<PrimitiveProjection>, resolve: fn(DeclarationRef) -> DeclarationRefResolution, witness_prefixes: List<String>) -> QualificationContext {
+  QualificationContext {
+    resolve: resolve,
+    has_algebra_template: facts_carry_surface(facts: facts, surface: AlgebraTemplate),
+    has_interpreter_arm: facts_carry_surface(facts: facts, surface: InterpreterDispatch),
+    has_service_dispatch_form: facts |> any(fn(f) { match f.fact.arm { Present { value: a } => starts_with(a, "service_dispatch.")  Absent => false } }),
+    arm_shared_with_another_identity: arm_shared_with_another_identity(joined: joined, identity: identity),
+    projection_declarations: projections |> filter(fn(r) { primitive_identity_eq(left: r.primitive, right: identity) }) |> map(r => r.declaration),
+    witness_module_prefixes: witness_prefixes,
+  }
 }
 
 // Seed-growth ownership joins the primitive's runtime name against the declarations every
@@ -363,6 +403,8 @@ fn identity_standing(
   consumers: ConsumerFold,
   dispositions: List<PrimitiveEvidence>,
   seed_growth_decls: List<DeclarationRef>,
+  resolve: fn(DeclarationRef) -> DeclarationRefResolution,
+  witness_prefixes: List<String>,
 ) -> IdentityStanding {
   let name = identity_name(identity: identity)
   let facts = joined |> filter(fn(j) { primitive_identity_eq(left: j.join.identity, right: identity) })
@@ -383,7 +425,7 @@ fn identity_standing(
     host_seams: projection_declarations(rows: projections, identity: identity, wanted: is_host_seam),
     divergent_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_divergent),
     consumers: match map_get(consumers.tallies, name) { Present { value: t } => t  Absent => empty_tally() },
-    disposition: disposition_match(rows: dispositions, identity: identity, ownership: ownership),
+    disposition: disposition_match(rows: dispositions, identity: identity, ownership: ownership, ctx: qualification_context_for(identity: identity, facts: facts, joined: joined, projections: projections, resolve: resolve, witness_prefixes: witness_prefixes)),
     seed_growth: ownership,
   }
 }
@@ -399,6 +441,8 @@ type CensusInputs {
   projections: List<PrimitiveProjection>
   dispositions: List<PrimitiveEvidence>
   seed_growth_decls: List<DeclarationRef>
+  resolve: fn(DeclarationRef) -> DeclarationRefResolution
+  witness_module_prefixes: List<String>
 }
 
 // Which population first brought an identity into the universe -- carried so the receipt can
@@ -510,6 +554,7 @@ fn primitive_census(inputs: CensusInputs) -> PrimitiveCensus {
     standings: identities |> map(id => identity_standing(
       identity: id, joined: joined, projections: inputs.projections, consumers: consumers,
       dispositions: inputs.dispositions, seed_growth_decls: inputs.seed_growth_decls,
+      resolve: inputs.resolve, witness_prefixes: inputs.witness_module_prefixes,
     )),
     origins: universe.origins,
     consumer_fold: consumers,
@@ -565,20 +610,20 @@ fn interpreter_arm_without_emitted_route(c: PrimitiveCensus) -> List<IdentitySta
 }
 
 fn zero_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
-  standings_where(c: c, p: fn(s) { match s.disposition { NoDisposition => true  ExactlyOneDisposition { evidence: _, disposition: _ } => false  MultipleDispositions { rows: _ } => false } })
+  standings_where(c: c, p: fn(s) { match s.disposition { NoDisposition => true  ExactlyOneDisposition { evidence: _, qualified: _, disposition: _ } => false  MultipleDispositions { rows: _ } => false } })
 }
 
 fn multiple_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
-  standings_where(c: c, p: fn(s) { match s.disposition { MultipleDispositions { rows: _ } => true  ExactlyOneDisposition { evidence: _, disposition: _ } => false  NoDisposition => false } })
+  standings_where(c: c, p: fn(s) { match s.disposition { MultipleDispositions { rows: _ } => true  ExactlyOneDisposition { evidence: _, qualified: _, disposition: _ } => false  NoDisposition => false } })
 }
 
 fn exactly_one_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
-  standings_where(c: c, p: fn(s) { match s.disposition { ExactlyOneDisposition { evidence: _, disposition: _ } => true  MultipleDispositions { rows: _ } => false  NoDisposition => false } })
+  standings_where(c: c, p: fn(s) { match s.disposition { ExactlyOneDisposition { evidence: _, qualified: _, disposition: _ } => true  MultipleDispositions { rows: _ } => false  NoDisposition => false } })
 }
 
 fn standing_class(s: IdentityStanding) -> DispositionClass? {
   match s.disposition {
-    ExactlyOneDisposition { evidence: _, disposition: d } => Present { value: disposition_class(d: d) }
+    ExactlyOneDisposition { evidence: _, qualified: _, disposition: d } => Present { value: disposition_class(d: d) }
     NoDisposition => none
     MultipleDispositions { rows: _ } => none
   }

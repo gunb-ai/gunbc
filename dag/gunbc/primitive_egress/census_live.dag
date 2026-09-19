@@ -11,6 +11,7 @@ import std.primitive_identity { BuiltinRegistry, PrimitiveContractRow, AlgebraTe
 import extdeps.languages.rust.emit { rt_function_registry }
 import gunbc.v1_interpreter_primitive_surface { v1_interpreter_primitive_arms }
 import gunbc.seed_growth_admission { seed_growth_roster_all_declarations }
+import v2.std.decl_ref_resolution { DeclarationRefResolution, resolve_declaration_ref_live }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.primitive_egress.identity { FreeForm, MethodForm, FormlessSurface }
 import gunbc.primitive_egress.census {
@@ -87,6 +88,16 @@ fn hand_roster_rows_absent_from_registry() -> List<String> {
 // consumers is only rendered against the walked scope. Each scope is its own instrument label
 // (gunbc.instrument_targets primitive_egress_census_{v2,dag,seed}_label), never a flag.
 data admitted_corpus_pool_roots: List<String> = ["dag", "src/v2"]
+
+// Every declaration reference an evidence row cites is resolved through the declaration index
+// over the admitted corpus before the classifier reads it (gunbc.primitive_egress.qualification).
+fn live_declaration_resolver(ref: DeclarationRef) -> DeclarationRefResolution {
+  resolve_declaration_ref_live(ref: ref, pool_roots: admitted_corpus_pool_roots)
+}
+
+// An equivalence witness counts only under the modules the floor discovers
+// (gunbc.ci_layer_roots witness_discovery_scan_dirs: dag/test/claim and src/v2/test/claim).
+data witness_module_prefixes: List<String> = ["test.claim.", "v2.test.claim."]
 data seed_pool_roots: List<String> = ["dag", "src/v1"]
 
 // Fixture subtrees hold programs authored to REFUSE (planted reds, parse probes); they are not
@@ -100,6 +111,17 @@ type CensusScope
   | DagEntriesOnly
   | SeedEntriesOnly
 
+// Only the full corpus establishes the whole consumer population; every bounded scope renders its
+// consumer-absence populations under scope-qualified names (gunbc.primitive_egress.receipt).
+fn scope_is_complete(scope: CensusScope) -> Bool {
+  match scope {
+    FullCorpus => true
+    V2EntriesOnly => false
+    DagEntriesOnly => false
+    SeedEntriesOnly => false
+  }
+}
+
 fn scope_label(scope: CensusScope) -> String {
   match scope {
     FullCorpus => "full-corpus"
@@ -109,12 +131,25 @@ fn scope_label(scope: CensusScope) -> String {
   }
 }
 
+// ONE RESOLUTION PER POOL. The admitted corpus (dag ∪ src/v2) is resolved once and its module
+// walk covers BOTH the src/v2 and the dag entry prefixes; the v2 and dag projections are
+// partitions of that one walk by the caller's layer (ConsumerTally v2_sites / dag_sites), never a
+// second resolution. The seed pool (dag ∪ src/v1) is a different prepared subject and is resolved
+// once for the src/v1 prefix.
+fn admitted_corpus_census(entry_prefixes: List<String>) -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots, entry_prefixes)
+}
+
 fn v2_entries_census() -> PrimitiveCallEdgeCensus {
-  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots, ["src/v2/"])
+  admitted_corpus_census(entry_prefixes: ["src/v2/"])
 }
 
 fn dag_entries_census() -> PrimitiveCallEdgeCensus {
-  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots, ["dag/"])
+  admitted_corpus_census(entry_prefixes: ["dag/"])
+}
+
+fn admitted_corpus_both_census() -> PrimitiveCallEdgeCensus {
+  admitted_corpus_census(entry_prefixes: ["src/v2/", "dag/"])
 }
 
 fn seed_entries_census() -> PrimitiveCallEdgeCensus {
@@ -152,7 +187,7 @@ fn live_edges(scope: CensusScope) -> LiveEdges {
     SeedEntriesOnly => edges_of(label: "src/v1 entries", c: seed_entries_census())
     FullCorpus =>
       merge_live_edges(
-        a: merge_live_edges(a: edges_of(label: "src/v2 entries", c: v2_entries_census()), b: edges_of(label: "dag entries", c: dag_entries_census())),
+        a: edges_of(label: "dag and src/v2 entries", c: admitted_corpus_both_census()),
         b: edges_of(label: "src/v1 entries", c: seed_entries_census())
       )
   }
@@ -174,6 +209,8 @@ fn live_census(scope: CensusScope) -> LiveCensus {
           projections: primitive_projection_roster(),
           dispositions: primitive_evidence_rows(),
           seed_growth_decls: seed_growth_roster_all_declarations(),
+          resolve: live_declaration_resolver,
+          witness_module_prefixes: witness_module_prefixes,
         }),
         entries_resolved: n,
       }
@@ -198,7 +235,7 @@ fn census_wire(scope: CensusScope) -> CliWireResponse {
     LiveCensusRefused { cause: c } =>
       CliWirePrintable { bytes: concat("primitive-egress-census: refused: ", c as String, "\n"), exit: ExitFailure { code: 2, reason: c as String } }
     LiveCensusObserved { census: c, entries_resolved: n } => {
-      let lines = census_receipt_lines(c: c, scope: scope_label(scope: scope), entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry())
+      let lines = census_receipt_lines(c: c, scope: scope_label(scope: scope), scope_complete: scope_is_complete(scope: scope), entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry())
       let bytes = concat(lines |> join(separator: "\n"), "\n")
       match census_standing(c: c) {
         CensusHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }

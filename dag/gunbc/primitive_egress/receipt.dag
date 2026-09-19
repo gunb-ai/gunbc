@@ -8,6 +8,7 @@ import gunbc.primitive_egress.disposition {
   PrimitiveEvidence, PrimitiveDisposition, PureDagComputation, BoundHostEffect, TargetKernelRealization,
   CompilerQueryFrontier, Unresolved, UnresolvedCause, MixedSemanticQuestions, ConflictingRealizations,
   SubjectUnestablished, RefusalContractIncomplete, OperationAuthorityAbsent, TargetKernelUnqualified, SeedGrowthOwnershipAbsent,
+  ExternalSubjectUnverified, OwningFactUnresolved,
   DispositionClass, disposition_class_label, disposition_class, row_owner_lane,
   ExternalSubjectStanding, NoExternalSubject, ObservesOrMutates, ExternalSubjectUnestablished,
   ComputationStanding, PureComputationOverInputs, NoPureComputationHalf, ComputationUnestablished,
@@ -86,6 +87,8 @@ fn cause_json(c: UnresolvedCause) -> JsonValue {
     SubjectUnestablished { detail: d } => kv_kind(kind: "SubjectUnestablished", key: "detail", value: d as String)
     RefusalContractIncomplete { detail: d } => kv_kind(kind: "RefusalContractIncomplete", key: "detail", value: d as String)
     OperationAuthorityAbsent { home: h } => kv_kind(kind: "OperationAuthorityAbsent", key: "home", value: h as String)
+    ExternalSubjectUnverified { detail: d } => kv_kind(kind: "ExternalSubjectUnverified", key: "detail", value: d as String)
+    OwningFactUnresolved { premise: p, reference: r, cause: c } => json_object(members: [json_kv(key: "kind", value: json_string(s: "OwningFactUnresolved")), json_kv(key: "premise", value: json_string(s: p as String)), json_kv(key: "reference", value: json_string(s: declaration_ref_display_key(ref: r))), json_kv(key: "cause", value: json_string(s: c as String))])
     TargetKernelUnqualified { detail: d } => kv_kind(kind: "TargetKernelUnqualified", key: "detail", value: d as String)
     SeedGrowthOwnershipAbsent { producer: p } => kv_kind(kind: "SeedGrowthOwnershipAbsent", key: "producer", value: declaration_ref_display_key(ref: p))
   }
@@ -171,7 +174,7 @@ fn disposition_json(row: PrimitiveEvidence, d: PrimitiveDisposition) -> JsonValu
 
 fn match_json(m: DispositionMatch) -> JsonValue {
   match m {
-    ExactlyOneDisposition { evidence: r, disposition: d } => disposition_json(row: r, d: d)
+    ExactlyOneDisposition { evidence: r, qualified: _, disposition: d } => disposition_json(row: r, d: d)
     NoDisposition => json_object(members: [json_kv(key: "class", value: json_string(s: "NONE")), json_kv(key: "matching_dispositions", value: json_int(n: 0))])
     MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs)))])
   }
@@ -235,8 +238,19 @@ fn standing_label(s: CensusStanding) -> String {
   }
 }
 
-fn census_receipt_lines(c: PrimitiveCensus, scope: String, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
-  let populations = [
+// CONSUMER-ABSENCE POPULATIONS ARE SCOPE-QUALIFIED. `unused_primitives`, `emitted_bridge_without_
+// consumer` and `v1_only_projection` are claims about the WHOLE consumer population; a bounded
+// walk cannot establish them, so under a bounded scope they are rendered under names that say
+// so (`..._within_walked_scope`) and the v1-only projection -- which needs every other layer
+// walked -- is not rendered at all. Presence populations (reached, shared, unresolved callee) are
+// facts of the walked scope and keep their names.
+fn absence_population_name(base: String, scope_complete: Bool) -> String {
+  if scope_complete { base } else { concat(base, "_within_walked_scope") }
+}
+
+fn census_receipt_lines(c: PrimitiveCensus, scope: String, scope_complete: Bool, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
+  let v1_only = if scope_complete { [population_line(name: "v1_only_projection", members: names(ss: v1_only_projection(c: c)))] } else { [] }
+  let populations = concat([
     population_line(name: "expected_identities", members: names(ss: c.standings)),
     population_line(name: "exactly_one_disposition", members: names(ss: exactly_one_disposition(c: c))),
     population_line(name: "zero_disposition", members: names(ss: zero_disposition(c: c))),
@@ -253,25 +267,25 @@ fn census_receipt_lines(c: PrimitiveCensus, scope: String, entries_resolved: Int
     population_line(name: "registry_without_contract", members: names(ss: registry_without_contract(c: c))),
     population_line(name: "contract_without_interpreter_arm", members: names(ss: contract_without_interpreter_arm(c: c))),
     population_line(name: "interpreter_arm_without_contract", members: names(ss: interpreter_arm_without_contract(c: c))),
-    population_line(name: "emitted_bridge_without_consumer", members: names(ss: emitted_bridge_without_consumer(c: c))),
-    population_line(name: "unused_primitives", members: names(ss: unused_primitives(c: c))),
+    population_line(name: absence_population_name(base: "emitted_bridge_without_consumer", scope_complete: scope_complete), members: names(ss: emitted_bridge_without_consumer(c: c))),
+    population_line(name: absence_population_name(base: "unused_primitives", scope_complete: scope_complete), members: names(ss: unused_primitives(c: c))),
     population_line(name: "consumers_with_unresolved_callee", members: names(ss: consumers_with_unresolved_callee(c: c))),
     population_line(name: "duplicate_realizations", members: names(ss: duplicate_realizations(c: c))),
     population_line(name: "interpreter_arm_without_emitted_route_reached_by_v2", members: names(ss: interpreter_arm_without_emitted_route(c: c))),
     population_line(name: "compiler_query_without_seed_growth_row", members: names(ss: compiler_query_without_seed_growth_row(c: c))),
     population_line(name: "v2_projection", members: names(ss: v2_projection(c: c))),
-    population_line(name: "v1_only_projection", members: names(ss: v1_only_projection(c: c))),
     population_line(name: "shared_v1_v2", members: names(ss: shared_v1_v2_identities(c: c))),
     population_line(name: "aliased_identities", members: names(ss: aliased_identities(c: c))),
     population_line(name: "off_surface_call_spellings", members: c.consumer_fold.off_surface_spellings),
     population_line(name: "hand_roster_missing_registry_rows", members: roster_missing),
     population_line(name: "hand_roster_rows_absent_from_registry", members: roster_extra),
     population_line(name: "entries_refused", members: c.entries_refused |> map(r => concat(r.entry, ": ", r.cause))),
-  ]
+  ], v1_only)
   let summary = serialize_json(v: json_object(members: [
     json_kv(key: "census", value: json_string(s: "primitive-egress-census")),
     json_kv(key: "standing", value: json_string(s: standing_label(s: census_standing(c: c)))),
     json_kv(key: "scope", value: json_string(s: scope)),
+    json_kv(key: "consumer_population_complete", value: json_bool(b: scope_complete)),
     json_kv(key: "entries_resolved", value: json_int(n: entries_resolved)),
     json_kv(key: "identities", value: json_int(n: count(c.standings))),
     json_kv(key: "service_operation_sites", value: json_int(n: c.consumer_fold.service_sites)),
