@@ -243,7 +243,7 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
   match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
     StageRefused { stage: _, cause: c } => match c {
       RouteClassAnsweredByWrongFold { route: _, expected: _, observed: ob } =>
-        ob == ("approval-broker/no-route-matched" as NonEmptyStr)
+        ob == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
       _ => false
     }
     StageAdmitted { stage: _ } => false
