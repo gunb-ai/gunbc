@@ -7,7 +7,8 @@ import gunbc.floor_demand {
   FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
   floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
   floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
-  FloorNonReclaimableStanding, NonReclaimableUnmeasured, NonReclaimableMeasured, FloorNonReclaimableReceipt, FloorNonReclaimableBeat,
+  FloorNonReclaimableStanding, NonReclaimableUnmeasured, NonReclaimableMeasured, FloorNonReclaimableReceipt, FloorMemoryStatBeat,
+  beat_held_set, beat_reclaimable_cache, receipt_peak_beat, receipt_last_unstalled_beat, receipt_held_set_peak,
   floor_memory_requirement_of, gunbc_floor_non_reclaimable_standing, gunbc_floor_non_reclaimable_receipt_2026_09_19,
   gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
   gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
@@ -88,17 +89,7 @@ test fn the_work_memory_requirement_is_the_non_reclaimable_peak_or_absent() -> B
     Present { value: _ } => false
   }
   let measured = match floor_memory_requirement_of(
-    standing: NonReclaimableMeasured {
-      receipt: FloorNonReclaimableReceipt {
-        run_id: "fixture",
-        runner_unit: "fixture",
-        beat_cadence: second(count: 60),
-        beats_sampled: 10,
-        peak: FloorNonReclaimableBeat { beat: 2, nonreclaimable: byte_size(1000), file: byte_size(500), charge: byte_size(1500), stall: events_per_minute(count: 9) },
-        last_unstalled: FloorNonReclaimableBeat { beat: 1, nonreclaimable: byte_size(900), file: byte_size(700), charge: byte_size(1600), stall: events_per_minute(count: 0) },
-        run_completed: true,
-      },
-    },
+    standing: NonReclaimableMeasured { receipt: fixture_receipt() },
   ) {
     Absent => false
     Present { value: m } => byte_size_count(b: m.min_bytes) == 1000
@@ -112,26 +103,101 @@ test fn the_work_memory_requirement_is_the_non_reclaimable_peak_or_absent() -> B
     NonReclaimableMeasured { receipt: r } =>
       match floor_execution_requirements().shape.envelope.memory {
         Absent => false
-        Present { value: m } => byte_size_count(b: m.min_bytes) == byte_size_count(b: r.peak.nonreclaimable)
+        Present { value: m } =>
+          match receipt_held_set_peak(r: r) {
+            Absent => false
+            Present { value: peak } => byte_size_count(b: m.min_bytes) == byte_size_count(b: peak)
+          }
       }
   }
   unmeasured && measured && work_carries_the_standing
 }
 
-// THE PRODUCTION RECEIPT IS WHAT THE INSTRUMENT SAID AND IS HONEST ABOUT ITS GRAIN: a partial run
-// on the fleet's slot row, the non-reclaimable partition the whole of the charge (cache reclaimed
-// to under 1 percent of it), and the partition within the cell's memory_max -- the fact that
-// makes the host slot able to hold the floor at all.
-test fn the_production_receipt_is_a_partial_run_whose_partition_was_the_whole_charge() -> Bool {
+fn beat(n: Int, anon: Int, file: Int, shmem: Int, unevictable: Int, stall: Int) -> FloorMemoryStatBeat {
+  FloorMemoryStatBeat {
+    beat: n, charge: byte_size(anon + file + 10),
+    anon: byte_size(anon), file: byte_size(file), shmem: byte_size(shmem), unevictable: byte_size(unevictable),
+    slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
+    pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0),
+    stall: events_per_minute(count: stall),
+  }
+}
+
+// A FIXTURE RUN OF THREE BEATS: beat 1 unstalled with a large cache, beat 2 the held-set peak and
+// stalling, beat 3 falling back. Held set at beat 2 = 900 + 90 + 4 + 3 + 2 + 1 + 0 = 1000.
+fn fixture_receipt() -> FloorNonReclaimableReceipt {
+  FloorNonReclaimableReceipt {
+    run_id: "fixture",
+    runner_unit: "fixture",
+    beat_cadence: second(count: 60),
+    beats_sampled: 3,
+    beats: [
+      beat(n: 1, anon: 800, file: 700, shmem: 50, unevictable: 0, stall: 0),
+      beat(n: 2, anon: 900, file: 100, shmem: 90, unevictable: 30, stall: 9),
+      beat(n: 3, anon: 850, file: 120, shmem: 90, unevictable: 30, stall: 4),
+    ],
+    run_completed: true,
+  }
+}
+
+// THE HELD-SET RULE IS NON-OVERLAPPING: shmem is added in place of file, unevictable is not a term,
+// reclaimable slab is not a term. Beat 2 of the fixture carries unevictable 30 and slab_reclaimable
+// 1000 precisely so a rule that summed either would red here, and the reclaimable cache is file
+// less shmem.
+test fn the_held_set_rule_counts_disjoint_terms_only() -> Bool {
+  let b2 = beat(n: 2, anon: 900, file: 100, shmem: 90, unevictable: 30, stall: 9)
+  byte_size_count(b: beat_held_set(b: b2)) == 1000
+    && byte_size_count(b: beat_reclaimable_cache(b: b2)) == 10
+}
+
+// THE DISTINGUISHED BEATS ARE DERIVED FROM THE LIST: the peak is the largest held set, the last
+// unstalled beat is the highest zero-stall beat before it, and an empty list yields neither.
+test fn the_peak_and_last_unstalled_beats_are_derived_from_the_raw_beats() -> Bool {
+  let r = fixture_receipt()
+  let peak = match receipt_peak_beat(r: r) {
+    Absent => false
+    Present { value: p } => p.beat == 2
+  }
+  let unstalled = match receipt_last_unstalled_beat(r: r) {
+    Absent => false
+    Present { value: u } => u.beat == 1
+  }
+  let empty = FloorNonReclaimableReceipt {
+    run_id: "empty", runner_unit: "empty", beat_cadence: second(count: 60), beats_sampled: 0,
+    beats: [] as List<FloorMemoryStatBeat>, run_completed: false,
+  }
+  let none_on_empty = match receipt_peak_beat(r: empty) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  peak && unstalled && none_on_empty
+}
+
+// THE PRODUCTION RECEIPT IS WHAT THE INSTRUMENT SAID, JOINED TO THE CITED PRODUCER READINGS:
+// four raw beats transcribed from run 35419304682's own lines; the derived peak is beat 14 with
+// held set 26725773568 and its stall clause at 6 per minute; beat 15's clause reads 66940, the
+// thrash the prose cites; the last unstalled beat is 13 with 1895120896 bytes of file. A partial
+// run, the held set within the cell's memory_max, and the cache under one percent of the charge
+// at the peak.
+test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readings() -> Bool {
   let r = gunbc_floor_non_reclaimable_receipt_2026_09_19
-  !r.run_completed
-    && r.beats_sampled > 0
-    && byte_size_count(b: r.peak.file) * 100 < byte_size_count(b: r.peak.charge)
-    && byte_size_count(b: r.peak.nonreclaimable) <= byte_size_count(b: r.peak.charge)
-    && byte_size_count(b: r.peak.nonreclaimable) <= byte_size_count(b: gunbc_runner_slot_desired().memory_max)
-    && r.last_unstalled.beat < r.peak.beat
-    && events_per_minute_count(r: r.last_unstalled.stall) == 0
-    && events_per_minute_count(r: r.peak.stall) > 0
+  let peak_ok = match receipt_peak_beat(r: r) {
+    Absent => false
+    Present { value: p } =>
+      p.beat == 14
+        && byte_size_count(b: beat_held_set(b: p)) == 26725773568
+        && byte_size_count(b: p.anon) == 26664632320
+        && events_per_minute_count(r: p.stall) == 6
+        && byte_size_count(b: p.file) * 100 < byte_size_count(b: p.charge)
+        && byte_size_count(b: beat_held_set(b: p)) <= byte_size_count(b: p.charge)
+        && byte_size_count(b: beat_held_set(b: p)) <= byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  }
+  let thrash_beat_ok = any(r.beats, b => b.beat == 15 && events_per_minute_count(r: b.stall) == 66940)
+  let unstalled_ok = match receipt_last_unstalled_beat(r: r) {
+    Absent => false
+    Present { value: u } => u.beat == 13 && byte_size_count(b: u.file) == 1895120896 && events_per_minute_count(r: u.stall) == 0
+  }
+  !r.run_completed && r.beats_sampled > 0 && count(r.beats) == 4 && peak_ok && thrash_beat_ok && unstalled_ok
 }
 
 // THE PIN WAS TAKEN UNDER THE CURRENT ROW, which is what makes it a finding about the row rather

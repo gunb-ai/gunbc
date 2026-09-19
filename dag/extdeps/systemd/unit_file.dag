@@ -148,6 +148,7 @@ type SystemdServiceDirective
   | ServiceExitType { exit_type: SystemdExitType }
   | ServiceKillMode { mode: SystemdKillMode }
   | RestartSec { duration: NonEmptyStr }
+  | ServiceTasksMax { count: Int }
   | TimeoutStopSec { duration: NonEmptyStr }
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
@@ -561,6 +562,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
     RestartSec { duration: v } => join(["RestartSec=", v as String], "")
+    ServiceTasksMax { count: v } => join(["TasksMax=", to_string(v)], "")
     TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
   }
 }

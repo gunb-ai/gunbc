@@ -18,11 +18,11 @@ import std.measure {
 }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.envelope { StorageRequirement }
-import extdeps.firmware.kernel_cmdline { sysctl_cmdline_arg, kernel_cmdline_arg_wire }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.floor_demand {
   floor_storage_requirement, round_up_to_gibibyte_grain,
   gunbc_floor_non_reclaimable_standing, NonReclaimableUnmeasured, NonReclaimableMeasured,
+  receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
@@ -387,7 +387,8 @@ data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
 //                guest_memory_fits admits the derived guest without a second relation.
 //   workspace    the attempt's workspace grant, admitted only if it holds the Work's stated
 //                storage minimum.
-//   task ceiling the cell's TasksMax, carried INTO the guest as kernel.pid_max. In the lifecycle-
+//   task ceiling the cell's TasksMax, applied INSIDE the guest as the runner agent unit's own
+//                TasksMax= (pids.max on its cgroup; gunbc.runner_guest_image). In the lifecycle-
 //                controller topology the cell's TasksMax bounds only the VMM's handful of threads;
 //                the floor's processes live behind the guest kernel, where the cell cannot count
 //                them. Re-applying the same row inside the guest keeps the 2026-06-21 incident's
@@ -526,9 +527,10 @@ fn runner_microvm_shape_after_cpu(
 // whose RAM equals the Work's non-reclaimable demand runs the floor with no file cache at all,
 // re-reading every source and object from the workspace image on each touch. The receipt carries
 // the last beat at which the host slot was NOT thrashing (gunbc.floor_demand
-// FloorNonReclaimableReceipt.last_unstalled: the stall clause at zero, 1895120896 bytes of file
-// cache beside the anonymous demand on 2026-09-19), and the allowance is that cache rounded up to
-// the corpus's whole-gibibyte grain: the smallest grain above a cache the run held while it worked.
+// receipt_last_unstalled_beat: the stall clause at zero, 1895120896 bytes of file beside the
+// anonymous demand on 2026-09-19), and the allowance is that beat's RECLAIMABLE cache -- file less
+// shmem, the part reclaim can give back -- rounded up to the corpus's whole-gibibyte grain: the
+// smallest grain above a cache the run held while it worked.
 // It is a floor on a working operating point rather than a measured optimum, which is the only
 // honest reading of one beat; its revision is the in-guest cold receipt
 // (gunbc.floor_cold_build_receipt), which reads the same partition inside a guest. While the
@@ -537,7 +539,11 @@ fn runner_microvm_shape_after_cpu(
 fn gunbc_runner_microvm_guest_cache_allowance() -> ByteSize {
   match gunbc_floor_non_reclaimable_standing() {
     NonReclaimableUnmeasured { instrument: _ } => byte_size(0)
-    NonReclaimableMeasured { receipt: r } => round_up_to_gibibyte_grain(bytes: r.last_unstalled.file)
+    NonReclaimableMeasured { receipt: r } =>
+      match receipt_last_unstalled_beat(r: r) {
+        Absent => byte_size(0)
+        Present { value: b } => round_up_to_gibibyte_grain(bytes: beat_reclaimable_cache(b: b))
+      }
   }
 }
 
@@ -553,20 +559,20 @@ fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
     envelope: CellMemoryEnvelope { bytes: cell.memory_max },
     reserve: gunbc_runner_microvm_realization_reserve(),
     cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
-    task_ceiling: cell.tasks_max,
+    task_ceiling: gunbc_runner_microvm_task_ceiling(),
     workspace: runner_microvm_workspace_grant,
   )
 }
 
-// THE TASK CEILING REACHES THE GUEST AS A KERNEL COMMAND-LINE SYSCTL, rendered by the cited
-// kernel-parameters authority rather than spelled here. The guest reads it back as
-// /proc/sys/kernel/pid_max; a guest kernel too old to honour `sysctl.` boots with its default and
-// the readback, not this argument, is what establishes the ceiling.
-fn runner_microvm_task_ceiling_boot_arg(shape: RunnerMicroVmShape) -> String {
-  kernel_cmdline_arg_wire(
-    arg: sysctl_cmdline_arg(parameter: "kernel.pid_max", value: to_string(shape.task_ceiling)),
-  )
+// THE TASK CEILING, READ FROM THE CELL ROW ONCE, FOR THE TWO CONSUMERS THAT CARRY IT: the guest
+// shape (so the shape states what the guest is bounded to) and the guest agent unit
+// (gunbc.runner_guest_image runner_guest_agent_unit), whose TasksMax= directive is the APPLICATION
+// -- systemd realizes it as pids.max on the unit's cgroup inside the guest. It is not projected as
+// kernel.pid_max: that is the PID-number wrap ceiling, a different fact with a different remedy.
+fn gunbc_runner_microvm_task_ceiling() -> Int {
+  gunbc_runner_slot_desired().tasks_max
 }
+
 
 fn runner_microvm_isolation_profile() -> IsolationProfile {
   dedicated_kernel_sandbox_profile()

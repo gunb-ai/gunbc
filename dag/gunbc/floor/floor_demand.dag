@@ -3,7 +3,7 @@ module gunbc.floor_demand
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute,
+  ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute, events_per_minute_count,
   gibibyte_scale_factor_bytes,
 }
 import std.disposition { Disposition, SingleAuthority }
@@ -217,40 +217,113 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // socket memory. The instrument is the floor heartbeat's own `[floor-cgroup] stat_level=` line
 // (v1_compiler cli_run required_floor_runner floor_cgroup_stat_partition), which reads the leaf's
 // memory.stat once per beat and prints that partition beside the reclaimable file figures. A
-// receipt is the MAXIMUM of the partition over one run's beats, with the file bytes read at that
-// same beat, so the allowance below can be checked against what the cache actually held when the
-// anonymous demand peaked. memory.stat has no peak counter, so a per-beat maximum is a lower
-// bound on the true anonymous peak by whatever a sub-minute spike hid; the cadence is carried so
-// a reader knows the grain.
-// ONE BEAT'S PARTITION, TYPED, so a beat cited as evidence is a value a fold can read rather than a
-// sentence. The stall rate is the heartbeat's own stall clause beside the partition line, and it
-// rides the carrier that clause's producer returns -- gunbc.memory_stall_refusal
+// receipt carries the raw beats, and the demand is the MAXIMUM of the held set (beat_held_set,
+// the non-overlapping rule below) over them, with the file bytes of the same beat beside it, so the
+// allowance can be checked against what the cache actually held when the anonymous demand peaked.
+// memory.stat has no peak counter, so a per-beat maximum is a lower bound on the true peak by
+// whatever a sub-minute spike hid; the cadence is carried so a reader knows the grain.
+// ONE BEAT'S memory.stat READINGS, RAW, so a beat cited as evidence is a value a fold can read rather
+// than a sentence, and so the derivation below can be checked against the components it folds.
+// Every field is the kernel's own counter as the heartbeat printed it, in bytes; nothing is summed
+// here. The stall rate is the heartbeat's own stall clause beside the partition line, and it rides
+// the carrier that clause's producer returns -- gunbc.memory_stall_refusal
 // memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
-// instrument hold one representation of one quantity rather than a Measure on one side and a bare
-// integer on the other.
-type FloorNonReclaimableBeat {
+// instrument hold one representation of one quantity.
+type FloorMemoryStatBeat {
   beat: Int
-  nonreclaimable: ByteSize
-  file: ByteSize
   charge: ByteSize
+  anon: ByteSize
+  file: ByteSize
+  shmem: ByteSize
+  unevictable: ByteSize
+  slab_unreclaimable: ByteSize
+  slab_reclaimable: ByteSize
+  kernel_stack: ByteSize
+  pagetables: ByteSize
+  percpu: ByteSize
+  sock: ByteSize
   stall: EventsPerMinute
 }
 
-// THE RECEIPT CARRIES TWO BEATS: the peak, and the LAST BEAT BEFORE THE STALL BEGAN -- the highest
-// beat at which the heartbeat's stall clause still read zero. The second is what the guest's cache
-// allowance is derived from: the file cache the slot still held while it was not thrashing.
+// THE HELD-SET RULE, STATED ONCE AND EXPLICITLY NON-OVERLAPPING. memory.stat's counters are not a
+// partition: `file` INCLUDES shmem/tmpfs pages, and `unevictable` is an LRU-list state counter
+// over pages that `anon` and `file` already count by type. A sum that took every "non-reclaimable
+// looking" key would double-count. What a guest with no swap must HOLD is therefore folded from
+// disjoint counters only:
+//
+//   anon               swap-backed, unreclaimable without swap
+//   shmem              swap-backed, counted inside `file` by the kernel and so added here in place
+//                      of `file`, never beside it
+//   slab_unreclaimable, kernel_stack, pagetables, percpu, sock
+//                      kernel memory charged to the cgroup that reclaim cannot free
+//
+// `file` less `shmem` is the reclaimable page cache; `slab_reclaimable` is reclaimable; and
+// `unevictable` is deliberately NOT a term, because its pages are already inside `anon` or `file`.
+// The figure this yields is a RESIDENT HELD-SET LOWER BOUND for the beat, and that is what the
+// Work's memory minimum is: the Work states what it must hold, at the grain the heartbeat samples.
+fn beat_held_set(b: FloorMemoryStatBeat) -> ByteSize {
+  byte_size(
+    byte_size_count(b: b.anon)
+      + byte_size_count(b: b.shmem)
+      + byte_size_count(b: b.slab_unreclaimable)
+      + byte_size_count(b: b.kernel_stack)
+      + byte_size_count(b: b.pagetables)
+      + byte_size_count(b: b.percpu)
+      + byte_size_count(b: b.sock)
+  )
+}
+
+fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> ByteSize {
+  byte_size(byte_size_count(b: b.file) - byte_size_count(b: b.shmem))
+}
+
+// THE RECEIPT CARRIES THE RAW BEATS, AND ITS TWO DISTINGUISHED BEATS ARE DERIVED, NOT AUTHORED:
+// the PEAK is the beat with the largest held set, and the LAST UNSTALLED beat is the highest-
+// numbered beat before the peak whose stall clause read zero -- the cache the slot still held
+// while it was not thrashing, which the guest's cache allowance is derived from. Both folds refuse
+// (Absent) on an empty or all-stalled list rather than inventing a beat.
 type FloorNonReclaimableReceipt {
   run_id: NonEmptyStr
   runner_unit: NonEmptyStr
   beat_cadence: Second
   beats_sampled: Int
-  peak: FloorNonReclaimableBeat
-  last_unstalled: FloorNonReclaimableBeat
+  beats: List<FloorMemoryStatBeat>
   run_completed: Bool
 }
 
-fn receipt_nonreclaimable_peak(r: FloorNonReclaimableReceipt) -> ByteSize {
-  r.peak.nonreclaimable
+fn larger_held_set(a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemoryStatBeat {
+  if byte_size_count(b: beat_held_set(b: b)) > byte_size_count(b: beat_held_set(b: a)) { b } else { a }
+}
+
+fn receipt_peak_beat(r: FloorNonReclaimableReceipt) -> FloorMemoryStatBeat? {
+  match r.beats {
+    Empty {} => none
+    Cons { head: h, tail: t } => Present { value: fold(t, init: h, f: (best, b) => larger_held_set(a: best, b: b)) }
+  }
+}
+
+fn later_unstalled_before(peak: FloorMemoryStatBeat, a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemoryStatBeat {
+  if b.beat < peak.beat && events_per_minute_count(r: b.stall) == 0 && (b.beat > a.beat || !(a.beat < peak.beat && events_per_minute_count(r: a.stall) == 0)) { b } else { a }
+}
+
+// THE LAST UNSTALLED BEAT: the highest-numbered beat before the peak whose stall clause read zero.
+// The fold seeds with the peak itself, which never qualifies, so a result equal to the peak means
+// no beat qualified and the answer is Absent rather than the peak dressed as evidence.
+fn receipt_last_unstalled_beat(r: FloorNonReclaimableReceipt) -> FloorMemoryStatBeat? {
+  match receipt_peak_beat(r: r) {
+    Absent => none
+    Present { value: p } => {
+      let best = fold(r.beats, init: p, f: (a, b) => later_unstalled_before(peak: p, a: a, b: b))
+      if best.beat < p.beat && events_per_minute_count(r: best.stall) == 0 { Present { value: best } } else { none }
+    }
+  }
+}
+
+fn receipt_held_set_peak(r: FloorNonReclaimableReceipt) -> ByteSize? {
+  match receipt_peak_beat(r: r) {
+    Absent => none
+    Present { value: p } => Present { value: beat_held_set(b: p) }
+  }
 }
 
 type FloorNonReclaimableStanding
@@ -258,38 +331,56 @@ type FloorNonReclaimableStanding
   | NonReclaimableMeasured { receipt: FloorNonReclaimableReceipt }
 
 // THE FIRST RECEIPT, FROM THE FIRST FLOOR RUN CARRYING THE INSTRUMENT (this change's own CI run
-// 35419304682, job 105838037678, srv4-04, 2026-09-19, sixteen beats at sixty seconds). The run
-// REFUSED in strict-preparation on an unrelated latent resolve defect fifteen minutes in, so the
-// maximum is over a partial run and is a lower bound for that reason as well as for the cadence.
-// What it shows is the opposite of the hypothesis that motivated it: at the peak beat the cgroup
-// held 26725773568 bytes of NON-RECLAIMABLE memory -- 26664632320 of it anonymous -- against a
-// charge of 26841255936, with 13160448 bytes of file cache left. The cache had already been
-// reclaimed to nothing; what was being held at the 25 GiB line was anonymous memory, and the
-// heartbeat beside it reads 66940 major faults per minute with host swap-in rising, which is
-// that anonymous memory going to swap. The reading is therefore censored in the same sense as
-// the charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim
-// cannot answer. Beat 13, one minute earlier, is the evidence for the allowance below: 24736395264
-// bytes anonymous beside 1895120896 bytes of file cache at zero stall, then the cache squeezed
-// to 13 MiB and the run began to thrash.
+// 35419304682, job 105838037678, srv4-04, 2026-09-19, sixteen beats at sixty seconds; beats 12 to
+// 15 carried, each transcribed from its own `[floor-cgroup] when=beat-N stat_level=` line and the
+// `N minutes in` heartbeat printed beside it). The run REFUSED in strict-preparation on an
+// unrelated latent resolve defect fifteen minutes in, so the maximum is over a partial run and is
+// a lower bound for that reason as well as for the cadence.
+//
+// What it shows is the opposite of the hypothesis that motivated it. At beat 14 the held set is
+// 26725773568 bytes -- 26664632320 of it anonymous -- against a charge of 26841255936, with
+// 13160448 bytes of file left: the cache had already been reclaimed to nothing and what was being
+// held at the 25 GiB line was anonymous memory. Beat 14's own stall clause reads 6 faults per
+// minute; ONE BEAT LATER, at beat 15, it reads 66940 with host swap-in rising, which is that
+// anonymous memory going to swap. The reading is therefore censored in the same sense as the
+// charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim cannot
+// answer. Beat 13 is the last unstalled beat: 24736395264 bytes anonymous beside 1895120896 bytes
+// of file at zero stall, one minute before the cache squeezed to 13 MiB.
 data gunbc_floor_non_reclaimable_receipt_2026_09_19: FloorNonReclaimableReceipt = FloorNonReclaimableReceipt {
   run_id: "35419304682",
   runner_unit: "actions-runner@srv4-04.service",
   beat_cadence: second(count: 60),
   beats_sampled: 16,
-  peak: FloorNonReclaimableBeat {
-    beat: 14,
-    nonreclaimable: byte_size(26725773568),
-    file: byte_size(13160448),
-    charge: byte_size(26841255936),
-    stall: events_per_minute(count: 6),
-  },
-  last_unstalled: FloorNonReclaimableBeat {
-    beat: 13,
-    nonreclaimable: byte_size(24841459600),
-    file: byte_size(1895120896),
-    charge: byte_size(26838556672),
-    stall: events_per_minute(count: 0),
-  },
+  beats: [
+    FloorMemoryStatBeat {
+      beat: 12, charge: byte_size(24022126592),
+      anon: byte_size(21794160640), file: byte_size(2022780928), shmem: byte_size(51593216), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(156761160), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(44994560), percpu: byte_size(16640), sock: byte_size(0),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 13, charge: byte_size(26838556672),
+      anon: byte_size(24736395264), file: byte_size(1895120896), shmem: byte_size(51609600), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574544), slab_reclaimable: byte_size(153271000), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(50749440), percpu: byte_size(16640), sock: byte_size(0),
+      stall: events_per_minute(count: 0),
+    },
+    FloorMemoryStatBeat {
+      beat: 14, charge: byte_size(26841255936),
+      anon: byte_size(26664632320), file: byte_size(13160448), shmem: byte_size(3547136), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(103120256), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(54919168), percpu: byte_size(16640), sock: byte_size(0),
+      stall: events_per_minute(count: 6),
+    },
+    FloorMemoryStatBeat {
+      beat: 15, charge: byte_size(26843291648),
+      anon: byte_size(26578046976), file: byte_size(28610560), shmem: byte_size(13893632), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1591640), slab_reclaimable: byte_size(103131208), kernel_stack: byte_size(1146880),
+      pagetables: byte_size(54964224), percpu: byte_size(16640), sock: byte_size(0),
+      stall: events_per_minute(count: 66940),
+    },
+  ],
   run_completed: false,
 }
 
@@ -302,7 +393,10 @@ fn floor_memory_requirement_of(standing: FloorNonReclaimableStanding) -> MemoryR
   match standing {
     NonReclaimableUnmeasured { instrument: _ } => none
     NonReclaimableMeasured { receipt: r } =>
-      Present { value: MemoryRequirement { min_bytes: receipt_nonreclaimable_peak(r: r) } }
+      match receipt_held_set_peak(r: r) {
+        Absent => none
+        Present { value: peak } => Present { value: MemoryRequirement { min_bytes: peak } }
+      }
   }
 }
 

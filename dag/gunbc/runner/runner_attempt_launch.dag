@@ -36,7 +36,6 @@ import gunbc.runner_microvm {
   attach_workspace_drive,
   runner_microvm_workspace_drive_id,
   RunnerMicroVmShape,
-  runner_microvm_task_ceiling_boot_arg,
   gunbc_runner_jit_transport,
 }
 import gunbc.runner_microvm_attempt {
@@ -247,8 +246,8 @@ fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding 
   }
 }
 
-// ONE APPENDER FOR EVERY BOOT ARGUMENT THE PLAN ADDS -- the guest address and the task ceiling
-// today -- so the join is spelled once and a third argument is one more call, not a third copy.
+// ONE APPENDER FOR EVERY BOOT ARGUMENT THE PLAN ADDS -- the guest address today -- so the join
+// is spelled once and a second argument is one more call, not a second copy.
 fn with_boot_arg(config: FirecrackerVmConfig, arg: String) -> FirecrackerVmConfig {
   FirecrackerVmConfig {
     boot_source: FirecrackerBootSource {
@@ -376,11 +375,8 @@ fn plan_authorized_steps(
     transport: gunbc_runner_jit_transport,
   )
   let jailed = with_boot_arg(
-    config: with_boot_arg(
-      config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
-      arg: runner_slot_guest_ip_boot_arg(net: net),
-    ),
-    arg: runner_microvm_task_ceiling_boot_arg(shape: shape),
+    config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
+    arg: runner_slot_guest_ip_boot_arg(net: net),
   )
   LaunchAuthorized {
     authorization: authorization,
