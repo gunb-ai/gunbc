@@ -139,9 +139,16 @@ fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> Tes
   }
 }
 
+// THE SHARE POINT for the control below: the real parse of `distinct_projection_source`, enrolled
+// WARM in v2.workflow.floor_pure_producer_share, so the floor pays the parse once outside the claim's
+// budget and the claim pays only the two lowerings and hashes it is about.
+fn test_marker_distinct_parsed() -> Outcome<ParseArtifact> {
+  test_marker_parsed(src: distinct_projection_source, file: ^test_marker_distinct_subject)
+}
+
 // The two unmarked declarations of `distinct_projection_source` against each other.
 fn test_marker_distinct_declarations_agree() -> Optional<Bool> {
-  match test_marker_parsed(src: distinct_projection_source, file: ^test_marker_distinct_subject) {
+  match test_marker_distinct_parsed() {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: artifact, diagnostics: _ } =>
       let pair = test_marker_gather_data_decls(
