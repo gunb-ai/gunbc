@@ -140,9 +140,13 @@ data review_sheet_header_row_count: Int = 1
 // conditional rule keyed that way paints the column beside Standing -- both silently, both reported
 // as applied. Taking ValidatedHeaderSchema rather than ReviewSheetSchema is what makes that
 // unwritable here: this module has no way to construct the carrier and so cannot re-derive the row.
-fn schema_column_count(validated: ValidatedHeaderSchema) -> Int {
-  review_sheet_header_count(validated: validated)
-}
+//
+// THE EXTENT IS READ THROUGH review_sheet_header_count AND THIS MODULE DECLARES NO NAME FOR IT.
+// An earlier revision kept a local `schema_column_count(validated)` whose whole body had become
+// `review_sheet_header_count(validated: validated)` -- one concept answering to two exported names
+// across two modules, which is the DESIGN section 3 fork, and the witness was importing both. The
+// passthrough was load-bearing while it folded `count(schema.columns)`; once the extent moved to
+// the projection it was a nickname (review 68548).
 
 type StandingColumnIndex
   = StandingColumnAt { index: Int }
@@ -238,7 +242,7 @@ fn format_header_band(spreadsheet_id: NonEmptyStr, validated: ValidatedHeaderSch
             start_row: 0,
             end_row: review_sheet_header_row_count,
             start_col: 0,
-            end_col: schema_column_count(validated: validated),
+            end_col: review_sheet_header_count(validated: validated),
             background: bg,
             foreground: fg,
             bold: true,

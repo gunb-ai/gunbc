@@ -25,9 +25,7 @@ module test.claim.review_sheet_header_schema_witness
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
-}
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,
   ReviewColumn,
@@ -60,7 +58,6 @@ import gunbc.review_sheet_format_actuator {
   standing_column_index,
   StandingColumnAt,
   StandingColumnAbsent,
-  schema_column_count,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -199,7 +196,7 @@ test fn the_ci_prospect_header_row_is_its_column_roster_in_order() -> Bool {
 fn validated_or_fail(s: ReviewSheetSchema) -> Int {
   match validate_header_schema(schema: s) {
     HeaderSchemaRefused { refusal: _, reason: _ } => -1
-    HeaderSchemaValidated { validated: v } => schema_column_count(validated: v)
+    HeaderSchemaValidated { validated: v } => review_sheet_header_count(validated: v)
   }
 }
 
@@ -277,35 +274,20 @@ fn probe_source(name: String) -> String {
   filesystem_read(path: probe_dir + name + ".dag").content
 }
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
-fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
-  match c {
-    CensusNotRunnable { cause: _ } => -1
-    CensusObserved { rows: rows } =>
-      rows
-        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
-        |> fold(init: 0, f: (acc, r) => acc + r.count)
-  }
-}
-
-fn blocking_total(c: CompileDiagnosticCensus) -> Int {
-  match c {
-    CensusNotRunnable { cause: _ } => -1
-    CensusObserved { rows: rows } =>
-      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
-  }
-}
-
+// THE COUNTING HELPERS ARE IMPORTED, NOT RE-DERIVED. gunbc.compile_census_probe is the single home
+// for "compile this source string and count what it refused", including the -1-never-0 failure arms
+// that keep a census which never ran distinguishable from a clean compile. An earlier revision of
+// this witness declared its own copies; that is the DESIGN section 3 fork, and the copy already
+// sitting in test.claim.data_class_refusal_probe_witness is debt rather than precedent (review
+// 68548).
+//
 // A source that names nothing wrong is the control that the harness itself is live: the census runs
 // and carries zero blocking rows, so a zero elsewhere is an observation and not a harness that
 // could not run.
 data harness_control_source: String = "module probe_review_sheet_header_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
 
 test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
-  blocking_total(c: census_of(source: harness_control_source)) == 0
+  total_blocking_count_for(source: harness_control_source) == 0
 }
 
 // TWO forged carriers are enrolled, so the count is asserted at 2 rather than at "at least one":
@@ -314,9 +296,9 @@ test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
 // refusal would satisfy a >= 1 assertion while the second forgery compiled, which is the shape of
 // evidence that let the helper through in the first place.
 test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool {
-  blocking_count_for_class_and_subject(
-    c: census_of(source: probe_source(name: "review_sheet_validated_header_schema_forged_probe")),
-    wanted: "SoleConstructorViolation",
-    subject: "ValidatedHeaderSchema",
+  blocking_subject_count_for(
+    source: probe_source(name: "review_sheet_validated_header_schema_forged_probe"),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "ValidatedHeaderSchema",
   ) == 2
 }
