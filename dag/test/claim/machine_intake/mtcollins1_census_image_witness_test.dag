@@ -80,7 +80,7 @@ test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> 
   string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
     && string_contains(s: cmdline, pattern: "console=ttyAMA0,115200")
     && mtcollins1_census_image_input.seed_files.length() == 1
-    && mtcollins1_census_image_input.volume_id.length() <= 32
+    && (mtcollins1_census_image_input.volume_id as String).length() <= 32
 }
 
 fn census_input_varying(
@@ -127,7 +127,7 @@ fn census_key_varying(
 // one changed input byte changes THOSE bytes is the wet build's control on srv2.
 test fn every_build_input_reaches_the_derivation_key() -> Bool {
   let base = mtcollins1_census_image_input
-  let program = base.seed_files.first().content
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages)
   let cmdline = base.grub_kernel_cmdline
   let volid = base.volume_id
   let dates = base.pinned_dates

@@ -24,7 +24,7 @@ fn base_observations(
     },
     virtual_media: BmcVirtualMediaObservation {
       inserted_or_connected: true,
-      image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
+      image_or_endpoint: Present { value: srv3_diagnostic_intent_fixture.iso_path },
       connected_to_expected_port: true,
       bmc_session_valid: true,
     },
@@ -286,7 +286,7 @@ test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
       },
       virtual_media: BmcVirtualMediaObservation {
         inserted_or_connected: true,
-        image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
+        image_or_endpoint: Present { value: srv3_diagnostic_intent_fixture.iso_path },
         connected_to_expected_port: true,
         bmc_session_valid: true,
       },
