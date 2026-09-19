@@ -15,7 +15,7 @@ import extdeps.bmc.phosphor_fan_control {
 import extdeps.bmc.megarac_fan_policy {
   megarac_fan_mode_protocol_floor,
   megarac_fan_mode_surface,
-  megarac_fan_mode_surface_is_bound,
+  megarac_fan_mode_surface_read_obligation,
   megarac_fan_policy_read_obligation,
 }
 import extdeps.bmc.ipmi_sdr {
@@ -181,7 +181,7 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
 // much as the first: an unbound surface that answered Redfish would be taking a per-build fact from
 // a family row.
 test fn witness_megarac_fan_mode_surface_is_unbound_with_ipmi_floor() -> Bool {
-  match megarac_fan_mode_surface_is_bound(surface: megarac_fan_mode_surface) {
+  match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
     Absent => false
     Present { value: obligation } => (obligation as String) != ""
       && match megarac_fan_mode_protocol_floor(surface: megarac_fan_mode_surface) {

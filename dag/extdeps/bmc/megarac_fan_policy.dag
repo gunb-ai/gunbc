@@ -84,7 +84,7 @@ type MegaRacFanModeSurface
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceUnbound { read_obligation: "bind this to the build's own fan-mode operation - the SP-X REST path or the documented IPMI OEM command - only after reading AMI's documentation for that build; no byte sequence may be authored from inference" }
 
-fn megarac_fan_mode_surface_is_bound(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
+fn megarac_fan_mode_surface_read_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: o } => Present { value: o }
     MegaRacFanModeSurfaceBound { protocol: _, contract_note: _ } => Absent
