@@ -59,3 +59,10 @@ fn conntrack_delete_command(filter: ConntrackOriginalAddress, address: String) -
 fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
   argv_command(program: conntrack_program, arguments: ["-L", conntrack_original_address_flag(f: filter), address])
 }
+
+// THE EXPECTATION TABLE, WHOLE. Expectations are the related-flow entries a conntrack helper creates
+// (an FTP data channel, a SIP media stream); `-L expect` prints one line per entry. The table has no
+// original-source filter in conntrack(8), so this lists every expectation on the host.
+fn conntrack_list_expectations_command() -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-L", "expect"])
+}

@@ -46,7 +46,7 @@ import gunbc.runner_microvm_attempt {
 import gunbc.runner_microvm_network {
   runner_slot_network,
   runner_slot_network_as_microvm_networking,
-  runner_slot_guest_ip_boot_arg,
+  runner_slot_guest_network_boot_args,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 
@@ -371,12 +371,12 @@ fn plan_authorized_steps(
   )
   let jailed = with_guest_ip_boot_arg(
     config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
-    ip_arg: runner_slot_guest_ip_boot_arg(net: net),
+    ip_arg: runner_slot_guest_network_boot_args(net: net),
   )
   LaunchAuthorized {
     authorization: authorization,
     tap_device: net.tap_device,
-    guest_ip_boot_arg: runner_slot_guest_ip_boot_arg(net: net),
+    guest_ip_boot_arg: runner_slot_guest_network_boot_args(net: net),
     slice: runner_microvm_attempt_slice_property(attempt: attempt),
     jail_root: jail_root,
     stage_jail_root: mkdir_parents_command(path: jail_root),
