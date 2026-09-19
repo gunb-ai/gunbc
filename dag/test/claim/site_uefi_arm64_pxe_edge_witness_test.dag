@@ -9,13 +9,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
 import extdeps.network.ipv4 { ipv4_address }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import extdeps.provisioning.network_boot { ProxyDhcp }
 import gunbc.network_boot_delivery {
   SitePxeEdgeEstablished,
   SiteBootstrapDiscovery,
   SiteAnsweredDhcp,
   SiteDhcpRelay,
-  ArchitectureChainloader,
   DhcpFilenameHint,
   first_slice_admitted_architectures
 }
@@ -69,7 +69,7 @@ data known_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octe
 
 data unknown_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 255)
 
-data chainloader_filename: NonEmptyStr = "snponly.efi"
+data chainloader_filename: NonEmptyStr = ipxe_arm64_efi_snponly.image
 
 fn ok() -> BootNetworkProbe {
   BootNetworkProbeSucceeded { observation: obs, observed_at: 1788000000000 }
@@ -91,12 +91,8 @@ fn roster(macs: List<Eui48Address>, offer: SiteDhcpOfferObservation, reachabilit
   SiteEdgeRoster {
     site: "onboarding-segment-0c" as SiteIdentity,
     admitted_architectures: first_slice_admitted_architectures,
-    bootstrap_transport: ArchitectureChainloader {
-      architecture: Aarch64,
-      filename_hint: DhcpFilenameHint { filename: chainloader_filename },
-      chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
-      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
-    },
+    chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+    tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     known_client_macs: macs,
     offer: offer,
     reachability: reachability,
@@ -241,7 +237,7 @@ test fn the_landed_roster_parses_to_the_measured_host_nic() -> Bool {
 }
 
 test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
-  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), known_client_macs: [known_mac])
+  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: healthy_roster())
   contains(cfg, "port=0")
     && contains(cfg, "dhcp-range=192.168.1.0,proxy")
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
@@ -251,36 +247,6 @@ test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
     && length(split(cfg, "dhcp-boot=")) == 2
 }
 
-// THE EDGE'S OWN ARCHITECTURE REFUSAL STAYS LOCATED: a known ARM64 client on an edge whose chainloader
-// is not aarch64 is refused by architecture, not reported as a non-establishment with no axis.
-test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
-  let x86 = SiteEdgeRoster {
-    site: r.site,
-    admitted_architectures: r.admitted_architectures,
-    bootstrap_transport: ArchitectureChainloader {
-      architecture: X86_64,
-      filename_hint: DhcpFilenameHint { filename: chainloader_filename },
-      chainloader_digest: content_hash_of_value(value: "ipxe-x86-fixture"),
-      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
-    },
-    known_client_macs: r.known_client_macs,
-    offer: r.offer,
-    reachability: r.reachability,
-    observation: r.observation,
-    observed_at: r.observed_at,
-  }
-  match site_edge_client_admission(roster: x86, request: arm64_request(mac: known_mac)) {
-    SiteEdgeChainloaderMismatch { client: c, chainloader: l } => c == Aarch64 && l == X86_64
-    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
-    SiteEdgeDiscoveryRefused { refusal: _ } => false
-    SiteEdgeClientAdmitted { standing: _ } => false
-    SiteEdgeUnknownMachineRefused { mac: _ } => false
-    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
-    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-  }
-}
-
 // THE OTHER ARCHITECTURE REFUSAL, located on its own subject: an edge that admits no aarch64 client
 // refuses the client's architecture, not the chainloader's.
 test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
@@ -288,7 +254,8 @@ test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
   let closed = SiteEdgeRoster {
     site: r.site,
     admitted_architectures: [X86_64],
-    bootstrap_transport: r.bootstrap_transport,
+    chainloader_digest: r.chainloader_digest,
+    tftp_root: r.tftp_root,
     known_client_macs: r.known_client_macs,
     offer: r.offer,
     reachability: r.reachability,
