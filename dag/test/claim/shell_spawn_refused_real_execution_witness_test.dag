@@ -8,8 +8,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WET, AND IT HAS TO BE: whether a program can be spawned is a fact about the host, and the
 // defect this file pins lived exactly at the spawn. The operation below carries no mock_response,
-// so this file is excluded from hermetic discovery and enrolled in bin_witness_wet_entries
-// (gunbc.ci_layer_roots). Local recipe: claim_batch --wet --source-root dag --source-root src/v2
+// so this file is excluded from hermetic discovery (gunbc.ci_layer_roots) and scheduled on the
+// required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal). Local recipe: claim_batch --wet --source-root dag --source-root src/v2
 // --entry dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag
 service test.ShellSpawnProbe {
   operation Observed {
