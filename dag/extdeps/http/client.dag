@@ -57,6 +57,13 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // 5 rules that a bounded "forever" is not an "unknown" error. Measured on this deployment, a wedged
 // backend held one harness POST open for over thirty minutes while the router answered an unrelated
 // probe in 0.15ms -- so the turn was neither progressing nor failing, and no arm existed to say so.
+// PostStdinWithin, A BOUNDED POST WHOSE TRANSPORT OUTCOME IS KEPT, NOT FOLDED INTO SUCCESS. The request body goes
+// on stdin (curl --data-binary @-), so no body byte passes through argv or a shared file. Without
+// -f, an HTTP error status is an ANSWER (exit 0), and the status is appended as the final line by
+// -w, so a caller can tell a server's refusal from curl never reaching it: curl's own exit code
+// carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
+// handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
+// stderr text.
 service http.Client {
   operation Get {
     input { url: NonEmptyStr }
@@ -135,13 +142,6 @@ service http.Client {
     }
   }
 
-  // A BOUNDED POST WHOSE TRANSPORT OUTCOME IS KEPT, NOT FOLDED INTO SUCCESS. The request body goes
-  // on stdin (curl --data-binary @-), so no body byte passes through argv or a shared file. Without
-  // -f, an HTTP error status is an ANSWER (exit 0), and the status is appended as the final line by
-  // -w, so a caller can tell a server's refusal from curl never reaching it: curl's own exit code
-  // carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
-  // handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
-  // stderr text.
   operation PostStdinWithin {
     input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {

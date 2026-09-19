@@ -13,6 +13,7 @@ import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
+  ensured_subject_identity,
   EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
@@ -59,7 +60,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
-  dashboard_instance_event_log_root,
+  dashboard_instance_fabric_db_root,
 }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
@@ -1194,13 +1195,26 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
-test fn fabric_event_log_root_joins_the_directory_member_roster() -> Bool {
-  let spec = deployment_spec_srv1()
-  let expected = dashboard_instance_event_log_root(instance: srv1_live_dashboard_instance()) as String
-  any(deployment_member_roster(spec: spec), m => match m {
-    DirectoryRoot { path } => (path as String) == expected
-    _ => false
-  })
+fn step_is_fabric_db_store(step: DeploymentStep) -> Bool {
+  match step {
+    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_db_root(instance: srv1_live_dashboard_instance()) as String)
+    ArtifactStep { step: _ } => false
+  }
+}
+
+// The fabric DB's store is created on the placement host's apply path, as an ensured directory.
+test fn the_fabric_db_store_root_reaches_the_srv1_apply_path() -> Bool {
+  any(deployment_spec_srv1().steps, st => step_is_fabric_db_store(step: st))
+}
+
+// THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
+// owned roster (where the event-log mirror root sat, torn down with rm -rf) turns this red.
+test fn no_retract_can_remove_the_fabric_db_store() -> Bool {
+  any(deployment_spec_srv1().steps, st =>
+    step_is_fabric_db_store(step: st) && match deployment_step_teardown_disposition(step: st) {
+      TeardownRefuses { cause: _ } => true
+      TeardownActs => false
+    })
 }
 
 // A BINARY-ONLY PLAN INSTALLS THE EXECUTABLE AND RESTARTS, AND DOES NOT PUBLISH THE TREE: the

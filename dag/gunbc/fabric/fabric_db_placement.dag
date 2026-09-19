@@ -1,9 +1,9 @@
 module gunbc.fabric_db_placement
 
-import std.types { String, NonEmptyStr, FilePath, Int }
+import std.types { String, NonEmptyStr, FilePath, Int, Bool }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
-import gunbc.roadmap_dashboard_instance { dashboard_instance_child, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_db_root, srv1_live_dashboard_instance }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_db is the interface, the file store and the
@@ -28,10 +28,20 @@ data fabric_db_https_port: Int = 8443
 
 data fabric_db_route_prefix: String = "/fabric-db"
 
-// The store root is a child of the placed host's live instance root, the same derivation the other
-// instance-owned state roots use.
+// The store root is the placed instance's fabric DB root -- one authority with the deployment that
+// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_db_root).
+fn fabric_db_placed_instance() -> HostDashboardInstance {
+  srv1_live_dashboard_instance()
+}
+
 fn fabric_db_store_root() -> NonEmptyStr {
-  dashboard_instance_child(root: srv1_live_dashboard_instance().instance_root, child: "fabric-db") as String as NonEmptyStr
+  dashboard_instance_fabric_db_root(instance: fabric_db_placed_instance()) as String as NonEmptyStr
+}
+
+// WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
+// there. Identity is the instance's own id, not a path comparison.
+fn fabric_db_placed_on(instance: HostDashboardInstance) -> Bool {
+  (instance.instance_id as String) == (fabric_db_placed_instance().instance_id as String)
 }
 
 fn fabric_db_endpoint_for(host: HostIdentity) -> NonEmptyStr? {

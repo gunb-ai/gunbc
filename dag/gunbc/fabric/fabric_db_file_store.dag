@@ -211,14 +211,18 @@ fn fabric_db_file_advance(root: FabricDbFileRoot, name: NonEmptyStr, expected: F
 // THE WHOLE CHAIN, READ WHERE IT IS HELD. From the head, every object reachable along links, each
 // fetched and verified; a link naming an absent object refuses FabricObjectMissing with that ref,
 // and running out of the bound refuses rather than returning the part that fit.
+// SEEN IS A SET KEYED BY THE REF'S WIRE FORM, so each step's membership test is constant rather
+// than a scan of everything fetched so far -- a partition of n events costs n fetches, not n^2
+// comparisons.
 type ClosureState {
   pending: List<FabricObjectRef>
   newest_first: List<FabricStoredObject>
+  seen: Set<String>
   refused: FabricDbFault?
 }
 
 fn closure_seen(st: ClosureState, r: FabricObjectRef) -> Bool {
-  length(filter(st.newest_first, s => fabric_object_ref_eq(a: s.object, b: r))) > 0
+  set_contains(st.seen, fabric_object_ref_wire(object: r) as String)
 }
 
 fn closure_step(root: FabricDbFileRoot, st: ClosureState) -> ClosureState {
@@ -230,11 +234,11 @@ fn closure_step(root: FabricDbFileRoot, st: ClosureState) -> ClosureState {
         Present { value: next } => {
           let rest = st.pending |> skip(n: 1)
           if closure_seen(st: st, r: next) {
-            ClosureState { pending: rest, newest_first: st.newest_first, refused: none }
+            ClosureState { pending: rest, newest_first: st.newest_first, seen: st.seen, refused: none }
           } else {
             match fabric_db_file_get(root: root, object: next) {
-              FabricObjectGetRefused { fault: f } => ClosureState { pending: rest, newest_first: st.newest_first, refused: Present { value: f } }
-              FabricObjectFetched { stored: s } => ClosureState { pending: concat(rest, s.content.links), newest_first: concat(st.newest_first, [s]), refused: none }
+              FabricObjectGetRefused { fault: f } => ClosureState { pending: rest, newest_first: st.newest_first, seen: st.seen, refused: Present { value: f } }
+              FabricObjectFetched { stored: s } => ClosureState { pending: concat(rest, s.content.links), newest_first: concat(st.newest_first, [s]), seen: set_insert(st.seen, fabric_object_ref_wire(object: next) as String), refused: none }
             }
           }
         }
@@ -247,7 +251,7 @@ fn fabric_db_file_closure(root: FabricDbFileRoot, name: NonEmptyStr, bound: Nat)
     FabricHeadReadRefused { fault: f } => FabricClosureRefused { fault: f }
     FabricHeadObserved { reading: FabricHeadAbsent } => FabricClosureRead { reading: FabricHeadAbsent, newest_first: [] }
     FabricHeadObserved { reading: FabricHeadAt { object: h, generation: g } } => {
-      let st = fold(nat_range_inclusive(lo: 1, hi: bound), init: ClosureState { pending: [h], newest_first: [], refused: none }, f: (acc, _i) => closure_step(root: root, st: acc))
+      let st = fold(nat_range_inclusive(lo: 1, hi: bound), init: ClosureState { pending: [h], newest_first: [], seen: empty_set(), refused: none }, f: (acc, _i) => closure_step(root: root, st: acc))
       match st.refused {
         Present { value: f } => FabricClosureRefused { fault: f }
         Absent =>
