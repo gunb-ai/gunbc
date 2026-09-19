@@ -8,8 +8,8 @@ import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
 import extdeps.systemd { systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
-import extdeps.tools.grep { grep_fixed_string_with_filename_argv }
-import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key }
+import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import extdeps.needrestart {
@@ -86,6 +86,10 @@ import gunbc.runner_slot_retirement {
   retirement_observation_from_readings,
   retirement_observation_unreadable,
   retirement_cgroup_events_path,
+  retirement_cgroup_events_read_root,
+  CgroupEventsReadRootNone,
+  CgroupEventsReadRootOne,
+  CgroupEventsReadRootAmbiguous,
   cgroup_occupancy_from_batched_events,
   control_group_property_means_cgroup_absent,
   CgroupEventsBatch,
@@ -826,17 +830,29 @@ fn runner_retiree_show_readings(retired: List<NonEmptyStr>, show_stdout: String)
   map(retired, r => runner_retiree_show_reading(unit: r, show_stdout: show_stdout))
 }
 
-// THE ONE EVENTS READ, OR NONE. Every retiree still holding a workload cgroup contributes its
-// `cgroup.events` path to a SINGLE argv; a population whose retirees all report a blank ControlGroup
-// needs no read at all. So the observation costs list-units + show + at most this one exec, whatever
-// the number of retirees.
+// THE ONE EVENTS READ, OR NONE, AND IT NAMES A DIRECTORY RATHER THAN THE FILES. Every retiree's own
+// cgroup path carries systemd's escaped slice component, which the fleet's typed argv edge REFUSES
+// (portable_remote_word_char_allowed admits no backslash) -- so an argv listing those paths never
+// executes. gunbc.runner_slot_retirement retirement_cgroup_events_read_root derives the deepest
+// UNESCAPED ancestor instead, and grep walks it for the one file name. Still one exec whatever the
+// number of retirees; a population whose retirees all report a blank ControlGroup needs none, and
+// roots that disagree are refused rather than widened.
 fn runner_retiree_cgroup_events_argv(readings: List<RetireeShowReading>) -> List<String>? {
-  let paths = flat_map(readings, r => match r {
+  match retirement_cgroup_events_read_root(control_groups: flat_map(readings, r => match r {
     RetireeNotShown { unit: _ } => []
-    RetireeShown { unit: _, unit_file_state: _, active_state: _, control_group: cg } =>
-      if control_group_property_means_cgroup_absent(value: cg) { [] } else { [retirement_cgroup_events_path(control_group: cg)] }
-  })
-  if length(paths) == 0 { none } else { Present { value: grep_fixed_string_with_filename_argv(pattern: cgroup_v2_events_populated_key, paths: paths) } }
+    RetireeShown { unit: _, unit_file_state: _, active_state: _, control_group: cg } => [cg]
+  })) {
+    CgroupEventsReadRootNone => none
+    CgroupEventsReadRootAmbiguous { roots: _ } => none
+    CgroupEventsReadRootOne { root: root } =>
+      Present {
+        value: grep_fixed_string_in_tree_argv(
+          pattern: cgroup_v2_events_populated_key,
+          file_name: cgroup_v2_events_interface_file,
+          root: root,
+        ),
+      }
+  }
 }
 
 fn runner_retiree_standings(readings: List<RetireeShowReading>, batch: CgroupEventsBatch) -> List<RunnerRetirementStanding> {
@@ -868,7 +884,7 @@ fn observe_runner_slot_population(
             } else {
               let readings = runner_retiree_show_readings(retired: subject.retired_units, show_stdout: shown.stdout)
               let batch = match runner_retiree_cgroup_events_argv(readings: readings) {
-                Absent => CgroupEventsBatchUnread { cause: "no retiree holds a workload cgroup" }
+                Absent => CgroupEventsBatchUnread { cause: "no batched cgroup.events read was issued for this population" }
                 Present { value: argv } =>
                   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
                     TypedArgvExecRefused { reason: why } => CgroupEventsBatchUnread { cause: why }

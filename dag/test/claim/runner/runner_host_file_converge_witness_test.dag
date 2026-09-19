@@ -11,6 +11,9 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv }
 import gunbc.runner_slot_retirement {
   RunnerRetirementStanding,
   CgroupOccupancy,
@@ -95,6 +98,7 @@ import gunbc.runner_host_file_converge {
   classify_runner_slot_population,
   runner_retiree_show_readings,
   runner_retiree_cgroup_events_argv,
+  runner_slot_show_properties,
   runner_retiree_standings,
   runner_slot_population_owes_reload,
   runner_slot_population_effective,
@@ -731,6 +735,10 @@ fn batched_standings(show: String, events: String) -> List<RunnerRetirementStand
   runner_retiree_standings(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: show), batch: CgroupEventsBatchRead { stdout: events, stderr: "" })
 }
 
+fn argv_or_empty(o: List<String>?) -> List<String> {
+  match o { Absent => [] Present { value: a } => a }
+}
+
 // COST: the retiree read is ONE argv, whatever the number of retirees. Over the real srv1 subject's 38
 // required retirees, each still holding a cgroup, the events read is a single grep carrying all 38
 // paths -- and over one retiree it is still a single argv. With the list-units and the show, the
@@ -740,9 +748,37 @@ test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool
   let many = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(all, "\n\n")))
   let one = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: ["actions-runner@srv1-13.service" as NonEmptyStr], show_stdout: join(all, "\n\n")))
   length(srv1_retired()) == 38
-    && (match many { Absent => false Present { value: argv } => length(argv) == 4 + 38 && any(argv, a => a == "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-50.service/cgroup.events") })
-    && (match one { Absent => false Present { value: argv } => length(argv) == 5 })
+    && argv_or_empty(o: many) == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
+    && argv_or_empty(o: one) == argv_or_empty(o: many)
     && (match runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n"))) { Absent => true Present { value: _ } => false })
+}
+
+// THE DECIDING BOUNDARY, EXECUTED (review 68654). Both argvs the observation issues are run through
+// the SAME gunbc.fleet_known_hosts_anchor portable_remote_words admission the production leg applies
+// in gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh, and both must be ADMITTED -- an argv that
+// refuses there reads nothing, which would make SlotRetiredAsDeclared unreachable for every retiree
+// that still holds a cgroup while the observation still looked like three execs.
+test fn every_argv_the_population_observation_issues_is_admitted_by_the_transport() -> Bool {
+  let events = match runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "active", cg: retiree_cg(unit: r as String))), "\n\n"))) {
+    Absent => []
+    Present { value: a } => a
+  }
+  let show = systemctl_show_properties_argv(units: srv1_retired(), properties: runner_slot_show_properties)
+  length(events) == 7
+    && (match portable_remote_words(raws: events) { Absent => false Present { value: _ } => true })
+    && (match portable_remote_words(raws: show) { Absent => false Present { value: _ } => true })
+}
+
+// RED: the per-retiree form this replaced. A retiree's own cgroup path carries systemd's escaped
+// slice component, and the transport refuses a backslash rather than quoting it -- so an argv naming
+// those paths is NOT admitted, and a claim that supplied the batch output directly could not see it.
+test fn an_argv_naming_a_retirees_own_escaped_cgroup_path_is_refused_by_the_transport() -> Bool {
+  let path = "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-13.service/cgroup.events"
+  let refused = ["grep", "-H", "-F", "populated", path]
+  let admitted = ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
+  (match portable_remote_words(raws: refused) { Absent => true Present { value: _ } => false })
+    && (match portable_remote_words(raws: admitted) { Absent => false Present { value: _ } => true })
+    && any(map(srv1_retired(), r => retiree_cg(unit: r as String)), cg => string_contains(s: cg, pattern: "\\"))
 }
 
 // POSITIVE ROUTE: stopped, masked retirees with no cgroup are complete from the show alone, and running
