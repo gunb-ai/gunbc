@@ -1,7 +1,7 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Micrometer, Millimeter, Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
+import std.measure { Micrometer, Millimeter, Percent, PublishedLevelCount, RevolutionsPerMinute, percent_count, published_level_count, published_level_count_value, rpm, rpm_count }
 import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
@@ -67,7 +67,7 @@ type FanPublishedOperatingPoint {
 type FanSoundPressureResult
   = FanSoundPressurePublished { level: AWeightedSoundPressureLevel }
   | FanSoundPressureNotPublishedAtSpeed { speed: RevolutionsPerMinute }
-  | FanSoundPressureUnderdetermined { published_level_count: Int }
+  | FanSoundPressureUnderdetermined { published_level_count: PublishedLevelCount }
 
 // THE FAIL-CLOSED GATE, AT THREE ARMS RATHER THAN TWO. Anchor count decides not just whether a
 // law can be APPLIED but whether it can be TESTED, and those are different states with different
@@ -89,9 +89,9 @@ type FanSoundPressureResult
 // This is why the W1's fitted noise law must never be reused for the Noctua. Whoever adds a log
 // builtin later inherits this gate rather than having to remember the rule.
 type FanAcousticEvidence
-  = FanAcousticLawFittable { published_level_count: Int }
-  | FanAcousticTwoPointLawAssumed { published_level_count: Int }
-  | FanAcousticUnderdetermined { published_level_count: Int }
+  = FanAcousticLawFittable { published_level_count: PublishedLevelCount }
+  | FanAcousticTwoPointLawAssumed { published_level_count: PublishedLevelCount }
+  | FanAcousticUnderdetermined { published_level_count: PublishedLevelCount }
 
 // A SPEED RANGE IS NOT TWO OPERATING POINTS, and this arm exists because writing it as two was
 // the defect that produced this type. A vendor that prints "200-3000 rpm" has stated the ends of
@@ -147,20 +147,24 @@ fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {
   }
 }
 
-fn fan_published_level_count(row: FanCatalogRow) -> Int {
-  fold(
+// THE SIZE OF THE EVIDENCE IS A COUNTED QUANTITY AND NOW SAYS SO. It carried a bare Int with the
+// unit spelled into the field name until gunbc#11623 minted std.measure PublishedLevelCount for its
+// own copy of this concept and found it would have forked one concept across two carriers to leave
+// this one behind.
+fn fan_published_level_count(row: FanCatalogRow) -> PublishedLevelCount {
+  published_level_count(count: fold(
     row.published_points,
     init: 0,
     f: (acc, point) => if fan_point_has_level(point: point) { acc + 1 } else { acc },
-  )
+  ))
 }
 
 fn fan_acoustic_evidence(row: FanCatalogRow) -> FanAcousticEvidence {
   let n = fan_published_level_count(row: row)
-  if n >= 3 {
+  if published_level_count_value(c: n) >= 3 {
     FanAcousticLawFittable { published_level_count: n }
   } else {
-    if n == 2 {
+    if published_level_count_value(c: n) == 2 {
       FanAcousticTwoPointLawAssumed { published_level_count: n }
     } else {
       FanAcousticUnderdetermined { published_level_count: n }

@@ -2,7 +2,7 @@ module extdeps.bmc.ipmi_sdr
 
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Percent, RevolutionsPerMinute, percent, rpm }
+import std.measure { Percent, RevolutionsPerMinute, SdrUndecodedLineCount, percent, rpm, sdr_undecoded_line_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -189,11 +189,11 @@ fn sdr_decoded_lines(results: List<SdrLineResult>) -> List<SdrTypeLine> {
   })
 }
 
-fn sdr_unstructured_count(results: List<SdrLineResult>) -> Int {
-  filter(results, r => match r {
+fn sdr_unstructured_count(results: List<SdrLineResult>) -> SdrUndecodedLineCount {
+  sdr_undecoded_line_count(count: filter(results, r => match r {
     SdrLineDecoded { line: _ } => false
     SdrLineUnstructured { text: _ } => true
-  }).length()
+  }).length())
 }
 
 // WHETHER ANY HOST THERMAL SENSOR PRODUCED A NUMBER. This is the predicate the fan-policy derivation

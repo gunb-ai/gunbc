@@ -1,7 +1,7 @@
 module gunbc.fleet_acoustic_intent
 
-import std.types { Bool, Int, NonEmptyStr }
-import std.measure { Percent, percent }
+import std.types { Bool, NonEmptyStr }
+import std.measure { FanCount, Percent, percent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.fans.types { FanCatalogRow }
 import product.placement_supply { SiteIdentity }
@@ -93,7 +93,7 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
 // bounded. Both are required and neither alone retires this row - a ceiling with no catalogued fan
 // has nothing to compare against, and a catalogued fan with no ceiling has no bound. Mt. Jade's six
 // 6056 fans landing from the platform lane satisfies the second half only.
-fn residence_duty_ceiling_from_datasheet(row: FanCatalogRow, ceiling: AcousticCeiling, fan_count: Int) -> DutyCeilingResult {
+fn residence_duty_ceiling_from_datasheet(row: FanCatalogRow, ceiling: AcousticCeiling, fan_count: FanCount) -> DutyCeilingResult {
   duty_ceiling_for_fan(row: row, ceiling: ceiling, fan_count: fan_count)
 }
 

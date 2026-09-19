@@ -408,6 +408,28 @@ type PowerCordCount = Measure<Count, One, Nat>
 // 2026-09-11.
 type MemoryControllerCount = Measure<Count, One, Nat>
 
+// A count of SDR text lines a decoder could not structure. Same Count axis as its siblings,
+// different thing counted: an undecoded line is parse residue, not a sensor and not a reading, and
+// the distinction is the whole point of counting them -- a truncated read and a machine with no
+// fans are different facts and the count is what separates them.
+type SdrUndecodedLineCount = Measure<Count, One, Nat>
+
+// A count of ROUNDS in an observation series -- how many times a producer sampled, not how long it
+// sampled for (that is Second) and not which sample this is (an index is an ordinal position, not a
+// cardinality, and deliberately does not live on this axis).
+type ObservationRoundCount = Measure<Count, One, Nat>
+
+// A count of FANS moving air at one subject. Same Count axis, different thing counted: it exists
+// because acoustic derivation is wrong by fan count -- six fans are louder than one and combining
+// their levels needs a logarithm this substrate has no builtin for, so the count is the input to a
+// refusal rather than to a sum.
+type FanCount = Measure<Count, One, Nat>
+
+// A count of operating points for which a vendor published a sound level. Same Count axis,
+// different thing counted: it is the size of the EVIDENCE, not of the fan or of its speeds, and it
+// is what decides whether an acoustic law can be applied, assumed or only refused.
+type PublishedLevelCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -1256,6 +1278,38 @@ fn cpu_core_count(count: Nat) -> CpuCoreCount {
 }
 
 fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+  measure_count(c)
+}
+
+fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
+  Measure { count: count }
+}
+
+fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
+  measure_count(c)
+}
+
+fn observation_round_count(count: Nat) -> ObservationRoundCount {
+  Measure { count: count }
+}
+
+fn observation_round_count_value(c: ObservationRoundCount) -> Nat {
+  measure_count(c)
+}
+
+fn fan_count(count: Nat) -> FanCount {
+  Measure { count: count }
+}
+
+fn fan_count_value(c: FanCount) -> Nat {
+  measure_count(c)
+}
+
+fn published_level_count(count: Nat) -> PublishedLevelCount {
+  Measure { count: count }
+}
+
+fn published_level_count_value(c: PublishedLevelCount) -> Nat {
   measure_count(c)
 }
 

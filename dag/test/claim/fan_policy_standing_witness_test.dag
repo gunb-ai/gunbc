@@ -1,7 +1,7 @@
 module test.claim.fan_policy_standing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { RevolutionsPerMinute, percent, percent_count, rpm, rpm_count, second, second_count }
+import std.measure { RevolutionsPerMinute, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
 import extdeps.bmc.endpoint { Ipmi }
@@ -202,7 +202,7 @@ test fn witness_sdr_non_record_line_is_unstructured_and_counted() -> Bool {
   match sdr_decode_line(text: "Unable to establish IPMI v2 / RMCP+ session") {
     SdrLineDecoded { line: _ } => false
     SdrLineUnstructured { text: t } => t != ""
-  } && sdr_unstructured_count(results: sdr_decode_lines(stdout: "garbage\nFAN1 | 41h | ok | 7.1 | 8600 RPM\n")) == 1
+  } && sdr_undecoded_line_count_value(c: sdr_unstructured_count(results: sdr_decode_lines(stdout: "garbage\nFAN1 | 41h | ok | 7.1 | 8600 RPM\n"))) == 1
 }
 
 // THE THREE FAN READING ARMS ARE THREE DIFFERENT FACTS. RPM is not duty, "No Reading" is the sensor
@@ -260,8 +260,8 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     thermal_readable: thermal_readable,
     host_thermal_published: thermal,
     fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
-    fan_undecoded_line_count: 0,
-    temperature_undecoded_line_count: 0,
+    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     chassis_readable: true,
   }
 }
@@ -308,8 +308,8 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     thermal_readable: true,
     host_thermal_published: false,
     fan_lines: [],
-    fan_undecoded_line_count: 0,
-    temperature_undecoded_line_count: 0,
+    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     chassis_readable: false,
   }
 }
@@ -509,7 +509,7 @@ test fn witness_cross_position_comparison_refuses() -> Bool {
 // 45.0 budget the answer is 50% - the highest point that fits, because the ceiling is a bound and
 // not a target.
 test fn witness_duty_ceiling_selects_the_highest_published_point_within() -> Bool {
-  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: 1) {
+  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: fan_count(count: 1)) {
     DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
     _ => false
   }
@@ -519,10 +519,10 @@ test fn witness_duty_ceiling_selects_the_highest_published_point_within() -> Boo
 // ceiling, and more than one fan. The last is the one that would otherwise be quietly wrong - six
 // fans are louder than one and combining levels needs a logarithm this substrate does not have.
 test fn witness_duty_ceiling_refusals_are_each_reachable() -> Bool {
-  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: 6) {
-    DutyCeilingMultipleFansUnpriced { fan_count: n } => n == 6
+  match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_datasheet_ceiling, fan_count: fan_count(count: 6)) {
+    DutyCeilingMultipleFansUnpriced { fan_count: n } => fan_count_value(c: n) == 6
     _ => false
-  } && match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_listening_ceiling, fan_count: 1) {
+  } && match duty_ceiling_for_fan(row: dynatron_df126025bu_pwmh_catalog, ceiling: witness_listening_ceiling, fan_count: fan_count(count: 1)) {
     DutyCeilingPositionIncomparable => true
     _ => false
   } && match duty_ceiling_for_fan(
@@ -533,9 +533,9 @@ test fn witness_duty_ceiling_refusals_are_each_reachable() -> Bool {
       position: FanDatasheetPosition,
       basis: MeasuredAtPosition { instrument: "witness fixture" },
     },
-    fan_count: 1,
+    fan_count: fan_count(count: 1),
   ) {
-    DutyCeilingNoPublishedPointWithin { published_level_count: n } => n == 3
+    DutyCeilingNoPublishedPointWithin { published_level_count: n } => published_level_count_value(c: n) == 3
     _ => false
   }
 }
@@ -709,7 +709,7 @@ test fn witness_residence_datasheet_route_is_executed() -> Bool {
   match residence_duty_ceiling_from_datasheet(
     row: dynatron_df126025bu_pwmh_catalog,
     ceiling: witness_datasheet_ceiling,
-    fan_count: 1,
+    fan_count: fan_count(count: 1),
   ) {
     DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
     _ => false

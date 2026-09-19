@@ -3,7 +3,7 @@ module gunbc.machine_intake_bmc_fan_observation
 import extdeps.bmc.ipmi
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Second, second, second_count }
+import std.measure { ObservationRoundCount, SdrUndecodedLineCount, Second, observation_round_count_value, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
@@ -72,8 +72,8 @@ type FanObservationRound {
   thermal_readable: Bool
   host_thermal_published: Bool
   fan_lines: List<SdrTypeLine>
-  fan_undecoded_line_count: Int
-  temperature_undecoded_line_count: Int
+  fan_undecoded_line_count: SdrUndecodedLineCount
+  temperature_undecoded_line_count: SdrUndecodedLineCount
   chassis_readable: Bool
 }
 
@@ -320,8 +320,8 @@ fn render_round(round: FanObservationRound) -> String {
     " thermal_readable=", to_string(round.thermal_readable),
     " host_thermal_published=", to_string(round.host_thermal_published),
     " fan_sensors=", to_string(round.fan_lines.length()),
-    " fan_undecoded_line_count=", to_string(round.fan_undecoded_line_count),
-    " temperature_undecoded_line_count=", to_string(round.temperature_undecoded_line_count),
+    " fan_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.fan_undecoded_line_count)),
+    " temperature_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.temperature_undecoded_line_count)),
   ], "")
 }
 
@@ -360,7 +360,7 @@ fn observe_fan_policy(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
-  rounds: Int,
+  rounds: ObservationRoundCount,
   interval: Second,
 ) -> FanObservationSeries
   uses net: std.resources.Network, clock: std.resources.Clock
@@ -371,7 +371,7 @@ fn observe_fan_policy(
   if trim(password_file as String) == "" {
     return FanObservationRefused { cause: "no credential file path supplied; contacting NO host" }
   }
-  if rounds <= 0 {
+  if observation_round_count_value(c: rounds) <= 0 {
     return FanObservationRefused { cause: "a series of zero rounds observes nothing and would report success for it" }
   }
   if second_count(s: interval) <= 0 {
@@ -381,7 +381,7 @@ fn observe_fan_policy(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
-    rounds_remaining: rounds,
+    rounds_remaining: observation_round_count_value(c: rounds),
     round_index: 0,
     interval: interval,
     acc: [],

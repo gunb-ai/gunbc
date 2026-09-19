@@ -4,7 +4,7 @@ import extdeps.shell
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Int, List, NonEmptyStr, String }
-import std.measure { Second, percent, second, second_count }
+import std.measure { ObservationRoundCount, Second, observation_round_count, percent, second, second_count }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
@@ -52,7 +52,7 @@ data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-ob
 // to be commanding that output right now; a minute of samples can show whether the number moves at
 // all. It is deliberately short: this is a read against a machine in someone's home, and a longer
 // series buys resolution the first question does not need.
-data mtcollins1_fan_observation_rounds: Int = 6
+data mtcollins1_fan_observation_rounds: ObservationRoundCount = observation_round_count(count: 6)
 data mtcollins1_fan_observation_interval: Second = second(count: 10)
 
 // THIS UNIT'S CONTROLLER IS MEGARAC, SO ITS FAN POLICY AUTHORITY IS THE MEGARAC ONE - which is the

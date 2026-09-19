@@ -1,7 +1,7 @@
 module product.acoustic_ceiling
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Percent, measure_le }
+import std.measure { FanCount, Percent, PublishedLevelCount, fan_count_value, measure_le, published_level_count }
 import extdeps.units.iec_61672 { AWeightedLevelDifference, AWeightedSoundPressureLevel, dba_le, dba_level_minus }
 import extdeps.fans.types {
   FanCatalogRow,
@@ -108,9 +108,9 @@ fn acoustic_level_against_ceiling(
 // instead of returning a number that would be wrong by the fan count.
 type DutyCeilingResult
   = DutyCeilingPublished { duty: Percent, level: AWeightedSoundPressureLevel }
-  | DutyCeilingNoPublishedPointWithin { published_level_count: Int }
+  | DutyCeilingNoPublishedPointWithin { published_level_count: PublishedLevelCount }
   | DutyCeilingPositionIncomparable
-  | DutyCeilingMultipleFansUnpriced { fan_count: Int }
+  | DutyCeilingMultipleFansUnpriced { fan_count: FanCount }
 
 fn published_point_within_ceiling(
   point: FanPublishedOperatingPoint,
@@ -136,15 +136,15 @@ fn points_within_ceiling(
   filter(row.published_points, p => published_point_within_ceiling(point: p, ceiling: ceiling))
 }
 
-fn published_level_count(row: FanCatalogRow) -> Int {
-  filter(row.published_points, p => match p.sound_pressure { none => false, Present { value: _ } => true }).length()
+fn row_published_level_count(row: FanCatalogRow) -> PublishedLevelCount {
+  published_level_count(count: filter(row.published_points, p => match p.sound_pressure { none => false, Present { value: _ } => true }).length())
 }
 
 fn duty_ceiling_of_result(
   point: FanPublishedOperatingPoint,
 ) -> DutyCeilingResult {
   match point.sound_pressure {
-    none => DutyCeilingNoPublishedPointWithin { published_level_count: 0 }
+    none => DutyCeilingNoPublishedPointWithin { published_level_count: published_level_count(count: 0) }
     Present { value: level } => DutyCeilingPublished { duty: point.duty, level: level }
   }
 }
@@ -154,19 +154,19 @@ fn duty_ceiling_of_result(
 fn duty_ceiling_for_fan(
   row: FanCatalogRow,
   ceiling: AcousticCeiling,
-  fan_count: Int,
+  fan_count: FanCount,
 ) -> DutyCeilingResult {
   if !acoustic_positions_match(a: FanDatasheetPosition, b: ceiling.position) {
     DutyCeilingPositionIncomparable
-  } else if fan_count != 1 {
+  } else if fan_count_value(c: fan_count) != 1 {
     DutyCeilingMultipleFansUnpriced { fan_count: fan_count }
   } else {
     let within = points_within_ceiling(row: row, ceiling: ceiling)
     if within.length() == 0 {
-      DutyCeilingNoPublishedPointWithin { published_level_count: published_level_count(row: row) }
+      DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
     } else {
       match within.first() {
-        Absent => DutyCeilingNoPublishedPointWithin { published_level_count: published_level_count(row: row) }
+        Absent => DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
         Present { value: head } => duty_ceiling_of_result(
           point: fold(within.skip(n: 1), init: head, f: (acc, p) => higher_duty_point(a: acc, b: p)),
         )
