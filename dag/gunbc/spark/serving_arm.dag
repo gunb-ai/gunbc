@@ -843,7 +843,24 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   prefix_caching: PrefixCachingExplicit { enabled: true },
 }
 
-// THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
+// THE PROFILE THE GROUP B FLEET ACTUALLY SERVES, declared from the running units on srv9..srv12
+// (operator ruling 2026-09-19: the dispatch digest join must name reality, and reality is this row).
+// It differs from the initial profile in exactly two fields -- sixteen sequences (the 2026-09-16
+// ruling, same as the concurrent profile) and fp8 KV cache -- and from the concurrent profile in two:
+// 8400 basis points rather than 8567 (the engine's advice was never applied on the running units)
+// and the fp8 KV dtype. Neither earlier row is edited beneath its receipts; this row is the serving
+// subject the arm's renderer binds, and the concurrent profile stays as the bounded-experiment subject
+// until an engine running IT is observed.
+data glm_native_serving_profile_2026_09_19: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: token_count(count: 262144),
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 16,
+  decided_gpu_memory_basis_points: basis_point(count: 8400),
+  kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+  serve_port: glm_native_initial_profile.serve_port,
+  served_alias: glm_native_initial_profile.served_alias,
+  prefix_caching: PrefixCachingExplicit { enabled: true },
+}
 // assert something that was never measured. The canary is retired; this row exists so its EVIDENCE stays
 // accurate, which is the only reason a retired route's facts are worth keeping at all.
 // THE CANARY'S PROFILE IS READ OFF THE ENGINE THAT RAN, NOT ASSEMBLED FROM WHAT WAS DECIDED. A first

@@ -245,7 +245,9 @@ fn spark_pair_ray_worker_argv(head: FabricLaneObserved, self: FabricLaneObserved
 // is an RDMA endpoint fact, so a socket plan had no use for it, yet the route authored it on every
 // arm. What remains here is the set the plan does not own: the variables naming the leg netdev for
 // non-NCCL users (TP_SOCKET_IFNAME, MN_IF_NAME, the OMPI include), the rail address, and the two
-// engine settings the operator ruled.
+// engine settings the operator ruled. VLLM_NO_USAGE_STATS is declared from the running fleet
+// 2026-09-19: both pair hosts carry it on their units and the declaration did not, which alone kept
+// the declared head unit's digest from the observed one.
 fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignment> {
   let ifname = lane.leg_netdev as String
   let rail_ip = render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String
@@ -257,6 +259,7 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
     DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail_ip },
     DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
     DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
+    DockerEnvAssignment { name: "VLLM_NO_USAGE_STATS" as NonEmptyStr, value: "1" },
   ], transport_plan_env(p: spark_pair_transport_plan(lane: lane)))
 }
 
