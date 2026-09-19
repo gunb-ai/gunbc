@@ -468,7 +468,7 @@ fn qualify_runner_throughput(subject: RunnerThroughputQualification) -> RunnerTh
             pinned: subject.workload.revision,
             observed: first.revision,
           }
-        Present { value: _ } =>
+        Present { value: speaks } =>
           match first_unreadable_run(runs: at_pin) {
             Present { value: unreadable } =>
               HostBudgetUnreadableRefusal {
@@ -476,23 +476,19 @@ fn qualify_runner_throughput(subject: RunnerThroughputQualification) -> RunnerTh
                 run: unreadable.run,
                 reason: unreadable_reason(run: unreadable),
               }
-            Absent =>
-              match slowest_run(runs: at_pin) {
-                Absent => HostUnqualified { host: subject.host, candidate: subject.capacity_class_candidate }
-                Present { value: speaks } => {
-                  let receipt = receipt_for_run(subject: subject, run: speaks)
-                  let refusals = receipt_refusals(receipt: receipt)
-                  if refusals.length() == 0 {
-                    HostAdmittedToClass { receipt: receipt, class: subject.capacity_class_candidate }
-                  } else {
-                    HostNotAdmittedToClass {
-                      receipt: receipt,
-                      candidate: subject.capacity_class_candidate,
-                      refusals: refusals,
-                    }
-                  }
+            Absent => {
+              let receipt = receipt_for_run(subject: subject, run: speaks)
+              let refusals = receipt_refusals(receipt: receipt)
+              if refusals.length() == 0 {
+                HostAdmittedToClass { receipt: receipt, class: subject.capacity_class_candidate }
+              } else {
+                HostNotAdmittedToClass {
+                  receipt: receipt,
+                  candidate: subject.capacity_class_candidate,
+                  refusals: refusals,
                 }
               }
+            }
           }
       }
     }

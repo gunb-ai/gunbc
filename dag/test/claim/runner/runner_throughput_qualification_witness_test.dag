@@ -2,9 +2,10 @@ module test.claim.runner_throughput_qualification_witness
 
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String, Timestamp, WorkflowRunId }
+import std.measure { EvalStepCount }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
-  byte_size, byte_size_count, eval_step_count, eval_steps_per_millisecond_count,
+  byte_size, byte_size_count, eval_step_count, eval_step_count_value, eval_steps_per_millisecond_count,
   hardware_thread_count, hardware_thread_count_value, millisecond, second, MoneyPerSecond, money_amount_micro,
 }
 import std.decl_ref { decl_ref }
@@ -30,7 +31,9 @@ import gunbc.fabric_executor_class {
   CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements, floor_offer_fungibility }
-import v2.workflow.floor_eval_step_calibration { floor_eval_step_calibration, calibration_rate }
+import v2.workflow.floor_eval_step_calibration {
+  floor_eval_step_calibration, calibration_rate, calibration_specimen_eval_steps,
+}
 import gunbc.runner_throughput_qualification {
   FloorWorkloadPin, RamBackedTmpfs, PeerScratchExport,
   RateSpecimenRead, RateSpecimenUnread, CgroupMemoryRead, CgroupMemoryUnreadable,
@@ -71,6 +74,16 @@ fn pin() -> FloorWorkloadPin {
   }
 }
 
+// THE PIN AND ITS SPECIMEN ARE READ FROM THE CALIBRATION, NEVER COPIED: a fixture that wrote 723 or
+// 55,011 would be a rate sample only until the next re-pin (review 68543).
+fn pinned_rate() -> Int {
+  calibration_rate(calibration: floor_eval_step_calibration)
+}
+
+fn specimen_steps() -> EvalStepCount {
+  calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)
+}
+
 fn slot_high_bytes() -> Int {
   byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
@@ -86,9 +99,9 @@ fn bound_at_slot_high() -> HostBudgetResolution {
   }
 }
 
-// A RUN THAT MEETS EVERY AXIS: the specimen at its pinned step count in 50 ms (1100 steps/ms
-// against a pin of 723), a peak 5 GiB under the slot high, 250 GiB with 245 GiB idle-available,
-// 160 threads. The numbers are chosen to sit clearly on one side of every line.
+// A RUN THAT MEETS EVERY AXIS: the pinned specimen in 50 ms (well above the pin), a peak 5 GiB
+// under the slot high, 250 GiB with 245 GiB idle-available, 160 threads. The numbers are chosen
+// to sit clearly on one side of every line.
 fn good_run(revision: String) -> QualificationRun {
   QualificationRun {
     run: "35447067113" as WorkflowRunId,
@@ -104,7 +117,7 @@ fn good_run(revision: String) -> QualificationRun {
       PhaseWall { phase: FloorPhase, wall: millisecond(count: 1500000) },
     ],
     floor_eval_steps: eval_step_count(count: 900000000),
-    rate_specimen: RateSpecimenRead { eval_steps: eval_step_count(count: 55011), cpu: millisecond(count: 50) },
+    rate_specimen: RateSpecimenRead { eval_steps: specimen_steps(), cpu: millisecond(count: 50) },
     memory: CgroupMemoryRead {
       level: "/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-mtcollins1-qual-1.service" as NonEmptyStr,
       bound: bound_at_slot_high(),
@@ -135,8 +148,9 @@ test fn a_run_meeting_every_axis_admits_the_host_to_its_candidate_class() -> Boo
         ControlPlaneCapacity =>
           match r.throughput {
             ThroughputMeetsPin { measured: m, pinned: p } =>
-              eval_steps_per_millisecond_count(r: m) == 1100
-                && eval_steps_per_millisecond_count(r: p) == calibration_rate(calibration: floor_eval_step_calibration)
+              eval_steps_per_millisecond_count(r: m) == eval_step_count_value(s: specimen_steps()) / 50
+                && eval_steps_per_millisecond_count(r: m) > pinned_rate()
+                && eval_steps_per_millisecond_count(r: p) == pinned_rate()
             _ => false
           }
         CustomerExecutableCapacity => false
@@ -214,13 +228,15 @@ fn slow_run() -> QualificationRun {
     host_memory_total: g.host_memory_total, host_memory_available_idle: g.host_memory_available_idle,
     host_threads: g.host_threads, host_architecture: g.host_architecture,
     phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps,
-    rate_specimen: RateSpecimenRead { eval_steps: eval_step_count(count: 55011), cpu: millisecond(count: 110) },
+    rate_specimen: RateSpecimenRead { eval_steps: specimen_steps(), cpu: millisecond(count: 110) },
     memory: g.memory,
   }
 }
 
-// 55,011 steps in 110 ms floors to 500 steps/ms, below the 723 pin: not admitted, with both numbers.
+// THE SPECIMEN IN 110 ms floors below the pin (the pin's own sample took 152 ms for twice the
+// depth): not admitted, with both numbers carried.
 test fn throughput_below_the_pinned_rate_is_not_admitted_with_the_number() -> Bool {
+  let expected = eval_step_count_value(s: specimen_steps()) / 110
   match qualify_runner_throughput(subject: subject(runs: [slow_run()])) {
     HostNotAdmittedToClass { receipt: _, candidate: _, refusals: rs } =>
       rs.length() == 1 && (rs |> all(x =>
@@ -228,7 +244,9 @@ test fn throughput_below_the_pinned_rate_is_not_admitted_with_the_number() -> Bo
           ThroughputDidNotHold { standing: s } =>
             match s {
               ThroughputBelowPin { measured: m, pinned: p } =>
-                eval_steps_per_millisecond_count(r: m) == 500 && eval_steps_per_millisecond_count(r: p) == 723
+                eval_steps_per_millisecond_count(r: m) == expected
+                  && expected < pinned_rate()
+                  && eval_steps_per_millisecond_count(r: p) == pinned_rate()
               _ => false
             }
           _ => false
@@ -243,7 +261,13 @@ test fn throughput_below_the_pinned_rate_is_not_admitted_with_the_number() -> Bo
 test fn the_slowest_reading_at_the_pin_speaks_for_the_host() -> Bool {
   let admission = qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision), slow_run()]))
   admission_refusals(admission: admission).length() == 1
-    && string_contains(s: admission_wire(admission: admission) as String, pattern: "throughput 500 steps/ms is below the pin 723")
+    && string_contains(
+      s: admission_wire(admission: admission) as String,
+      pattern: join([
+        "throughput ", (eval_step_count_value(s: specimen_steps()) / 110) as String,
+        " steps/ms is below the pin ", pinned_rate() as String,
+      ], ""),
+    )
 }
 
 // THE RECEIPT SAYS ITS PEAK IS WORKSPACE-INCLUSIVE, because the backing it was taken under charges
