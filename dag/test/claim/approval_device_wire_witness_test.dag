@@ -14,7 +14,7 @@ import gunbc.auth.approval_device_wire {
   approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
   EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
   WireDecoded, WireRefused, enrolment_request_json, decode_enrolment_request, signed_redemption_json, decode_signed_redemption,
-  push_update_json, decode_push_update, path_segment, device_request_path, device_push_update_client_data,
+  push_update_json, decode_push_update, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
 
@@ -192,19 +192,20 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
   }
 }
 
-// PATHS: every identity has a route. Target-changing characters, "%" itself, dots and non-ASCII
-// are percent-encoded from their UTF-8 bytes, and the encoding is injective -- "a/b" and the literal
-// text "a%2Fb" are two different paths.
+// PATHS: every identity has a route, "id-" + base64url(UTF-8). The expected strings were computed
+// independently; the output never contains "%" and never begins with ".", and distinct identities
+// (including "a/b" and the literal text "a%2Fb") get distinct paths.
 test fn witness_path_segment_encodes_every_identity_injectively() -> Bool {
-  path_segment(s: "esc-mtc1_boot~1") as String == "esc-mtc1_boot~1"
-    && path_segment(s: "a/b") as String == "a%2Fb"
-    && path_segment(s: "a%2Fb") as String == "a%252Fb"
-    && path_segment(s: "482?913") as String == "482%3F913"
-    && path_segment(s: "a#b") as String == "a%23b"
-    && path_segment(s: "..") as String == "%2E%2E"
-    && path_segment(s: "café") as String == "caf%C3%A9"
-    && path_segment(s: "🔒") as String == "%F0%9F%94%92"
-    && device_request_path(escalation_id: "a/../b") as String == "/approve/device/requests/a%2F%2E%2E%2Fb"
+  true
+    && path_segment(s: "esc-mtc1_boot~1") as String == "id-ZXNjLW10YzFfYm9vdH4x"
+    && path_segment(s: "482?913") as String == "id-NDgyPzkxMw=="
+    && path_segment(s: "a/b") as String == "id-YS9i"
+    && path_segment(s: "a%2Fb") as String == "id-YSUyRmI="
+    && path_segment(s: "..") as String == "id-Li4="
+    && path_segment(s: "café") as String == "id-Y2Fmw6k="
+    && path_segment(s: "🔒") as String == "id-8J-Ukg=="
+    && path_segment(s: "a/b") != path_segment(s: "a%2Fb")
+    && device_request_path(escalation_id: "a/../b") as String == "/approve/device/requests/id-YS8uLi9i"
 }
 
 // The push-update assertion covers the token: a different token is different client data.
@@ -227,4 +228,16 @@ test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool {
     WireRefused { at: a, cause: _ } => a as String == "evidence"
     WireDecoded { value: _ } => false
   }
+}
+
+// THE SERVER'S INVERSE ROUND-TRIPS EVERY SPECIMEN AND ADMITS ONLY THE CANONICAL SPELLING.
+test fn witness_decode_path_segment_is_the_canonical_inverse() -> Bool {
+  all(["esc-mtc1_boot~1", "482?913", "a%2Fb", "a#b", "a/b", "..", "café", "🔒"], x =>
+    match decode_path_segment(presented: path_segment(s: x as NonEmptyStr) as String) { PathSegmentDecoded { identity: d } => d as String == x  _ => false })
+    && match decode_path_segment(presented: "abc") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-***") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-gA==") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-YR==") { PathSegmentDecoded { identity: _ } => false  _ => true }
+    && match decode_path_segment(presented: "id-YQ") { PathSegmentDecoded { identity: _ } => false  _ => true }
 }

@@ -11,7 +11,8 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
-import extdeps.numeric.base16 { int_to_upper_hex }
+import std.encoding { base64_encode, base64_decode, UrlSafe, base64_octet_of_int, base64_octet_int }
+import std.integer { UInt8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text, json_field, FieldRead, FieldAbsent, FieldMalformed,
@@ -815,18 +816,14 @@ fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Time
   framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])
 }
 
-// A PATH SEGMENT IS ENCODED, TOTALLY AND INJECTIVELY, and never refused: an identity the store
-// admits must always have a route, or an enrolment could commit and then be unreadable. Each code
-// point's UTF-8 bytes are kept only when they are RFC 3986 unreserved, excluding ".", and every other
-// byte -- "%" itself included -- is "%" plus two UPPERCASE hex digits. "." is always encoded, so no id
-// can form a dot-segment a URL library would normalize away. The mapping is injective, so two
-// identities never share a path, and the app transports the encoded path verbatim (percent-encoded,
-// never re-encoded), so the assertion covers exactly the bytes sent.
-fn is_path_kept_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 95 || cp == 126
-}
+// A PATH SEGMENT IS "id-" + base64url(UTF-8(identity)), TOTAL AND INJECTIVE, and never refused: every
+// identity the store admits has a route. The output is drawn only from the base64url alphabet, "="
+// padding and the "id-" prefix, so it carries no percent escape for any layer to decode, cannot be a
+// dot segment (it always starts "id-"), and has no case-equivalent alternate spelling. Percent
+// encoding was rejected: a URL parser treats %2E%2E as ".." and collapses the path, so an encoded
+// dot is not a stable transport spelling. The codec is std.encoding's, not a second one.
+data path_segment_prefix: String = "id-"
 
-// UTF-8 per RFC 3629, from the code point's value.
 fn utf8_octets_of_code_point(cp: Int) -> List<Int> {
   if cp < 128 { [cp] }
   else if cp < 2048 { [192 + cp / 64, 128 + cp % 64] }
@@ -834,16 +831,70 @@ fn utf8_octets_of_code_point(cp: Int) -> List<Int> {
   else { [240 + cp / 262144, 128 + (cp / 4096) % 64, 128 + (cp / 64) % 64, 128 + cp % 64] }
 }
 
-fn percent_octet(o: Int) -> String {
-  let h = int_to_upper_hex(n: o)
-  if string_length(s: h) == 1 { join(["%0", h], "") } else { join(["%", h], "") }
+fn utf8_octets(s: String) -> List<UInt8> {
+  flat_map(chars(s: s), cp => map(utf8_octets_of_code_point(cp: cp), o => base64_octet_of_int(n: o)))
 }
 
 fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
-  join(map(chars(s: s as String), cp =>
-    if is_path_kept_code_point(cp: cp) { from_code_point(cp: cp) }
-    else { join(map(utf8_octets_of_code_point(cp: cp), o => percent_octet(o: o)), "") }
-  ), "") as NonEmptyStr
+  join([path_segment_prefix, base64_encode(octets: utf8_octets(s: s as String), variant: UrlSafe)], "") as NonEmptyStr
+}
+
+// UTF-8 per RFC 3629, from octets; a malformed sequence is Absent, never a replacement character.
+type Utf8Decode {
+  out: List<Int>
+  need: Int
+  acc: Int
+  ok: Bool
+}
+
+fn utf8_code_points_of_octets(os: List<UInt8>) -> List<Int>? {
+  let st = fold(os, init: Utf8Decode { out: [], need: 0, acc: 0, ok: true }, f: (d, octet) => {
+    let o = base64_octet_int(b: octet)
+    if !d.ok { d }
+    else if d.need == 0 {
+      if o < 128 { Utf8Decode { out: concat(d.out, [o]), need: 0, acc: 0, ok: true } }
+      else if o >= 194 && o < 224 { Utf8Decode { out: d.out, need: 1, acc: o - 192, ok: true } }
+      else if o >= 224 && o < 240 { Utf8Decode { out: d.out, need: 2, acc: o - 224, ok: true } }
+      else if o >= 240 && o < 245 { Utf8Decode { out: d.out, need: 3, acc: o - 240, ok: true } }
+      else { Utf8Decode { out: d.out, need: 0, acc: 0, ok: false } }
+    } else {
+      if o >= 128 && o < 192 {
+        if d.need == 1 { Utf8Decode { out: concat(d.out, [d.acc * 64 + (o - 128)]), need: 0, acc: 0, ok: true } }
+        else { Utf8Decode { out: d.out, need: d.need - 1, acc: d.acc * 64 + (o - 128), ok: true } }
+      } else { Utf8Decode { out: d.out, need: 0, acc: 0, ok: false } }
+    }
+  })
+  if st.ok && st.need == 0 { Present { value: st.out } } else { none }
+}
+
+// THE SERVER'S INVERSE, typed and consuming the raw route suffix exactly once. The route takes the
+// suffix as received and does not percent-decode it first. Admitted only when re-encoding the decoded
+// identity reproduces the presented segment byte for byte, so each identity has exactly one
+// accepted spelling in both directions.
+type PathSegmentDecode
+  = PathSegmentDecoded { identity: NonEmptyStr }
+  | PathSegmentMalformed { cause: NonEmptyStr }
+  | PathSegmentNonCanonical { presented: NonEmptyStr, canonical: NonEmptyStr }
+
+fn decode_path_segment(presented: String) -> PathSegmentDecode {
+  if !starts_with(s: presented, prefix: path_segment_prefix) { PathSegmentMalformed { cause: "segment lacks the id- prefix" } }
+  else {
+    match base64_decode(s: substring(s: presented, start: string_length(s: path_segment_prefix), end: string_length(s: presented)), variant: UrlSafe) {
+      Absent => PathSegmentMalformed { cause: "segment body is not base64url" }
+      Present { value: octets } =>
+        match utf8_code_points_of_octets(os: octets) {
+          Absent => PathSegmentMalformed { cause: "segment body is not UTF-8" }
+          Present { value: cps } =>
+            if cps == [] { PathSegmentMalformed { cause: "segment names an empty identity" } }
+            else {
+              let identity = join(map(cps, cp => from_code_point(cp: cp)), "") as NonEmptyStr
+              let canonical = path_segment(s: identity)
+              if (canonical as String) == presented { PathSegmentDecoded { identity: identity } }
+              else { PathSegmentNonCanonical { presented: presented as NonEmptyStr, canonical: canonical } }
+            }
+        }
+    }
+  }
 }
 
 fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr {
