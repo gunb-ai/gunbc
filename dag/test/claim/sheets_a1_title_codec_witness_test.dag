@@ -1,0 +1,77 @@
+module test.claim.sheets_a1_title_codec_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import extdeps.google.sheets {
+  a1_sheet_title_wire,
+  a1_qualified_range_wire,
+  a1_range_title_decode,
+  A1RangeTitleDecode,
+  A1TitleQualified,
+  A1TitleWholeSheet,
+  A1TitleUnqualified,
+  A1TitleRefused,
+  A1SheetTitleRefusal,
+  A1TitleUnterminatedQuote,
+  A1TitleBadEscape,
+  A1TitleEmpty,
+}
+
+fn decoded_title_and_cells(d: A1RangeTitleDecode) -> String {
+  match d {
+    A1TitleQualified { title: t, cells: c } => concat("qualified|", concat(t as String, concat("|", c)))
+    A1TitleWholeSheet { title: t } => concat("whole|", t as String)
+    A1TitleUnqualified { text: x } => concat("unqualified|", x)
+    A1TitleRefused { refusal: A1TitleUnterminatedQuote } => "refused|unterminated"
+    A1TitleRefused { refusal: A1TitleBadEscape { at: i } } => concat("refused|bad-escape@", to_string(i))
+    A1TitleRefused { refusal: A1TitleEmpty } => "refused|empty"
+  }
+}
+
+fn round_trip(title: NonEmptyStr, cells: String) -> String {
+  decoded_title_and_cells(d: a1_range_title_decode(range: a1_qualified_range_wire(title: title, cells: cells)))
+}
+
+test fn a_title_with_a_space_is_quoted() -> Bool {
+  a1_qualified_range_wire(title: "Buyer Review" as NonEmptyStr, cells: "A1:C1") == "'Buyer Review'!A1:C1"
+}
+
+test fn an_embedded_quote_is_doubled() -> Bool {
+  a1_qualified_range_wire(title: "Bob's" as NonEmptyStr, cells: "A1") == "'Bob''s'!A1"
+}
+
+test fn a_plain_title_is_quoted_too() -> Bool {
+  a1_sheet_title_wire(title: "Sheet1" as NonEmptyStr) == "'Sheet1'"
+}
+
+test fn a_spaced_title_round_trips() -> Bool {
+  round_trip(title: "Buyer Review" as NonEmptyStr, cells: "A1:C1") == "qualified|Buyer Review|A1:C1"
+}
+
+test fn a_quoted_title_round_trips() -> Bool {
+  round_trip(title: "Bob's" as NonEmptyStr, cells: "A1") == "qualified|Bob's|A1"
+    && round_trip(title: "''" as NonEmptyStr, cells: "B2") == "qualified|''|B2"
+}
+
+test fn a_title_containing_a_bang_round_trips() -> Bool {
+  round_trip(title: "Q3!final" as NonEmptyStr, cells: "A1:C1") == "qualified|Q3!final|A1:C1"
+    && round_trip(title: "Bob's!x" as NonEmptyStr, cells: "A1") == "qualified|Bob's!x|A1"
+}
+
+// What values.get returns for a plain title is the BARE spelling; it must decode.
+test fn a_bare_title_as_google_returns_it_decodes() -> Bool {
+  decoded_title_and_cells(d: a1_range_title_decode(range: "Sheet1!A1:Z1000")) == "qualified|Sheet1|A1:Z1000"
+}
+
+test fn a_quoted_whole_sheet_range_decodes_without_a_bang() -> Bool {
+  decoded_title_and_cells(d: a1_range_title_decode(range: "'Buyer Review'")) == "whole|Buyer Review"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "A1:C1")) == "unqualified|A1:C1"
+}
+
+test fn malformed_quoting_refuses_with_its_typed_cause() -> Bool {
+  decoded_title_and_cells(d: a1_range_title_decode(range: "'Buyer Review!A1:C1")) == "refused|unterminated"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "'Bob's'!A1")) == "refused|bad-escape@4"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "Bob's!A1")) == "refused|bad-escape@3"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "''!A1")) == "refused|empty"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "!A1")) == "refused|empty"
+    && decoded_title_and_cells(d: a1_range_title_decode(range: "")) == "refused|empty"
+}

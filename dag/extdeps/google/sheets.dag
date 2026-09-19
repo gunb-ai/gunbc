@@ -82,6 +82,10 @@ data sheets_conditional_format_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#conditionalformatrule" }
 }
 
+data sheets_a1_notation_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/guides/concepts#cell" }
+}
+
 data google_sheets_api: NonEmptyStr = "Google Sheets API"
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -105,7 +109,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_color_citation,
     sheets_get_citation,
     sheets_grid_properties_citation,
-    sheets_conditional_format_citation
+    sheets_conditional_format_citation,
+    sheets_a1_notation_citation
   ]
 }
 
@@ -223,6 +228,126 @@ fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption?
       } else {
         none
       }
+    }
+  }
+}
+
+// A1 NOTATION: THE SHEET-TITLE TOKEN (sheets_a1_notation_citation). A qualified A1 range is
+// `<title>!<cells>`; the guide spells a title with a space as `'My Custom Sheet'!A:A` and states
+// single quotes are required for names with spaces, special characters or an alphanumeric
+// combination, and an embedded single quote is doubled inside the quotes. The guide never forbids
+// quoting a plain name, and `'Sheet1'!A1` is accepted, so the ENCODER ALWAYS QUOTES: one spelling,
+// no "is this title a plain identifier" classifier to get wrong. That quoting a plain name is
+// admitted is an observed API behaviour beside the guide, not a sentence the guide prints.
+// The DECODER models what values.get actually returns in ValueRange.range: plain titles come back
+// bare (`Sheet1!A1:Z1000`), others quoted (`'Buyer Review'!A1:C1`), so both spellings decode. The
+// quoted title is scanned to its closing quote BEFORE any '!' is looked for, because a quoted
+// title may itself contain '!'.
+
+fn a1_sheet_title_wire(title: NonEmptyStr) -> String {
+  concat("'", concat(replace(title as String, "'", "''"), "'"))
+}
+
+fn a1_qualified_range_wire(title: NonEmptyStr, cells: String) -> String {
+  concat(a1_sheet_title_wire(title: title), concat("!", cells))
+}
+
+type A1SheetTitleRefusal
+  = A1TitleUnterminatedQuote
+  | A1TitleBadEscape { at: Int }
+  | A1TitleEmpty
+
+fn a1_sheet_title_refusal_text(refusal: A1SheetTitleRefusal) -> String {
+  match refusal {
+    A1TitleUnterminatedQuote => "A1 sheet title: unterminated quote"
+    A1TitleBadEscape { at: i } =>
+      concat("A1 sheet title: single quote not escaped as '' at offset ", to_string(i))
+    A1TitleEmpty => "A1 sheet title: empty title"
+  }
+}
+
+type A1RangeTitleDecode
+  = A1TitleQualified { title: NonEmptyStr, cells: String }
+  | A1TitleWholeSheet { title: NonEmptyStr }
+  | A1TitleUnqualified { text: String }
+  | A1TitleRefused { refusal: A1SheetTitleRefusal }
+
+// Index of the closing quote of a quoted title that opened at 0; `''` is an escaped quote.
+fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> Int? {
+  if i >= len {
+    Absent
+  } else if char_at(s, i) != "'" {
+    a1_quoted_title_close_from(s: s, i: i + 1, len: len)
+  } else if (i + 1 < len) && (char_at(s, i + 1) == "'") {
+    a1_quoted_title_close_from(s: s, i: i + 2, len: len)
+  } else {
+    Present { value: i }
+  }
+}
+
+fn a1_bare_bang_from(s: String, i: Int, len: Int) -> Int? {
+  if i >= len {
+    Absent
+  } else if char_at(s, i) == "!" {
+    Present { value: i }
+  } else {
+    a1_bare_bang_from(s: s, i: i + 1, len: len)
+  }
+}
+
+fn a1_bare_quote_from(s: String, i: Int, end: Int) -> Int? {
+  if i >= end {
+    Absent
+  } else if char_at(s, i) == "'" {
+    Present { value: i }
+  } else {
+    a1_bare_quote_from(s: s, i: i + 1, end: end)
+  }
+}
+
+fn a1_range_title_decode(range: String) -> A1RangeTitleDecode {
+  let len = string_length(s: range)
+  if len == 0 {
+    A1TitleRefused { refusal: A1TitleEmpty }
+  } else if char_at(range, 0) == "'" {
+    match a1_quoted_title_close_from(s: range, i: 1, len: len) {
+      Absent => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
+      Present { value: close } => {
+        let body = substring(s: range, start: 1, end: close)
+        if body == "" {
+          A1TitleRefused { refusal: A1TitleEmpty }
+        } else if close + 1 == len {
+          A1TitleWholeSheet { title: replace(body, "''", "'") as NonEmptyStr }
+        } else if char_at(range, close + 1) == "!" {
+          A1TitleQualified {
+            title: replace(body, "''", "'") as NonEmptyStr,
+            cells: substring(s: range, start: close + 2, end: len),
+          }
+        } else {
+          A1TitleRefused { refusal: A1TitleBadEscape { at: close } }
+        }
+      }
+    }
+  } else {
+    match a1_bare_bang_from(s: range, i: 0, len: len) {
+      Absent =>
+        match a1_bare_quote_from(s: range, i: 0, end: len) {
+          Present { value: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+          Absent => A1TitleUnqualified { text: range }
+        }
+      Present { value: bang } =>
+        if bang == 0 {
+          A1TitleRefused { refusal: A1TitleEmpty }
+        } else {
+          match a1_bare_quote_from(s: range, i: 0, end: bang) {
+            Present { value: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+            Absent =>
+              A1TitleQualified {
+                title: substring(s: range, start: 0, end: bang) as NonEmptyStr,
+                cells: substring(s: range, start: bang + 1, end: len),
+              }
+          }
+        }
     }
   }
 }

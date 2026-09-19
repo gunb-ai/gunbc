@@ -328,9 +328,9 @@ fn request_cause_range_wire(a: ReviewSheetEnsureAssessment) -> String {
 test fn assess_carries_the_whole_refused_range_not_only_its_tab() -> Bool {
   let empty = w_value_range(rows: [])
   request_cause_range_wire(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: empty))
-    == "bounded:Review!A1:E9"
+    == "bounded:'Review'!A1:E9"
     && request_cause_range_wire(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: empty))
-      == "column:Review!A1:E"
+      == "column:'Review'!A1:E"
 }
 
 fn rendered_request_refusal(requested: SheetA1Range) -> String {
@@ -347,9 +347,9 @@ fn rendered_request_refusal(requested: SheetA1Range) -> String {
 test fn the_request_refusal_reason_renders_the_range_it_refused_for_both_walls() -> Bool {
   let bounded = rendered_request_refusal(requested: w_bounded_request(tab: "Review" as NonEmptyStr))
   let column = rendered_request_refusal(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr))
-  string_contains(s: bounded, pattern: "Review!A1:E9")
+  string_contains(s: bounded, pattern: "'Review'!A1:E9")
     && string_contains(s: bounded, pattern: "unobserved rows")
-    && string_contains(s: column, pattern: "Review!A1:E")
+    && string_contains(s: column, pattern: "'Review'!A1:E")
     && string_contains(s: column, pattern: "unobserved columns")
     && !string_contains(s: column, pattern: "unobserved rows")
 }
@@ -1027,7 +1027,7 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
               && !string_contains(s: a1_cell_wire(cell: w.a1), pattern: "!")
               && match value_ranges_from_write_plan(bound: bound) |> first {
                 Present { value: vr } =>
-                  vr.range == "Review!B2"
+                  vr.range == "'Review'!B2"
                     && !string_contains(s: vr.range, pattern: "Review!Review!")
                 Absent => false
               }
@@ -1050,7 +1050,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
       (bound.tab as String) == "OtherTab"
         && match value_ranges_from_write_plan(bound: bound) |> first {
           Present { value: vr } =>
-            vr.range == "OtherTab!B2"
+            vr.range == "'OtherTab'!B2"
               && !string_contains(s: vr.range, pattern: "Review!")
           Absent => false
         }
@@ -1241,7 +1241,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"
         && match value_ranges_from_write_plan(bound: bound) |> first {
-          Present { value: vr } => vr.range == "Review!B2"
+          Present { value: vr } => vr.range == "'Review'!B2"
           Absent => false
         }
     Noop => false
@@ -1472,7 +1472,7 @@ test fn absent_listing_appends_a_located_row() -> Bool {
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                   Present { value: vr } =>
-                                    vr.range == "Review!A2:C2"
+                                    vr.range == "'Review'!A2:C2"
                                       && match vr.values {
                                         Present { value: rows } =>
                                           match rows |> first {
@@ -1650,7 +1650,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
       range: review_sheet_get_values_request(
         tab: "Review" as NonEmptyStr,
       ),
-    ) == "Review"
+    ) == "'Review'"
     && match live_serviceusage_get_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.decl_name as String) == "service_enablement_from_state_wire"
@@ -1699,7 +1699,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                           },
                         ) |> first {
                           Present { value: vr } =>
-                            vr.range == "Review!B2"
+                            vr.range == "'Review'!B2"
                               && match vr.values {
                                 Present { value: rows } =>
                                   match rows |> first {
