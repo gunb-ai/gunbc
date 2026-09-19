@@ -1168,11 +1168,11 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
   }
   }}}
 
-// The eight test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
+// The nine test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
 // over the real file store -- absent acquires at 1, held refuses without writing (another owner and
 // its own spelling), release to N+1 and reacquire at N+2, two contenders over one free observation,
 // store refusal distinct from contention, refused releases leave no next generation, and a commit
-// after the slot moved is release-lost. First effect is shell.Mktemp.DirWithTemplate with no
+// after the slot moved is release-lost, and a write-time store refusal is unavailable. First effect is shell.Mktemp.DirWithTemplate with no
 // mock_response, exactly as the CAS store's own wet rows in chunk_12. Triple enrollment: this
 // expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // witness_exclusion_frontier LocalRepoWetLane row for durable_exclusive_hold_file_store_wet_witness_test.dag.
@@ -1194,7 +1194,10 @@ fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.refused_releases_do_not_free_the_slot_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
