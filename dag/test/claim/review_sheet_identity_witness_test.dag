@@ -1,0 +1,254 @@
+module test.claim.review_sheet_identity_witness
+
+import std.types { NonEmptyStr, String, List, Bool }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetPageIncomplete,
+  SheetSearchUnreadable,
+}
+import gunbc.review_sheet_identity {
+  ReviewSheetIdentitySubject,
+  LegacySearchVisibilityBasis,
+  ClientIdentityObservedCompatible,
+  PositiveFindEstablishesVisibility,
+  SearchVisibilityUnresolved,
+  LegacyExtentEvidence,
+  LegacyExtentAbsentByOperator,
+  LegacyFileSelectedByOperator,
+  LegacySearchObserved,
+  LegacyExtentUnresolved,
+  ReviewSheetIdentityStanding,
+  ReviewSheetIdentityAbsent,
+  ReviewSheetSingleLineage,
+  ReviewSheetLegacyOnlyLineage,
+  ReviewSheetConflictingLineages,
+  CurrentMarkerObservedLegacyExtentUnresolved,
+  ReviewSheetIdentityUnreadable,
+  review_sheet_identity_standing,
+  review_sheet_identity_subject_matches,
+}
+
+// EVERY CLAIM HERE SUPPLIES ITS INPUTS, and that is correct rather than a compromise: this module
+// performs nothing, so there is no production route to execute. The pairing obligation belongs to
+// the PRODUCERS that land next -- the Drive query and the operator-declaration reader -- and it is
+// theirs to discharge by executing against this contract. Nothing in this cut claims otherwise.
+
+fn w_subject() -> ReviewSheetIdentitySubject {
+  ReviewSheetIdentitySubject {
+    drive_id: "drive-1" as NonEmptyStr,
+    marker_key: "gunbcReviewSheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+    current_marker_field: "properties" as NonEmptyStr,
+    superseded_marker_field: "appProperties" as NonEmptyStr,
+  }
+}
+
+fn w_other_subject() -> ReviewSheetIdentitySubject {
+  ReviewSheetIdentitySubject {
+    drive_id: "drive-2" as NonEmptyStr,
+    marker_key: "gunbcReviewSheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+    current_marker_field: "properties" as NonEmptyStr,
+    superseded_marker_field: "appProperties" as NonEmptyStr,
+  }
+}
+
+fn w_search(o: ReviewSpreadsheetObservation, v: LegacySearchVisibilityBasis) -> LegacyExtentEvidence {
+  LegacySearchObserved { subject: w_subject(), observation: o, visibility_basis: v }
+}
+
+fn w_visible() -> LegacySearchVisibilityBasis {
+  ClientIdentityObservedCompatible { basis: "fixture: the searching client is the one that wrote the superseded marker" as NonEmptyStr }
+}
+
+fn w_unknown_visibility() -> LegacySearchVisibilityBasis {
+  SearchVisibilityUnresolved { cause: "fixture: this repository never observes the OAuth client its token belongs to" as NonEmptyStr }
+}
+
+// THE CLAIM THE WHOLE RECUT EXISTS FOR. A current-marked file is found, the legacy search returns a
+// clean empty result, and nothing establishes that this client could have seen an app-private
+// marker. That is NOT a converged single lineage -- it is a found file whose sibling cannot be ruled
+// out, and reporting it as converged is what let a duplicate be adopted while the original went
+// dark.
+test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unresolved() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
+  ) {
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: f, cause: _ } =>
+      (f as String) == "current-A"
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// THE CONTROL, without which the wall above would have closed the ordinary steady state. With a
+// visibility basis that IS established, the same empty search is a real absence and the found file
+// is the single lineage.
+test fn an_empty_legacy_search_under_established_visibility_is_a_single_lineage() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetAbsent, v: w_visible()),
+  ) {
+    ReviewSheetSingleLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "current-A"
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// A POSITIVE FIND PROVES VISIBILITY FOR THAT OBSERVATION AND CANNOT BE REUSED. Offered as the basis
+// for an observation that found NOTHING, it establishes nothing at all -- the arm exists so a
+// producer cannot carry one run's positive find forward as a standing licence.
+test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetAbsent, v: PositiveFindEstablishesVisibility),
+  ) {
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: c } =>
+      string_contains(s: c as String, pattern: "did not make")
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// TWO LINEAGES OBSERVED. Both ids travel, because an operator settling this needs them both.
+test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
+    legacy: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
+  ) {
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: c, legacy_file_ids: l } =>
+      any(c, i => i == "current-A") && any(l, i => i == "legacy-B")
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// ONE FILE CARRYING BOTH MARKERS IS ONE LINEAGE, which is the steady state after any completed
+// migration and must not read as a conflict.
+test fn one_file_under_both_markers_is_a_single_lineage() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetObservedOne { file_id: "same" as NonEmptyStr },
+    legacy: w_search(o: SheetObservedOne { file_id: "same" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
+  ) {
+    ReviewSheetSingleLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "same"
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// THE ORIGINAL INCIDENT'S RECOVERABLE SHAPE: no current-marked file, a legacy one found. That file
+// IS the sheet, carrying only the old marker.
+test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetAbsent,
+    legacy: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: PositiveFindEstablishesVisibility),
+  ) {
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: f, evidence: _ } => (f as String) == "legacy-B"
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+  }
+}
+
+// NEITHER MARKER FINDS ANYTHING AND VISIBILITY IS UNKNOWN: unreadable, never absent. This is the arm
+// a create would be authorized from, so it is the one that must not widen.
+test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetAbsent,
+    legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
+  ) {
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => true
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+  }
+}
+
+// THE CONTROL FOR THE CREATE PATH. An operator declaring the legacy extent empty is a fact a human
+// can know, and it does make absence real -- so the identity can still be Absent and a create can
+// still be authorized downstream. Without this, the wall above would have closed bootstrap.
+test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetAbsent,
+    legacy: LegacyExtentAbsentByOperator {
+      subject: w_subject(),
+      basis: "fixture: an operator declared this drive holds no superseded-marked sheet" as NonEmptyStr,
+    },
+  ) {
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => true
+    ReviewSheetIdentityUnreadable { subject: _, cause: _ } => false
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+  }
+}
+
+// A DECLARATION FOR ANOTHER SUBJECT ESTABLISHES NOTHING HERE, and this is why the subject is carried
+// in content rather than implied by the declaration file's path. A globally named file that outlives
+// its drive or its marker generation would otherwise keep unlocking decisions it was never about.
+test fn evidence_naming_another_subject_is_unreadable() -> Bool {
+  match review_sheet_identity_standing(
+    subject: w_subject(),
+    current: SheetAbsent,
+    legacy: LegacyExtentAbsentByOperator {
+      subject: w_other_subject(),
+      basis: "fixture: a declaration about a different drive" as NonEmptyStr,
+    },
+  ) {
+    ReviewSheetIdentityUnreadable { subject: _, cause: c } =>
+      string_contains(s: c as String, pattern: "different identity subject")
+    ReviewSheetIdentityAbsent { subject: _, evidence: _ } => false
+    ReviewSheetSingleLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetLegacyOnlyLineage { subject: _, file_id: _, evidence: _ } => false
+    ReviewSheetConflictingLineages { subject: _, current_file_ids: _, legacy_file_ids: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { subject: _, file_id: _, cause: _ } => false
+  }
+}
+
+// SUBJECT EQUALITY IS OVER THE COMPLETE SUBJECT, including both marker fields, so a declaration
+// written about one migration generation cannot answer for the next.
+test fn a_subject_differing_only_in_the_superseded_field_does_not_match() -> Bool {
+  review_sheet_identity_subject_matches(
+    a: w_subject(),
+    b: ReviewSheetIdentitySubject {
+      drive_id: "drive-1" as NonEmptyStr,
+      marker_key: "gunbcReviewSheet" as NonEmptyStr,
+      marker_value: "ci-prospect-sheet" as NonEmptyStr,
+      current_marker_field: "properties" as NonEmptyStr,
+      superseded_marker_field: "someLaterField" as NonEmptyStr,
+    },
+  ) == false
+}
