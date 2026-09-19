@@ -926,15 +926,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
-      function: "an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution",
+      function: "an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_claim_on_an_unclaimed_groups_host_lives_on_the_group_partition_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
-      function: "a_claim_on_an_unclaimed_groups_host_lives_on_the_group_partition_by_real_execution",
+      function: "a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -944,9 +944,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_claim_on_a_hosts_former_home_fences_admission_and_establishment_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_stale_placement_read_cannot_place_or_commit_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
-      function: "a_claim_on_a_hosts_former_home_fences_admission_and_establishment_by_real_execution",
+      function: "a_stale_placement_read_cannot_place_or_commit_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

@@ -5,6 +5,7 @@ import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.tools.hostname
 import extdeps.linux.cgroup_v2
+import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
 import extdeps.linux.procfs
 import extdeps.posix.getconf
 import extdeps.crypto.hash
@@ -117,6 +118,7 @@ type HostOperation =
   | CgroupListChildren { cgroup_path: NonEmptyStr }
   | CgroupReadInterfaceFile { file_path: NonEmptyStr }
   | CgroupPathIsDirectory { path: NonEmptyStr }
+  | CgroupReadEvents { cgroup_path: NonEmptyStr }
   | ProcfsReadStat
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
@@ -216,6 +218,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         operation: "PathIsDirectory",
       },
       bindings: [operation_argv_bind_text(name: "path", text: p as String)],
+    )
+    CgroupReadEvents { cgroup_path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: cgroup_v2_operation_path,
+        service: cgroup_v2_operation_service,
+        operation: "ReadEvents",
+      },
+      bindings: [operation_argv_bind_text(name: "events_path", text: cgroup_v2_events_path(cgroup_path: p) as String)],
     )
     ProcfsReadStat => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadStat"),
@@ -345,6 +355,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     CgroupPathIsDirectory { path: p } => {
       let result = linux.CgroupV2.PathIsDirectory(path: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    CgroupReadEvents { cgroup_path: p } => {
+      let result = linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: p))
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     ProcfsReadStat => {

@@ -2290,7 +2290,7 @@ test fn a_populated_cgroup_removes_no_tree_at_the_renderer() -> Bool {
         active_state: "inactive",
         occupancy: cgroup_occupancy_from_reads(
           directory_test: HostOperationObserved { stdout: "", success: true, stderr: none },
-          procs_read: HostOperationObserved { stdout: "4821\n", success: true, stderr: none },
+          events_read: HostOperationObserved { stdout: "populated 1\nfrozen 0\n", success: true, stderr: none },
         ),
       ),
     ),
@@ -2374,7 +2374,7 @@ fn drift_populated_standing() -> RunnerRetirementStanding {
       active_state: "inactive",
       occupancy: cgroup_occupancy_from_reads(
         directory_test: HostOperationObserved { stdout: "", success: true, stderr: none },
-        procs_read: HostOperationObserved { stdout: "4821\n", success: true, stderr: none },
+        events_read: HostOperationObserved { stdout: "populated 1\nfrozen 0\n", success: true, stderr: none },
       ),
     ),
   )
