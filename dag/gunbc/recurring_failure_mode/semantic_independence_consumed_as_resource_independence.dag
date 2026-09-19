@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data semantic_independence_consumed_as_resource_independence: RecurringFailureMode = RecurringFailureMode {
+  identity: "semantic_independence_consumed_as_resource_independence" as NonEmptyStr,
+
+  receipts: [
+    "**A producer's ANSWER is proven independent of unrelated pool members, and that proof is consumed as though its RESIDENCY were bounded too.** The two are different properties over the same subject. A fold may correctly exclude an unrelated file from every dependency answer while still parsing, indexing and RETAINING that file in the population it built to compute the answer. The guarantee is true; the expectation read off it is false.",
+
+    "HARM, AND IT IS A PLANNING HARM RATHER THAN A RUNTIME ONE. Nothing computes a wrong answer. What goes wrong is that a program is SIZED on the proof: a memory lane reads `unrelated file excluded`, concludes the replacement will bound residency, and sequences its relief behind a cut that was never going to deliver it. The cost is discovered at the end of the program rather than at its start, which is the most expensive place to find it. No refusal fires, because every executed claim is true.",
+
+    "DISTINGUISHING FACTS, because two neighbouring states look like this and are not. It is NOT a producer that genuinely depends on the pool -- there the ANSWER moves when an unrelated file is added, and the independence witness reds. It is NOT an unmeasured cost -- the cost here is not merely unquantified, it is EXPECTED TO DISAPPEAR on the strength of a proof about a different property. The tell is a residency claim whose only support is an equality over answers.",
+
+    "RECEIPT (2026-09-19, nimble-wren-52, NAMESPACE XL-4 read at main 7261964510969c72ab874e908e8cc3fc80b880aa). `v2.lens.module_graph` `load_reference_derived_pool` takes the declared population from `module_declaration_facts_live(pool_roots)` -- the whole corpus under the roots -- ingests every declared ref, and retains `ReferenceDerivedPool { index: SymbolIndex, trees: Map<String, Node>, roster, qn_by_path }`. `emit_reference_edges_for_located_root` then filters which roots emit edges, AFTER that population exists. So an unrelated file is correctly absent from the edge projection and correctly present in what the producer holds.",
+
+    "THE RETENTION IS NOT ONE FIELD, AND AN EARLIER DRAFT OF THIS ROW NAMED ONLY ONE. `trees` holds every normalized module root, AND `v2.std.symbol_index` `SymbolIndex` is `entries: Map<QualifiedName, Node>` -- a `Node` per qualified name -- so the same population is reachable a second way through `index`. A residency obligation written against `trees` alone would be discharged by moving retention into the index and would measure nothing. THE OBLIGATION THEREFORE RANGES OVER THE PRODUCER'S RETAINED OWNERSHIP GRAPH, not over the presence of a named field: what is reachable and held after the projection is answered, by whatever path.",
+
+    "WHAT THE EXISTING EVIDENCE DOES AND DOES NOT ESTABLISH, stated because both artifacts are sound and neither is the missing one. `gunbc.namespace_reference_derived_closure_admission` names the capability `UnrelatedLoadedFileExcluded`, and `gunbc.namespace_pool_independence` (N3-C) compares two complete `ReferenceDerivedDependencyProjection` carriers -- baseline against one perturbed by an unrelated loaded file -- over binding provenance, file dependencies, bound population and refusal variant. Every one of those is an ANSWER. No enrolled comparison in that harness ranges over a load set, a retained-tree population, or a resident byte count.",
+
+    "RUNG FOUND AT: mitigatable. The conflation is caught by reading the producer beside the proof, which is review rather than any executing check, and the memory program that consumed it had already been sequenced on the wrong expectation before the read happened.",
+
+    "CEILING: structurally guaranteed. Whether a verdict ranges over answers or over residency is a decidable property of the carrier that produced it, so a verdict type that names its own scope makes the conflation unwritable rather than reviewable -- an independence result carrying `AnswerScope` cannot be consumed where a residency bound is required, and no check need run.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: a reference-graph delivery requires a RESIDENCY observation over the same subject the independence projection ranges over -- a retained-population or resident-byte reading taken under an enforceable limit, joined to the same subject identity -- so that `ReferenceGraphInstrumentDelivered` cannot be held on an answer-equality alone. A row that named only `an acceptance condition on XL-4` would be satisfied by a condition that re-stated answer equality in new words, which is the DESIGN section 4b(3) grain mismatch this trigger is written to avoid.",
+
+    "CONSEQUENCE FOR THE NAMESPACE PROGRAM, recorded because a sizing decision already leans on it. `gunbc.namespace_cut_stage` places the production edge-source transition at XL-6 (`StageXL5Waves` says the legacy semantic root still stands; `StageXL6AtomicCutover` deletes every root authority in one motion), so BOTH representations are resident until that cut. A bounded realization of the replacement producer is therefore a separate obligation from the cut itself: delivering XL-4 and executing XL-6 can both succeed and leave a whole-corpus in-memory graph standing where the whole-corpus pool parse used to be."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "ReferenceDerivedPool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "load_reference_derived_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.namespace_pool_independence", decl_name: "PoolIndependenceVerdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration }
+  ],
+}
