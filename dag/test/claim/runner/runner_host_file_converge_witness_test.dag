@@ -24,6 +24,7 @@ import gunbc.runner_slot_retirement {
   retirement_unit,
   retirement_is_complete,
   retirement_is_unobserved,
+  CgroupEventsBatch,
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
 }
@@ -97,7 +98,12 @@ import gunbc.runner_host_file_converge {
   runner_slot_population_units,
   classify_runner_slot_population,
   runner_retiree_show_readings,
-  runner_retiree_cgroup_events_argv,
+  runner_retiree_cgroup_events_read,
+  runner_retiree_cgroup_events_unread,
+  RetireeCgroupEventsRead,
+  RetireeCgroupEventsNotOwed,
+  RetireeCgroupEventsArgv,
+  RetireeCgroupEventsRefused,
   runner_slot_show_properties,
   runner_retiree_standings,
   runner_slot_population_owes_reload,
@@ -735,8 +741,23 @@ fn batched_standings(show: String, events: String) -> List<RunnerRetirementStand
   runner_retiree_standings(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: show), batch: CgroupEventsBatchRead { stdout: events, stderr: "" })
 }
 
-fn argv_or_empty(o: List<String>?) -> List<String> {
-  match o { Absent => [] Present { value: a } => a }
+fn argv_or_empty(o: RetireeCgroupEventsRead) -> List<String> {
+  match o {
+    RetireeCgroupEventsArgv { argv: a } => a
+    RetireeCgroupEventsNotOwed => []
+    RetireeCgroupEventsRefused { cause: _ } => []
+  }
+}
+
+fn batch_cause(b: CgroupEventsBatch) -> String {
+  match b {
+    CgroupEventsBatchUnread { cause: c } => c
+    CgroupEventsBatchRead { stdout: _, stderr: _ } => ""
+  }
+}
+
+fn events_read_of(retired: List<NonEmptyStr>, show: String) -> RetireeCgroupEventsRead {
+  runner_retiree_cgroup_events_read(readings: runner_retiree_show_readings(retired: retired, show_stdout: show))
 }
 
 // COST: the retiree read is ONE argv, whatever the number of retirees. Over the real srv1 subject's 38
@@ -745,12 +766,12 @@ fn argv_or_empty(o: List<String>?) -> List<String> {
 // observation is three execs, where the per-retiree reads were three to five EACH.
 test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool {
   let all = map(srv1_retired(), r => retiree_block(unit: r as String, active: "active", cg: retiree_cg(unit: r as String)))
-  let many = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(all, "\n\n")))
-  let one = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: ["actions-runner@srv1-13.service" as NonEmptyStr], show_stdout: join(all, "\n\n")))
+  let many = events_read_of(retired: srv1_retired(), show: join(all, "\n\n"))
+  let one = events_read_of(retired: ["actions-runner@srv1-13.service" as NonEmptyStr], show: join(all, "\n\n"))
   length(srv1_retired()) == 38
     && argv_or_empty(o: many) == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && argv_or_empty(o: one) == argv_or_empty(o: many)
-    && (match runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n"))) { Absent => true Present { value: _ } => false })
+    && (match events_read_of(retired: srv1_retired(), show: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n")) { RetireeCgroupEventsNotOwed => true RetireeCgroupEventsArgv { argv: _ } => false RetireeCgroupEventsRefused { cause: _ } => false })
 }
 
 // THE DECIDING BOUNDARY, EXECUTED (review 68654). Both argvs the observation issues are run through
@@ -759,10 +780,7 @@ test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool
 // refuses there reads nothing, which would make SlotRetiredAsDeclared unreachable for every retiree
 // that still holds a cgroup while the observation still looked like three execs.
 test fn every_argv_the_population_observation_issues_is_admitted_by_the_transport() -> Bool {
-  let events = match runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "active", cg: retiree_cg(unit: r as String))), "\n\n"))) {
-    Absent => []
-    Present { value: a } => a
-  }
+  let events = argv_or_empty(o: events_read_of(retired: srv1_retired(), show: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "active", cg: retiree_cg(unit: r as String))), "\n\n")))
   let show = systemctl_show_properties_argv(units: srv1_retired(), properties: runner_slot_show_properties)
   length(events) == 7
     && (match portable_remote_words(raws: events) { Absent => false Present { value: _ } => true })
@@ -817,4 +835,24 @@ test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> B
     && length(standings_of(sts: populated, unit: omitted)) == 1 && all(standings_of(sts: populated, unit: omitted), st => !retirement_is_complete(s: st) && !retirement_is_unobserved(s: st))
     && length(filter(not_read, st => retirement_is_complete(s: st))) == 37
     && all(refused, st => retirement_is_unobserved(s: st))
+}
+
+// RED (review 68685): a population whose retirees sit under DISAGREEING cgroup roots is refused, and
+// the refusal NAMES the roots. The collapsed optional told exactly this population -- the only one
+// that ever read the cause -- that no read was owed, while the roots that identify the disagreement
+// were discarded. A population that owes no read says so in its own words.
+test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
+  let split_show = join([
+    retiree_block(unit: "actions-runner@srv1-13.service", active: "active", cg: retiree_cg(unit: "actions-runner@srv1-13.service")),
+    retiree_block(unit: "actions-runner@srv1-14.service", active: "active", cg: "/user.slice/user-1000.slice/actions-runner@srv1-14.service"),
+  ], "\n\n")
+  let retired = ["actions-runner@srv1-13.service" as NonEmptyStr, "actions-runner@srv1-14.service" as NonEmptyStr]
+  let refused = events_read_of(retired: retired, show: split_show)
+  let cause = batch_cause(b: runner_retiree_cgroup_events_unread(read: refused))
+  (match refused { RetireeCgroupEventsRefused { cause: _ } => true RetireeCgroupEventsNotOwed => false RetireeCgroupEventsArgv { argv: _ } => false })
+    && string_contains(s: cause, pattern: "/sys/fs/cgroup/system.slice")
+    && string_contains(s: cause, pattern: "/sys/fs/cgroup/user.slice")
+    && !string_contains(s: cause, pattern: "no retiree of this population holds a workload cgroup")
+    && all(runner_retiree_standings(readings: runner_retiree_show_readings(retired: retired, show_stdout: split_show), batch: runner_retiree_cgroup_events_unread(read: refused)), st => retirement_is_unobserved(s: st))
+    && string_contains(s: batch_cause(b: runner_retiree_cgroup_events_unread(read: events_read_of(retired: retired, show: join(map(retired, r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n")))), pattern: "no read was owed")
 }

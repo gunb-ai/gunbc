@@ -830,28 +830,52 @@ fn runner_retiree_show_readings(retired: List<NonEmptyStr>, show_stdout: String)
   map(retired, r => runner_retiree_show_reading(unit: r, show_stdout: show_stdout))
 }
 
-// THE ONE EVENTS READ, OR NONE, AND IT NAMES A DIRECTORY RATHER THAN THE FILES. Every retiree's own
-// cgroup path carries systemd's escaped slice component, which the fleet's typed argv edge REFUSES
+// THE ONE EVENTS READ, AND IT NAMES A DIRECTORY RATHER THAN THE FILES. Every retiree's own cgroup
+// path carries systemd's escaped slice component, which the fleet's typed argv edge REFUSES
 // (portable_remote_word_char_allowed admits no backslash) -- so an argv listing those paths never
 // executes. gunbc.runner_slot_retirement retirement_cgroup_events_read_root derives the deepest
 // UNESCAPED ancestor instead, and grep walks it for the one file name. Still one exec whatever the
-// number of retirees; a population whose retirees all report a blank ControlGroup needs none, and
-// roots that disagree are refused rather than widened.
-fn runner_retiree_cgroup_events_argv(readings: List<RetireeShowReading>) -> List<String>? {
+// number of retirees.
+//
+// THREE ARMS, BECAUSE THERE ARE THREE FACTS. An optional collapsed "no retiree holds a cgroup" into
+// "their roots disagree", so the only population that ever read the collapsed cause was the one it
+// described wrongly, and the roots naming the disagreement were dropped on the floor. A read that is
+// NOT OWED is not a read that was REFUSED.
+type RetireeCgroupEventsRead
+  = RetireeCgroupEventsNotOwed
+  | RetireeCgroupEventsArgv { argv: List<String> }
+  | RetireeCgroupEventsRefused { cause: String }
+
+fn runner_retiree_cgroup_events_read(readings: List<RetireeShowReading>) -> RetireeCgroupEventsRead {
   match retirement_cgroup_events_read_root(control_groups: flat_map(readings, r => match r {
     RetireeNotShown { unit: _ } => []
     RetireeShown { unit: _, unit_file_state: _, active_state: _, control_group: cg } => [cg]
   })) {
-    CgroupEventsReadRootNone => none
-    CgroupEventsReadRootAmbiguous { roots: _ } => none
+    CgroupEventsReadRootNone => RetireeCgroupEventsNotOwed
+    CgroupEventsReadRootAmbiguous { roots: rs } =>
+      RetireeCgroupEventsRefused {
+        cause: join(["this population's retirees sit under cgroup roots that disagree, and one read was not widened to cover them: ", join(rs, " ")], ""),
+      }
     CgroupEventsReadRootOne { root: root } =>
-      Present {
-        value: grep_fixed_string_in_tree_argv(
+      RetireeCgroupEventsArgv {
+        argv: grep_fixed_string_in_tree_argv(
           pattern: cgroup_v2_events_populated_key,
           file_name: cgroup_v2_events_interface_file,
           root: root,
         ),
       }
+  }
+}
+
+// The two arms that issue no exec, as the batch a retiree reads. NotOwed reaches no reader -- every
+// retiree of such a population reports a blank ControlGroup, which cgroup_occupancy_from_batched_events
+// answers as CgroupAbsent without consulting the batch -- so its cause says what it is, not what the
+// refused arm's says.
+fn runner_retiree_cgroup_events_unread(read: RetireeCgroupEventsRead) -> CgroupEventsBatch {
+  match read {
+    RetireeCgroupEventsNotOwed => CgroupEventsBatchUnread { cause: "no retiree of this population holds a workload cgroup, so no read was owed" }
+    RetireeCgroupEventsRefused { cause: c } => CgroupEventsBatchUnread { cause: c }
+    RetireeCgroupEventsArgv { argv: _ } => CgroupEventsBatchUnread { cause: "the batched read was issued and its outcome is the caller's" }
   }
 }
 
@@ -883,9 +907,11 @@ fn observe_runner_slot_population(
               SlotPopulationUnobservable { reason: join(["systemctl show exit=", to_string(shown.exit_code), " ", trim(s: shown.stderr)], "") }
             } else {
               let readings = runner_retiree_show_readings(retired: subject.retired_units, show_stdout: shown.stdout)
-              let batch = match runner_retiree_cgroup_events_argv(readings: readings) {
-                Absent => CgroupEventsBatchUnread { cause: "no batched cgroup.events read was issued for this population" }
-                Present { value: argv } =>
+              let read = runner_retiree_cgroup_events_read(readings: readings)
+              let batch = match read {
+                RetireeCgroupEventsNotOwed => runner_retiree_cgroup_events_unread(read: read)
+                RetireeCgroupEventsRefused { cause: _ } => runner_retiree_cgroup_events_unread(read: read)
+                RetireeCgroupEventsArgv { argv: argv } =>
                   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
                     TypedArgvExecRefused { reason: why } => CgroupEventsBatchUnread { cause: why }
                     TypedArgvExecConverged { result: ev } => CgroupEventsBatchRead { stdout: ev.stdout, stderr: ev.stderr }
