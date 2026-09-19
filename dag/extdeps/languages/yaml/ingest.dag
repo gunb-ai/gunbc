@@ -127,10 +127,6 @@ fn yaml_line_entry(lines: List<YamlLine>, index: Int) -> YamlLine {
   }
 }
 
-fn yaml_line_at(lines: List<YamlLine>, index: Int) -> String {
-  yaml_line_entry(lines: lines, index: index).raw
-}
-
 fn yaml_text_at(lines: List<YamlLine>, index: Int) -> String {
   yaml_line_entry(lines: lines, index: index).text
 }
