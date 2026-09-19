@@ -151,7 +151,7 @@ type ArmServiceStanding
 // A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT, not exclusion. The probe still refuses to START on a
 // non-idle queue: that would mix already-running foreign requests into the client window without a
 // join. An idle start without lease/exclusion/protected subject is WindowIsolationNotEstablished.
-// A prose list of actors who might arrive is glm_native_exclusion_warning, not a traffic observation.
+// Actors who might arrive are named beside glm_native_arm_service; naming them is not a traffic observation.
 fn window_from_drain(drain: DrainReceipt) -> ProbeWindowStanding {
   match drain {
     DrainUnread { cause: c } => WindowIsolationNotEstablished { cause: c, drain: drain }
@@ -1523,8 +1523,10 @@ data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
   observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
 }
 
-data glm_native_exclusion_warning: NonEmptyStr = "operator interactive long-context sessions (70-110k prompt jumps) share Group B as production traffic with no exclusive window; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
-
+// Actors who may share Group B during a capture, none of which a drain snapshot excludes: operator
+// interactive long-context sessions (70-110k prompt jumps), gunbc.harness.harness_cli
+// harness_probe_cli turns, and proud-boar-181's nccl-tests all_reduce_perf buffers. That is why this
+// arm is ArmInService and every window here is WindowIsolationNotEstablished.
 data glm_native_arm_service: ArmServiceStanding = ArmInService {
   because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
 }
