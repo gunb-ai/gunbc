@@ -47,6 +47,7 @@ import gunbc.runner_attempt_launch {
   WorkspaceStanding, WorkspaceReady, WorkspaceCreateFailed, WorkspaceFormatFailed,
   WorkspaceNotExtFilesystem, WorkspaceSizeMismatch, WorkspaceUnreadable,
   staging_verdict, runner_attempt_workspace_bytes,
+  workspace_readback_command, workspace_staging_consumer_frontier,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -403,4 +404,14 @@ test fn the_jailer_is_admitted_only_onto_a_read_back_workspace() -> Bool {
 // the observation: occupied ground would then launch because the image happened to format.
 test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
   staging_for(obs: good_workspace(), ground: GroundOccupied) == "unauthorized"
+}
+
+// THE READBACK READS THE PLANNED IMAGE'S SUPERBLOCK, AND ITS CONSUMER IS STILL A FRONTIER. The red
+// for the first half is a readback of any path but the one the plan formatted.
+test fn the_workspace_readback_reads_the_planned_image_and_its_consumer_is_a_frontier() -> Bool {
+  argv_words(command: workspace_readback_command(workspace_path: "/jail/work.img")) == ["dumpe2fs", "-h", "/jail/work.img"]
+    && match workspace_staging_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
 }

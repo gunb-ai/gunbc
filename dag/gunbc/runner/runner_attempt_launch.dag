@@ -564,3 +564,11 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
 fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
   dumpe2fs_superblock_command(image_path: workspace_path)
 }
+
+// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the lifecycle controller's staging step
+// (gunbc#11670). TRIGGER: that step runs the plan's workspace_create and workspace_format, reads
+// workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR
+// deleting this row. NOT satisfied by a witness calling staging_verdict.
+data workspace_staging_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, reads workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling staging_verdict." as NonEmptyStr,
+)

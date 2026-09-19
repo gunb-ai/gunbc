@@ -3,6 +3,7 @@ module gunbc.runner_microvm_network
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Digest }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
@@ -467,8 +468,8 @@ fn runner_slot_network_install_operations(
 // 2026-09-19), and what an attempt can leave behind in them is not their existence but their USE:
 // a process still holding the tap, a connection-tracking flow still keyed to the guest address the
 // NEXT attempt in this slot will reuse, and a ruleset some process edited during the attempt. Those
-// three facts are what this readback reads, and gunbc.runner_microvm_lifecycle consumes it as the
-// network fact of its host teardown readback, mapped onto product.fabric.sanitation.
+// three facts are what this readback reads. Its consumer is not on main yet; see
+// slot_network_readback_consumer_frontier below.
 //
 // CONNTRACK IS FLUSHED BEFORE IT IS READ, AND THE FLUSH IS NOT THE EVIDENCE. The flush is teardown's
 // mutation; the reading after it is the fact. A flush that exited zero while a flow survived -- a
@@ -612,3 +613,14 @@ fn runner_slot_conntrack_list_command(net: RunnerSlotNetwork) -> ArgvCommand {
 fn runner_microvm_nft_list_command() -> ArgvCommand {
   nft_list_table_command(family: NftInet, name: runner_microvm_nft_table_name)
 }
+
+// DECLARED FRONTIER (DESIGN 3c). The readback and the three commands that feed it have no
+// executing consumer in this tree yet. NAMED CONSUMER: the host teardown readback of the microVM
+// slot lifecycle controller (gunbc#11670), whose network fact maps onto product.fabric.sanitation.
+// TRIGGER: that controller executes teardown on a host -- runs runner_slot_conntrack_flush_command,
+// reads runner_slot_conntrack_list_command and runner_microvm_nft_list_command, and derives
+// CellReady or CellQuarantined from slot_network_readback. SUFFICIENT FOR deleting this row. NOT
+// satisfied by #11670 importing the type, or by a witness calling the fold.
+data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot lifecycle controller's host teardown readback (gunbc#11670). TRIGGER: that controller executes teardown on a host, runs runner_slot_conntrack_flush_command, reads runner_slot_conntrack_list_command and runner_microvm_nft_list_command, and derives CellReady or CellQuarantined from slot_network_readback. SUFFICIENT FOR deleting this row. NOT satisfied by an import of the type or by a witness calling the fold." as NonEmptyStr,
+)

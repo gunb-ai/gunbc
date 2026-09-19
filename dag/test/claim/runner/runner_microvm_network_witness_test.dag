@@ -21,7 +21,9 @@ import gunbc.runner_microvm_network {
   GuestConntrackEmptyAfterFlush, GuestConntrackResidue, GuestConntrackUnreadable,
   RulesetListed, RulesetUnreadable, slot_network_readback,
   runner_slot_conntrack_flush_command, runner_slot_conntrack_list_command,
+  runner_microvm_nft_list_command, slot_network_readback_consumer_frontier,
 }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.exec.command { argv_words }
 
@@ -306,4 +308,15 @@ test fn conntrack_commands_are_keyed_by_this_slots_guest_source() -> Bool {
   argv_words(command: runner_slot_conntrack_flush_command(net: net)) == ["conntrack", "-D", "-s", guest]
     && argv_words(command: runner_slot_conntrack_list_command(net: net)) == ["conntrack", "-L", "-s", guest]
     && guest == "172.30.6.2"
+}
+
+// THE READBACK READS THE LISTING OF OUR OWN TABLE, AND ITS CONSUMER IS STILL A FRONTIER. The red for
+// the first half is a listing of a different table (a digest of dockerd's rules would never match);
+// for the second, the frontier row bound before the controller executes teardown.
+test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() -> Bool {
+  argv_words(command: runner_microvm_nft_list_command()) == ["nft", "list", "table", "inet", "gunbc_microvm"]
+    && match slot_network_readback_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
 }
