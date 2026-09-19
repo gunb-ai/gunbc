@@ -63,8 +63,12 @@ fn bounded_summation_projects_to_linear() -> Bool {
   }
 }
 
-test fn bounded_summation_expr_authority_holds() -> Bool {
+fn bounded_summation_expr_authority() -> Bool {
   bounded_summation_is_representable() && bounded_summation_projects_to_linear()
+}
+
+test fn bounded_summation_expr_authority_holds() -> Bool {
+  bounded_summation_expr_authority()
 }
 
 test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
@@ -92,7 +96,7 @@ data claim_bounded_summation: TestClaim = EqualsClaim {
   label: "lens_cost/bounded_summation: CostSum with grounded binder is representable and projects to linear SymbolicCost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: bounded_summation_bound_leaf,
-  rhs: if bounded_summation_expr_authority_holds() {
+  rhs: if bounded_summation_expr_authority() {
     bounded_summation_bound_leaf
   } else {
     Node {
