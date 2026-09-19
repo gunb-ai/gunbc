@@ -6,7 +6,6 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.action_release {
   ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
-  action_manifest_at_commit,
 }
 
 // actions/github-script releases this repository has read.
@@ -38,17 +37,15 @@ data github_script_v8_0_0: ActionRelease = ActionRelease {
   owner: "actions", repo: "github-script", tag: "v8.0.0", commit: "ed597411d8f924073f98dfc5c65a23a2325f34cd"
 }
 
-// Each declaration below was read from the action.yml blob at the release's commit (the
-// manifest citation on the row), 2026-09-18.
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-09-18.
 data github_script_manifest_readings: List<ActionManifestReading> = [
   ActionManifestReading {
     action_release: github_script_v7_1_0,
     declared: JavaScriptAction { node_major: 20 },
-    manifest: action_manifest_at_commit(owner: "actions", repo: "github-script", commit: "f28e40c7f34bde8b3046d885e986cb6290c5673b"),
   },
   ActionManifestReading {
     action_release: github_script_v8_0_0,
     declared: JavaScriptAction { node_major: 24 },
-    manifest: action_manifest_at_commit(owner: "actions", repo: "github-script", commit: "ed597411d8f924073f98dfc5c65a23a2325f34cd"),
   },
 ]

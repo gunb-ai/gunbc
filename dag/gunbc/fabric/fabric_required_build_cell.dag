@@ -7,6 +7,7 @@ import std.content_hash {
   serialize_content_hash,
 }
 import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree, durable_hold_owner_equal }
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer }
@@ -15,10 +16,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.ownership { Owned }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.durable_cas_file_store { observe_cas_slot_state }
-import gunbc.fabric_control_plane {
-  fabric_cell_allocation_key, fabric_money_reservation_ref,
-  CellSlotDecoded, CellSlotUndecodable, CellHeld, CellFree, decode_cell_slot_payload,
-}
+import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationAdmitted, FabricCellObservationDenied, FabricCellObservationNotApplicable,
@@ -280,11 +279,14 @@ fn observe_required_build_cell_wet(
       CasObservedUnreadable { cause: _ } => ReservationUnreadable { slot_key: slot_key }
       CasObservedReadable { readable: CasReadableAbsent } => ReservationAbsent { slot_key: slot_key }
       CasObservedReadable { readable: CasReadablePresent { version: version } } =>
-        match decode_cell_slot_payload(payload: version.value) {
-          CellSlotUndecodable { detail: _ } => ReservationPayloadUndecodable { slot_key: slot_key }
-          CellSlotDecoded { state: CellFree { released_by: _ } } => ReservationAbsent { slot_key: slot_key }
-          CellSlotDecoded { state: CellHeld { reservation: held } } =>
-            if (held as String) != (fabric_money_reservation_ref(demand: demand.id, offer: offer.id) as String) {
+        match decode_hold_slot_payload(payload: version.value) {
+          HoldPayloadUndecodable { detail: _ } => ReservationPayloadUndecodable { slot_key: slot_key }
+          HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => ReservationAbsent { slot_key: slot_key }
+          HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
+            if !durable_hold_owner_equal(
+              left: held,
+              right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)),
+            ) {
               ReservationPayloadWorkMismatch { slot_key: slot_key }
             } else {
               match fabric_cell_observation_outcome(decision: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host))) {
