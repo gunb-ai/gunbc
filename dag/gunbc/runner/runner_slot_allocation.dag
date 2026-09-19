@@ -6,6 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, 
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -196,8 +197,42 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
     tasks_max: 16384,
     cpu_weight: 100,
     cpu_quota: gunbc_runner_slot_cpu_quota(),
-    labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
+    labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] }
   }
+}
+
+// ── runner label vocabulary ───────────────────────────────────────────────────────────────────────
+//
+// THE SLOT DECLARES ONLY ITS CLASS LABEL (gunbc-heavy). Provenance, OS and architecture are facts
+// about the host and are derived from its ComputeOffer by gunbc.runner_spec_from_offer; spelling
+// them here too would be a second source for them. gunbc.runner_registration_labels composes the
+// three parts.
+//
+// THE HOST LABEL IS WHERE THE RUNNER RUNS, never a host it mutates over SSH: every caller passes
+// a slot's own host (RunnerSlotIdentity.host) or the host a job is pinned to.
+fn runner_host_label(host: HostIdentity) -> String {
+  host as String
+}
+
+// MEMBERSHIP UNDER GITHUB'S LABEL EQUIVALENCE (extdeps.github.actions runner_labels_equivalent),
+// which union, selector satisfaction and set equality below all inherit. Host identities are not
+// folded: only label strings reach this comparison.
+fn runner_label_set_contains(labels: List<String>, label: String) -> Bool {
+  labels |> any(l => runner_labels_equivalent(a: l, b: label))
+}
+
+fn runner_label_set_union(a: List<String>, b: List<String>) -> List<String> {
+  concat(a, b |> filter(l => !runner_label_set_contains(labels: a, label: l)))
+}
+
+// A SELECTOR IS SATISFIED BY SET MEMBERSHIP, not order: GitHub schedules a job onto a runner that
+// carries every label runs-on names, whatever else it carries and in whatever order it registered.
+fn runner_labels_satisfy_selector(held: List<String>, selector: List<String>) -> Bool {
+  selector |> all(l => runner_label_set_contains(labels: held, label: l))
+}
+
+fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
+  runner_labels_satisfy_selector(held: a, selector: b) && runner_labels_satisfy_selector(held: b, selector: a)
 }
 
 // Unknown hosts refuse rather than defaulting. A width is a claim about a specific machine's RAM,

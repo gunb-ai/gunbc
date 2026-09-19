@@ -1,0 +1,392 @@
+module test.claim.cloudflare_boot_origin_witness
+
+import std.types { Bool, NonEmptyStr, String, list_length }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.crypto.mac { MacKeyId }
+import extdeps.uri { Uri, uri_https, uri_from_wire }
+import gunbc.network_boot_delivery {
+  FleetBootServiceReceipt,
+  BootBundleKernel,
+  BootBundleInitrd,
+  BootBundleRoot,
+  BootBundleMember,
+  BootBundleAvailable,
+  BootBundleRefused,
+  BootBundleUnobserved,
+  BootBundleAvailabilityStanding,
+  BootBundleObservedRefusal,
+  BootBundleReadBackServedOtherBytes,
+  BootBundleKeyOccupiedByOtherBytes,
+  BootBundleMemberInWrongSlot,
+}
+import gunbc.cloudflare.r2_origin {
+  fabric_boot_origin_standing,
+  fabric_durable_origin_standing,
+  R2OriginAllocated,
+  R2OriginUnallocated,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
+  DigestKeyedBootArtifacts,
+  bucket_purpose_admission,
+  FabricCommitManifestsAndContentAddressedOutputs,
+  fabric_boot_origin_read_secret_id,
+  fabric_boot_origin_write_secret_id,
+  fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_write_secret_id,
+}
+import gunbc.cloudflare.boot_origin {
+  BootBundleObject,
+  BootPublicationCandidate,
+  BootPutAnswer,
+  BootPutCreated,
+  BootPutKeyOccupied,
+  BootPutFailed,
+  BootObjectPublished,
+  BootObjectAlreadyIdentical,
+  BootObjectOccupiedByDifferentBytes,
+  BootObjectPublishFailed,
+  classify_boot_publish,
+  admit_boot_object_key,
+  BootObjectKeyAdmitted,
+  BootObjectKeyRefusedHashFamily,
+  boot_object_key,
+  boot_readback_locator,
+  BootReadbackAt,
+  BootReadbackRefusedR2Dev,
+  BootReadbackRefusedNotHttps,
+  BootReadbackRefusedNotAHostName,
+  classify_boot_readback,
+  BootReadbackServed,
+  BootReadbackUnserved,
+  BootObjectReadBackConfirmed,
+  BootObjectReadBackMismatch,
+  BootObjectReadBackUnavailable,
+  boot_origin_hostname_standing,
+  BootOriginHostnameAllocated,
+  BootOriginHostnameUnallocated,
+  boot_origin_is_separate_from_durable_origin,
+  admit_boot_publication,
+  boot_bundle_availability,
+  BootBundleMemberEvidence,
+  CandidateBootArtifact,
+  CandidateHostCredential,
+  CandidateCloudToken,
+  CandidateInstallSecret,
+  BootPublicationAdmitted,
+  BootPublicationRefusedSecretMaterial,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data digest_a_hex: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data digest_b_hex: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn digest(hex: String) -> Sha256Digest {
+  Sha256Digest { hex: hex as Sha256DigestHex }
+}
+
+fn kernel_a() -> BootBundleObject {
+  BootBundleObject { member: BootBundleKernel, digest: digest(hex: digest_a_hex) }
+}
+
+fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
+  FleetBootServiceReceipt {
+    https_boot_endpoint: uri_https(locator: "boot.example.test"),
+    origin_custom_domain: domain,
+    signing_key_identity: "fixture-key" as MacKeyId,
+    observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "receipt_at"),
+    observed_at: 0,
+  }
+}
+
+test fn key_is_the_sha256_digest_and_nothing_mutable() -> Bool {
+  (boot_object_key(digest: digest(hex: digest_a_hex)) as String) == join(["sha256/", digest_a_hex], "")
+    && match admit_boot_object_key(hash: Sha256Hash(digest(hex: digest_a_hex))) {
+         BootObjectKeyAdmitted { key: k } => (k as String) == join(["sha256/", digest_a_hex], "")
+         BootObjectKeyRefusedHashFamily {} => false
+       }
+}
+
+test fn non_sha256_digest_refuses_a_key() -> Bool {
+  match admit_boot_object_key(hash: Sha1Hash(Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha1DigestHex })) {
+    BootObjectKeyAdmitted { key: _ } => false
+    BootObjectKeyRefusedHashFamily {} => true
+  }
+}
+
+test fn create_only_put_publishes() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutCreated {}) {
+    BootObjectPublished { key: _ } => true
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn occupied_key_with_same_bytes_is_idempotent() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => true
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn occupied_key_with_different_bytes_refuses() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_b_hex) }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: o } => (o.hex as String) == digest_b_hex
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn failed_put_is_not_success() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutFailed { cause: "503" }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => true
+  }
+}
+
+test fn readback_addresses_the_receipt_custom_domain() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "boot-origin.example.test")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: u } => (u.locator as String) == join(["boot-origin.example.test/sha256/", digest_a_hex], "")
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+  }
+}
+
+test fn readback_refuses_r2_dev() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "pub-0123.r2.dev")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: g } => (g.fact.decl_name as String) == "r2_custom_domain_reading"
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+  }
+}
+
+test fn readback_confirms_only_the_published_digest() -> Bool {
+  let ok = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_a_hex), served_from: uri_https(locator: "boot-origin.example.test") }) {
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => true
+    BootObjectReadBackMismatch { key: _, served: _ } => false
+    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+  }
+  let stale = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_b_hex), served_from: uri_https(locator: "boot-origin.example.test") }) {
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => false
+    BootObjectReadBackMismatch { key: _, served: _ } => true
+    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+  }
+  let gone = match classify_boot_readback(object: kernel_a(), observation: BootReadbackUnserved { cause: "404" }) {
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => false
+    BootObjectReadBackMismatch { key: _, served: _ } => false
+    BootObjectReadBackUnavailable { key: _, cause: _ } => true
+  }
+  ok && stale && gone
+}
+
+test fn hostname_is_unallocated_until_the_operator_records_it() -> Bool {
+  match boot_origin_hostname_standing() {
+    BootOriginHostnameAllocated { fqdn: _ } => false
+    BootOriginHostnameUnallocated { intervention: _ } => true
+  }
+}
+
+test fn boot_origin_is_a_separate_bucket_from_the_durable_origin() -> Bool {
+  boot_origin_is_separate_from_durable_origin()
+}
+
+test fn boot_origin_credentials_are_disjoint_and_have_no_mint_entry() -> Bool {
+  let disjoint = (fabric_boot_origin_read_secret_id as String) != (fabric_boot_origin_write_secret_id as String)
+    && !((fabric_boot_origin_read_secret_id as String) == (fabric_durable_origin_read_secret_id as String))
+    && !((fabric_boot_origin_write_secret_id as String) == (fabric_durable_origin_write_secret_id as String))
+  let standing = match fabric_boot_origin_standing() {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: b } =>
+      (b.bucket_name as String) == "gunbai-fabric-boot"
+        && match bucket_purpose_admission(purpose: b.purpose) {
+             FabricCommitManifestsAndContentAddressedOutputs {} => false
+             DigestKeyedBootArtifacts {} => true
+           }
+        && match b.read_credential {
+             OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+             OriginCredentialUnminted { mint_entry: _ } => false
+             OriginCredentialMintEntryUnbuilt { secret_id: s } => (s as String) == (fabric_boot_origin_read_secret_id as String)
+           }
+        && match b.write_credential {
+             OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+             OriginCredentialUnminted { mint_entry: _ } => false
+             OriginCredentialMintEntryUnbuilt { secret_id: s } => (s as String) == (fabric_boot_origin_write_secret_id as String)
+           }
+  }
+  disjoint && standing
+}
+
+// The plain-HTTP receipt is parsed by extdeps.uri uri_from_wire, the production parser, rather than
+// built from a bare scheme literal.
+test fn readback_refuses_plain_http() -> Bool {
+  match uri_from_wire(url: "http://boot-origin.example.test") {
+    Absent => false
+    Present { value: plain } =>
+      match boot_readback_locator(receipt: receipt_at(domain: plain), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+        BootReadbackAt { url: _ } => false
+        BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+        BootReadbackRefusedNotHttps {} => true
+        BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+      }
+  }
+}
+
+fn refuses_secret(candidate: BootPublicationCandidate) -> Bool {
+  match admit_boot_publication(candidate: candidate) {
+    BootPublicationAdmitted { object: _ } => false
+    BootPublicationRefusedSecretMaterial {} => true
+  }
+}
+
+test fn public_bucket_refuses_secret_material() -> Bool {
+  refuses_secret(candidate: CandidateHostCredential)
+    && refuses_secret(candidate: CandidateCloudToken)
+    && refuses_secret(candidate: CandidateInstallSecret)
+    && !refuses_secret(candidate: CandidateBootArtifact { object: kernel_a() })
+}
+
+fn refuses_non_host(locator: NonEmptyStr) -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: locator)), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => true
+  }
+}
+
+// review 67763: a port or a trailing slash is not a host name and must not reach BootReadbackAt.
+test fn readback_refuses_locators_that_are_not_host_names() -> Bool {
+  refuses_non_host(locator: "pub-0123.r2.dev:443")
+    && refuses_non_host(locator: "pub-0123.r2.dev:443/")
+    && refuses_non_host(locator: "boot-origin.example.test/")
+    && !refuses_non_host(locator: "boot-origin.example.test")
+}
+
+// review 67763: host names are case-insensitive, so an uppercase r2.dev is still r2.dev.
+test fn readback_refuses_r2_dev_in_any_case() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "pub-0123.R2.Dev")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => true
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+  }
+}
+
+fn member_evidence(slot: BootBundleMember, hex: String, publish_answer: BootPutAnswer, served_hex: String) -> BootBundleMemberEvidence {
+  member_evidence_from(slot: slot, hex: hex, publish_answer: publish_answer, served_hex: served_hex, origin: "boot-origin.example.test")
+}
+
+fn member_evidence_from(slot: BootBundleMember, hex: String, publish_answer: BootPutAnswer, served_hex: String, origin: NonEmptyStr) -> BootBundleMemberEvidence {
+  let object = BootBundleObject { member: slot, digest: digest(hex: hex) }
+  BootBundleMemberEvidence {
+    object: object,
+    publish: classify_boot_publish(object: object, answer: publish_answer),
+    readback: classify_boot_readback(object: object, observation: BootReadbackServed { served_digest: digest(hex: served_hex), served_from: uri_https(locator: origin) }),
+  }
+}
+
+data digest_c_hex: String = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+fn fleet_at_origin() -> FleetBootServiceReceipt {
+  receipt_at(domain: uri_https(locator: "boot-origin.example.test"))
+}
+
+fn standing(kernel: BootBundleMemberEvidence, initrd: BootBundleMemberEvidence, root: BootBundleMemberEvidence) -> BootBundleAvailabilityStanding {
+  boot_bundle_availability(
+    fleet: fleet_at_origin(),
+    kernel: kernel,
+    initrd: initrd,
+    root: root,
+    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence_from"),
+  )
+}
+
+fn is_unobserved(st: BootBundleAvailabilityStanding) -> Bool {
+  match st {
+    BootBundleAvailable { receipt: _ } => false
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
+    BootBundleUnobserved => true
+  }
+}
+
+// A refusal on the expected member, with the expected cause, carried by the expected observation.
+fn is_refused(st: BootBundleAvailabilityStanding, member: BootBundleMember, cause: BootBundleObservedRefusal, observation_decl: String) -> Bool {
+  match st {
+    BootBundleAvailable { receipt: _ } => false
+    BootBundleUnobserved => false
+    BootBundleRefused { member: m, cause: c, observation: o } =>
+      m == member && c == cause && (o.decl_name as String) == observation_decl
+  }
+}
+
+fn kernel_ok() -> BootBundleMemberEvidence {
+  member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+}
+
+fn initrd_ok() -> BootBundleMemberEvidence {
+  member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutCreated {}, served_hex: digest_b_hex)
+}
+
+// All three members published (or found identical) and read back at their digest: available, with the
+// receipt's served_from being the fleet receipt's custom domain.
+test fn bundle_available_when_every_member_is_published_and_read_back() -> Bool {
+  let i = member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_b_hex) }, served_hex: digest_b_hex)
+  let r = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+  match standing(kernel: kernel_ok(), initrd: i, root: r) {
+    BootBundleAvailable { receipt: rc } => (rc.served_from.locator as String) == "boot-origin.example.test"
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
+    BootBundleUnobserved => false
+  }
+}
+
+// Absence is a failed PUT or an unserved readback, and only absence is Unobserved.
+test fn bundle_unobserved_only_when_a_member_is_absent() -> Bool {
+  let failed_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutFailed { cause: "503" }, served_hex: digest_c_hex)
+  let root_object = BootBundleObject { member: BootBundleRoot, digest: digest(hex: digest_c_hex) }
+  let unserved_root = BootBundleMemberEvidence {
+    object: root_object,
+    publish: classify_boot_publish(object: root_object, answer: BootPutCreated {}),
+    readback: classify_boot_readback(object: root_object, observation: BootReadbackUnserved { cause: "404" }),
+  }
+  is_unobserved(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: failed_root))
+    && is_unobserved(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: unserved_root))
+}
+
+// review 68011, one failing input per cause: each observed mismatch refuses naming the member.
+test fn bundle_refuses_a_readback_that_served_other_bytes() -> Bool {
+  let stale_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: stale_root), member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation_decl: "member_evidence_from")
+}
+
+test fn bundle_refuses_a_key_occupied_by_other_bytes() -> Bool {
+  let occupied_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }, served_hex: digest_c_hex)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: occupied_root), member: BootBundleRoot, cause: BootBundleKeyOccupiedByOtherBytes, observation_decl: "member_evidence")
+}
+
+test fn bundle_refuses_a_member_in_the_wrong_slot() -> Bool {
+  let swapped = member_evidence(slot: BootBundleInitrd, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: swapped), member: BootBundleRoot, cause: BootBundleMemberInWrongSlot, observation_decl: "member_evidence")
+}
+
+// review 68098: served_from is the observed readback origin, so a bundle read back from anywhere but
+// the fleet's custom domain carries that origin and the join's route check can go red.
+test fn bundle_served_from_is_the_observed_readback_origin() -> Bool {
+  let elsewhere_root = member_evidence_from(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex, origin: "stale-edge.example.test")
+  match standing(kernel: kernel_ok(), initrd: initrd_ok(), root: elsewhere_root) {
+    BootBundleAvailable { receipt: rc } => (rc.served_from.locator as String) == "stale-edge.example.test"
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
+    BootBundleUnobserved => false
+  }
+}
