@@ -30,6 +30,7 @@ import product.fan_policy_standing {
   FanDriveTachOnly,
   FanPolicySample,
   HostPostState,
+  HostPostStateUnobserved,
   HostPosted,
   HostPoweredOff,
   HostPoweredOnPrePost,
