@@ -551,28 +551,27 @@ fn ruleset_readback(o: RulesetObservation, converged: Sha256Digest) -> SlotNetwo
 
 // A REFUTATION ANYWHERE OUTRANKS AN UNREADABLE FACT ELSEWHERE: it is the stronger statement about
 // the host, and reporting the probe failure instead would hide a known defect behind an unknown one.
-fn first_refuted(rs: List<SlotNetworkReadback>) -> List<SlotNetworkReadback> {
-  fold(rs, init: [], f: (acc, r) =>
-    match acc {
-      Cons { head: _, tail: _ } => acc
-      Empty {} => match r {
-        SlotNetworkRefuted { fact: _, detail: _ } => [r]
-        SlotNetworkConfirmed => acc
-        SlotNetworkUnobservable { fact: _, reason: _ } => acc
-      }
-    }
-  )
+fn is_refuted(r: SlotNetworkReadback) -> Bool {
+  match r {
+    SlotNetworkRefuted { fact: _, detail: _ } => true
+    SlotNetworkConfirmed => false
+    SlotNetworkUnobservable { fact: _, reason: _ } => false
+  }
 }
 
-fn first_unobservable(rs: List<SlotNetworkReadback>) -> List<SlotNetworkReadback> {
-  fold(rs, init: [], f: (acc, r) =>
+fn is_unobservable(r: SlotNetworkReadback) -> Bool {
+  match r {
+    SlotNetworkUnobservable { fact: _, reason: _ } => true
+    SlotNetworkConfirmed => false
+    SlotNetworkRefuted { fact: _, detail: _ } => false
+  }
+}
+
+fn first_readback_where(rs: List<SlotNetworkReadback>, pick: fn(SlotNetworkReadback) -> Bool) -> SlotNetworkReadback? {
+  fold(rs, init: none, f: (acc, r) =>
     match acc {
-      Cons { head: _, tail: _ } => acc
-      Empty {} => match r {
-        SlotNetworkUnobservable { fact: _, reason: _ } => [r]
-        SlotNetworkConfirmed => acc
-        SlotNetworkRefuted { fact: _, detail: _ } => acc
-      }
+      Present { value: _ } => acc
+      Absent => if pick(r) { Present { value: r } } else { acc }
     }
   )
 }
@@ -588,11 +587,11 @@ fn slot_network_readback(
     conntrack_readback(o: conntrack),
     ruleset_readback(o: ruleset, converged: converged_ruleset),
   ]
-  match first_refuted(rs: facts) {
-    Cons { head: r, tail: _ } => r
-    Empty {} => match first_unobservable(rs: facts) {
-      Cons { head: u, tail: _ } => u
-      Empty {} => SlotNetworkConfirmed
+  match first_readback_where(rs: facts, pick: is_refuted) {
+    Present { value: r } => r
+    Absent => match first_readback_where(rs: facts, pick: is_unobservable) {
+      Present { value: u } => u
+      Absent => SlotNetworkConfirmed
     }
   }
 }

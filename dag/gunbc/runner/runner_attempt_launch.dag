@@ -547,13 +547,16 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       kvm_device: _,
       vm_config: _,
       jailer: j,
-    } => match workspace_standing(obs: obs) {
-      WorkspaceReady => StagingAdmitsJailer { jailer: j }
-      WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
-      WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
-      WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
-      WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
-      WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: workspace_standing(obs: obs) }
+    } => {
+      let s = workspace_standing(obs: obs)
+      match s {
+        WorkspaceReady => StagingAdmitsJailer { jailer: j }
+        WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+        WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+        WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
+        WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
+        WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+      }
     }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
     LaunchRefusedEnvelope { standing: _ } => StagingNotAuthorized
