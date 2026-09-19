@@ -34,6 +34,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
+  systemd_environment_reference, systemd_exit_code_variable, systemd_exit_status_variable,
   ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
@@ -320,7 +321,8 @@ fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestIm
 fn guest_runner_exited_emit_command(image: RunnerGuestImage) -> NonEmptyStr {
   join([
     runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
-    " exit_code=${EXIT_CODE} exit_status=${EXIT_STATUS}",
+    " exit_code=", systemd_environment_reference(name: systemd_exit_code_variable),
+    " exit_status=", systemd_environment_reference(name: systemd_exit_status_variable),
   ], "") as NonEmptyStr
 }
 

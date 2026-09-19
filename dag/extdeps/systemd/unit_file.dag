@@ -175,6 +175,18 @@ fn systemd_unit_state_action_wire(action: SystemdUnitStateAction) -> String {
   }
 }
 
+// systemd.service(5), "Command lines": `${NAME}` in an Exec*= line is replaced by that environment
+// variable's value as one argument. The environment includes what systemd itself sets for the
+// spawned process -- for ExecStop=/ExecStopPost=, $EXIT_CODE and $EXIT_STATUS (systemd.exec(5),
+// "Environment Variables in Spawned Processes"). The dollar and brace are joined rather than written
+// adjacently because `${` inside a .dag string literal is .dag's own interpolation.
+fn systemd_environment_reference(name: NonEmptyStr) -> String {
+  join(["$", "{", name as String, "}"], "")
+}
+
+data systemd_exit_code_variable: NonEmptyStr = "EXIT_CODE" as NonEmptyStr
+data systemd_exit_status_variable: NonEmptyStr = "EXIT_STATUS" as NonEmptyStr
+
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
   | ExecStartPre { command: NonEmptyStr }
