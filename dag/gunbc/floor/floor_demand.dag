@@ -3,7 +3,7 @@ module gunbc.floor_demand
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Second, second,
+  ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute,
   gibibyte_scale_factor_bytes,
 }
 import std.disposition { Disposition, SingleAuthority }
@@ -223,13 +223,17 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // bound on the true anonymous peak by whatever a sub-minute spike hid; the cadence is carried so
 // a reader knows the grain.
 // ONE BEAT'S PARTITION, TYPED, so a beat cited as evidence is a value a fold can read rather than a
-// sentence. stall_faults_per_minute is the heartbeat's own stall clause beside the partition line.
+// sentence. The stall rate is the heartbeat's own stall clause beside the partition line, and it
+// rides the carrier that clause's producer returns -- gunbc.memory_stall_refusal
+// memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
+// instrument hold one representation of one quantity rather than a Measure on one side and a bare
+// integer on the other.
 type FloorNonReclaimableBeat {
   beat: Int
   nonreclaimable: ByteSize
   file: ByteSize
   charge: ByteSize
-  stall_faults_per_minute: Int
+  stall: EventsPerMinute
 }
 
 // THE RECEIPT CARRIES TWO BEATS: the peak, and the LAST BEAT BEFORE THE STALL BEGAN -- the highest
@@ -277,14 +281,14 @@ data gunbc_floor_non_reclaimable_receipt_2026_09_19: FloorNonReclaimableReceipt 
     nonreclaimable: byte_size(26725773568),
     file: byte_size(13160448),
     charge: byte_size(26841255936),
-    stall_faults_per_minute: 6,
+    stall: events_per_minute(count: 6),
   },
   last_unstalled: FloorNonReclaimableBeat {
     beat: 13,
     nonreclaimable: byte_size(24841459600),
     file: byte_size(1895120896),
     charge: byte_size(26838556672),
-    stall_faults_per_minute: 0,
+    stall: events_per_minute(count: 0),
   },
   run_completed: false,
 }

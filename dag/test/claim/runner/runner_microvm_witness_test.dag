@@ -82,7 +82,7 @@ import gunbc.runner_microvm {
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import std.measure {
   hardware_thread_count_value, hardware_thread_count, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size,
-  mebibyte, mebibyte_count, mebibyte_to_byte_size,
+  mebibyte, mebibyte_count, mebibyte_to_byte_size, events_per_minute_count,
 }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity }
 import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
@@ -672,7 +672,7 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
     NonReclaimableMeasured { receipt: r } =>
       byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance())
         == byte_size_count(b: round_up_to_gibibyte_grain(bytes: r.last_unstalled.file))
-        && r.last_unstalled.stall_faults_per_minute == 0
+        && events_per_minute_count(r: r.last_unstalled.stall) == 0
         && byte_size_count(b: gunbc_runner_microvm_guest_cache_allowance()) >= byte_size_count(b: r.last_unstalled.file)
   }
 }

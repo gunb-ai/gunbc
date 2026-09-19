@@ -1,7 +1,7 @@
 module test.claim.floor_demand_witness_test
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count }
+import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size, second, second_count, events_per_minute, events_per_minute_count }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
   FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
@@ -94,8 +94,8 @@ test fn the_work_memory_requirement_is_the_non_reclaimable_peak_or_absent() -> B
         runner_unit: "fixture",
         beat_cadence: second(count: 60),
         beats_sampled: 10,
-        peak: FloorNonReclaimableBeat { beat: 2, nonreclaimable: byte_size(1000), file: byte_size(500), charge: byte_size(1500), stall_faults_per_minute: 9 },
-        last_unstalled: FloorNonReclaimableBeat { beat: 1, nonreclaimable: byte_size(900), file: byte_size(700), charge: byte_size(1600), stall_faults_per_minute: 0 },
+        peak: FloorNonReclaimableBeat { beat: 2, nonreclaimable: byte_size(1000), file: byte_size(500), charge: byte_size(1500), stall: events_per_minute(count: 9) },
+        last_unstalled: FloorNonReclaimableBeat { beat: 1, nonreclaimable: byte_size(900), file: byte_size(700), charge: byte_size(1600), stall: events_per_minute(count: 0) },
         run_completed: true,
       },
     },
@@ -130,8 +130,8 @@ test fn the_production_receipt_is_a_partial_run_whose_partition_was_the_whole_ch
     && byte_size_count(b: r.peak.nonreclaimable) <= byte_size_count(b: r.peak.charge)
     && byte_size_count(b: r.peak.nonreclaimable) <= byte_size_count(b: gunbc_runner_slot_desired().memory_max)
     && r.last_unstalled.beat < r.peak.beat
-    && r.last_unstalled.stall_faults_per_minute == 0
-    && r.peak.stall_faults_per_minute > 0
+    && events_per_minute_count(r: r.last_unstalled.stall) == 0
+    && events_per_minute_count(r: r.peak.stall) > 0
 }
 
 // THE PIN WAS TAKEN UNDER THE CURRENT ROW, which is what makes it a finding about the row rather
