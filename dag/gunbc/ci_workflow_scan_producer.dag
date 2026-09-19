@@ -21,7 +21,6 @@ import gunbc.github_observation_record {
   GithubObservation,
   GithubObservationRequest,
   CodeSearchPageRequest,
-  ObservationDigestStanding,
   digest_unobservable,
   ObservationCompleteness,
   ObservationComplete,
