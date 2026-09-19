@@ -2,8 +2,8 @@ module std.machine_word
 
 import std.induction { int_pow_bounded }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, bound_dissolution, unbound_dissolution, DeclarationAppears }
+import std.decl_ref { decl_ref }
+import std.dissolution { bound_dissolution, unbound_dissolution }
 import std.measure { bits_per_byte }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
@@ -511,8 +511,9 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // happens to look. These rows are the same statement in a carrier gunbc.dissolution_census reads.
 //
 // TWO SHAPES, AND THE DIFFERENCE IS WHETHER THE CONSUMER CAN BE CITED YET. Where the consuming
-// declaration EXISTS on a branch, the row binds DeclarationAppears to that exact symbol, so the
-// row retires when the symbol lands and by nothing else. Where the consuming change is named but
+// declaration EXISTS on a branch, the row uses std.dissolution bound_dissolution, which takes the
+// DeclarationRef itself and does the DeclarationAppears wrapping -- the appearance of that symbol
+// retires the row, and nothing else does. Where the consuming change is named but
 // has authored no declaration to point at, the row is unbound and says so -- a forward reference to
 // a name nobody has written would be a citation that can never resolve, which is worse than an
 // honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
@@ -527,22 +528,22 @@ data machine_word_consumer_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
     reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; extdeps.crypto.sha2 sha256_add_all is the fold that consumes this, ~1,000 calls per compression block.",
-    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_add_all") })
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_add_all"))
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
     reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; extdeps.crypto.sha2 sha256_sigma is the one fold all four go through.",
-    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_sigma") })
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_sigma"))
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
     reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; extdeps.crypto.sha2 sha256_xor3 is the three-way form they share.",
-    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_xor3") })
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_xor3"))
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
     reason: "SHA-256 Ch complements its selector word; extdeps.crypto.sha2 sha256_ch is the only consumer of complement in that algorithm.",
-    dissolution: bound_dissolution(trigger: DeclarationAppears { ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_ch") })
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_ch"))
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
