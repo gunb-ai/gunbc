@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Secret }
 import std.measure { byte_size }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
+import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex, MacComputationRefused }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
 import extdeps.apple.apns { apns_send_outcome_of }
 import extdeps.apple.app_attest {
@@ -182,6 +182,7 @@ fn mac_hex(message: NonEmptyStr) -> NonEmptyStr {
   match mac_sign(key: fx_key(), message: message) {
     MacSigned { tag: t } => t.hex
     MacKeyMaterialNotHex { key_id: _ } => "not-hex"
+    MacComputationRefused { key_id: _, cause: _ } => "refused"
   }
 }
 
