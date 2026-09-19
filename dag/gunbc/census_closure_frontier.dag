@@ -131,8 +131,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
-    machine_word_consumer_frontier_rows,
     network_boot_manifest_broker_frontier_rows,
+    machine_word_consumer_frontier_rows,
   ]
 }
 

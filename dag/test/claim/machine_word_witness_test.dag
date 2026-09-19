@@ -357,16 +357,17 @@ test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
 // substrate route refuses at word_of_int because the width is a fact the value has to establish.
 // So re-introducing the displaced arithmetic turns this Absent into a Present and reds the claim.
 test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
-  match base64_encode(octets: [256, 0, 0], variant: Standard) {
-    Absent => true
-    Present { value: _ } => false
+  match base64_octets(values: [256, 0, 0]) {
+    QualifiedOctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    QualifiedOctetsRefused { cause: _ } => false
+    QualifiedOctetsReady { octets: _ } => false
   }
 }
 
 test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
-  match base64_encode(octets: [255, 0, 255], variant: Standard) {
-    Absent => false
-    Present { value: s } => s == "/wD/"
+  match base64_octets(values: [255, 0, 255]) {
+    QualifiedOctetsRefused { cause: _ } => false
+    QualifiedOctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
   }
 }
 

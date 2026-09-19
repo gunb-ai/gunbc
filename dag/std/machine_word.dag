@@ -4,7 +4,7 @@ import std.induction { int_pow_bounded }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import std.measure { bits_per_byte }
+import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
@@ -32,13 +32,24 @@ type WordWidth
   | Width32
   | Width64
 
-fn word_width_bits(w: WordWidth) -> Int {
+// THE BIT COUNT IS A MEASURE, AND std.measure ALREADY OWNS IT. BitWidth = Measure<Information,
+// One, Nat> is the corpus's carrier for exactly this fact, and std.integer
+// uint8_channel_bit_width_int consumes it for exactly this purpose -- so returning a bare Int here
+// would have been a second representation of a unit the corpus already models, which is section 2's
+// re-invention and section 3's fork in one. The width answers the CARRIER; word_width_bits is the
+// projection to Int for the arithmetic below, derived through bit_width_count rather than spelled
+// independently, which is the same two-step std.integer uses.
+fn word_bit_width(w: WordWidth) -> BitWidth {
   match w {
-    Width8 => 8
-    Width16 => 16
-    Width32 => 32
-    Width64 => 64
+    Width8 => bit_width(count: 8)
+    Width16 => bit_width(count: 16)
+    Width32 => bit_width(count: 32)
+    Width64 => bit_width(count: 64)
   }
+}
+
+fn word_width_bits(w: WordWidth) -> Int {
+  bit_width_count(b: word_bit_width(w: w))
 }
 
 // THE CARRIER. The width travels WITH the value rather than beside it in a caller's convention,
@@ -164,9 +175,13 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // boundary takes those carriers and therefore CANNOT be handed an unqualified value -- not because
 // a wall stops it, but because the call does not typecheck.
 //
-// HONEST ABOUT WHAT THIS IS. A record with public fields is still constructible, so this is a
-// sealed-wrapper convention rather than a private constructor, and a caller determined to forge
-// QualifiedWord { word: ... } can. What it changes is the DEFAULT: the failure mode stops being
+// HONEST ABOUT WHAT THIS IS, AND THIS IS THE ONE PLACE IT IS SAID. A record with public fields is
+// still constructible, so this is a sealed-wrapper convention rather than a private constructor,
+// and a caller determined to forge QualifiedWord { word: ... } can. Every consumer that has an arm
+// reachable only by that forgery CITES this paragraph rather than restating it -- std.encoding
+// base64_encode is the current one. A fact with two statements is a fact that can disagree with
+// itself, and it did: an earlier cut had this annotation calling the carrier forgeable while the
+// encoder called its own arm unreachable, in the same change (review 68594). What it changes is the DEFAULT: the failure mode stops being
 // "a helper forgot to qualify" and becomes "someone deliberately forged the proof", which is a
 // different and far rarer mistake. Rung unchanged -- mitigatable -- and the next-rung trigger is
 // still sole construction, which would make the forgery unwritable and delete word_qualified's
@@ -537,8 +552,10 @@ fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
 // invisible. extdeps.network.ipv4's `Octet = Int where range(0, 255)` is a network-layer row and is
 // left alone: minting a third spelling of the same concept here would be the nicknaming
 // DESIGN section 3 forbids, and reusing a network row as the substrate's byte would be worse.
+// The octet's own width, routed through the same carrier rather than re-typing bits_per_byte's Nat
+// down to Int in passing. This is std.integer uint8_channel_bit_width_int's exact form.
 fn octet_bit_width() -> Int {
-  bits_per_byte()
+  bit_width_count(b: bit_width(count: bits_per_byte()))
 }
 
 // AN OCTET'S RADIX IS THE Width8 MODULUS. It was a separate int_pow_bounded walk, paid by every
