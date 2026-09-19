@@ -165,7 +165,7 @@ fn gunbc_floor_cold_build_verdict(receipt: ColdBuildReceipt) -> ColdBuildVerdict
 }
 
 // NO RECEIPT HAS BEEN TAKEN, AND THIS ROW SAYS SO RATHER THAN CARRYING A FIGURE. The first guest
-// floor attempt is the cutover lane's (parent sunny-ant-606); when it lands, this standing becomes
+// floor attempt is the cutover lane's; when it lands, this standing becomes
 // ColdBuildReceiptTaken with the verdict gunbc_floor_cold_build_verdict returns for it, and the
 // rows the plan names are revised from the receipt.
 fn gunbc_floor_cold_build_receipt_standing() -> ColdBuildReceiptStanding {

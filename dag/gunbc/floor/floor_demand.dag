@@ -199,9 +199,9 @@ fn gunbc_floor_measured_peak_is_uncensored() -> Bool {
 // memory.high line finishes clean precisely because the cache half of that charge is reclaimable:
 // the 2026-09-19 pin's 1928 high events are the kernel giving that half back. So this figure bounds
 // what the cgroup was CHARGED, which is the fact the throttle-line witnesses want, and sizing a
-// machine to it would consume a bet as a fact (DESIGN 4d; operator ruling sunny-ant-606,
-// 2026-09-19, which withdrew an earlier revision of this module that stated it as the Work's
-// minimum). The Work's minimum is the non-reclaimable partition below.
+// machine to it would consume a bet as a fact (DESIGN 4d; an earlier revision of this module
+// stated it as the Work's minimum and was withdrawn). The Work's minimum is the non-reclaimable
+// partition below, read from memory.stat.
 fn floor_cgroup_charge_ceiling(receipts: List<FloorRunCgroupPeakReceipt>) -> ByteSize {
   byte_size(fold(receipts, init: 0, f: (acc, r) => nat_max(acc, byte_size_count(b: floor_peak_receipt_peak(receipt: r)))))
 }

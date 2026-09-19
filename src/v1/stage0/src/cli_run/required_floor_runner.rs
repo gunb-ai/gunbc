@@ -5328,8 +5328,9 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 /// that is being reclaimed down to its `memory.high` line finishes clean precisely because the
 /// cache half of that charge is reclaimable. So a peak read at the throttle line is a CEILING
 /// that includes cache, and sizing anything to it -- a cell row, a microVM guest whose kernel
-/// can reclaim its own cache just as well -- treats a bet as a fact (DESIGN 4d, operator ruling
-/// sunny-ant-606 2026-09-19). What a machine has to HOLD is the part reclaim cannot give back:
+/// can reclaim its own cache just as well -- treats a bet as a fact (DESIGN 4d). Demand is
+/// therefore read from the `memory.stat` partition. What a machine has to HOLD is the part
+/// reclaim cannot give back:
 /// anonymous pages, unevictable pages, shmem, and the kernel's own unreclaimable slab, stacks,
 /// page tables, per-cpu and socket memory. Those are the fields carried here, beside the
 /// reclaimable file and slab figures so the split is visible in the same line, and beside

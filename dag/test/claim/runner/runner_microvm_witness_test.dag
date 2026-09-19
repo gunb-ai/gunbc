@@ -622,8 +622,8 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 // nothing; no Firecracker process is involved at any step.
 // PRODUCTION SIZING NOW DERIVES, AND WHAT IT ANSWERS IS DECIDED BY THE FLOOR'S DEMAND STANDING.
 // While the non-reclaimable demand is unmeasured the Work states no memory and the shape must
-// refuse on exactly that absence -- not on the charge ceiling, which is a bet (operator ruling
-// 2026-09-19). Once a receipt stands, the shape must resolve iff the stated requirement fits the
+// refuse on exactly that absence -- not on the charge ceiling, which includes reclaimable cache
+// and is a bet. Once a receipt stands, the shape must resolve iff the stated requirement fits the
 // cell's remainder beside the reserve, and refuse with both figures otherwise. Both arms are
 // written so the witness is discriminating in whichever state production is in, rather than a
 // probe that has to be rewritten the day the receipt lands.

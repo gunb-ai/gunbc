@@ -466,10 +466,11 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
 // what the floor needed and the floor's own Work did not say, so a microVM guest
 // sized for it had nothing to read. It now reads gunbc.floor_demand: the
-// non-reclaimable partition measured on the host slot plus a declared page-cache
-// allowance, and NOTHING while that partition is unmeasured -- a cgroup peak that
-// charges reclaimable cache is a ceiling, not a demand, and stating it here would
-// size every consumer to a bet (operator ruling 2026-09-19). Stating memory has a
+// non-reclaimable partition measured on the host slot from memory.stat, and
+// NOTHING while that partition is unmeasured -- a cgroup peak charges reclaimable
+// cache, so it is a ceiling rather than a demand, and stating it here would size
+// every consumer to a bet. The guest's cache allowance is the guest shape's own
+// fact (gunbc.runner_microvm), not this Work's. Stating memory has a
 // consequence on the offer side that is the point rather than a cost: an offer
 // that does not state memory no longer covers this Work (product.fabric.supply
 // MemoryNotOffered), so every offer that claims to run the floor must say how
