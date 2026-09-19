@@ -41,8 +41,8 @@ import v2.compiler.parse {
   prepare_grammar_expr
 }
 import v2.std.optional { Absent, Present }
-import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, None, Rejected, Some, invariant_port_locus }
+import v2.std.algebra { fold_list, length }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, None, Rejected, Some, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, content_hash }
 
@@ -383,13 +383,16 @@ test fn prepared_choice_stamp_split_agrees_with_ordered_oracle() -> Bool {
   }
 }
 
-// LITERAL TERMINALS: A CLASS PREFIX CANNOT TELL MARKER WORDS APART; THE WORD KEY CAN.
+// LITERAL TERMINALS: DIFFERENT EXACT WORDS ELIMINATE A FIRST-OVERLAP RESIDUE THAT CLASS KEYS KEEP.
 //
-// Two alternatives led by different exact words of ONE class share every class prefix, so under
-// class-only keying they are ambiguous at any lookahead depth. Keyed on (class, word) they are
-// disjoint. The pair below differs ONLY in its leading word; the control is the same pair with the
-// word dropped (plain class terminals), which must still read as ambiguous. Together they are the
-// evidence that word keying does something -- none of the class-only rows above can show it.
+// The comparison pair below is IDENTICAL once its leading word is erased: both alternatives are
+// word . pcp_a. Keyed on (class, word) the two are FIRST-disjoint and validation reports no overlap
+// residue; the control is the same pair with the words erased to the bare class, which validation
+// must ACCEPT WITH the specific `^parse_grammar_choice_overlap_residue` diagnostic -- named, not
+// inferred from the absence of a clean acceptance, so an unrelated rejection fails the control.
+// What this establishes is the FIRST-overlap residue, which is a different fact from whether a
+// deeper class lookahead could have separated some other pair. The unequal-suffix pair further
+// down is kept for a separate purpose: executing a parse through the second word's alternative.
 
 fn pcp_word_token(word: String) -> Token {
   Token { class: ^pcp_word, lexeme: word, file: ^pcp_file, start: 0, end: 1 }
@@ -399,6 +402,45 @@ fn lit(lexeme: Symbol) -> GrammarExpr {
   grammar_expr_literal_terminal(token_class: ^pcp_word, lexeme: lexeme)
 }
 
+fn pcp_same_suffix_word_pair() -> GrammarExpr {
+  Choice {
+    left: seq(left: lit(lexeme: ^alpha), right: term(token_class: ^pcp_a)),
+    right: seq(left: lit(lexeme: ^beta), right: term(token_class: ^pcp_a))
+  }
+}
+
+fn pcp_same_suffix_class_pair() -> GrammarExpr {
+  Choice {
+    left: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_a)),
+    right: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_a))
+  }
+}
+
+fn pcp_diagnostic_is_overlap_residue(d: Diagnostic) -> Bool {
+  d.reason == ^parse_grammar_choice_overlap_residue
+}
+
+fn pcp_any_overlap_residue(ne: NonEmptyDiagnostics) -> Bool {
+  fold_list(
+    xs: ne.tail,
+    empty: pcp_diagnostic_is_overlap_residue(d: ne.head),
+    cons: fn(found, d) { found || pcp_diagnostic_is_overlap_residue(d: d) }
+  )
+}
+
+// Positive: the ACCEPTED arm carrying the overlap-residue diagnostic. Rejection, or acceptance with
+// only unrelated diagnostics, or clean acceptance, all answer false.
+fn pcp_validate_accepts_with_overlap_residue(expr: GrammarExpr) -> Bool {
+  match grammar_validate_for_parse(
+    root: pcp_choice_root(expr: expr),
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
+  ) {
+    Accepted { value: _, diagnostics: Some { diagnostics: ne } } => pcp_any_overlap_residue(ne: ne)
+    Accepted { value: _, diagnostics: None } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn pcp_word_pair() -> GrammarExpr {
   Choice {
     left: seq(left: lit(lexeme: ^alpha), right: term(token_class: ^pcp_a)),
@@ -406,19 +448,12 @@ fn pcp_word_pair() -> GrammarExpr {
   }
 }
 
-fn pcp_class_pair() -> GrammarExpr {
-  Choice {
-    left: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_a)),
-    right: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_b))
-  }
-}
-
 test fn literal_words_sharing_a_class_prefix_validate_without_overlap_residue() -> Bool {
-  pcp_validate_accepts_without_overlap_residue(expr: pcp_word_pair())
+  pcp_validate_accepts_without_overlap_residue(expr: pcp_same_suffix_word_pair())
 }
 
 test fn the_same_pair_keyed_by_class_alone_leaves_overlap_residue() -> Bool {
-  !pcp_validate_accepts_without_overlap_residue(expr: pcp_class_pair())
+  pcp_validate_accepts_with_overlap_residue(expr: pcp_same_suffix_class_pair())
 }
 
 test fn the_class_bucket_of_a_word_pair_dispatches_on_the_word() -> Bool {
