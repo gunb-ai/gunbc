@@ -11,6 +11,7 @@ import std.artifact_store { ArtifactRealizationInput, artifact_realization_diges
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live, spark_unplaced_hosts_of, spark_host_standings_live, CurrentStandingsRead, CurrentStandingsUnread }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
@@ -181,9 +182,17 @@ import gunbc.typed_argv_exec {
 data vllm_build_host_purpose: NonEmptyStr = "a vLLM source build, which occupies the host for the better part of an hour" as NonEmptyStr
 
 // THE BOUND ON THE BUILD'S HOST-EFFECT CLAIM: the one executed cold build took about 75 minutes;
-// three hours is the term after which an unreleased claim (a crashed lane) stops fencing the
-// host's group. A running build releases its claim at its terminal.
+// three hours is the term after which an unreleased claim (a crashed lane) reads OVERDUE. It
+// still fences until released: the release is the observation that the host is quiet.
 data vllm_build_host_effect_term: Second = second(count: 10800)
+
+// WHAT THE BUILD LEAVES IF IT DID NOT FINISH: every leg -- the clone, the fetch, the checkout, the
+// docker build with its --file and context under the source dir -- carries the source directory
+// on its command line, so a process still holding it is the residue; the build starts no
+// container of its own.
+fn vllm_build_host_residue() -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: vllm_source_dir(), container: none }
+}
 
 // THE BUILD ROOT IS DERIVED FROM THE PRINCIPAL THAT OWNS IT, NOT SPELLED. An earlier revision put it
 // under the OPERATOR's home while the legs authenticate as the managed executor -- a path belonging to
@@ -726,7 +735,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: a build occupies one host for the better part of an hour, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: build_host } =>
-      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: build_host as String, purpose: vllm_build_host_purpose) {
+      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: build_host as String, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
         SparkHostRefused { cause: why } => exit_failure(reason: why as String)
         SparkHostAdmitted { host: _, claim: claim } =>
           release_host_effect_live(handle: claim, exit: {
@@ -835,7 +844,7 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: host, purpose: vllm_build_host_purpose) {
+  match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: host, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
     SparkHostRefused { cause: why } => exit_failure(reason: why as String)
     SparkHostAdmitted { host: build_host, claim: claim } =>
           release_host_effect_live(handle: claim, exit: {

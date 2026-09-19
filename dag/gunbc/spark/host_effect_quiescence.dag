@@ -1,0 +1,171 @@
+module gunbc.spark.host_effect_quiescence
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.exec.command { argv_words }
+import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }
+import extdeps.docker.cli { DockerPsFilter, DockerPsByName, DockerPsByAncestor, docker_ps_filter_wire, docker_ps_running_command }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
+import product.capacity.event_json { member_nonempty, member_nat }
+
+// ── A HOST EFFECT IS RELEASED BY EVIDENCE THAT NOTHING OF IT REMAINS, NEVER BY ITS RETURN ──────
+//
+// A build, a probe or a source acquisition returns; whether the host is QUIET with respect to it
+// is a different fact. A leg can exit non-zero while a build client or a started container
+// remains, and a crashed lane never returns at all. So the fact that clears a host-effect fence is
+// an OBSERVATION taken on the host after the effect: the effect declares, when it is admitted,
+// what its residue would look like (a process command-line pattern, and the container it starts,
+// if any), and the release carries the reading that found neither. That reading is
+// sole-constructed here -- only the observer mints it, from an executed scan -- so a release
+// cannot be written from a return code, an elapsed term or prose.
+//
+// WHAT THE READING IS: pgrep over the full command line for the pattern (the same leg the serving
+// incarnation observer uses; exit 1 is "no match", any other non-zero is a scan that did not
+// reach a verdict) and, when a container is declared, `docker ps` under that filter (empty output
+// is "not running"). A scan that could not run, or docker that could not be asked, is UNREAD --
+// the claim stays live -- never quiet. The pattern is pgrep's extended regular expression, so a
+// path or an image reference in it matches slightly more than itself (`.` is any character); that
+// direction is the safe one, since a wider match reports residue and refuses the release.
+type HostEffectResidueSpec {
+  process_pattern: NonEmptyStr
+  container: DockerPsFilter?
+}
+
+type HostQuiescenceEvidence sole_constructor {
+  host: HostIdentity
+  process_pattern: NonEmptyStr
+  container: DockerPsFilter?
+  observer: NonEmptyStr
+  observed_at: EpochSecs
+}
+
+type HostQuiescence
+  = HostQuiet { evidence: HostQuiescenceEvidence }
+  | HostResidue { host: HostIdentity, detail: String }
+  | HostQuiescenceUnread { host: HostIdentity, cause: String }
+
+// THE LEG IS SUPPLIED: production hands the fleet-ssh typed-argv leg to the host, a witness hands a
+// local one. The observer decides from exit codes and stdout only.
+type ArgvRun
+  = ArgvRan { exit_code: Int, stdout: String, stderr: String }
+  | ArgvLegDidNotRun { cause: String }
+
+fn observe_host_effect_quiescence(run: fn(List<String>) -> ArgvRun, host: HostIdentity, spec: HostEffectResidueSpec, observer: NonEmptyStr, at: EpochSecs) -> HostQuiescence {
+  match run(pgrep_match_full_command_line_argv(pattern: spec.process_pattern)) {
+    ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["the process scan did not run: ", c], "") }
+    ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+      match pgrep_scan_outcome(exit_code: code, stdout: out, stderr: err) {
+        PgrepScanFailed { exit_code: c2, stderr: e2 } => HostQuiescenceUnread { host: host, cause: join(["the process scan failed (exit ", to_string(c2), "): ", e2], "") }
+        PgrepMatched { listing: l } => HostResidue { host: host, detail: join(["a process matching `", spec.process_pattern as String, "` is running: ", trim(s: l)], "") }
+        PgrepNoMatch =>
+          match spec.container {
+            Absent => HostQuiet { evidence: HostQuiescenceEvidence { host: host, process_pattern: spec.process_pattern, container: none, observer: observer, observed_at: at } }
+            Present { value: f } =>
+              match run(argv_words(command: docker_ps_running_command(filter: f))) {
+                ArgvLegDidNotRun { cause: c } => HostQuiescenceUnread { host: host, cause: join(["docker ps did not run: ", c], "") }
+                ArgvRan { exit_code: code2, stdout: out2, stderr: err2 } =>
+                  if code2 != 0 {
+                    HostQuiescenceUnread { host: host, cause: join(["docker ps exited ", to_string(code2), ": ", trim(s: err2)], "") }
+                  } else {
+                    if trim(s: out2) != "" {
+                      HostResidue { host: host, detail: join(["a container under `", docker_ps_filter_wire(f: f), "` is running: ", trim(s: out2)], "") }
+                    } else {
+                      HostQuiet { evidence: HostQuiescenceEvidence { host: host, process_pattern: spec.process_pattern, container: Present { value: f }, observer: observer, observed_at: at } }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn container_filter_eq(a: DockerPsFilter?, b: DockerPsFilter?) -> Bool {
+  match a {
+    Absent => match b { Absent => true  Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false  Present { value: y } => docker_ps_filter_wire(f: x) == docker_ps_filter_wire(f: y) }
+  }
+}
+
+// Evidence is FOR a claim only when it names the claim's host and the claim's own residue spec:
+// a quiet reading of another host, or of another pattern, releases nothing.
+fn quiescence_evidence_covers(e: HostQuiescenceEvidence, host: HostIdentity, spec: HostEffectResidueSpec) -> Bool {
+  host_identity_eq(a: e.host, b: host)
+    && (e.process_pattern as String) == (spec.process_pattern as String)
+    && container_filter_eq(a: e.container, b: spec.container)
+}
+
+// ── THE WIRE ───────────────────────────────────────────────────────────────────────────────────
+//
+// Emitted and decoded here because the evidence is sole-constructed: the event log's codec
+// consumes these fns rather than constructing the evidence itself, so a decoded event's evidence
+// is exactly what an observer once wrote (the codec is total over the wire and refuses a document
+// that does not carry every member).
+fn container_filter_members(prefix: String, f: DockerPsFilter?) -> List<JsonKeyValue> {
+  match f {
+    Absent => [] as List<JsonKeyValue>
+    Present { value: DockerPsByName { name: n } } => [json_kv(key: join([prefix, "container_name"], ""), value: json_string(s: n as String))]
+    Present { value: DockerPsByAncestor { image: i } } => [json_kv(key: join([prefix, "container_image"], ""), value: json_string(s: i as String))]
+  }
+}
+
+type ContainerFilterMember
+  = ContainerFilterAbsent
+  | ContainerFilterPresent { filter: DockerPsFilter }
+  | ContainerFilterIncoherent
+
+fn container_filter_decode(doc: JsonValue, prefix: String) -> ContainerFilterMember {
+  let by_name = member_nonempty(doc: doc, key: join([prefix, "container_name"], ""))
+  let by_image = member_nonempty(doc: doc, key: join([prefix, "container_image"], ""))
+  match by_name {
+    Present { value: n } => match by_image { Absent => ContainerFilterPresent { filter: DockerPsByName { name: n } }  Present { value: _ } => ContainerFilterIncoherent }
+    Absent => match by_image { Absent => ContainerFilterAbsent  Present { value: i } => ContainerFilterPresent { filter: DockerPsByAncestor { image: i } } }
+  }
+}
+
+fn residue_spec_members(prefix: String, s: HostEffectResidueSpec) -> List<JsonKeyValue> {
+  concat([json_kv(key: join([prefix, "process_pattern"], ""), value: json_string(s: s.process_pattern as String))], container_filter_members(prefix: prefix, f: s.container))
+}
+
+fn residue_spec_decode(doc: JsonValue, prefix: String) -> HostEffectResidueSpec? {
+  match member_nonempty(doc: doc, key: join([prefix, "process_pattern"], "")) {
+    Absent => none
+    Present { value: p } =>
+      match container_filter_decode(doc: doc, prefix: prefix) {
+        ContainerFilterIncoherent => none
+        ContainerFilterAbsent => Present { value: HostEffectResidueSpec { process_pattern: p, container: none } }
+        ContainerFilterPresent { filter: f } => Present { value: HostEffectResidueSpec { process_pattern: p, container: Present { value: f } } }
+      }
+  }
+}
+
+fn quiescence_evidence_members(e: HostQuiescenceEvidence) -> List<JsonKeyValue> {
+  concat(
+    [
+      json_kv(key: "evidence_host", value: json_string(s: e.host as String)),
+      json_kv(key: "evidence_observer", value: json_string(s: e.observer as String)),
+      json_kv(key: "evidence_observed_at", value: json_int(n: e.observed_at)),
+    ],
+    residue_spec_members(prefix: "evidence_", s: HostEffectResidueSpec { process_pattern: e.process_pattern, container: e.container }),
+  )
+}
+
+fn quiescence_evidence_decode(doc: JsonValue) -> HostQuiescenceEvidence? {
+  match member_nonempty(doc: doc, key: "evidence_host") {
+    Absent => none
+    Present { value: h } =>
+      match member_nonempty(doc: doc, key: "evidence_observer") {
+        Absent => none
+        Present { value: o } =>
+          match member_nat(doc: doc, key: "evidence_observed_at") {
+            Absent => none
+            Present { value: at } =>
+              match residue_spec_decode(doc: doc, prefix: "evidence_") {
+                Absent => none
+                Present { value: spec } => Present { value: HostQuiescenceEvidence { host: (h as String) as HostIdentity, process_pattern: spec.process_pattern, container: spec.container, observer: o, observed_at: at } }
+              }
+          }
+      }
+  }
+}

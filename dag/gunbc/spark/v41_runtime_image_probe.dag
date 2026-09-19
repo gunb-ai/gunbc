@@ -9,7 +9,7 @@ import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
-  docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_command,
+  docker_run_ephemeral_command, docker_image_pull_command, docker_image_inspect_command, DockerPsByAncestor,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
 }
@@ -58,6 +58,7 @@ import gunbc.spark.serving_runtime_capability_probe {
 }
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //
@@ -701,8 +702,16 @@ fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outc
 data v41_probe_host_purpose: NonEmptyStr = "a published-image probe, which pulls a 9.6 GB image and starts a container" as NonEmptyStr
 
 // THE BOUND ON THE PROBE'S HOST-EFFECT CLAIM: a pull and a container start, bounded by the CI
-// step's own hour; an unreleased claim stops fencing the host's group after it.
+// step's own hour; an unreleased claim reads OVERDUE after it and still fences until the host is
+// observed quiet.
 data v41_probe_host_effect_term: Second = second(count: 3600)
+
+// WHAT THE PROBE LEAVES IF IT DID NOT FINISH: the pull, the inspect and the run all carry the image
+// reference on their command line, and the run starts an unnamed container FROM that reference,
+// which `docker ps --filter ancestor=` finds while it runs.
+fn v41_probe_host_residue(reference: NonEmptyStr) -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: reference, container: Present { value: DockerPsByAncestor { image: reference } } }
+}
 
 fn v41_published_image_probe_ci_wet() -> ProcessExit
   uses net: Network
@@ -713,7 +722,7 @@ fn v41_published_image_probe_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
-      match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose) {
+      match admit_unplaced_host_live(term: v41_probe_host_effect_term, raw: target_host as String, purpose: v41_probe_host_purpose, residue: v41_probe_host_residue(reference: v41_published_arm64_reference())) {
         SparkHostRefused { cause: why } => exit_failure(reason: why as String)
         SparkHostAdmitted { host: _, claim: claim } =>
           release_host_effect_live(handle: claim, exit: {

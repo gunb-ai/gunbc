@@ -10,6 +10,11 @@ import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpe
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import std.measure { second, second_count }
+import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor }
+import gunbc.spark.host_effect_quiescence {
+  HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
+}
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationKeyed, PairRealizationUnestablished,
@@ -315,26 +320,130 @@ test fn a_malformed_hosts_member_refuses_rather_than_normalizing() -> Bool {
 
 // ── HOST EFFECTS ON THE PARTITION ──────────────────────────────────────────────────────────────
 
+fn alw_residue(pattern: String) -> HostEffectResidueSpec {
+  HostEffectResidueSpec { process_pattern: pattern as NonEmptyStr, container: none }
+}
+
 fn alw_effect(parent: EventId?, host: HostIdentity, at: Int) -> ChainEvent<PairAuthorityEvent> {
-  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: host, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 100 } }
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: host, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: alw_residue(pattern: "/srv/build") } }
 }
 
+// THE ONLY WAY TO EVIDENCE: the observer over a supplied leg. A leg that answers "no match" to
+// pgrep (exit 1) and nothing to docker ps mints the quiet reading; the witness cannot construct
+// one otherwise, which is the point of the sole constructor.
+fn alw_quiet_leg(argv: List<String>) -> ArgvRun {
+  match get(xs: argv, index: 0) {
+    Present { value: "pgrep" } => ArgvRan { exit_code: 1, stdout: "", stderr: "" }
+    _ => ArgvRan { exit_code: 0, stdout: "", stderr: "" }
+  }
+}
+
+fn alw_observe(leg: fn(List<String>) -> ArgvRun, spec: HostEffectResidueSpec) -> HostQuiescence {
+  observe_host_effect_quiescence(run: leg, host: alw_host(s: "srv5"), spec: spec, observer: "witness" as NonEmptyStr, at: 1005)
+}
+
+fn alw_evidence(host: HostIdentity, spec: HostEffectResidueSpec) -> HostQuiescenceEvidence? {
+  match observe_host_effect_quiescence(run: fn(argv) { alw_quiet_leg(argv: argv) }, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: 1005) {
+    HostQuiet { evidence: e } => Present { value: e }
+    _ => none
+  }
+}
+
+fn alw_release_with(parent: EventId?, admitted_by: String, at: Int, evidence: HostQuiescenceEvidence) -> ChainEvent<PairAuthorityEvent> {
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectReleased { admitted_by: (admitted_by as NonEmptyStr) as EventId, evidence: evidence } }
+}
+
+// A release for srv5's build claim: the evidence names srv5 and the claim's own residue.
 fn alw_release(parent: EventId?, admitted_by: String, at: Int) -> ChainEvent<PairAuthorityEvent> {
-  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectReleased { admitted_by: (admitted_by as NonEmptyStr) as EventId, receipt: "exit 0" } }
+  match alw_evidence(host: alw_host(s: "srv5"), spec: alw_residue(pattern: "/srv/build")) {
+    Present { value: e } => alw_release_with(parent: parent, admitted_by: admitted_by, at: at, evidence: e)
+    Absent => alw_effect(parent: parent, host: alw_host(s: "srv5"), at: at)
+  }
 }
 
-// Both host-effect events round-trip.
+// Both host-effect events round-trip, the admitted one with its term and residue (a named
+// container and an image ancestor are distinct on the wire), the released one with its evidence.
 test fn host_effect_events_round_trip_through_the_wire() -> Bool {
+  let named = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "vllm-a" as NonEmptyStr } } }
+  let by_image = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByAncestor { image: "vllm-a" as NonEmptyStr } } }
+  let named_event = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: alw_host(s: "srv10"), purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: named } }
+  let named_wire = pair_authority_event_wire_text(event: named_event)
+  (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_effect(parent: none, host: alw_host(s: "srv10"), at: 1000))) {
+     EventDecoded { event: back } => match back.payload { HostEffectAdmitted { host: hs, purpose: p, executor: x, term: t, residue: rs } => (hs as String) == "srv10" && (p as String) == "a build" && (x as String) == "executor-1" && second_count(s: t) == 100 && (rs.process_pattern as String) == "/srv/build" && (match rs.container { Absent => true  Present { value: _ } => false })  _ => false }
+     EventUndecodable { reason: _ } => false
+   })
+    && (match pair_authority_event_decode(text: named_wire) {
+          EventDecoded { event: back } => match back.payload { HostEffectAdmitted { residue: rs } => (match rs.container { Present { value: DockerPsByName { name: n } } => (n as String) == "vllm-a"  _ => false })  _ => false }
+          EventUndecodable { reason: _ } => false
+        })
+    && named_wire.contains("\"residue_container_name\"")
+    && (pair_authority_event_wire_text(event: named_event) != pair_authority_event_wire_text(event: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: HostEffectAdmitted { host: alw_host(s: "srv10"), purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: by_image } }))
+    && (match pair_authority_event_decode(text: named_wire.replace(from: "\"residue_container_name\"", to: "\"residue_container_image\"")) {
+          EventDecoded { event: back } => match back.payload { HostEffectAdmitted { residue: rs } => (match rs.container { Present { value: DockerPsByAncestor { image: i } } => (i as String) == "vllm-a"  _ => false })  _ => false }
+          EventUndecodable { reason: _ } => false
+        })
+    && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001))) {
+          EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: a, evidence: ev } => (a as String) == "e1" && (ev.host as String) == "srv5" && (ev.process_pattern as String) == "/srv/build" && (ev.observer as String) == "witness" && ev.observed_at == 1005  _ => false }
+          EventUndecodable { reason: _ } => false
+        })
+    && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001)).replace(from: "\"evidence_host\"", to: "\"evidence_hots\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+}
+
+// THE OBSERVER: quiet is minted only from a process scan that matched nothing and, when a
+// container is declared, a docker ps that listed nothing. A listing is residue; a scan that did
+// not reach a verdict (pgrep exit 2, docker ps non-zero, a leg that did not run) is unread; and
+// the evidence carries exactly the host and residue it was taken against.
+test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool {
+  let srv5 = alw_host(s: "srv5")
+  let plain = alw_residue(pattern: "/srv/build")
+  let with_container = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "vllm-a" as NonEmptyStr } } }
+  (match alw_observe(leg: fn(argv) { alw_quiet_leg(argv: argv) }, spec: plain) { HostQuiet { evidence: e } => (e.host as String) == "srv5" && (match e.container { Absent => true  Present { value: _ } => false })  _ => false })
+    && (match alw_observe(leg: fn(argv) { ArgvRan { exit_code: 0, stdout: "4242\n", stderr: "" } }, spec: plain) { HostResidue { host: _, detail: d } => d.contains("4242")  _ => false })
+    && (match alw_observe(leg: fn(argv) { ArgvRan { exit_code: 2, stdout: "", stderr: "pgrep: bad pattern" } }, spec: plain) { HostQuiescenceUnread { host: _, cause: c } => c.contains("bad pattern")  _ => false })
+    && (match alw_observe(leg: fn(argv) { ArgvLegDidNotRun { cause: "no route" } }, spec: plain) { HostQuiescenceUnread { host: _, cause: c } => c.contains("no route")  _ => false })
+    && (match alw_observe(leg: fn(argv) { alw_quiet_leg(argv: argv) }, spec: with_container) { HostQuiet { evidence: e } => (match e.container { Present { value: DockerPsByName { name: n } } => (n as String) == "vllm-a"  _ => false })  _ => false })
+    && (match alw_observe(leg: fn(argv) { match get(xs: argv, index: 0) { Present { value: "pgrep" } => ArgvRan { exit_code: 1, stdout: "", stderr: "" }  _ => ArgvRan { exit_code: 0, stdout: "0a1b2c\n", stderr: "" } } }, spec: with_container) { HostResidue { host: _, detail: d } => d.contains("0a1b2c")  _ => false })
+    && (match alw_observe(leg: fn(argv) { match get(xs: argv, index: 0) { Present { value: "pgrep" } => ArgvRan { exit_code: 1, stdout: "", stderr: "" }  _ => ArgvRan { exit_code: 1, stdout: "", stderr: "Cannot connect to the Docker daemon" } } }, spec: with_container) { HostQuiescenceUnread { host: _, cause: c } => c.contains("Docker daemon")  _ => false })
+}
+
+// THE EVIDENCE IS FOR ONE CLAIM: a release carrying a quiet reading of another host, or of another
+// residue on the same host, refuses at that event and the claim stays live (the transition after
+// it still refuses); the reading for the claim's own host and residue releases it.
+test fn a_release_whose_evidence_is_for_another_host_or_effect_refuses_at_that_event() -> Bool {
   alw_with_hash(scenario: fn(h) {
-    (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_effect(parent: none, host: alw_host(s: "srv10"), at: 1000))) {
-       EventDecoded { event: back } => match back.payload { HostEffectAdmitted { host: hs, purpose: p, executor: x, term_seconds: t } => (hs as String) == "srv10" && (p as String) == "a build" && (x as String) == "executor-1" && t == 100  _ => false }
-       EventUndecodable { reason: _ } => false
-     })
-      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001))) {
-            EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: a, receipt: r } => (a as String) == "e1" && r == "exit 0"  _ => false }
-            EventUndecodable { reason: _ } => false
+    let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+    let resting = alw_w_active_unestablished()
+    let srv5 = alw_host(s: "srv5")
+    let to_released = alw_w_event(previous: resting, next: released, parent: none)
+    let claim = alw_effect(parent: Present { value: "e1" as EventId }, host: srv5, at: 1000)
+    let back_to_active = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e3" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
+    alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: alw_host(s: "srv6"), spec: alw_residue(pattern: "/srv/build")))
+      && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: srv5, spec: alw_residue(pattern: "/srv/other")))
+      && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: srv5, spec: HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "x" as NonEmptyStr } } }))
+      && (match alw_evidence(host: srv5, spec: alw_residue(pattern: "/srv/build")) {
+            Absent => false
+            Present { value: e } =>
+              match authority_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: e)) {
+                AuthorityFolded { current: c, generation: g } => g == 2 && authority_eq(a: c, b: resting)
+                _ => false
+              }
           })
   })
+}
+
+fn alw_chain_releasing(prefix: List<ChainEnvelope<PairAuthorityEvent>>, after: ChainEvent<PairAuthorityEvent>, evidence: HostQuiescenceEvidence) -> List<ChainEnvelope<PairAuthorityEvent>> {
+  concat(prefix, [alw_env(id: "e3", e: alw_release_with(parent: Present { value: "e2" as EventId }, admitted_by: "e2", at: 1010, evidence: evidence)), alw_env(id: "e4", e: after)])
+}
+
+fn alw_refuses_at_e3(resting: PairServingGroupAuthority, prefix: List<ChainEnvelope<PairAuthorityEvent>>, after: ChainEvent<PairAuthorityEvent>, evidence: HostQuiescenceEvidence?) -> Bool {
+  match evidence {
+    Absent => false
+    Present { value: e } =>
+      match authority_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: prefix, after: after, evidence: e)) {
+        AuthorityFoldRefused { at_event: at, reason: r } => (at as String) == "e3" && r.contains("not for claim e2")
+        _ => false
+      }
+  }
 }
 
 // THE FOLD: a claim on a host the current authority commits refuses at that event; a second claim

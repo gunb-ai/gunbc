@@ -26,7 +26,7 @@ import gunbc.spark.v41_runtime_candidate {
   v41_storage_backed_patch_population, v41_candidate_recipe,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_build_host_purpose, vllm_source_dir, vllm_build_root,
+  vllm_build_host_purpose, vllm_source_dir, vllm_build_root, vllm_build_host_residue,
 }
 import gunbc.spark.v41_source_patch_converge {
   converge_vllm_source_with_patches,
@@ -54,7 +54,7 @@ fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
     V41PatchesUnestablished { obligation: o } => exit_failure(reason: o as String)
     V41PatchesObserved { patches: ps, partition: _ } => {
       let now = clock_now_probed_at()
-      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: host, purpose: vllm_build_host_purpose) {
+      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: host, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
         SparkHostRefused { cause: why } => exit_failure(reason: why as String)
         SparkHostAdmitted { host: build_host, claim: claim } =>
           release_host_effect_live(handle: claim, exit: {
