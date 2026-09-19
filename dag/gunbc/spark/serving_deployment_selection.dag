@@ -78,7 +78,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_wire,
   ServingRulingCitation, serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,
-  glm_canary_serving_subject,
+  glm_group_b_serving_subject,
 }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
 
@@ -3163,12 +3163,12 @@ data group_a_served_artifact_transition: ServedArtifactTransition = ServedArtifa
 // ── THE FLEET, PER SUBJECT, DERIVED FROM THE COMMITMENT CENSUS ───────────────────────────────
 //
 // Two production snapshots, one per serving subject the corpus carries. The pair unit on group A is
-// admitted its own four hosts and nothing else; the canary's subject is admitted group B, which the
-// operator's ruling reserves for it. Each is the identity set a fit is read against and a domain is
+// admitted its own four hosts and nothing else; group B's subject -- whatever arm is assigned to group
+// B -- is admitted group B, which the operator's ruling reserves for GLM. Each is the identity set a fit is read against and a domain is
 // enumerated over, and each carries its subject so the evidence identity moves with it.
 data pair_unit_a_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: group_a_served_artifact_transition.subject)
 
-data glm_canary_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: glm_canary_serving_subject)
+data glm_group_b_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: glm_group_b_serving_subject)
 
 // NO QUALITY ASSESSMENTS AND NO RUNTIME RECEIPTS. The empty lists are the honest state, and they are
 // what make every subject answer with obligations. The fleet is the one thing the snapshots differ
@@ -3188,14 +3188,14 @@ data pair_unit_a_evidence_current: ServingDeploymentEvidenceSnapshot = serving_e
   fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "pair_unit_a_fleet_snapshot"),
 )
 
-data glm_canary_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
-  fleet: glm_canary_fleet_snapshot,
-  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_canary_fleet_snapshot"),
+data glm_group_b_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
+  fleet: glm_group_b_fleet_snapshot,
+  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_group_b_fleet_snapshot"),
 )
 
 data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
-  topologies: covering_topologies_over(fleet: glm_canary_fleet_snapshot),
+  topologies: covering_topologies_over(fleet: glm_group_b_fleet_snapshot),
   parameters: serving_parameters_current,
 )
 
@@ -3232,7 +3232,7 @@ data glm_candidate_field: ServingDeploymentCandidateField = serving_candidate_fi
 // speculative inventory.
 data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: glm_candidate_field,
-  evidence: glm_canary_evidence_current,
+  evidence: glm_group_b_evidence_current,
   quality_requirement: glm_quality_requirement,
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_selection_policy"),
   constraints: serving_selection_constraints,

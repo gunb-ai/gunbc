@@ -1,0 +1,94 @@
+module test.claim.content_hash_combine_preimage_witness_test
+
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_preimage,
+  content_hash_combine_structural
+}
+import v2.std.algebra { any }
+import v2.std.collection { List }
+import v2.std.fn_index { FnArrowDecl, callee_texts_in_subtree, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// gunbc#11637 cut 1. The structural combine relation is the Fnv1a64Structural family applied to a
+// modeled canonical preimage (left digest, NUL, right digest) through `content_hash_atom`; the
+// ambient `hash_combine` primitive no longer answers for it.
+//
+// BYTE IDENTITY. The pinned digests below are NOT read from this tree: they are FNV-1a 64 (offset
+// basis 0xcbf29ce484222325, prime 0x100000001b3) over the UTF-8 bytes, computed outside gunbc from
+// the published algorithm. They equal what the retired host `v1_rt::hash_combine` produced, so a
+// preimage that drops or moves the NUL, reorders the operands, or changes the family moves them and
+// reds, and no stored structural digest or store address moved in this cut.
+
+data chcp_alpha_digest: String = "8ac625bb85ed202b"
+data chcp_beta_digest: String = "7627619b954620a7"
+data chcp_alpha_then_beta_digest: String = "dc6fa237b2a5f854"
+data chcp_beta_then_alpha_digest: String = "0cc8ce5de61aba7e"
+
+test fn chcp_atom_matches_the_published_algorithm() -> Bool {
+  content_hash_atom(value: "alpha").digest as String == chcp_alpha_digest
+    && content_hash_atom(value: "beta").digest as String == chcp_beta_digest
+}
+
+test fn chcp_combine_is_byte_identical_to_the_retired_primitive() -> Bool {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: "alpha"),
+    right: content_hash_atom(value: "beta")
+  ).digest as String == chcp_alpha_then_beta_digest
+}
+
+// Operand order is part of the preimage: the relation is not commutative, and a preimage that
+// sorted or concatenated without the separator's position would collapse these two.
+test fn chcp_combine_distinguishes_operand_order() -> Bool {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: "beta"),
+    right: content_hash_atom(value: "alpha")
+  ).digest as String == chcp_beta_then_alpha_digest
+}
+
+// The preimage is the digest bytes around exactly one code point 0, 33 characters.
+test fn chcp_preimage_carries_one_separator_between_fixed_width_digests() -> Bool {
+  let preimage = content_hash_combine_preimage(
+    left: content_hash_atom(value: "alpha"),
+    right: content_hash_atom(value: "beta")
+  ) as String
+  string_length(preimage) == 33
+    && substring(preimage, 0, 16) == chcp_alpha_digest
+    && code_point(char_at(preimage, 16)) == 0
+    && substring(preimage, 17, 33) == chcp_beta_digest
+}
+
+// ── route, not only answer ────────────────────────────────────────────────────────────────────
+//
+// BYPASS DISCRIMINATOR. The digests above cannot tell the modeled route from the primitive, because
+// the two are byte-identical by design. These rows read the resolved call skeleton of the declaring
+// module: restoring `hash_combine(...)` in any std.content_hash declaration reds the first, and a
+// combine that stops routing through the family kernel reds the second.
+
+data chcp_module_file: List<String> = ["dag/std/content_hash.dag"]
+data chcp_no_roots: List<String> = []
+data chcp_combine_decl: String = "std.content_hash.content_hash_combine_structural"
+
+fn chcp_calls(decl: FnArrowDecl, callee: String) -> Bool {
+  any(xs: callee_texts_in_subtree(node: decl.output), predicate: fn(text) { text == callee })
+}
+
+test fn chcp_no_content_hash_declaration_calls_the_ambient_combine() -> Bool {
+  let decls = fn_arrow_decl_facts_live(pool_roots: chcp_no_roots, pool_files: chcp_module_file)
+  any(xs: decls, predicate: fn(d) { d.qualified_name == chcp_combine_decl })
+    && !any(xs: decls, predicate: fn(d) { chcp_calls(decl: d, callee: "hash_combine") })
+}
+
+test fn chcp_combine_routes_through_the_family_kernel() -> Bool {
+  let decls = fn_arrow_decl_facts_live(pool_roots: chcp_no_roots, pool_files: chcp_module_file)
+  any(
+    xs: decls,
+    predicate: fn(d) {
+      d.qualified_name == chcp_combine_decl
+        && chcp_calls(decl: d, callee: "content_hash_atom")
+        && chcp_calls(decl: d, callee: "content_hash_combine_preimage")
+    }
+  )
+}

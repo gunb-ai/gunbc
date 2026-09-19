@@ -4,6 +4,8 @@ import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 
 // WHICH HOST EACH DECLARED SERVING ARM OCCUPIES, AND NOTHING ELSE ABOUT THE ARM.
 //
@@ -39,7 +41,10 @@ type ServingArmHostClaim {
   basis: NonEmptyStr
 }
 
-// THE GLM CANARY, WHICH IS SERVING ON srv9 TODAY.
+// THE RETIRED GLM EXL3 CANARY'S PLACEMENT, KEPT AS A ROW AND NOT IN THE ROSTER. The canary no longer
+// answers -- 192.168.1.236:30001 refused connection on 2026-09-18 -- and srv9 is now spoken for by the
+// native arm below, so this row no longer claims anything. It stays because
+// gunbc.spark.glm_canary_converge reads its host for the canary's own evidence rows.
 //
 // gunbc.serving.serving_enrollment carries the state this row records: the canary is serving on srv9
 // and nothing in this repository launched it through the pair route. That module also records why the
@@ -49,11 +54,34 @@ type ServingArmHostClaim {
 data glm_canary_host_claim: ServingArmHostClaim = ServingArmHostClaim {
   arm: decl_ref(module_path: "gunbc.spark.glm_canary_converge", decl_name: "glm_canary_arm"),
   host: operator_host_srv9,
-  basis: "SPARK canary, operator 2026-09-08: the GLM 5.3 Flash exl3 canary is placed on srv9 and answers there. gunbc.serving.serving_enrollment derives the group B route head from this arm rather than from the pair roster, precisely because the pair claim on group B was withdrawn and the canary was not" as NonEmptyStr,
+  basis: "SPARK canary, operator 2026-09-08: the GLM 5.3 Flash exl3 canary is placed on srv9 and answers there. Retired: since 2026-09-18 nothing live reads this arm; group B serves the native arm in gunbc.spark.fabric_serving_assignment, and the route and claims derive from that" as NonEmptyStr,
+}
+
+// THE NATIVE GLM ARM CONVERGED ON GROUP B, ONE CLAIM PER MEMBER HOST. The arm runs tensor-parallel
+// across every host of the group, so every one of them is spoken for, not only the head. The claimed
+// set is the group's membership (gunbc.spark.fabric_switch_observed fabric_group_hosts), which is total,
+// rather than the launch roster, which refuses when a member lacks a rail address: a refusal there
+// would yield NO claims and let occupied hosts read as free, the absorbing arm DESIGN section 5 forbids.
+// Before this row only srv9 was claimed, by the canary, while srv10, srv11 and srv12 served the native
+// arm and read as unclaimed.
+// GROUP B'S HOLDER IS ITS ASSIGNMENT ROW, NOT AN ARM'S OWN DECLARATION. A claim naming a particular
+// arm's declaration snapshots which engine was running when it was written: that is how every group B
+// fact went on naming the exl3 canary after the hardware stopped serving it. Naming the group's
+// assignment keeps the holder a FABRIC fact -- changing which arm group B serves is an edit inside
+// gunbc.spark.fabric_serving_assignment glm_group_b_serving_assignment, and this reference, the
+// claims, the reservation and the admissibility that key on it do not move.
+data glm_group_b_serving_arm: DeclarationRef = decl_ref(module_path: "gunbc.spark.fabric_serving_assignment", decl_name: "glm_group_b_serving_assignment")
+
+fn glm_group_b_arm_host_claims() -> List<ServingArmHostClaim> {
+  map(fabric_group_hosts(g: glm_group_b_serving_assignment.group), h => ServingArmHostClaim {
+    arm: glm_group_b_serving_arm,
+    host: h,
+    basis: "the native GLM 5.3 Flash arm converged on fabric group B by gunbc.spark.glm_group_b_relaunch_cli runs four-rank tensor parallel across the group's members; observed answering at 192.168.1.236:30000 as glm-5.3-flash on 2026-09-18" as NonEmptyStr,
+  })
 }
 
 // THE ROSTER. A serving arm placed on a host appears here; the fleet census reads this list and never
-// an individual row, so a second arm is one row and no edit anywhere else.
+// an individual row, so a second arm is one more set of claims and no edit anywhere else.
 //
 // THERE IS NO `spark_serving_arm_claimed_hosts()` BESIDE IT, and the absence is deliberate. One was
 // written -- a `map` from this roster to bare host identities -- imported by the census, and never
@@ -61,6 +89,4 @@ data glm_canary_host_claim: ServingArmHostClaim = ServingArmHostClaim {
 // to say why, and a list of identities throws exactly that away. A projection with no call site is
 // DESIGN section 3c's red state, and the honest fix for one is deletion rather than a consumer
 // invented to justify it (found by claude review 64213).
-data spark_serving_arm_host_claims: List<ServingArmHostClaim> = [
-  glm_canary_host_claim,
-]
+data spark_serving_arm_host_claims: List<ServingArmHostClaim> = glm_group_b_arm_host_claims()

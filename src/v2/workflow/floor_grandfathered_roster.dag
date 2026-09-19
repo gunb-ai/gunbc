@@ -205,6 +205,18 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
   },
   WitnessDeleted {
+    identity: "v2.test.lens_application.sg_claims.lens_application_introspect_advisory_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_application.apply_lens_introspect_rejection_is_advisory.apply_lens_introspect_rejection_is_advisory_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_application.sg_claims.lens_application_synthesis_gap_polynomial_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_idempotency.sg_claims.lens_idempotency_write_effect_holds" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.lens_idempotency.write_effect.idempotency_write_effect_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.generated_conformance_floor.generated_lbe_conj_snapshot_passes" as NonEmptyStr,
     deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass; the fact stays enrolled at its declaration" as NonEmptyStr,
   },
@@ -257,6 +269,10 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     previous_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds" as NonEmptyStr,
     new_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_control_holds" as NonEmptyStr,
     renamed_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): the test fn shared the spelling of the interpreter primitive it enrols (std.primitives free_call), so every call of that name in the module bound at name resolution to the test fn; the enrolling test fn now carries a distinct name and calls the primitive directly" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree" as NonEmptyStr,
+    deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- DESIGN section 3, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
   },
 ]
 
