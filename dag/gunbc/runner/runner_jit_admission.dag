@@ -17,7 +17,7 @@ data runner_jit_admission_disposition: Disposition = SingleAuthority
 //      extdeps.github.org_admin_auth.github_app_installation_access_token_url, minted from the
 //      gunbai-ci App key (gunbc.auth.github_apps.gunbai_ci_declared).
 //   2. POST /orgs/{org}/actions/runners/generate-jitconfig with that installation token, path from
-//      extdeps.github.actions_jit_runner.org_generate_jitconfig_path.
+//      the org-interpolated path template of extdeps.github.actions_jit_runner github.ActionsJitRunners.GenerateOrganizationJitConfig.
 // What step 2 accepts as a body is JitRunnerConfigRequest and nothing else.
 // encoded_jit_config is opaque; a host cannot check binding axes by decoding it.
 

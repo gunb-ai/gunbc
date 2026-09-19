@@ -1068,11 +1068,9 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
   match planned(owned: true, perms: runner_grant) {
     JitMintAuthorized {
       attempt: a,
-      endpoint_path: path,
       request: req,
     } =>
-      path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
-        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+      (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && runner_label_sets_equal(
              a: map(req.labels, l => l.value as String),
              b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],

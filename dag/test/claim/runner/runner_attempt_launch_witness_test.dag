@@ -192,6 +192,32 @@ test fn a_below_floor_credential_stages_no_device_and_starts_no_vmm() -> Bool {
   }
 }
 
+// THE WALL MEASURES BYTES, NOT CODE POINTS, AND THIS IS THE CASE WHERE THEY DIVERGE. Sixty-five
+// thousand five hundred thirty-six two-byte code points are 65,536 characters -- exactly the
+// ceiling when counted as characters, and 131,072 bytes, twice it. A wall built on string_length
+// admits this; the byte wall refuses it. GitHub returns base64, where the two coincide, so only a
+// multi-byte case can hold the measure honest.
+test fn a_credential_at_the_ceiling_in_code_points_but_over_it_in_bytes_is_refused() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 7, id: "multibyte") {
+        Cons { head: a, tail: _ } => {
+          let wide = doubled(s: "\u{00e9}", k: 16)
+          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: received_for(attempt: a, encoded: wide), ground: GroundClear)
+          string_length(wide) == 65536
+            && byte_size_count(b: jit_drive_utf8_size(text: wide)) == 131072
+            && no_device_no_vmm(plan: plan)
+            && match refusal_of(plan: plan) {
+              Cons { head: JitCredentialAboveCeiling { bytes: n }, tail: _ } => byte_size_count(b: n) == 131072
+              _ => false
+            }
+        }
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
 test fn an_above_ceiling_credential_stages_no_device_and_starts_no_vmm() -> Bool {
   match issued_pairs() {
     Cons { head: pair, tail: _ } =>

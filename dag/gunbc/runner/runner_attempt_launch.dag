@@ -175,8 +175,13 @@ type JitCredentialAdmission
   = JitCredentialAdmitted { admitted: AdmittedJitCredential }
   | JitCredentialRefused { refusal: JitDeviceRefusal }
 
+// BYTES, MEASURED AS BYTES. string_length counts CODE POINTS, so building a ByteSize from it labels
+// one quantity as another -- they coincide for the base64 GitHub returns and diverge for anything
+// else, which is exactly the silent wrong answer a floor and ceiling must not admit (review 68668).
+// gunbc.runner_microvm jit_drive_utf8_size is the corpus authority for the UTF-8 size of text, and
+// it is the same measure the staged device is read back against.
 fn jit_credential_bytes(credential: EncodedJitConfig) -> ByteSize {
-  byte_size(count: string_length(credential.encoded as String))
+  jit_drive_utf8_size(text: credential.encoded as String)
 }
 
 // THE ROSTER IS CONSUMED, NOT RESTATED. gunbc.runner.runner_jit_admission declares signature and

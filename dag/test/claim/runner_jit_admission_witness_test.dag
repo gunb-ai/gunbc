@@ -2,7 +2,6 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.github.actions_jit_runner { org_generate_jitconfig_path }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
@@ -58,10 +57,3 @@ test fn attempt_binding_admits_only_required_mint_name_standing() -> Bool {
   }
 }
 
-test fn the_generate_jitconfig_path_is_derived_from_the_declared_app_owner() -> Bool {
-  org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
-    == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
-    && org_generate_jitconfig_path(org_login: "other-org" as NonEmptyStr)
-       != org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
-    && (gunbai_ci_declared.slug as String) == "gunbai-ci"
-}
