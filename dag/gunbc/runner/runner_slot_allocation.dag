@@ -878,10 +878,47 @@ fn zero_binding_axis(host: HostIdentity) -> RunnerWidthZeroCause {
           axis: "cpu",
           cause: "the CPU axis admits no slot on this host at the declared cores-per-slot"
         }
-      } else if host_memory_admitted_width(host: host) == 0 {
+      } else {
+        zero_after_cpu(host: host)
+      }
+  }
+}
+
+// THE MEMORY AXIS IS ASKED THROUGH THE RESOLUTION, NEVER THROUGH THE Int SHIM (review 68489).
+//
+// An earlier revision of this walk tested host_memory_admitted_width(host) == 0 and, on zero,
+// reported the memory axis as the binding one. That divides host_runner_memory_envelope_bytes, which
+// flattens RunnerMemoryEnvelopeUnestablished to zero -- so a host whose envelope inputs were NEVER
+// ESTABLISHED was reported as a host measured to have less than one slot of capacity. srv2 is
+// exactly that host and is live and enrolled, so the walk emitted a confident located claim about a
+// machine nobody has measured, through admit_or_refuse_zero_width, to an operator.
+//
+// THAT IS THE DEFECT THIS WHOLE FUNCTION EXISTS TO REMOVE, REINTRODUCED ONE LAYER DOWN. The
+// annotation at gunbc.ci_runner_placement zero_width_cause describes it in terms -- a cause the code
+// did not compute, naming the least likely explanation on the live fleet -- and this walk was the
+// repair. Asking the same question through a total projection to Int put it straight back, because
+// the shim answers zero for two different states and only the resolution tells them apart.
+//
+// So the unestablished arm is carried out with its own upstream cause, and the Int is consulted ONLY
+// on the arm where the envelope actually derived.
+// THE d != 0 DISK ARM ANSWERS THE DISAGREEMENT, NOT WidthIsNotZero (review 68510). This walk is
+// only entered when the derived width IS zero, so an arm reaching it with every axis positive is a
+// contradiction between the minimum and its terms, not a fact about the host. Answering
+// WidthIsNotZero there rendered "the width is not zero on this host, so no zero-width cause exists
+// to report" -- and gunbc.ci_runner_placement emits that string INSIDE a ZeroRunnerWidth refusal, so
+// the refusal's own cause asserted there was no refusal. The DiskWidthUnconstrained arm two lines
+// below already handled the identical state honestly; the asymmetry was the defect.
+fn zero_after_cpu(host: HostIdentity) -> RunnerWidthZeroCause {
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeUnestablished { cause: why } =>
+      WidthZeroFromUnresolvedDerivation {
+        cause: concat("the runner memory envelope could not be derived on this host, so no axis verdict is available: ", why)
+      }
+    RunnerMemoryEnvelopeDerived { bytes: _ } =>
+      if host_memory_admitted_width(host: host) == 0 {
         WidthZeroFromBindingAxis {
           axis: "memory",
-          cause: "the memory axis admits no slot on this host: its runner memory envelope divided by the slot MemoryMax is zero"
+          cause: "the memory axis admits no slot on this host: its DERIVED runner memory envelope divided by the slot MemoryMax is zero"
         }
       } else {
         match host_disk_admitted_width(host: host) {
@@ -889,7 +926,9 @@ fn zero_binding_axis(host: HostIdentity) -> RunnerWidthZeroCause {
             if d == 0 {
               WidthZeroFromBindingAxis { axis: "disk", cause: concat("the disk axis admits no slot on this host: ", prov) }
             } else {
-              WidthIsNotZero { slots: d }
+              WidthZeroFromUnresolvedDerivation {
+                cause: "the width is zero while every axis admits a positive width, which is a disagreement between the minimum and its terms rather than a host fact"
+              }
             }
           DiskWidthUnconstrained { reason: _ } =>
             WidthZeroFromUnresolvedDerivation {
