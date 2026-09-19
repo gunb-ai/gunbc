@@ -193,7 +193,7 @@ fn qualify_refusals(r: RefusalStanding, computation: QualifiedComputation, ctx: 
     RefusalsNotApplicable =>
       match computation {
         NoComputationHalf => RefusalsVerified { by: "no computation half: the refusal contract is the provider's or the query's" as NonEmptyStr }
-        ComputationNotEstablished { detail: _ } => RefusalsVerified { by: "no established computation to own a refusal contract" as NonEmptyStr }
+        ComputationNotEstablished { detail: d } => RefusalsUnverified { detail: d }
         ComputationVerified { authority: _, inputs: _, result: _, body: _ } => RefusalsUnverified { detail: "a computation over modeled inputs whose refusal standing was recorded as not applicable" as NonEmptyStr }
       }
     RefusalsTyped =>

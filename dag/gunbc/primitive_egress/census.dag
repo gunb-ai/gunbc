@@ -176,12 +176,14 @@ type ConsumerTally {
   test_sites: Int
   v2_modules: List<String>
   v1_modules: List<String>
+  dag_modules: List<String>
+  test_modules: List<String>
   unresolved_sites: Int
   unresolved_callers: List<String>
 }
 
 fn empty_consumer_tally() -> ConsumerTally {
-  ConsumerTally { v2_sites: 0, v1_sites: 0, dag_sites: 0, test_sites: 0, v2_modules: [], v1_modules: [], unresolved_sites: 0, unresolved_callers: [] }
+  ConsumerTally { v2_sites: 0, v1_sites: 0, dag_sites: 0, test_sites: 0, v2_modules: [], v1_modules: [], dag_modules: [], test_modules: [], unresolved_sites: 0, unresolved_callers: [] }
 }
 
 fn push_distinct(xs: List<String>, x: String) -> List<String> {
@@ -190,15 +192,15 @@ fn push_distinct(xs: List<String>, x: String) -> List<String> {
 
 fn tally_resolved(t: ConsumerTally, layer: CallerLayer, module: String) -> ConsumerTally {
   match layer {
-    V2Caller => ConsumerTally { v2_sites: t.v2_sites + 1, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: push_distinct(xs: t.v2_modules, x: module), v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
-    V1Caller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites + 1, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: push_distinct(xs: t.v1_modules, x: module), unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
-    DagCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites + 1, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
-    TestCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites + 1, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    V2Caller => ConsumerTally { v2_sites: t.v2_sites + 1, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: push_distinct(xs: t.v2_modules, x: module), v1_modules: t.v1_modules, dag_modules: t.dag_modules, test_modules: t.test_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    V1Caller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites + 1, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: push_distinct(xs: t.v1_modules, x: module), dag_modules: t.dag_modules, test_modules: t.test_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    DagCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites + 1, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, dag_modules: push_distinct(xs: t.dag_modules, x: module), test_modules: t.test_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    TestCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites + 1, v2_modules: t.v2_modules, v1_modules: t.v1_modules, dag_modules: t.dag_modules, test_modules: push_distinct(xs: t.test_modules, x: module), unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
   }
 }
 
 fn tally_unresolved(t: ConsumerTally, caller: String) -> ConsumerTally {
-  ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites + 1, unresolved_callers: push_distinct(xs: t.unresolved_callers, x: caller) }
+  ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, dag_modules: t.dag_modules, test_modules: t.test_modules, unresolved_sites: t.unresolved_sites + 1, unresolved_callers: push_distinct(xs: t.unresolved_callers, x: caller) }
 }
 
 fn tally_total_sites(t: ConsumerTally) -> Int {

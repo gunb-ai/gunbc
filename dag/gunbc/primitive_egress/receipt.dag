@@ -176,7 +176,7 @@ fn match_json(m: DispositionMatch) -> JsonValue {
   match m {
     ExactlyOneDisposition { evidence: r, qualified: _, disposition: d } => disposition_json(row: r, d: d)
     NoDisposition => json_object(members: [json_kv(key: "class", value: json_string(s: "NONE")), json_kv(key: "matching_dispositions", value: json_int(n: 0))])
-    MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs)))])
+    MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs))), json_kv(key: "matching_rows", value: json_array(elements: rs |> map(r => evidence_json(e: r))))])
   }
 }
 
@@ -188,6 +188,8 @@ fn tally_json(t: ConsumerTally) -> JsonValue {
     json_kv(key: "test_sites", value: json_int(n: t.test_sites)),
     json_kv(key: "v2_modules", value: strs(xs: t.v2_modules)),
     json_kv(key: "v1_modules", value: strs(xs: t.v1_modules)),
+    json_kv(key: "dag_modules", value: strs(xs: t.dag_modules)),
+    json_kv(key: "test_modules", value: strs(xs: t.test_modules)),
     json_kv(key: "unresolved_sites", value: json_int(n: t.unresolved_sites)),
     json_kv(key: "unresolved_callers", value: strs(xs: t.unresolved_callers)),
   ])

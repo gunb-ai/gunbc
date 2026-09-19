@@ -30,6 +30,8 @@ import gunbc.primitive_egress.census {
   census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
 }
 import gunbc.primitive_egress.category { TextOps, SeedQuery }
+import gunbc.primitive_egress.census_live { live_surface_facts }
+import gunbc.primitive_egress.receipt { census_receipt_lines }
 import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefResolved, DeclarationRefDeclarationAbsent, DeclarationIdentity }
 import v2.std.decl_index { FnItem, ServiceItem }
 import gunbc.v1_interpreter_primitive_surface { InterpreterPrimitiveDispatchArm, InterpreterPrimitiveArmId, ServiceDispatch, EvalServiceCallCarveOutSite, AuthoredInRoster }
@@ -225,6 +227,42 @@ test fn w_multiple_disposition_identity_does_not_hold() -> Bool {
   has(xs: standing_names(ss: multiple_disposition(c: c)), x: "zeta")
     && count(exactly_one_disposition(c: c)) == 0
     && match census_standing(c: c) { CensusDidNotHold { cause: _ } => true  CensusHeld => false  CensusRefused { cause: _ } => false }
+}
+
+// The receipt prints the colliding rows themselves, not only how many collided: the population
+// that fails the census is the one a reader must be able to act on, so its identity line carries
+// every matched evidence row (matching_rows), and the count is the length of that list.
+test fn w_receipt_names_the_colliding_rows_of_a_multiple_disposition() -> Bool {
+  let c = census_of(facts: [fact(surface: BuiltinRegistry, spelling: "zeta", form: FreeForm)], edges: [], rows: [row(name: "zeta"), row(name: "zeta")])
+  let lines = census_receipt_lines(c: c, scope: "fixture", scope_complete: false, entries_resolved: 0, roster_missing: [], roster_extra: [])
+  let zeta_lines = lines |> filter(fn(l) { string_contains(s: l, pattern: "\"class\": \"MULTIPLE\"") })
+  count(zeta_lines) == 1
+    && (zeta_lines |> all(l => string_contains(s: l, pattern: "\"matching_dispositions\": 2") && string_contains(s: l, pattern: "\"matching_rows\": [{")))
+}
+
+// INHABITANCE OF THE SURFACE BOUNDARY (DESIGN §3, the pairing obligation). Every other claim in
+// this file supplies its surface facts; this one runs the real producer, live_surface_facts, and
+// asserts the ROUTE: each of the five surface authorities is read from its own source (a fact on
+// every one), the interpreter roster is split to operation grain (Filesystem.Read and
+// Filesystem.List each present, the joined spelling absent), and the registry key set is the
+// compiled registry (a key the hand roster never carried, compile_dag_primitive_call_edges, is
+// present). Deleting any one producer from the concatenation turns this red.
+fn facts_on(facts: List<SurfaceFact>, s: PrimitiveSurfaceAuthority) -> Bool {
+  facts |> any(f => f.surface == s)
+}
+
+fn facts_spell(facts: List<SurfaceFact>, x: String) -> Bool {
+  facts |> any(f => f.spelling == x)
+}
+
+test fn w_live_surface_facts_are_produced_from_every_surface_authority() -> Bool {
+  let facts = live_surface_facts()
+  count(facts) > 0
+    && (facts |> all(f => f.spelling != ""))
+    && facts_on(facts: facts, s: BuiltinRegistry) && facts_on(facts: facts, s: PrimitiveContractRow) && facts_on(facts: facts, s: AlgebraTemplate)
+    && facts_on(facts: facts, s: EmitHandler) && facts_on(facts: facts, s: InterpreterDispatch)
+    && facts_spell(facts: facts, x: "Filesystem.Read") && facts_spell(facts: facts, x: "Filesystem.List") && !facts_spell(facts: facts, x: "Filesystem.Read|List")
+    && facts_spell(facts: facts, x: "compile_dag_primitive_call_edges") && facts_spell(facts: facts, x: "length")
 }
 
 // Unresolved is explicit and does NOT fail the census.
