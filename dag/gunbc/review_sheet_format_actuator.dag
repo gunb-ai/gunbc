@@ -23,6 +23,10 @@ import extdeps.transports.rest {
 }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,
+  ValidatedHeaderSchema,
+  review_sheet_header_names,
+  review_sheet_header_count,
+  validated_schema,
   ReviewColumn,
   ReviewColumnKind,
   DerivedField,
@@ -127,49 +131,54 @@ data review_sheet_header_row_count: Int = 1
 //
 // Both are derived from the supplied schema now. A schema with no ListingStanding column cannot be
 // formatted and says so, rather than colouring index 3 and hoping.
-fn schema_column_count(schema: ReviewSheetSchema) -> Int {
-  count(schema.columns)
+//
+// THE HEADER ROW'S EXTENT AND THE STANDING COLUMN'S POSITION ARE READ OFF THE VALIDATED HEADER ROW,
+// NOT OFF THE COLUMN ROSTER. They differ: gunbc.review_sheet_projection renders the identity column
+// ahead of the roster when the schema does not carry it as a column, so for a buyer-shaped schema
+// `count(schema.columns)` is one short of the header row and every column's sheet position is one
+// to the left of where the roster puts it. A band sized that way stops before the last header and a
+// conditional rule keyed that way paints the column beside Standing -- both silently, both reported
+// as applied. Taking ValidatedHeaderSchema rather than ReviewSheetSchema is what makes that
+// unwritable here: this module has no way to construct the carrier and so cannot re-derive the row.
+fn schema_column_count(validated: ValidatedHeaderSchema) -> Int {
+  review_sheet_header_count(validated: validated)
 }
 
 type StandingColumnIndex
   = StandingColumnAt { index: Int }
   | StandingColumnAbsent
 
-type StandingScan {
-  next_index: Int
-  found: StandingColumnIndex
+// The FIRST ListingStanding column wins and later ones are ignored rather than refused, because a
+// schema carrying two is a defect in the schema and this module is not its validator.
+fn first_standing_column_name(schema: ReviewSheetSchema) -> NonEmptyStr? {
+  schema.columns
+    |> filter(c => match c.kind {
+      ListingStanding => true
+      DerivedField { source_field: _ } => false
+      OperatorEntered => false
+      DerivedErasureMark => false
+    })
+    |> map(c => c.name)
+    |> first
 }
 
-// The FIRST ListingStanding column wins and later ones are ignored rather than refused, because a
-// schema carrying two is a defect in the schema and this module is not its validator. The scan
-// keeps counting after a hit so next_index stays the true column position rather than freezing.
-fn advance_standing_scan(acc: StandingScan, col: ReviewColumn) -> StandingScan {
-  match acc.found {
-    StandingColumnAt { index: i } =>
-      StandingScan { next_index: acc.next_index + 1, found: StandingColumnAt { index: i } }
-    StandingColumnAbsent =>
-      match col.kind {
-        ListingStanding =>
-          StandingScan {
-            next_index: acc.next_index + 1,
-            found: StandingColumnAt { index: acc.next_index },
-          }
-        DerivedField { source_field: _ } =>
-          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
-        OperatorEntered =>
-          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
-        DerivedErasureMark =>
-          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+fn header_index_of(validated: ValidatedHeaderSchema, name: NonEmptyStr) -> Int? {
+  review_sheet_header_names(validated: validated)
+    |> enumerate
+    |> filter(pair => (pair.second as String) == (name as String))
+    |> map(pair => pair.first)
+    |> first
+}
+
+fn standing_column_index(validated: ValidatedHeaderSchema) -> StandingColumnIndex {
+  match first_standing_column_name(schema: validated_schema(validated: validated)) {
+    Absent => StandingColumnAbsent
+    Present { value: name } =>
+      match header_index_of(validated: validated, name: name) {
+        Absent => StandingColumnAbsent
+        Present { value: i } => StandingColumnAt { index: i }
       }
   }
-}
-
-fn standing_column_index(schema: ReviewSheetSchema) -> StandingColumnIndex {
-  fold_list(
-    schema.columns,
-    StandingScan { next_index: 0, found: StandingColumnAbsent },
-    (acc, col) => advance_standing_scan(acc: acc, col: col),
-  ).found
 }
 
 type FormatStepOutcome
@@ -214,7 +223,7 @@ fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Net
   classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
 }
 
-fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome uses net: Network {
+fn format_header_band(spreadsheet_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatStepOutcome uses net: Network {
   match header_background_color() {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
@@ -229,7 +238,7 @@ fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) ->
             start_row: 0,
             end_row: review_sheet_header_row_count,
             start_col: 0,
-            end_col: schema_column_count(schema: schema),
+            end_col: schema_column_count(validated: validated),
             background: bg,
             foreground: fg,
             bold: true,
@@ -333,10 +342,10 @@ type FormatReport {
 // The steps are named individually rather than folded over the roster because each is an EFFECT
 // and the report names which one refused. A fold would answer "one of five failed", which is the
 // shape of diagnostic this session has repeatedly had to go back and re-derive.
-fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport uses net: Network {
+fn format_review_sheet(spreadsheet_id: NonEmptyStr, validated: ValidatedHeaderSchema, standing_col: Int) -> FormatReport uses net: Network {
   FormatReport {
     freeze: freeze_header(spreadsheet_id: spreadsheet_id),
-    header: format_header_band(spreadsheet_id: spreadsheet_id, schema: schema),
+    header: format_header_band(spreadsheet_id: spreadsheet_id, validated: validated),
     opportunity: color_standing(
       spreadsheet_id: spreadsheet_id, match_text: "Opportunity",
       color: standing_admitted_color(), rule_index: 0, standing_col: standing_col),
@@ -700,21 +709,21 @@ type FormatConvergeOutcome
 // distance between those two is where the first live run lost an hour.
 fn converge_review_sheet_format(
   spreadsheet_id: NonEmptyStr,
-  schema: ReviewSheetSchema,
+  validated: ValidatedHeaderSchema,
 ) -> FormatConvergeOutcome uses net: Network {
-  match standing_column_index(schema: schema) {
+  match standing_column_index(validated: validated) {
     StandingColumnAbsent =>
       FormatConvergeRefused {
         cause: "the supplied schema carries no ListingStanding column, so there is no column to colour by standing and painting a positional guess would colour whatever now sits there" as NonEmptyStr
       }
     StandingColumnAt { index: standing_col } =>
-      converge_format_with_standing(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col)
+      converge_format_with_standing(spreadsheet_id: spreadsheet_id, validated: validated, standing_col: standing_col)
   }
 }
 
 fn converge_format_with_standing(
   spreadsheet_id: NonEmptyStr,
-  schema: ReviewSheetSchema,
+  validated: ValidatedHeaderSchema,
   standing_col: Int,
 ) -> FormatConvergeOutcome uses net: Network {
   match uint8_channel_inclusive_max_value_derived() {
@@ -730,7 +739,7 @@ fn converge_format_with_standing(
             SheetsColorUnderivable { cause: c } => FormatConvergeRefused { cause: c }
             SheetsColorDerived { color: fg } =>
               converge_with_desired(
-                spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col,
+                spreadsheet_id: spreadsheet_id, validated: validated, standing_col: standing_col,
                 inclusive_max: m, header_bg: bg, header_fg: fg)
           }
       }
@@ -739,7 +748,7 @@ fn converge_format_with_standing(
 
 fn converge_with_desired(
   spreadsheet_id: NonEmptyStr,
-  schema: ReviewSheetSchema,
+  validated: ValidatedHeaderSchema,
   standing_col: Int,
   inclusive_max: Int,
   header_bg: SheetsColor,
@@ -757,7 +766,7 @@ fn converge_with_desired(
       } else {
         verify_applied_format(
           spreadsheet_id: spreadsheet_id,
-          report: format_review_sheet(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col),
+          report: format_review_sheet(spreadsheet_id: spreadsheet_id, validated: validated, standing_col: standing_col),
           inclusive_max: inclusive_max,
           header_bg: header_bg,
           header_fg: header_fg,

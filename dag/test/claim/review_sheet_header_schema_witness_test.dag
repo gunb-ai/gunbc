@@ -1,0 +1,324 @@
+module test.claim.review_sheet_header_schema_witness
+
+// THE ONE HEADER-SCHEMA AUTHORITY, EXERCISED AND WALLED. gunbc.review_sheet_projection
+// validate_header_schema is the only mint of ValidatedHeaderSchema, and every reader of a review
+// sheet's header row now takes that carrier: missing_schema_header (so classify_review_sheet
+// refuses a malformed schema before it reads a cell), and the format actuator's band extent and
+// standing-column position. This witness establishes both halves -- that the fold decides the
+// right things, and that the carrier cannot be assembled around it.
+//
+// THE IDENTITY-IN-COLUMNS RULE IS THE PART A READER WILL GET WRONG, so it is claimed in both
+// directions rather than left to the annotation: ci_prospect keys on "Repository", which IS its
+// column at index 1, and its header row must read Rank, Repository, Owner, ... with the name once
+// and in place; buyer_review keys on "Listing", which is NOT among its columns, so "Listing" is
+// prepended and the header row is one wider than the roster. Both production schemas are asserted
+// to validate, by name.
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  ObservedSheet,
+  ObservedSheetRow,
+  ReviewSheetProjection,
+  ProjectionRow,
+  DerivedCell,
+  ReviewSheetClassification,
+  ReviewSheetUnreadable,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  classify_review_sheet,
+  validate_header_schema,
+  HeaderSchemaValidation,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+  HeaderSchemaDuplicateColumn,
+  HeaderSchemaIdentityColumnNotDerived,
+  review_sheet_header_names,
+  review_sheet_header_count,
+  ci_prospect_sheet_schema,
+  buyer_review_sheet_schema,
+}
+import gunbc.review_sheet_format_actuator {
+  standing_column_index,
+  StandingColumnAt,
+  StandingColumnAbsent,
+  schema_column_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn derived(name: String, field: String) -> ReviewColumn {
+  ReviewColumn { name: name as NonEmptyStr, kind: DerivedField { source_field: field as NonEmptyStr } }
+}
+
+fn operator(name: String) -> ReviewColumn {
+  ReviewColumn { name: name as NonEmptyStr, kind: OperatorEntered }
+}
+
+fn standing(name: String) -> ReviewColumn {
+  ReviewColumn { name: name as NonEmptyStr, kind: ListingStanding }
+}
+
+fn rendered(v: HeaderSchemaValidation) -> String {
+  match v {
+    HeaderSchemaRefused { refusal: _, reason: _ } => "<refused>"
+    HeaderSchemaValidated { validated: vs } =>
+      join(map(review_sheet_header_names(validated: vs), n => n as String), "|")
+  }
+}
+
+fn refusal_reason(v: HeaderSchemaValidation) -> String {
+  match v {
+    HeaderSchemaValidated { validated: _ } => "<validated>"
+    HeaderSchemaRefused { refusal: _, reason: r } => r as String
+  }
+}
+
+fn refused_name(v: HeaderSchemaValidation) -> String {
+  match v {
+    HeaderSchemaValidated { validated: _ } => "<validated>"
+    HeaderSchemaRefused { refusal: f, reason: _ } =>
+      match f {
+        HeaderSchemaDuplicateColumn { name: n } => n as String
+        HeaderSchemaIdentityColumnNotDerived { name: n, kind: _ } => n as String
+      }
+  }
+}
+
+fn is_validated(v: HeaderSchemaValidation) -> Bool {
+  match v {
+    HeaderSchemaValidated { validated: _ } => true
+    HeaderSchemaRefused { refusal: _, reason: _ } => false
+  }
+}
+
+// -- the refusals ---------------------------------------------------------------------
+
+// The brief this change was written against named a different specimen -- identity "Listing" plus a
+// column "Listing" -- which the ruling below the module note reclassified as legitimate. THIS is
+// the collision that survives: two columns carrying one name, which renders the name twice in the
+// header row and which the next classification would then refuse over an occupied tab.
+fn two_columns_named_listing() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Item" as NonEmptyStr,
+    columns: [derived(name: "Listing", field: "listing"), operator(name: "Listing")],
+  }
+}
+
+test fn two_columns_with_one_name_are_refused_naming_the_name() -> Bool {
+  let v = validate_header_schema(schema: two_columns_named_listing())
+  !is_validated(v: v)
+    && refused_name(v: v) == "Listing"
+    && refusal_reason(v: v) == "review sheet schema declares two columns named Listing"
+}
+
+// An identity column carried in the roster must be the column that HOLDS the identity. An
+// OperatorEntered one would have the append path write listing_id over the operator's cell.
+fn operator_identity_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Decision" as NonEmptyStr,
+    columns: [derived(name: "Title", field: "title"), operator(name: "Decision")],
+  }
+}
+
+test fn an_identity_column_declared_operator_entered_is_refused_naming_it() -> Bool {
+  let v = validate_header_schema(schema: operator_identity_schema())
+  !is_validated(v: v)
+    && refused_name(v: v) == "Decision"
+    && refusal_reason(v: v) == "review sheet identity column Decision is declared as OperatorEntered"
+}
+
+// -- the two legitimate shapes --------------------------------------------------------
+
+fn identity_in_columns_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Repository" as NonEmptyStr,
+    columns: [
+      derived(name: "Rank", field: "rank"),
+      derived(name: "Repository", field: "repository"),
+      derived(name: "Owner", field: "owner"),
+      standing(name: "Standing"),
+    ],
+  }
+}
+
+test fn an_identity_that_is_one_of_the_columns_renders_once_in_place() -> Bool {
+  rendered(v: validate_header_schema(schema: identity_in_columns_schema()))
+    == "Rank|Repository|Owner|Standing"
+}
+
+fn identity_outside_columns_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Listing" as NonEmptyStr,
+    columns: [
+      derived(name: "Title", field: "title"),
+      standing(name: "Standing"),
+      operator(name: "Decision"),
+    ],
+  }
+}
+
+test fn an_identity_outside_the_columns_is_prepended_to_the_header_row() -> Bool {
+  rendered(v: validate_header_schema(schema: identity_outside_columns_schema()))
+    == "Listing|Title|Standing|Decision"
+}
+
+// -- the production schemas -----------------------------------------------------------
+
+fn buyer_derived_columns() -> List<ReviewColumn> {
+  [
+    derived(name: "Title", field: "title"),
+    standing(name: "Standing"),
+    derived(name: "Price", field: "price"),
+  ]
+}
+
+test fn both_production_schemas_validate() -> Bool {
+  is_validated(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
+    && is_validated(v: validate_header_schema(schema: buyer_review_sheet_schema(derived_columns: buyer_derived_columns())))
+}
+
+// The live ci_prospect header row, asserted by name and in order. This is the row the sheet already
+// carries: an identity prepended ahead of it would be both a duplicate "Repository" and a reorder.
+test fn the_ci_prospect_header_row_is_its_column_roster_in_order() -> Bool {
+  rendered(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
+    == "Rank|Repository|Owner|Standing|Runner-min/day|Runs/day|Median min|p90 min|Success %|Linux %|Provider|Stars|Language|Why|URL|Decision|Note"
+}
+
+test fn the_buyer_header_row_carries_its_identity_ahead_of_the_roster() -> Bool {
+  rendered(v: validate_header_schema(schema: buyer_review_sheet_schema(derived_columns: buyer_derived_columns())))
+    == "Listing|Title|Standing|Price|Decision|Units to buy|Accepted on judgement|Note"
+}
+
+// -- the header row's extent and the standing column's position -----------------------
+
+fn validated_or_fail(s: ReviewSheetSchema) -> Int {
+  match validate_header_schema(schema: s) {
+    HeaderSchemaRefused { refusal: _, reason: _ } => -1
+    HeaderSchemaValidated { validated: v } => schema_column_count(validated: v)
+  }
+}
+
+// count(schema.columns) is 3 for this schema and the header row is 4 wide. A band sized to the
+// roster would stop before "Decision".
+test fn the_header_extent_counts_the_prepended_identity() -> Bool {
+  let s = identity_outside_columns_schema()
+  validated_or_fail(s: s) == 4 && count(s.columns) == 3
+}
+
+fn standing_at(s: ReviewSheetSchema) -> Int {
+  match validate_header_schema(schema: s) {
+    HeaderSchemaRefused { refusal: _, reason: _ } => -1
+    HeaderSchemaValidated { validated: v } =>
+      match standing_column_index(validated: v) {
+        StandingColumnAbsent => -2
+        StandingColumnAt { index: i } => i
+      }
+  }
+}
+
+// Standing is at roster position 1 and at header position 2, because the identity is prepended. The
+// roster answer would have coloured "Title".
+test fn the_standing_column_is_at_its_header_position_not_its_roster_position() -> Bool {
+  standing_at(s: identity_outside_columns_schema()) == 2
+    && standing_at(s: identity_in_columns_schema()) == 3
+}
+
+// -- the classifier refuses before it reads a cell ------------------------------------
+
+fn sheet_of(headers: List<String>) -> ObservedSheet {
+  ObservedSheet { headers: headers, rows: [] }
+}
+
+fn projection_of(s: ReviewSheetSchema) -> ReviewSheetProjection {
+  ReviewSheetProjection { schema: s, rows: [] }
+}
+
+fn unreadable_reason(c: ReviewSheetClassification) -> String {
+  match c {
+    ReviewSheetUnreadable { reason: r } => r as String
+    ReviewSheetConverged => "<converged>"
+    ReviewSheetNeedsWrite { plan: _ } => "<needs write>"
+    ReviewSheetConflict { conflict: _ } => "<conflict>"
+  }
+}
+
+// The sheet handed in here carries EXACTLY the headers the malformed schema names, so nothing about
+// the observed row is wrong: the refusal is the schema's, and it is reached before the observed
+// headers are folded at all.
+test fn the_classifier_refuses_a_duplicate_column_schema_over_a_matching_sheet() -> Bool {
+  unreadable_reason(c: classify_review_sheet(
+    observed: sheet_of(headers: ["Item", "Listing"]),
+    projection: projection_of(s: two_columns_named_listing()),
+    erasures: [],
+  )) == "review sheet schema declares two columns named Listing"
+}
+
+// The positive control for the arm above: the same fold over a valid schema does NOT report the
+// schema refusal, so the red on the duplicate is the schema wall and not the classifier refusing
+// everything.
+test fn the_classifier_admits_the_valid_shape_it_refused_one_name_away() -> Bool {
+  unreadable_reason(c: classify_review_sheet(
+    observed: sheet_of(headers: ["Listing", "Title", "Standing", "Decision"]),
+    projection: projection_of(s: identity_outside_columns_schema()),
+    erasures: [],
+  )) == "<converged>"
+}
+
+// -- the construction wall ------------------------------------------------------------
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// A source that names nothing wrong is the control that the harness itself is live: the census runs
+// and carries zero blocking rows, so a zero elsewhere is an observation and not a harness that
+// could not run.
+data harness_control_source: String = "module probe_review_sheet_header_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
+
+test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
+  blocking_total(c: census_of(source: harness_control_source)) == 0
+}
+
+test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_validated_header_schema_forged_probe")),
+    wanted: "SoleConstructorViolation",
+    subject: "ValidatedHeaderSchema",
+  ) >= 1
+}

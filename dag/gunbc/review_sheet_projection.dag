@@ -624,8 +624,154 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
   }
 }
 
-fn missing_schema_header(schema: ReviewSheetSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
-  let needed = concat([schema.identity_column], map(schema.columns, c => c.name))
+// ONE AUTHORITY FOR A REVIEW SHEET'S HEADER ROW, AND IT IS A CONSTRUCTION WALL RATHER THAN A CHECK.
+// The names classify_review_sheet requires an observed sheet to carry are exactly the names a writer
+// of a blank tab must put there, in this order. Holding that in two places is how a first write can
+// occupy a tab with a row the next classification then refuses -- and a header row cannot be taken
+// back, so header correctness cannot be deferred past the write.
+//
+// ValidatedHeaderSchema is sole_constructor and validate_header_schema is its only mint, so a writer
+// that demands the carrier cannot be handed a schema whose header row is malformed: the invalid
+// state has no constructor outside this module (DESIGN 4b rung 4 for the population that takes the
+// carrier). What the carrier does NOT claim is that every consumer takes it; a consumer still
+// holding a bare ReviewSheetSchema is outside the wall, which is why the readers below were moved
+// onto it rather than left beside it.
+//
+// AN IDENTITY COLUMN THAT IS ONE OF THE SCHEMA'S OWN COLUMNS IS LEGITIMATE AND IS RENDERED ONCE, IN
+// PLACE. identity_column says which column keys the rows; it does not declare a second column. Both
+// production schemas are here: ci_prospect keys on "Repository", which IS its column at index 1, and
+// its live header row reads Rank, Repository, Owner, ... -- prepending the identity would both
+// duplicate the name and reorder a sheet that already carries 58 rows. buyer_review keys on
+// "Listing", which is NOT among its columns, so the identity is prepended and the header row is one
+// wider than the column roster. The two shapes are one rule: the identity is rendered where the
+// schema puts it, and prepended only when the schema puts it nowhere.
+//
+// EMPTY NAMES ARE NOT CHECKED HERE BECAUSE THEY ARE NOT WRITABLE. ReviewColumn.name and
+// ReviewSheetSchema.identity_column are NonEmptyStr (std.types: String where non_empty), so an empty
+// header name is refused at construction of the schema itself, one rung above anything this fold
+// could add. A check for it here would be permanently green and would be cited as coverage
+// (DESIGN 4b: ask whether the RED is authorable before writing the check).
+type ValidatedHeaderSchema sole_constructor {
+  schema: ReviewSheetSchema
+  header_names: List<NonEmptyStr>
+}
+
+// The refusal names the colliding header, not merely the fact of a collision: an operator reading
+// "duplicate column" over a 17-column roster still has to find it.
+type HeaderSchemaRefusal
+  = HeaderSchemaDuplicateColumn { name: NonEmptyStr }
+  | HeaderSchemaIdentityColumnNotDerived { name: NonEmptyStr, kind: ReviewColumnKind }
+
+type HeaderSchemaValidation
+  = HeaderSchemaValidated { validated: ValidatedHeaderSchema }
+  | HeaderSchemaRefused { refusal: HeaderSchemaRefusal, reason: NonEmptyStr }
+
+fn column_name_key_rows(schema: ReviewSheetSchema) -> List<KeyedRow<String, ReviewColumn>> {
+  map(schema.columns, c => KeyedRow { row_key: c.name as String, value: c })
+}
+
+// The identity column looked up in the roster by NAME, through the module's own monomorphic
+// ReviewColumn fold rather than through the generic keyed_string_map. That is deliberate: a
+// user-declared generic in this family has already failed its first live execution when a fifth
+// element type was added to it (gunbc.recurring_failure_mode
+// generic_type_parameter_fixed_only_by_an_untyped_literal, gunbc#11581, this module's own format
+// actuator), and first_column_where says the type.
+fn identity_column_in_roster(schema: ReviewSheetSchema) -> ReviewColumn? {
+  first_column_where(schema: schema, take: col =>
+    if (col.name as String) == (schema.identity_column as String) {
+      Present { value: col }
+    } else {
+      none
+    })
+}
+
+// An identity column carried in the roster must be the column that HOLDS the identity, which is a
+// DerivedField: the append path writes listing_id into the identity header and ignores whatever the
+// column's own kind would have produced, so an OperatorEntered identity would have the writer
+// overwrite the operator's cell, a ListingStanding identity would have it overwrite the standing
+// label, and a DerivedErasureMark identity would have it overwrite the erasure mark -- each of them
+// silently, each of them reported as success.
+fn identity_column_kind_renders_identity(kind: ReviewColumnKind) -> Bool {
+  match kind {
+    DerivedField { source_field: _ } => true
+    OperatorEntered => false
+    ListingStanding => false
+    DerivedErasureMark => false
+  }
+}
+
+fn review_column_kind_label(kind: ReviewColumnKind) -> String {
+  match kind {
+    DerivedField { source_field: _ } => "DerivedField"
+    OperatorEntered => "OperatorEntered"
+    ListingStanding => "ListingStanding"
+    DerivedErasureMark => "DerivedErasureMark"
+  }
+}
+
+fn validated_header_schema(schema: ReviewSheetSchema, identity_in_columns: Bool) -> ValidatedHeaderSchema {
+  let column_names = map(schema.columns, c => c.name)
+  ValidatedHeaderSchema {
+    schema: schema,
+    header_names: if identity_in_columns {
+      column_names
+    } else {
+      concat([schema.identity_column], column_names)
+    },
+  }
+}
+
+// THE ONLY MINT. Duplicate column names are found by the same keyed_roster_build that
+// classify_review_sheet already uses on the OBSERVED headers, so the desired row and the observed
+// row are judged unique by one fold rather than by two spellings of uniqueness.
+fn validate_header_schema(schema: ReviewSheetSchema) -> HeaderSchemaValidation {
+  match keyed_roster_build(incomings: column_name_key_rows(schema: schema), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: dup } =>
+      HeaderSchemaRefused {
+        refusal: HeaderSchemaDuplicateColumn { name: dup.value.name },
+        reason: concat("review sheet schema declares two columns named ", d) as NonEmptyStr,
+      }
+    KeyedRosterBuilt { rows: _ } =>
+      match identity_column_in_roster(schema: schema) {
+        Absent =>
+          HeaderSchemaValidated {
+            validated: validated_header_schema(schema: schema, identity_in_columns: false)
+          }
+        Present { value: col } =>
+          if identity_column_kind_renders_identity(kind: col.kind) {
+            HeaderSchemaValidated {
+              validated: validated_header_schema(schema: schema, identity_in_columns: true)
+            }
+          } else {
+            HeaderSchemaRefused {
+              refusal: HeaderSchemaIdentityColumnNotDerived { name: col.name, kind: col.kind },
+              reason: concat(
+                concat("review sheet identity column ", col.name as String),
+                concat(" is declared as ", review_column_kind_label(kind: col.kind))
+              ) as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+fn review_sheet_header_names(validated: ValidatedHeaderSchema) -> List<NonEmptyStr> {
+  validated.header_names
+}
+
+fn validated_schema(validated: ValidatedHeaderSchema) -> ReviewSheetSchema {
+  validated.schema
+}
+
+// The header row's width is the header NAME count, never the column count: for a schema whose
+// identity is not among its columns the two differ by one, and a band sized to the column count
+// stops one short of the last header.
+fn review_sheet_header_count(validated: ValidatedHeaderSchema) -> Int {
+  count(validated.header_names)
+}
+
+fn missing_schema_header(validated: ValidatedHeaderSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
+  let needed = review_sheet_header_names(validated: validated)
   needed |> filter(n => match header_by_name.lookup(n as String) {
     Present { value: _ } => false
     Absent => true
@@ -1248,12 +1394,15 @@ fn classify_review_sheet(
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetClassification {
+  match validate_header_schema(schema: projection.schema) {
+    HeaderSchemaRefused { refusal: _, reason: r } => ReviewSheetUnreadable { reason: r }
+    HeaderSchemaValidated { validated: validated } =>
   match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
       ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
     KeyedRosterBuilt { rows: header_rows } => {
       let header_by_name = keyed_string_map(rows: header_rows)
-      match missing_schema_header(schema: projection.schema, header_by_name: header_by_name) {
+      match missing_schema_header(validated: validated, header_by_name: header_by_name) {
     Present { value: missing } =>
       ReviewSheetUnreadable { reason: concat("missing header ", missing as String) as NonEmptyStr }
     Absent =>
@@ -1298,6 +1447,7 @@ fn classify_review_sheet(
       }
       }
     }
+  }
   }
 }
 
