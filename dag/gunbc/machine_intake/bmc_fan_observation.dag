@@ -69,16 +69,36 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // THE CREDENTIAL IS A FILE PATH, never a value, for the reason extdeps.bmc.ipmi's own header gives:
 // a password in argv is published to every `ps` on the runner. The caller materializes the file.
 
+// A READ THAT DID NOT HAPPEN HAS NO RESULT, AND THE RECORD SAYS SO IN ONE FIELD RATHER THAN TWO.
+//
+// This round used to carry chassis_readable: Bool beside power_on: Bool, and thermal_readable: Bool
+// beside host_thermal. On a failed read the else branches stored the BENIGN value - power_on false,
+// sensors-silent - so the record held a value no controller produced and the receipt printed
+// `thermal_readable=false host_thermal=sensors-silent`, which states the sensors were silent when
+// nothing was read. The verdict path happened to be safe because post_state_of_round checked the
+// sibling flag first, but that is safety by every consumer remembering a second field, and the
+// rendered series IS this lane's deliverable.
+//
+// It is also the third form of one defect this change has now fixed: the sentinel window zero, the
+// substituted SDR field, and this. The repair is the same each time - the absence gets an arm
+// instead of a plausible value - and doing it here removes the two-field disagreement by
+// construction rather than by a checking order.
+type ChassisPowerObservation
+  = ChassisPowerRead { power_on: Bool }
+  | ChassisUnreadable
+
+type ThermalObservation
+  = ThermalRead { publication: SdrTemperaturePublication }
+  | ThermalUnreadable
+
 type FanObservationRound {
   observed_at: NonEmptyStr
   round_index: Int
-  power_on: Bool
-  thermal_readable: Bool
-  host_thermal: SdrTemperaturePublication
+  chassis: ChassisPowerObservation
+  thermal: ThermalObservation
   fan_lines: List<SdrTypeLine>
   fan_undecoded_line_count: SdrUndecodedLineCount
   temperature_undecoded_line_count: SdrUndecodedLineCount
-  chassis_readable: Bool
 }
 
 // AN UNREADABLE THERMAL SENSOR LIST IS NOT "THIS HOST PUBLISHES NO THERMALS", AND THE FIRST
@@ -119,17 +139,19 @@ type FanObservationRound {
 // stronger claim needs a POST observation from a channel that actually sees one - SOL or the SEL
 // firmware-progress records, neither of which this read-only lane touches.
 fn post_state_of_round(round: FanObservationRound) -> HostPostState {
-  if !round.chassis_readable {
-    HostPostStateUnobserved
-  } else if !round.power_on {
-    HostPoweredOff
-  } else if !round.thermal_readable {
-    HostPostStateUnobserved
-  } else {
-    match round.host_thermal {
-      TemperaturePublished => HostPosted
-      TemperatureSensorsSilent => HostPoweredOnPrePost
-      TemperatureUndecodable => HostPostStateUnobserved
+  match round.chassis {
+    ChassisUnreadable => HostPostStateUnobserved
+    ChassisPowerRead { power_on: on } => if !on {
+      HostPoweredOff
+    } else {
+      match round.thermal {
+        ThermalUnreadable => HostPostStateUnobserved
+        ThermalRead { publication: p } => match p {
+          TemperaturePublished => HostPosted
+          TemperatureSensorsSilent => HostPoweredOnPrePost
+          TemperatureUndecodable => HostPostStateUnobserved
+        }
+      }
     }
   }
 }
@@ -200,13 +222,34 @@ fn observe_fan_round(
   return FanObservationRound {
     observed_at: clock_now_probed_at_or_unknown(),
     round_index: round_index,
-    power_on: if status.success { chassis_power_on(stdout: status.stdout) } else { false },
-    thermal_readable: temps.success,
-    host_thermal: if temps.success { sdr_temperature_publication(lines: sdr_decoded_lines(results: temp_results)) } else { TemperatureSensorsSilent },
+    chassis: chassis_observation(success: status.success, stdout: status.stdout),
+    thermal: thermal_observation(success: temps.success, lines: sdr_decoded_lines(results: temp_results)),
     fan_lines: if fans.success { sdr_decoded_lines(results: fan_results) } else { [] },
     fan_undecoded_line_count: sdr_unstructured_count(results: fan_results),
     temperature_undecoded_line_count: sdr_unstructured_count(results: temp_results),
-    chassis_readable: status.success,
+  }
+}
+
+fn chassis_was_read(chassis: ChassisPowerObservation) -> Bool {
+  match chassis {
+    ChassisUnreadable => false
+    ChassisPowerRead { power_on: _ } => true
+  }
+}
+
+fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation {
+  if success {
+    ChassisPowerRead { power_on: chassis_power_on(stdout: stdout) }
+  } else {
+    ChassisUnreadable
+  }
+}
+
+fn thermal_observation(success: Bool, lines: List<SdrTypeLine>) -> ThermalObservation {
+  if success {
+    ThermalRead { publication: sdr_temperature_publication(lines: lines) }
+  } else {
+    ThermalUnreadable
   }
 }
 
@@ -339,14 +382,26 @@ fn render_round(round: FanObservationRound) -> String {
   join([
     "round=", to_string(round.round_index),
     " at=", round.observed_at as String,
-    " chassis_readable=", to_string(round.chassis_readable),
-    " power_on=", to_string(round.power_on),
-    " thermal_readable=", to_string(round.thermal_readable),
-    " host_thermal=", render_thermal_publication(publication: round.host_thermal),
+    " chassis=", render_chassis(chassis: round.chassis),
+    " thermal=", render_thermal(thermal: round.thermal),
     " fan_sensors=", to_string(round.fan_lines.length()),
     " fan_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.fan_undecoded_line_count)),
     " temperature_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.temperature_undecoded_line_count)),
   ], "")
+}
+
+fn render_chassis(chassis: ChassisPowerObservation) -> String {
+  match chassis {
+    ChassisUnreadable => "UNREAD"
+    ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
+  }
+}
+
+fn render_thermal(thermal: ThermalObservation) -> String {
+  match thermal {
+    ThermalUnreadable => "UNREAD"
+    ThermalRead { publication: p } => render_thermal_publication(publication: p)
+  }
 }
 
 fn render_thermal_publication(publication: SdrTemperaturePublication) -> String {
@@ -418,7 +473,7 @@ fn observe_fan_policy(
     interval: interval,
     acc: [],
   )
-  return if fold(series, init: false, f: (acc, r) => acc || r.chassis_readable) {
+  return if fold(series, init: false, f: (acc, r) => acc || chassis_was_read(chassis: r.chassis)) {
     FanObservationTaken { rounds: series, interval: interval }
   } else {
     FanObservationRefused { cause: "no round could read chassis status, so no sample has a power state beside it and the series establishes nothing" }

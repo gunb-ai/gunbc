@@ -96,7 +96,11 @@ import product.fan_policy_standing {
   fan_policy_standing_of_sample,
 }
 import gunbc.machine_intake_bmc_fan_observation {
+  ChassisPowerRead,
+  ChassisUnreadable,
   FanObservationRound,
+  ThermalRead,
+  ThermalUnreadable,
   chassis_power_on,
   elapsed_at_round,
   post_state_of_round,
@@ -316,13 +320,11 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
   FanObservationRound {
     observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
     round_index: 0,
-    power_on: true,
-    thermal_readable: true,
-    host_thermal: publication,
+    chassis: ChassisPowerRead { power_on: true },
+    thermal: ThermalRead { publication: publication },
     fan_lines: [],
     fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    chassis_readable: true,
   }
 }
 
@@ -330,13 +332,11 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
   FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: index,
-    power_on: power_on,
-    thermal_readable: thermal_readable,
-    host_thermal: if thermal { TemperaturePublished } else { TemperatureSensorsSilent },
+    chassis: ChassisPowerRead { power_on: power_on },
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent } } } else { ThermalUnreadable },
     fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
     fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    chassis_readable: true,
   }
 }
 
@@ -378,13 +378,11 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
   FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: 0,
-    power_on: false,
-    thermal_readable: true,
-    host_thermal: TemperatureSensorsSilent,
+    chassis: ChassisUnreadable,
+    thermal: ThermalRead { publication: TemperatureSensorsSilent },
     fan_lines: [],
     fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    chassis_readable: false,
   }
 }
 
