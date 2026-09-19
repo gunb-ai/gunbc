@@ -26,6 +26,10 @@ import gunbc.site_pxe_edge_converge {
   site_pxe_edge_chainloader_target,
   site_pxe_edge_chainloader_path,
   site_pxe_edge_gate_causes,
+  SitePxeEdgeGateCause,
+  SitePxeEdgeRun,
+  SitePxeEdgeObserveOnly,
+  site_pxe_edge_run_succeeded,
   TftpServerAddressUnparseable,
   KnownClientMacUnparseable,
   ChainloaderUnpinned,
@@ -230,4 +234,22 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
         AdministratorPrivilegeRefused { reason: _ } => false
       }
   }
+}
+
+fn observe_run(causes: List<SitePxeEdgeGateCause>) -> SitePxeEdgeRun {
+  SitePxeEdgeRun {
+    mode: SitePxeEdgeObserveOnly,
+    gate_causes: causes,
+    files: [],
+    activation: SitePxeEdgeProbeRefused { reason: "observe-only" },
+    unit_active: SitePxeEdgeProbeRefused { reason: "inactive" },
+  }
+}
+
+// OBSERVE REPORTS FINDINGS BUT REFUSES WHAT IT COULD NOT SEE: an unpinned chainloader is a finding
+// and observe succeeds; an undigestible chainloader or refused privilege is a failure to observe.
+test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool {
+  site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnpinned { obligation: "pin it" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnobservable { reason: "sha256sum exit=1" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "sudo: a password is required" }]))
 }

@@ -269,6 +269,22 @@ fn site_pxe_edge_gate_causes(
   })
 }
 
+// WHICH GATE CAUSES MEAN THE RUN COULD NOT SEE, as opposed to what it saw. An observe dispatch reports
+// findings (unpinned, mismatched, absent dnsmasq) as its result, but a chainloader it could not digest
+// or a privilege it could not probe is a failure to observe, and observe may not call that success.
+fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
+  match cause {
+    ChainloaderUnobservable { reason: _ } => true
+    AdministratorPrivilegeRefused { reason: _ } => true
+    TftpServerAddressUnparseable { error: _ } => false
+    KnownClientMacUnparseable { error: _ } => false
+    ChainloaderUnpinned { obligation: _ } => false
+    ChainloaderDigestMismatch { observed: _, pinned: _ } => false
+    ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
+    DnsmasqBinaryRefused { reason: _ } => false
+  }
+}
+
 fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
   match cause {
     TftpServerAddressUnparseable { error: _ } => "tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"
@@ -554,12 +570,13 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
 fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
   match run.mode {
     SitePxeEdgeObserveOnly =>
-      !any(run.files, r => match r.before {
-        EdgeFileUnobservable { reason: _ } => true
-        EdgeFileIdentical => false
-        EdgeFileDiffers => false
-        EdgeFileAbsent => false
-      })
+      !any(run.gate_causes, c => site_pxe_edge_gate_cause_is_unobserved(cause: c))
+        && !any(run.files, r => match r.before {
+          EdgeFileUnobservable { reason: _ } => true
+          EdgeFileIdentical => false
+          EdgeFileDiffers => false
+          EdgeFileAbsent => false
+        })
     SitePxeEdgeApply =>
       length(run.gate_causes) == 0
         && all(run.files, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome))
