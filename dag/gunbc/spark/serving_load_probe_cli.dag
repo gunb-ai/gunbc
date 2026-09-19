@@ -8,6 +8,7 @@ import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker.cli { docker_exec_command }
 import extdeps.exec.command { argv_words }
+import extdeps.vllm.server { vllm_route_path, vllm_route_metrics }
 import extdeps.vllm.bench_serve { vllm_bench_serve_arguments }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
@@ -51,7 +52,7 @@ data glm_native_serving_load_receipt_path: String = "target/glm-native-serving-l
 data glm_native_serving_load_attempt_raw: String = "glm-native-serving-load"
 
 fn metrics_url() -> String {
-  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port), "/metrics"], "")
+  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port), vllm_route_path(r: vllm_route_metrics) as String], "")
 }
 
 fn curl_metrics_argv() -> List<String> {

@@ -11,7 +11,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import extdeps.prometheus.client {
-  PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary,
+  PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary, prometheus_metric_type_word,
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.vllm.metrics {
@@ -308,12 +308,16 @@ fn nat_delta(after: Nat, before: Nat) -> Nat? {
   if after < before { none } else { Present { value: after - before } }
 }
 
+fn histogram_family_refused(t: PrometheusMetricType) -> HistogramDelta {
+  HistogramDeltaUnread { cause: join(["this metric is a ", prometheus_metric_type_word(t: t), " family; only a histogram family's sum/count are read as a histogram delta"], "") as NonEmptyStr }
+}
+
 // The sum is read through the projection's own reader, so its unit is the caller's, never guessed here.
 fn histogram_delta(before_body: String, after_body: String, metric: VllmServingMetric) -> HistogramDelta {
   match vllm_metric_type(m: metric) {
-    PrometheusCounter => HistogramDeltaUnread { cause: "this metric is a counter family, which exports no histogram sum/count" as NonEmptyStr }
-    PrometheusGauge => HistogramDeltaUnread { cause: "this metric is a gauge family, which exports no histogram sum/count" as NonEmptyStr }
-    PrometheusSummary => HistogramDeltaUnread { cause: "this metric is a summary family; its sum/count are not read as a histogram delta here" as NonEmptyStr }
+    PrometheusCounter => histogram_family_refused(t: PrometheusCounter)
+    PrometheusGauge => histogram_family_refused(t: PrometheusGauge)
+    PrometheusSummary => histogram_family_refused(t: PrometheusSummary)
     PrometheusHistogram => {
     match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramSum) {
       Absent => HistogramDeltaUnread { cause: "histogram sum missing on the first body" as NonEmptyStr }
