@@ -14,15 +14,16 @@ import std.measure { second, second_count }
 import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor }
 import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
+  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantTerminated,
 }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.pair_serving_authority_log {
-  PairAuthorityEvent, AuthorityTransitioned, EntryStateRecorded, HostEffectAdmitted, HostEffectReleased, pair_authority_partition,
+  PairAuthorityEvent, AuthorityEstablished, AuthorityTransitioned, EntryStateRecorded, HostEffectAdmitted, HostEffectReleased, pair_authority_partition,
   pair_authority_event_wire_text, pair_authority_event_decode, authority_eq, authority_wire,
-  AuthorityFold, AuthorityFolded, AuthorityFoldRefused, authority_fold, AuthorityTransitionRecord, transitions_by,
+  AuthorityFold, AuthorityUnestablished, AuthorityFolded, AuthorityFoldRefused, authority_fold, AuthorityTransitionRecord, transitions_by,
 }
 
 // THE CODEC AND THE FOLD, OVER SUPPLIED VALUES. Every arm of the authority round-trips through
@@ -171,6 +172,16 @@ test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool {
 
 // ── THE FOLD ───────────────────────────────────────────────────────────────────────────────────
 
+// The fold from the durable genesis with `resting` established as event e0: what the resting row
+// used to be to the fold is now the first event on the chain.
+fn alw_establish(a: PairServingGroupAuthority) -> ChainEvent<PairAuthorityEvent> {
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 990, actor: "witness" as NonEmptyStr, payload: AuthorityEstablished { authority: a } }
+}
+
+fn alw_fold(resting: PairServingGroupAuthority, oldest_first: List<ChainEnvelope<PairAuthorityEvent>>) -> AuthorityFold {
+  authority_fold(oldest_first: concat([alw_env(id: "e0", e: alw_establish(a: resting))], oldest_first))
+}
+
 fn alw_env(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairAuthorityEvent> {
   ChainEnvelope { id: id as EventId, event: e }
 }
@@ -182,13 +193,13 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [alw_env(id: "e1", e: alw_w_event(previous: resting, next: pending, parent: none)), alw_env(id: "e2", e: alw_w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
-    (match authority_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
+    (match alw_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
        AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 0 && authority_eq(a: c, b: resting)
-       AuthorityFoldRefused { at_event: _, reason: _ } => false
+       _ => false
      })
-    && (match authority_fold(resting: resting, oldest_first: chain) {
+    && (match alw_fold(resting: resting, oldest_first: chain) {
           AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: fenced)
-          AuthorityFoldRefused { at_event: _, reason: _ } => false
+          _ => false
         })
   })
 }
@@ -201,9 +212,9 @@ test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [alw_env(id: "e1", e: alw_w_event(previous: pending, next: fenced, parent: none))]
-    match authority_fold(resting: resting, oldest_first: chain) {
+    match alw_fold(resting: resting, oldest_first: chain) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _, grant: _, entry_state: _ } => false
+      _ => false
     }
   })
 }
@@ -213,9 +224,9 @@ test fn a_transition_to_another_groups_authority_refuses() -> Bool {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let elsewhere = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
-    match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_w_event(previous: resting, next: elsewhere, parent: none))]) {
+    match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_w_event(previous: resting, next: elsewhere, parent: none))]) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _, grant: _, entry_state: _ } => false
+      _ => false
     }
   })
 }
@@ -267,12 +278,12 @@ test fn the_fold_records_each_transitions_lifecycle() -> Bool {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
     let with = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: pending, transaction: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none } }
-    match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: with), alw_env(id: "e2", e: alw_w_event(previous: pending, next: resting, parent: Present { value: "e1" as EventId }))]) {
+    match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: with), alw_env(id: "e2", e: alw_w_event(previous: pending, next: resting, parent: Present { value: "e1" as EventId }))]) {
       AuthorityFolded { current: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } =>
         g == 2 && length(transitions_by(records: recs, transaction: "tx-1" as NonEmptyStr, lifecycle: h)) == 1
           && (match first(recs) { Present { value: r } => (r.id as String) == "e1" && (match r.lifecycle { Present { value: _ } => true  Absent => false })  Absent => false })
           && (match last(recs) { Present { value: r } => (r.id as String) == "e2" && (match r.lifecycle { Absent => true  Present { value: _ } => false })  Absent => false })
-      AuthorityFoldRefused { at_event: _, reason: _ } => false
+      _ => false
     }
   })
 }
@@ -339,21 +350,29 @@ fn alw_quiet_leg(argv: List<String>) -> ArgvRun {
 }
 
 fn alw_observe(leg: fn(List<String>) -> ArgvRun, spec: HostEffectResidueSpec) -> HostQuiescence {
-  observe_host_effect_quiescence(run: leg, host: alw_host(s: "srv5"), spec: spec, observer: "witness" as NonEmptyStr, at: 1005)
+  observe_host_effect_quiescence(run: leg, claim: "e2" as EventId, host: alw_host(s: "srv5"), spec: spec, observer: "witness" as NonEmptyStr, at: 1005)
 }
 
+fn alw_evidence_at(claim: String, host: HostIdentity, spec: HostEffectResidueSpec, at: Int) -> HostQuiescenceEvidence? {
+  match observe_host_effect_quiescence(run: fn(argv) { alw_quiet_leg(argv: argv) }, claim: claim as EventId, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: at) {
+    HostQuiet { evidence: e } => Present { value: e }
+    _ => none
+  }
+}
+
+// Evidence for srv5's claim e2 (the fold fixtures admit it at 1000), taken at 1005.
 fn alw_evidence(host: HostIdentity, spec: HostEffectResidueSpec) -> HostQuiescenceEvidence? {
-  match observe_host_effect_quiescence(run: fn(argv) { alw_quiet_leg(argv: argv) }, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: 1005) {
+  match observe_host_effect_quiescence(run: fn(argv) { alw_quiet_leg(argv: argv) }, claim: "e2" as EventId, host: host, spec: spec, observer: "witness" as NonEmptyStr, at: 1005) {
     HostQuiet { evidence: e } => Present { value: e }
     _ => none
   }
 }
 
 fn alw_release_with(parent: EventId?, admitted_by: String, at: Int, evidence: HostQuiescenceEvidence) -> ChainEvent<PairAuthorityEvent> {
-  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectReleased { admitted_by: (admitted_by as NonEmptyStr) as EventId, evidence: evidence } }
+  ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: HostEffectReleased { admitted_by: (admitted_by as NonEmptyStr) as EventId, evidence: evidence, provenance: ClaimantTerminal } }
 }
 
-// A release for srv5's build claim: the evidence names srv5 and the claim's own residue.
+// A release for srv5's build claim e2: the evidence names the claim, srv5 and the claim's own residue.
 fn alw_release(parent: EventId?, admitted_by: String, at: Int) -> ChainEvent<PairAuthorityEvent> {
   match alw_evidence(host: alw_host(s: "srv5"), spec: alw_residue(pattern: "/srv/build")) {
     Present { value: e } => alw_release_with(parent: parent, admitted_by: admitted_by, at: at, evidence: e)
@@ -383,7 +402,7 @@ test fn host_effect_events_round_trip_through_the_wire() -> Bool {
           EventUndecodable { reason: _ } => false
         })
     && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001))) {
-          EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: a, evidence: ev } => (a as String) == "e1" && (ev.host as String) == "srv5" && (ev.process_pattern as String) == "/srv/build" && (ev.observer as String) == "witness" && ev.observed_at == 1005  _ => false }
+          EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: a, evidence: ev, provenance: ClaimantTerminal } => (a as String) == "e1" && (ev.claim as String) == "e2" && (ev.host as String) == "srv5" && (ev.process_pattern as String) == "/srv/build" && (ev.observer as String) == "witness" && ev.observed_at == 1005  _ => false }
           EventUndecodable { reason: _ } => false
         })
     && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_release(parent: none, admitted_by: "e1", at: 1001)).replace(from: "\"evidence_host\"", to: "\"evidence_hots\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
@@ -397,7 +416,7 @@ test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool {
   let srv5 = alw_host(s: "srv5")
   let plain = alw_residue(pattern: "/srv/build")
   let with_container = HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "vllm-a" as NonEmptyStr } } }
-  (match alw_observe(leg: fn(argv) { alw_quiet_leg(argv: argv) }, spec: plain) { HostQuiet { evidence: e } => (e.host as String) == "srv5" && (match e.container { Absent => true  Present { value: _ } => false })  _ => false })
+  (match alw_observe(leg: fn(argv) { alw_quiet_leg(argv: argv) }, spec: plain) { HostQuiet { evidence: e } => (e.host as String) == "srv5" && (e.claim as String) == "e2" && (match e.container { Absent => true  Present { value: _ } => false })  _ => false })
     && (match alw_observe(leg: fn(argv) { ArgvRan { exit_code: 0, stdout: "4242\n", stderr: "" } }, spec: plain) { HostResidue { host: _, detail: d } => d.contains("4242")  _ => false })
     && (match alw_observe(leg: fn(argv) { ArgvRan { exit_code: 2, stdout: "", stderr: "pgrep: bad pattern" } }, spec: plain) { HostQuiescenceUnread { host: _, cause: c } => c.contains("bad pattern")  _ => false })
     && (match alw_observe(leg: fn(argv) { ArgvLegDidNotRun { cause: "no route" } }, spec: plain) { HostQuiescenceUnread { host: _, cause: c } => c.contains("no route")  _ => false })
@@ -406,9 +425,10 @@ test fn the_observer_mints_quiet_only_from_a_scan_that_found_nothing() -> Bool {
     && (match alw_observe(leg: fn(argv) { match get(xs: argv, index: 0) { Present { value: "pgrep" } => ArgvRan { exit_code: 1, stdout: "", stderr: "" }  _ => ArgvRan { exit_code: 1, stdout: "", stderr: "Cannot connect to the Docker daemon" } } }, spec: with_container) { HostQuiescenceUnread { host: _, cause: c } => c.contains("Docker daemon")  _ => false })
 }
 
-// THE EVIDENCE IS FOR ONE CLAIM: a release carrying a quiet reading of another host, or of another
-// residue on the same host, refuses at that event and the claim stays live (the transition after
-// it still refuses); the reading for the claim's own host and residue releases it.
+// THE EVIDENCE IS FOR ONE CLAIM: a release carrying a quiet reading of another host, of another
+// residue on the same host, taken for another claim, or taken before this claim was admitted,
+// refuses at that event and the claim stays live (the transition after it still refuses); the
+// reading for this claim, its host and residue, after its admission, releases it.
 test fn a_release_whose_evidence_is_for_another_host_or_effect_refuses_at_that_event() -> Bool {
   alw_with_hash(scenario: fn(h) {
     let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
@@ -420,10 +440,12 @@ test fn a_release_whose_evidence_is_for_another_host_or_effect_refuses_at_that_e
     alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: alw_host(s: "srv6"), spec: alw_residue(pattern: "/srv/build")))
       && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: srv5, spec: alw_residue(pattern: "/srv/other")))
       && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence(host: srv5, spec: HostEffectResidueSpec { process_pattern: "/srv/build" as NonEmptyStr, container: Present { value: DockerPsByName { name: "x" as NonEmptyStr } } }))
+      && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence_at(claim: "e9", host: srv5, spec: alw_residue(pattern: "/srv/build"), at: 1005))
+      && alw_refuses_at_e3(resting: resting, prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: alw_evidence_at(claim: "e2", host: srv5, spec: alw_residue(pattern: "/srv/build"), at: 999))
       && (match alw_evidence(host: srv5, spec: alw_residue(pattern: "/srv/build")) {
             Absent => false
             Present { value: e } =>
-              match authority_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: e)) {
+              match alw_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim)], after: back_to_active, evidence: e)) {
                 AuthorityFolded { current: c, generation: g } => g == 2 && authority_eq(a: c, b: resting)
                 _ => false
               }
@@ -439,7 +461,7 @@ fn alw_refuses_at_e3(resting: PairServingGroupAuthority, prefix: List<ChainEnvel
   match evidence {
     Absent => false
     Present { value: e } =>
-      match authority_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: prefix, after: after, evidence: e)) {
+      match alw_fold(resting: resting, oldest_first: alw_chain_releasing(prefix: prefix, after: after, evidence: e)) {
         AuthorityFoldRefused { at_event: at, reason: r } => (at as String) == "e3" && r.contains("not for claim e2")
         _ => false
       }
@@ -461,12 +483,79 @@ test fn the_fold_fences_transitions_under_a_live_host_effect() -> Bool {
     let claim = alw_effect(parent: Present { value: "e1" as EventId }, host: srv5, at: 1000)
     let back_to_active = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e2" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
     let back_to_active_late = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e2" as EventId }, recorded_at: 1200, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
-    (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_effect(parent: none, host: srv5, at: 1000))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: alw_release(parent: Present { value: "e1" as EventId }, admitted_by: "nope", at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e2"  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active)]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e3"  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: alw_release(parent: Present { value: "e2" as EventId }, admitted_by: "e2", at: 1010)), alw_env(id: "e4", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e3" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } })]) { AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: resting)  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active_late)]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e3" && r.contains("OVERDUE")  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: alw_effect(parent: Present { value: "e2" as EventId }, host: srv5, at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e3"  _ => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e1" as EventId }, recorded_at: 1001, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: FencedRefusal { group: FabricGroupA, hosts: [] as List<HostIdentity>, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } })]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e2"  _ => false })
+    (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_effect(parent: none, host: srv5, at: 1000))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: alw_release(parent: Present { value: "e1" as EventId }, admitted_by: "nope", at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e2"  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active)]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e3"  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: alw_release(parent: Present { value: "e2" as EventId }, admitted_by: "e2", at: 1010)), alw_env(id: "e4", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e3" as EventId }, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } })]) { AuthorityFolded { current: c, generation: g, grant: _, entry_state: _ } => g == 2 && authority_eq(a: c, b: resting)  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: back_to_active_late)]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e3" && r.contains("OVERDUE")  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: claim), alw_env(id: "e3", e: alw_effect(parent: Present { value: "e2" as EventId }, host: srv5, at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e3"  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), alw_env(id: "e2", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e1" as EventId }, recorded_at: 1001, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: FencedRefusal { group: FabricGroupA, hosts: [] as List<HostIdentity>, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } })]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e2"  _ => false })
   })
+}
+
+// THE ESTABLISHMENT IS ONE EVENT FROM THE DURABLE GENESIS: an empty chain is unestablished (no
+// authority, no generation); establishing folds to generation 0 with the row as current; a second
+// establishment refuses; a transition or an entry state before any establishment refuses; a claim
+// landed before the establishment fences an establishment that would commit its host, and a
+// non-committing establishment over the same chain reads fine and is then fenced at the first
+// committing transition until the claim's own release (the round trip of the established event
+// is the same codec).
+test fn the_partition_folds_from_an_unestablished_genesis_through_the_establishment() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+    let srv5 = alw_host(s: "srv5")
+    let early_claim = alw_env(id: "c1", e: alw_effect(parent: none, host: srv5, at: 900))
+    let to_active = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1050, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: released, next: resting, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none } }
+    (match authority_fold(oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityUnestablished { host_effects: effs } => length(effs) == 0  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) { AuthorityFolded { current: c, generation: g } => g == 0 && authority_eq(a: c, b: resting)  _ => false })
+      && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_establish(a: released))]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e1" && r.contains("already established")  _ => false })
+      && (match authority_fold(oldest_first: [alw_env(id: "e1", e: to_active)]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e1" && r.contains("before any authority")  _ => false })
+      && (match authority_fold(oldest_first: [early_claim]) { AuthorityUnestablished { host_effects: effs } => length(effs) == 1  _ => false })
+      && (match authority_fold(oldest_first: [early_claim, alw_env(id: "e0", e: alw_establish(a: resting))]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e0" && r.contains("live host effect")  _ => false })
+      && (match authority_fold(oldest_first: [early_claim, alw_env(id: "e0", e: alw_establish(a: released)), alw_env(id: "e1", e: to_active)]) { AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"  _ => false })
+      && (match alw_evidence_at(claim: "c1", host: srv5, spec: alw_residue(pattern: "/srv/build"), at: 1000) {
+            Absent => false
+            Present { value: ev } =>
+              match authority_fold(oldest_first: [early_claim, alw_env(id: "e0", e: alw_establish(a: released)), alw_env(id: "r1", e: alw_release_with(parent: none, admitted_by: "c1", at: 1000, evidence: ev)), alw_env(id: "e1", e: to_active)]) { AuthorityFolded { current: c, generation: g } => g == 1 && authority_eq(a: c, b: resting)  _ => false }
+          })
+      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: alw_establish(a: resting))) { EventDecoded { event: back } => match back.payload { AuthorityEstablished { authority: a } => authority_eq(a: a, b: resting)  _ => false }  EventUndecodable { reason: _ } => false })
+  })
+}
+
+// EVIDENCE IS NOT REPLAYABLE ACROSS CLAIMS, AND A RECOVERY NAMES ITS CLAIM: the quiet reading that
+// released C1 cannot release a later C2 on the same host with the same residue (the reading names
+// C1); a recovery provenance naming another claim refuses; one naming this claim, with this
+// claim's evidence, releases. Both round-trip through the wire.
+test fn a_claims_evidence_cannot_release_a_later_identical_claim_and_a_recovery_names_its_claim() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+    let resting = alw_w_active_unestablished()
+    let srv5 = alw_host(s: "srv5")
+    let to_released = alw_w_event(previous: resting, next: released, parent: none)
+    let c1 = alw_env(id: "e2", e: alw_effect(parent: Present { value: "e1" as EventId }, host: srv5, at: 1000))
+    let c2 = alw_env(id: "e4", e: alw_effect(parent: Present { value: "e3" as EventId }, host: srv5, at: 1020))
+    match alw_evidence_at(claim: "e2", host: srv5, spec: alw_residue(pattern: "/srv/build"), at: 1010) {
+      Absent => false
+      Present { value: ev1 } =>
+        match alw_evidence_at(claim: "e4", host: srv5, spec: alw_residue(pattern: "/srv/build"), at: 1030) {
+          Absent => false
+          Present { value: ev2 } => {
+            let r1 = alw_env(id: "e3", e: alw_release_with(parent: Present { value: "e2" as EventId }, admitted_by: "e2", at: 1010, evidence: ev1))
+            let replay = alw_env(id: "e5", e: alw_release_with(parent: Present { value: "e4" as EventId }, admitted_by: "e4", at: 1030, evidence: ev1))
+            let recovery_other = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e4" as EventId }, recorded_at: 1030, actor: "operator" as NonEmptyStr, payload: HostEffectReleased { admitted_by: "e4" as EventId, evidence: ev2, provenance: alw_recovery_for(claim: "e2") } }
+            let recovery_own = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: Present { value: "e4" as EventId }, recorded_at: 1030, actor: "operator" as NonEmptyStr, payload: HostEffectReleased { admitted_by: "e4" as EventId, evidence: ev2, provenance: alw_recovery_for(claim: "e4") } }
+            (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), c1, r1, c2, replay]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e5" && r.contains("not for claim e4")  _ => false })
+              && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), c1, r1, c2, alw_env(id: "e5", e: recovery_other)]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e5" && r.contains("recovery authorization is not for claim e4")  _ => false })
+              && (match alw_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: to_released), c1, r1, c2, alw_env(id: "e5", e: recovery_own)]) { AuthorityFolded { host_effects: effs } => length(filter(effs, r => !r.released)) == 0  _ => false })
+              && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: recovery_own)) { EventDecoded { event: back } => match back.payload { HostEffectReleased { admitted_by: _, evidence: _, provenance: RecoveryAuthorized { claim: c, claimant: ClaimantTerminated, authorized_by: by, receipt: rc } } => (c as String) == "e4" && (by as String) == "operator" && (rc as String) == "run 42 cancelled"  _ => false }  EventUndecodable { reason: _ } => false })
+              && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: recovery_own).replace(from: "\"terminated\"", to: "\"tired\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
+          }
+        }
+    }
+  })
+}
+
+fn alw_recovery_for(claim: String) -> ReleaseProvenance {
+  RecoveryAuthorized { claim: claim as EventId, claimant: ClaimantTerminated, authorized_by: "operator" as NonEmptyStr, receipt: "run 42 cancelled" as NonEmptyStr }
 }

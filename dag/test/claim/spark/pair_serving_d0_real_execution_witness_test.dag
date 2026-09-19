@@ -39,6 +39,7 @@ import gunbc.spark.pair_serving_authority {
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, HostEffectRecord,
   AuthorityTransitionAppended, pair_serving_authority_transition, authority_eq,
+  AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish,
   PairAuthorityEvent, EntryStateRecorded, pair_authority_partition, pair_authority_event_decode,
 }
 import product.capacity.event_chain { PartitionId, ChainWalked }
@@ -94,8 +95,15 @@ fn d0r_witness_layout(dir: FilePath) -> EventLogLayout {
   event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
 }
 
+// A ready remote has group A's source row ESTABLISHED on its partition (the log's durable
+// genesis) at 990, before any scenario event.
 fn d0r_witness_remote_ready(dir: FilePath) -> Bool {
   git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+    && (match pair_serving_authority_for(group: FabricGroupA) {
+          Absent => false
+          Present { value: desired } =>
+            match pair_serving_authority_establish(layout: d0r_witness_layout(dir: dir), group: FabricGroupA, authority: desired, actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false }
+        })
 }
 
 // A scenario over a ready remote: the bare repository exists BEFORE the first claim, since the
