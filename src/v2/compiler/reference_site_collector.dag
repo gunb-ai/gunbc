@@ -135,6 +135,10 @@ import v2.extdeps.languages.dag {
 // the fold's OWN FIRST STEP -- because a Bool sitting beside the Outcome was still a second surface
 // deciding the same thing, and section 2's test is net CONCEPTS rather than net files. This module
 // matches the Outcome and gets the linear behaviour for free.
+// A production identity edge (grammar_production_identity_node_projection) is
+// what a node IS, never a mention it makes -- the graft body's
+// namespace_graft_module_body marker reaches this fold as a direct child. Same
+// rule as symbol_index_fill_containment_edge and export admission.
 fn reference_sites_in_edge(
   acc: ReferenceSiteCollection,
   position: QualifiedName,
@@ -145,9 +149,6 @@ fn reference_sites_in_edge(
       if dag_surface_module_header_metadata_edge(name: sym) {
         acc
       } else if sym == ^grammar_production_identity_node_projection {
-        // A production identity is what a node IS, never a mention it makes
-        // (the graft body's namespace_graft_module_body marker reaches here as a
-        // direct child). Same rule as symbol_index_fill and export admission.
         acc
       } else {
         reference_sites_in_node(
