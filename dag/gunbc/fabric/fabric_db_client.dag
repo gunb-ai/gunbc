@@ -3,6 +3,8 @@ module gunbc.fabric_db_client
 import std.types { String, NonEmptyStr, Int, List }
 import std.nat { Nat }
 import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
+import std.measure { Second, second }
 import extdeps.tools.curl { CurlExitOutcome, CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name }
 import std.fabric_db {
   FabricObject, FabricObjectRef, fabric_object_preimage, fabric_object_ref_wire,
@@ -53,8 +55,8 @@ data fabric_db_unplaced_detail: NonEmptyStr = "the fabric DB is unplaced" as Non
 // The declared transport bounds: connecting is a handshake to one tailnet peer; a whole request is
 // one store operation on local disk plus the closure's transfer. These bound a wait that was
 // otherwise unbounded, not a measured cost.
-data fabric_db_connect_seconds: NonEmptyStr = "5" as NonEmptyStr
-data fabric_db_request_seconds: NonEmptyStr = "60" as NonEmptyStr
+data fabric_db_connect_bound: Second = second(count: 5)
+data fabric_db_request_bound: Second = second(count: 60)
 
 // ONE ROUND TRIP, classified. The reply body carries curl's appended status line last.
 type ServedReply
@@ -85,8 +87,8 @@ fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> Ser
   let r = http.Client.PostStdinWithin(
     url: join([endpoint as String, "/", operation], "") as NonEmptyStr,
     request_body: request,
-    connect_seconds: fabric_db_connect_seconds,
-    max_seconds: fabric_db_request_seconds,
+    connect_seconds: http_client_max_time_flag(max_time: fabric_db_connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: fabric_db_request_bound),
   )
   served_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr)
 }

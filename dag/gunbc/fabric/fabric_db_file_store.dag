@@ -39,8 +39,9 @@ import extdeps.filesystem.filesystem_io {
 // partial document. Nothing here deletes or rewrites.
 //
 // SINGLE WRITER, BY PLACEMENT (operator approval 2026-09-19). O_EXCL serializes writers only against
-// ONE store instance, so every writer reaches this store on the one host that holds it -- the
-// ssh-reached verb in gunbc.fabric_db_verb -- and no host keeps a second writable copy. Replication
+// ONE store instance, so every writer reaches this store on the one host that holds it -- in process
+// there, and through the served endpoint (gunbc.fabric_db_serve, reached by gunbc.fabric_db_client)
+// from every other host -- and no host keeps a second writable copy. Replication
 // and failover are the program in docs/plans/fabric-db.md, not this module.
 //
 // THE ROOT IS NOT CREATED HERE (the CAS store's rule, for the same reason): creating the directory
