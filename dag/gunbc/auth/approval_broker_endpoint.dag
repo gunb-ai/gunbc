@@ -47,6 +47,40 @@ data approval_broker_listen_port: Port = 8085
 // past that stage while anything still routes here.
 data approval_broker_dark_listen_port: Port = 18085
 
+// ── THE LOOPBACK BASE A LOCAL CLIENT POSTS TO, PARAMETERIZED BY PORT ────────────────────────
+// THE PORT IS AN ARGUMENT AND THAT IS THE POINT, not an oversight left to a caller. A boot run
+// files an approval and polls its standing over loopback; during the cutover the broker is up on
+// the DARK port and nothing proxies to it, so a client that hardcoded the serving port could not
+// reach the process the staging exists to exercise. Taking the port lets a boot run be pointed at
+// the dark broker before the front door moves, and at the serving broker after, WITHOUT the client
+// changing -- which is what makes the endpoint move a parameter rather than an edit.
+//
+// IT IS LOOPBACK AND NOT THE TAILNET NAME because the client and the broker are the same host. The
+// address a CLIENT ON THE HOST dials and the address a PHONE dials are different facts with
+// different authentication stories -- the second goes through tailscale serve, which is what
+// injects the identity header the decide route requires -- and each is asserted for its own job
+// (the same split gunbc.auth.approval_ntfy_deployment already draws for the ntfy listener).
+fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
+  join(["http://127.0.0.1:", to_string(port)], "") as NonEmptyStr
+}
+
+fn approval_broker_submit_url(port: Port) -> NonEmptyStr {
+  join([approval_broker_loopback_base_url(port: port) as String, approval_broker_submit_path as String], "") as NonEmptyStr
+}
+
+// THE STATUS URL IS BUILT FROM THE SUBMIT PATH RATHER THAN FROM A SECOND "/approvals/" LITERAL,
+// because they are one collection and its member: the status route IS the submit path plus an
+// escalation segment, which is exactly what approval_broker_status_path_template declares. Two
+// literals would agree until one of them moved.
+fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmptyStr {
+  join([
+    approval_broker_loopback_base_url(port: port) as String,
+    approval_broker_submit_path as String,
+    "/",
+    escalation_id as String,
+  ], "") as NonEmptyStr
+}
+
 // ── The front door ───────────────────────────────────────────────────────────────────────────
 // THE PUBLIC ROUTE CONTRACT DOES NOT MOVE. An approval link already issued to a phone names
 // https://<srv1>.<tailnet>/approve/<capability>, and a capability outlives the deployment that

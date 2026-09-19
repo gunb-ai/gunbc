@@ -65,6 +65,13 @@ type HostEffect =
   | HostIdentityShortHostnameRead
   | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
   | LiveDeployRetract { spec: DeploymentSpec }
+  // STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AND ITS OWN ARM BECAUSE IT IS ITS OWN EFFECT. It
+  // installs the broker's slice and unit on the DARK port and starts only that unit; it writes
+  // nothing the roadmap deployment owns and restarts nothing that is already serving. Folding it
+  // into LiveDeployApply would have made an additive install indistinguishable from a release
+  // deploy at the one boundary where the difference is the requirement (operator directive
+  // 2026-09-19: roadmap redeploys are frozen until the cutover completes).
+  | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | DeployAccessPreflight {}

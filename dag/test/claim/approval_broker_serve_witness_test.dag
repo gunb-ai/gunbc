@@ -1,7 +1,7 @@
 module test.claim.approval_broker_serve_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String, HttpMethod, GET, POST, PUT }
+import std.types { Bool, String, NonEmptyStr, HttpMethod, GET, POST, PUT }
 import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -24,6 +24,8 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_prefix,
   approval_broker_listen_port,
   approval_broker_dark_listen_port,
+  approval_broker_submit_url,
+  approval_broker_status_url,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -137,4 +139,31 @@ test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
     tailscale_identity: "",
   )
   r.status == 404
+}
+
+// ── THE LOOPBACK ENDPOINT A BOOT RUN IS POINTED AT ──────────────────────────────────────────
+// THE PORT IS THE ONLY DIFFERENCE BETWEEN DARK AND SERVING, which is what makes the cutover a
+// parameter for a local client rather than an edit. A boot run files and polls over loopback; while
+// the broker is dark, nothing proxies to it, so a client that could not be pointed at the dark port
+// could not exercise the process the staging exists to exercise (#11484, tidy-wren-372).
+//
+// THE RED: reintroduce a hardcoded port anywhere in the URL builders and the two stop differing
+// only where they should.
+test fn the_loopback_submit_url_differs_from_the_dark_one_only_in_port() -> Bool {
+  let serving = approval_broker_submit_url(port: approval_broker_listen_port) as String
+  let dark = approval_broker_submit_url(port: approval_broker_dark_listen_port) as String
+  !(serving == dark)
+    && string_contains(s: serving, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
+    && string_contains(s: dark, pattern: join(["127.0.0.1:", to_string(approval_broker_dark_listen_port)], ""))
+    && string_contains(s: serving, pattern: approval_broker_submit_path as String)
+    && string_contains(s: dark, pattern: approval_broker_submit_path as String)
+}
+
+// THE STATUS URL IS THE SUBMIT COLLECTION PLUS A MEMBER, and the claim is here because the obvious
+// implementation is a second "/approvals/" literal that agrees until one of them moves. A status URL
+// built this way reaches the route the broker's table actually carries.
+test fn the_loopback_status_url_is_the_submit_collection_plus_the_escalation() -> Bool {
+  let url = approval_broker_status_url(port: approval_broker_dark_listen_port, escalation_id: "esc-1" as NonEmptyStr) as String
+  url == join([approval_broker_submit_url(port: approval_broker_dark_listen_port) as String, "/esc-1"], "")
+    && broker_selects(method: GET, path: join([approval_broker_submit_path as String, "/esc-1"], ""), want: ApprovalStatusHandler)
 }

@@ -54,6 +54,7 @@ import gunbc.host_effect {
   ShellEffectApplied,
   LiveDeployApply,
   LiveDeployRetract,
+  LiveDeployApprovalBrokerDarkInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
   DeployAccessPreflight,
@@ -596,6 +597,60 @@ fn live_deploy_retract_wet_with_access(spec: DeploymentSpec, access: DeployAcces
       r: live_deploy_retract_with_access(spec: spec, access: access)
     )
   }
+}
+
+// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER, AS A DEPLOY RATHER THAN AS A TERMINAL SESSION ───
+// IT RUNS THE SAME PREFLIGHT AND THE SAME MUTATION GATE as every other deploy on this spine, which
+// is the point: an additive install is still a privileged host mutation, and giving it its own path
+// around the gate would be the escape hatch DESIGN section 5 forbids at exactly the boundary the
+// gate exists to hold.
+//
+// WHAT IT DOES NOT DO is restart gunbc-roadmap.service or write anything that deployment owns
+// (operator directive 2026-09-19: roadmap redeploys are frozen at the current release until the
+// cutover completes). That is a property of the EFFECT, not of this wrapper -- the arm's script
+// writes the broker's two files and starts one unit -- so a later edit cannot quietly widen it here
+// without widening the emitter the byte oracles pin.
+//
+// IT OBSERVES A CANDIDATE because the unit it writes names a release in its ExecStart, and a broker
+// whose launch identity is not a revision must never be started: the cutover's next stage reads that
+// identity back, and every reading after it would otherwise be about an unknown build.
+fn approval_broker_dark_install_wet_with_access(
+  spec: DeploymentSpec,
+  access: DeployAccess,
+) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } => {
+      let preflight = live_deploy_access_preflight_for(access: access)
+      if !reconciliation_converged(r: preflight) {
+        live_deploy_reconciliation_exit(r: preflight)
+      } else {
+        live_deploy_reconciliation_exit(r: live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployApprovalBrokerDarkInstall { spec: spec, candidate: candidate },
+          transport: access.transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent,
+        ))
+      }
+    }
+  }
+}
+
+fn approval_broker_dark_install_srv1_operator_local_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_operator_local_access,
+  )
+}
+
+fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
+  approval_broker_dark_install_wet_with_access(
+    spec: deployment_spec_srv1(),
+    access: ci_deploy_srv1_access,
+  )
 }
 
 fn live_deploy_apply_srv1_wet() -> ProcessExit {

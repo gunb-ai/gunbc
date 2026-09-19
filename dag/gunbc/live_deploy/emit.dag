@@ -7,7 +7,7 @@ import gunbc.fleet_converge_timer {
 import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
-import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
+import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
 import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_mode_octal,
@@ -56,6 +56,7 @@ import extdeps.systemd.unit_file {
   SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
 }
+import gunbc.auth.approval_broker_endpoint { approval_broker_dark_listen_port }
 import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
@@ -588,6 +589,19 @@ fn emit_approval_broker_slice_unit_doc() -> Doc {
 // broker that dies is restarted by systemd on its own lifecycle, rather than waiting for whoever
 // notices the dashboard is down.
 fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+}
+
+// THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
+// gunbc.auth.approval_broker_cutover installs this unit on the dark port, and stage 4's repoint
+// installs it on the serving port; if those were two unit producers, the process measured at stage
+// 2 would not be the process routed to at stage 5, and every reading taken would be about a build
+// nobody ran. One producer, one argument.
+fn live_deploy_approval_broker_unit_file_on(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  port: Port,
+) -> SystemdUnitFile {
   let svc = spec.approval_broker
   ServiceUnitFile {
     unit: [
@@ -605,7 +619,7 @@ fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: Release
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
-        " --host ", svc.listen.host, " --port ", to_string(svc.listen.port),
+        " --host ", svc.listen.host, " --port ", to_string(port),
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -618,6 +632,10 @@ fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: Release
 
 fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
+}
+
+fn emit_approval_broker_unit_doc_on(spec: DeploymentSpec, revision: ReleaseRevisionBinding, port: Port) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: port)))
 }
 
 // OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
@@ -1507,6 +1525,14 @@ fn deploy_memory_cap_apply_steps(
 // [Service] carrying Slice= for a slice that does not exist yet starts under the default bound,
 // which is the unbounded state the bound exists to remove.
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+}
+
+fn approval_broker_unit_write_steps_on(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  port: Port,
+) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: gunbc_approval_broker_slice_unit_name as String,
@@ -1519,7 +1545,7 @@ fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: Releas
     )),
     deploy_raw(command: deploy_stage_write_command(
       stage_name: gunbc_approval_broker_unit_name as String,
-      content: render(doc: emit_approval_broker_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
+      content: render(doc: emit_approval_broker_unit_doc_on(spec: spec, revision: revision, port: port), proto: live_deploy_protocol),
     )),
     deploy_raw(command: deploy_stage_install_command(
       stage_name: gunbc_approval_broker_unit_name as String,
@@ -2111,6 +2137,55 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   concat(
     live_deploy_wholesale_refused_poison_prefix,
     concat(fold_label, concat(" refused-member-count=", to_string(count(refusals))))
+  )
+}
+
+// ── THE ADDITIVE BROKER INSTALL: STAGE 1 OF THE CUTOVER ─────────────────────────────────────
+// IT TOUCHES gunbc-roadmap.service AND NOTHING IT DEPENDS ON, WHICH IS THE WHOLE REQUIREMENT
+// (operator directive 2026-09-19: roadmap redeploys are FROZEN at the current release until the
+// cutover completes). The ordinary apply path installs the broker beside the roadmap unit, and it
+// also reloads the manager and RESTARTS the roadmap -- correct for a release deploy, and exactly
+// wrong for a stage that is supposed to add a process without disturbing the one already serving.
+//
+// So stage 1 has its own intent: write the broker's slice, write its unit on the DARK port, reload
+// the manager, enable and start ONLY gunbc-approval-broker.service. A daemon-reload does not
+// restart running units, so the roadmap keeps its PID and its incarnation across this.
+//
+// IT IS A MODELED PIPELINE, NOT A HAND SCRIPT. DESIGN section 6 files a hand-authored deployment
+// script as out-of-band actuation; what makes this the other thing is that every command in it is
+// the same projection of the same unit value the byte oracles pin and the cutover plan reasons
+// about, so "what did stage 1 install" is answerable from the model rather than from a terminal
+// transcript.
+//
+// THE DARK PORT IS THE ARGUMENT AND THE PLAN REFUSES IF IT IS NOT. gunbc.auth.approval_broker_cutover
+// dark_deployment_admission refuses a "dark" deployment observed on the serving port, because a
+// broker the front door can reach is a second writer wearing the first stage's name.
+fn approval_broker_dark_install_intent(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      concat(
+        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
+        approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: approval_broker_dark_listen_port),
+      ),
+      [
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+        deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+        deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+      ],
+    ),
+    on_failure: FailFast,
+  }
+}
+
+data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
+
+fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  emit_pipeline_or_poison(
+    p: approval_broker_dark_install_intent(spec: spec, revision: revision),
+    refused: approval_broker_dark_install_emit_refused_poison,
   )
 }
 
