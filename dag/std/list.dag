@@ -56,8 +56,9 @@ fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
   }
 }
 
-// EACH KEY ONCE, IN FIRST-SEEN ORDER - distinct_by_key keeps the first element carrying each key and
-// duplicated_by_key reports the first element of every key that occurs more than once, once. Both are
+// EACH KEY ONCE - distinct_by_key keeps the first element carrying each key, in first-seen order, and
+// duplicated_by_key reports the FIRST element of every key that occurs more than once, once, in the
+// order the keys were found to repeat. Both are
 // one fold over a keyed map, prepending and reversing at the end, because the shape they replace - an
 // accumulator grown by concat(acc, [x]) with membership tested by count(filter(acc, ..)) - is quadratic
 // in both writes and reads, and DESIGN section 6 fixes that shape regardless of the realized n.
@@ -79,15 +80,33 @@ fn distinct_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
   reverse(scan.kept_reversed)
 }
 
+// THE FIRST ELEMENT OF EACH DUPLICATED KEY, emitted when its second occurrence is seen. The map
+// keeps the first element itself, not only a count, so a consumer reading a non-key field gets the
+// element that established the key rather than whichever later one happened to repeat it (review
+// 68028's defect: an earlier revision stored a counter and emitted the second occurrence while this
+// note promised the first).
+type DuplicatedScan<T> {
+  firsts: Map<String, T>
+  reported: Map<String, Bool>
+  kept_reversed: List<T>
+}
+
 fn duplicated_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
-  let scan = fold(xs, init: KeyedScan { seen: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
-    match map_get(acc.seen, key(x)) {
-      Absent => KeyedScan { seen: map_insert(acc.seen, key(x), 1), kept_reversed: acc.kept_reversed }
-      Present { value: n } =>
-        if n == 1 {
-          KeyedScan { seen: map_insert(acc.seen, key(x), 2), kept_reversed: concat([x], acc.kept_reversed) }
-        } else {
-          acc
+  let scan = fold(xs, init: DuplicatedScan { firsts: empty_map(), reported: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
+    match map_get(acc.firsts, key(x)) {
+      Absent => DuplicatedScan {
+        firsts: map_insert(acc.firsts, key(x), x),
+        reported: acc.reported,
+        kept_reversed: acc.kept_reversed,
+      }
+      Present { value: first } =>
+        match map_get(acc.reported, key(x)) {
+          Present { value: _ } => acc
+          Absent => DuplicatedScan {
+            firsts: acc.firsts,
+            reported: map_insert(acc.reported, key(x), true),
+            kept_reversed: concat([first], acc.kept_reversed),
+          }
         }
     }
   })
