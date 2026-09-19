@@ -1,6 +1,22 @@
 module extdeps.apple.app_attest
 
 import std.types { NonEmptyStr, String, Int }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, base64_encode, Standard, UrlSafe }
+import std.octet_span {
+  OctetSpan, OctetSpanReady, OctetSpanRefused, OctetUnsignedReady, OctetUnsignedRefused, OctetInputTruncated,
+  octet_span_read, octet_span_octets, octet_span_is, octet_span_length, octet_at, octet_in_span, octet_bit_is_set, octet_read_unsigned_be,
+}
+import extdeps.ietf.cbor {
+  CborItem, CborEntry, CborRefusal, CborMap, CborBytes, CborText, CborArray, CborUnsigned,
+  CborStep, CborStepped, CborStepRefused, CborDecode, CborDecoded, CborRefused,
+  cbor_decode, cbor_decode_item, cbor_decode_exact, cbor_max_depth, cbor_text_key_is, cbor_map_text_value, cbor_map_int_value, cbor_int_value,
+}
+import extdeps.ietf.x509 {
+  X509Refusal, X509Read, X509Ready, X509Refused, X509Certificate, X509Link,
+  X509ChainCheck, X509ChainStructurallyValid, X509ChainRefused,
+  x509_certificate, x509_chain_structure,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -53,17 +69,50 @@ type AppAttestEnvironment
 // The server then STORES the credential public key and the receipt: the key verifies every later
 // assertion, and the receipt is the handle for Apple's fraud-metric call.
 type AttestationRefusal
-  = AttestationFormatUnexpected { declared: String }
-  | AttestationChainUntrusted { detail: String }
+  = AttestationMalformed { cause: AppAttestDecodeRefusal }
+  | AttestationFormatUnexpected
+  | AttestationChainUntrusted { cause: X509Refusal }
   | AttestationNonceMismatch
   | AttestationKeyIdMismatch { declared: AttestKeyId }
   | AttestationAppIdMismatch { expected_app_id: NonEmptyStr }
   | AttestationCounterNonZero { counter: Int }
   | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
   | AttestationCredentialIdMismatch { declared: AttestKeyId }
+  | AttestationValidationCategoryAbsent
   | AttestationValidationCategoryRefused { category: Int }
   | AttestationBundleVersionAbsent
-  | AttestationUndecodable { cause: String }
+  | AttestationVerificationUnrealized { capability: AppAttestUnrealizedCapability }
+
+// What the wire decoder refuses, each located in the decoded input where a position exists.
+type AppAttestDecodeRefusal
+  = AppAttestBase64Invalid
+  | AppAttestCborRefused { cause: CborRefusal }
+  | AppAttestFieldMissing { field: AppAttestField }
+  | AppAttestFieldUnexpected { field: AppAttestField }
+  | AppAttestUnknownField
+  | AppAttestAuthDataTruncated { needed: Int, available: Int }
+  | AppAttestAuthDataTrailing { remaining: Int }
+  | AppAttestAaguidUnknown
+  | AppAttestCredentialKeyMalformed
+  | AppAttestCertificateRefused { index: Int, cause: X509Refusal }
+  | AppAttestKeyIdNotBase64
+
+type AppAttestField
+  = AppAttestFieldFmt
+  | AppAttestFieldAttStmt
+  | AppAttestFieldAuthData
+  | AppAttestFieldX5c
+  | AppAttestFieldReceipt
+  | AppAttestFieldSignature
+  | AppAttestFieldAuthenticatorData
+  | AppAttestFieldExtensions
+
+// The checks that need a cryptographic realization this corpus does not yet have. Each is a typed
+// frontier, reported rather than skipped: ECDSA is gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier; SHA-256 is CRYPTO-0 (gunbc#11628).
+type AppAttestUnrealizedCapability
+  = AppAttestEcdsaSignatureVerification
+  | AppAttestSha256Digest
 
 
 data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
@@ -129,7 +178,8 @@ type AssertionRefusal
   | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
   | AssertionValidationCategoryRefused { category: Int }
   | AssertionBundleVersionAbsent
-  | AssertionUndecodable { cause: String }
+  | AssertionMalformed { cause: AppAttestDecodeRefusal }
+  | AssertionVerificationUnrealized { capability: AppAttestUnrealizedCapability }
 
 type AuthenticAssertion sole_constructor {
   key_id: AttestKeyId
@@ -152,5 +202,499 @@ fn assertion_verification_from_implementation(
   match refusal {
     Present { value: r } => AssertionRefused { cause: r }
     Absent => AssertionAuthentic { authentic: AuthenticAssertion { key_id: key_id, public_key_point_b64url: public_key_point_b64url, counter: counter, client_data: client_data } }
+  }
+}
+
+// ── The pinned trust anchor ──────────────────────────────────────────────────────────────────
+// Apple App Attestation Root CA (P-384, valid 2020-03-18 to 2045-03-15), DER, base64. SHA-256
+// fingerprint 1C:B9:82:3B:A2:8B:A6:AD:2D:33:A0:06:94:1D:E2:AE:4F:51:3E:F1:D4:E8:31:B9:F7:E0:FA:7B:62:42:C9:32,
+// as published by Apple (www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem).
+// THIS ROW IS THE PIN: the production verifier takes no anchor argument, so nothing a caller or an
+// attestation supplies can stand in for it.
+data apple_app_attestation_root_ca_der_b64: String = "MIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYwJAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwKQXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNaFw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlvbiBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9ybmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdhNbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9auYen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijVoyFraWVIyd/dganmrduC1bmTBGwD"
+
+// ── Wire keys, as the octets Apple's CBOR carries ────────────────────────────────────────────
+data app_attest_wire_fmt: List<UInt8> = [102, 109, 116]
+data app_attest_wire_att_stmt: List<UInt8> = [97, 116, 116, 83, 116, 109, 116]
+data app_attest_wire_auth_data: List<UInt8> = [97, 117, 116, 104, 68, 97, 116, 97]
+data app_attest_wire_x5c: List<UInt8> = [120, 53, 99]
+data app_attest_wire_receipt: List<UInt8> = [114, 101, 99, 101, 105, 112, 116]
+data app_attest_wire_apple_appattest: List<UInt8> = [97, 112, 112, 108, 101, 45, 97, 112, 112, 97, 116, 116, 101, 115, 116]
+data app_attest_wire_signature: List<UInt8> = [115, 105, 103, 110, 97, 116, 117, 114, 101]
+data app_attest_wire_authenticator_data: List<UInt8> = [97, 117, 116, 104, 101, 110, 116, 105, 99, 97, 116, 111, 114, 68, 97, 116, 97]
+data app_attest_wire_aaguid_development: List<UInt8> = [97, 112, 112, 97, 116, 116, 101, 115, 116, 100, 101, 118, 101, 108, 111, 112]
+data app_attest_wire_aaguid_production: List<UInt8> = [97, 112, 112, 97, 116, 116, 101, 115, 116, 0, 0, 0, 0, 0, 0, 0]
+data app_attest_wire_validation_category: List<UInt8> = [97, 112, 112, 108, 101, 95, 118, 97, 108, 105, 100, 97, 116, 105, 111, 110, 95, 99, 97, 116, 101, 103, 111, 114, 121, 95, 48, 49]
+
+// ── Authenticator data (WebAuthn Level 2, 6.1) ──────────────────────────────────────────────
+// rpIdHash (32) | flags (1) | signCount (4, big-endian) | [attested credential data, when flag AT
+// (bit 6): aaguid (16) | credentialIdLength (2) | credentialId | credentialPublicKey (COSE, CBOR)]
+// | [extensions (CBOR map), when flag ED (bit 7)]. The structure must end exactly at the byte
+// string's end; anything left over is refused rather than ignored.
+
+type AppAttestCredential {
+  aaguid: OctetSpan
+  credential_id: OctetSpan
+  x: OctetSpan
+  y: OctetSpan
+}
+
+type AppAttestAuthData {
+  whole: OctetSpan
+  rp_id_hash: OctetSpan
+  counter: Int
+  credential: AppAttestCredential?
+  extensions: List<CborEntry>?
+}
+
+type AppAttestAuthDataRead
+  = AppAttestAuthDataReady { value: AppAttestAuthData }
+  | AppAttestAuthDataRefused { cause: AppAttestDecodeRefusal }
+
+fn app_attest_truncated(input: List<UInt8>, at: Int, needed: Int) -> AppAttestDecodeRefusal {
+  AppAttestAuthDataTruncated { needed: needed, available: count(input) - at }
+}
+
+// COSE_Key for ES256 (RFC 9053 7.1.1): { 1: 2 (EC2), 3: -7 (ES256), -1: 1 (P-256), -2: x, -3: y },
+// x and y 32 octets each.
+fn app_attest_cose_coordinate(entries: List<CborEntry>, label: Int) -> OctetSpan? {
+  match cbor_map_int_value(entries: entries, label: label) {
+    Present { value: CborBytes { span: s } } => if octet_span_length(span: s) == 32 { Present { value: s } } else { none }
+    _ => none
+  }
+}
+
+fn app_attest_cose_label_is(entries: List<CborEntry>, label: Int, expected: Int) -> Bool {
+  match cbor_map_int_value(entries: entries, label: label) {
+    Present { value: item } =>
+      match cbor_int_value(item: item) {
+        Present { value: v } => v == expected
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn app_attest_cose_key(entries: List<CborEntry>, aaguid: OctetSpan, credential_id: OctetSpan) -> AppAttestCredential? {
+  if count(entries) != 5
+    || !app_attest_cose_label_is(entries: entries, label: 1, expected: 2)
+    || !app_attest_cose_label_is(entries: entries, label: 3, expected: 0 - 7)
+    || !app_attest_cose_label_is(entries: entries, label: 0 - 1, expected: 1) {
+    none
+  } else {
+    match app_attest_cose_coordinate(entries: entries, label: 0 - 2) {
+      Absent => none
+      Present { value: x } =>
+        match app_attest_cose_coordinate(entries: entries, label: 0 - 3) {
+          Absent => none
+          Present { value: y } => Present { value: AppAttestCredential { aaguid: aaguid, credential_id: credential_id, x: x, y: y } }
+        }
+    }
+  }
+}
+
+type AppAttestTail {
+  credential: AppAttestCredential?
+  next: Int
+}
+
+type AppAttestTailRead
+  = AppAttestTailReady { value: AppAttestTail }
+  | AppAttestTailRefused { cause: AppAttestDecodeRefusal }
+
+fn app_attest_credential_data(input: List<UInt8>, at: Int) -> AppAttestTailRead {
+  match octet_span_read(input: input, at: at, length: 16) {
+    OctetSpanRefused { cause: _ } => AppAttestTailRefused { cause: app_attest_truncated(input: input, at: at, needed: 18) }
+    OctetSpanReady { span: aaguid } =>
+      match octet_read_unsigned_be(input: input, at: aaguid.end, octets: 2) {
+        OctetUnsignedRefused { cause: _ } => AppAttestTailRefused { cause: app_attest_truncated(input: input, at: aaguid.end, needed: 2) }
+        OctetUnsignedReady { value: id_length, end: id_start } =>
+          match octet_span_read(input: input, at: id_start, length: id_length) {
+            OctetSpanRefused { cause: _ } => AppAttestTailRefused { cause: app_attest_truncated(input: input, at: id_start, needed: id_length) }
+            OctetSpanReady { span: credential_id } =>
+              match cbor_decode_item(input: input, at: credential_id.end, depth: cbor_max_depth) {
+                CborStepRefused { cause: c } => AppAttestTailRefused { cause: AppAttestCborRefused { cause: c } }
+                CborStepped { item: CborMap { entries: entries }, end: key_end } =>
+                  match app_attest_cose_key(entries: entries, aaguid: aaguid, credential_id: credential_id) {
+                    Absent => AppAttestTailRefused { cause: AppAttestCredentialKeyMalformed }
+                    Present { value: credential } => AppAttestTailReady { value: AppAttestTail { credential: Present { value: credential }, next: key_end } }
+                  }
+                CborStepped { item: _, end: _ } => AppAttestTailRefused { cause: AppAttestCredentialKeyMalformed }
+              }
+          }
+      }
+  }
+}
+
+fn app_attest_auth_data_extensions(input: List<UInt8>, span: OctetSpan, rp_id_hash: OctetSpan, counter: Int, tail: AppAttestTail, has_extensions: Bool) -> AppAttestAuthDataRead {
+  if has_extensions {
+    match cbor_decode_exact(input: input, at: tail.next, end: span.end) {
+      CborRefused { cause: c } => AppAttestAuthDataRefused { cause: AppAttestCborRefused { cause: c } }
+      CborDecoded { item: CborMap { entries: entries } } =>
+        AppAttestAuthDataReady { value: AppAttestAuthData { whole: span, rp_id_hash: rp_id_hash, counter: counter, credential: tail.credential, extensions: Present { value: entries } } }
+      CborDecoded { item: _ } => AppAttestAuthDataRefused { cause: AppAttestFieldUnexpected { field: AppAttestFieldExtensions } }
+    }
+  } else if tail.next != span.end {
+    AppAttestAuthDataRefused { cause: AppAttestAuthDataTrailing { remaining: span.end - tail.next } }
+  } else {
+    AppAttestAuthDataReady { value: AppAttestAuthData { whole: span, rp_id_hash: rp_id_hash, counter: counter, credential: tail.credential, extensions: none } }
+  }
+}
+
+// Authenticator data occupying `span` of `input` (the byte string's own extent). An ATTESTATION
+// carries attested credential data and says so with flag AT. An ASSERTION's authenticator data is
+// the fixed 37-octet header plus any extensions and carries no credential data -- yet Apple sets AT
+// on it anyway: the genuine device assertion in test.claim.app_attest_parse_witness_test is 37
+// octets with flags 0x40. So whether credential data is read is the CALLER'S fact (which object this
+// is), not inferred from AT, and an assertion that did carry more octets refuses as trailing.
+fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan, reads_credential: Bool) -> AppAttestAuthDataRead {
+  if octet_span_length(span: span) < 37 {
+    AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: octet_span_length(span: span) } }
+  } else {
+    let rp_id_hash = OctetSpan { start: span.start, end: span.start + 32 }
+    match octet_in_span(input: input, span: span, at: span.start + 32) {
+      Absent => AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: 32 } }
+      Present { value: flags } =>
+        match octet_read_unsigned_be(input: input, at: span.start + 33, octets: 4) {
+          OctetUnsignedRefused { cause: _ } => AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: 33 } }
+          OctetUnsignedReady { value: counter, end: after_counter } => {
+            let attested = reads_credential && octet_bit_is_set(octet: flags, bit: 6)
+            let has_extensions = octet_bit_is_set(octet: flags, bit: 7)
+            let bounded = input.take(n: span.end)
+            if attested {
+              match app_attest_credential_data(input: bounded, at: after_counter) {
+                AppAttestTailRefused { cause: c } => AppAttestAuthDataRefused { cause: c }
+                AppAttestTailReady { value: tail } =>
+                  app_attest_auth_data_extensions(input: bounded, span: span, rp_id_hash: rp_id_hash, counter: counter, tail: tail, has_extensions: has_extensions)
+              }
+            } else {
+              app_attest_auth_data_extensions(
+                input: bounded, span: span, rp_id_hash: rp_id_hash, counter: counter,
+                tail: AppAttestTail { credential: none, next: after_counter }, has_extensions: has_extensions,
+              )
+            }
+          }
+        }
+    }
+  }
+}
+
+// ── The attestation object ───────────────────────────────────────────────────────────────────
+
+type AppAttestAttestationObject {
+  input: List<UInt8>
+  certificates: List<OctetSpan>
+  receipt: OctetSpan
+  auth_data: AppAttestAuthData
+}
+
+type AppAttestAttestationRead
+  = AppAttestAttestationReady { value: AppAttestAttestationObject }
+  | AppAttestAttestationRefused { cause: AttestationRefusal }
+
+fn app_attest_malformed(cause: AppAttestDecodeRefusal) -> AppAttestAttestationRead {
+  AppAttestAttestationRefused { cause: AttestationMalformed { cause: cause } }
+}
+
+// Every key of a protocol map must be one the protocol names: an unknown key is refused, because
+// accepting it would let two different objects verify as one.
+fn app_attest_keys_are(input: List<UInt8>, entries: List<CborEntry>, known: List<List<UInt8>>) -> Bool {
+  all(entries, e => any(known, k => cbor_text_key_is(input: input, key: e.key, expected: k)))
+}
+
+fn app_attest_byte_strings(items: List<CborItem>) -> List<OctetSpan>? {
+  fold(items, init: Present { value: [] }, f: (acc, item) =>
+    match acc {
+      Absent => none
+      Present { value: spans } =>
+        match item {
+          CborBytes { span: s } => Present { value: spans |> list_push(s) }
+          _ => none
+        }
+    })
+}
+
+fn app_attest_statement(input: List<UInt8>, statement: CborItem, auth_data: OctetSpan) -> AppAttestAttestationRead {
+  match statement {
+    CborMap { entries: entries } =>
+      if !app_attest_keys_are(input: input, entries: entries, known: [app_attest_wire_x5c, app_attest_wire_receipt]) {
+        app_attest_malformed(cause: AppAttestUnknownField)
+      } else {
+        match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_x5c) {
+          Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldX5c })
+          Present { value: CborArray { items: certs } } =>
+            match app_attest_byte_strings(items: certs) {
+              Absent => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldX5c })
+              Present { value: cert_spans } =>
+                if count(cert_spans) == 0 {
+                  app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldX5c })
+                } else {
+                  match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_receipt) {
+                    Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldReceipt })
+                    Present { value: CborBytes { span: receipt } } =>
+                      match app_attest_auth_data(input: input, span: auth_data, reads_credential: true) {
+                        AppAttestAuthDataRefused { cause: c } => app_attest_malformed(cause: c)
+                        AppAttestAuthDataReady { value: ad } =>
+                          AppAttestAttestationReady { value: AppAttestAttestationObject { input: input, certificates: cert_spans, receipt: receipt, auth_data: ad } }
+                      }
+                    Present { value: _ } => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldReceipt })
+                  }
+                }
+            }
+          Present { value: _ } => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldX5c })
+        }
+      }
+    _ => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldAttStmt })
+  }
+}
+
+// { fmt: "apple-appattest", attStmt: { x5c: [leaf, intermediate, ...], receipt }, authData }.
+// The whole input must be this one map (CborTrailingInput otherwise), with no duplicate or unknown
+// key at either level.
+fn app_attest_attestation_object(input: List<UInt8>) -> AppAttestAttestationRead {
+  match cbor_decode(input: input) {
+    CborRefused { cause: c } => app_attest_malformed(cause: AppAttestCborRefused { cause: c })
+    CborDecoded { item: CborMap { entries: entries } } =>
+      if !app_attest_keys_are(input: input, entries: entries, known: [app_attest_wire_fmt, app_attest_wire_att_stmt, app_attest_wire_auth_data]) {
+        app_attest_malformed(cause: AppAttestUnknownField)
+      } else {
+        match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_fmt) {
+          Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldFmt })
+          Present { value: CborText { span: fmt } } =>
+            if !octet_span_is(input: input, span: fmt, expected: app_attest_wire_apple_appattest) {
+              AppAttestAttestationRefused { cause: AttestationFormatUnexpected }
+            } else {
+              match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_auth_data) {
+                Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldAuthData })
+                Present { value: CborBytes { span: auth_data } } =>
+                  match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_att_stmt) {
+                    Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldAttStmt })
+                    Present { value: statement } => app_attest_statement(input: input, statement: statement, auth_data: auth_data)
+                  }
+                Present { value: _ } => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldAuthData })
+              }
+            }
+          Present { value: _ } => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldFmt })
+        }
+      }
+    CborDecoded { item: _ } => app_attest_malformed(cause: AppAttestFieldUnexpected { field: AppAttestFieldAttStmt })
+  }
+}
+
+// ── The chain ────────────────────────────────────────────────────────────────────────────────
+
+type AppAttestChainRead
+  = AppAttestChainReady { links: List<X509Link> }
+  | AppAttestChainRefused { cause: AttestationRefusal }
+
+// Each x5c entry is its own DER certificate filling its byte string exactly.
+fn app_attest_chain_links(input: List<UInt8>, spans: List<OctetSpan>, index: Int, acc: List<X509Link>) -> AppAttestChainRead {
+  match spans |> get(index) {
+    Absent => AppAttestChainReady { links: acc }
+    Present { value: span } => {
+      let cert_input = octet_span_octets(input: input, span: span)
+      match x509_certificate(input: cert_input, span: OctetSpan { start: 0, end: count(cert_input) }) {
+        X509Refused { cause: c } => AppAttestChainRefused { cause: AttestationMalformed { cause: AppAttestCertificateRefused { index: index, cause: c } } }
+        X509Ready { certificate: cert } =>
+          app_attest_chain_links(input: input, spans: spans, index: index + 1, acc: acc |> list_push(X509Link { input: cert_input, certificate: cert }))
+      }
+    }
+  }
+}
+
+type AppAttestAnchorRead
+  = AppAttestAnchorReady { link: X509Link }
+  | AppAttestAnchorRefused { cause: X509Refusal }
+
+fn app_attest_pinned_anchor() -> AppAttestAnchorRead? {
+  match base64_decode(s: apple_app_attestation_root_ca_der_b64, variant: Standard) {
+    Absent => none
+    Present { value: der } =>
+      match x509_certificate(input: der, span: OctetSpan { start: 0, end: count(der) }) {
+        X509Refused { cause: c } => Present { value: AppAttestAnchorRefused { cause: c } }
+        X509Ready { certificate: cert } => Present { value: AppAttestAnchorReady { link: X509Link { input: der, certificate: cert } } }
+      }
+  }
+}
+
+// ── The verifier ─────────────────────────────────────────────────────────────────────────────
+// Apple's launch extensions (steps 9 and 10) are absent from objects produced before iOS 17, so
+// whether their absence refuses is the CALLER'S policy, stated at the call rather than assumed.
+type AppAttestLaunchExtensionPolicy
+  = LaunchExtensionsRequired
+  | LaunchExtensionsOptional
+
+fn app_attest_environment_of(input: List<UInt8>, aaguid: OctetSpan) -> AppAttestEnvironment? {
+  if octet_span_is(input: input, span: aaguid, expected: app_attest_wire_aaguid_development) {
+    Present { value: AppAttestDevelopment }
+  } else if octet_span_is(input: input, span: aaguid, expected: app_attest_wire_aaguid_production) {
+    Present { value: AppAttestProduction }
+  } else {
+    none
+  }
+}
+
+fn app_attest_same_environment(a: AppAttestEnvironment, b: AppAttestEnvironment) -> Bool {
+  match a {
+    AppAttestDevelopment => match b { AppAttestDevelopment => true _ => false }
+    AppAttestProduction => match b { AppAttestProduction => true _ => false }
+  }
+}
+
+// Step 9 over the extensions CBOR: the category, when present, must be admitted; when absent, the
+// caller's policy decides.
+fn app_attest_category_check(obj: AppAttestAttestationObject, policy: AppAttestLaunchExtensionPolicy, admitted_categories: List<Int>) -> AttestationRefusal? {
+  let category = match obj.auth_data.extensions {
+    Absent => none
+    Present { value: entries } =>
+      match cbor_map_text_value(input: obj.input, entries: entries, key: app_attest_wire_validation_category) {
+        Present { value: CborUnsigned { value: c } } => Present { value: c }
+        _ => none
+      }
+  }
+  match category {
+    Present { value: c } =>
+      if any(admitted_categories, a => a == c) { none } else { Present { value: AttestationValidationCategoryRefused { category: c } } }
+    Absent =>
+      match policy {
+        LaunchExtensionsRequired => Present { value: AttestationValidationCategoryAbsent }
+        LaunchExtensionsOptional => none
+      }
+  }
+}
+
+// Steps decidable without cryptography, in Apple's order: 1 (the chain's structure under the pinned
+// root), 6 (counter), 7 (environment), 8 (credential id equals the key id), 9 (category). Steps 2-5
+// need SHA-256 and step 1's signatures need ECDSA; they are not skipped -- when every decidable step
+// passes, the verifier refuses naming the first capability it could not exercise.
+fn app_attest_decidable_steps(
+  obj: AppAttestAttestationObject,
+  links: List<X509Link>,
+  anchor: X509Link,
+  environment: AppAttestEnvironment,
+  key_id: AttestKeyId,
+  policy: AppAttestLaunchExtensionPolicy,
+  admitted_categories: List<Int>,
+  now_epoch: Int,
+) -> AttestationRefusal {
+  match x509_chain_structure(chain: links, anchor: anchor, now: now_epoch, leaf_handled: []) {
+    X509ChainRefused { cause: c } => AttestationChainUntrusted { cause: c }
+    X509ChainStructurallyValid =>
+      if obj.auth_data.counter != 0 {
+        AttestationCounterNonZero { counter: obj.auth_data.counter }
+      } else {
+        match obj.auth_data.credential {
+          Absent => AttestationMalformed { cause: AppAttestFieldMissing { field: AppAttestFieldAuthData } }
+          Present { value: credential } =>
+            match app_attest_environment_of(input: obj.input, aaguid: credential.aaguid) {
+              Absent => AttestationMalformed { cause: AppAttestAaguidUnknown }
+              Present { value: observed } =>
+                if !app_attest_same_environment(a: observed, b: environment) {
+                  AttestationEnvironmentUnexpected { expected: environment }
+                } else {
+                  match base64_decode(s: key_id as String, variant: Standard) {
+                    Absent => AttestationMalformed { cause: AppAttestKeyIdNotBase64 }
+                    Present { value: key_octets } =>
+                      if octet_span_octets(input: obj.input, span: credential.credential_id) != key_octets {
+                        AttestationCredentialIdMismatch { declared: key_id }
+                      } else {
+                        match app_attest_category_check(obj: obj, policy: policy, admitted_categories: admitted_categories) {
+                          Present { value: r } => r
+                          Absent => AttestationVerificationUnrealized { capability: AppAttestEcdsaSignatureVerification }
+                        }
+                      }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE PRODUCTION VERIFIER. It decodes the attestation for real and runs every decidable step; it
+// cannot answer AttestationVerified until ECDSA is realized, and it does not pretend to: the only
+// constructor of a verified attestation remains attestation_verification_from_implementation,
+// which this function reaches only when every step, signatures included, has passed.
+fn app_attest_verify(
+  environment: AppAttestEnvironment,
+  policy: AppAttestLaunchExtensionPolicy,
+  admitted_categories: List<Int>,
+  attestation_b64: NonEmptyStr,
+  key_id: AttestKeyId,
+  now_epoch: Int,
+) -> AttestationVerification {
+  match base64_decode(s: attestation_b64 as String, variant: Standard) {
+    Absent => AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } }
+    Present { value: decoded } =>
+      match app_attest_attestation_object(input: decoded) {
+        AppAttestAttestationRefused { cause: c } => AttestationRefused { cause: c }
+        AppAttestAttestationReady { value: obj } =>
+          match app_attest_chain_links(input: decoded, spans: obj.certificates, index: 0, acc: []) {
+            AppAttestChainRefused { cause: c } => AttestationRefused { cause: c }
+            AppAttestChainReady { links: links } =>
+              match app_attest_pinned_anchor() {
+                Absent => AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } }
+                Present { value: AppAttestAnchorRefused { cause: c } } => AttestationRefused { cause: AttestationChainUntrusted { cause: c } }
+                Present { value: AppAttestAnchorReady { link: anchor } } =>
+                  AttestationRefused {
+                    cause: app_attest_decidable_steps(
+                      obj: obj, links: links, anchor: anchor, environment: environment, key_id: key_id,
+                      policy: policy, admitted_categories: admitted_categories, now_epoch: now_epoch,
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// { signature: bstr, authenticatorData: bstr }, nothing else. Apple's step 1 (clientDataHash) is the
+// first step and needs SHA-256, so after a real decode the assertion refuses at that frontier.
+
+type AppAttestAssertionObject {
+  input: List<UInt8>
+  signature: OctetSpan
+  auth_data: AppAttestAuthData
+}
+
+type AppAttestAssertionRead
+  = AppAttestAssertionReady { value: AppAttestAssertionObject }
+  | AppAttestAssertionRefused { cause: AppAttestDecodeRefusal }
+
+fn app_attest_assertion_object(input: List<UInt8>) -> AppAttestAssertionRead {
+  match cbor_decode(input: input) {
+    CborRefused { cause: c } => AppAttestAssertionRefused { cause: AppAttestCborRefused { cause: c } }
+    CborDecoded { item: CborMap { entries: entries } } =>
+      if !app_attest_keys_are(input: input, entries: entries, known: [app_attest_wire_signature, app_attest_wire_authenticator_data]) {
+        AppAttestAssertionRefused { cause: AppAttestUnknownField }
+      } else {
+        match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_signature) {
+          Present { value: CborBytes { span: signature } } =>
+            match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_authenticator_data) {
+              Present { value: CborBytes { span: ad_span } } =>
+                match app_attest_auth_data(input: input, span: ad_span, reads_credential: false) {
+                  AppAttestAuthDataRefused { cause: c } => AppAttestAssertionRefused { cause: c }
+                  AppAttestAuthDataReady { value: ad } => AppAttestAssertionReady { value: AppAttestAssertionObject { input: input, signature: signature, auth_data: ad } }
+                }
+              Present { value: _ } => AppAttestAssertionRefused { cause: AppAttestFieldUnexpected { field: AppAttestFieldAuthenticatorData } }
+              Absent => AppAttestAssertionRefused { cause: AppAttestFieldMissing { field: AppAttestFieldAuthenticatorData } }
+            }
+          Present { value: _ } => AppAttestAssertionRefused { cause: AppAttestFieldUnexpected { field: AppAttestFieldSignature } }
+          Absent => AppAttestAssertionRefused { cause: AppAttestFieldMissing { field: AppAttestFieldSignature } }
+        }
+      }
+    CborDecoded { item: _ } => AppAttestAssertionRefused { cause: AppAttestFieldUnexpected { field: AppAttestFieldSignature } }
+  }
+}
+
+fn app_attest_verify_assertion(assertion_b64: NonEmptyStr) -> AssertionVerification {
+  match base64_decode(s: assertion_b64 as String, variant: Standard) {
+    Absent => AssertionRefused { cause: AssertionMalformed { cause: AppAttestBase64Invalid } }
+    Present { value: decoded } =>
+      match app_attest_assertion_object(input: decoded) {
+        AppAttestAssertionRefused { cause: c } => AssertionRefused { cause: AssertionMalformed { cause: c } }
+        AppAttestAssertionReady { value: _ } => AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } }
+      }
   }
 }
