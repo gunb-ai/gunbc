@@ -30,15 +30,14 @@ data runner_jit_mint_disposition: Disposition = SingleAuthority
 // owns neither.
 //
 // Planning them together rather than at the call site is what makes the ordering unwritable: a
-// caller cannot mint first and check ownership after, because the only value that names a drive
-// destination is produced by the arm that already proved both.
+// caller cannot mint first and check ownership after, because the only value that names the attempt
+// a credential belongs to is produced by the arm that already proved both.
 
 type JitMintPlan
   = JitMintAuthorized {
       attempt: MicroVmAttempt
       endpoint_path: String
       request: JitRunnerConfigRequest
-      drive_destination: String
     }
   | JitMintRefusedCellNotOwned { cause: String }
   | JitMintRefusedCredential {
@@ -86,7 +85,6 @@ fn plan_jit_mint(
     VmBoundToOwnedCell {
       attempt: attempt,
       rootfs_path: _,
-      jit_drive_path: drive,
       vm_config_path: _,
       unit_name: _,
       slice_property: _,
@@ -105,7 +103,6 @@ fn plan_jit_mint(
               runner_group_id: runner_group_id,
               labels: labels,
             ),
-            drive_destination: drive,
           }
         } else {
           JitMintRefusedAttemptUnbound {

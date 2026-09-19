@@ -1260,3 +1260,41 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.webhook_events_citation
   ]
 }
+
+// POST /app/installations/{installation_id}/access_tokens, cited by
+// extdeps.github.org_admin_auth installation_token_citation. It authenticates AS THE APP -- the
+// Bearer is an RS256 App JWT (extdeps.auth.jws), never an installation or user token -- and answers
+// 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
+// String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
+// classifies it through extdeps.transports.rest classify_rest_outcome as RestMutationExchange.
+service github.AppInstallationAccessTokens {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation Create {
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      token: Secret from "token"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/app/installations/\{installation_id\}/access_tokens",
+      body: { }
+    }
+    response {
+      201 => GitHubInstallationAccessTokenBody
+    }
+  }
+}
+
+type GitHubInstallationAccessTokenBody {
+  token: String
+  expires_at: String
+}

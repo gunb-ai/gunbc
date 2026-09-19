@@ -1,0 +1,70 @@
+module extdeps.auth.jws
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, UrlSafe }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7515" }
+}
+
+data jwa_rs256_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7518#section-3.3" }
+}
+
+// THIS MODULE IS THE SHAPE OF A COMPACT JWS AND NOTHING ELSE. It produces the JWS Signing Input
+// (RFC 7515 section 5.1 step 5: BASE64URL(UTF8(protected header)) '.' BASE64URL(payload)) and joins
+// a signature the CALLER obtained onto it (section 7.1). It does not sign: the signature is a
+// private-key operation, and which realization performs it -- a host CLI, an HSM, a library -- is a
+// transport bound to this shape, never a fact about JWS (DESIGN §3). extdeps.auth.jwt describes
+// claims and does not verify them; this module is the other direction and does not verify either.
+//
+// ONE ALGORITHM, RS256, because one is what this fleet signs with. RFC 7518 registers many;
+// modeling ones no realization produces would be vocabulary with no consumer (DESIGN §3c). When a
+// second signer lands, this row becomes an algorithm coproduct and the functions take it.
+data jws_rs256_alg: NonEmptyStr = "RS256"
+
+// BASE64URL IS RFC 7515 section 2's: the URL-safe alphabet of RFC 4648 section 5 WITH ALL TRAILING
+// '=' OMITTED. std.encoding pads, so the padding is cut here rather than a second encoder written.
+fn jws_base64url_octets(octets: List<UInt8>) -> String {
+  join(split(s: base64_encode(octets: octets, variant: UrlSafe), delimiter: "="), "")
+}
+
+fn jws_base64url_text(s: String) -> String {
+  jws_base64url_octets(octets: bytes_octets(b: utf8_encode_bytes(s: s)))
+}
+
+fn jws_rs256_protected_header_json() -> String {
+  join(["\{\"alg\":\"", jws_rs256_alg as String, "\",\"typ\":\"JWT\"}"], "")
+}
+
+fn jws_rs256_signing_input(payload_json: String) -> NonEmptyStr {
+  join([
+    jws_base64url_text(s: jws_rs256_protected_header_json()),
+    ".",
+    jws_base64url_text(s: payload_json),
+  ], "") as NonEmptyStr
+}
+
+// THE SIGNATURE IS OCTETS, NOT TEXT. A realization that hands back a printable rendering (hex,
+// standard base64) decodes it to octets first; this join then encodes exactly once. Accepting a
+// pre-encoded String here would let a standard-alphabet signature through looking valid.
+fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> NonEmptyStr {
+  join([signing_input as String, ".", jws_base64url_octets(octets: signature)], "") as NonEmptyStr
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.auth.jws",
+      decl_name: "jws_rs256_signing_input",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.auth.jws.extdeps_external_authority_anchor,
+  further_citations: [extdeps.auth.jws.jwa_rs256_citation]
+}

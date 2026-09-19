@@ -1,0 +1,112 @@
+module extdeps.tools.openssl
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.integer { UInt8 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_openssl }
+import extdeps.numeric.base16 { base16_decode_lower }
+import v2.std.optional { Absent, Present }
+import std.algebra { trim }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.openssl.org/3.0/man1/openssl-dgst/" }
+}
+
+data openssl_binary_name: NonEmptyStr = "openssl"
+
+// ENROLLED THE WAY extdeps.tools.sshpass IS: the binary this module execs and the binary
+// gunbc.host_cli_dependency probes for are one declaration, so a probe cannot pass while the exec
+// fails. min_version is none: `dgst -sign -hex` is present in every OpenSSL this fleet runs (1.1 and
+// 3.x), and a floor nothing measured would be an invented constraint.
+data openssl_cli_tool: CliTool = CliTool {
+  name: openssl_binary_name,
+  min_version: none,
+  installable_via: [SourceApt { package: package_openssl }],
+}
+
+// `openssl dgst -sha256 -sign KEY -hex` IS RSASSA-PKCS1-v1_5 OVER SHA-256 -- RS256 as RFC 7518
+// section 3.3 defines it -- and it is exactly what the fleet's live mint executes today.
+//
+// WHY THE ARGV CARRIES A PATH AND NEVER A SECRET. The private key is read by openssl from a file
+// the argv names; the data to sign arrives on stdin; the signature leaves on stdout. Nothing another
+// process can read from /proc/<pid>/cmdline is secret -- the class gunbc.credential_argv_exposure
+// measures. -hex rather than -binary because a transport stdout is text, and an octet stream
+// through a String is a lossy decode the caller could not detect; hex round-trips exactly.
+service openssl.Dgst {
+  operation SignSha256Hex {
+    input { key_file: NonEmptyStr, signing_input: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [openssl_binary_name, "dgst", "-sha256", "-sign", "{key_file}", "-hex"]
+      stdin: signing_input
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+}
+
+// THE -hex RENDERING IS `<label>= <lowercase hex>`, whose label differs by version ("(stdin)= " in
+// 1.1, "RSA-SHA2-256(stdin)= " in 3.x). The digits after the LAST "= " are the signature in both;
+// anything else -- no separator, empty digits, a non-hex character -- is a refusal, never a guess.
+type OpensslSignature
+  = OpensslSigned { octets: List<UInt8> }
+  | OpensslSignRefused { exit_code: Int, detail: String }
+
+fn openssl_last_separator_end(s: String, i: Int) -> Int {
+  if i < 1 {
+    0
+  } else if char_at(s, i - 1) == "=" && char_at(s, i) == " " {
+    i + 1
+  } else {
+    openssl_last_separator_end(s: s, i: i - 1)
+  }
+}
+
+fn openssl_hex_signature_digits(stdout: String) -> String {
+  let line = trim(s: stdout)
+  let start = openssl_last_separator_end(s: line, i: string_length(line) - 1)
+  if start == 0 { "" } else { substring(s: line, start: start, end: string_length(line)) }
+}
+
+fn openssl_signature_of(exit_code: Int, stdout: String, stderr: String) -> OpensslSignature {
+  if exit_code != 0 {
+    OpensslSignRefused { exit_code: exit_code, detail: trim(s: stderr) }
+  } else {
+    let digits = openssl_hex_signature_digits(stdout: stdout)
+    if digits == "" {
+      OpensslSignRefused { exit_code: exit_code, detail: "openssl dgst -hex printed no '= <hex>' signature" }
+    } else {
+      match base16_decode_lower(hex: digits) {
+        Absent => OpensslSignRefused { exit_code: exit_code, detail: "openssl dgst -hex signature is not lowercase hex" }
+        Present { value: octets } => OpensslSigned { octets: octets }
+      }
+    }
+  }
+}
+
+fn openssl_sign_sha256(key_file: NonEmptyStr, signing_input: NonEmptyStr) -> OpensslSignature {
+  let run = openssl.Dgst.SignSha256Hex(key_file: key_file, signing_input: signing_input)
+  openssl_signature_of(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.openssl",
+      decl_name: "openssl_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.openssl.extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -38,6 +38,17 @@ data github_app_jwt_backdate_seconds: Int = 60
 
 data github_app_jwt_lifetime_seconds: Int = 540
 
+// THE APP JWT'S CLAIMS, as installation_token_citation states them: iss is the App id, iat is
+// backdated for clock skew, exp is within ten minutes of issue. One authority for the claim set, so
+// a signer anywhere in the tree cannot pick its own bounds.
+fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: Int) -> String {
+  join([
+    "\{\"iat\":", to_string(now_epoch_secs - github_app_jwt_backdate_seconds),
+    ",\"exp\":", to_string(now_epoch_secs + github_app_jwt_lifetime_seconds),
+    ",\"iss\":\"", to_string(app_id), "\"}",
+  ], "")
+}
+
 data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }
 }

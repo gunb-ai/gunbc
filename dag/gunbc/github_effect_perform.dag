@@ -1,0 +1,175 @@
+module gunbc.github_effect_perform
+
+import std.types { String, NonEmptyStr, Int, List, Secret }
+import std.resources { Network }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
+import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
+import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
+import extdeps.github.actions_jit_runner {
+  JitConfigCreatedBody, jit_config_mint_outcome, jit_config_created_status, jit_runner_label_wire,
+}
+import extdeps.transports.rest {
+  RestOutcome, RestMutationExchange, classify_rest_outcome, RestExchangePerformance,
+  RestExchangeSucceeded, RestExchangeStatusRefused,
+}
+import extdeps.github.app
+import extdeps.github.actions_jit_runner
+import gunbc.host_cli_dependency {
+  HostCliDependencyAbsence, first_absent_host_cli_dependency, jit_mint_host_cli_requirements,
+}
+import gunbc.runner.runner_jit_perform {
+  JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
+  JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
+}
+import v2.std.optional { Absent, Present }
+
+// THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
+// extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
+// layer that PERFORMS one -- it sequences the realizations, holds the credentials between them, and
+// hands back a typed performance. Policy about WHICH effect to perform stays with its caller (DESIGN
+// §3: interface, realization and policy are three facts). Its first effect is the organization JIT
+// mint, whose dispatch gunbc.runner.runner_jit_perform already decides; a second effect lands here
+// as a second perform function, not as a second module.
+//
+// THE MINT IS THE TWO-STEP APP PATH gunbc.runner.runner_jit_admission names, all on the HOST:
+//   1. sign an App JWT (extdeps.auth.jws over extdeps.github.org_admin_auth's claims) with the App
+//      key, realized by openssl reading a key FILE the controller alone can read;
+//   2. POST /app/installations/{id}/access_tokens with that JWT for an installation token;
+//   3. POST /orgs/{org}/actions/runners/generate-jitconfig with that token.
+// The JWT and the token are Secrets that live only inside this call. Neither is returned, written,
+// or rendered into an argv, and the key never leaves the file openssl reads -- so nothing this
+// function produces is a path from a guest to the App key.
+
+// §3c, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
+// the realization gunbc.runner.runner_jit_perform's old transport frontier asked for, and it is
+// consumed by NO production route in this change: the caller is the per-attempt lifecycle controller
+// (gunbc.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
+// job does not select the microVM path. Its witnesses supply RestOutcomes and establish the
+// decision, never that GitHub has minted through it. The same holds for
+// gunbc.runner_attempt_launch stage_jit_device. The trigger is the CAPABILITY, not an import.
+data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_jit_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestOutcomes, nor by an import of these functions." as NonEmptyStr)
+
+// THE KEY THE MINT SIGNS WITH IS ONE MODELED PATH, NOT A CALLER PARAMETER. It is deliberately NOT
+// gunbc.runner_unit_file runner_host_app_pem_path: that file is owned by the runner user, which is
+// the principal whose processes run jobs today. The lifecycle controller's copy is root-owned and
+// readable by the controller alone, outside every jail root (gunbc.runner_microvm_attempt roots all
+// attempt storage under the fabric cell's attempt root, and /etc is not under it). Its delivery and
+// ownership readback are a converge entry, not this module; until that entry lands the path names a
+// file no converge has produced, and perform refuses at the signer (openssl cannot open it) rather
+// than falling back to the runner-owned key.
+data lifecycle_controller_app_key_path: NonEmptyStr = "/etc/gunbc/microvm-controller/app.pem"
+
+type JitMintStep
+  = InstallationAccessTokenStep
+  | GenerateJitConfigStep
+
+// EVERY NON-DELIVERY IS ITS OWN ARM. In particular a generate-jitconfig whose response never
+// arrived is RestExchangeCommitAmbiguous, NOT a refusal: GitHub may have created the registration.
+// It is carried with its step so an operator can reconcile the orphan by the runner name, which is
+// the attempt's unit name (gunbc.runner_jit_mint jit_runner_name_for).
+type JitMintPerformance
+  = JitMintReceived { delivery: JitCredentialDelivery }
+  | JitMintSignerToolAbsent { absence: HostCliDependencyAbsence }
+  | JitMintClockUnread { detail: String }
+  | JitMintAppJwtUnsigned { detail: String }
+  | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangePerformance }
+
+fn app_jwt_for(dispatch_app_id: Int, key_file: NonEmptyStr, now_epoch_secs: Int) -> JitMintAppJwt {
+  let signing_input = jws_rs256_signing_input(
+    payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
+  )
+  match openssl_sign_sha256(key_file: key_file, signing_input: signing_input) {
+    OpensslSignRefused { exit_code: _, detail: d } => AppJwtUnsigned { detail: d }
+    OpensslSigned { octets: sig } =>
+      AppJwtSigned { jwt: jws_compact_serialization(signing_input: signing_input, signature: sig) as Secret }
+  }
+}
+
+type JitMintAppJwt
+  = AppJwtSigned { jwt: Secret }
+  | AppJwtUnsigned { detail: String }
+
+// THE GENERATE STEP'S ANSWER, DECIDED WITHOUT I/O so the decision is witnessable on supplied
+// RestOutcomes (DESIGN §3: a witness discriminates at one interface). A 2xx decodes through the
+// same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
+// refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
+// never arrived is commit-ambiguous and is NOT reported as a refusal.
+fn jit_mint_performance_of_generate(
+  dispatch: JitMintDispatch,
+  outcome: RestOutcome,
+  created: JitConfigCreatedBody,
+) -> JitMintPerformance {
+  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
+    RestExchangeSucceeded =>
+      JitMintReceived {
+        delivery: receive_jit_mint(
+          dispatch: dispatch,
+          outcome: jit_config_mint_outcome(
+            status: jit_config_created_status,
+            encoded: created.encoded_jit_config,
+            runner_id: created.runner.id,
+            error_body: "",
+          ),
+        ),
+      }
+    RestExchangeStatusRefused { status: s, body: b } =>
+      JitMintReceived {
+        delivery: receive_jit_mint(
+          dispatch: dispatch,
+          outcome: jit_config_mint_outcome(status: s, encoded: "", runner_id: 0, error_body: b),
+        ),
+      }
+    other => JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: other }
+  }
+}
+
+fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformance uses net: Network {
+  match dispatch {
+    JitMintDispatchRefused { refusal: r } =>
+      JitMintReceived { delivery: JitCredentialNotDispatched { refusal: r } }
+    JitMintDispatchAuthorized {
+      attempt: _,
+      app: app,
+      installation: installation,
+      organization: organization,
+      request: request,
+    } =>
+      match first_absent_host_cli_dependency(tools: jit_mint_host_cli_requirements) {
+        Present { value: absence } => JitMintSignerToolAbsent { absence: absence }
+        Absent =>
+          match clock_unix_millis_read() {
+            ClockUnixMillisRefused { detail: d } => JitMintClockUnread { detail: d }
+            ClockUnixMillisObserved { millis: ms } =>
+              match app_jwt_for(dispatch_app_id: app.app_id.value, key_file: lifecycle_controller_app_key_path, now_epoch_secs: ms / 1000) {
+                AppJwtUnsigned { detail: d } => JitMintAppJwtUnsigned { detail: d }
+                AppJwtSigned { jwt: jwt } => {
+                  let token = github.AppInstallationAccessTokens.Create(
+                    app_jwt: jwt,
+                    installation_id: installation.value,
+                  )
+                  match classify_rest_outcome(standing: RestMutationExchange { rest: token.outcome }) {
+                    RestExchangeSucceeded => {
+                      let minted = github.ActionsJitRunners.GenerateOrganizationJitConfig(
+                        installation_token: token.token,
+                        org: organization.login,
+                        name: request.name.value,
+                        runner_group_id: request.runner_group_id.value,
+                        labels: map(request.labels, l => jit_runner_label_wire(l: l)),
+                        work_folder: request.work_folder.value,
+                      )
+                      jit_mint_performance_of_generate(
+                        dispatch: dispatch,
+                        outcome: minted.outcome,
+                        created: minted.result,
+                      )
+                    }
+                    other => JitMintStepNotSucceeded { step: InstallationAccessTokenStep, performance: other }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
