@@ -231,12 +231,12 @@ data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
   sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is a row after the census's end stage rather than a second ISO authority" as NonEmptyStr,
 }
 
-// THE FLEET-CONVERGE MODE THIS ROUTE BECOMES. It is named here so the mode row that will be added
-// to `gunbc.fleet_converge_workflow` has one spelling; it is NOT added there yet, because a mode
-// whose boot leg has no authority on main would dispatch nothing and refuse by construction --
-// a job on the roster that cannot run is a paid runner claim for a decoration. The row lands
-// with the boot leg (section 3c: a declared frontier with its trigger beside it).
-data mtcollins1_qualification_mode: NonEmptyStr = "mtcollins1_runner_qualification"
+// THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
+// `gunbc.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
+// with its trigger beside it); a mode whose boot leg has no authority on main would dispatch nothing
+// and refuse by construction -- a job on the roster that cannot run is a paid runner claim for a
+// decoration. Pre-minting the mode's spelling in this module would be a data row with no reader,
+// and two spellings of one name once the row exists (review 68532).
 
 fn qualification_route(
   host: HostIdentity,
