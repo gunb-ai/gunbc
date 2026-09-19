@@ -6,7 +6,7 @@ import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.mkdir { mkdir_binary_path }
-import gunbc.runner_microvm { gunbc_runner_microvm_declared_size }
+import gunbc.runner_microvm { gunbc_runner_microvm_declared_size, RunnerMicroVmShape, runner_microvm_workspace_grant }
 import extdeps.virtualization.firecracker {
   firecracker_requires_kvm_device,
 }
@@ -104,8 +104,19 @@ fn plan_for(
     firecracker_binary: "/bin/firecracker",
     kernel_source: "/stage/vmlinux",
     rootfs_source: "/stage/rootfs.squashfs",
-    guest_size: gunbc_runner_microvm_declared_size,
+    shape: fixture_shape(),
   )
+}
+
+// THE srv4 MVP SIZE WITH THE FLEET'S WORKSPACE GRANT AND TASK ROW: a supplied shape, because the
+// production shape (gunbc_runner_microvm_shape) is judged by its own witnesses and this module's
+// subject is the planner's refusal order, not the fit.
+fn fixture_shape() -> RunnerMicroVmShape {
+  RunnerMicroVmShape {
+    size: gunbc_runner_microvm_declared_size,
+    workspace: runner_microvm_workspace_grant,
+    task_ceiling: 16384,
+  }
 }
 
 fn admitted(n: Nat) -> EnvelopeStanding {

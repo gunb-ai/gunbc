@@ -1,0 +1,70 @@
+module gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the slot wall's floor-demand conjunct (DESIGN 4b(3)), landed by
+// gunbc#11672 because review 68382 found the wall green over a receipt that says its row is
+// below demonstrated demand, and silence in the module that now owns both facts is the one
+// arm that is not honest.
+// ============================================================================================
+//
+// WHAT THE WALL ESTABLISHES. `gunbc.runner_slot_allocation` `gunbc_runner_slot_allocation_wall_holds`
+// requires the per-slot MemoryHigh to clear `gunbc_floor_measured_peak_observation`, guarded by
+// `gunbc_floor_measured_peak_is_uncensored`, so that a row the floor cannot fit is UNWRITABLE
+// rather than discovered on a converged host. Its input is, by that guard's own design, the
+// uncensored receipt alone: a throttle pin is a censored reading and sizing to one would size the
+// fleet to whatever line happened to be in force (the loop the 2026-09-12 ruling ended).
+//
+// WHAT THE WALL CANNOT SEE, AND NOW HAS A RECEIPT FOR. `gunbc.floor_demand`
+// `gunbc_floor_throttle_pin_receipt_2026_09_19` is the floor pinned AT the current row's line
+// (peak 26849763328 against high 26843545600, 1928 memory.high events, FloorClean), and the
+// memory.stat receipt beside it shows anonymous memory being swapped at that line. Demand has
+// grown past the declaration -- the case the wall's own note names as one of the two reasons it
+// exists to fail for -- and the wall reports green, because a pin is exactly the input its guard
+// excludes. The class "a row below the floor's demonstrated demand is unwritable" therefore sits
+// at MITIGATABLE: the state is observed loudly by
+// `test.claim.runner_slot_allocation_witness` `witness_declared_high_sits_below_the_floor_charge_ceiling`,
+// which is written to be GREEN while the pin stands, and by `runner_microvm_floor_fit_stall`,
+// which tracks the microVM consequence -- but no required arm refuses the row.
+//
+// WHY A DROP RATHER THAN EXTENDING THE WALL. Consuming the pin in the wall would refuse the
+// current row on every required run until the row moves, and moving it is an operator decision
+// with a fleet cost (28/27 GiB takes cores_per_slot 10 -> 11 and CPU width 12 -> 11 per host;
+// gunbc.runner_slot_allocation's 2026-09-12 ruling paragraph). A lane that raises the row on its
+// own to green a wall would be exactly the sizing-to-the-last-pin loop that ruling ended; a lane
+// that widens the guard to admit pins would size the fleet to a censored bound. The honest arm is
+// the one that costs a declaration: the row stays below demand, the drop says so, and the
+// restoration is named.
+//
+// THE TRIGGER NAMES THE CAPABILITY, BOTH CLAUSES: (i) the per-slot MemoryHigh rises above the
+// floor's demonstrated charge ceiling (`gunbc.floor_demand` `gunbc_floor_cgroup_charge_ceiling`)
+// or the floor's demand falls below the current line so the pin receipt is superseded by a later
+// uncensored receipt at this row -- an operator ruling, cited on the change that moves it; AND
+// (ii) the wall gains a conjunct that makes a pin AT THE DECLARED LINE loud on the required path
+// (a pin receipt whose armed line equals the current memory_high refuses), so the next demand
+// growth is a red rather than a receipt. Retiring the pin receipt, or narrowing what the charge
+// ceiling folds over, satisfies neither clause.
+data slot_row_pinned_below_demonstrated_demand_unrefused: RungDrop = RungDrop {
+  identity: "slot_row_pinned_below_demonstrated_demand_unrefused" as NonEmptyStr,
+
+  subject: "the slot wall's floor-demand conjunct (gunbc.runner_slot_allocation gunbc_runner_slot_allocation_wall_holds over gunbc.floor_demand gunbc_floor_measured_peak_observation): a per-slot MemoryHigh below the floor's demonstrated demand is not refused when the demonstration is a throttle pin at the declared line",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.floor_demand's typed pin receipt and charge-ceiling fold, observed by witness_declared_high_sits_below_the_floor_charge_ceiling and tracked by gunbc.guarantee_stall.runner_microvm_floor_fit_stall, standing in for a wall conjunct that consumes the pin",
+    },
+    population: [
+      "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_high (26843545600) against gunbc.floor_demand gunbc_floor_throttle_pin_receipt_2026_09_19 (peak 26849763328 at that line)",
+    ],
+    restoration_trigger: "BOTH: (i) the per-slot MemoryHigh rises above gunbc.floor_demand gunbc_floor_cgroup_charge_ceiling, or the floor's demand falls below the current line and a later uncensored receipt at this row supersedes the pin -- an operator ruling cited on the moving change; AND (ii) gunbc_runner_slot_allocation_wall_holds gains a conjunct under which a throttle-pin receipt whose armed line equals the current memory_high refuses on the required path, with its red executed on a fixture pin. Retiring the pin receipt or narrowing the charge-ceiling fold satisfies neither clause",
+  },
+}
