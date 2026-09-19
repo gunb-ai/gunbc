@@ -1,7 +1,16 @@
 # The floor's aggregate cost has no authority
 
-Status: proposal. No code yet. Raised from a measurement of the required floor
-(runs 35365418267 merge_group, 35366842458 pull_request, 2026-09-18).
+Status: proposal. No code yet.
+
+Raised from reading two required-floor runs (35365418267 merge_group,
+35366842458 pull_request, 2026-09-18). Those IDs say WHERE the reading was
+taken and are deliberately not doing the work of a producer: nothing in this
+document quotes a duration, a population or a ratio as a standing quantity.
+The producer for a floor run is the `required-witnesses-floor` job of
+`gunbc.witness_floor_workflow`, and this proposal's whole point is that the
+quantity it is about has no carrier yet -- so where a figure would go, it names
+what would emit it instead (DESIGN §6: name the instrument, never transcribe
+its output).
 
 ## The gap
 
@@ -43,8 +52,12 @@ the same attribution defect `floor_cost_debt` already discovered per-claim.
 The grains are: fixed preparation demand; shared-fill demand; marginal claim
 work; orchestration; and an explicit **unattributed remainder**. The remainder
 is a declared field rather than a silent residue, because on the measured runs
-it was the largest single component (logged stages summed to 12.0m of a 33m
-floor phase) and an authority that cannot say how much it cannot explain is
+on the run this proposal was raised from it was the largest single component --
+a ONE-OFF reading, taken by summing the `done in` stage lines against the
+`[floor-phase]` seam markers in one required run's log, with no entry point that
+re-derives it. It is named as a one-off rather than quoted as a quantity, and
+the carrier's `unattributed_work` field is what makes the figure a produced
+output instead of a remembered one and an authority that cannot say how much it cannot explain is
 reporting a number it has not earned. `measurement_completeness` travels with
 the observation so a disposition derived from a partial reading is refusable
 rather than quietly authoritative.
@@ -53,12 +66,16 @@ rather than quietly authoritative.
 
 - **desired target** -- 20 minutes.
 - **hard steady-state ceiling** -- 30 minutes.
-- **declared migration debt** -- the presently observed 46-54 minutes.
+- **declared migration debt** -- NOT a figure carried here. It is read from the
+  `required-witnesses-floor` job of `gunbc.witness_floor_workflow` at the revision
+  the authority lands, by the producer the observation names. A number transcribed
+  into this proposal would be the baseline the whole policy is denominated in,
+  decaying without anyone touching either end (DESIGN §6).
 
 The three are separate because the floor is ALREADY over the ceiling. A policy
 that refused everything above 30 today would deadlock the repository, and a
-policy that silently adopted 46-54 as the budget would let the temporary
-baseline replace the target. So during migration the ordinary obligation is
+policy that silently adopted the observed figure as the budget would let the
+temporary baseline replace the target. So during migration the ordinary obligation is
 **non-worsening against the declared debt**, while the performance lanes lower
 the debt; once the floor is under 30 the ceiling ratchets down and becomes an
 ordinary refusal boundary. The target stays visible throughout.
@@ -85,10 +102,13 @@ amended -- which is the whole reason amendment exists.
 
 ## An open quantity this proposal deliberately does not assert
 
-Whether, and how steeply, floor runtime grows with authored witnesses. The
-population grew from 11,044 to 20,343 `test fn` in 29 days (+320/day, near
-linear). But the topology filters hard -- 20,564 declared to 4,091 routed to
-304 compile pipelines -- so declaration count is NOT the demand unit, and a
+Whether, and how steeply, floor runtime grows with authored witnesses. The authored
+population is re-derived by `git grep -cE '^\s*test fn ' <rev> -- '*.dag'` over
+any two revisions, and it grows steeply. But the topology filters hard: the
+floor's own `required-floor: declared=N offered=N routed=N ...` census line
+(`v1_compiler.bin.claim_executor`) is the producer for what survives to run, and
+it reports a small fraction of the declared population. Declaration count is
+therefore NOT the demand unit, and a
 claim that a speedup would be consumed by growth needs a measured slope from
 added identities to routed closures, compile groups and critical-path time.
 That slope is the first instrument this authority needs and is not yet
