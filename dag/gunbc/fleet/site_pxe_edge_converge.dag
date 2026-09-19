@@ -291,13 +291,16 @@ fn site_pxe_edge_gate_causes(
   })
 }
 
-// WHICH GATE CAUSES MEAN THE RUN COULD NOT SEE, as opposed to what it saw. An observe dispatch reports
-// findings (unpinned, mismatched, absent dnsmasq) as its result, but a chainloader it could not digest
-// or a privilege it could not probe is a failure to observe, and observe may not call that success.
+// WHICH GATE CAUSES MEAN THE RUN COULD NOT LOOK, as opposed to what it saw when it did. Only the three
+// Unobservable arms are true: a leg that never executed. A sudo -n that RAN and answered no privilege,
+// like an absent dnsmasq or an unpinned chainloader, is a finding an observe dispatch reports and
+// still succeeds on.
 fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
   match cause {
     ChainloaderUnobservable { reason: _ } => true
-    AdministratorPrivilegeRefused { reason: _ } => true
+    DnsmasqBinaryUnobservable { reason: _ } => true
+    AdministratorPrivilegeUnobservable { reason: _ } => true
+    AdministratorPrivilegeRefused { reason: _ } => false
     TftpServerAddressUnparseable { error: _ } => false
     SegmentNetworkUnparseable { error: _ } => false
     KnownClientMacUnparseable { error: _ } => false
@@ -307,8 +310,6 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
     ChainloaderArchitectureNotAarch64 { architecture: _ } => false
     DnsmasqBinaryAbsent { reason: _ } => false
-    DnsmasqBinaryUnobservable { reason: _ } => true
-    AdministratorPrivilegeUnobservable { reason: _ } => true
   }
 }
 

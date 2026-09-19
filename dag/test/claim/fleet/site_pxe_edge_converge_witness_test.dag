@@ -310,7 +310,8 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
 test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool {
   site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnpinned { obligation: "pin it" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnobservable { reason: "sha256sum exit=1" }]))
-    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "sudo: a password is required" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
+    && site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1" }]))
 }
 
 // THE RENDERED SEGMENT IS THE FLEET MODEL'S: site_pxe_edge_segment_network parses from
@@ -404,4 +405,11 @@ test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bo
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
     && site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" }))
     && !site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeUnobservable { reason: "ssh leg refused" }))
+}
+
+// A sudo -n THAT RAN AND ANSWERED NO IS A FINDING, NOT A FAILURE TO OBSERVE: observe reports it and
+// still succeeds, while a privilege leg that never executed refuses the observe run.
+test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> Bool {
+  site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1 sudo: a password is required" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "remote words refused" }]))
 }
