@@ -49,6 +49,17 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // question: the first says the host hosts nothing of this kind, the second says we are blind.
 // `test -d` is the discriminator the kernel's filesystem representation already affords, and it
 // is total: 0 for a directory, 1 for anything else, with no output to parse.
+//
+// ReadEvents: `cgroup.events` IS THE KERNEL'S OWN ANSWER TO "IS ANYTHING ALIVE UNDER HERE", AND IT IS THE
+// ONLY INTERFACE FILE THAT ANSWERS FOR THE SUBTREE. The admin guide documents the file as
+// "A read-only flat-keyed file which exists on non-root cgroups", with the key `populated`:
+// "1 if the cgroup or its descendants contains any live processes; otherwise, 0." That last
+// clause is what `cgroup.procs` cannot say -- procs lists the PIDs attached to THIS cgroup and
+// is empty for an inner node whose every process sits in a child, which is exactly how systemd
+// lays out a service that has spawned scoped children. So this is a distinct operation, not a
+// second spelling of ReadInterfaceFile: it takes the events file's own path and its hermetic
+// response is the kernel's documented `populated 0` form, which is what a consumer's
+// inhabitance claim over the real route needs to reach a positive verdict without a host.
 service linux.CgroupV2 {
   operation ListChildCgroups {
     input { cgroup_path: NonEmptyStr }
@@ -97,16 +108,6 @@ service linux.CgroupV2 {
     }
   }
 
-  // `cgroup.events` IS THE KERNEL'S OWN ANSWER TO "IS ANYTHING ALIVE UNDER HERE", AND IT IS THE
-  // ONLY INTERFACE FILE THAT ANSWERS FOR THE SUBTREE. The admin guide documents the file as
-  // "A read-only flat-keyed file which exists on non-root cgroups", with the key `populated`:
-  // "1 if the cgroup or its descendants contains any live processes; otherwise, 0." That last
-  // clause is what `cgroup.procs` cannot say -- procs lists the PIDs attached to THIS cgroup and
-  // is empty for an inner node whose every process sits in a child, which is exactly how systemd
-  // lays out a service that has spawned scoped children. So this is a distinct operation, not a
-  // second spelling of ReadInterfaceFile: it takes the events file's own path and its hermetic
-  // response is the kernel's documented `populated 0` form, which is what a consumer's
-  // inhabitance claim over the real route needs to reach a positive verdict without a host.
   operation ReadEvents {
     input { events_path: NonEmptyStr }
     output {
