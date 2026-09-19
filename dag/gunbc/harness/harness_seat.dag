@@ -1,5 +1,6 @@
 module gunbc.harness.harness_seat
 
+import product.placement_supply { HostIdentity }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second }
@@ -691,27 +692,47 @@ fn harness_participation_from_roster(roster: HarnessGroupParticipationRoster, gr
   }
 }
 
+// THE EPOCH'S HEAD IS RANK 0 OF THE ROSTER WHOSE RANKS THE READING THEN CHECKS -- one list, not a
+// second head row beside it -- so the epoch can never name a different host than the ranks it covers.
 // THE EPOCH IS THE HEAD UNIT'S INVOCATION, READ WHERE IT IS ALREADY READ. gunbc.spark.serving_incarnation_observe
 // takes InvocationID off the head unit on the serving path; this asks the same property through the
 // same transport rather than deriving an epoch of its own, because two answers to "which start of the
 // head does this arm belong to" is exactly the fork DESIGN section 3 forbids.
 fn harness_rendezvous_epoch(context: FleetSshExecutionContext, group: FabricGroup, rendezvous: GroupRendezvous) -> RendezvousEpoch? {
-  let head = spark_pair_serving_head(group: group)
-  match read_unit_property(
-    transport: FleetSsh { target: fleet_locus_ssh_target(host: head), context: context },
-    unit: serving_group_launch(group: group).head_unit_name,
-    property: InvocationIDProperty,
-  ) {
-    UnitTextRefused { cause: _ } => none
-    UnitTextObserved { value: t } =>
-      if trim(s: t) == "" {
-        none
-      } else {
-        Present { value: rendezvous_epoch(
-          head: head,
-          head_invocation: trim(s: t) as NonEmptyStr,
-          master_endpoint: rendezvous.master_endpoint,
-        ) }
+  match rendezvous.ranked_hosts {
+    Empty {} => none
+    Cons { head: head, tail: _ } =>
+      match read_unit_property(
+        transport: FleetSsh { target: fleet_locus_ssh_target(host: head), context: context },
+        unit: serving_group_launch(group: group).head_unit_name,
+        property: InvocationIDProperty,
+      ) {
+        UnitTextRefused { cause: _ } => none
+        UnitTextObserved { value: t } =>
+          if trim(s: t) == "" {
+            none
+          } else {
+            Present { value: rendezvous_epoch(
+              head: head,
+              head_invocation: trim(s: t) as NonEmptyStr,
+              master_endpoint: rendezvous.master_endpoint,
+            ) }
+          }
+      }
+  }
+}
+
+// WHICH HOST IS THE GROUP'S HEAD, ANSWERED ONCE. A group with a modeled rendezvous takes rank 0 of
+// the roster its launch plan derives -- the same list the participation reading ranks -- so the
+// incarnation's head and the epoch's head cannot fork from the ranks they are checked against. A
+// group with no rendezvous (the pair route) has only the pinned pair head, which is its authority.
+fn harness_group_head(group: FabricGroup) -> HostIdentity? {
+  match serving_group_rendezvous(group: group) {
+    Absent => Present { value: spark_pair_serving_head(group: group) }
+    Present { value: r } =>
+      match r.ranked_hosts {
+        Empty {} => none
+        Cons { head: h, tail: _ } => Present { value: h }
       }
   }
 }
@@ -726,7 +747,12 @@ fn harness_incarnation_standing(access: FleetSshContextPreparation, group: Fabri
     FleetSshContextRefused { cause: c } =>
       EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: spark_pair_serving_head(group: group), endpoint: launch))
+      match harness_group_head(group: group) {
+        Absent =>
+          EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- the group's rendezvous roster names no rank-0 head"], "") as NonEmptyStr }
+        Present { value: head } =>
+          endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch))
+      }
   }
 }
 
