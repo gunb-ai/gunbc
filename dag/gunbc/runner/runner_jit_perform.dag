@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
-  JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel, EncodedJitConfig,
+  JitRunnerConfigRequest, JitRunnerGroupId, EncodedJitConfig,
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused, JitConfigMintNotFound,
   JitConfigMintConflict, JitConfigMintValidationFailed,
 }
@@ -111,7 +111,6 @@ fn dispatch_jit_mint(
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
   runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintDispatch {
   match plan_jit_mint(
@@ -120,7 +119,6 @@ fn dispatch_jit_mint(
     control_plane: control_plane,
     organization: organization,
     runner_group_id: runner_group_id,
-    labels: labels,
     attempt_binding: attempt_binding,
   ) {
     JitMintRefusedCellNotOwned { cause: c } =>

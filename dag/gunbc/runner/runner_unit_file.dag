@@ -60,7 +60,7 @@ import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
 import gunbc.ci_fleet { fleet_compute_offer_for }
-import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.runner_slot_allocation { runner_registration_labels }
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache_unit {
   sccache_endpoint_env_assignment,
@@ -140,8 +140,13 @@ fn runner_slot_instance_directory() -> String {
 // A runner registers with a label set and a workflow's `runs-on` selects on it. If the unit spelled
 // its own list, the failure of a disagreement would be a job that is queued forever against a label
 // nothing advertises -- no diagnostic anywhere, because neither side is wrong on its own terms. So
-// the render takes the `RunnerSpec` that `gunbc.ci_deploy_target_host` `host_pinned_runner_spec`
-// derives, and this module spells no label literal.
+// the render takes its labels from `gunbc.runner_slot_allocation` `runner_registration_labels` --
+// the slot's declared class labels (gunbc-heavy) UNION the label of the host the runner executes on
+// -- and this module spells no label literal. The host-pinned selectors
+// (`gunbc.ci_deploy_target_host` `host_pinned_runner_spec`, the fleet-converge host input) spell the
+// host through the same `runner_host_label`, and a selector is satisfied by SET MEMBERSHIP
+// (`runner_labels_satisfy_selector`), so the registration carries every label each selector names
+// without the two being one list.
 //
 // THE TWO NON-SELF-HOSTED SPECS REFUSE, AND THEY REFUSE SEPARATELY, because they are different
 // facts with different remedies. A hosted-runner spec names a machine GitHub owns -- there is no
@@ -483,13 +488,13 @@ fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostId
   match fleet_compute_offer_for(host: host) {
     Absent =>
       RunnerUnitTextRefused {
-        reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
+        reason: "runner_unit_file: host has no fleet compute offer, so it is not an enrolled runner host and no registration is rendered for it" as NonEmptyStr,
       }
-    Present { value: offer } =>
+    Present { value: _ } =>
       runner_unit_text(
         rendering: gunbc_runner_unit_file(
           deploy: deploy,
-          spec: host_pinned_runner_spec(offer: offer, host: host),
+          spec: SelfHosted { labels: runner_registration_labels(host: host) },
           permit_scope: gunbc_fleet_runner_permit_scope(),
         ),
       )

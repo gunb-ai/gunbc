@@ -16,6 +16,8 @@ import gunbc.fleet_runner_connectivity {
   connectivity_verdict_is_detached,
   connectivity_verdict_is_orphaned,
   connectivity_verdict_is_unknown,
+  connectivity_verdict_labels_diverge,
+  RunnerSlotConnectivityVerdict,
   roster_unavailable_yields_unknown_not_detached,
   fleet_runner_capacity_width_snapshot,
   fleet_runner_capacity_width_snapshot_from_roster,
@@ -32,11 +34,13 @@ import gunbc.fleet_runner_connectivity {
   AchievedWidthsUnobserved,
   SlotConnectivityHealthy,
   SlotConnectivityDetached,
+  SlotConnectivityLabelsDiverge,
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
   FleetRunnerCapacityWidthSnapshot,
 }
 import extdeps.github.ci_runner {
+  GitHubSelfHostedRunnerRegistration,
   GitHubRunnerOnline,
   GitHubRunnerOffline,
 }
@@ -254,5 +258,56 @@ test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
   !all(
     connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
     v => connectivity_verdict_is_unknown(v: v)
+  )
+}
+
+// ── registration-label readback: the desired side is runner_registration_labels(slot host) ───────
+// ONE ONLINE REGISTRATION, VARIED ONLY IN ITS LABELS, read through the real verdict fold over a
+// complete roster. The expected sets are spelled here rather than computed from the composition, so
+// a composition that dropped a label would turn the positive control red.
+fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerdict {
+  runner_slot_connectivity_verdict_for_incarnation(
+    incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
+    roster: organization_runner_roster_from_page(
+      observed_on: "2026-09-19" as NonEmptyStr,
+      registrations: [
+        GitHubSelfHostedRunnerRegistration {
+          id: 9401,
+          name: "srv4-01" as NonEmptyStr,
+          status: GitHubRunnerOnline,
+          busy: false,
+          ephemeral: true,
+          version: "2.334.0" as NonEmptyStr,
+          os: "Linux" as NonEmptyStr,
+          labels: labels,
+        },
+      ],
+      authority_total: 1,
+    ),
+  )
+}
+
+test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> Bool {
+  connectivity_verdict_is_healthy(
+    v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]),
+  )
+}
+
+test fn online_registration_missing_the_class_label_is_not_healthy() -> Bool {
+  connectivity_verdict_labels_diverge(
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "srv4" as NonEmptyStr]),
+  )
+}
+
+test fn online_registration_missing_the_host_label_is_not_healthy() -> Bool {
+  connectivity_verdict_labels_diverge(
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr]),
+  )
+}
+
+// WRONG HOST: an srv3-labelled runner answering to srv4-01's name must not read as srv4's.
+test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool {
+  connectivity_verdict_labels_diverge(
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "srv3" as NonEmptyStr]),
   )
 }

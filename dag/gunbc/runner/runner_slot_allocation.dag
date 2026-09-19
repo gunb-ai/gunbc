@@ -200,6 +200,46 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
   }
 }
 
+// ── registration labels: declared class labels UNION the host label ─────────────────────────────
+//
+// ONE COMPOSITION, EVERY PRODUCER. The slot declares its platform/class labels above (gunbc-heavy
+// stays the class authority); a registration additionally answers to the label of the host it
+// EXECUTES ON. Unit-file registration, JIT mint, the replace postcondition and the org-roster
+// readback all take their label set from runner_registration_labels, and every host-pinned selector
+// spells its host through runner_host_label, so a registration and the selector meant to reach it
+// cannot disagree about how a host becomes a label.
+//
+// THE HOST LABEL IS WHERE THE RUNNER RUNS, never a host it mutates over SSH: the argument is the
+// slot's own host (RunnerSlotIdentity.host), not a convergence subject.
+fn runner_host_label(host: HostIdentity) -> String {
+  host as String
+}
+
+fn runner_label_set_contains(labels: List<String>, label: String) -> Bool {
+  labels |> any(l => l == label)
+}
+
+fn runner_label_set_union(a: List<String>, b: List<String>) -> List<String> {
+  concat(a, b |> filter(l => !runner_label_set_contains(labels: a, label: l)))
+}
+
+// A SELECTOR IS SATISFIED BY SET MEMBERSHIP, not order: GitHub schedules a job onto a runner that
+// carries every label runs-on names, whatever else it carries and in whatever order it registered.
+fn runner_labels_satisfy_selector(held: List<String>, selector: List<String>) -> Bool {
+  selector |> all(l => runner_label_set_contains(labels: held, label: l))
+}
+
+fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
+  runner_labels_satisfy_selector(held: a, selector: b) && runner_labels_satisfy_selector(held: b, selector: a)
+}
+
+fn runner_registration_labels(host: HostIdentity) -> List<String> {
+  runner_label_set_union(
+    a: gunbc_runner_slot_desired().labels.github_labels,
+    b: [runner_host_label(host: host)],
+  )
+}
+
 // Unknown hosts refuse rather than defaulting. A width is a claim about a specific machine's RAM,
 // and handing an unclassified host the width the measured hosts reached (21 as of 2026-08-23) would
 // be the same borrowed-premise failure the fixed-overhead fallback carries

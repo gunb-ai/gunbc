@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance {
   process_identity_eq, RunnerSlotIdentity, ProcessIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_broker_progress_watchdog {
   RemoteRegistrationEvidence,
   RemoteRegistrationObserved,
@@ -80,8 +80,11 @@ fn fixture_incarnation(slot: RunnerSlotIdentity, pid: Int, start: String) -> Run
   }
 }
 
+// srv1's registration label set, spelled independently of runner_registration_labels and in a
+// DIFFERENT ORDER than the composition produces, so the positive control also establishes that the
+// postcondition compares by set membership rather than by list equality.
 fn fixture_labels() -> List<String> {
-  ["self-hosted", "linux", "arm64", "gunbc-heavy"]
+  ["srv1", "gunbc-heavy", "self-hosted", "linux", "arm64"]
 }
 
 fn remote_offline_evidence() -> RemoteRegistrationEvidence {
@@ -418,7 +421,6 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
-    expected_labels: fixture_labels(),
   ) {
     ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
     ReplacePostconditionFailed { slot: _, reason: _ } => false
@@ -444,7 +446,6 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
-    expected_labels: fixture_labels(),
   ) {
     ReplacePostconditionFailed { slot: _, reason: _ } => true
     ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => false
@@ -630,4 +631,50 @@ test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> B
     RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
     RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
+}
+
+// ── registration-label reds for the replace postcondition ─────────────────────────────────────────
+// Each red changes ONLY the labels the successor registered with; process identity, systemd state
+// and online status are the positive control's, so a refusal here can only come from the label join.
+fn replace_postcondition_with_labels(host: HostIdentity, labels: List<String>) -> Bool {
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: host, index: 1)
+  let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
+  let after_local = RunnerLocalObservation {
+    incarnation: fixture_incarnation(slot: slot, pid: 5151, start: "91000000"),
+    systemd_active: true,
+    observed_at: act,
+  }
+  let after_remote = RunnerRemoteObservation {
+    evidence: remote_online_evidence(labels: labels),
+    observed_at: act,
+    control_plane_error_burst: false,
+  }
+  match verify_incarnation_replace_postcondition(
+    slot: slot,
+    prior: prior,
+    after_local: after_local,
+    after_remote: after_remote,
+  ) {
+    ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
+    ReplacePostconditionFailed { slot: _, reason: _ } => false
+  }
+}
+
+test fn postcondition_refuses_successor_missing_the_class_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv1, labels: ["self-hosted", "linux", "arm64", "srv1"])
+}
+
+test fn postcondition_refuses_successor_missing_the_host_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv1, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"])
+}
+
+// WRONG HOST: an srv3 registration must not satisfy an srv4 slot's postcondition, even though it
+// carries every class label and a host label of the right shape.
+test fn postcondition_refuses_successor_registered_under_another_hosts_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv3"])
+}
+
+test fn postcondition_accepts_the_srv4_registration_for_an_srv4_slot() -> Bool {
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv4"])
 }

@@ -1,6 +1,11 @@
 module test.claim.ci_deploy_target_host_witness
 
 import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage }
+import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.ci_fleet { srv3_offer, srv4_offer }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner_slot_allocation { runner_registration_labels, runner_labels_satisfy_selector }
+import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,3 +124,34 @@ test fn witness_observed_hostname_reads_typed_op_hermetic() -> Bool {
   deploy_target_host_observed_hostname() == "localhost"
 }
 
+
+// ── registration vs host-pinned selector: one host-identity-to-label projection ──────────────────
+// The selector a host-pinned workflow names and the labels a runner registers with both spell the
+// host through gunbc.runner_slot_allocation runner_host_label; a selector is satisfied by set
+// membership. The positive control is the pair on the same host; the RED is the pair across hosts.
+fn selector_labels(spec: RunnerSpec) -> List<String> {
+  match spec {
+    SelfHosted { labels: labels } => labels
+    _ => []
+  }
+}
+
+test fn srv4_registration_satisfies_the_srv4_host_pinned_selector() -> Bool {
+  let selector = selector_labels(spec: host_pinned_runner_spec(offer: srv4_offer, host: operator_host_srv4))
+  count(selector) > 0
+    && runner_labels_satisfy_selector(held: runner_registration_labels(host: operator_host_srv4), selector: selector)
+}
+
+test fn srv3_registration_does_not_satisfy_the_srv4_host_pinned_selector() -> Bool {
+  !runner_labels_satisfy_selector(
+    held: runner_registration_labels(host: operator_host_srv3),
+    selector: selector_labels(spec: host_pinned_runner_spec(offer: srv4_offer, host: operator_host_srv4)),
+  )
+}
+
+// The registration carries the class label the heavy pool selects on AND its host label, spelled
+// here independently of the composition.
+test fn srv3_registration_carries_class_and_host_labels() -> Bool {
+  runner_labels_satisfy_selector(held: runner_registration_labels(host: operator_host_srv3), selector: ["gunbc-heavy", "srv3", "self-hosted", "linux", "arm64"])
+    && !runner_labels_satisfy_selector(held: runner_registration_labels(host: operator_host_srv3), selector: ["srv4"])
+}

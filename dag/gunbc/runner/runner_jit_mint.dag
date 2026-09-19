@@ -14,6 +14,7 @@ import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
+import gunbc.runner_slot_allocation { runner_registration_labels }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
   runner_microvm_attempt_unit_name,
@@ -59,15 +60,22 @@ fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {
 // inside the VM, and handing it over would be a path from one namespace asserted in another.
 data jit_guest_work_folder: JitWorkFolder = JitWorkFolder { value: "_work" as NonEmptyStr }
 
+// THE LABELS ARE DERIVED FROM THE ATTEMPT'S OWN SLOT, not handed in by the caller. A JIT mint is a
+// registration like any other, so it answers to gunbc.runner_slot_allocation
+// runner_registration_labels of the host the microVM executes on -- the slot's host, which is the
+// only host this function can see, so no caller can mint an srv3 attempt under srv4's label.
+fn jit_registration_labels(attempt: MicroVmAttempt) -> List<JitRunnerLabel> {
+  map(runner_registration_labels(host: attempt.slot.host), l => JitRunnerLabel { value: l as NonEmptyStr })
+}
+
 fn jit_config_request_for(
   attempt: MicroVmAttempt,
-  runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>
+  runner_group_id: JitRunnerGroupId
 ) -> JitRunnerConfigRequest {
   JitRunnerConfigRequest {
     name: jit_runner_name_for(attempt: attempt),
     runner_group_id: runner_group_id,
-    labels: labels,
+    labels: jit_registration_labels(attempt: attempt),
     work_folder: jit_guest_work_folder,
   }
 }
@@ -78,7 +86,6 @@ fn plan_jit_mint(
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
   runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintPlan {
   match binding {
@@ -103,7 +110,6 @@ fn plan_jit_mint(
             request: jit_config_request_for(
               attempt: attempt,
               runner_group_id: runner_group_id,
-              labels: labels,
             ),
             drive_destination: drive,
           }

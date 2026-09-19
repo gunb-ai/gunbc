@@ -20,7 +20,10 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, committed_slot_identities }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host, committed_slot_identities,
+  runner_registration_labels, runner_label_sets_equal,
+}
 import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
 
@@ -155,6 +158,7 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
 type RunnerSlotConnectivityVerdict
   = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
   | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityLabelsDiverge { slot: RunnerSlotIdentity, registration_id: Nat }
   | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
   | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
   | SlotConnectivityUnexpectedRegistration {
@@ -199,18 +203,27 @@ data incident_srv4_committed_width_at_outage: Int = 5
 
 data incident_runner_version: NonEmptyStr = "2.334.0"
 
-data incident_runner_labels: List<NonEmptyStr> = [
+// THE CORPUS PINNED STATUS, NOT LABELS. Each fixture registration carries the class labels plus
+// the label of the host it names, i.e. the registration contract
+// (gunbc.runner_slot_allocation runner_registration_labels) spelled independently here, so the
+// connectivity rows below exercise status while label divergence is exercised by its own reds.
+data incident_runner_class_labels: List<NonEmptyStr> = [
   "self-hosted" as NonEmptyStr,
   "linux" as NonEmptyStr,
   "arm64" as NonEmptyStr,
   "gunbc-heavy" as NonEmptyStr,
 ]
 
+fn incident_runner_labels(host: HostIdentity) -> List<NonEmptyStr> {
+  concat(incident_runner_class_labels, [host as NonEmptyStr])
+}
+
 fn github_organization_ref() -> GitHubOrganizationRef {
   GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
 }
 
 fn incident_registration(
+  host: HostIdentity,
   id: Nat,
   name: NonEmptyStr,
   status: GitHubRunnerRegistrationStatus,
@@ -224,27 +237,27 @@ fn incident_registration(
     ephemeral: true,
     version: incident_runner_version,
     os: "Linux" as NonEmptyStr,
-    labels: incident_runner_labels,
+    labels: incident_runner_labels(host: host),
   }
 }
 
 data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
-  incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv1, id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
+  incident_registration(host: operator_host_srv1, id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv1, id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv1, id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv1, id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv2, id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv2, id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv2, id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
 ]
 
 fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
@@ -372,19 +385,19 @@ fn count_host_online_at_width(
 // materialized width. Keeping the seven-wide rows beside it would be a second name for a fleet
 // state, and a test fixture is not exempt from that.
 data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv3, id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
 data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(host: operator_host_srv4, id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
 data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
@@ -441,8 +454,19 @@ fn registration_verdict_or(
     Absent => unseen
     Present { value: reg } =>
       match reg.status {
+        // AN ONLINE REGISTRATION IS HEALTHY ONLY UNDER THE SLOT'S OWN LABELS. The desired side is
+        // runner_registration_labels of the slot's host, compared as a set; a runner online under a
+        // missing class label, a missing host label, or ANOTHER host's label is online and still
+        // unreachable by the selectors meant for this slot, so it is not counted healthy.
         GitHubRunnerOnline =>
-          SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+          if runner_label_sets_equal(
+               a: map(reg.labels, l => l as String),
+               b: runner_registration_labels(host: incarnation.slot.host),
+             ) {
+            SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+          } else {
+            SlotConnectivityLabelsDiverge { slot: incarnation.slot, registration_id: reg.id }
+          }
         GitHubRunnerOffline =>
           SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
       }
@@ -670,6 +694,13 @@ fn connectivity_verdict_is_healthy(v: RunnerSlotConnectivityVerdict) -> Bool {
 fn connectivity_verdict_is_detached(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityDetached { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_labels_diverge(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => true
     _ => false
   }
 }
