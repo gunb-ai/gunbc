@@ -39,7 +39,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_db_placement { fabric_db_store_root }
+import gunbc.fabric_db_placement { fabric_db_store_root, fabric_db_placed_on, fabric_db_https_port, fabric_db_listen_port }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_dispatch_worktree_root,
@@ -97,6 +97,8 @@ type OwnedArtifactKind =
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperTimerUnit
+  | FabricDbServeUnit
+  | FabricDbServeMapping
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -192,6 +194,8 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
     PublicationHelperTimerUnit => TeardownActs
+    FabricDbServeUnit => TeardownActs
+    FabricDbServeMapping => TeardownActs
   }
 }
 
@@ -424,6 +428,26 @@ fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {
 fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
   let service_unit = names.unit_name as String
   service_unit.replace(from: ".service", to: "")
+}
+
+// THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
+// only by the deployment whose instance holds the fabric DB placement (fabric_db_placed_on). It is
+// deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
+// are an ensured host directory no retract touches (FabricDbStoreDirectory).
+fn deployment_fabric_db_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fabric-db.service"], "") as NonEmptyStr
+}
+
+fn deployment_fabric_db_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fabric_db_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_fabric_db_serve_endpoint() -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: fabric_db_https_port,
+    mount: ServeRootMount,
+    backend: to_string(fabric_db_listen_port) as NonEmptyStr,
+  }
 }
 
 fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
@@ -786,7 +810,7 @@ fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
-  [
+  concat([
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
@@ -806,7 +830,22 @@ fn deployment_owned_steps(
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
-  ]
+  ], deployment_fabric_db_steps(instance: instance, names: names))
+}
+
+// The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart
+// references the binary and tree installed above) and then its tailscale route (routes to a live
+// service, the same reason the dashboard's mapping is last). Empty on every instance that does not
+// hold the placement.
+fn deployment_fabric_db_steps(instance: HostDashboardInstance, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  if fabric_db_placed_on(instance: instance) {
+    [
+      DeploymentArtifactStep { kind: FabricDbServeUnit, path: deployment_fabric_db_unit_path(names: names) },
+      DeploymentArtifactStep { kind: FabricDbServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_db_serve_endpoint()) },
+    ]
+  } else {
+    []
+  }
 }
 
 // THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS --
