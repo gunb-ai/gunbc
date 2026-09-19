@@ -2,6 +2,7 @@ module gunbc.site_uefi_arm64_pxe_edge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import extdeps.uri { Uri }
+import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -184,8 +185,14 @@ data uefi_arm64_client_arch_code: Int = dhcp_processor_architecture_code(a: Uefi
 type SiteEdgeRoster {
   site: SiteIdentity
   admitted_architectures: List<Architecture>
-  bootstrap_transport: SiteBootstrapTransport
+  chainloader_digest: ContentHash
+  tftp_root: Uri
   known_client_macs: List<Eui48Address>
+}
+
+// What was OBSERVED on the segment for one admission, kept apart from what the edge authors so the
+// config (which renders only the roster) never needs an observation to exist.
+type SiteEdgeObservation {
   offer: SiteDhcpOfferObservation
   reachability: BootNetworkReachabilityObservation
   observation: DeclarationRef
@@ -205,13 +212,25 @@ fn client_is_known(roster: SiteEdgeRoster, mac: Eui48Address) -> Bool {
   roster.known_client_macs |> any(m => m == mac)
 }
 
-fn observed_edge(roster: SiteEdgeRoster, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
+// THE EDGE'S ONE CHAINLOADER, DERIVED. The architecture and the offered filename are the
+// extdeps.firmware.ipxe build target this edge serves, never authored beside it: the rendered
+// dhcp-boot line and the filename an observed offer is checked against are both this transport.
+fn site_edge_arm64_chainloader_transport(roster: SiteEdgeRoster) -> SiteBootstrapTransport {
+  ArchitectureChainloader {
+    architecture: Aarch64,
+    filename_hint: DhcpFilenameHint { filename: ipxe_arm64_efi_snponly.image },
+    chainloader_digest: roster.chainloader_digest,
+    tftp_root: roster.tftp_root,
+  }
+}
+
+fn observed_edge(roster: SiteEdgeRoster, observed: SiteEdgeObservation, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
   SitePxeEdge {
     site: roster.site,
     admitted_architectures: roster.admitted_architectures,
     discovery: discovery,
-    bootstrap_transport: roster.bootstrap_transport,
-    global_endpoint_reachability: global_https_reachability_from_boot_network(obs: roster.reachability),
+    bootstrap_transport: site_edge_arm64_chainloader_transport(roster: roster),
+    global_endpoint_reachability: global_https_reachability_from_boot_network(obs: observed.reachability),
   }
 }
 
@@ -221,19 +240,19 @@ fn chainloader_hint(transport: SiteBootstrapTransport) -> BootDiscoveryHint {
   }
 }
 
-fn site_edge_client_admission(roster: SiteEdgeRoster, request: EdgeClientRequest) -> SiteEdgeClientAdmission {
+fn site_edge_client_admission(roster: SiteEdgeRoster, observed: SiteEdgeObservation, request: EdgeClientRequest) -> SiteEdgeClientAdmission {
   if (request.arch_code != uefi_arm64_client_arch_code) {
     SiteEdgeUnknownArchitectureRefused { arch_code: request.arch_code }
   } else {
     if client_is_known(roster: roster, mac: request.mac) == false {
       SiteEdgeUnknownMachineRefused { mac: request.mac }
     } else {
-      match site_discovery_outcome(offer: roster.offer, hint: chainloader_hint(transport: roster.bootstrap_transport)) {
+      match site_discovery_outcome(offer: observed.offer, hint: chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster))) {
         SiteDiscoveryRefused { refusal: r } => SiteEdgeDiscoveryRefused { refusal: r }
         SiteDiscoveryAnswered { mode: mode } =>
           site_edge_admission_of_standing(
-            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, discovery: mode), client_architecture: Aarch64, observation: roster.observation, observed_at: roster.observed_at),
-            unreachable: boot_network_reachability_missing(obs: roster.reachability),
+            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, observed: observed, discovery: mode), client_architecture: Aarch64, observation: observed.observation, observed_at: observed.observed_at),
+            unreachable: boot_network_reachability_missing(obs: observed.reachability),
           )
       }
     }
@@ -259,7 +278,7 @@ data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdgeRoster, tftp_directory: NonEmptyStr) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
@@ -269,20 +288,29 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, known_client_ma
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
     ],
     concat(
-      map(known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
+      map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
       [
-        DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: ipxe_arm64_efi_snponly.image as String },
+        DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String },
         DnsmasqEnableTftp,
-        DnsmasqTftpRoot { path: tftp_root as String },
+        DnsmasqTftpRoot { path: tftp_directory as String },
       ],
     ),
   )
 }
 
 // CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
-// srv4 as the edge daemon's config.
-fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> String {
-  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, known_client_macs: known_client_macs, tftp_root: tftp_root))
+// srv4 as the edge daemon's config. It renders the SAME roster admission gates on: its known-machine
+// tags are the roster's MACs and its boot line is the roster's derived transport. tftp_directory is
+// the serving host's filesystem path for dnsmasq's tftp-root, a host fact beside the roster's TFTP
+// route identity.
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRoster, tftp_directory: NonEmptyStr) -> String {
+  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster, tftp_directory: tftp_directory))
+}
+
+fn site_edge_offered_filename(roster: SiteEdgeRoster) -> NonEmptyStr {
+  match chainloader_hint(transport: site_edge_arm64_chainloader_transport(roster: roster)) {
+    DhcpFilenameHint { filename: f } => f
+  }
 }
 
 // The first onboarding segment's only known client, parsed from the measured observation's wire text

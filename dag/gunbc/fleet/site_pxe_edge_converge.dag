@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash }
+import extdeps.uri { Uri }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256_digest_content_hash }
@@ -63,13 +64,15 @@ import gunbc.runner_host_grants { executor_bootstrap_principal }
 import gunbc.runner_host_file_converge { elevated_argv }
 import gunbc.machine_intake_subject { content_hash_equal }
 import gunbc.network_boot_delivery {
+  first_slice_admitted_architectures,
   SiteBootstrapTransport,
   ArchitectureChainloader,
   DhcpFilenameHint,
 }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed }
-import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
+import gunbc.site_uefi_arm64_pxe_edge { SiteEdgeRoster, site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
+import gunbc.fleet_physical_inventory { operator_site }
 
 // THE FIRST ONBOARDING SEGMENT'S EDGE, CONVERGED ON srv4 THROUGH THE FLEET-CONVERGE WORKFLOW.
 // Operator ruling (PXE-FABRIC 0C, via sleek-carp-159): the serving host is a converged executor on
@@ -118,6 +121,7 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
 type SitePxeEdgeChainloaderTarget {
   filename: NonEmptyStr
   digest: ContentHash
+  tftp_route: Uri
 }
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget? {
@@ -125,9 +129,9 @@ fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEd
     SitePxeEdgeChainloaderUnpinned { obligation: _ } => Absent
     SitePxeEdgeChainloaderPinned { transport: t } =>
       match t {
-        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d, tftp_root: _ } =>
+        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d, tftp_root: route } =>
           match hint {
-            DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d } }
+            DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d, tftp_route: route } }
           }
       }
   }
@@ -145,14 +149,27 @@ type SitePxeEdgeFile {
   content: String
 }
 
-fn site_pxe_edge_config_file(known_client_macs: List<Eui48Address>) -> SitePxeEdgeFile {
+// THE EDGE ROSTER THIS HOST SERVES, from the pinned transport's digest and TFTP route plus the parsed
+// known clients: the same SiteEdgeRoster type admission gates on, so the written config and a later
+// admission read one authored value.
+fn site_pxe_edge_roster(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> SiteEdgeRoster {
+  SiteEdgeRoster {
+    site: operator_site,
+    admitted_architectures: first_slice_admitted_architectures,
+    chainloader_digest: target.digest,
+    tftp_root: target.tftp_route,
+    known_client_macs: known_client_macs,
+  }
+}
+
+fn site_pxe_edge_config_file(roster: SiteEdgeRoster) -> SitePxeEdgeFile {
   SitePxeEdgeFile {
     subject: "dnsmasq-proxy-dhcp-config",
     path: site_pxe_edge_config_path,
     content: site_edge_proxy_dhcp_config(
       network_address: site_pxe_edge_segment_network,
-      known_client_macs: known_client_macs,
-      tftp_root: site_pxe_edge_tftp_root,
+      roster: roster,
+      tftp_directory: site_pxe_edge_tftp_root,
     ),
   }
 }
@@ -179,8 +196,8 @@ fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
   }
 }
 
-fn site_pxe_edge_desired_files(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> List<SitePxeEdgeFile> {
-  [site_pxe_edge_config_file(known_client_macs: known_client_macs), site_pxe_edge_unit_file()]
+fn site_pxe_edge_desired_files(roster: SiteEdgeRoster) -> List<SitePxeEdgeFile> {
+  [site_pxe_edge_config_file(roster: roster), site_pxe_edge_unit_file()]
 }
 
 // ── The gate (pure) ──────────────────────────────────────────────────────────────────────────────
@@ -477,7 +494,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
     Absent => [site_pxe_edge_unit_file()]
     Present { value: c } =>
       match first_onboarding_known_client_mac {
-        MacParsed { address: a } => site_pxe_edge_desired_files(target: c, known_client_macs: [a])
+        MacParsed { address: a } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a]))
         MacParseFailed { error: _ } => [site_pxe_edge_unit_file()]
       }
   }

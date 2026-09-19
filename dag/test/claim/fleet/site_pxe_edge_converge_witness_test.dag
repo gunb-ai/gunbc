@@ -27,6 +27,7 @@ import gunbc.site_pxe_edge_converge {
   site_pxe_edge_gate_causes,
   site_pxe_edge_digest_observation,
   site_pxe_edge_desired_files,
+  site_pxe_edge_roster,
   site_pxe_edge_unit_file,
   site_pxe_edge_subject,
 }
@@ -64,7 +65,7 @@ fn known_macs() -> List<Eui48Address> {
 fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
   match site_pxe_edge_chainloader_target(pin: pin) {
     Present { value: t } => t
-    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b }
+    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b, tftp_route: Uri { scheme: Tftp, locator: "unreachable/" } }
   }
 }
 
@@ -140,7 +141,7 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
 
 test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
   let t = target_of(pin: pinned(digest: digest_a))
-  match site_pxe_edge_desired_files(target: t, known_client_macs: known_macs()).first() {
+  match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs())).first() {
     Absent => false
     Present { value: cfg } =>
       cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
