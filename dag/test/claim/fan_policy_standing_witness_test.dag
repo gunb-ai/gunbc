@@ -11,7 +11,6 @@ import extdeps.bmc.phosphor_fan_control {
   phosphor_fan_failsafe_condition_label,
   phosphor_fan_failsafe_duty_read_obligation,
   phosphor_fan_zone_enters_failsafe,
-  phosphor_fan_zone_resumes_tracking,
 }
 import extdeps.bmc.megarac_fan_policy {
   megarac_fan_mode_protocol_floor,
@@ -142,7 +141,7 @@ data witness_authority: FanPolicyAuthority = FanPolicyAuthority {
 
 test fn witness_phosphor_failsafe_enters_on_one_condition() -> Bool {
   phosphor_fan_zone_enters_failsafe(conditions: [ZoneSensorUnavailable])
-    && !phosphor_fan_zone_resumes_tracking(conditions: [ZoneSensorUnavailable])
+    && !phosphor_fan_zone_enters_failsafe(conditions: [])
 }
 
 // THE ASYMMETRY IS THE CLAIM: two conditions still enter, and only the EMPTY set resumes. A model
@@ -150,7 +149,7 @@ test fn witness_phosphor_failsafe_enters_on_one_condition() -> Bool {
 // unreachable, which is the finding this whole lane exists to be able to report.
 test fn witness_phosphor_resumes_only_when_every_condition_clears() -> Bool {
   phosphor_fan_zone_enters_failsafe(conditions: [ZoneSensorUnavailable, ZoneSensorNonFunctional])
-    && phosphor_fan_zone_resumes_tracking(conditions: [])
+    && !phosphor_fan_zone_enters_failsafe(conditions: [])
     && phosphor_fan_failsafe_condition_label(condition: ZoneSensorNonFunctional) == "ZoneSensorNonFunctional"
 }
 

@@ -1,6 +1,7 @@
 module extdeps.bmc.phosphor_fan_control
 
 import std.types { Bool, List, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority {
   CitedFigureStanding,
@@ -84,15 +85,17 @@ fn phosphor_fan_failsafe_duty_read_obligation() -> NonEmptyStr? {
   cited_figure_read_obligation(standing: phosphor_fan_failsafe_duty_standing)
 }
 
-// ENTERING TAKES ONE CONDITION; LEAVING TAKES NONE OUTSTANDING. Both directions are offered because
-// a consumer that wrote the second as `!enters(...)` would have written the same function twice, and
-// a consumer that had only the first would have to invent the exit rule.
+// ENTERING TAKES ONE CONDITION; LEAVING TAKES NONE OUTSTANDING, AND THAT IS ONE PREDICATE, NOT TWO.
+// This module carried both directions, with an annotation arguing that a consumer writing the
+// second as `!enters(...)` "would have written the same function twice". That had it backwards:
+// `length() > 0` and `length() == 0` over one list ARE the same function twice, one fact under two
+// names, which is the §3 nicknaming this repository consolidates rather than offers.
+//
+// The asymmetry the pair was meant to express is real and is not in the predicate at all - it is in
+// WHICH conditions clear, and it lives in phosphor_fan_zone_policy_contract above, where the
+// upstream states it.
 fn phosphor_fan_zone_enters_failsafe(conditions: List<PhosphorFanFailsafeCondition>) -> Bool {
   conditions.length() > 0
-}
-
-fn phosphor_fan_zone_resumes_tracking(conditions: List<PhosphorFanFailsafeCondition>) -> Bool {
-  conditions.length() == 0
 }
 
 fn phosphor_fan_failsafe_condition_label(condition: PhosphorFanFailsafeCondition) -> NonEmptyStr {
@@ -102,3 +105,22 @@ fn phosphor_fan_failsafe_condition_label(condition: PhosphorFanFailsafeCondition
     ZoneSensorOwnerLost => "ZoneSensorOwnerLost"
   }
 }
+
+// THIS MODULE HAS NO PRODUCTION CONSUMER YET, AND THAT IS DECLARED HERE RATHER THAN LEFT TO BE
+// DISCOVERED (DESIGN §3c). Its declarations are executed only by
+// test.claim.fan_policy_standing_witness, which is the red arm of that section unless the state is
+// named with its trigger - and the brief this module answers asked for the OpenBMC authority to be
+// cited beside the MegaRAC one precisely so that the two families never share an enum, which means
+// the citation lands before its first host does.
+//
+// THE NAMED CONSUMER: a ConvergeRouteBound in product.fan_policy_standing whose authority is this
+// module's contract, supplied by an OpenBMC host's own policy layer the way
+// gunbc.machine_intake_mtcollins1_fan_observe supplies the MegaRAC one. The witness already builds
+// exactly that value against extdeps.bmc.openbmc_fan_control's write, transport and readback
+// declarations, so what is missing is a HOST, not a design.
+//
+// THE TRIGGER, stated as the capability and not as an artifact: an OpenBMC-family host entering
+// the fan-policy lane with a policy module that supplies its family authority and converge route.
+// Adding an OpenBMC host to the fleet does not retire this row; adding one that reaches this
+// standing does.
+data phosphor_fan_control_first_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when an OpenBMC-family host's policy layer supplies a product.fan_policy_standing ConvergeRouteBound whose authority is phosphor_fan_zone_policy_contract, as gunbc.machine_intake_mtcollins1_fan_observe supplies the MegaRAC authority today; until then this module's only executing consumer is test.claim.fan_policy_standing_witness. An OpenBMC host merely joining the fleet does not retire this row - one reaching this standing does.")

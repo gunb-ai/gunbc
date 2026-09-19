@@ -62,23 +62,61 @@ type SdrLineResult
   = SdrLineDecoded { line: SdrTypeLine }
   | SdrLineUnstructured { text: String }
 
+// A LINE DECODES ONLY IF ALL FIVE FIELDS ARE PRESENT AND NON-EMPTY. An earlier revision checked the
+// COUNT and then filled any empty field with a sentinel string - "SdrFieldEmpty" for a blank,
+// "SdrFieldMissing" for an absent one - which is the fabricated plausible output DESIGN §5 forbids,
+// landed on a REACHABLE path: a build printing `FAN1 | | ok | 7.1 | 8600 RPM` produced a
+// well-formed record whose status was the literal text "SdrFieldEmpty", indistinguishable
+// downstream from a controller that actually reported that word.
+//
+// Worse, it misattributed the fault. A malformed line is the CONTROLLER'S output being wrong, which
+// SdrLineUnstructured already exists to carry; routing it onward made it surface later as
+// SdrFanReadingUnrecognised, which is THIS DECODER'S gap arm. That is precisely the
+// "one is the controller's report and the other is our gap" distinction this module's header
+// draws, inverted by the helper that was supposed to serve it.
 fn sdr_decode_line(text: String) -> SdrLineResult {
   let fields = split(s: text, delimiter: "|") |> map(f => trim(f))
   if fields.length() != 5 {
     SdrLineUnstructured { text: text }
   } else {
-    match fields.first() {
+    sdr_decoded_or_unstructured(
+      text: text,
+      name: sdr_field_at(fields: fields, index: 0),
+      sensor_number: sdr_field_at(fields: fields, index: 1),
+      status: sdr_field_at(fields: fields, index: 2),
+      entity_id: sdr_field_at(fields: fields, index: 3),
+      reading_text: sdr_field_at(fields: fields, index: 4),
+    )
+  }
+}
+
+fn sdr_decoded_or_unstructured(
+  text: String,
+  name: NonEmptyStr?,
+  sensor_number: NonEmptyStr?,
+  status: NonEmptyStr?,
+  entity_id: NonEmptyStr?,
+  reading_text: NonEmptyStr?,
+) -> SdrLineResult {
+  match name {
+    Absent => SdrLineUnstructured { text: text }
+    Present { value: n } => match sensor_number {
       Absent => SdrLineUnstructured { text: text }
-      Present { value: name } => if trim(name) == "" {
-        SdrLineUnstructured { text: text }
-      } else {
-        SdrLineDecoded {
-          line: SdrTypeLine {
-            name: name,
-            sensor_number: sdr_field_at(fields: fields, index: 1),
-            status: sdr_field_at(fields: fields, index: 2),
-            entity_id: sdr_field_at(fields: fields, index: 3),
-            reading_text: sdr_field_at(fields: fields, index: 4),
+      Present { value: sn } => match status {
+        Absent => SdrLineUnstructured { text: text }
+        Present { value: st } => match entity_id {
+          Absent => SdrLineUnstructured { text: text }
+          Present { value: eid } => match reading_text {
+            Absent => SdrLineUnstructured { text: text }
+            Present { value: rt } => SdrLineDecoded {
+              line: SdrTypeLine {
+                name: n,
+                sensor_number: sn,
+                status: st,
+                entity_id: eid,
+                reading_text: rt,
+              }
+            }
           }
         }
       }
@@ -86,14 +124,13 @@ fn sdr_decode_line(text: String) -> SdrLineResult {
   }
 }
 
-// THE INDEX HELPER RETURNS A SENTINEL ONLY WHERE THE CALLER HAS ALREADY ESTABLISHED THE LENGTH.
-// sdr_decode_line checks for exactly five fields before calling it, so the Absent arm is
-// unreachable from that caller; it is spelled as a visible marker rather than a blank so that a
-// future caller which has NOT checked produces something a reader will notice.
-fn sdr_field_at(fields: List<String>, index: Int) -> NonEmptyStr {
+// THE INDEX HELPER REFUSES RATHER THAN SUBSTITUTING. Absent covers both "there is no field at this
+// index" and "the field is blank", because to every caller here those have the same consequence -
+// the line cannot be decoded - and neither is a value any controller reported.
+fn sdr_field_at(fields: List<String>, index: Int) -> NonEmptyStr? {
   match fields.skip(n: index).first() {
-    Absent => "SdrFieldMissing"
-    Present { value: f } => if trim(f) == "" { "SdrFieldEmpty" } else { f }
+    Absent => Absent
+    Present { value: f } => if trim(f) == "" { none } else { Present { value: f as NonEmptyStr } }
   }
 }
 
@@ -132,9 +169,9 @@ fn sdr_fan_reading(reading_text: NonEmptyStr) -> SdrFanReading {
   } else {
     match words.first() {
       Absent => SdrFanNoReading
-      Present { value: magnitude } => {
-        let unit = sdr_field_at(fields: words, index: 1)
-        match parse_int(s: trim(magnitude)) {
+      Present { value: magnitude } => match sdr_field_at(fields: words, index: 1) {
+        Absent => SdrFanReadingUnrecognised { text: reading_text as String }
+        Present { value: unit } => match parse_int(s: trim(magnitude)) {
           Absent => SdrFanNoReading
           Present { value: n } => if n < 0 {
             SdrFanReadingUnrecognised { text: reading_text as String }
@@ -172,10 +209,13 @@ fn sdr_temperature_reading(reading_text: NonEmptyStr) -> SdrTemperatureReading {
       Absent => SdrTemperatureNoReading
       Present { value: magnitude } => match parse_int(s: trim(magnitude)) {
         Absent => SdrTemperatureNoReading
-        Present { value: n } => if sdr_field_at(fields: words, index: 1) == "degrees" {
-          SdrTemperatureDegreesC { degrees: celsius(n) }
-        } else {
-          SdrTemperatureUnrecognised { text: reading_text as String }
+        Present { value: n } => match sdr_field_at(fields: words, index: 1) {
+          Absent => SdrTemperatureUnrecognised { text: reading_text as String }
+          Present { value: unit } => if unit == "degrees" {
+            SdrTemperatureDegreesC { degrees: celsius(n) }
+          } else {
+            SdrTemperatureUnrecognised { text: reading_text as String }
+          }
         }
       }
     }
