@@ -98,9 +98,9 @@ fn test_marker_inner_declaration(shell: Node) -> Optional<Node> {
   }
 }
 
-// The marked shell of `marked_projection_source` against the declaration inside it.
+// The marked shell of `projection_source` against the declaration inside it.
 fn test_marker_shell_agrees_with_its_declaration() -> Optional<Bool> {
-  match test_marker_parsed(src: marked_projection_source, file: ^test_marker_projection_subject) {
+  match test_marker_projection_parsed() {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: artifact, diagnostics: _ } =>
       match test_marker_find_emitted(n: artifact.tree, emitted: ^dag_surface_test_fn_decl) {
@@ -139,16 +139,20 @@ fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> Tes
   }
 }
 
-// THE SHARE POINT for the control below: the real parse of `distinct_projection_source`, enrolled
-// WARM in v2.workflow.floor_pure_producer_share, so the floor pays the parse once outside the claim's
-// budget and the claim pays only the two lowerings and hashes it is about.
-fn test_marker_distinct_parsed() -> Outcome<ParseArtifact> {
-  test_marker_parsed(src: distinct_projection_source, file: ^test_marker_distinct_subject)
+// THE SHARE POINT FOR BOTH PROJECTION CLAIMS: one real parse of `projection_source`, read by the 4c
+// equality (the marked shell against the declaration inside it) AND by its discrimination control
+// (the two declarations of that same module against each other). Two claims, one parse, so the row is
+// a real recurrence rather than one claim's setup moved into preparation. Enrolled WARM in
+// v2.workflow.floor_pure_producer_share; each claim then pays only the two lowerings and hashes it is
+// about.
+fn test_marker_projection_parsed() -> Outcome<ParseArtifact> {
+  test_marker_parsed(src: projection_source, file: ^test_marker_projection_subject)
 }
 
-// The two unmarked declarations of `distinct_projection_source` against each other.
+// The first two declarations of `projection_source` -- the marked module's own `w` and the unmarked
+// `v` beside it -- against each other.
 fn test_marker_distinct_declarations_agree() -> Optional<Bool> {
-  match test_marker_distinct_parsed() {
+  match test_marker_projection_parsed() {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: artifact, diagnostics: _ } =>
       let pair = test_marker_gather_data_decls(
@@ -166,9 +170,7 @@ fn test_marker_distinct_declarations_agree() -> Optional<Bool> {
   }
 }
 
-data marked_projection_source: String = "module m\n\ntest data w: Bool = true\n"
-
-data distinct_projection_source: String = "module m\ndata v: Int = 0\ndata w: Int = 1\n"
+data projection_source: String = "module m\n\ntest data w: Bool = true\ndata v: Int = 0\n"
 
 data marked_fn_source: String = "module m.t\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
 
