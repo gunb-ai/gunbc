@@ -1,0 +1,60 @@
+module gunbc.scope_rank_view_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the scope rank-view carriers, step 2 of
+// docs/plans/scope-rank-view-design.md section 8. Authored because
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated hand
+// growth in src/v1 a stop-line, and this change adds a new 458-line hand module to the seed.
+// Requested by review 68031 on gunbc#11665, which read the module doc-comment as carrying the
+// deletion trigger and correctly refused that: DESIGN section 7 requires a seed-retained module
+// to be a DECLARED ROW with a reason and a migration trigger, "countable, prioritizable -- never
+// a silent escape hatch", and a comment is none of those things.
+//
+// THIS IS THE STRONGEST CASE FOR A ROW, NOT THE WEAKEST, and the reviewer said so. The module is
+// explicitly a SHADOW of a fold that still stands -- its own header says "These land BESIDE the
+// fold" -- so it is admitted debt by construction, with a known owning lane and a known deletion
+// motion. A shadow representation whose dissolution lives only in prose is exactly the silent
+// escape hatch the policy names.
+//
+// WHY IT IS RUST AND NOT .dag. The subject is a seed function. `claim_scope_for` builds the scope,
+// `PreparedClaimScope` and `ItemInfo` are host structures with no substrate representation, and
+// the equivalence law's whole content is that the view answers as THAT fold answers. A .dag-side
+// re-derivation could not observe the fold at all, so it would be a second resolver free to drift
+// from the one the floor runs -- the fork DESIGN section 3 refuses, and the one this migration
+// exists to remove rather than add. The carriers therefore read the same `module.item_registry`
+// the fold iterates and are compared against it by pointer identity.
+//
+// WHAT IS NOT NETTED, named rather than counted because seed_growth_deletions_offset_nothing
+// executes that rule. `PreparedClaimScope` gains `scope_order` and `authored_region`:
+// ExistingSeedItemModified under gunbc.seed_growth_admission SeedGrowthChangeDisposition. Both
+// values were already computed in `claim_scope_for` -- `scope_identity` folds over `order` and the
+// registry fold reads `authored_region` -- and were dropped once the maps they decided were built.
+// They are MOVED, not recomputed, so no second authority for the scope's order can exist. No
+// production caller observes a behaviour change; the struct retains two values it already held.
+//
+// THE `#[cfg(test)] mod equivalence` IS ALSO HAND RUST and is deliberately inside this receipt's
+// scope rather than exempted as "just tests". It is the module's only consumer today, which is
+// what makes the carriers consumed rather than dangling (DESIGN section 3c), and it dissolves on
+// the SAME trigger: when step 3 deletes the materialized maps there is no legacy side left to
+// compare against, and an equivalence law with one arm is a decoration.
+//
+// HAND-ITEM DELTA is derived from the diff by gunbc.rust_item_host_observation and is not restated
+// here -- an authored copy of a fact the diff owns is the second representation
+// seed_growth_forward_freeze_policy_note measured going wrong on gunbc#9095.
+data scope_rank_view_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ItemDeclarer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "SubjectItemDeclarers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ItemWinner", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ScopeRanks", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "resolve_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.scope_rank_view", decl_name: "ambiguous_items", field: WholeDeclaration }
+  ],
+  reason: "Step 2 of the scope rank-view replacement migration, whose section 8 order of work requires the carriers to land BESIDE the fold with an executing equivalence law before any reader moves. The growth is the price of that ordering, and the ordering is not a preference: section 8 forbids a leaf-first cutover because a surviving materialized map is DESIGN section 3's attractor, so the readers and the maps must go in ONE motion in step 3. Landing the carriers first with a law, rather than landing the cut directly, is what makes that one motion reviewable against evidence instead of against an argument.\n\nWHAT EACH ITEM IS FOR. SubjectItemDeclarers is the subject-wide claimant relation -- the already-memoized per-module fragments inverted from per-module lists into per-name lists, introducing no new derivation and no new authority, only a different join order over facts the subject already carries. ScopeRanks is the per-scope fact: module to rank, plus the authored-region boundary, sized by the scope's MODULE count rather than its item count, which is the whole difference from the map it replaces. resolve_item and ambiguous_items derive the winner and the ambiguity census from the join of those two at the ask, so nothing is materialized at scope entry. ItemDeclarer and ItemWinner are their carriers; ItemWinner exists so a resolved winner is attributable without a second lookup.\n\nSCOPED TO ONE SLOT ON PURPOSE. gunbc.scope_rank_view records six slots at three polarities, and service_ops and file_module_paths resolve HIGHEST rank while item_registry resolves lowest. A uniform cutover is silently wrong -- the tree carries the receipt for what that costs, the std.resources Filesystem and extdeps.filesystem Filesystem collision that dropped a service's operations into unknown-service-operation at runtime -- so the remaining slots land with their own laws rather than by generalizing these carriers.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "DELETED BY STEP 3 OF docs/plans/scope-rank-view-design.md section 8 -- the root cut in which claim_scope_for's registry fold and v1.interpreter build_scope_indexes_with_module_order are deleted and all fourteen readers are fixed forward onto the view in one motion. At that point these carriers stop being a shadow and become the only resolver, and this receipt is retired by the growth ceasing to be growth: what remains is not hand Rust added beside a fold, it is the fold's replacement. The `#[cfg(test)] mod equivalence` is deleted in the same motion and not migrated -- with no materialized map left there is no legacy arm to compare against, and a one-armed equivalence law is a decoration that would be cited as coverage. The step-3 lane must preserve both channels the fixtures here established: an ambiguous bare read still prevents scope admission, and an admitted scope still carries exactly the unread-collision census.",
+  current_boundary: "Consumed by nothing but its own equivalence law. No production reader calls resolve_item or ambiguous_items, no materialized map is deleted, and claim_scope_for's fold is untouched and remains the sole authority for every answer any reader receives -- so this module decides nothing about any scope the floor builds. The two fields added to PreparedClaimScope are values it already computed and discarded, retained rather than re-derived, and no production caller observes a behaviour change. The laws execute the real fold via claim_scope_for_without_memos and compare the winning ItemInfo by pointer identity, so the module cannot silently agree with a copy of the rule instead of the rule. NOTHING HERE IS ON THE MERGE PATH: cargo test --lib is a declared rung drop (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so the laws are evidence produced by an explicit run bound to a head sha, not by any required CI step -- which is stated so a green check set on the landing PR is not mistaken for these having run."
+}

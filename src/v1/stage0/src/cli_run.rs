@@ -40972,8 +40972,10 @@ pub struct PreparedClaimScope {
     /// They are computed here already — `scope_identity` is a fold over `order`, and the registry
     /// fold reads `authored_region` — and were discarded once the maps they decided were built.
     /// Retaining them is what lets a reader resolve a name from the subject-wide claimant relation
-    /// instead of from a materialized winner map. The cost is the scope's MODULE count (mean 427
-    /// at the measured run), not its item count, and one scope is alive at a time.
+    /// instead of from a materialized winner map. The cost is the scope's MODULE count, not its
+    /// item count, and one scope is alive at a time -- `module_count` beside these fields is the
+    /// producer for the former and `[floor-scope-cost]` prints the latter per run, so neither is
+    /// transcribed here (DESIGN section 6).
     ///
     /// NOT a second authority for the order: this is the same `Vec` the fold used, moved rather
     /// than recomputed, so nothing can derive a different one.
