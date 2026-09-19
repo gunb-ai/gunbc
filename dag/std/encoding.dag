@@ -320,32 +320,33 @@ fn base64_encode_optional(octets: List<QualifiedWord>, variant: Base64Variant) -
   }
 }
 
-// TOTAL FOR EVERY OCTET THE SANCTIONED CONSTRUCTOR PRODUCES, AND THE ARM BELOW IS NOT UNREACHABLE.
+// THE DIVERGENCE IS NAMED, BECAUSE AN ABORT THAT IDENTIFIES NOTHING IS NOT A LOCATED FAILURE.
 //
-// An earlier cut of this annotation said the totality was "earned by the parameter" and the arm
-// unreachable. That was false, and std.machine_word says so IN THE SAME PR: QualifiedWord is a
-// record with public fields, so the carrier is a sealed-wrapper convention and "a caller determined
-// to forge QualifiedWord { word: ... } can". A forged member -- one carrying a Width32 word, or a
-// value outside the byte range -- reaches word_from_octets, refuses there correctly, and arrives
-// here. Two annotations in one change cannot disagree about whether a state is writable; this one
-// was the wrong one (review 68594).
+// std.bytes' seam is a bare 1 / 0. Diverging through it directly would abort with a generic
+// divide-by-zero naming neither the carrier that was forged nor the operation that was running --
+// loud, but anonymous. .dag has no throw-with-message, so the only thing that carries identity at
+// an abort is the FUNCTION NAME on the stack. This wrapper exists to put both facts there: the
+// operation (base64 encode) and the cause (a forged qualified octet). It has one caller and no
+// other reason to exist.
+fn base64_encode_forged_qualified_octet_diverges() -> String {
+  pure_dag_seam_unreachable_string()
+}
+
+// TOTAL FOR EVERY OCTET THE SANCTIONED CONSTRUCTOR PRODUCES.
 //
-// WHAT IS TRUE: every member produced by base64_octets is an established Width8 octet, so no shift,
-// mask or packing can refuse for any input this module can construct. The arm is reachable ONLY by
-// forging the carrier, which is a deliberate act rather than a mistake a caller can make in
-// passing, and it diverges rather than returning "" -- which would be a legitimate encoding, of the
-// empty input, standing where a failure happened.
+// Every member produced by base64_octets is an established Width8 octet, so no shift, mask or
+// packing can refuse for any input this module can construct, and the encoder needs no refusal
+// channel. The one way to reach the arm below is to forge the carrier; that possibility, its rung
+// and its trigger are stated ONCE at their home -- std.machine_word's QualifiedWord annotation --
+// and are not restated here, because a fact with two statements is a fact that can disagree with
+// itself, which is what an earlier cut of this annotation did.
 //
-// RUNG, HONESTLY: mitigatable, and the trap is not a typed located diagnostic, which section 5 asks
-// for and this does not provide. The trigger is the one the carrier already names -- sole
-// construction over QualifiedWord -- which makes the forgery unwritable and this arm genuinely
-// unreachable rather than merely unreached. Until then the alternative is returning String? again,
-// which is the widening that was defeated at a caller and rendered an Optional into a URL path;
-// that trade is recorded on the PR rather than settled quietly here.
+// Returning "" instead would be a fabricated plausible output: "" is the legitimate encoding of the
+// empty input, so it would stand where a failure happened and be indistinguishable from success.
 fn base64_encode(octets: List<QualifiedWord>, variant: Base64Variant) -> String {
   match base64_encode_optional(octets: octets, variant: variant) {
     Present { value: encoded } => encoded
-    Absent => pure_dag_seam_unreachable_string()
+    Absent => base64_encode_forged_qualified_octet_diverges()
   }
 }
 
