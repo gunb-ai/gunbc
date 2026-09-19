@@ -328,6 +328,24 @@ fn runner_arch_label(arch: Architecture) -> String {
   }
 }
 
+// LABEL EQUIVALENCE IS GITHUB'S, NOT STRING EQUALITY. Label matching is case-insensitive (cited
+// above), so "Linux"/"linux" and "SRV4"/"srv4" are one label. Every comparison of runner labels --
+// membership, union, selector satisfaction, registration readback -- goes through this key.
+//
+// THE FOLD IS ASCII A-Z ONLY. The cited page states case-insensitivity without naming a Unicode
+// case mapping, so a non-ASCII case variant is compared exactly: two such spellings read as
+// DIFFERENT labels, which surfaces as a loud divergence rather than a silent match.
+fn runner_label_match_key(label: String) -> String {
+  join(
+    label |> chars |> map(c => if c >= 65 && c <= 90 { from_code_point(cp: c + 32) } else { from_code_point(cp: c) }),
+    "",
+  )
+}
+
+fn runner_labels_equivalent(a: String, b: String) -> Bool {
+  runner_label_match_key(label: a) == runner_label_match_key(label: b)
+}
+
 fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
   concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
 }

@@ -35,6 +35,13 @@ fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity
   a as String == b as String
 }
 
+// The same comparison for sites, beside SiteIdentity for the reason host_identity_eq is beside
+// HostIdentity: gunbc.network_boot_delivery compares an observed edge or client site against the
+// expected one, and re-spelling it inline as `as String` would accept any NonEmptyStr in either slot.
+fn site_identity_eq(a: SiteIdentity, b: SiteIdentity) -> Bool {
+  a as String == b as String
+}
+
 // SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
 // sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
 // packet reach (extdeps.network.reach) and logical topology zones
