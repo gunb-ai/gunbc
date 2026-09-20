@@ -413,10 +413,16 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
     match parse_int(s: fields.skip(n: 1).first()) {
       Absent => RequiredBuildCellLifetimeSampleUndecodable
       Present { value: generation } =>
-        match content_hash_from_structural_digest(digest: fields.skip(n: 3).first()) {
+        match fields.skip(n: 3).first() {
+          Absent => RequiredBuildCellLifetimeSampleUndecodable
+          Present { value: reservation_digest } =>
+        match content_hash_from_structural_digest(digest: reservation_digest) {
           Absent => RequiredBuildCellLifetimeSampleUndecodable
           Present { value: reservation_content } =>
-            match content_hash_from_structural_digest(digest: fields.skip(n: 5).first()) {
+            match fields.skip(n: 5).first() {
+              Absent => RequiredBuildCellLifetimeSampleUndecodable
+              Present { value: members_digest } =>
+            match content_hash_from_structural_digest(digest: members_digest) {
               Absent => RequiredBuildCellLifetimeSampleUndecodable
               Present { value: members_content } =>
                 match fields.first() {
@@ -454,6 +460,8 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
         }
     }
   }
+        }
+            }
 }
 
 fn required_build_cell_lifetime_verdict(

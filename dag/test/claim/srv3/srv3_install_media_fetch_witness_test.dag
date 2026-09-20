@@ -58,8 +58,11 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
 }
 
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
-  let url = install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact)
-  string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
+  match install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact) {
+    Absent => false
+    Present { value: url } =>
+      string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
+  }
 }
 
 test fn srv3_install_media_fetch_scope_facts() -> Bool {

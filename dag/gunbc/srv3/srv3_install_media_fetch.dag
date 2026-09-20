@@ -115,9 +115,11 @@ fn install_media_fetch_verdict_is_idempotent_skip(verdict: InstallMediaFetchVerd
   }
 }
 
-fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  let first = ubuntu_install_media_mirror_rows.first()
-  ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
+fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr? {
+  match ubuntu_install_media_mirror_rows.first() {
+    Absent => Absent
+    Present { value: first } => Present { value: ubuntu_install_media_mirror_url(artifact: artifact, mirror: first) }
+  }
 }
 
 fn srv3_install_media_fetch() -> ProcessExit
