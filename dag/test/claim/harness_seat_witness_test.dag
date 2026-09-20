@@ -119,10 +119,14 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // still one on both routes, and the tolerant ceiling is the route's own declared allocation. Both
 // halves are asserted, and the tolerant one is asserted DIFFERENT from the desired unit's
 // max_num_seqs -- the stale launch-line reading this lane declined to inherit -- so a future edit
-// that quietly re-derived it from that row goes red here.
+// that quietly re-derived it from that row goes red here. GROUP B'S TOLERANT ALLOCATION MOVED TO 4
+// on 2026-09-18 (gunbc.serving.serving_enrollment serving_group_b_route_turn_ceiling, matching group
+// A's reasoning: an attributable allocation, never the converged arm's --max-num-seqs 16), and this
+// row pinned 1 for longer than that row said 1 -- the literal is the point of the row, so the repair
+// is the new literal, stated here rather than silently edited.
 test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
   w_tolerant_ceiling(group: FabricGroupA) == 4
-    && w_tolerant_ceiling(group: FabricGroupB) == 1
+    && w_tolerant_ceiling(group: FabricGroupB) == 4
     && w_ceiling(group: FabricGroupA) == 1
     && w_ceiling(group: FabricGroupB) == 1
     && w_tolerant_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
