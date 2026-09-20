@@ -768,13 +768,23 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
   }
 }
 
-fn approval_broker_dark_install_srv1_operator_local_wet() -> ProcessExit {
-  approval_broker_dark_install_wet_with_access(
-    spec: deployment_spec_srv1(),
-    access: ci_deploy_srv1_operator_local_access,
-  )
-}
-
+// THERE IS NO OPERATOR-LOCAL TWIN OF THE FOLD BELOW, and its absence is the point rather than an
+// omission (review 68991). One existed: approval_broker_dark_install_srv1_operator_local_wet, same
+// body with ci_deploy_srv1_operator_local_access substituted. Nothing called it and nothing routed
+// it -- gunbc.apply apply_dispatch routes only the ghrunner variant -- so it was a dangling
+// declaration, and a privileged host-mutation entry at that.
+//
+// IT ALSO CONTRADICTED THIS CHANGE'S OWN ARGUMENT. gunbc.ci_spec says of the principal refusal that
+// sent the dark install to a runner-executed route: "That refusal is the access model working, not
+// an obstacle to route around -- so the install reaches srv1 the way every other host mutation
+// does, as a dispatched job on the host-pinned runner, rather than by relaxing the expected
+// principal." An unrouted operator-local twin IS that relaxation, sitting in the tree for the next
+// person under time pressure to reach for. Deleted rather than routed, because routing it would
+// contradict the reasoning that put the ghrunner route there in the first place.
+//
+// The roadmap's live_deploy_apply_srv1_operator_local_wet is NOT this case and stays: it has a real
+// consumer in gunbc.fleet.fleet_converge_plan_cli, so it is a routed entry rather than a dormant
+// second door.
 fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
   approval_broker_dark_install_wet_with_access(
     spec: deployment_spec_srv1(),

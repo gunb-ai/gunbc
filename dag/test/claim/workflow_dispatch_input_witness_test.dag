@@ -260,15 +260,22 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // inside CI, and not gunbc.apply apply_dispatch, which re-decides by string what the target row
 // decides by declaration.
 //
-// THE THIRD ASSERTION IS THE DISCRIMINATING ONE. approval_broker_dark_install_srv1_operator_local_wet
-// differs from the admitted fold by one identifier, is exported from the same module, and would
-// satisfy an entry-path check; naming it as an ABSENCE is what makes this claim fail on the
-// plausible wrong edit rather than only on a missing one.
+// THE SECOND ASSERTION IS THE DISCRIMINATING ONE. gunbc.apply apply_dispatch exists, reaches the
+// same mutation, and would satisfy a reader checking only that the step runs "the dark install" --
+// so naming it as an ABSENCE is what makes this fail on the plausible wrong edit rather than only
+// on a missing one.
+//
+// A THIRD CONJUNCT WAS REMOVED HERE RATHER THAN KEPT (review 68991). It asserted the invoke does
+// not name approval_broker_dark_install_srv1_operator_local_wet -- an operator-principal twin of
+// the admitted fold. That fold IS NOW DELETED, so the assertion had become permanently green by
+// construction: a must-refuse probe over a spelling nothing in the corpus produces carries no
+// information and would be cited as coverage it does not provide. The door is closed by the
+// deletion, which is DESIGN section 5's construction over validation -- guarding a door that no
+// longer exists is the weaker half of the pair, not an addition to it.
 test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
   let invoke = gunbc_ci_approval_broker_dark_install_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet")
     && !string_contains(s: invoke, pattern: "apply_dispatch")
-    && !string_contains(s: invoke, pattern: "approval_broker_dark_install_srv1_operator_local_wet")
 }
 
 // AND THE JOB SELECTS ON THE MODE THAT THE MENU OFFERS. A roster row whose job guards on a
