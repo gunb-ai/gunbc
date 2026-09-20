@@ -388,6 +388,12 @@ fn ci_fleet_wif_auth_step() -> Step {
 }
 
 fn ci_fleet_key_agent_step() -> Step {
+  ci_fleet_key_agent_step_when(if_condition: none)
+}
+
+// A job whose dispatches do not all consume host SSH authority passes the condition under which
+// they do, so a run that never opens a fleet session never holds the key (least access).
+fn ci_fleet_key_agent_step_when(if_condition: String?) -> Step {
   RunStep {
     name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
     id: none,
@@ -397,7 +403,7 @@ fn ci_fleet_key_agent_step() -> Step {
       value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: if_condition,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -639,7 +645,9 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
 // this job -- one gated run step each plus one shared receipt upload -- and still do not move the
 // bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
-// transfer-tier upload, which is below the spark_grants branch that sets the worst case.
+// transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
+// site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.site_pxe_edge_converge) have the same
+// shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }

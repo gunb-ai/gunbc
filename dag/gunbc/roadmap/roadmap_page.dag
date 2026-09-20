@@ -1159,7 +1159,14 @@ fn roadmap_fleet_page() -> Fragment {
   }
 }
 
-fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
+// THE STYLESHEET IS A PARAMETER BECAUSE IT IS HEAD CHROME NO ROW CLAIM READS. Deriving it here
+// made every claim about BODY markup pay for it: roadmap_css() measures 157,986 eval steps against
+// ~5,800 for the node row it was actually asserting on, so four page claims each spent 96% of their
+// budget building a stylesheet none of them inspects (probe over roadmap_page_launch, claim_batch on
+// this tree). That is the DESIGN section 3 tell exactly -- a claim dominated by one call whose result
+// it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
+// it. Every production caller below passes roadmap_css(), so the served page is unchanged.
+fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged, launch: ctx))
@@ -1180,12 +1187,22 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
         Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
+        el("style", [ txt(stylesheet) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
       el("body", body_children),
     ],
   }
+}
+
+fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_css())
+}
+
+// The supplied-stylesheet seam a row claim renders through. It is the same page fold; only the head's
+// style text is handed in. A claim that asserts on the stylesheet must use roadmap_page_launch.
+fn roadmap_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet)
 }
 
 fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {

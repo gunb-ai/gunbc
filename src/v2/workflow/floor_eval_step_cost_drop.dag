@@ -7,11 +7,13 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Two bounded populations share one
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Four bounded populations share one
 // membership test (`floor_eval_step_cost_drop_members` / `_holds`): the live-roadmap four
-// (`gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`) and the two
+// (`gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`), the two
 // live-deploy apply-render readers (`gunbc.rung_drop`
-// `live_deploy_apply_render_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
+// `live_deploy_apply_render_new_witness_eval_step_cost`), and the one live forecast control
+// (`gunbc.rung_drop` `roadmap_live_forecast_new_witness_eval_step_cost`), and the one page
+// stylesheet inhabitance claim (`gunbc.rung_drop` `roadmap_page_style_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
 // `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
@@ -82,8 +84,36 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
   },
 ]
 
+// THIRD DROP, SAME MEMBERSHIP TEST. One identity: the live control gunbc.rung_drop
+// roadmap_sizing_authored_to_derived names as the ONE claim that executes the live roadmap
+// authority and refuses. It is on its OWN list because this module's rule is that growing a
+// drop's list is a new drop -- the roadmap four above may only shrink, and this identity is not
+// one of them.
+//
+// WHY IT IS NOT MOVED OR WEAKENED INSTEAD. Weakening it would delete the pairing obligation's
+// last execution of the real path (DESIGN section 3). Moving it to the long home would stop it
+// running on the change it exists to catch: the floor plans a changed witness from
+// `edited_test_fns` -- the test fns the DIFF TOUCHED, not the closure -- and no cadence executes
+// the long home (witnesses.yml has no schedule and falsifier.yml is deleted), so on run
+// 35408358503 exactly three test.claim.long.* identities executed, all of them ones that run's
+// diff had edited, against declined_long=416. Membership here keeps the claim executing on every
+// pull request, which is the whole reason this list and not a relocation.
+data floor_eval_step_cost_drop_live_forecast_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub" as NonEmptyStr,
+    measured_by: "required floor run 35408358503, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is one sizing derivation per ACTIVE NODE of the live graph, which is what the claim asserts: while gunbc.roadmap_sizing derive_task_sizing is a stub the fold mints a NodeUnsized refusal for every active node and the claim joins that set to the active set in both directions, so the cost IS the assertion rather than reach around it. The reductions that were tried are recorded in the drop row rather than here; the standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
+  },
+]
+
+data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.long.roadmap_page_witness.witness_ready_node_doc_emits_button_and_external_script" as NonEmptyStr,
+    measured_by: "required floor run 35428496562, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real derivation of gunbc.roadmap_style roadmap_css inside the claim frame, which this claim is the page's only inhabitance route for" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  fold(floor_eval_step_cost_drop_apply_render_rows, init: floor_eval_step_cost_drop_rows, f: fn(acc, row) { concat(acc, [row]) })
+  concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

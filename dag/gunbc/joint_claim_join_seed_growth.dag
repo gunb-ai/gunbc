@@ -13,7 +13,8 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // the two set differences a joint-incompatibility question needs -- export-surface entries removed
 // (declared, variants, reexported; base minus head) and import-member claims added or retired -- and
 // intersects them across a set of changes, excluding a claim no longer live when the entry left. It
-// reuses the parse the wave wall already performs (namespace_wave_admission base_records over
+// reuses the parse machinery the floor's baseline reconstruction shares (namespace_baseline
+// base_records over
 // declaration_index record_from_module) and the diff listing it already trusts (diff_sides); it adds
 // no parse, no phase, no job and no permission. Retrospective mode walks a first-parent commit range.
 //
@@ -215,7 +216,7 @@ data joint_claim_join_seed_growth_justification: SeedGrowthJustification = SeedG
       field: WholeDeclaration
     }
   ],
-  reason: "Three 2026-09-10 main reds were pairs of individually green, textually disjoint PRs whose union does not compile, and the join that would have named them -- surface entries one change removes against import claims another adds -- is a set intersection over records the parse phase already builds. The scope record that priced the mitigation rests on the width between the raw candidate count and the finding count; a figure worth acting on needs a producer, and this bin is it. Rust rather than .dag because the two inputs it joins -- a base-side record reconstructed from a git blob and a diff listing -- are host facts the seed already owns in namespace_wave_admission, and a .dag realization would re-derive both through a host effect that does not exist yet.",
+  reason: "Three 2026-09-10 main reds were pairs of individually green, textually disjoint PRs whose union does not compile, and the join that would have named them -- surface entries one change removes against import claims another adds -- is a set intersection over records the parse phase already builds. The scope record that priced the mitigation rests on the width between the raw candidate count and the finding count; a figure worth acting on needs a producer, and this bin is it. Rust rather than .dag because the two inputs it joins -- a base-side record reconstructed from a git blob and a diff listing -- are host facts the seed already owns in namespace_baseline (then namespace_wave_admission, renamed 2026-09-19 when the wall around them was deleted), and a .dag realization would re-derive both through a host effect that does not exist yet.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete every row when EITHER holds: the merge-time freshness requirement of gunbc.plans.ci_merge_freshness section 3 is in force as a witnessed property (receipt_is_admissible gating), at which point the class is unwritable by construction and the instrument measures nothing that can occur; OR the per-change delta (removed surface, added and retired claims) is a modeled operation over a modeled base-side read, at which point the join is a .dag fold over two declared inputs and this host has nothing left to do. What does NOT dissolve them: a rider consuming this join in the parse phase (that is checkpoint 2, a consumer, not a replacement), or the figure being cited in the plan (a citation is not a producer).",
   current_boundary: "src/v1/stage0/src/bin/joint_claim_join.rs; src/v1/stage0/Cargo.toml [[bin]] joint_claim_join; dag/gunbc/joint_claim_join_seed_growth.dag"

@@ -185,6 +185,30 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
   },
   WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_emit_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_grammar_inverse_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.field_access_emit.field_access_ingest_via_coerce_matches_canonical by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_emit_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "it only re-asserted the enrolled v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "v2.test.lens_application.sg_claims.lens_application_introspect_advisory_holds" as NonEmptyStr,
     deleted_in: "it only re-asserted the enrolled v2.test.lens_application.apply_lens_introspect_rejection_is_advisory.apply_lens_introspect_rejection_is_advisory_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
   },

@@ -246,6 +246,12 @@ test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool 
   !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
 }
 
-test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {
-  production_edge_count(path: consumer_callee_only_path, target: provider_module) == 0
+// FLIPPED 2026-09-19: enrolled as "callee is missing today", it went red when v2 body lowering
+// began lowering a call through a dotted chain to a Transform whose operator is the whole
+// qualified-name spine (gunbc#11683; gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, callee half). The callee now reaches the edge fold
+// as one mention of the provider module. The call-CONTENTS row above stays missing: the argument
+// half of that class is untouched.
+test fn production_route_callee_with_no_arguments_reaches_holds() -> Bool {
+  production_edge_count(path: consumer_callee_only_path, target: provider_module) == 1
 }
