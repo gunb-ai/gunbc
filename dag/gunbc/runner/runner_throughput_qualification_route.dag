@@ -5,7 +5,6 @@ import std.nat { Nat }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.placement_supply { HostIdentity }
-import product.fabric.work { CapacityClass, ControlPlaneCapacity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
@@ -19,50 +18,55 @@ import gunbc.runner_throughput_qualification {
   RouteLegStanding, LegBoundToAuthority, LegAwaitingAuthority, leg_is_bound,
 }
 
-// THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHETHER IT WRITES A CONTROLLER.
+// THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHAT IT MUTATES AND UNDER WHOM.
 //
 // The brief's shape: boot the host through the same approval-gated diskless route the census used,
 // register ONE ephemeral actions-runner slot carrying the gunbc runner-slot shape, dispatch the
-// floor to it, collect the instruments, deregister. Five stages. Exactly one of them touches the
-// BMC, and it is the one that runs under `gunbc.auth.approval_decision_store grant_from_store` --
-// the same gate boot 22 ran under. The other four write nothing outside the guest, and the fold
-// `route_controller_writes_are_gated` is the executing statement of that: a stage that claims a
-// controller write without naming the gate is red.
+// floor to it, collect the instruments, deregister. Five stages, FOUR of them effectful, at two
+// grains (operator hold on gunbc#11722, item 6): the boot stage writes a BMC, under
+// `gunbc.auth.approval_decision_store grant_from_store`; registering, dispatching to and
+// deregistering an ephemeral GitHub runner are CONTROL-PLANE mutations of GitHub's, each bound to
+// its authority or carried as a declared frontier. An earlier draft classified the three GitHub
+// stages as writing nothing, and a green witness certified it -- a false fact with coverage.
+// Only the collect stage is observation.
 //
-// TWO LEGS OF THIS ROUTE ARE DECLARED FRONTIERS, NOT CITATIONS, and the difference is mechanical.
-// The declaration index resolves every DeclarationRef a production module carries during the
-// parse phase of the required run, so a ref to a module that is not on main stops the line. The
-// boot leg's authority is `mtcollins1_boot_run` on gunbc#11484 and the image leg's is the census
-// lane's derived-ISO builder, neither merged at this writing. Both are carried as
-// `LegAwaitingAuthority` with the capability the landing must be SUFFICIENT FOR stated beside it
-// (DESIGN section 4b(3): the trigger names the capability, not an artifact). When either lands,
-// its leg flips to `LegBoundToAuthority` with a resolving DeclarationRef and the fleet-converge
-// mode row below stops being a frontier -- and the witness that reads this route asserts today
-// that no leg claims a binding it does not have.
+// A ROUTE IS EXECUTABLE ONLY WHEN EVERY EFFECTFUL LEG IS BOUND. `route_is_executable` is false
+// today and the witness asserts that it is false: the boot leg's authority is on gunbc#11484, the
+// image leg's on gunbc#11731, the JIT registration authority on main
+// (`gunbc.runner.runner_jit_perform dispatch_jit_mint`) is shaped for a MicroVmCellBinding and
+// must generalize to a transient-unit slot, and `extdeps.github.workflows CreateDispatch` has no
+// production caller and a heal-specific input contract. Each leg names the capability its landing
+// must be SUFFICIENT FOR (section 4b(3)); a DeclarationRef to an unmerged authority would stop the
+// parse phase, which is why the legs are typed standings rather than refs.
 
 // ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
 
-type StageControllerWrite
-  = NoControllerWrite
-  | ControllerWriteUnderGate { gate: DeclarationRef }
+// FOUR EFFECT GRAINS, NONE OF THEM "NONE" FOR A STAGE THAT MUTATES SOMETHING OUTSIDE THE GUEST.
+type StageEffect
+  = BmcWrite { gate: DeclarationRef, boot: RouteLegStanding, image: RouteLegStanding }
+  | GitHubControlPlaneWrite { authority: RouteLegStanding }
+  | GuestLocalEffect
+  | ObservationOnly
 
 type QualificationStage
   = BootHostUnderApprovalGate { host: HostIdentity, boot: RouteLegStanding, image: RouteLegStanding }
-  | RegisterEphemeralRunnerSlot { unit: NonEmptyStr, labels: List<String>, workspace: WorkspaceBacking }
-  | DispatchFloorToSlot { workload: FloorWorkloadPin, selector: List<String> }
+  | RegisterEphemeralRunnerSlot { unit: NonEmptyStr, labels: List<String>, workspace: WorkspaceBacking, registration: RouteLegStanding }
+  | DispatchFloorToSlot { workload: FloorWorkloadPin, selector: List<String>, dispatch: RouteLegStanding }
   | CollectInstruments { instruments: List<QualificationInstrument> }
-  | DeregisterRunnerSlot { unit: NonEmptyStr }
+  | DeregisterRunnerSlot { unit: NonEmptyStr, deregistration: RouteLegStanding }
 
-fn stage_controller_write(stage: QualificationStage) -> StageControllerWrite {
+fn stage_effect(stage: QualificationStage) -> StageEffect {
   match stage {
-    BootHostUnderApprovalGate { host: _, boot: _, image: _ } =>
-      ControllerWriteUnderGate {
+    BootHostUnderApprovalGate { host: _, boot: b, image: i } =>
+      BmcWrite {
         gate: decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "grant_from_store"),
+        boot: b,
+        image: i,
       }
-    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _ } => NoControllerWrite
-    DispatchFloorToSlot { workload: _, selector: _ } => NoControllerWrite
-    CollectInstruments { instruments: _ } => NoControllerWrite
-    DeregisterRunnerSlot { unit: _ } => NoControllerWrite
+    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: r } => GitHubControlPlaneWrite { authority: r }
+    DispatchFloorToSlot { workload: _, selector: _, dispatch: d } => GitHubControlPlaneWrite { authority: d }
+    CollectInstruments { instruments: _ } => ObservationOnly
+    DeregisterRunnerSlot { unit: _, deregistration: d } => GitHubControlPlaneWrite { authority: d }
   }
 }
 
@@ -75,10 +79,10 @@ fn stage_controller_write(stage: QualificationStage) -> StageControllerWrite {
 fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
   match stage {
     BootHostUnderApprovalGate { host: _, boot: _, image: _ } => none
-    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _ } => Present { value: runner_host_egress_policy }
-    DispatchFloorToSlot { workload: _, selector: _ } => Present { value: runner_host_egress_policy }
+    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => Present { value: runner_host_egress_policy }
+    DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => Present { value: runner_host_egress_policy }
     CollectInstruments { instruments: _ } => none
-    DeregisterRunnerSlot { unit: _ } => Present { value: runner_host_egress_policy }
+    DeregisterRunnerSlot { unit: _, deregistration: _ } => Present { value: runner_host_egress_policy }
   }
 }
 
@@ -201,11 +205,6 @@ data qualification_instruments: List<QualificationInstrument> = [
 // the remedy is a disk or a narrower shape, both of which are a different subject.
 data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
 
-// THE CANDIDATE CLASS IS CONTROL-PLANE: the floor is our own work, and a host being qualified to
-// carry it is being qualified for the class `gunbc.fabric_witness_run floor_execution_requirements`
-// declares, exactly as srv3 and srv4 are sanctioned for it by construction.
-data mtcollins1_capacity_class_candidate: CapacityClass = ControlPlaneCapacity
-
 data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
   lands_with: "gunbc#11484 (approval loop D): gunbc.machine_intake_mtcollins1_boot_run and the fleet-converge mode mtcollins1_boot" as NonEmptyStr,
   sufficient_for: "booting mtcollins1 from the derived diskless image under grant_from_store with the SOL collector attached before the BMC stimulus and no controller write on deny, expiry or an unfiled request" as NonEmptyStr,
@@ -216,6 +215,24 @@ data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
   sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is rendered user-data and NoCloudSeedFile rows after the census's end stage rather than a second ISO authority" as NonEmptyStr,
 }
 
+// THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration are one JIT contract --
+// an ephemeral JIT runner is removed by GitHub when its one job ends -- so both name the same
+// authority; dispatch names the cited REST operation that has no production caller yet.
+data mtcollins1_registration_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "gunbc.runner.runner_jit_perform dispatch_jit_mint generalized over a slot binding that is a transient unit on a live host rather than a MicroVmCellBinding, minting the JIT config whose labels are ephemeral_slot_labels" as NonEmptyStr,
+  sufficient_for: "registering exactly one ephemeral runner for one attempt label with the gunbc runner-slot shape, refused before any launch on an inadmissible envelope" as NonEmptyStr,
+}
+
+data mtcollins1_dispatch_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "a production fold calling extdeps.github.workflows github.Workflows CreateDispatch for the qualification workflow with the attempt label as its input -- which also dissolves that module's create_dispatch_unconsumed_frontier_rows" as NonEmptyStr,
+  sufficient_for: "dispatching the floor to the one registration whose runs-on names the attempt label, so the run is unservicable by any other runner" as NonEmptyStr,
+}
+
+data mtcollins1_deregistration_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "the same JIT contract as mtcollins1_registration_leg: GitHub removes the ephemeral runner when its one job ends, and gunbc.runner.runner_teardown_receipt RunnerTeardownRequest carries the host-side teardown" as NonEmptyStr,
+  sufficient_for: "the registration being gone from the organization and the unit torn down after the one job, observed rather than assumed" as NonEmptyStr,
+}
+
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
 // `gunbc.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
 // with its trigger beside it); a mode whose boot leg has no authority on main would dispatch nothing
@@ -223,22 +240,37 @@ data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
 // decoration. Pre-minting the mode's spelling in this module would be a data row with no reader,
 // and two spellings of one name once the row exists (review 68532).
 
+type QualificationRouteLegs {
+  boot: RouteLegStanding
+  image: RouteLegStanding
+  registration: RouteLegStanding
+  dispatch: RouteLegStanding
+  deregistration: RouteLegStanding
+}
+
+data mtcollins1_route_legs: QualificationRouteLegs = QualificationRouteLegs {
+  boot: mtcollins1_boot_leg,
+  image: mtcollins1_image_leg,
+  registration: mtcollins1_registration_leg,
+  dispatch: mtcollins1_dispatch_leg,
+  deregistration: mtcollins1_deregistration_leg,
+}
+
 fn qualification_route(
   host: HostIdentity,
   attempt: NonEmptyStr,
   workload: FloorWorkloadPin,
   workspace: WorkspaceBacking,
-  boot: RouteLegStanding,
-  image: RouteLegStanding,
+  legs: QualificationRouteLegs,
 ) -> List<QualificationStage> {
   let unit = ephemeral_slot_unit(host: host, attempt: attempt)
   let labels = ephemeral_slot_labels(host: host, attempt: attempt)
   [
-    BootHostUnderApprovalGate { host: host, boot: boot, image: image },
-    RegisterEphemeralRunnerSlot { unit: unit, labels: labels, workspace: workspace },
-    DispatchFloorToSlot { workload: workload, selector: labels },
+    BootHostUnderApprovalGate { host: host, boot: legs.boot, image: legs.image },
+    RegisterEphemeralRunnerSlot { unit: unit, labels: labels, workspace: workspace, registration: legs.registration },
+    DispatchFloorToSlot { workload: workload, selector: labels, dispatch: legs.dispatch },
     CollectInstruments { instruments: qualification_instruments },
-    DeregisterRunnerSlot { unit: unit },
+    DeregisterRunnerSlot { unit: unit, deregistration: legs.deregistration },
   ]
 }
 
@@ -248,38 +280,74 @@ fn mtcollins1_qualification_route(attempt: NonEmptyStr, workload: FloorWorkloadP
     attempt: attempt,
     workload: workload,
     workspace: mtcollins1_qualification_workspace_backing,
-    boot: mtcollins1_boot_leg,
-    image: mtcollins1_image_leg,
+    legs: mtcollins1_route_legs,
   )
 }
 
 // ── THE LAWS A WITNESS READS OFF THE ROUTE ────────────────────────────────────────────────────
 
-fn stage_writes_controller(stage: QualificationStage) -> Bool {
-  match stage_controller_write(stage: stage) {
-    NoControllerWrite => false
-    ControllerWriteUnderGate { gate: _ } => true
+fn stage_is_effectful(stage: QualificationStage) -> Bool {
+  match stage_effect(stage: stage) {
+    ObservationOnly => false
+    GuestLocalEffect => true
+    BmcWrite { gate: _, boot: _, image: _ } => true
+    GitHubControlPlaneWrite { authority: _ } => true
   }
 }
 
-fn route_controller_writes_are_gated(route: List<QualificationStage>) -> Bool {
-  route |> all(s =>
-    match stage_controller_write(stage: s) {
-      NoControllerWrite => true
-      ControllerWriteUnderGate { gate: g } =>
-        (g.module_path as String) == "gunbc.auth.approval_decision_store" && (g.decl_name as String) == "grant_from_store"
+// THE LEGS AN EFFECTFUL STAGE STANDS ON. A BMC write stands on its boot and image legs; a
+// control-plane write on its authority; observation on nothing.
+fn stage_legs(stage: QualificationStage) -> List<RouteLegStanding> {
+  match stage_effect(stage: stage) {
+    ObservationOnly => []
+    GuestLocalEffect => []
+    BmcWrite { gate: _, boot: b, image: i } => [b, i]
+    GitHubControlPlaneWrite { authority: a } => [a]
+  }
+}
+
+fn route_effectful_stage_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) => if stage_is_effectful(stage: s) { acc + 1 } else { acc })
+}
+
+fn route_bmc_write_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) =>
+    match stage_effect(stage: s) {
+      BmcWrite { gate: _, boot: _, image: _ } => acc + 1
+      _ => acc
     }
   )
 }
 
-fn route_controller_write_count(route: List<QualificationStage>) -> Int {
-  fold(route, init: 0, f: (acc, s) => if stage_writes_controller(stage: s) { acc + 1 } else { acc })
+fn route_control_plane_write_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) =>
+    match stage_effect(stage: s) {
+      GitHubControlPlaneWrite { authority: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
+
+// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity.
+fn route_bmc_writes_are_gated(route: List<QualificationStage>) -> Bool {
+  route |> all(s =>
+    match stage_effect(stage: s) {
+      BmcWrite { gate: g, boot: _, image: _ } =>
+        (g.module_path as String) == "gunbc.auth.approval_decision_store" && (g.decl_name as String) == "grant_from_store"
+      _ => true
+    }
+  )
+}
+
+// THE ROUTE IS EXECUTABLE ONLY WHEN EVERY LEG UNDER EVERY EFFECTFUL STAGE IS BOUND.
+fn route_is_executable(route: List<QualificationStage>) -> Bool {
+  route |> all(s => stage_legs(stage: s) |> all(l => leg_is_bound(leg: l)))
 }
 
 fn route_registers_one_slot(route: List<QualificationStage>) -> Bool {
   fold(route, init: 0, f: (acc, s) =>
     match s {
-      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _ } => acc + 1
+      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => acc + 1
       _ => acc
     }
   ) == 1
@@ -288,13 +356,13 @@ fn route_registers_one_slot(route: List<QualificationStage>) -> Bool {
 fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool {
   let registered = fold(route, init: [], f: (acc, s) =>
     match s {
-      RegisterEphemeralRunnerSlot { unit: u, labels: _, workspace: _ } => list_push(acc, u as String)
+      RegisterEphemeralRunnerSlot { unit: u, labels: _, workspace: _, registration: _ } => list_push(acc, u as String)
       _ => acc
     }
   )
   let deregistered = fold(route, init: [], f: (acc, s) =>
     match s {
-      DeregisterRunnerSlot { unit: u } => list_push(acc, u as String)
+      DeregisterRunnerSlot { unit: u, deregistration: _ } => list_push(acc, u as String)
       _ => acc
     }
   )
@@ -305,17 +373,9 @@ fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool
 fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, attempt: NonEmptyStr) -> Bool {
   route |> all(s =>
     match s {
-      DispatchFloorToSlot { workload: _, selector: sel } => sel |> any(l => l == (attempt as String))
+      DispatchFloorToSlot { workload: _, selector: sel, dispatch: _ } => sel |> any(l => l == (attempt as String))
       _ => true
     }
   )
 }
 
-fn route_boot_leg_is_bound(route: List<QualificationStage>) -> Bool {
-  route |> any(s =>
-    match s {
-      BootHostUnderApprovalGate { host: _, boot: b, image: i } => leg_is_bound(leg: b) && leg_is_bound(leg: i)
-      _ => false
-    }
-  )
-}

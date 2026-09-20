@@ -29,8 +29,9 @@ delivers. Nothing imports either module, so the cost of the recut is zero consum
 
 ## 2. The four types (target shape)
 
-All four live in ONE module, `gunbc.runner_throughput_qualification` (the route stays in
-`gunbc.runner_throughput_qualification_route`). Names are the operator's.
+Three live in `gunbc.runner_throughput_qualification` (the route stays in
+`gunbc.runner_throughput_qualification_route`); the fourth is an arm on the fabric's existing
+delivery-claim carrier. Names are the operator's.
 
 **`SelectedRunnerQualification<P>`** — the selection, made BEFORE the assessment, by the fleet:
 
@@ -65,22 +66,19 @@ Then per-axis standings under the sampling policy: `ThroughputStanding` (min rat
 slice ÷ selected slot, min with effective CPU cap ÷ cores-per-slot). `assessed_facts` names the
 two facts the claim covers.
 
-**`RunnerOfferDeliveryClaim<P>`** — the join into the existing fabric admission:
-
-```
-type RunnerOfferDeliveryClaim<P>
-  = OfferDoesNotClaimRunnerDelivery
-  | OfferClaimsRunnerDelivery { offer: FabricIdentity<P, OfferKey>, assessment: RunnerThroughputAssessment<P> }
-```
-
-`claimed_runner_delivery_check` mirrors `product.fabric.node_qualification claimed_delivery_check`:
-offer identity must equal the assessment's selected offer, refusals empty → holds.
+**The fourth type IS the new arm on the existing carrier** (parent ruling 2026-09-20):
+`product.fabric.node_qualification OfferDeliveryClaim<P>` gains
+`OfferClaimsRunnerDelivery { offer: FabricIdentity<P, OfferKey>, assessment: RunnerThroughputAssessment<P> }`,
+and `claimed_delivery_check` gains one dispatch arm: the named offer must equal the assessment's
+selected offer, and the assessment's refusals surface as
+`QualificationRefusal::RunnerThroughputDidNotHold { refusals }`. There is no standalone runner claim
+type and no mirrored check — that would be option (b)'s shape surviving beside (a).
 
 ### The join point, and one edit outside the new modules
 
 `product.fabric.capacity_admission admit_delivered_offer` takes
 `product.fabric.node_qualification OfferDeliveryClaim<P>`, whose only positive arm is the Spark
-group admission. Two honest options; the plan takes the first and flags it for the parent:
+group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the departure is stated in the PR body:
 
 - **(a) Extend the existing carrier** — `OfferDeliveryClaim<P>` gains
   `OfferClaimsRunnerDelivery { offer, assessment }` and `QualificationRefusal` gains
@@ -158,7 +156,7 @@ of §1 gets a claim; the frontier claims stay expecting-red; the inhabitance cla
 
 1. Delete the condemned root in one motion: `RunnerThroughputQualification`, `RunnerThroughputReceipt`, `RunnerThroughputAdmission`, `qualify_runner_throughput`, `qualified_executor_sanction`, `qualified_supplier_offer`, the run-selection fold, `HostBudgetFacts`, `StageControllerWrite`. The witness refuses loudly; that is the census.
 2. Land the four types and `assess_runner_throughput`; re-home the surviving standings and folds.
-3. Extend `OfferDeliveryClaim` / `QualificationRefusal` (option (a)) and route `claimed_delivery_check`; add the inhabitance claim that `admit_delivered_offer` admits a holding runner claim and refuses a mismatched sanction.
+3. Extend `OfferDeliveryClaim` / `QualificationRefusal` (option (a), ruled) and add the dispatch arm to `claimed_delivery_check`; add the inhabitance claim that `admit_delivered_offer` refuses an unqualified runner claim by name and a claim riding another offer.
 4. Recut the route's effect classification and bind or declare every effectful leg.
 5. Rewrite the witness around §4; hermetic run scoped to the entry; parse sweep.
 6. File the `gunbc.recurring_failure_mode` row `witness_oracle_transcribed_from_the_tree_it_measures` (done alongside this plan) and register this document in `gunbc.doc_graph_roots`.
@@ -168,7 +166,7 @@ required `witnesses` check green, the parent's read of this plan before step 1.
 
 ## 6. Retirement
 
-This document retires when the four types are on main with `admit_delivered_offer` consuming a
-`RunnerOfferDeliveryClaim`, the effectful route legs are bound, and the first
+This document retires when the three types and the `OfferClaimsRunnerDelivery` arm are on main
+with `admit_delivered_offer` consuming it, the effectful route legs are bound, and the first
 `ObservedRunnerQualificationRun` is minted from a real run on mtcollins1 — at which point the
 frontier rows it re-words have dissolved and the plan describes a shipped system.

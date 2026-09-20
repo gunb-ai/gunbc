@@ -17,6 +17,7 @@ import extdeps.nvidia.gpu_direct_rdma {
 import gunbc.spark.serving_rank_observe {
   RankGpuDirectCapabilityReceipt, rank_gpu_direct_capability,
 }
+import gunbc.runner_throughput_qualification { RunnerThroughputAssessment, ThroughputRefusal }
 
 // A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
 //
@@ -410,6 +411,7 @@ type QualificationRefusal
   | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
   | CollectivePrimitiveDidNotHold { attribution: CollectivePrimitiveAttribution }
   | GroupHostRosterDidNotHold { standing: GroupHostRosterStanding }
+  | RunnerThroughputDidNotHold { refusals: List<ThroughputRefusal> }
 
 type ClaimedDeliveryCheck<P>
   = ClaimedDeliveryHolds
@@ -1071,11 +1073,22 @@ fn admit_qualified_group<P>(receipt: CollectiveGroupReceipt<P>) -> GroupQualific
 // group admission; assemble_candidate_field excludes GroupNotQualified by name. Wiring a live Spark
 // SupplierOffer is a declared frontier (review 5246424986 item 6); Group B in this change is a
 // historical demonstration of the vocabulary.
+// A RUNNER OFFER CLAIMS DELIVERY THROUGH THE SAME CARRIER (DESIGN section 3b, stated departure
+// admitted by the parent lane on 2026-09-20 after the operator's hold on gunbc#11722): the
+// subject is a fleet host's runner throughput rather than an accelerator group, so the
+// admission it carries is gunbc.runner_throughput_qualification's sealed assessment, and its
+// refusals surface as RunnerThroughputDidNotHold. One delivery-claim authority and one admission
+// fold (product.fabric.capacity_admission admit_delivered_offer) rather than a parallel runner
+// claim beside this one; the accelerator axes are untouched.
 type OfferDeliveryClaim<P>
   = OfferDoesNotClaimNodeDelivery
   | OfferClaimsNodeDelivery {
       offer: FabricIdentity<P, OfferKey>,
       admission: GroupQualificationAdmission<P>,
+    }
+  | OfferClaimsRunnerDelivery {
+      offer: FabricIdentity<P, OfferKey>,
+      assessment: RunnerThroughputAssessment<P>,
     }
 
 fn group_admission_receipt<P>(a: GroupQualificationAdmission<P>) -> CollectiveGroupReceipt<P> {
@@ -1096,6 +1109,14 @@ fn group_admission_refusals<P>(a: GroupQualificationAdmission<P>) -> List<Qualif
 fn claimed_delivery_check<P>(claim: OfferDeliveryClaim<P>) -> ClaimedDeliveryCheck<P> {
   match claim {
     OfferDoesNotClaimNodeDelivery => ClaimedDeliveryHolds
+    OfferClaimsRunnerDelivery { offer: o, assessment: a } =>
+      if !fabric_identity_eq(left: o, right: a.offer) {
+        ClaimedDeliveryOfferMismatch { claim_names: o, receipt_names: a.offer }
+      } else if a.refusals.length() == 0 {
+        ClaimedDeliveryHolds
+      } else {
+        ClaimedDeliveryUnqualified { refusals: [RunnerThroughputDidNotHold { refusals: a.refusals }] }
+      }
     OfferClaimsNodeDelivery { offer: o, admission: a } => {
       let r = group_admission_receipt(a: a)
       if !fabric_identity_eq(left: o, right: r.offer) {
