@@ -1538,11 +1538,14 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 // table that never named the host. The warning it carried is preserved in the derivation itself,
 // where an unestablished input refuses by name instead of resolving to a number.
 //
-// NO WIDTH FIGURE IS QUOTED HERE ON PURPOSE. An earlier revision of this note said srv3 and srv4
-// "both admit 6 at memory"; the derived widths are 12, memory admits 17 on srv3 and CPU is the
-// binding axis, and the note had been wrong since the 2026-08-22 DIMM upgrade with nothing able to
-// notice. The widths are a derived three-axis minimum -- read them from
-// gunbc_runner_slots_per_host, never from prose.
+// NO WIDTH FIGURE IS QUOTED HERE ON PURPOSE, AND THE PREVIOUS ATTEMPT AT THIS SENTENCE QUOTED TWO
+// (review 69341). An earlier revision said srv3 and srv4 "both admit 6 at memory", which had been
+// wrong since the 2026-08-22 DIMM upgrade with nothing able to notice; the correction then named a
+// derived width and a binding axis of its own, and the 2026-09-19 cores_per_slot ruling falsified
+// those too. Transcribing a number to explain why numbers should not be transcribed is the whole
+// failure in one paragraph. The widths are a derived three-axis minimum -- read them from
+// gunbc_runner_committed_width, which refuses rather than answering for a host whose inputs are
+// unestablished, and never from prose.
 //
 // THIS IS THE EXECUTION MEMBER ONLY. The srv1 control-plane slice is NOT a member of this list and
 // must not become one: an allocatable executor and a statically pinned bootstrap have opposite
