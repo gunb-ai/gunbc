@@ -113,13 +113,20 @@ test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
   refuses(src: unknown_modifier_red_source)
 }
 
-// RETIRED: service_keywords_remain_usable_as_names_holds. It pinned that keywording these words
-// did not steal ordinary names, which was a real risk while they were keyword token classes. They
-// are LITERAL TERMINALS now (v2.std.grammar LiteralTerminal), so they are never anything but idents
-// outside a service body and the claim is true by construction -- a permanently green row that
-// would be cited as coverage. The property it protected is held one layer down by
-// v2.test.parse.choice_plan a_literal_terminal_publishes_the_class_identity_not_its_word, which
-// executes that a literal terminal captures the class identity rather than its own word.
+// RETIRED: service_keywords_remain_usable_as_names_holds, and the retirement IS the climb.
+// It pinned that keywording these words did not steal ordinary names, which was a real risk while
+// they were keyword token classes -- a CHECK over a state that was writable. The 12 keyword lex
+// rules are deleted, so no rule in dag_lex_rules can produce these spellings as anything but
+// dag_token_ident, and the bad state has no constructor left: the property is STRUCTURALLY
+// GUARANTEED rather than checked (DESIGN 4b(4), the climb deletes the lower-rung machinery).
+// Census, on which that guarantee rests: zero references to the 12 ^dag_token_kw_* symbols in the
+// tree, no lex rule carrying those texts, and all 12 marker words authored as literal terminals
+// over ^dag_token_ident and no other class.
+// So the claim's RED is no longer authorable even against a hostile fixture -- a permanently green
+// row that would be cited as coverage (DESIGN 4b: ask whether the red is authorable before writing
+// the check). It is NOT held by choice_plan's a_literal_terminal_publishes_the_class_identity_not_
+// its_word: that is the neighbouring match-is-not-stamp property, and a later author must not read
+// name usability as riding on it.
 
 test fn field_default_parses_holds() -> Bool {
   parses(src: field_default_source)
