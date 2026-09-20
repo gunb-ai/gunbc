@@ -139,10 +139,12 @@ fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> Tes
   }
 }
 
-// ONE PARSE FOR BOTH PROJECTION CLAIMS: the real parse of `projection_source`, read by the 4c
-// equality (the marked shell against the declaration inside it) AND by its discrimination control
-// (the two declarations of that same module against each other), so neither claim re-derives what the
-// other already established. It carries NO warm-share row: a row's admission is decided by the
+// ONE SOURCE AND ONE PRODUCER FOR BOTH PROJECTION CLAIMS: the real parse of `projection_source`,
+// read by the 4c equality (the marked shell against the declaration inside it) AND by its
+// discrimination control (the two declarations of that same module against each other). WHAT IS
+// SHARED IS THE SOURCE LITERAL, THIS PRODUCER AND THE FIXTURE SHAPE, NOT A MATERIALIZED PARSE: the
+// runner's claim frames are isolated, so each claim recomputes this parse, twice across the pair,
+// until a controlled measurement justifies enrolling it. It carries NO warm-share row: a row's admission is decided by the
 // required floor's shared-fill ledger and claim-cost table, and gunbc#11742 took those lanes off the
 // merge path, so no figure for one could be produced on any head. A row can be added when the lanes
 // return and can measure it.
