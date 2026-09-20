@@ -1,6 +1,7 @@
 module test.claim.spark.spark_first_party_serving_witness_test
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, List }
+import product.fabric.demand { ObservationReceiptRef }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
@@ -16,12 +17,15 @@ import product.fabric.provider_admission {
 }
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
-  UsageStatsLaunchUnread,
+  UsageStatsLaunchUnread, vllm_usage_stats_disable_assignment_wire, vllm_usage_stats_reporting,
 }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationStanding, EndpointIncarnationUnobserved, EndpointIncarnationObserved,
+  VllmServingLaunch, vllm_serving_launch, endpoint_incarnation_observation,
+}
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
@@ -123,6 +127,7 @@ fn t_pair_realization() -> SparkServingRealization {
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -135,6 +140,7 @@ fn t_foreign_realization() -> SparkServingRealization {
     readback: t_readback(path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -414,6 +420,7 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -436,6 +443,7 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
     readback: t_readback(path: t_declared_path()),
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -457,6 +465,7 @@ test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
     readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }) {
     TelemetryReadbackUnresolved => true
     TelemetryDeclaredPathUnpinned => false
@@ -464,5 +473,102 @@ test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
     TelemetryHostsWithoutObservedLanes => false
     TelemetryReportedPathDiffers { reported: _, declared: _ } => false
     TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+  }
+}
+
+// ── THE TELEMETRY STANDING IS A READING NOW (2026-09-17) ──────────────────────────────────────
+//
+// The rows above pin the UNOBSERVED half: no incarnation bound, no standing claimed. The rows
+// below pin the observed half: the incarnation observation carries the answering container's
+// effective environment (Config.Env through the inspect leg), and the standing classifies THAT --
+// disabled by upstream's own predicate means there is no telemetry path at all; enabled with the
+// documented payload to the documented recipient is located under the operator's 2026-09-11
+// ruling; a destination override naming another recipient is unread, because the documented
+// payload statement describes the default path only.
+
+fn t_launch() -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv6,
+    systemd_invocation: "fixture-invocation-telemetry" as NonEmptyStr,
+    container_id: "fixture-container-telemetry" as NonEmptyStr,
+    executable_digest: as_content_hash_structural(structural: content_hash_atom(value: "fixture-image" as NonEmptyStr)),
+    unit_digest: as_content_hash_structural(structural: content_hash_atom(value: "fixture-unit" as NonEmptyStr)),
+    started_at: 1788907506,
+  )
+}
+
+fn t_observed_realization(env: List<String>) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(path: t_declared_path()),
+    endpoint: t_endpoint(),
+    incarnation: EndpointIncarnationObserved {
+      observation: endpoint_incarnation_observation(
+        endpoint: t_endpoint(),
+        launch: t_launch(),
+        container_env: env,
+        receipt: "test.claim.spark.spark_first_party_serving_witness_test fixture" as ObservationReceiptRef,
+      ),
+    },
+    declared_model_path: Present { value: t_declared_path() },
+  }
+}
+
+// DISABLED BY THE READING MEANS NO PATH: the assignment is spelled by upstream's own row, and the
+// projection is ProviderPathAbsent -- there is no telemetry path to locate, which is the one
+// standing that needs no ruling.
+test fn an_observed_launch_whose_env_disables_the_reporter_has_no_telemetry_path() -> Bool {
+  let r = t_observed_realization(env: ["NCCL_DEBUG=INFO", vllm_usage_stats_disable_assignment_wire()])
+  match spark_serving_usage_stats_standing(realization: r) {
+    UsageStatsDisabledByLaunch { mechanism: m } =>
+      (m as String) == "VLLM_NO_USAGE_STATS" && match spark_usage_stats_telemetry_path(realization: r) {
+        ProviderPathAbsent { evidence: _ } => true
+        ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+        ProviderPathUnread { obligation: _, consulted: _ } => false
+      }
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// A SPELLING UPSTREAM DOES NOT HONOR IS NOT A DISABLE: =true reads as ENABLED, because envs.py
+// asks equality with "1" and nothing else (review 64043). This row is what stops a future edit
+// from widening the predicate.
+test fn a_non_exact_disable_spelling_reads_as_enabled() -> Bool {
+  match spark_serving_usage_stats_standing(realization: t_observed_realization(env: ["VLLM_NO_USAGE_STATS=true"])) {
+    UsageStatsEnabledByDefault { basis: _ } => true
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// ENABLED WITH THE DOCUMENTED PAYLOAD TO THE DEFAULT RECIPIENT IS LOCATED UNDER THE RULING: the
+// cited content class is metadata-only, so the path projects Located and the 2026-09-11 ruling
+// governs it.
+test fn an_observed_launch_reporting_by_default_is_located() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: ["NCCL_DEBUG=INFO"])) {
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => true
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => false
+  }
+}
+
+// A DESTINATION OVERRIDE NAMING ANOTHER RECIPIENT IS UNREAD: the documented payload statement is
+// about the default path, and who receives this launch's report has been assessed by no one.
+test fn an_observed_launch_reporting_elsewhere_is_unread() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: ["VLLM_USAGE_STATS_SERVER=https://telemetry.example.invalid"])) {
+    ProviderPathUnread { obligation: _, consulted: _ } => true
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
+// THE OVERRIDE NAMING THE DEFAULT VERBATIM IS THE DEFAULT PATH, not an override.
+test fn an_override_naming_the_default_recipient_is_the_default_path() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_observed_realization(env: [join(["VLLM_USAGE_STATS_SERVER=", vllm_usage_stats_reporting.default_server as String], "")])) {
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => true
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathUnread { obligation: _, consulted: _ } => false
   }
 }

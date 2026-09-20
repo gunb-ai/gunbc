@@ -1,0 +1,163 @@
+module test.claim.spark.glm53_runtime_image_build_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
+import gunbc.spark.vllm_runtime_image_build {
+  vllm_recipe_arch_is_buildable, glm53_derived_dockerfile, glm53_derived_prepare_script, glm53_derived_build_spec, glm53_derived_context_dir, glm53_derived_prepare_steps, glm53_derived_prepare_script_path, glm53_derived_dockerfile_path, vllm_image_transfer_tar_path, vllm_image_distribution_targets,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_repository, glm53_image_repository, vllm_image_repository_for, vllm_image_tag, vllm_image_build_key, glm53_derived_key, glm53_derived_tag,
+}
+import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
+import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
+import product.placement_supply { host_identity_eq }
+import extdeps.docker.cli { docker_image_save_command, docker_image_load_command }
+import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
+import extdeps.vllm.source_build {
+  vllm_8d09804_sm121_recipe, vllm_glm_5_3_flash_sm121_revision, vllm_07b75534_aarch64_release_recipe,
+}
+import extdeps.flashinfer.flashinfer {
+  flashinfer_0_7_0_dev20260910_wheels, flashinfer_0_7_0_dev20260910_release_url,
+  flashinfer_0_7_0_dev20260910_wheel_url,
+}
+
+// THE RECIPE IS THE OBSERVED BASE BUILD: SM121 only, cuda 13.0.2, kv connectors off, and within
+// vLLM's supported arch set at the pinned revision.
+test fn the_glm53_recipe_targets_sm121_and_is_buildable() -> Bool {
+  vllm_8d09804_sm121_recipe.torch_cuda_arch_list == ["12.1" as NonEmptyStr]
+    && (vllm_8d09804_sm121_recipe.cuda_version as String) == "13.0.2"
+    && !vllm_8d09804_sm121_recipe.install_kv_connectors
+    && vllm_recipe_arch_is_buildable(r: vllm_8d09804_sm121_recipe)
+    && (vllm_8d09804_sm121_recipe.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String)
+}
+
+// THE REPOSITORY FOLLOWS THE RECIPE'S FAMILY: the GLM recipe tags under gunbc-vllm-glm53-gb10 and
+// the v41 recipe keeps its existing repository, so the two families never share a tag namespace.
+test fn the_repository_dispatches_on_the_recipe_family() -> Bool {
+  (vllm_image_repository_for(r: vllm_8d09804_sm121_recipe) as String) == (glm53_image_repository as String)
+    && (vllm_image_repository_for(r: vllm_07b75534_aarch64_release_recipe) as String) == (vllm_image_repository as String)
+    && string_contains(s: vllm_image_tag(r: vllm_8d09804_sm121_recipe) as String, pattern: "gunbc-vllm-glm53-gb10:")
+    && string_contains(s: vllm_image_tag(r: vllm_07b75534_aarch64_release_recipe) as String, pattern: "gunbc-vllm-dsv41-gb10:")
+}
+
+// THE DERIVED KEY IS NOT THE BASE KEY: the nightly override changes the image's identity, so a
+// fleet that has the base does not believe it has the derived image.
+test fn the_derived_stage_has_its_own_identity() -> Bool {
+  let base_key = vllm_image_build_key(r: vllm_8d09804_sm121_recipe)
+  (serialize_content_hash(hash: glm53_derived_key(base_key: base_key)) as String) != (serialize_content_hash(hash: base_key) as String)
+    && string_contains(s: glm53_derived_tag(base_key: base_key) as String, pattern: "gunbc-vllm-glm53-gb10:derived-")
+}
+
+// THE DERIVED DOCKERFILE MIRRORS THE OBSERVED HAND BUILD: FROM the base tag, the three nightly
+// wheels staged at /tmp/gunbc-wheels, one pip install --no-deps --force-reinstall over all three.
+test fn the_derived_dockerfile_replays_the_observed_layers() -> Bool {
+  let d = glm53_derived_dockerfile(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr)
+  string_contains(s: d, pattern: "FROM gunbc-vllm-glm53-gb10:base-fixture AS glm53derived")
+    && string_contains(s: d, pattern: "COPY flashinfer_python-0.7.0.dev20260910-py3-none-any.whl flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl /tmp/gunbc-wheels/")
+    && string_contains(s: d, pattern: "RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl /tmp/gunbc-wheels/flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl")
+}
+
+// THE PREPARE SCRIPT VERIFIES BEFORE IT BUILDS: every wheel is fetched from its declared release
+// URL and checked against its declared sha256.
+test fn the_prepare_leg_fetches_and_verifies_every_wheel() -> Bool {
+  let s = glm53_derived_prepare_script()
+  string_contains(s: s, pattern: "set -e")
+    && fold(flashinfer_0_7_0_dev20260910_wheels, init: true, f: (acc, w) => acc
+      && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String)
+      && string_contains(s: s, pattern: w.sha256.hex as String))
+    && string_contains(s: s, pattern: "sha256sum -c -")
+    && string_contains(s: s, pattern: flashinfer_0_7_0_dev20260910_release_url as String)
+}
+
+// THE PREPARE PLAN RESPECTS THE PORTABLE-WORD WALL: four ordered steps -- make the context
+// directory, land the script and the Dockerfile as readback-verified file writes, then run the
+// script as `sh <path>`. No step carries the script as an argv word, which is the shape the
+// far-side re-parse allowlist refuses.
+test fn the_prepare_plan_lands_files_then_runs_sh_path() -> Bool {
+  match glm53_derived_prepare_steps(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr) {
+    Absent => false
+    Present { value: steps } =>
+      remote_operation_count(operations: map(steps, s => s.operation)) == 4
+        && remote_operation_file_write_count(operations: map(steps, s => s.operation)) == 2
+        && steps.first().identity == "derived-context-dir" as NonEmptyStr
+        && steps.skip(n: 3).first().identity == "derived-prepare-run" as NonEmptyStr
+        && match steps.skip(n: 3).first() {
+          Absent => false
+          Present { value: run_step } =>
+        match remote_operation_argv(operation: run_step.operation) {
+          Absent => false
+          Present { value: argv } =>
+            argv.length() == 2
+              && argv.first() == "sh"
+              && argv.skip(n: 1).first() == (glm53_derived_prepare_script_path() as String)
+        }
+        }
+        && string_contains(s: glm53_derived_dockerfile_path() as String, pattern: glm53_derived_context_dir() as String)
+  }
+}
+
+// THE DERIVED BUILD SPEC: the named stage, the arm64 platform, no build args -- the override is
+// entirely in the Dockerfile and the pinned wheels.
+test fn the_derived_build_spec_selects_the_named_stage() -> Bool {
+  let spec = glm53_derived_build_spec(base_tag: "gunbc-vllm-glm53-gb10:base-fixture" as NonEmptyStr, base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  (spec.target as String) == "glm53derived"
+    && (spec.platform as String) == "linux/arm64"
+    && spec.build_args.length() == 0
+    && string_contains(s: spec.dockerfile as String, pattern: glm53_derived_context_dir() as String)
+}
+
+// ── DISTRIBUTION ─────────────────────────────────────────────────────────────────────────────
+
+// THE TRANSFER TAR IS CONTENT-NAMED: the derived image's build key is in the path, so a stale tar
+// from another build cannot wear this one's name on any host it passes through.
+test fn the_transfer_tar_path_is_content_named() -> Bool {
+  let key = glm53_derived_key(base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
+  let p = vllm_image_transfer_tar_path(build_key: key)
+  string_contains(s: p as String, pattern: serialize_content_hash(hash: key) as String)
+    && string_contains(s: p as String, pattern: ".tar")
+}
+
+// THE SAVE AND LOAD ARGV ARE UPSTREAM'S OWN VERBS with the paths where upstream reads them.
+test fn the_save_and_load_argv_are_dockers_own_verbs() -> Bool {
+  let save = docker_image_save_command(image: "img:tag" as NonEmptyStr, output_path: "/tmp/x.tar" as NonEmptyStr)
+  let load = docker_image_load_command(input_path: "/tmp/x.tar" as NonEmptyStr)
+  save.arguments.length() == 4
+    && save.arguments.skip(n: 1).first() == "-o"
+    && save.arguments.skip(n: 2).first() == "/tmp/x.tar"
+    && save.arguments.skip(n: 3).first() == "img:tag"
+    && load.arguments.length() == 3
+    && load.arguments.first() == "load"
+    && load.arguments.skip(n: 1).first() == "-i"
+    && load.arguments.skip(n: 2).first() == "/tmp/x.tar"
+}
+
+// THE scp OPERANDS KEEP THEIR DIRECTION: download carries the remote operand first, upload
+// carries it last, and both put the trust words ahead of everything -- an scp with the operands
+// transposed moves bytes the wrong way, which is exactly the red this claim exists to catch.
+test fn the_scp_operand_direction_is_fixed() -> Bool {
+  let trust = ["-o", "StrictHostKeyChecking=yes"]
+  let down = scp_download_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr)
+  let up = scp_upload_command(trust_words: trust, principal: "exec" as NonEmptyStr, endpoint: "h1" as NonEmptyStr, local_path: "/tmp/l.tar" as NonEmptyStr, remote_path: "/tmp/r.tar" as NonEmptyStr)
+  down.arguments.length() == 4
+    && down.arguments.first() == "-o"
+    && down.arguments.skip(n: 2).first() == "exec@h1:/tmp/r.tar"
+    && down.arguments.skip(n: 3).first() == "/tmp/l.tar"
+    && up.arguments.length() == 4
+    && up.arguments.skip(n: 2).first() == "/tmp/l.tar"
+    && up.arguments.skip(n: 3).first() == "exec@h1:/tmp/r.tar"
+}
+
+// THE DISTRIBUTION ROSTER IS THE ARM MINUS THE SOURCE: delivering to the host that built the
+// image would move 33GB to no end, and dropping any other member leaves a rank unable to start.
+test fn the_distribution_roster_excludes_exactly_the_source() -> Bool {
+  let hosts = glm_native_ranked_hosts()
+  match hosts.first() {
+    Absent => false
+    Present { value: source } => {
+      let targets = vllm_image_distribution_targets(source: source)
+      targets.length() == hosts.length() - 1
+        && !any(targets, h => host_identity_eq(a: h, b: source))
+        && all(hosts, h => host_identity_eq(a: h, b: source) || any(targets, t => host_identity_eq(a: t, b: h)))
+    }
+  }
+}
