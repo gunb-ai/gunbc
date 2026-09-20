@@ -2,7 +2,7 @@ module test.claim.spark.spark_pair_serving_apply_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { host_identity_eq }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.pair_serving_realization { spark_pair_realizations }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
@@ -56,15 +56,21 @@ test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> 
   })
 }
 
-// BOTH PROMOTED GROUPS PLAN, NONE REFUSES, AND THE SECOND PLAN IS GROUP B: srv9's head with three
-// workers including srv12, so one apply carries the whole desired roster.
-test fn every_promoted_group_plans_and_the_second_is_group_b_headed_by_srv9() -> Bool {
+// THE PAIR ROSTER IS GROUP A ALONE, BY DELIBERATE WITHDRAWAL. spark_pair_serving_groups has been
+// [FabricGroupA] since 2026-09-08, when group B's hosts moved to the native GLM arm -- its plans
+// are gunbc.spark.native_serving_apply spark_native_arm_steps, pinned by
+// test.claim.spark.native_serving_roce_transport_witness_test. An earlier revision of this claim
+// expected TWO plans with the second headed by srv9: it was left red from the withdrawal,
+// asserting a roster the desired row no longer decides. What this claim pins now: the pair apply
+// plans exactly the claimed roster, nothing refuses, and the plan is group A headed by srv6 with
+// the other three cage-1 hosts as workers.
+test fn every_promoted_group_plans_and_the_pair_plan_is_group_a_headed_by_srv6() -> Bool {
   let plans = spark_pair_apply_plans()
-  length(plans) == 2 && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
-    && any(plans, p => match p {
+  length(plans) == 1 && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
+    && all(plans, p => match p {
          SparkPairApplyRefused { cause: _ } => false
          SparkPairApplyPlanned { workers: ws, head: h } =>
-           length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
-             && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
+           length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv6)
+             && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv5))
        })
 }

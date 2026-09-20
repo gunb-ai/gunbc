@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_spark_glm_group_b_relaunch_cli_glm_group_b_subjects_glm_group_b_group
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_spark_glm_group_b_relaunch_cli_glm_group_b_subjects_glm_group_b_group: TransitionAdmission = TransitionAdmission {
+  label: "ONE GROUP-B LAUNCH AUTHORITY glm_group_b_group home gunbc.spark.glm_group_b_launch" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.spark.glm_group_b_relaunch_cli", "glm_group_b_subjects"),
+    spelling: "glm_group_b_group" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.spark.glm_group_b_launch", "glm_group_b_group")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11565 as UInt32,
+}

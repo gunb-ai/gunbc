@@ -117,6 +117,30 @@ fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: N
   (name as String) == (term.variable as String) && value == (term.disabling_value as String)
 }
 
+// THE TWO TERMS AS NAMED ROWS, so a consumer that must SPELL the disabling assignment (a serving
+// render adding it to a launch's environment) and the roster the reading folds share one
+// authority rather than each carrying the literal.
+data vllm_usage_stats_no_usage_stats_term: VllmUsageStatsDisableTerm = VllmUsageStatsDisableTerm {
+  variable: "VLLM_NO_USAGE_STATS",
+  disabling_value: "1",
+}
+
+data vllm_usage_stats_do_not_track_term: VllmUsageStatsDisableTerm = VllmUsageStatsDisableTerm {
+  variable: "DO_NOT_TRACK",
+  disabling_value: "1",
+}
+
+// THE LAUNCH-SIDE WIRE SPELLING OF "OFF". Upstream's check is a disjunction, so one satisfied term
+// disables the reporter; this is the first, spelled NAME=value for a container environment. The
+// reading that discharges a route folds the same row, so declaration and reading cannot drift
+// into different spellings of "off".
+fn vllm_usage_stats_disable_assignment_wire() -> String {
+  join([
+    vllm_usage_stats_no_usage_stats_term.variable as String, "=",
+    vllm_usage_stats_no_usage_stats_term.disabling_value as String,
+  ], "")
+}
+
 type VllmUsageStatsReporting sole_constructor {
   default_server: NonEmptyStr
   server_override_env: NonEmptyStr
@@ -148,8 +172,8 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
     "enable_prefix_caching", "enforce_eager", "disable_custom_all_reduce",
   ],
   disable_terms: [
-    VllmUsageStatsDisableTerm { variable: "VLLM_NO_USAGE_STATS", disabling_value: "1" },
-    VllmUsageStatsDisableTerm { variable: "DO_NOT_TRACK", disabling_value: "1" },
+    vllm_usage_stats_no_usage_stats_term,
+    vllm_usage_stats_do_not_track_term,
   ],
   disable_marker_path: "~/.config/vllm/do_not_track",
   established_against: vllm_source_revision_read,
