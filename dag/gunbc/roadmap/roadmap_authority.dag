@@ -2695,6 +2695,66 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
+    active(
+      identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
+      id: "self-host-service-family-on-literal-terminal",
+      owner: "self-host",
+      path: "docs/plans/namespace-cut-replacement-plan.md",
+      t: fields(
+        headline: "Admit the service declaration family without taxing every identifier",
+        boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
+        displaced_cost: "Giving each marker word its own token class was measured as a corpus-wide cost defect: every plain-name slot became a thirteen-way choice and the lexer carried twelve more rules, so the cost was paid once per identifier in every parse. Against a fixed baseline, 192 of 4,114 shared witnesses moved and every one of them moved upward, totalling about 409,000 extra evaluation steps. The alternative of making the markers ordinary identifiers and refusing later loses five distinct refusals, because a service declaration has no later stage that could tell those five mistakes apart.",
+        first_slice: "The grammar gains the exact-word terminal and the choice dispatch keys on the word as well as the token class; then the service family is re-expressed on it and the twelve keyword rules are deleted.",
+        red_control: "Two alternatives that differ only in that one word validate as distinct, while the same pair keyed on the token class alone still reports an overlap; a wrong word in the marker position is refused at the parse door; and the matched word is not published as the node's identity, so no caret literal or generic parameter changes what it carries.",
+        out_of_scope: "Not the resolver's treatment of imports, and not the evaluation-step cost of the whole-service witness, which is its own item.",
+        handback: "Return the measurement against the same baseline showing the moved population back at baseline, the refusal controls, and a statement of which service constructs still have no lowering."
+      )
+    ),
+    active(
+      identity: "rn_4YXQ47680VA8B4GNGGVPV2DQZ8",
+      id: "whole-service-witness-costs-more-than-its-budget",
+      owner: "self-host",
+      path: "docs/plans/floor-cost-distribution-near-the-ceiling.md",
+      t: fields(
+        headline: "Decide what a witness over a whole real service is allowed to cost",
+        boundary: "One witness parses a complete real service declaration end to end, and it is the only claim that runs that path for real. Decide whether it stays whole, and on what basis, rather than deciding by whichever budget happens to refuse it first.",
+        displaced_cost: "It was measured at about 239,000 evaluation steps against a 72,300 budget, and separately above the per-subject processor-time line. Its cost was shown to be linear in the content rather than a defect in shape, so shrinking the fixture does not make it cheaper - it makes it stop being the real thing. The two budgets are separate gates and admission against one says nothing about the other, which is easy to miss.",
+        first_slice: "Re-measure after the service family moves onto the exact-word terminal, because the keyword machinery accounted for somewhere between a fifth and two fifths of the cost and the remainder is the service body itself.",
+        red_control: "Whatever is decided, deleting the claim that runs the real path must make a control fail, so the cheap claims cannot stand alone.",
+        out_of_scope: "Not a change to either budget's value, and not a licence to split the witness into pieces that each avoid the line while nothing exercises the whole.",
+        handback: "Return the re-measurement on both gates, the decision with its reason, and - if the witness is admitted over a line - a record that decides on the live reading rather than on a number typed into a row."
+      )
+    ),
+    active(
+      identity: "rn_ARHDM19A4Y5Z6EVGYFAWCJ434C",
+      id: "required-floor-passes-with-a-failed-phase",
+      owner: "ci-control",
+      path: "dag/gunbc/witness/witness_floor_workflow.dag",
+      t: fields(
+        headline: "A required run that had a phase fail must not report success",
+        boundary: "When the required run reports how many phases it ran and how many failed, a nonzero failure count has to reach the verdict and the check result. Today it does not.",
+        displaced_cost: "Observed on a live pull request: the job log recorded two phases run and one failed, with two located findings, while the same run reported a clean verdict and the check concluded success and the branch read as mergeable. A gate that passes while one of its phases failed certifies less than everyone reading it believes, and the belief is the point of having it.",
+        first_slice: "Make the failed-phase count decide the verdict, then confirm on the run that already exhibits it.",
+        red_control: "A run with a deliberately failed phase reports failure; a run with none still reports success, so the change does not simply make the gate refuse everything.",
+        out_of_scope: "Not the content of any particular phase's findings, and not which phases the required run should contain.",
+        handback: "Return the corrected verdict rule, a run showing it refusing, and a run showing it still passing when nothing failed."
+      )
+    ),
+    active(
+      identity: "rn_02PRZ2Q7Q5Q8TJRANYM293HKJD",
+      id: "runner-throughput-witness-imports-absent-members",
+      owner: "language-integrity",
+      path: "dag/test/claim/runner/runner_throughput_qualification_witness_test.dag",
+      t: fields(
+        headline: "Repair a witness that imports two names its source does not declare",
+        boundary: "One witness imports two members from a module that declares neither of them. The declarations phase reports both as absent.",
+        displaced_cost: "The module declares a differently-named member whose spelling contains one of the requested names as a substring, so a casual search appears to confirm the import and does not. The finding is real and sits on the main line, where it was only visible because another change happened to surface the phase's output.",
+        first_slice: "Decide whether the witness wants the member that does exist under its real name, or whether the source should export what the witness asks for.",
+        red_control: "The declarations phase reports no absent member for this file, and a deliberately reintroduced bad import is reported again.",
+        out_of_scope: "Not a rework of the witness's subject, and not the separate question of whether a failed phase should fail the run.",
+        handback: "Return the corrected import and a phase run that reports it clean."
+      )
+    ),
   ], guarantee_ladder_nodes())
 }
 
