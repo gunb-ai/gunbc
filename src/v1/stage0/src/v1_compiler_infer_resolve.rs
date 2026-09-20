@@ -175,7 +175,7 @@ match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone()) {
     type_name: type_name.clone(),
     param_name: param_name.clone(),
     kind_name: kind_name.clone(),
-    supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(type_arg_display_spelling(arg.clone(), env.clone()), " (the kind's declared inhabitant is '".to_string()), kind_admissible_inhabitant_name(kind_decl_for_message(kind_node.clone(), env.clone()), env.clone())), "')".to_string()),
+    supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(type_arg_display_spelling(arg.clone(), env.clone()), " [".to_string()), kind_lookup_trace(kind_decl_for_message(kind_node.clone(), env.clone()), env.clone())), "]".to_string()),
     span: arg.span.clone(),
 }), module_name.clone())]),
     KindInhabitance::KindDeclarationUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
@@ -277,6 +277,34 @@ pub fn kind_admissible_inhabitant_name(kind_decl: Rc<Node>, env: Rc<TypeEnv>) ->
         }
         _ => "".to_string(),
     }
+}
+
+pub fn kind_lookup_trace(kind_decl: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "decl='".to_string(),
+                                node_authored_or_own_name(kind_decl.clone(), env.clone()),
+                            ),
+                            "' inferred=".to_string(),
+                        ),
+                        match kind_decl.inferred.clone() {
+                            Some(_) => "present".to_string(),
+                            std::option::Option::None => "absent".to_string(),
+                        },
+                    ),
+                    " resolved_target='".to_string(),
+                ),
+                kind_admissible_inhabitant_name(kind_decl.clone(), env.clone()),
+            ),
+            "' children=".to_string(),
+        ),
+        (kind_decl.children.clone().len() as i64).to_string(),
+    )
 }
 
 pub fn kind_decl_for_message(kind_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
