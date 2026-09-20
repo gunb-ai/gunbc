@@ -3,7 +3,7 @@ module gunbc.auth.approval_request_client
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
-  MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
+  MacKey, MacSigned, MacKeyMaterialNotHex, MacComputationRefused, HmacRefusal, HmacSha256, MacKeyId,
 }
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
@@ -59,6 +59,7 @@ fn stored_request_from_authorization<Subject>(
 type SubmissionMac
   = SubmissionMacReady { tag_hex: NonEmptyStr }
   | SubmissionMacKeyNotHex { key_id: MacKeyId }
+  | SubmissionMacComputationRefused { key_id: MacKeyId, cause: HmacRefusal }
 
 fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> SubmissionMac {
   let key = MacKey {
@@ -68,6 +69,7 @@ fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> 
   }
   match sign_submission(key: key, request: request) {
     MacKeyMaterialNotHex { key_id: k } => SubmissionMacKeyNotHex { key_id: k }
+    MacComputationRefused { key_id: k, cause: c } => SubmissionMacComputationRefused { key_id: k, cause: c }
     MacSigned { tag: t } => SubmissionMacReady { tag_hex: t.hex }
   }
 }
