@@ -16,7 +16,9 @@ import gunbc.runner.runner_jit_perform {
 import gunbc.github_effect_perform {
   jit_mint_performance_of_generate, perform_organization_jit_mint,
   JitMintReceived, JitMintStepNotSucceeded, GenerateJitConfigStep,
+  JitMintAppKeyNotCustodied, lifecycle_controller_app,
 }
+import gunbc.auth.github_apps { gunbai_bot_declared }
 import test.claim.github_app_registry { dispatched, runner_grant }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -103,6 +105,18 @@ test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_gith
     _ => false
   }
   delivered && conflicted && ambiguous
+}
+
+// THE KEY IS ONE APP'S, AND THIS IS THE RED FOR IT. The shared dispatch fixture is built on
+// gunbai_bot_declared while the controller's key is gunbai_ci_declared's, so an AUTHORIZED dispatch
+// for the wrong App refuses before any I/O -- no key read, no request. Without this the custody
+// guard would be a wall nothing executes: dropping it while the key still points at the CI App's
+// pem would leave every other witness green (review 68748).
+test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
+  match perform_organization_jit_mint(dispatch: dispatched(owned: true, perms: runner_grant)) {
+    JitMintAppKeyNotCustodied { app: a } => a == gunbai_bot_declared && a != lifecycle_controller_app
+    _ => false
+  }
 }
 
 // A REFUSED DISPATCH PERFORMS NOTHING: no key is read and no request is sent, and the refusal the

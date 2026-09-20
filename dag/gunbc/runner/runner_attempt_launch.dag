@@ -678,20 +678,53 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
+// THE RECEIPT IS SEALED, so the admitted arm cannot be assembled beside the gate. sole_constructor
+// makes attempt_staging_verdict the ONLY producer of an AttemptStagingReceipt, and the jailer
+// command is reachable only inside one -- so a caller cannot mint "staging passed" while holding a
+// failed device, and cannot lift the jailer out of a refusal. The receipt names WHICH device and
+// WHICH workspace were read back, so the capability it releases is bound to the attempt whose
+// premises were established rather than to staging in general.
+//
+// A PROSE OBLIGATION BESIDE A JAILER-ADMITTING VALUE IS NOT A WALL (sunny-ant-606 ruling): the
+// frontier row can say the controller must reach the jailer through this fold, and a controller
+// following it exactly would still have launched on workspace readiness alone while the credential
+// device had failed. The premises are made inseparable here instead.
+type AttemptStagingReceipt sole_constructor {
+  jailer: ArgvCommand
+  jit_device_path: String
+  workspace_path: String
+}
+
 type AttemptStagingVerdict
-  = StagingAdmitsJailer { jailer: ArgvCommand }
+  = StagingAdmitsJailer { receipt: AttemptStagingReceipt }
+  | StagingRefusedJitDevice { outcome: JitDeviceStagingOutcome }
+  | StagingRefusedForeignJitDevice { staged_path: String, planned_path: String }
   | StagingRefusedWorkspace { standing: WorkspaceStanding }
   | StagingNotAuthorized
 
-// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING. A refused plan has no jailer to admit, and a
-// workspace that is anything but WorkspaceReady refuses -- there is no arm that launches anyway.
-fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) -> AttemptStagingVerdict {
+// THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING, AND IT CONSUMES BOTH STAGINGS. A refused plan
+// has no jailer to admit; a workspace that is anything but WorkspaceReady refuses; and the JIT
+// device must have been STAGED FOR THIS ATTEMPT -- the staged path is compared against the path this
+// plan's own jit_device names, so a sibling attempt's device (or a stale one left at another path)
+// refuses rather than being launched over.
+//
+// TAKING ONLY THE WORKSPACE OBSERVATION WAS A FAIL-OPEN, AND IT WAS CREATED BY A MERGE rather than
+// authored: the workspace gate landed on one side and the JIT device on the other, and the join
+// admitted a ready workspace while the credential device had failed to stage or had never been
+// staged at all. A guest reaching the listener with no credential burns its whole deadline looking
+// healthy, which is the class this planner exists to close, so the gate takes both outcomes and
+// there is no arm that launches on one of them.
+fn attempt_staging_verdict(
+  plan: AttemptLaunchPlan,
+  jit: JitDeviceStagingOutcome,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
   match plan {
     LaunchAuthorized {
       authorization: _,
       jit_runner_name: _,
       jit_registration_id: _,
-      jit_device: _,
+      jit_device: device,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -705,18 +738,32 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       kvm_device: _,
       vm_config: _,
       jailer: j,
-    } => {
-      let s = workspace_standing(obs: obs, planned_path: planned)
-      match s {
-        WorkspaceReady => StagingAdmitsJailer { jailer: j }
-        WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
-        WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
-        WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+    } =>
+      match jit {
+        JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
+        JitDeviceStaged { host_path: staged } =>
+          if staged != device.host_path {
+            StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
+          } else {
+            let s = workspace_standing(obs: workspace, planned_path: planned)
+            match s {
+              WorkspaceReady =>
+                StagingAdmitsJailer {
+                  receipt: AttemptStagingReceipt {
+                    jailer: j,
+                    jit_device_path: staged,
+                    workspace_path: planned,
+                  },
+                }
+              WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
+              WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+              WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+            }
+          }
       }
-    }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
     LaunchRefusedJitCredential { refusal: _ } => StagingNotAuthorized
     LaunchRefusedPriorResources => StagingNotAuthorized
@@ -729,8 +776,8 @@ fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
 
 // DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the lifecycle controller's staging step
 // (gunbc#11670). TRIGGER: that step runs the plan's workspace_create and workspace_format, reads
-// workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR
-// deleting this row. NOT satisfied by a witness calling staging_verdict.
+// workspace_readback_command, stages the jit device, and reaches the jailer only through
+// attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling it.
 data workspace_staging_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, reads workspace_readback_command, and reaches the jailer only through staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling staging_verdict." as NonEmptyStr,
+  description: "NAMED CONSUMER: the microVM lifecycle controller's staging step (gunbc#11670). TRIGGER: that step executes workspace_create and workspace_format, executes stage_jit_device and reaches the jailer only through attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling it." as NonEmptyStr,
 )
