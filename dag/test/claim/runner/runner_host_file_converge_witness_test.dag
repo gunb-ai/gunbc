@@ -954,11 +954,12 @@ test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
 //
 // THE RED IS AUTHORABLE IN PRODUCTION because the two sides are independent producers: the desired
 // roster comes from the deploy row's runner_count through desired_runner_slot_members, the obligation
-// from the transition row through transition_required_retirees. The whole desired roster is planted
+// from the transition row through transition_required_retirees_at, whose target width is the
+// RunnerWidthDerived { slots } arm of gunbc_runner_committed_width. The whole desired roster is planted
 // beside the real retirees as an observed surplus, and production's own refusal must name exactly the
-// desired roster as the units outside its manifest. Derive the obligation from
-// `gunbc_runner_slots_per_host` instead of `+ 1` in transition_required_retirees (the off-by-one that
-// counts a desired-live slot as a retiree) and the top desired unit is absorbed into the manifest,
+// desired roster as the units outside its manifest. Start the obligation's range at `slot: target`
+// instead of `slot: target + 1` in transition_required_retirees_at (the off-by-one that counts a
+// desired-live slot as a retiree) and the top desired unit is absorbed into the manifest,
 // vanishes from `unexpected`, and the exact-list equality fails; a later non-contiguous widening that
 // absorbed any OTHER desired unit fails it the same way, which a single planted unit could not see. An
 // always-Disagrees fold fails it too, because the list must name the desired roster alone and not the
