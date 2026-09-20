@@ -27,6 +27,7 @@ type ProcfsPath
   | ProcNetUnix
   | ProcSwaps
   | ProcSysKernelHostname
+  | ProcNetPnp
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -37,6 +38,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcNetUnix => "/proc/net/unix"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
+    ProcNetPnp => "/proc/net/pnp"
   }
 }
 
@@ -48,6 +50,22 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // majflt is field 12 of that line (1-based, counting pid and comm), the count of page
 // faults that required reading a page back from disk — the process's own record of its
 // resident pages having been evicted and refaulted.
+// ProcNetPnp IS READ BY A GUEST THIS REPOSITORY BUILDS, NOT BY A PROCESS IT RUNS, and it is rostered
+// here because the read is one this repository CAUSES. The kernel's IP autoconfiguration
+// (Documentation/admin-guide/nfs/nfsroot.rst, "ip=" and the /proc/net/pnp section) exports the
+// <dns0-ip> field of the ip= boot directive to /proc/net/pnp under the prefix "nameserver ", in a
+// form DNS resolvers recognise, and states that /etc/resolv.conf is linked to it on such systems.
+// gunbc.runner_guest_image installs exactly that link, so every resolver library in a booted guest
+// reads this path. The file is synthesised by the kernel's ipconfig, not by proc.5's process table,
+// and exists only on a kernel built with CONFIG_IP_PNP. Supplying ip= on the command line does not
+// establish that its parser was compiled in, so whether the guest kernel this fleet boots provides
+// /proc/net/pnp is a fact the first NETWORKED boot must establish, and the resolver frontier
+// (gunbc.runner_microvm_network guest_resolver_configuration_frontier) waits on exactly that. That
+// bet is carried IN THE TYPE, not in this sentence: procfs_path_provision names the option, and
+// procfs_availability answers ProcfsConditionalOnKernelConfig for it rather than ProcfsAvailable
+// (review 68937 on #11760: rostering the path with no such arm made an executing witness assert
+// availability on Linux that this repository has not observed -- DESIGN 4d, a bet promoted to a
+// deduction by omission).
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStat,
@@ -56,6 +74,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
+  ProcNetPnp,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
@@ -130,13 +149,63 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
   }
 }
 
+// WHICH PATHS A LINUX KERNEL SYNTHESISES UNCONDITIONALLY, AND WHICH ONLY WHEN BUILT WITH AN
+// OPTION -- AND WHICH THIS REPOSITORY HAS NOT YET AUDITED. A path owned by an optional subsystem
+// exists only when that subsystem was compiled in: /proc/net/pnp needs CONFIG_IP_PNP (the kernel's
+// nfsroot guide, cited on nfsroot_ip_autoconfiguration_authority), and no reading this repository
+// has taken decides that for a kernel it has not booted. The option is spelled as the kernel spells
+// it (the NonEmptyStr convention gunbc.runner.runner_host_filtered_egress KernelFeatureRequirement
+// uses), so a host kernel-config readback can join on it.
+//
+// NOTHING IS CLASSIFIED UNCONDITIONAL HERE, BY DESIGN AND NOT BY OVERSIGHT. The first revision of
+// this fold (review 68937 / sunny-ant-606 on #11760) named every previously rostered path
+// ProvidedByEveryLinuxKernel and a witness then required each of them to be available on Linux --
+// ratifying the mapping rather than testing it -- while /proc/net/unix is in fact CONFIG_UNIX-
+// conditional upstream (net/unix is obj-$(CONFIG_UNIX), and its proc_create_net sits inside). So a
+// path is either qualified by a specific cited option, or it is ProvisionNotYetQualified, which
+// procfs_availability carries through as ProcfsProvisionUnqualified and never as ProcfsAvailable:
+// availability may not be minted from KernelFamily alone. DECLARED FRONTIER (DESIGN 3c):
+// ProvidedByEveryLinuxKernel has no inhabitant until a procfs census cites, per path, the kernel
+// source that synthesises it unconditionally under CONFIG_PROC_FS (and a conjunction carrier if a
+// path needs more than one option); that census is its own change, not the resolver PR that
+// surfaced the gap. Its consumer is the same procfs_availability fold, which already carries the
+// arm.
+type ProcfsPathProvision
+  = ProvidedByEveryLinuxKernel
+  | ProvidedWhenConfigured { option: NonEmptyStr }
+  | ProvisionNotYetQualified
+
+fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
+  match p {
+    ProcMeminfo => ProvisionNotYetQualified
+    ProcSelfStat => ProvisionNotYetQualified
+    ProcSelfStatus => ProvisionNotYetQualified
+    ProcSelfCgroup => ProvisionNotYetQualified
+    ProcNetUnix => ProvisionNotYetQualified
+    ProcSwaps => ProvisionNotYetQualified
+    ProcSysKernelHostname => ProvisionNotYetQualified
+    ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
+  }
+}
+
+// ProcfsConditionalOnKernelConfig IS AN OBSERVATION OBLIGATION, NOT A THIRD KIND OF AVAILABILITY.
+// The kernel family can serve the path; whether THIS kernel does is decided by a config option the
+// repository has to read (or a boot that has to show the file). It answers false to
+// procfs_availability_is_available for that reason: a consumer that needs the path proceeds on a
+// reading, never on the family.
 type ProcfsAvailability
   = ProcfsAvailable
+  | ProcfsConditionalOnKernelConfig { path: ProcfsPath, option: NonEmptyStr }
+  | ProcfsProvisionUnqualified { path: ProcfsPath }
   | ProcfsAbsentOnKernel { kernel: KernelFamily, path: ProcfsPath }
 
 fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailability {
   if kernel_provides_procfs(kernel: kernel) {
-    ProcfsAvailable
+    match procfs_path_provision(p: path) {
+      ProvidedByEveryLinuxKernel => ProcfsAvailable
+      ProvidedWhenConfigured { option: o } => ProcfsConditionalOnKernelConfig { path: path, option: o }
+      ProvisionNotYetQualified => ProcfsProvisionUnqualified { path: path }
+    }
   } else {
     ProcfsAbsentOnKernel { kernel: kernel, path: path }
   }
@@ -167,6 +236,8 @@ fn procfs_absence_reason(kernel: KernelFamily, path: ProcfsPath) -> NonEmptyStr 
 fn procfs_availability_is_available(a: ProcfsAvailability) -> Bool {
   match a {
     ProcfsAvailable => true
+    ProcfsConditionalOnKernelConfig { path: _, option: _ } => false
+    ProcfsProvisionUnqualified { path: _ } => false
     ProcfsAbsentOnKernel { kernel: _, path: _ } => false
   }
 }
@@ -180,5 +251,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.linux.procfs.extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [nfsroot_ip_autoconfiguration_authority]
+}
+
+// /proc/net/pnp IS DOCUMENTED BY THE KERNEL'S NFS-ROOT GUIDE, NOT BY proc.5, so the roster's
+// ProcNetPnp row cites its own document rather than borrowing the anchor above.
+data nfsroot_ip_autoconfiguration_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/nfs/nfsroot.html"
+  }
 }
