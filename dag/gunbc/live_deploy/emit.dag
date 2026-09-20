@@ -61,7 +61,9 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
-import extdeps.crypto.hash { digest_shell_verify_line }
+import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program }
+import extdeps.tools.findutils { find_program, xargs_program }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -1584,10 +1586,27 @@ data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
 // find's order is filesystem order and differs between the source and the copy, so hashing the
 // concatenation without sorting would report a mismatch between identical trees -- a false refusal
 // at the stage whose whole job is to say the tree IS the candidate.
+// EVERY PROGRAM NAME HERE IS CONSUMED FROM THE MODULE THAT OWNS IT, not re-spelled (review 68927).
+// The first cut minted "find", "sha256sum", "sort", "xargs" and "cut" as bare literals inside this
+// join, which gave the digest relation a SECOND, POSITIONAL authority unreachable from the extdeps
+// modules that own those tools -- the section 3 fork, and the section 2 test it fails is "net
+// concepts must not grow by re-invention". find and xargs come from extdeps.tools.findutils
+// (xargs ships with findutils, not coreutils), sort and cut from extdeps.tools.gnu_coreutils, and
+// sha256sum from extdeps.crypto.hash. Two of those rows did not exist and were added to their
+// OWNING modules rather than declared here, which is the difference between consuming an authority
+// and minting a local one that happens to agree.
+//
+// 🟡 dissolve-on: this fold assembles shell SYNTAX -- a subshell, &&, and a pipeline -- as a string
+// rather than emitting a Node through grammar rows, which is the medium-as-string shape. It
+// dissolves when v2.workflow.bash_emit can render a piped command from modeled parts, at which
+// point the program rows above become the arguments to that emitter instead of substrings of a
+// join. The names are already correct by then; only the assembly changes.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "(cd ", root, " && find ", join(approval_broker_tree_subdirs, " "),
-    " -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)",
+    "(cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
+    " -type f -print0 | ", sort_program as String, " -z | ",
+    xargs_program as String, " -0 ", sha256sum_program as String, " | ",
+    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1)",
   ], "")
 }
 
@@ -1615,7 +1634,7 @@ fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
 // itself and compares against what it reads here. Shell reports one fact; the fold decides.
 fn approval_broker_tree_receipt_command(root: String, revision: ReleaseRevisionBinding) -> String {
   join([
-    "printf 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
     approval_broker_tree_digest_expr(root: root),
     " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path,
