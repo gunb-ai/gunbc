@@ -199,6 +199,7 @@ fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
     ProcNetUnix => ProvisionNotYetQualified
     ProcSwaps => ProvisionNotYetQualified
     ProcSysKernelHostname => ProvisionNotYetQualified
+    ProcSelfExe => ProvisionNotYetQualified
     ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
   }
 }
