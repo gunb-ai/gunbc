@@ -32,7 +32,6 @@ import gunbc.runner_slot_allocation {
   gunbc_committed_runner_slot_allocation_standings,
   gunbc_admitted_runner_slot_allocations,
   SlotMembershipWidthUnresolved,
-  host_held_runner_width,
   host_disk_admitted_width,
   DiskAdmitsWidth,
   DiskWidthUnconstrained,
