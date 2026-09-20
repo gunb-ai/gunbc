@@ -206,9 +206,18 @@ only then declare the outcome.
   `gunbai-bot` commit within ~10 minutes. Authors must **wait for the publisher**, never
   hand-produce the bytes and never push over a sealed candidate — doing so invalidates it and
   restarts the cycle.
-- **Heal cannot publish `.github/workflows`.** Any `.dag` change that reprojects a workflow must
-  carry its own derived bytes, and nothing detects when it does not. Main's model and its
-  executing workflow diverged this way once already.
+- **Heal regenerates `.github/workflows` but cannot publish it, and nothing detects that.** It does
+  push — a heal commit landed `.gitattributes` and `docs/design-rung-drops.md` on one branch — so
+  the constraint is *workflow paths specifically*, consistent with an App token that cannot write
+  them. On one head heal reported success, logged writing the 89,904-byte workflow in its own
+  workspace, and emitted a candidate manifest holding only the two non-workflow paths. Since #11742
+  removed the regeneration gate from PR CI, a stale workflow projection is now **invisible**: that
+  drift survived three pushes and four green heal runs and was caught only by reviewers. Any PR
+  changing a `ci_spec` entry target inherits this, and must carry its own derived bytes.
+- **The verification that discriminates, for anyone hand-committing a projection:** push, then read
+  heal's repair-candidate *manifest* on that head. An empty entry set against two entries on the
+  prior head is a real signal. A byte count matching heal's own is corroboration only — a different
+  delta could preserve length.
 - **No session can execute a `gunbc run` remotely.** BuildBuddy executors expose no cgroup memory
   limit, so `gunbc.host_budget_source` refuses with `HostBudgetUnreadable` before planning; a lane
   that bound a limit by hand got SIGKILLed instead. Briefs that offer "CI or one remote dispatch"
