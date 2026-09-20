@@ -2,6 +2,9 @@ module v2.lens.reference_derived_residency_reading
 
 import gunbc.namespace_reference_derived_residency_qualification {
   CarrierKeyPopulation,
+  CarrierReadability,
+  CarrierTypeRecognized,
+  CarrierTypeUnrecognized,
   CarrierPayloadGrain,
   IdentityDigestPerKey,
   KeyedBySingleSubject,
@@ -14,6 +17,7 @@ import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node {
   Arrow,
   Atom,
@@ -69,30 +73,116 @@ fn subtree_mentions_atom(root: Node, needle: Symbol) -> Bool {
   length(xs: node_subtree_nodes(root: root) |> filter(n => node_atom_is(n: n, needle: needle))) > 0
 }
 
-// The collection constructors a per-key population is spelled with in this corpus. A field whose type
-// names none of them holds ONE value, however large that value is.
+// THE RECOGNISED VOCABULARY, AND EVERYTHING OUTSIDE IT REFUSES. This derivation reads an UNRESOLVED
+// type expression, so it can only decide the two axes for spellings it knows. An earlier revision
+// treated every unknown spelling as bounded-and-single-subject -- the ADMITTING side of both axes --
+// which meant a field retyped through an alias (`trees: TreePool` in place of
+// `Map<String, Node>`) flipped the producer from refusing to QUALIFIED while the same corpus stayed
+// resident, and `admit_bounded_realization` then minted the admission. Ignorance returned as the
+// answer that qualifies is DESIGN section 5's widen-instead-of-refuse, and it was reachable by
+// renaming a type (review 68724).
+//
+// WHY A ROSTER RATHER THAN RESOLUTION, which is the honest form of DESIGN section 4's "a heuristic is
+// never necessary". The richer source is the field type's DECLARATION, and reading it would decide
+// alias and unknown constructors properly. That read is blocked: a type declaration cannot be
+// resolved from a live tree today (gunbc#11574), which this module's own witnesses establish by
+// execution. So the roster is the fail-closed interim, its unknown arm REFUSES rather than widening,
+// and resolving the reference instead of matching the spelling is what #11574 unblocks.
+
+data recognised_collection_constructors: List<Symbol> = [^Map, ^List, ^FreeMonoid]
+
+data recognised_syntax_atoms: List<Symbol> = [^Node]
+
+// Leaf spellings whose payload is bounded per key. A spelling absent from every roster here is NOT
+// assumed bounded -- it is unrecognised, and unrecognised refuses.
+data recognised_bounded_leaf_atoms: List<Symbol> = [
+  ^String,
+  ^QualifiedName,
+  ^ContentHash,
+  ^Symbol,
+  ^Int,
+  ^Bool
+]
+
+fn symbol_in(xs: List<Symbol>, needle: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) { acc || (s == needle) })
+}
+
+fn atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn atom_is_recognised(id: Symbol) -> Bool {
+  symbol_in(xs: recognised_collection_constructors, needle: id)
+    || symbol_in(xs: recognised_syntax_atoms, needle: id)
+    || symbol_in(xs: recognised_bounded_leaf_atoms, needle: id)
+}
+
+// The first atom in the field's type expression this derivation does not know, if any.
+fn first_unrecognised_atom(target: Node) -> Optional<Symbol> {
+  fold(node_subtree_nodes(root: target), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match atom_identity_optional(n: n) {
+          Absent => acc
+          Present { value: id } =>
+            if atom_is_recognised(id: id) { acc } else { optional_present(value: id) }
+        }
+    }
+  })
+}
+
+fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Named { name: _ } => first_unrecognised_atom(target: edge.target)
+              Positional => acc
+            }
+        }
+      })
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn carrier_readability_of(decl: Node) -> CarrierReadability {
+  match decl_first_unrecognised_atom(decl: decl) {
+    Absent => CarrierTypeRecognized
+    Present { value: id } => CarrierTypeUnrecognized { spelling: id }
+  }
+}
+
 fn type_expr_is_keyed_population(target: Node) -> Bool {
-  subtree_mentions_atom(root: target, needle: ^Map)
-    || subtree_mentions_atom(root: target, needle: ^List)
-    || subtree_mentions_atom(root: target, needle: ^FreeMonoid)
+  fold(recognised_collection_constructors, init: false, f: fn(acc, c) {
+    acc || subtree_mentions_atom(root: target, needle: c)
+  })
 }
 
 fn type_expr_holds_syntax(target: Node) -> Bool {
-  subtree_mentions_atom(root: target, needle: ^Node)
+  fold(recognised_syntax_atoms, init: false, f: fn(acc, c) {
+    acc || subtree_mentions_atom(root: target, needle: c)
+  })
 }
 
-// THE TWO QUESTIONS ARE ASKED SEPARATELY, and that separation is the whole content of this module.
-// An earlier revision decided POPULATION with a predicate requiring BOTH a Node payload AND a
-// collection, which made the population axis mean "keyed over a population OF SYNTAX" while the type
-// it feeds declares itself as "what the carrier is keyed over" -- one name, two meanings, DESIGN
-// section 3's fork (review 68711). Two things broke and both are load-bearing: the pair
-// (IdentityDigestPerKey, KeyedByWholePoolPopulation) -- THE TARGET SHAPE OF THE REPAIR, the name
-// table this module exists to admit -- was UNCONSTRUCTIBLE because population implied syntax; and the
-// grain arm of the qualifier's conjunction was consequently dead on every derived reading.
-//
-// A declaration's reading is its WORST field on each axis independently: one field held per key
-// makes the carrier a population, and one field carrying syntax makes its payload syntax, whatever
-// the other fields hold.
+// A declaration's reading is its WORST field on each axis independently: one field held per key makes
+// the carrier a population, and one field carrying syntax makes its payload syntax, whatever the
+// other fields hold. The two questions are asked SEPARATELY -- an earlier revision decided population
+// with a predicate requiring both a Node payload and a collection, which made the population axis
+// mean "keyed over a population OF SYNTAX" and left the name-table shape
+// (IdentityDigestPerKey, KeyedByWholePoolPopulation) unconstructible (review 68711).
 fn decl_has_keyed_population_field(decl: Node) -> Bool {
   match decl.kind {
     TypeNode { connective: _ } =>
@@ -147,5 +237,6 @@ fn carrier_reading_from_type_decl(
     carrier: carrier,
     grain: carrier_payload_grain_of(decl: decl),
     population: carrier_key_population_of(decl: decl),
+    readability: carrier_readability_of(decl: decl),
   }
 }

@@ -6,6 +6,13 @@ import gunbc.namespace_reference_derived_residency_qualification {
   CarrierKeyPopulation,
   CarrierPayloadGrain,
   carrier_holds_whole_corpus_syntax,
+  CarrierReadingUndecidable,
+  CarrierTypeRecognized,
+  CarrierTypeUnrecognized,
+  BoundedRealizationAdmitted,
+  BoundedRealizationSemanticDeliveryOutstanding,
+  BoundedRealizationResourceQualificationOutstanding,
+  admit_bounded_realization,
   IdentityDigestPerKey,
   KeyedBySingleSubject,
   KeyedByWholePoolPopulation,
@@ -116,6 +123,12 @@ fn name_table_declaration() -> Node {
   record_of(fields: [named_to(name: ^entries, target: map_of(key: ^QualifiedName, value: ^ContentHash))])
 }
 
+// THE ALIAS FIXTURE. `trees: TreePool` is the reviewer's refactor of `trees: Map<String, Node>` into
+// a named type: same residency, a spelling this derivation cannot read. It must REFUSE, not qualify.
+fn alias_typed_declaration() -> Node {
+  record_of(fields: [named_to(name: ^trees, target: atom(identity: ^TreePool))])
+}
+
 fn reading_of(decl_name: String, decl: Node) -> ProducerCarrierReading {
   carrier_reading_from_type_decl(
     carrier: decl_ref(module_path: "v2.lens.module_graph", decl_name: decl_name),
@@ -200,6 +213,66 @@ test fn only_syntax_held_per_population_member_is_whole_corpus_residency() -> Bo
     && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
 }
 
+fn readability_is_recognised(r: ProducerCarrierReading) -> Bool {
+  match r.readability {
+    CarrierTypeRecognized => true
+    CarrierTypeUnrecognized { spelling: _ } => false
+  }
+}
+
+// THE FOUR FIXTURES ABOVE ARE ALL READ, which is what makes their axis claims mean anything: an
+// unreadable carrier would refuse regardless of what the axes said.
+test fn the_four_recognised_fixtures_are_readable() -> Bool {
+  readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+// THE ALIAS IS NOT READABLE, and that is the whole point: the derivation reads an UNRESOLVED type
+// expression, so a named type is a spelling it does not know rather than a bounded payload.
+test fn an_alias_typed_field_is_not_readable() -> Bool {
+  !readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration()))
+}
+
+// THE BLOCKING ARM. Under the earlier derivation this qualified -- both axes fell through to their
+// admitting values -- so a producer could buy the admission by renaming a type while the same corpus
+// stayed resident (review 68724). It must refuse, and it must refuse NAMING the carrier and the
+// spelling rather than with a generic cause.
+test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration())],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => false
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      match failure {
+        CarrierReadingUndecidable { carrier: _, spelling: spelling } => spelling == ^TreePool
+        WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => false
+        WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
+        LifecycleReadingAbsent => false
+      }
+  }
+}
+
+// AND THE ADMISSION CANNOT BE MINTED FROM IT EITHER, which is the harm stated at its real boundary:
+// semantic delivery plus an unreadable carrier is not a bounded-realization claim.
+test fn semantic_delivery_plus_an_unreadable_carrier_does_not_admit() -> Bool {
+  match admit_bounded_realization(
+    semantic_delivered: true,
+    resource: qualify_bounded_realization(
+      reading: lifecycle_from(
+        constructed: [reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration())],
+      ),
+    ),
+  ) {
+    BoundedRealizationAdmitted { subject: _ } => false
+    BoundedRealizationSemanticDeliveryOutstanding => false
+    BoundedRealizationResourceQualificationOutstanding { failure: _ } => true
+  }
+}
+
 fn lifecycle_from(constructed: List<ProducerCarrierReading>) -> ProductionLifecycleReading {
   ProductionLifecycleReading {
     subject: decl_ref(module_path: "v2.lens.module_graph", decl_name: "load_reference_derived_pool"),
@@ -225,6 +298,7 @@ test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bo
       match failure {
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
+        CarrierReadingUndecidable { carrier: _, spelling: _ } => false
         LifecycleReadingAbsent => false
       }
   }

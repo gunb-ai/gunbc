@@ -1,6 +1,7 @@
 module gunbc.namespace_reference_derived_residency_qualification
 
 import std.types { Bool, List }
+import v2.std.node { Symbol }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 // THE EVIDENCE TYPE FOR THE CONSUMPTION SIDE of
@@ -59,10 +60,20 @@ type CarrierKeyPopulation
   = KeyedByWholePoolPopulation
   | KeyedBySingleSubject
 
+// WHETHER THE DERIVATION COULD READ THE CARRIER AT ALL, carried on the reading so it reaches the
+// qualification rather than being resolved away by the producer. A derivation that cannot decide a
+// field's type must not answer with the value that QUALIFIES -- that is ignorance returned as an
+// answer, DESIGN section 5's widen-instead-of-refuse, and in this module it is the only path that
+// mints an admission (review 68724). So an unrecognized type expression travels as itself.
+type CarrierReadability
+  = CarrierTypeRecognized
+  | CarrierTypeUnrecognized { spelling: Symbol }
+
 type ProducerCarrierReading {
   carrier: DeclarationRef
   grain: CarrierPayloadGrain
   population: CarrierKeyPopulation
+  readability: CarrierReadability
 }
 
 // The production lifecycle at the two boundaries that differ between the specimens: what the producer
@@ -76,6 +87,7 @@ type ProductionLifecycleReading {
 type ResidencyBoundFailure
   = WholeCorpusSyntaxAtConstructionPeak { carrier: DeclarationRef }
   | WholeCorpusSyntaxRetainedAtReturn { carrier: DeclarationRef }
+  | CarrierReadingUndecidable { carrier: DeclarationRef, spelling: Symbol }
   | LifecycleReadingAbsent
 
 // A QUALIFICATION RESULT, not a reading that exists. The class row's harm is a reading being consumed
@@ -83,6 +95,27 @@ type ResidencyBoundFailure
 type ResidencyQualification
   = BoundedRealizationQualified { subject: DeclarationRef }
   | BoundedRealizationRefused { subject: DeclarationRef, failure: ResidencyBoundFailure }
+
+fn carrier_reading_is_undecidable(reading: ProducerCarrierReading) -> Bool {
+  match reading.readability {
+    CarrierTypeRecognized => false
+    CarrierTypeUnrecognized { spelling: _ } => true
+  }
+}
+
+fn first_undecidable_carrier(
+  readings: List<ProducerCarrierReading>,
+) -> ProducerCarrierReading? {
+  readings |> filter(r => carrier_reading_is_undecidable(reading: r)) |> first
+}
+
+fn undecidable_failure(reading: ProducerCarrierReading) -> ResidencyBoundFailure {
+  match reading.readability {
+    CarrierTypeRecognized => LifecycleReadingAbsent
+    CarrierTypeUnrecognized { spelling: spelling } =>
+      CarrierReadingUndecidable { carrier: reading.carrier, spelling: spelling }
+  }
+}
 
 fn carrier_holds_whole_corpus_syntax(reading: ProducerCarrierReading) -> Bool {
   match reading.population {
@@ -133,7 +166,21 @@ fn qualify_bounded_realization(
                 subject: reading.subject,
                 failure: WholeCorpusSyntaxRetainedAtReturn { carrier: held.carrier },
               }
-            Absent => BoundedRealizationQualified { subject: reading.subject }
+            Absent =>
+              // NOTHING DEFINITE WAS FOUND, WHICH IS NOT THE SAME AS A BOUND. A carrier the
+              // derivation could not read is checked LAST, after the definite failures, so a
+              // known-bad producer still reports its specific carrier -- but it refuses, because
+              // qualifying here would let a producer buy the admission by renaming a type.
+              match first_undecidable_carrier(
+                readings: concat(reading.constructed, reading.retained_at_return),
+              ) {
+                Present { value: unreadable } =>
+                  BoundedRealizationRefused {
+                    subject: reading.subject,
+                    failure: undecidable_failure(reading: unreadable),
+                  }
+                Absent => BoundedRealizationQualified { subject: reading.subject }
+              }
           }
       }
   }
