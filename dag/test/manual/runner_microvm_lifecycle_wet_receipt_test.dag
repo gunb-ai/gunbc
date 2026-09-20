@@ -3,6 +3,8 @@ module test.manual.runner_microvm_lifecycle_wet_receipt
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
 import std.resources { Network, Filesystem }
+import std.measure { Second, second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
@@ -70,22 +72,39 @@ fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
   ).success
 }
 
-// EVERY CLAIM TEARS ITS OWN SLICE DOWN FIRST. Claims share one host and the substrate does not
-// promise an order, so a claim that assumed a clean slice would pass or fail on whichever claim ran
-// before it. Stopping the slice kills everything under it, which is what makes each claim's setup
-// the only thing its readback can be about.
+// EVERY CLAIM TEARS ITS OWN SLICE DOWN FIRST AND THEN WAITS FOR IT TO BE OBSERVABLY EMPTY.
+//
+// THE WAIT IS THE PART THE FIRST CUT WAS MISSING, AND IT COST A FLAKE. Claims share one host and the
+// substrate does not promise an order, so a claim that assumed a clean slice would pass or fail on
+// whichever claim ran before it -- and one of them deliberately LEAVES a process running, which is
+// the fact it exists to establish. `systemctl stop` on a slice returns before the units under it are
+// gone, so stopping and immediately starting raced: the_cell_wide_force_ends_a_survivor_in_a_sibling
+// _cgroup passed in isolation and failed when it ran after the claim that leaves a survivor behind.
+// The controller was right both times; the harness was not.
+//
+// SO THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED. This polls the same readback the claims use
+// until the slice reads EMPTY, and returns false if it never does -- so a claim whose slice could not
+// be cleared fails on its own setup instead of on a verdict about a cell it does not own.
 fn clear_slice() -> Bool
   uses net: Network
 {
-  systemd.Systemctl.Stop(unit: wet_slice).success || true
+  let _stopped = systemd.Systemctl.Stop(unit: wet_slice).success
+  slice_is_quiet(polls_remaining: 20)
 }
 
-// A PAYLOAD THAT IGNORES SIGTERM MUST NOT DEPEND ON ITS CHILD SURVIVING IT, and the first cut did.
-// `trap '' TERM; sleep 600` ignores TERM in the SHELL -- and --kill-whom=all signals the sleep too,
-// which dies, after which the script runs off its end and the shell exits. Whether the cgroup
-// empties on the graceful ask then depends on a race nobody declared: the claim passed once and
-// failed once against unchanged controller code. The loop restarts the child, so the shell survives
-// TERM for as long as the claim needs it to, and the arm is reached by construction.
+fn slice_is_quiet(polls_remaining: Int) -> Bool
+  uses net: Network
+{
+  if readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice)) {
+    true
+  } else if polls_remaining <= 0 {
+    false
+  } else {
+    let _slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    slice_is_quiet(polls_remaining: polls_remaining - 1)
+  }
+}
+
 fn sigterm_ignoring_payload() -> List<String> {
   ["/bin/sh", "-c", "trap '' TERM; while true; do sleep 1; done"]
 }
