@@ -790,7 +790,7 @@ fn derived_width_establishes(host: HostIdentity) -> Bool {
 // IT IS NOT REPLACED IN KIND, because main now owns that question outright: WidthAxisStanding,
 // host_width_axes and host_width_binding_label report which axis binds and which is unmeasured, with
 // their own arms for the srv2 case. Re-asserting it here would be a second authority for a fact that
-// authority already carries. What survives is this row'"'"'s own subject -- the class partition: srv2
+// authority already carries. What survives is this row's own subject -- the class partition: srv2
 // cannot derive, the other three can.
 
 // THE PLACEMENT DECISION IS ARITHMETIC, AND THIS RUNS IT RATHER THAN CITING IT. The control plane's

@@ -5,7 +5,6 @@ import std.measure {
   ByteSize, byte_size, byte_size_count,
   Memory, One, Time, Nano,
   time_measure, watt,
-  measure_scale_fraction_floor,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
