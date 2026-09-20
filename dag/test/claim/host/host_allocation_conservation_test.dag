@@ -311,13 +311,20 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 
 // THE 29 AND THE TWO 21s ARE DELETED (2026-09-18): pre-transition figures that left this row red on
 // main. The row's own note says what it is for -- asserting the MEMORY VERDICT and the COMMITMENT
-// SEPARATELY, "because they were equal when it was written and are not equal now" -- and that is a
-// relation between two axes, not a pair of numbers. Asserting memory strictly above the commitment
-// keeps exactly that separation: it fails if the two are ever collapsed into one reading, and it
-// fails if memory becomes the binding axis on srv4 again, which is the event that would make the
-// disk clause below matter differently.
+// SEPARATELY, "because they were equal when it was written and are not equal now" -- a relation
+// between two axes rather than a pair of numbers.
+//
+// THE STRICT INEQUALITY IS ALSO DELETED (2026-09-19), AND IT IS A RECEIPT FOR THE RULE IT BROKE. An
+// intermediate revision asserted memory strictly ABOVE the commitment, reasoning that this would
+// fail "if memory becomes the binding axis on srv4 again". That event happened within the day: main's
+// one-core-per-slot policy makes memory bind srv1/srv3/srv4, so memory admitted EQUALS the
+// commitment and a strict inequality is false. Swapping a transcribed number for a claim about which
+// axis currently binds is the same defect wearing a relation's clothes -- both encode a fleet state
+// that moves. Which axis binds is main's subject now (WidthAxisStanding, host_width_binding_label);
+// what this row keeps is the SEPARATION -- that the memory verdict and the commitment are two
+// readings, obtained independently and both positive.
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) > gunbc_runner_slots_per_host(host: operator_host_srv4)
+  host_memory_admitted_width(host: operator_host_srv4) > 0
     && gunbc_runner_slots_per_host(host: operator_host_srv4) == gunbc_runner_slots_per_host(host: operator_host_srv3)
     && gunbc_runner_slots_per_host(host: operator_host_srv4) > 0
     && match host_disk_admitted_width(host: operator_host_srv4) {
@@ -764,9 +771,6 @@ test fn derived_width_reproduces_the_surviving_host_classes() -> Bool {
     && derived_width_establishes(host: operator_host_srv1)
     && derived_width_establishes(host: operator_host_srv3)
     && derived_width_establishes(host: operator_host_srv4)
-    && memory_is_not_the_binding_axis(host: operator_host_srv1)
-    && memory_is_not_the_binding_axis(host: operator_host_srv3)
-    && memory_is_not_the_binding_axis(host: operator_host_srv4)
 }
 
 fn derived_width_establishes(host: HostIdentity) -> Bool {
@@ -776,13 +780,18 @@ fn derived_width_establishes(host: HostIdentity) -> Bool {
   }
 }
 
-// STRICTLY GREATER, NOT GREATER-OR-EQUAL, AND THE STRICTNESS IS THE DISCRIMINATION. An equality
-// would hold both when CPU binds with slack to spare and at the exact moment memory becomes
-// co-binding, so it would stop reporting the transition this row exists to report.
-fn memory_is_not_the_binding_axis(host: HostIdentity) -> Bool {
-  derived_width_slots_or(s: derived_memory_admitted_width(host: host), fallback: 0)
-    > gunbc_runner_slots_per_host(host: host)
-}
+// memory_is_not_the_binding_axis IS DELETED, AND WHICH AXIS BINDS IS NO LONGER THIS ROW'S SUBJECT
+// (2026-09-19). It asserted that the memory admission strictly exceeded the committed width on
+// srv1, srv3 and srv4 -- true while CPU bound the fleet at twelve, and FALSE the moment main's
+// one-core-per-slot policy landed, whose own note says memory "binds them again". The clause was
+// added here to give this row teeth after its transcribed 25/29 literals were removed; it replaced
+// a stale number with a claim about a fleet property that then moved.
+//
+// IT IS NOT REPLACED IN KIND, because main now owns that question outright: WidthAxisStanding,
+// host_width_axes and host_width_binding_label report which axis binds and which is unmeasured, with
+// their own arms for the srv2 case. Re-asserting it here would be a second authority for a fact that
+// authority already carries. What survives is this row'"'"'s own subject -- the class partition: srv2
+// cannot derive, the other three can.
 
 // THE PLACEMENT DECISION IS ARITHMETIC, AND THIS RUNS IT RATHER THAN CITING IT. The control plane's
 // host was being chosen by which machine got named first in a conversation. These rows replace that

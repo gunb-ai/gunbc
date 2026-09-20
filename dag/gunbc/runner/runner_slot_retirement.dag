@@ -416,6 +416,80 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
+// RETIREMENT IS NOT RELINQUISHMENT, AND THIS CHANGE'S OWN PROSE SAID OTHERWISE (side-analyst ruling,
+// 2026-09-19). An earlier revision of the notes below described the purpose transition as making a
+// runner "drain, stop, deregister from GitHub and relinquish the slot". RunnerRetirementObservation
+// carries `unit`, `replacement_inhibited`, `service_running` and `occupancy` -- a local unit and a
+// cgroup -- and NOTHING ELSE. RetirementComplete therefore proves the mask held, the unit stopped
+// and the cgroup emptied. It observes no GitHub registration at all, so it cannot prove the sentence
+// that mattered most: that the former authority can no longer assign work to this identity.
+//
+// THE TWO STATES THAT ESTABLISH THESE ARE DIFFERENT SUBJECTS. Relinquished-but-not-ready: the
+// registration is gone, replacement inhibited, unit stopped and cgroup empty, while a stale mount or
+// credential disk leaves the substrate unsafe for the next tenant. Ready-but-not-relinquished: the
+// directories and cgroup are pristine while the Actions registration still exists, so GitHub may
+// dispatch another job onto the slot a fabric cell now owns. The second is the one this change must
+// not walk into, and a clean directory is no defence against it.
+//
+// SO THE JOIN IS SEALED RATHER THAN ASSUMED, AND TODAY IT REFUSES. The registration side has no
+// producer: `ObserveGitHubRunnerRegistration` exists only as a gunbc.runner_lifecycle_realize
+// scaffold that provisions nothing and answers NotConverged. Rather than strengthen
+// RetirementComplete's meaning in prose -- which would make an unobserved fact read as a proven one,
+// exactly the conflation this module refuses elsewhere for cgroups -- the missing observation is
+// carried as its own arm, and a handover whose registration is unobserved CANNOT report relinquished.
+// That is the honest standing while the fleet's runners are live, and the refusal is the point.
+//
+// NEXT-RUNG TRIGGER, naming the capability: an executed org-roster read that answers whether a slot
+// identity is registered, bound through gunbc.host_effect HostEffectTransport rather than the
+// scaffold, so RegistrationAbsent can be constructed from evidence instead of declared.
+type RunnerRegistrationStanding
+  = RegistrationAbsent { unit: String }
+  | RegistrationPresent { unit: String }
+  | RegistrationUnobserved { unit: String, cause: String }
+
+type RunnerPurposeRelinquishment
+  = PurposeRelinquished { unit: String }
+  | PurposeRetirementIncomplete { unit: String, cause: String }
+  | PurposeRegistrationNotRelinquished { unit: String, cause: String }
+
+// BOTH PRECONDITIONS ARE INDEPENDENT AND NEITHER IMPLIES THE OTHER, so this fold reports WHICH one
+// failed rather than a single boolean. A caller that cannot tell "the unit is still draining" from
+// "the unit is gone but GitHub still owns the identity" has two different remedies collapsed into
+// one refusal.
+fn runner_purpose_relinquishment(
+  retirement: RunnerRetirementStanding,
+  registration: RunnerRegistrationStanding,
+) -> RunnerPurposeRelinquishment {
+  match registration {
+    RegistrationPresent { unit: u } =>
+      PurposeRegistrationNotRelinquished {
+        unit: u,
+        cause: "the GitHub Actions registration for this slot identity still exists, so the former authority may dispatch work onto a slot the fabric now owns",
+      }
+    RegistrationUnobserved { unit: u, cause: why } =>
+      PurposeRegistrationNotRelinquished { unit: u, cause: why }
+    RegistrationAbsent { unit: u } =>
+      if retirement_is_complete(s: retirement) {
+        PurposeRelinquished { unit: u }
+      } else {
+        PurposeRetirementIncomplete {
+          unit: u,
+          cause: "the local runner has not retired: the mask, the unit or the cgroup has not reached its terminal state",
+        }
+      }
+  }
+}
+
+// THE ONLY REGISTRATION STANDING THIS CORPUS CAN CONSTRUCT TODAY, and it is the unobserved one. It
+// is a function rather than a data row so that the cause travels with the unit it concerns, and so
+// that the day a real producer lands this is the single site that changes.
+fn runner_registration_unobserved(unit: String) -> RunnerRegistrationStanding {
+  RegistrationUnobserved {
+    unit: unit,
+    cause: "no executed GitHub registration read exists for this slot: ObserveGitHubRunnerRegistration is a gunbc.runner_lifecycle_realize scaffold that provisions nothing, so whether the former authority still holds this identity is unobserved rather than absent",
+  }
+}
+
 // A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
 //
 // required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
