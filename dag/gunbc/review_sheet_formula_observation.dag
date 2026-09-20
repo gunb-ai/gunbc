@@ -1,0 +1,340 @@
+module gunbc.review_sheet_formula_observation
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.resources { Network }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import extdeps.google.sheets {
+  ValueRange,
+  SheetsValueRenderOption,
+  RenderFormula,
+  A1SheetTitleRefusal,
+  a1_range_title_decode,
+  a1_sheet_title_refusal_text,
+  A1TitleQualified,
+  A1TitleWholeSheet,
+  A1TitleUnqualified,
+  A1TitleRefused,
+}
+import gunbc.review_sheet_sheets {
+  SheetA1Range,
+  SheetRequestCause,
+  sheet_request_cause_text,
+  WholeTabRequestAdmission,
+  WholeTabRequestEncoded,
+  WholeTabRequestRejected,
+  admit_whole_tab_request,
+}
+import gunbc.review_sheet_values_actuator {
+  ValuesReadOutcome,
+  ValuesRead,
+  ValuesUnreadable,
+  RowMajorReading,
+  RowsRead,
+  RowsNotRowMajor,
+  RowMajorRefusal,
+  row_major_refusal_text,
+  value_range_row_major,
+  read_values_rendered,
+}
+
+// A FORMATTED_VALUE READ CANNOT PROVE A TAB HOLDS NO VALUES (gunbc#11613 finding 2). The live read
+// option the converge path uses is FORMATTED_VALUE, which returns a formula's calculated result, so
+// a cell holding =IF(TRUE,"","") -- or any formula that renders to the empty string -- reads back
+// exactly as a blank cell does, and a header row written over it would erase the formula while
+// reporting that it initialised an empty tab. FORMULA rendering returns the formula text itself, so
+// under it a formula cell is never blank. This carrier is that reading.
+//
+// WHAT THE CARRIER PROVES, STATED AT ITS WIDTH. FormulaWholeTabObservation exists only for a tab
+// whose whole-tab values.get under FORMULA rendering, read as a row-major grid, returned NO cell
+// other than "": it is the proof of VALUE/FORMULA EMPTINESS of the named tab in the named
+// spreadsheet at the moment of that read, and nothing else. A cell that holds any value or any
+// formula (=IF(TRUE,"","") included, since FORMULA rendering returns the formula text) reads as
+// non-empty and the carrier is NOT minted for that tab: the reading is the typed, located
+// FormulaWholeTabOccupied arm instead. That is the fact a values write needs -- values.batchUpdate
+// replaces values and formulas and nothing else -- so holding the carrier is what establishes that
+// a values write will not erase an existing value or formula. It says NOTHING about notes,
+// formatting, data validation, protected ranges, merges, or hidden sheets: none of those are
+// values, none reach a values.get, and a consumer that reads this carrier as "the sheet is
+// physically empty" has widened it.
+//
+// THE CARRIER CARRIES NO GRID, AND THAT IS THE POINT. An earlier cut carried the rows and let the
+// planner decide emptiness. Mutation M14 of gunbc#11769 -- the planner ignoring the grid, so an
+// occupied observation still received the header-row write -- SURVIVED every claim: the planner
+// takes the sealed carrier, no witness can mint an occupied one, and the one hermetic fixture is
+// empty, so the planner's safety arm was asserted and never measured. Moving the decision here
+// makes that arm unwritable rather than untested: there is no grid for a consumer to ignore, an
+// occupied tab has no carrier at all, and the emptiness fold (formula_grid_admit) is public so it
+// is executed both over supplied grids and, through the mint, over the fixture.
+//
+// THE MINT PERFORMS THE READ, AND THERE IS NO OTHER MINT. The type is sole_constructor, so the
+// record literal is unwritable outside this module; the one function that writes it,
+// formula_reading_from_admission, is admit_callers-sealed to observe_formula_whole_tab (which
+// issues the values.get itself: it takes a request and a spreadsheet, never a ValueRange) and to
+// one exact witness claim. A caller cannot hand the mint a grid it read some other way -- under
+// FORMATTED rendering, of a bounded range, of a different tab -- and receive the carrier. There is
+// deliberately no render field on the record: a field that can hold RenderFormula can hold
+// RenderFormattedValue, and a consumer would have to check it.
+//
+// WHAT IS ESTABLISHED, AT ITS ACTUAL STANDING (DESIGN 4b(1)), because the two things above are
+// not established the same way. (a) That an occupied admission never becomes the carrier is
+// EXECUTED: formula_reading_from_admission is discriminated with a supplied FormulaGridOccupied,
+// and the planner-level ignore-the-grid of the first cut is unwritable (the planner holds no
+// grid). (b) That the mint reads under FORMULA rendering is NOT mechanically established by the
+// hermetic evidence: the mock_response ignores valueRenderOption, so a call-site mutation passing
+// RenderFormattedValue is unobservable; the claim over formula_whole_tab_render_option measures
+// that function's value and nothing about the call site. This is an effect-seam limitation until
+// request-aware mocking or a live receipt -- the named ground is an H2 live qualification against
+// a temporary tab holding a blank-rendering formula (=IF(TRUE,"","")), whose FORMULA reading must
+// come back occupied at that cell.
+//
+// THE FOLDS AROUND THE READ ARE PURE AND PUBLIC SO A WITNESS CAN REDDEN THEM, and none of them
+// returns the carrier. admit_whole_tab_request (gunbc.review_sheet_sheets, shared with the ensure
+// assessment) refuses a bounded or column-bounded request BEFORE any read is spent;
+// formula_grid_admit turns the read outcome into the empty verdict, the located occupied verdict,
+// or a typed refusal -- the returned range decoded with the landed A1 codec and required to name
+// the requested tab, the grid required to be row-major, then every cell of every row required to
+// be exactly "" (whitespace is content; [] is empty only because it has no cell, which is how
+// values.get spells a tab with no values). FormulaGridEmpty is an ordinary record: it confers
+// nothing, and the planner (gunbc.review_sheet_header_init) takes only the carrier.
+//
+// RUNG HONESTY (DESIGN 4b). On the v1 seed's acceptance path the wall is structural: a literal
+// outside this module is refused as SoleConstructorViolation, measured by
+// test.claim.review_sheet_header_init_refusal_probe_witness against
+// test.probe.review_sheet_formula_observation_forged_probe. The native v2 path parses
+// sole_constructor WITHOUT enforcing it (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), so on that path the same literal is
+// accepted and the carrier is advice; the emitted-Rust mirror is likewise a public struct. The
+// wall is real on the seed only, and this module claims no more.
+//
+// THE LIVE SEQUENCE THE PRIVATE CALLER (H2, strategy.buyer_review_live) PERFORMS: a FORMATTED
+// whole-tab read first, because that is the read the ordinary ensure pass needs anyway; if it
+// shows any content, the ensure path, and this module is never consulted; if it looks blank, THEN
+// this FORMULA read, and only this carrier may authorise header initialisation. Two reads on a
+// blank tab, one on every other run. Create-only admission -- "we just created it, so it is
+// empty" -- was rejected: a crash after the create and before the header write leaves an adopted
+// blank spreadsheet no later run could initialise, since every later run finds it already
+// created.
+
+type FormulaWholeTabObservation sole_constructor {
+  spreadsheet_id: NonEmptyStr
+  tab: NonEmptyStr
+}
+
+// THE FIRST CELL THAT IS NOT "", LOCATED: sheet_row is 1-based (row 1 is the header row),
+// column_index is 0-based within that row. The raw cell is carried so the report names what was
+// found -- under FORMULA rendering that is the formula text for a formula cell -- because the
+// private caller reports WHICH cell blocked initialisation, not merely that one did.
+type OccupiedCell {
+  sheet_row: Int
+  column_index: Int
+  raw: String
+}
+
+type RowScan
+  = RowScanClear
+  | RowScanFound { found: OccupiedCell }
+
+fn first_occupied_in_row(cells: List<String>, sheet_row: Int) -> RowScan {
+  let found =
+    cells
+      |> enumerate
+      |> filter(p => p.second != "")
+      |> map(p => OccupiedCell { sheet_row: sheet_row, column_index: p.first, raw: p.second })
+      |> first
+  match found {
+    Present { value: c } => RowScanFound { found: c }
+    Absent => RowScanClear
+  }
+}
+
+// Reading order: the first row that holds a non-"" cell, and the first such cell in it.
+fn first_occupied_cell(rows: List<List<String>>) -> RowScan {
+  rows
+    |> enumerate
+    |> fold(init: RowScanClear, f: (acc, p) =>
+      match acc {
+        RowScanFound { found: c } => RowScanFound { found: c }
+        RowScanClear => first_occupied_in_row(cells: p.second, sheet_row: p.first + 1)
+      })
+}
+
+fn occupied_cell_text(cell: OccupiedCell) -> String {
+  join([
+    "row ", to_string(cell.sheet_row),
+    " column index ", to_string(cell.column_index),
+    " holds ", cell.raw,
+  ], "")
+}
+
+// Every way the read does NOT establish the fact, each as its own arm with what it saw. The
+// request-shape arm carries gunbc.review_sheet_sheets SheetRequestCause: the same three refusals
+// the ensure assessment makes, from the same fold. The returned-range arms carry the A1 codec's
+// own refusal; the grid arm carries the values actuator's row-major refusal.
+type FormulaWholeTabRefusal
+  = FormulaRequestRejected { cause: SheetRequestCause }
+  | FormulaReadUnreadable { cause: NonEmptyStr }
+  | FormulaReadRangeUnqualified { range: String }
+  | FormulaReadRangeRefused { range: String, refusal: A1SheetTitleRefusal }
+  | FormulaReadTabMismatch { requested: NonEmptyStr, returned: NonEmptyStr }
+  | FormulaReadNotRowMajor { cause: RowMajorRefusal }
+
+fn formula_whole_tab_refusal_text(refusal: FormulaWholeTabRefusal) -> String {
+  match refusal {
+    FormulaRequestRejected { cause: c } => sheet_request_cause_text(cause: c)
+    FormulaReadUnreadable { cause: c } => concat("FORMULA values.get failed: ", c as String)
+    FormulaReadRangeUnqualified { range: r } =>
+      concat("FORMULA values.get returned a range naming no tab: ", r)
+    FormulaReadRangeRefused { range: r, refusal: f } =>
+      concat(a1_sheet_title_refusal_text(refusal: f), concat(": ", r))
+    FormulaReadTabMismatch { requested: q, returned: g } =>
+      concat(
+        "FORMULA values.get returned tab ",
+        concat(g as String, concat(" for requested tab ", q as String)),
+      )
+    FormulaReadNotRowMajor { cause: c } => row_major_refusal_text(cause: c) as String
+  }
+}
+
+// THREE KINDS OF READING, AND ONLY ONE IS SEALED. An occupied tab is a legitimate observation --
+// the read succeeded and the tab holds something -- so it is its own located arm and never a
+// refusal; the three request-shape refusals and the readback refusals stay in FormulaWholeTabRefusal.
+type FormulaWholeTabReading
+  = FormulaWholeTabEmpty { observation: FormulaWholeTabObservation }
+  | FormulaWholeTabOccupied { spreadsheet_id: NonEmptyStr, tab: NonEmptyStr, first: OccupiedCell }
+  | FormulaWholeTabRefused { refusal: FormulaWholeTabRefusal }
+
+// The judged read is NOT the carrier. FormulaGridEmpty is what the mint wraps, and the sum is
+// public so the judging fold can be executed against supplied readings.
+type FormulaGridAdmission
+  = FormulaGridEmpty { tab: NonEmptyStr }
+  | FormulaGridOccupied { tab: NonEmptyStr, first: OccupiedCell }
+  | FormulaGridRefused { refusal: FormulaWholeTabRefusal }
+
+// The tab a returned range names, through the landed codec. A whole-sheet spelling ('Tab') and a
+// qualified one ('Tab'!A1:Z1000) both name a tab; an unqualified range names none, and BatchUpdate
+// over it would hit the first tab, so it is refused rather than defaulted.
+type ReturnedTab
+  = ReturnedTabNamed { tab: NonEmptyStr }
+  | ReturnedTabUnnamed { refusal: FormulaWholeTabRefusal }
+
+fn returned_tab(range: String) -> ReturnedTab {
+  match a1_range_title_decode(range: range) {
+    A1TitleQualified { title: t, cells: _ } => ReturnedTabNamed { tab: t }
+    A1TitleWholeSheet { title: t } => ReturnedTabNamed { tab: t }
+    A1TitleUnqualified { text: _ } =>
+      ReturnedTabUnnamed { refusal: FormulaReadRangeUnqualified { range: range } }
+    A1TitleRefused { refusal: f } =>
+      ReturnedTabUnnamed { refusal: FormulaReadRangeRefused { range: range, refusal: f } }
+  }
+}
+
+// THE JUDGEMENT OF ONE READ, pure. The requested tab is the one the caller named; the returned
+// range is what Sheets answered, and the two must agree by the codec's reading -- an answer about
+// another tab is a fact about another tab. Absent values is the empty grid: values.get omits the
+// field when the range holds nothing, and value_range_row_major already reads that omission as
+// zero rows (ROWS is the upstream default when majorDimension is omitted). Emptiness is decided
+// LAST, over the admitted row-major grid, and it is fail-closed: every cell of every row must be
+// exactly "", and the first that is not is returned located.
+fn formula_grid_admit(requested: SheetA1Range, read: ValuesReadOutcome) -> FormulaGridAdmission {
+  match read {
+    ValuesUnreadable { cause: c } => FormulaGridRefused { refusal: FormulaReadUnreadable { cause: c } }
+    ValuesRead { range: got } =>
+      match returned_tab(range: got.range) {
+        ReturnedTabUnnamed { refusal: r } => FormulaGridRefused { refusal: r }
+        ReturnedTabNamed { tab: t } =>
+          if (t as String) != (requested.tab as String) {
+            FormulaGridRefused {
+              refusal: FormulaReadTabMismatch { requested: requested.tab, returned: t }
+            }
+          } else {
+            match value_range_row_major(r: got) {
+              RowsNotRowMajor { cause: c } =>
+                FormulaGridRefused { refusal: FormulaReadNotRowMajor { cause: c } }
+              RowsRead { rows: rows } =>
+                match first_occupied_cell(rows: rows) {
+                  RowScanFound { found: c } => FormulaGridOccupied { tab: t, first: c }
+                  RowScanClear => FormulaGridEmpty { tab: t }
+                }
+            }
+          }
+      }
+  }
+}
+
+// The render option the mint reads under, as a fact a witness can execute: the mint passes this
+// and nothing else to the values.get call site.
+fn formula_whole_tab_render_option() -> SheetsValueRenderOption {
+  RenderFormula
+}
+
+// THE CARRIER-MINTING BOUNDARY, EXTRACTED SO IT CAN BE EXECUTED AGAINST AN OCCUPIED ADMISSION.
+// spreadsheet_id x FormulaGridAdmission -> FormulaWholeTabReading is a PURE mapping that happens
+// AFTER the read is finished, and this is the only function that writes the carrier literal. The
+// first cut of gunbc#11769 wrote it inline in the mint, where mutation M20 -- the occupied arm
+// minting the carrier anyway -- survived, because the one hermetic fixture is empty and the mint's
+// occupied arm was never executed. Extracted, the mapping is discriminated with a SUPPLIED
+// FormulaGridOccupied. It is admit_callers-sealed to the observer and to ONE exact witness claim
+// that returns Bool and egresses nothing (test.claim.review_sheet_header_init_witness
+// an_occupied_admission_never_becomes_the_carrier): an admitted call edge does not confine a
+// value when an exported wrapper returns it (gunbc#11725 side-chat), so no wrapper exists and
+// adding a claim means adding a row here.
+fn formula_reading_from_admission(
+  spreadsheet_id: NonEmptyStr,
+  admission: FormulaGridAdmission,
+) -> FormulaWholeTabReading admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_formula_observation", decl_name: "observe_formula_whole_tab"),
+  decl_ref(module_path: "test.claim.review_sheet_header_init_witness", decl_name: "an_occupied_admission_never_becomes_the_carrier")
+] {
+  match admission {
+    FormulaGridRefused { refusal: r } => FormulaWholeTabRefused { refusal: r }
+    FormulaGridOccupied { tab: t, first: c } =>
+      FormulaWholeTabOccupied { spreadsheet_id: spreadsheet_id, tab: t, first: c }
+    FormulaGridEmpty { tab: t } =>
+      FormulaWholeTabEmpty {
+        observation: FormulaWholeTabObservation { spreadsheet_id: spreadsheet_id, tab: t }
+      }
+  }
+}
+
+// THE ONLY MINT. A bounded or column-bounded request is refused before the read is spent; the read
+// is the values actuator's one call site under FORMULA rendering; the answer is judged by
+// formula_grid_admit and mapped by formula_reading_from_admission, so only an EMPTY judgement
+// becomes the carrier. An occupied tab is carried through located, with the spreadsheet it was
+// read from.
+fn observe_formula_whole_tab(
+  spreadsheet_id: NonEmptyStr,
+  requested: SheetA1Range,
+) -> FormulaWholeTabReading uses net: Network {
+  match admit_whole_tab_request(requested: requested) {
+    WholeTabRequestRejected { cause: c } =>
+      FormulaWholeTabRefused { refusal: FormulaRequestRejected { cause: c } }
+    WholeTabRequestEncoded { wire: a1 } =>
+      formula_reading_from_admission(
+        spreadsheet_id: spreadsheet_id,
+        admission: formula_grid_admit(
+          requested: requested,
+          read: read_values_rendered(
+            spreadsheet_id: spreadsheet_id,
+            a1: a1,
+            render: formula_whole_tab_render_option(),
+          ),
+        ),
+      )
+  }
+}
+
+// THE CONSUMER IS PRIVATE AND LATER: strategy.buyer_review_live (gunbc-private, H2) issues this read
+// when its FORMATTED whole-tab read looks blank, and hands the reading to
+// gunbc.review_sheet_header_init plan_header_init. Until it lands, the mint is a declared frontier.
+// test.claim.review_sheet_header_init_witness executes the mint against the hermetic values.get
+// fixture (extdeps.google.sheets hermetic_get_values_value_range) and does not fire this row: a
+// witness is not a production consumer.
+data review_sheet_formula_observation_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_formula_observation", decl_name: "observe_formula_whole_tab"),
+    reason: "the whole-tab FORMULA values.get that is the only mint of FormulaWholeTabObservation; its caller is the private transaction strategy.buyer_review_live (H2), which holds the buyer roster and the create-then-initialise sequence this repository cannot see",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_formula_observation observe_formula_whole_tab after a blank-looking FORMATTED read of a live tab and hands the reading to gunbc.review_sheet_header_init plan_header_init on that route; the hermetic witness execution over extdeps.google.sheets hermetic_get_values_value_range does not fire this"),
+  ),
+]
