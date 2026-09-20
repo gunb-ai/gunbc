@@ -61,7 +61,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_declared_head_digest,
 }
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing, read_unit_property, UnitTextObserved, UnitTextRefused }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_head, spark_pair_group_head_host }
+import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
 import gunbc.spark.serving_group_launch { serving_group_launch, GroupRendezvous, serving_group_rendezvous }
 import gunbc.spark.rendezvous_participation {
   ServingGroupRendezvousReach, GroupRendezvousReachUnobserved, RendezvousEpoch, rendezvous_epoch, serving_group_rendezvous_reach,
@@ -733,10 +733,12 @@ fn harness_rendezvous_epoch(context: FleetSshExecutionContext, group: FabricGrou
 // WHICH HOST IS THE GROUP'S HEAD, ANSWERED ONCE. A group with a modeled rendezvous takes rank 0 of
 // the roster its launch plan derives -- the same list the participation reading ranks -- so the
 // incarnation's head and the epoch's head cannot fork from the ranks they are checked against. A
-// group with no rendezvous (the pair route) has only the pinned pair head, which is its authority.
+// group with no rendezvous keeps the pair route's own answer, spark_pair_group_head_host, which is
+// Absent for a refused unit and for a group off the roster: this reader may not fabricate a head
+// where that one declines to name one.
 fn harness_group_head(group: FabricGroup) -> HostIdentity? {
   match serving_group_rendezvous(group: group) {
-    Absent => Present { value: spark_pair_serving_head(group: group) }
+    Absent => spark_pair_group_head_host(group: group)
     Present { value: r } =>
       match r.ranked_hosts {
         Empty {} => none

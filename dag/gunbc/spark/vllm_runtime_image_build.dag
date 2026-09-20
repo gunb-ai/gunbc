@@ -1306,11 +1306,16 @@ fn vllm_image_deliveries_wire(ds: List<VllmImageHostDelivery>) -> String {
   join(map(ds, d => vllm_image_delivery_wire(d: d)), "")
 }
 
+// AN EMPTY DELIVERY SET IS NOT A SUCCESS. The fold's unit is true, so a roster that produced no
+// target -- a one-host arm, or a source that matched every ranked host -- would report the
+// distribution succeeded having moved nothing. Delivering to nobody is the state this reader exists
+// to catch, so it is false here and the caller's refusal arm names it.
 fn vllm_image_distribution_succeeded(deliveries: List<VllmImageHostDelivery>) -> Bool {
-  fold(deliveries, init: true, f: (ok, d) => ok && match d {
-    VllmImageHostDelivered { host: _, digest: _, already_present: _ } => true
-    VllmImageHostDeliveryRefused { host: _, step: _, cause: _ } => false
-  })
+  count(deliveries) > 0
+    && fold(deliveries, init: true, f: (ok, d) => ok && match d {
+      VllmImageHostDelivered { host: _, digest: _, already_present: _ } => true
+      VllmImageHostDeliveryRefused { host: _, step: _, cause: _ } => false
+    })
 }
 
 // THE DISTRIBUTION ITSELF: save on the source (as root through the privileged leg, then chmod so
