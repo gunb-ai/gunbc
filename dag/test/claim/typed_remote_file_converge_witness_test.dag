@@ -14,6 +14,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmissionRefused,
   RemoteFileMode,
   RemoteFileModeOwnerReadWrite,
+  RemoteFileModeOwnerReadWriteGroupRead,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileAsSessionPrincipal,
   RemoteFileViaNonInteractiveSudo,
@@ -173,8 +174,9 @@ test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
   }
 }
 
-test fn the_two_modes_render_their_octals() -> Bool {
+test fn the_modes_render_their_octals() -> Bool {
   remote_file_mode_octal(mode: RemoteFileModeOwnerReadWrite) == "600"
+    && remote_file_mode_octal(mode: RemoteFileModeOwnerReadWriteGroupRead) == "640"
     && remote_file_mode_octal(mode: RemoteFileModeOwnerReadWriteWorldRead) == "644"
 }
 

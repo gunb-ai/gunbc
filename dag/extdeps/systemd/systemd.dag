@@ -129,6 +129,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
 
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
 
+// systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
+data systemd_unit_load_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
 // THE LOAD-STATE VOCABULARY, CITED TO systemd.unit(5). The five words are `loaded`, `not-found`,
 // `bad-setting`, `error` and `masked`, and until now only the one this corpus reads positively had a
 // declared row -- so a consumer needing the other four spelled them itself, in the product layer,
@@ -154,7 +157,7 @@ fn systemd_unit_load_state_wire(s: SystemdUnitLoadState) -> String {
     LoadStateNotFound => systemd_unit_load_state_not_found_wire as String
     LoadStateBadSetting => "bad-setting"
     LoadStateError => "error"
-    LoadStateMasked => "masked"
+    LoadStateMasked => systemd_unit_load_state_masked_wire as String
   }
 }
 
@@ -417,4 +420,15 @@ data systemd_binary_directory: NonEmptyStr = "/usr/bin" as NonEmptyStr
 
 fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
   join([systemd_binary_directory as String, "/", name as String], "") as NonEmptyStr
+}
+
+// THE ESCAPE SYSTEMD PUTS IN A NAME, BY ITS UPSTREAM RULE. systemd.unit(5) and systemd-escape(1):
+// a character outside the allowed set is replaced by `\xNN`, so the slice unit for `actions-runner`
+// appears on disk and in `ControlGroup` as `system-actions\x2drunner.slice`. The backslash is the
+// escape's own marker, so a component carrying one is an ESCAPED component -- which matters to any
+// consumer that must name that path to another program, because the escape is not a character every
+// transport or shell carries unchanged. This answers only "is this component escaped"; unescaping is
+// a different operation and is not modeled until something reads a name back.
+fn systemd_name_component_is_escaped(component: String) -> Bool {
+  string_contains(s: component, pattern: "\\")
 }

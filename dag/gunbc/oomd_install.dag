@@ -67,11 +67,14 @@ import extdeps.systemd.systemctl {
 data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
 
 
+data gunbc_oomd_sessions_pressure_limit: Percent = percent(60)
+
+
 data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
-  managed_oom_memory_pressure_limit: percent(60),
+  managed_oom_memory_pressure_limit: gunbc_oomd_sessions_pressure_limit,
   managed_oom_memory_pressure_duration: second(20),
 }
 
