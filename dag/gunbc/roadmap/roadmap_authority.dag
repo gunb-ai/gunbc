@@ -2868,7 +2868,50 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
-  ], guarantee_ladder_nodes())
+  ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))
+}
+
+// THE TYPED-MODULE STORE LANE, parked at wind-down (2026-09-20) so that what is UNFINISHED about
+// it is a roadmap fact rather than a session's memory. gunbc#11793 landed the provider row
+// (gunbc.floor_materialization host_persisted_typecheck_store) and its realization
+// (v1_compiler.shared_typecheck_store PersistentTypedStore). Two things it did NOT land are
+// below, and the first is the one that decides whether any of it was worth doing.
+//
+// A THIRD NODE WAS WRITTEN HERE AND DELETED IN THE SAME CHANGE (review 69189). It described the
+// review-69138 repairs -- the seed-growth receipt, the grounded lockstep, the two deletions -- and
+// every one of them lands in the diff that authored it. `active` mints a node open and
+// Dispatchable, so it was a brief that would have sent a worker to redo landed work, and the
+// receipt file written beside it already said the opposite. A roadmap node is for what is still
+// OWED; the PR and gunbc.typed_module_store_seed_growth are the record of what was done.
+fn typed_module_store_nodes() -> List<RoadmapNode> {
+  [
+    active(identity: "rn_HPHX9GMDAXMMWWYGB6ZCSCYDWJ", id: "typed-store-cold-warm-measurement",
+      owner: "v1-performance",
+      path: "docs/plans/typed-module-cross-run-materialization.md",
+      t: fields(
+        headline: "Measure the host-persisted typed-module store on the real route, or delete it",
+        boundary: "One cold/warm receipt from the two sibling processes the provider row names -- the nominal witnesses fold and the generated-artifact drift gate, one job, one built binary. Report end-to-end wall, peak RSS, and the fold's subject digest, which must be EQUAL between armed and unarmed: a store that changes a verdict is a defect, not a saving. Read hits, misses, rejections, refusals, throughput and LIVE OCCUPANCY off the [typed-store-persist] line the floor receipt already emits.",
+        displaced_cost: "The store is armed by nothing today, so it displaces nothing until this runs. Until then the tier is implemented and unmeasured, and the design's projected figures (8.3 min -> ~1 min preparation, 32 -> ~20 min per push) are withdrawn rather than carried, because they do not follow from the key the design proposed.",
+        first_slice: "Arm GUNBC_TYPED_STORE_PERSIST on the floor lane for ONE run via gunbc.compiler_gate_workflow, read the receipt, and revert the arming. NOT on a session container (two 20.2 GiB folds under a shared slice) and NOT on BuildBuddy (runners are 6 cores / 7 GiB, which is why two dispatches stalled).",
+        red_control: "An unarmed and an armed run of the same commit must print the SAME subject digest; a difference falsifies the store rather than the measurement. A second armed run over a warm store must show hits, or the store is not being reached and the whole tier is inert.",
+        out_of_scope: "No widening of required_gate_prefixes, no seeding workflow, no scheduled verification job, and no parallelism work.",
+        handback: "The cold/warm receipt with both wall times, both peak RSS figures, the two digests, and the decision it implies: keep and arm, or delete the tier."
+      )
+    ),
+    active(identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF", id: "compiler-identity-invariant-under-corpus-commit",
+      owner: "v1-performance",
+      path: "docs/plans/typed-module-cross-run-materialization.md",
+      t: fields(
+        headline: "Compiler identity that does not move with the commit SHA, so cross-push reuse becomes reachable",
+        boundary: "std.interface_summary typed_module_key consumes a compiler identity it does not author, and its realization today is resolved_graph_cache transform_content_digest -- the content hash of the RUNNING BINARY. src/v1/stage0/build.rs embeds GUNBC_BUILD_IDENTITY, the checkout's commit, into that binary through cargo:rustc-env, so a rebuild at ANY new commit re-keys every entry, including a corpus-only .dag commit. Derive the identity from what the TYPECHECKER actually is instead.",
+        displaced_cost: "Every cross-push reuse claim in the materialization design depends on this and none of it is reachable without it. The store as landed delivers same-build cross-process reuse only, and that limit is a property of this derivation rather than of the store.",
+        first_slice: "Establish which producers consume the identity (the resolved-graph subject digest and the typed-module key both do), then change the derivation in ONE place and test it through a normal .dag-only rebuild -- an actual changed-commit experiment, not one commit rerun warm.",
+        red_control: "A v1 Rust change to inference must still miss every entry; a corpus-only .dag commit must hit for unaffected modules. Both directions, or the new identity is either unsound or useless.",
+        out_of_scope: "Do not remove build provenance: the SHA stays in the CLI version. Do not run an old compiler to manufacture hits.",
+        handback: "The new derivation, its single consuming authority, and the two-direction experiment."
+      )
+    ),
+  ]
 }
 
 // AN EDGE HOLDS A CHILD UNTIL ITS PARENT HAS AN ACCEPTANCE RECEIPT, so a parent is chosen for what
