@@ -2,7 +2,7 @@ module gunbc.host_operation_exec
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+import extdeps.systemd { systemd_unit_property_wire_word, SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.tools.hostname
 import extdeps.linux.cgroup_v2
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
@@ -320,11 +320,11 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
     SystemctlShowProperty { unit: u, property: p } => {
-      let result = systemd.Systemctl.ShowProperty(unit: u, property: systemd_unit_property_wire(property: p))
+      let result = systemd.Systemctl.ShowProperty(unit: u, property: systemd_unit_property_wire_word(property: p))
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowUserProperty { unit: u, property: p } => {
-      let result = systemd.Systemctl.ShowUserProperty(unit: u, property: systemd_unit_property_wire(property: p))
+      let result = systemd.Systemctl.ShowUserProperty(unit: u, property: systemd_unit_property_wire_word(property: p))
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowLoadState { unit: u } => {

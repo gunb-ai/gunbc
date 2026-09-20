@@ -1,6 +1,8 @@
 module extdeps.posix.test_utility
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -54,4 +56,38 @@ fn test_writable_command(path: String) -> ArgvCommand {
 
 fn test_executable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program, arguments: ["-x", path])
+}
+
+// WHETHER A PATH IS THERE, OR WHY THAT COULD NOT BE DECIDED -- ONE DECLARATION, AT THE BOUNDARY THAT
+// OWNS THE UTILITY.
+//
+// POSIX gives `test` exit 0 for true and 1 for false, and reserves anything else for the utility
+// itself failing. So exit 1 is the only status that means ABSENT; every other nonzero one is an
+// instrument that did not answer, and reading it as absent is how a broken probe reports a clean
+// host. Matching on stderr text instead would be the heuristic DESIGN section 4 rules out where a
+// total discriminator exists -- and one does, in the utility's own documented status.
+//
+// IT IS HERE RATHER THAN IN EACH CONSUMER because two of them already wanted it and would each have
+// minted the same three arms: a sanitation readback proving an attempt's resources ABSENT, and a
+// staging readback proving a jail's material PRESENT. Those are opposite domain facts over one
+// reading, which is exactly the shape that belongs at the boundary with the domain folds above it
+// (review 69084, and the same correction review 69037 made for the stat field reading).
+type PathExistenceReading
+  = PathPresent
+  | PathAbsent
+  | PathExistenceUnreadable { reason: NonEmptyStr }
+
+fn path_existence_reading(path: String, outcome: ProcessOutcome) -> PathExistenceReading {
+  match outcome {
+    ProcessOutputPresent { text: _ } => PathPresent
+    ProcessOutputAbsent => PathPresent
+    ProcessRefused { exit_code: code, stderr: e } =>
+      if code == 1 {
+        PathAbsent
+      } else {
+        PathExistenceUnreadable {
+          reason: join(["`test -e ", path, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
+        }
+      }
+  }
 }

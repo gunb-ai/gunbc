@@ -44,6 +44,7 @@ import gunbc.runner_microvm_lifecycle {
   BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation,
   BringUpRefusedOutOfOrder, advance_bring_up,
   TerminalTrigger, VmmExited, RunnerExited, ControllerLost, ResourcesFoundOnRecovery, StopRequested,
+  UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -302,7 +303,7 @@ test fn a_sigterm_ignoring_child_is_force_stopped_and_the_cell_returns_only_on_a
 // A DOUBLE-FORK moves the survivor into a child cgroup; the recursive readback still finds it.
 test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
   is_quarantined(r: readiness_after(
-    trigger: VmmExited { exit_code: 0 },
+    trigger: VmmExited { status: ExitStatusRead { exit_code: 0 } },
     host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice/escape.scope" as NonEmptyStr] }),
   ))
 }

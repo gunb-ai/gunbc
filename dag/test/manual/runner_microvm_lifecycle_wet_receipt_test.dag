@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.resources { Network, Filesystem }
 import std.measure { Second, second }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
+import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, systemd_unit_property_wire_word, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 
@@ -314,7 +314,7 @@ test fn show_property_reads_a_units_environment() -> Bool
 fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> String
   uses net: Network
 {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire_word(property: property))
   if shown.success == false { "" } else { trim(s: shown.value) }
 }
 

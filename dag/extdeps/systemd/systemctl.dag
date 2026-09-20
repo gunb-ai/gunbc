@@ -3,7 +3,7 @@ module extdeps.systemd.systemctl
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.string_type { String }
 import std.algebra { trim }
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path, SystemdUnitPropertyWire }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -366,9 +366,12 @@ type UnitFileState
 // would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
 // id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
 //
-// SO THE INPUT IS THE WIRE STRING AND ITS ONLY PRODUCER IS systemd_unit_property_wire. The closed
-// type survives one call up, where the caller names the property it means; what crosses into the
-// argv is the spelling systemctl actually accepts, derived once, by the row that owns it.
+// SO THE INPUT IS A SEALED WIRE WORD AND ITS ONLY PRODUCER IS systemd_unit_property_wire_word. The
+// first repair took a bare NonEmptyStr, which fixed the spelling and moved the wall to caller
+// discipline -- every caller happened to convert, and nothing stopped the next one passing a literal
+// (review 69084). extdeps.systemd SystemdUnitPropertyWire is sole_constructor, so the conversion is
+// not a step that can be skipped, and the transport reads its field so the closed type reaches the
+// argv instead of stopping a layer short.
 //
 service systemd.Systemctl {
   operation Enable {
@@ -557,13 +560,13 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: NonEmptyStr, property: NonEmptyStr }
+    input { unit: NonEmptyStr, property: SystemdUnitPropertyWire }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property.wire}", "--value"] }
     exit {
       0 => Unit
       nonzero => String "systemctl show failed"
@@ -574,13 +577,13 @@ service systemd.Systemctl {
   }
 
   operation ShowUserProperty {
-    input { unit: NonEmptyStr, property: NonEmptyStr }
+    input { unit: NonEmptyStr, property: SystemdUnitPropertyWire }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property}", "--value"] }
+    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property.wire}", "--value"] }
     exit {
       0 => Unit
       nonzero => String "systemctl --user show failed"

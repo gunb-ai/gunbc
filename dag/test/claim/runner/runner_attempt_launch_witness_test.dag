@@ -30,6 +30,7 @@ import gunbc.runner_microvm_network {
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
 import extdeps.tools.stat { StatFieldRead, StatFieldUnread }
+import extdeps.posix.test_utility { PathPresent, PathAbsent, PathExistenceUnreadable }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
   LaunchRefusedJitCredential, LaunchRefusedPriorResources,
@@ -37,6 +38,8 @@ import gunbc.runner_attempt_launch {
   JitDeviceRefusal, JitMintNotReceived, JitCredentialNotDelivered,
   JitCredentialBoundToDifferentAttempt, JitCredentialBelowFloor, JitCredentialAboveCeiling,
   jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep, JitDeviceStagingOutcome,
+  JailMaterialStaging, JailMaterialStanding, JailMaterialReady, JailMaterialStepFailed,
+  JailMaterialMissing, JailMaterialUnobservable, jail_material_step_label, StagingRefusedJailMaterial,
   plan_attempt_launch, planned_jailer_launches,
   attempt_jail_chroot_root, workspace_drive_path_on_host,
   work_standing_from_vmm_exit, WorkNotEstablished,
@@ -503,6 +506,12 @@ fn staging_label(v: AttemptStagingVerdict) -> String {
     StagingNotAuthorized => "unauthorized"
     StagingRefusedJitDevice { outcome: _ } => "jit-device"
     StagingRefusedForeignJitDevice { staged_path: _, planned_path: _ } => "foreign-jit-device"
+    StagingRefusedJailMaterial { standing: m } => match m {
+      JailMaterialReady => "ready-refused-jail"
+      JailMaterialStepFailed { step: st, exit: _ } => join(["step-failed:", jail_material_step_label(step: st)], "")
+      JailMaterialMissing { step: st } => join(["missing:", jail_material_step_label(step: st)], "")
+      JailMaterialUnobservable { step: st, reason: _ } => join(["unobservable:", jail_material_step_label(step: st)], "")
+    }
     StagingRefusedWorkspace { standing: s } => match s {
       WorkspaceReady => "ready-refused"
       WorkspaceCreateFailed { exit: _ } => "create"
@@ -537,8 +546,59 @@ fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptG
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: ground)
           staging_label(v: attempt_staging_verdict(
             plan: plan,
+            jail: staged_jail_material(),
             jit: if jit_of { staged_device_of(plan: plan) } else { jit },
             workspace: obs,
+          ))
+        }
+        Empty {} => "no-attempt"
+      }
+    Empty {} => "no-grant"
+  }
+}
+
+// A JAIL WHOSE MATERIAL STAGED, supplied so the claims above are about the gate they name. The
+// jail-material reds below supply the failing shapes instead.
+fn staged_jail_material() -> JailMaterialStaging {
+  JailMaterialStaging {
+    jail_root_exit: 0,
+    kernel_exit: 0,
+    rootfs_exit: 0,
+    kernel: PathPresent,
+    rootfs: PathPresent,
+  }
+}
+
+// THE JAIL'S MATERIAL GATES THE JAILER TOO, and it did not before: stage_jail_root, stage_kernel and
+// stage_rootfs ran with their exits discarded, so a copy that failed still minted the receipt and
+// released the jailer onto a chroot with no kernel in it (review 69084). Each arm is asserted
+// separately, and the exits are checked in causal order: a jail root that was not created makes the
+// copies meaningless.
+//
+// THE READBACK ARMS ARE THE POINT OF THE PAIR. `cp` exiting zero is the tool's word; the file being
+// where the jailer will open it is the host's, and the two are separated by a full disk. A gate that
+// read only the exits would pass the first three reds and fail these two.
+test fn a_failed_or_missing_jail_material_does_not_admit_the_jailer() -> Bool {
+  jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:jail root"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsent, rootfs: PathPresent }) == "missing:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsent }) == "missing:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr } }) == "unobservable:rootfs"
+    && jail_label(m: staged_jail_material()) == "admit"
+}
+
+fn jail_label(m: JailMaterialStaging) -> String {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 2, id: "ws1") {
+        Cons { head: a, tail: _ } => {
+          let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
+          staging_label(v: attempt_staging_verdict(
+            plan: plan,
+            jail: m,
+            jit: staged_device_of(plan: plan),
+            workspace: good_workspace(),
           ))
         }
         Empty {} => "no-attempt"
@@ -586,7 +646,7 @@ fn admitted_receipt_names_this_attempts_paths() -> Bool {
       match accepted_attempt(i: 2, id: "ws1") {
         Cons { head: a, tail: _ } => {
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
-          match attempt_staging_verdict(plan: plan, jit: staged_device_of(plan: plan), workspace: good_workspace()) {
+          match attempt_staging_verdict(plan: plan, jail: staged_jail_material(), jit: staged_device_of(plan: plan), workspace: good_workspace()) {
             StagingAdmitsJailer { receipt: r } =>
               r.jit_device_path == concat(attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker"), jail_jit_path as String)
                 && r.workspace_path == planned_ws_path()

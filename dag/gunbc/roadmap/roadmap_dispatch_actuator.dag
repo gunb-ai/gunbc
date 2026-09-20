@@ -43,7 +43,7 @@ import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detache
 import std.measure { ByteSize, byte_size_count }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
-import extdeps.systemd { systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
+import extdeps.systemd { systemd_unit_property_wire_word, systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
@@ -3327,7 +3327,7 @@ type AttemptUnitObservation
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire_word(property: property))
   if read.success {
     AttemptUnitFinished { exit_status: trim(read.value) }
   } else {

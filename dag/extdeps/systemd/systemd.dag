@@ -86,6 +86,27 @@ type SystemdUnitProperty
   | InvocationIDProperty
   | FragmentPathProperty
 
+// THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
+//
+// systemctl's `--property=` takes the wire spelling, and a variant name is not always it -- which is
+// why systemd_unit_property_wire exists. The first repair of that defect widened the operations'
+// input to a bare NonEmptyStr and relied on every caller remembering to convert, which moved the wall
+// from the type system to caller discipline: nothing stopped the next caller passing a literal and
+// re-entering the silent empty reading that a wet run had just been spent finding (review 69084).
+//
+// sole_constructor CLOSES IT BY CONSTRUCTION. The only way to obtain one of these is to hand a
+// SystemdUnitProperty to the function below, so the conversion is not a step a caller can skip -- and
+// the transport reads the field directly, which is what makes the carrier reachable at the argv
+// rather than stopping one layer short. That a record FIELD interpolates was measured rather than
+// assumed: a sealed one-field record echoed its field through a shell transport on srv1.
+type SystemdUnitPropertyWire sole_constructor {
+  wire: NonEmptyStr
+}
+
+fn systemd_unit_property_wire_word(property: SystemdUnitProperty) -> SystemdUnitPropertyWire {
+  SystemdUnitPropertyWire { wire: systemd_unit_property_wire(property: property) }
+}
+
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
     MemoryMax => "MemoryMax" as NonEmptyStr

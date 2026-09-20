@@ -9,14 +9,17 @@ import std.measure { Second, second, second_count, ByteSize, byte_size }
 import std.algebra { trim }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.posix.test_utility { test_exists_command }
+import extdeps.posix.test_utility {
+  test_exists_command,
+  PathExistenceReading, PathPresent, PathAbsent, PathExistenceUnreadable, path_existence_reading,
+}
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd { systemd_unit_property_wire,
+import extdeps.systemd { systemd_unit_property_wire_word, systemd_unit_property_wire,
   SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
@@ -31,6 +34,7 @@ import gunbc.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
   AttemptStagingVerdict, StagingAdmitsJailer, AttemptStagingReceipt,
+  JailMaterialStaging, jail_kernel_destination, jail_rootfs_destination,
   WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
   attempt_staging_verdict, workspace_readback_command, stage_jit_device,
   runner_attempt_vmm_deadline,
@@ -57,6 +61,7 @@ import gunbc.runner_microvm_lifecycle {
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
+  UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
   TeardownReadbackSubjectUnobservable,
@@ -269,27 +274,37 @@ fn observe_resource_absence(path: String) -> ResourceReadback
   if path == "" {
     ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
   } else {
-    resource_absence_at(path: path as NonEmptyStr)
+    absence_of_existence(
+      path: path,
+      reading: path_existence_reading(
+        path: path,
+        outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
+      ),
+    )
   }
 }
 
-// THE PATH IS NONEMPTY BEFORE ANYTHING IS RUN, so the detail below crosses nothing. An empty path is
-// not a resource that is absent -- `test -e ""` exits 1 and would have read as ABSENT, releasing a
-// cell on a reading of nothing at all.
-fn resource_absence_at(path: NonEmptyStr) -> ResourceReadback
+// THE READING IS THE BOUNDARY'S AND THE DOMAIN FACT IS THIS MODULE'S. extdeps.posix.test_utility says
+// whether the path is there; sanitation asks the opposite question -- that it is NOT -- so the fold
+// from one to the other lives here, where "absent is good" is the domain's own reading and not the
+// utility's. An unreadable existence stays unreadable: the instrument did not answer, and a cell must
+// not be released on that.
+// THE SAME READING, ASKED FOR THE OPPOSITE DOMAIN FACT. Staging needs the jail's material to be
+// THERE; sanitation needs the attempt's resources to be GONE. One boundary reading, two folds.
+fn observe_path_exists(path: String) -> PathExistenceReading
   uses net: Network
 {
-  match run_shell_command_capture(command: test_exists_command(path: path as String), transport: LocalExec) {
-    ProcessOutputPresent { text: _ } => ResourcePresent { detail: path }
-    ProcessOutputAbsent => ResourcePresent { detail: path }
-    ProcessRefused { exit_code: code, stderr: e } =>
-      if code == 1 {
-        ResourceAbsent
-      } else {
-        ResourceUnreadable {
-          reason: join(["`test -e ", path as String, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
-        }
-      }
+  path_existence_reading(
+    path: path,
+    outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
+  )
+}
+
+fn absence_of_existence(path: String, reading: PathExistenceReading) -> ResourceReadback {
+  match reading {
+    PathAbsent => ResourceAbsent
+    PathPresent => ResourcePresent { detail: path as NonEmptyStr }
+    PathExistenceUnreadable { reason: r } => ResourceUnreadable { reason: r }
   }
 }
 
@@ -528,7 +543,7 @@ fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
 {
   let shown = systemd.Systemctl.ShowProperty(
     unit: unit,
-    property: systemd_unit_property_wire(property: EnvironmentProperty),
+    property: systemd_unit_property_wire_word(property: EnvironmentProperty),
   )
   if shown.success == false {
     UnitInvocationUnread {
@@ -706,7 +721,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
-      jail_root: _,
+      jail_root: jail_root,
       stage_jail_root: stage_root,
       stage_kernel: stage_kernel,
       stage_rootfs: stage_rootfs,
@@ -717,14 +732,21 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       vm_config: _,
       jailer: _,
     } => {
-      let _root = run_shell_command_capture(command: stage_root, transport: LocalExec)
-      let _kernel = run_shell_command_capture(command: stage_kernel, transport: LocalExec)
-      let _rootfs = run_shell_command_capture(command: stage_rootfs, transport: LocalExec)
+      let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
+      let kernel_outcome = run_shell_command_capture(command: stage_kernel, transport: LocalExec)
+      let rootfs_outcome = run_shell_command_capture(command: stage_rootfs, transport: LocalExec)
       let create_outcome = run_shell_command_capture(command: create, transport: LocalExec)
       let format_outcome = run_shell_command_capture(command: format, transport: LocalExec)
       AttemptStaged {
         verdict: attempt_staging_verdict(
           plan: plan,
+          jail: JailMaterialStaging {
+            jail_root_exit: command_exit_code(outcome: root_outcome),
+            kernel_exit: command_exit_code(outcome: kernel_outcome),
+            rootfs_exit: command_exit_code(outcome: rootfs_outcome),
+            kernel: observe_path_exists(path: jail_kernel_destination(jail_root: jail_root)),
+            rootfs: observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root)),
+          },
           jit: stage_jit_device(device: device),
           workspace: WorkspaceStagingObservation {
             create_exit: command_exit_code(outcome: create_outcome),
@@ -797,19 +819,34 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
 // readiness is decided by what the host finds afterwards. That is gunbc.runner_microvm_lifecycle's
 // rule made operational: the trigger starts a teardown and never decides its outcome.
 //
-// THE EXIT CODE IS CARRIED AND GOES NOWHERE. VmmExited holds it because an operator reading a
+// THE EXIT STATUS IS CARRIED AND GOES NOWHERE. VmmExited holds it because an operator reading a
 // quarantine wants it; no fold downstream takes it, so a job that succeeded cannot argue its way
 // past a dirty readback.
-fn unit_exec_main_status(unit: NonEmptyStr) -> Int
+//
+// AND BECAUSE IT GOES NOWHERE, A SENTINEL THERE IS PURE DISHONESTY WITH NO SAFETY COST TO OFFSET IT.
+// This used to answer -1 when ShowProperty failed or the value did not parse, which is the fabricated
+// cause this lane removed twice elsewhere, sitting one function away from its own prohibition
+// (review 69084). That the field is downstream-inert bounds the SAFETY harm and not the honesty
+// defect: DESIGN 5's specimen is exactly a receipt whose verdict is right and whose cause is
+// invented.
+fn observe_unit_exit_status(unit: NonEmptyStr) -> UnitExitStatusReading
   uses net: Network
 {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus))
+  let shown = systemd.Systemctl.ShowProperty(
+    unit: unit,
+    property: systemd_unit_property_wire_word(property: ExecMainStatus),
+  )
   if shown.success == false {
-    -1
+    ExitStatusUnread {
+      reason: join(["ExecMainStatus could not be read for ", unit as String, ", so the VMM's exit status is unknown"], "") as NonEmptyStr,
+    }
   } else {
     match parse_int(s: trim(s: shown.value)) {
-      Present { value: n } => n
-      Absent => -1
+      Present { value: n } => ExitStatusRead { exit_code: n }
+      Absent =>
+        ExitStatusUnread {
+          reason: join(["ExecMainStatus for ", unit as String, " read as `", trim(s: shown.value), "`, which is not an exit status"], "") as NonEmptyStr,
+        }
     }
   }
 }
@@ -818,7 +855,7 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
   uses net: Network
 {
   if systemd.Systemctl.IsActive(unit: unit).active == false {
-    VmmExited { exit_code: unit_exec_main_status(unit: unit) }
+    VmmExited { status: observe_unit_exit_status(unit: unit) }
   } else if polls_remaining <= 0 {
     DeadlineReached
   } else {

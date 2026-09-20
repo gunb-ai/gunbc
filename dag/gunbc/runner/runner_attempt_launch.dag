@@ -61,6 +61,7 @@ import gunbc.runner_microvm_network {
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsent, PathExistenceUnreadable }
 import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
 import std.resources { Network, Filesystem }
 import gunbc.command_runner { run_shell_command_capture }
@@ -672,6 +673,90 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
+// THE JAIL'S MATERIAL IS STAGED BY THREE COMMANDS AND ALL THREE USED TO BE DISCARDED.
+//
+// stage_jail_root, stage_kernel and stage_rootfs ran and their exits went nowhere: the verdict below
+// discriminated only on the JIT device and the workspace superblock, so a `cp` that failed left the
+// receipt mintable and released the jailer onto a chroot with no kernel in it. The guest then fails
+// to boot far from its cause -- which is the exact failure this file already argues against for the
+// workspace two screens up, with the asymmetry sitting two lines apart in the caller (review 69084).
+//
+// THE ORDER IS CAUSAL, as it is for the workspace: a jail root that was not created makes the copies
+// meaningless, and a copy that failed makes its readback meaningless. So the earliest failure is the
+// one reported.
+//
+// AND THE EXITS ARE THE CLAIM WHILE THE READBACK IS THE OBSERVATION, the same split the workspace
+// makes. `cp` exiting zero is the tool's word; the file being at the path the jailer will open is the
+// host's. They are separated in time by a full disk and by a destination nobody checked.
+type JailMaterialStep
+  = JailRootStep
+  | JailKernelStep
+  | JailRootfsStep
+
+fn jail_material_step_label(step: JailMaterialStep) -> String {
+  match step {
+    JailRootStep => "jail root"
+    JailKernelStep => "kernel"
+    JailRootfsStep => "rootfs"
+  }
+}
+
+type JailMaterialStaging {
+  jail_root_exit: Int
+  kernel_exit: Int
+  rootfs_exit: Int
+  kernel: PathExistenceReading
+  rootfs: PathExistenceReading
+}
+
+type JailMaterialStanding
+  = JailMaterialReady
+  | JailMaterialStepFailed { step: JailMaterialStep, exit: Int }
+  | JailMaterialMissing { step: JailMaterialStep }
+  | JailMaterialUnobservable { step: JailMaterialStep, reason: NonEmptyStr }
+
+fn jail_material_standing(obs: JailMaterialStaging) -> JailMaterialStanding {
+  if obs.jail_root_exit != 0 {
+    JailMaterialStepFailed { step: JailRootStep, exit: obs.jail_root_exit }
+  } else if obs.kernel_exit != 0 {
+    JailMaterialStepFailed { step: JailKernelStep, exit: obs.kernel_exit }
+  } else if obs.rootfs_exit != 0 {
+    JailMaterialStepFailed { step: JailRootfsStep, exit: obs.rootfs_exit }
+  } else {
+    jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs)
+  }
+}
+
+fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceReading) -> JailMaterialStanding {
+  match jail_material_present(step: JailKernelStep, reading: kernel) {
+    Present { value: refusal } => refusal
+    Absent =>
+      match jail_material_present(step: JailRootfsStep, reading: rootfs) {
+        Present { value: refusal } => refusal
+        Absent => JailMaterialReady
+      }
+  }
+}
+
+fn jail_material_present(step: JailMaterialStep, reading: PathExistenceReading) -> JailMaterialStanding? {
+  match reading {
+    PathPresent => none
+    PathAbsent => Present { value: JailMaterialMissing { step: step } }
+    PathExistenceUnreadable { reason: r } => Present { value: JailMaterialUnobservable { step: step, reason: r } }
+  }
+}
+
+// THE PATHS THE READBACK ASKS ABOUT ARE THE ONES THE PLAN'S OWN COPIES WRITE TO, derived from the same
+// jail_root and the same interface rows, so a readback cannot drift onto a file the jailer will not
+// open.
+fn jail_kernel_destination(jail_root: String) -> String {
+  join([jail_root, jail_kernel_path as String], "")
+}
+
+fn jail_rootfs_destination(jail_root: String) -> String {
+  join([jail_root, jail_rootfs_path as String], "")
+}
+
 // THE RECEIPT IS SEALED, so the admitted arm cannot be assembled beside the gate. sole_constructor
 // makes attempt_staging_verdict the ONLY producer of an AttemptStagingReceipt, and the jailer
 // command is reachable only inside one -- so a caller cannot mint "staging passed" while holding a
@@ -691,6 +776,7 @@ type AttemptStagingReceipt sole_constructor {
 
 type AttemptStagingVerdict
   = StagingAdmitsJailer { receipt: AttemptStagingReceipt }
+  | StagingRefusedJailMaterial { standing: JailMaterialStanding }
   | StagingRefusedJitDevice { outcome: JitDeviceStagingOutcome }
   | StagingRefusedForeignJitDevice { staged_path: String, planned_path: String }
   | StagingRefusedWorkspace { standing: WorkspaceStanding }
@@ -710,6 +796,7 @@ type AttemptStagingVerdict
 // there is no arm that launches on one of them.
 fn attempt_staging_verdict(
   plan: AttemptLaunchPlan,
+  jail: JailMaterialStaging,
   jit: JitDeviceStagingOutcome,
   workspace: WorkspaceStagingObservation,
 ) -> AttemptStagingVerdict {
@@ -733,36 +820,59 @@ fn attempt_staging_verdict(
       vm_config: _,
       jailer: j,
     } =>
-      match jit {
-        JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
-        JitDeviceStaged { host_path: staged } =>
-          if staged != device.host_path {
-            StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
-          } else {
-            let s = workspace_standing(obs: workspace, planned_path: planned)
-            match s {
-              WorkspaceReady =>
-                StagingAdmitsJailer {
-                  receipt: AttemptStagingReceipt {
-                    jailer: j,
-                    jit_device_path: staged,
-                    workspace_path: planned,
-                  },
-                }
-              WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-              WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
-              WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
-              WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
-              WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
-              WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
-            }
-          }
+      match jail_material_standing(obs: jail) {
+        JailMaterialReady => attempt_staging_after_jail(device: device, planned: planned, jailer: j, jit: jit, workspace: workspace)
+        refused_material => StagingRefusedJailMaterial { standing: refused_material }
       }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
     LaunchRefusedJitCredential { refusal: _ } => StagingNotAuthorized
     LaunchRefusedPriorResources => StagingNotAuthorized
   }
 }
+
+fn attempt_staging_after_jail(
+  device: JitDeviceStaging,
+  planned: String,
+  jailer: ArgvCommand,
+  jit: JitDeviceStagingOutcome,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
+  match jit {
+    JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
+    JitDeviceStaged { host_path: staged } =>
+      if staged != device.host_path {
+        StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
+      } else {
+        attempt_staging_after_jit(staged: staged, planned: planned, jailer: jailer, workspace: workspace)
+      }
+  }
+}
+
+fn attempt_staging_after_jit(
+  staged: String,
+  planned: String,
+  jailer: ArgvCommand,
+  workspace: WorkspaceStagingObservation,
+) -> AttemptStagingVerdict {
+  let s = workspace_standing(obs: workspace, planned_path: planned)
+  match s {
+    WorkspaceReady =>
+      StagingAdmitsJailer {
+        receipt: AttemptStagingReceipt {
+          jailer: jailer,
+          jit_device_path: staged,
+          workspace_path: planned,
+        },
+      }
+    WorkspaceCreateFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceFormatFailed { exit: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceNotExtFilesystem => StagingRefusedWorkspace { standing: s }
+    WorkspaceSizeMismatch { observed: _, expected: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceUnreadable { reason: _ } => StagingRefusedWorkspace { standing: s }
+    WorkspaceReadbackOfDifferentImage { read: _, planned: _ } => StagingRefusedWorkspace { standing: s }
+  }
+}
+
 
 fn workspace_readback_command(workspace_path: String) -> ArgvCommand {
   dumpe2fs_superblock_command(image_path: workspace_path)

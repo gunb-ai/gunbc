@@ -220,8 +220,18 @@ fn advance_bring_up(live: AttemptIdentity, at: BringUpPhase, event: BringUpEvent
 // outcome -- which is why RunnerExited carries its exit code and the code goes nowhere: a job that
 // succeeded and left a background process is a dirty cell, and there is no parameter downstream
 // through which "succeeded" could say otherwise.
+// AN EXIT STATUS THAT COULD NOT BE READ IS ITS OWN ARM, NOT A NUMBER THAT LOOKS LIKE ONE. A
+// controller reading ExecMainStatus off a unit systemd has already unloaded gets nothing, and the
+// first cut of the realization answered -1 for that -- a value waitpid-adjacent enough to read as a
+// real status, in the one field an operator consults to find out why a cell was quarantined. That is
+// the fabricated cause this module forbids two paragraphs down, so the reading gets the arm instead
+// (review 69084).
+type UnitExitStatusReading
+  = ExitStatusRead { exit_code: Int }
+  | ExitStatusUnread { reason: NonEmptyStr }
+
 type TerminalTrigger
-  = VmmExited { exit_code: Int }
+  = VmmExited { status: UnitExitStatusReading }
   | RunnerExited { exit_code: Int }
   | DeadlineReached
   | StopRequested
