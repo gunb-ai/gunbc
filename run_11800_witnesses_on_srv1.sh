@@ -1,6 +1,6 @@
 set -uo pipefail
 REPO=${REPO:-}
-HEADSHA=eb9a0698ced3ca3121fc9460453a0ba1da1be920
+HEADSHA=bfa6197c4e3
 FILE=dag/test/claim/runner/runner_host_file_converge_witness_test.dag
 if [ -z "$REPO" ]; then REPO=$(mktemp -d)/gunbc; git clone https://github.com/gunb-ai/gunbc.git "$REPO"; fi
 cd "$REPO"
@@ -45,6 +45,13 @@ echo "=== MUTATION: the identity join in the_real_srv1_retiree_roster_reaches_on
 sed -i 's/retired == required_retirees_for_host(host: operator_host_srv1)/retired == three_retirees()/' "$FILE"
 git --no-pager diff --stat -- "$FILE"
 echo "=== RUN 2: mutated; the_real_srv1_retiree_roster_reaches_one_admitted_read MUST read FAIL and every other claim MUST be unchanged ==="
+systemd-run --user --scope -p MemoryMax=24G "$G" run --source-root dag --source-root src/v2 --source-root "$D" --entry "$D/runner_host_file_report.dag" --function report
+echo "rc=$?"
+git checkout -- "$FILE"
+echo "=== MUTATION 2: the disjointness conjunct loses its subject (desired becomes the retiree roster itself, so the two overlap) ==="
+sed -i 's/let desired = srv1_desired()/let desired = srv1_retired()/' "$FILE"
+git --no-pager diff --stat -- "$FILE"
+echo "=== RUN 3: mutated; the_real_srv1_retiree_roster_reaches_one_admitted_read MUST read FAIL and every other claim MUST be unchanged ==="
 systemd-run --user --scope -p MemoryMax=24G "$G" run --source-root dag --source-root src/v2 --source-root "$D" --entry "$D/runner_host_file_report.dag" --function report
 echo "rc=$?"
 git checkout -- "$FILE"
