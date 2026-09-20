@@ -16,6 +16,9 @@ import gunbc.runner_microvm_host_ready {
   FirecrackerHostStanding,
   KvmGroupEnrolment, KvmGroupEnrolled, KvmGroupNotEnrolled, KvmGroupEnrolmentUnreadable,
   KvmDeviceDelegation, KvmDeviceDelegated, KvmDeviceDelegationContradicted, KvmDeviceDelegationUnreadable,
+  MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
+  MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered,
+  microvm_host_binding_of, microvm_host_binding_refusal_text,
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
@@ -52,6 +55,10 @@ data witness_instruments: FootprintInstrumentStanding = FootprintInstrumentStand
 
 data witness_installed: FirecrackerBinaryStanding = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
 
+data witness_login: NonEmptyStr = "ghrunner"
+
+data witness_host: NonEmptyStr = "srv1"
+
 data witness_enrolled: KvmGroupEnrolment = KvmGroupEnrolled { login: "ghrunner" as NonEmptyStr, group: "kvm" as NonEmptyStr }
 
 data witness_not_enrolled: KvmGroupEnrolment = KvmGroupNotEnrolled { login: "ghrunner" as NonEmptyStr, group: "kvm" as NonEmptyStr }
@@ -74,12 +81,12 @@ test fn readiness_needs_a_reachable_kvm_device_and_the_modeled_version() -> Bool
   let no_kvm = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
   let unwritable = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
   let absent = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" })
-  firecracker_host_ready(standing: ready)
-    && !firecracker_host_ready(standing: no_kvm)
-    && !firecracker_host_ready(standing: unwritable)
-    && !firecracker_host_ready(standing: absent)
-    && string_contains(s: firecracker_host_standing_text(s: unwritable), pattern: "kvm-group=not-enrolled")
-    && string_contains(s: firecracker_host_standing_text(s: ready), pattern: "standing=ready")
+  firecracker_host_ready(standing: ready, expected_login: witness_login)
+    && !firecracker_host_ready(standing: no_kvm, expected_login: witness_login)
+    && !firecracker_host_ready(standing: unwritable, expected_login: witness_login)
+    && !firecracker_host_ready(standing: absent, expected_login: witness_login)
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: unwritable), pattern: "kvm-group=not-enrolled")
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: ready), pattern: "standing=ready")
 }
 
 // THE CLAIM THE WHOLE GRANT WIRING RESTS ON. A supplementary group enters a process at its exec, so
@@ -91,10 +98,10 @@ test fn enrolment_carries_a_host_whose_converging_process_cannot_yet_open_the_de
   let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
   let ungranted = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
   let no_device = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
-  firecracker_host_ready(standing: mid_converge)
-    && !firecracker_host_ready(standing: ungranted)
-    && !firecracker_host_ready(standing: no_device)
-    && string_contains(s: firecracker_host_standing_text(s: mid_converge), pattern: "effective for executor incarnations started AFTER this line")
+  firecracker_host_ready(standing: mid_converge, expected_login: witness_login)
+    && !firecracker_host_ready(standing: ungranted, expected_login: witness_login)
+    && !firecracker_host_ready(standing: no_device, expected_login: witness_login)
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: mid_converge), pattern: "effective for executor incarnations started AFTER this line")
 }
 
 // UNREADABLE IS NOT NOT-ENROLLED. A probe that could not answer must not carry a host to ready, and
@@ -105,9 +112,9 @@ test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() 
     group: KvmGroupEnrolmentUnreadable { login: "ghrunner" as NonEmptyStr, cause: "id -nG exited 1: no such user" },
     binary: witness_installed,
   )
-  !firecracker_host_ready(standing: unreadable)
-    && string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=unreadable")
-    && !string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=not-enrolled")
+  !firecracker_host_ready(standing: unreadable, expected_login: witness_login)
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: unreadable), pattern: "kvm-group=unreadable")
+    && !string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: unreadable), pattern: "kvm-group=not-enrolled")
 }
 
 // A WRITABLE DEVICE MAY NOT ANSWER THE NEXT INCARNATION'S QUESTION, AND THIS IS THE CLAIM THAT SAYS
@@ -124,8 +131,8 @@ test fn a_writable_device_does_not_carry_a_login_the_database_no_longer_enrols()
     group: KvmGroupEnrolmentUnreadable { login: "ghrunner" as NonEmptyStr, cause: "id -nG exited 1: name service unavailable" },
     binary: witness_installed,
   )
-  !firecracker_host_ready(standing: writable_not_enrolled)
-    && !firecracker_host_ready(standing: writable_unreadable)
+  !firecracker_host_ready(standing: writable_not_enrolled, expected_login: witness_login)
+    && !firecracker_host_ready(standing: writable_unreadable, expected_login: witness_login)
     && firecracker_host_ready_in_this_process(standing: writable_not_enrolled)
     && firecracker_host_ready_in_this_process(standing: writable_unreadable)
 }
@@ -154,13 +161,76 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
     group: witness_enrolled,
     delegation: KvmDeviceDelegationUnreadable { cause: "stat could not read the path" },
   )
-  firecracker_host_ready(standing: delegated)
-    && !firecracker_host_ready(standing: wrong_group)
-    && !firecracker_host_ready(standing: no_group_write)
-    && !firecracker_host_ready(standing: unreadable)
-    && string_contains(s: firecracker_host_standing_text(s: wrong_group), pattern: "owned by group root")
-    && string_contains(s: firecracker_host_standing_text(s: no_group_write), pattern: "NOT group-writable")
-    && string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-delegation=unreadable")
+  firecracker_host_ready(standing: delegated, expected_login: witness_login)
+    && !firecracker_host_ready(standing: wrong_group, expected_login: witness_login)
+    && !firecracker_host_ready(standing: no_group_write, expected_login: witness_login)
+    && !firecracker_host_ready(standing: unreadable, expected_login: witness_login)
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: wrong_group), pattern: "owned by group root")
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: no_group_write), pattern: "NOT group-writable")
+    && string_contains(s: firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: unreadable), pattern: "kvm-delegation=unreadable")
+}
+
+// THE REQUIRED RED FOR THE SUBJECT BINDING. Resolving the kernel hostname stops srv1's SPEC being
+// applied to srv3; it does not stop srv3 being converged and certified under srv1's name, because the
+// run's concurrency group is keyed to the host the operator REQUESTED. So the dispatch's selection
+// and the machine's own answer are joined, and a disagreement refuses carrying BOTH names -- an
+// operator reading "HostBindingRefused" has to be told which machine answered, or they cannot tell a
+// mis-dispatch from a renamed host.
+//
+// The join is pure, so this claim supplies the two values rather than running a host (DESIGN section
+// 3). What it cannot establish by itself is the ORDERING obligation -- that a refusal has performed
+// zero install operations -- which holds by construction instead: microvm_host_binding_wet is matched
+// first in both wet entries, outside the arm that reaches HOME, the fetch, the install and the
+// receipt write.
+test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
+  let mismatch = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv3" as NonEmptyStr)
+  let agreed = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv1" as NonEmptyStr)
+  let unrostered = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
+  (match mismatch {
+    MicrovmHostBindingRefused { cause: c } =>
+      (match c {
+        HostBindingRefused { expected: e, observed: o } => (e as String) == "srv1" && (o as String) == "srv3"
+        _ => false
+      })
+        && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "NOTHING has been fetched, installed or written")
+    MicrovmHostBound { spec: _, host: _ } => false
+  })
+    && (match agreed {
+      MicrovmHostBound { spec: sp, host: h } => (h as String) == "srv1" && (sp.job_user as String) == "ghrunner"
+      MicrovmHostBindingRefused { cause: _ } => false
+    })
+    && (match unrostered {
+      MicrovmHostBindingRefused { cause: c } => match c { HostNotRostered { host: _ } => true  _ => false }
+      MicrovmHostBound { spec: _, host: _ } => false
+    })
+}
+
+// THE POSITIVE ARMS CARRY A LOGIN AND A GROUP AND READINESS MUST READ THEM. Matching those arms for
+// their SHAPE alone lets two true observations compose into a false conclusion: a device delegated to
+// one group beside a DIFFERENT login enrolled in a DIFFERENT group reads as ready. Each of the three
+// equalities is broken on its own here, because a check that only fires when all three are wrong is
+// satisfied by any one of them being enforced.
+test fn readiness_checks_the_carried_login_and_group_rather_than_their_shape() -> Bool {
+  let good = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
+  let other_login = witness_standing(
+    kvm: KvmDevicePresentNotWritable,
+    group: KvmGroupEnrolled { login: "someone-else" as NonEmptyStr, group: "kvm" as NonEmptyStr },
+    binary: witness_installed,
+  )
+  let other_enrolled_group = witness_standing(
+    kvm: KvmDevicePresentNotWritable,
+    group: KvmGroupEnrolled { login: "ghrunner" as NonEmptyStr, group: "libvirt" as NonEmptyStr },
+    binary: witness_installed,
+  )
+  let other_delegated_group = witness_standing_with_delegation(
+    kvm: KvmDevicePresentNotWritable,
+    group: witness_enrolled,
+    delegation: KvmDeviceDelegated { group: "libvirt" as NonEmptyStr },
+  )
+  firecracker_host_ready(standing: good, expected_login: witness_login)
+    && !firecracker_host_ready(standing: other_login, expected_login: witness_login)
+    && !firecracker_host_ready(standing: other_enrolled_group, expected_login: witness_login)
+    && !firecracker_host_ready(standing: other_delegated_group, expected_login: witness_login)
 }
 
 // THE BOOT PROBE ASKS A DIFFERENT QUESTION AND MUST GET A DIFFERENT ANSWER. It opens /dev/kvm in
@@ -170,7 +240,7 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
 test fn the_in_process_predicate_refuses_exactly_where_the_converge_predicate_carries() -> Bool {
   let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
   let picked_up = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: witness_installed)
-  firecracker_host_ready(standing: mid_converge)
+  firecracker_host_ready(standing: mid_converge, expected_login: witness_login)
     && !firecracker_host_ready_in_this_process(standing: mid_converge)
     && firecracker_host_ready_in_this_process(standing: picked_up)
     && !firecracker_host_ready_in_this_process(standing: witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" }))
@@ -263,9 +333,9 @@ test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
     ],
   }
   let installed = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
-  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: bare })
-    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped })
-    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped })
+  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: bare }, expected_login: witness_login)
+    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped }, expected_login: witness_login)
+    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, kvm_group: witness_enrolled, kvm_delegation: witness_delegated, binary: installed, footprint_instruments: equipped }, expected_login: witness_login)
 }
 
 // THE VERSION GATE, WHICH NOTHING EXERCISED UNTIL NOW AND WHICH WAS WRONG THE WHOLE TIME. Before
@@ -328,7 +398,7 @@ test fn the_standing_text_reports_the_instruments() -> Bool {
       ],
     },
   }
-  let text = firecracker_host_standing_text(s: equipped)
+  let text = firecracker_host_standing_text(host: witness_host, expected_login: witness_login, s: equipped)
   string_contains(s: text, pattern: "gnu-time-max-rss=present")
     && string_contains(s: text, pattern: "cgroup-memory-peak=absent")
     && string_contains(s: text, pattern: "systemd-memory-peak=unreadable(")

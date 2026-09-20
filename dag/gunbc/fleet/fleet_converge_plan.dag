@@ -2508,7 +2508,7 @@ fn fleet_converge_apply_shell(
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } =>
-      "this script runs timer teardown, the host-wide executor grants, runner-slot ADD, and fabric-cell ensure effects"
+      "this script runs timer teardown, the host-wide executor grants, runner-slot reconciliation (additions, authorized retirement inhibition via systemctl mask --now, and completed-retirement tree removal), and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>

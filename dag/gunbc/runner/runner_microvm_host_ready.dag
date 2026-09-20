@@ -38,6 +38,9 @@ import extdeps.tools.coreutils_stat {
 }
 import gunbc.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
+}
 import product.placement_supply { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
@@ -225,19 +228,27 @@ fn binary_standing_of(binary: String, executable: Bool, version_output: String, 
 // all -- and the next incarnation, the one the whole split exists to speak for, would fail. A
 // writable device is now evidence for `firecracker_host_ready_in_this_process` and for nothing
 // else.
-fn kvm_reachable(standing: FirecrackerHostStanding) -> Bool {
+// THE POSITIVE ARMS CARRY A LOGIN AND A GROUP, AND DISCARDING THEM IS HOW TWO TRUE OBSERVATIONS
+// COMPOSE INTO A FALSE CONCLUSION. An earlier revision matched `KvmGroupEnrolled { login: _, group: _ }`
+// and `KvmDeviceDelegated { group: _ }` for their SHAPE alone, so "the device is delegated to group A"
+// beside "some login is enrolled in group B" read as ready -- and the login it believed was whichever
+// one the observation happened to be asked about, not the one this host's roster row names. Three
+// equalities are checked rather than assumed: the enrolled login IS the bound spec's job_user, and the
+// enrolled group and the delegated group are BOTH the group udev hands the device to.
+fn kvm_reachable(standing: FirecrackerHostStanding, expected_login: NonEmptyStr) -> Bool {
   (match standing.kvm {
     KvmDeviceAbsent => false
     KvmDeviceWritable => true
     KvmDevicePresentNotWritable => true
   })
     && (match standing.kvm_delegation {
-      KvmDeviceDelegated { group: _ } => true
+      KvmDeviceDelegated { group: dg } => (dg as String) == (kvm_device_group as String)
       KvmDeviceDelegationContradicted { expected_group: _, observed_group: _, group_writable: _ } => false
       KvmDeviceDelegationUnreadable { cause: _ } => false
     })
     && (match standing.kvm_group {
-      KvmGroupEnrolled { login: _, group: _ } => true
+      KvmGroupEnrolled { login: l, group: eg } =>
+        (l as String) == (expected_login as String) && (eg as String) == (kvm_device_group as String)
       KvmGroupNotEnrolled { login: _, group: _ } => false
       KvmGroupEnrolmentUnreadable { login: _, cause: _ } => false
     })
@@ -249,8 +260,9 @@ fn firecracker_binary_installed(standing: FirecrackerHostStanding) -> Bool {
 
 // THE CONVERGE'S QUESTION: has this host been brought to the state where its executor can run a
 // guest? That is answered by the grant, whose effect lands at the next incarnation.
-fn firecracker_host_ready(standing: FirecrackerHostStanding) -> Bool {
-  kvm_reachable(standing: standing) && firecracker_binary_installed(standing: standing)
+fn firecracker_host_ready(standing: FirecrackerHostStanding, expected_login: NonEmptyStr) -> Bool {
+  kvm_reachable(standing: standing, expected_login: expected_login)
+    && firecracker_binary_installed(standing: standing)
 }
 
 // A DIFFERENT QUESTION WITH A DIFFERENT ANSWER, AND KEEPING THEM APART IS THE POINT. A caller that
@@ -308,11 +320,15 @@ fn kvm_delegation_text(d: KvmDeviceDelegation) -> String {
   }
 }
 
-fn firecracker_host_standing_text(s: FirecrackerHostStanding) -> String {
-  join([kvm_standing_text(k: s.kvm), "\n", kvm_delegation_text(d: s.kvm_delegation), "\n", kvm_group_standing_text(g: s.kvm_group), "\n",
+// THE RECEIPT NAMES THE BOUND HOST AND THE BOUND LOGIN, because a standing that says ready without
+// saying ready-for-whom-on-which-machine is the certification defect this module was just repaired
+// for. Both come from the sealed binding, never from the observation being described.
+fn firecracker_host_standing_text(s: FirecrackerHostStanding, host: NonEmptyStr, expected_login: NonEmptyStr) -> String {
+  join(["bound-host=", host as String, " executor=", expected_login as String, "\n",
+        kvm_standing_text(k: s.kvm), "\n", kvm_delegation_text(d: s.kvm_delegation), "\n", kvm_group_standing_text(g: s.kvm_group), "\n",
         binary_standing_text(b: s.binary), "\n",
         footprint_instrument_text(f: s.footprint_instruments), "\n",
-        if firecracker_host_ready(standing: s) { "standing=ready" } else { "standing=not-ready" }], "")
+        if firecracker_host_ready(standing: s, expected_login: expected_login) { "standing=ready" } else { "standing=not-ready" }], "")
 }
 
 // The install is the one effect this module owns: fetch the cited tarball, verify the published
@@ -344,19 +360,76 @@ fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: 
 // login whose grant is applied and read back comes from the roster row for that host, never from a
 // literal here: a second spelling of "ghrunner" in this module would be a grant applied to one
 // account and authorized for another.
-type MicrovmHostSubject
-  = MicrovmHostSubjectResolved { spec: RunnerHostSpec }
-  | MicrovmHostSubjectRefused { cause: String }
+// RESOLVING THE HOSTNAME STOPS THE WRONG SPEC; IT DOES NOT STOP MUTATING THE WRONG HOST. An earlier
+// revision read the kernel hostname and looked up its spec, which prevents srv1's spec being applied
+// to srv3 -- and then converges srv3 and writes a receipt certifying it, because the run's own
+// concurrency group is keyed to the host the OPERATOR REQUESTED. A mutable scheduling label is
+// routing evidence, not machine identity (the subject-binding rule of gunbc#11751), so the operator's
+// choice and the machine's own answer are TWO facts and this type is their join.
+//
+// THE BINDING IS SEALED BEFORE ANY MUTATION, which is the whole point rather than a nicety: a
+// mismatch must refuse having performed zero install operations, so nothing downstream of this join
+// may fetch, install, create a receipt directory or reach a readiness verdict. The converge below
+// matches this FIRST, outside every other arm.
+type MicrovmHostBinding
+  = MicrovmHostBound { spec: RunnerHostSpec, host: NonEmptyStr }
+  | MicrovmHostBindingRefused { cause: MicrovmHostBindingRefusal }
 
-fn microvm_host_subject_wet() -> MicrovmHostSubject {
-  match hostname_short_read(transport: LocalShell) {
-    HostnameShortCaptureRefused { reason: r } =>
-      MicrovmHostSubjectRefused { cause: join(["HostObservationFailed -- the host could not name itself (", r, ")"], "") }
-    HostnameShortCaptured { value: v } =>
-      match runner_host_spec_for(host: trim(s: v) as HostIdentity) {
-        RunnerHostSpecFound { spec: sp } => MicrovmHostSubjectResolved { spec: sp }
-        RunnerHostSpecAbsent { host: h } =>
-          MicrovmHostSubjectRefused { cause: join(["HostNotRostered -- ", h as String, " carries no runner host spec, so no executor login and no grant roster are declared for it"], "") }
+// FOUR CAUSES, NOT ONE STRING, because they send an operator to four different places: a dispatch
+// that named no host, a machine that could not name itself, a machine that is not the one the
+// dispatch selected, and a machine no roster describes.
+type MicrovmHostBindingRefusal
+  = ExpectedHostAbsent { detail: String }
+  | HostObservationFailed { reason: String }
+  | HostBindingRefused { expected: NonEmptyStr, observed: NonEmptyStr }
+  | HostNotRostered { host: NonEmptyStr }
+
+// THE JOIN IS PURE SO THE MISMATCH IS DISCRIMINABLE WITHOUT A HOST. Its inputs are the two supplied
+// values a witness can construct; the wet wrapper below is the only thing that has to run on a
+// machine to obtain them (DESIGN section 3: a witness discriminates at one interface).
+fn microvm_host_binding_of(expected: NonEmptyStr, observed: NonEmptyStr) -> MicrovmHostBinding {
+  if (trim(s: expected as String)) != (trim(s: observed as String)) {
+    MicrovmHostBindingRefused { cause: HostBindingRefused { expected: expected, observed: observed } }
+  } else {
+    match runner_host_spec_for(host: (trim(s: observed as String)) as HostIdentity) {
+      RunnerHostSpecFound { spec: sp } => MicrovmHostBound { spec: sp, host: observed }
+      RunnerHostSpecAbsent { host: h } => MicrovmHostBindingRefused { cause: HostNotRostered { host: h } }
+    }
+  }
+}
+
+fn microvm_host_binding_refusal_text(c: MicrovmHostBindingRefusal) -> String {
+  match c {
+    ExpectedHostAbsent { detail: d } =>
+      join(["ExpectedHostAbsent -- ", fleet_converge_expected_host_env_name, " ", d,
+            "; the subject is the host the dispatch selected and this run was given none, so it will not converge whatever machine it happens to be running on"], "")
+    HostObservationFailed { reason: r } =>
+      join(["HostObservationFailed -- the host could not name itself (", r, "), so its identity cannot be joined to the dispatch's selection"], "")
+    HostBindingRefused { expected: e, observed: o } =>
+      join(["HostBindingRefused -- the dispatch selected ", e as String, " and this machine answers ", o as String,
+            "; NOTHING has been fetched, installed or written. A run that continued here would mutate ", o as String,
+            " and certify it under ", e as String, "'s name"], "")
+    HostNotRostered { host: h } =>
+      join(["HostNotRostered -- ", h as String, " carries no runner host spec, so no executor login and no grant roster are declared for it"], "")
+  }
+}
+
+fn microvm_host_binding_wet() -> MicrovmHostBinding {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: _, detail: d } =>
+      MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: d } }
+    ActionsVariablePresent { value: expected } =>
+      match hostname_short_read(transport: LocalShell) {
+        HostnameShortCaptureRefused { reason: r } =>
+          MicrovmHostBindingRefused { cause: HostObservationFailed { reason: r } }
+        HostnameShortCaptured { value: v } =>
+          if trim(s: expected) == "" {
+            MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: "is set to an empty value" } }
+          } else if trim(s: v) == "" {
+            MicrovmHostBindingRefused { cause: HostObservationFailed { reason: "hostname -s returned empty output" } }
+          } else {
+            microvm_host_binding_of(expected: trim(s: expected) as NonEmptyStr, observed: trim(s: v) as NonEmptyStr)
+          }
       }
   }
 }
@@ -484,12 +557,12 @@ fn write_host_standing_receipt(text: String) -> String? {
 
 // The receipt is written BEFORE the verdict is decided, on every path, so a not-ready host leaves
 // the observation that says why rather than only an exit code.
-fn host_standing_verdict(entry: String, standing: FirecrackerHostStanding) -> ProcessExit {
-  let text = firecracker_host_standing_text(s: standing)
+fn host_standing_verdict(entry: String, standing: FirecrackerHostStanding, host: NonEmptyStr, expected_login: NonEmptyStr) -> ProcessExit {
+  let text = firecracker_host_standing_text(s: standing, host: host, expected_login: expected_login)
   match write_host_standing_receipt(text: text) {
     Present { value: e } => exit_failure(reason: join([entry, ": receipt write refused: ", e], ""))
     Absent =>
-      if firecracker_host_ready(standing: standing) {
+      if firecracker_host_ready(standing: standing, expected_login: expected_login) {
         ExitSuccess
       } else {
         exit_failure(reason: join([entry, ": host is not ready --\n", text], ""))
@@ -500,15 +573,18 @@ fn host_standing_verdict(entry: String, standing: FirecrackerHostStanding) -> Pr
 fn runner_microvm_host_observe_wet() -> ProcessExit
   uses net: Network
 {
-  match microvm_host_subject_wet() {
-    MicrovmHostSubjectRefused { cause: c } => exit_failure(reason: join(["runner_microvm_host_observe: ", c], ""))
-    MicrovmHostSubjectResolved { spec: spec } =>
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_microvm_host_observe: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
       match executor_home_wet() {
         Absent => exit_failure(reason: "runner_microvm_host_observe: HOME is unset, so the executor-owned install root cannot be named")
         Present { value: home } =>
           host_standing_verdict(
             entry: "runner_microvm_host_observe",
             standing: observe_firecracker_host_standing_wet(root: firecracker_install_root(executor_home: home), login: spec.job_user),
+            host: host,
+            expected_login: spec.job_user,
           )
       }
   }
@@ -529,9 +605,10 @@ fn runner_microvm_host_observe_wet() -> ProcessExit
 fn runner_microvm_host_converge_wet() -> ProcessExit
   uses net: Network
 {
-  match microvm_host_subject_wet() {
-    MicrovmHostSubjectRefused { cause: c } => exit_failure(reason: join(["runner_microvm_host_converge: ", c], ""))
-    MicrovmHostSubjectResolved { spec: spec } =>
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_microvm_host_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
       match executor_home_wet() {
         Absent => exit_failure(reason: "runner_microvm_host_converge: HOME is unset, so the executor-owned install root cannot be named")
         Present { value: home } => {
@@ -557,6 +634,8 @@ fn runner_microvm_host_converge_wet() -> ProcessExit
               host_standing_verdict(
                 entry: "runner_microvm_host_converge",
                 standing: observe_firecracker_host_standing_wet(root: root, login: spec.job_user),
+                host: host,
+                expected_login: spec.job_user,
               )
             other => other
           }

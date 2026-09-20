@@ -642,6 +642,41 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
   }
 }
 
+// THE FIRST LINE AN APPROVER READS IS ITS OWN SUBJECT, so this control extracts THAT LINE and
+// asserts over it alone. A whole-script substring check cannot do this job: the truthful detailed
+// header sits lower in the same script and would satisfy any document-wide search for the retirement
+// words while the admission-gate summary at the top still said "runner-slot ADD". That is exactly how
+// the ADD-only defect survived its first repair -- fixed at one rendering site, left standing at the
+// earlier one, with the existing witness looking only at the family header.
+fn apply_shell_admission_gate_line(apply_shell: String) -> String {
+  fold(
+    split(apply_shell, "\n"),
+    init: "",
+    f: (acc, l) => if starts_with(s: l, prefix: "# Admission gates enforced") { l } else { acc },
+  )
+}
+
+test fn the_top_admission_gate_line_names_retirement_not_add_only() -> Bool {
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  let gate_line = apply_shell_admission_gate_line(apply_shell: artifact.apply_shell)
+  gate_line != ""
+    && string_contains(s: gate_line, pattern: "runner-slot reconciliation")
+    && string_contains(s: gate_line, pattern: "retirement inhibition via systemctl mask --now")
+    && string_contains(s: gate_line, pattern: "completed-retirement tree removal")
+    && !string_contains(s: gate_line, pattern: "runner-slot ADD")
+    && !string_contains(s: gate_line, pattern: "ADD only")
+}
+
 // THE GRANT THAT NOBODY EXECUTED IS NOW IN THE SCRIPT THAT EXECUTES, and this claim is what makes
 // that a fact rather than an intention. gunbc.recurring_failure_mode
 // capability_arrives_outside_the_converged_path was opened because /dev/kvm membership was granted
