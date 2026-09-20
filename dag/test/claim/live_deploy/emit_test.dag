@@ -10,14 +10,14 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_db_placement { fabric_db_listen_port, fabric_db_https_port }
+import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
   ensured_subject_identity,
-  deployment_fabric_db_steps,
-  deployment_fabric_db_serve_endpoint,
+  deployment_fabric_storage_steps,
+  deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
@@ -64,7 +64,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
-  dashboard_instance_fabric_db_root,
+  dashboard_instance_fabric_storage_root,
 }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
@@ -98,7 +98,7 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_fabric_db_unit_file,
+  live_deploy_fabric_storage_unit_file,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -135,6 +135,7 @@ import gunbc.host_axis_caps {
   CapConvergeAuthorized,
   SurplusSlotsObserved,
   runner_slot_service_units_for_host,
+  RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
@@ -432,9 +433,19 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 // NEXT-RUNG TRIGGER: the reach claim returns the moment one render fits under a tier this module's
 // identities are judged by -- either because the emitter's fixed cost falls below the ceiling, or
 // because these identities are measured into a tier that admits one.
+// THE FIXTURE FAILS RATHER THAN SUBSTITUTES. srv1's width resolves, so both rows below take the
+// derived arm; the unresolved arm returns a one-element list that matches no real unit, so a
+// regression that made srv1 unresolvable reds these rows instead of comparing empty scripts.
+fn emit_test_service_units_of(host: HostIdentity) -> List<NonEmptyStr> {
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsDerived { units: units } => units
+    ServiceUnitsWidthUnresolved { host: _, cause: _ } => ["__width-unresolved__" as NonEmptyStr]
+  }
+}
+
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let target = deployment_srv1_target()
-  let units = runner_slot_service_units_for_host(host: target.host.identity)
+  let units = emit_test_service_units_of(host: target.host.identity)
   let members = derived_runner_memory_cap_members()
   let cap_block = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
   let steps = pipeline_steps_text(
@@ -760,12 +771,12 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
     && count(live_paths) > 0
-    && count(twin_paths) + count(deployment_fabric_db_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
-    && count(deployment_fabric_db_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
+    && count(twin_paths) + count(deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
+    && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric_db_placement fabric_db_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -1205,23 +1216,23 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
-fn step_is_fabric_db_store(step: DeploymentStep) -> Bool {
+fn step_is_fabric_storage_store(step: DeploymentStep) -> Bool {
   match step {
-    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_db_root(instance: srv1_live_dashboard_instance()) as String)
+    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == (dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String)
     ArtifactStep { step: _ } => false
   }
 }
 
 // The fabric DB's store is created on the placement host's apply path, as an ensured directory.
-test fn the_fabric_db_store_root_reaches_the_srv1_apply_path() -> Bool {
-  any(deployment_spec_srv1().steps, st => step_is_fabric_db_store(step: st))
+test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
+  any(deployment_spec_srv1().steps, st => step_is_fabric_storage_store(step: st))
 }
 
 // THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
 // owned roster (where the event-log mirror root sat, torn down with rm -rf) turns this red.
-test fn no_retract_can_remove_the_fabric_db_store() -> Bool {
+test fn no_retract_can_remove_the_fabric_storage_store() -> Bool {
   any(deployment_spec_srv1().steps, st =>
-    step_is_fabric_db_store(step: st) && match deployment_step_teardown_disposition(step: st) {
+    step_is_fabric_storage_store(step: st) && match deployment_step_teardown_disposition(step: st) {
       TeardownRefuses { cause: _ } => true
       TeardownActs => false
     })
@@ -1289,7 +1300,7 @@ fn srv1_authorization() -> CapConvergeDecision {
 // authority that produces it, which is both correct and immune to how the serializer quotes -- the
 // same reason the sibling wiring witness below was already green while this one was red.
 test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
-  let units = runner_slot_service_units_for_host(host: deployment_srv1_target().host.identity)
+  let units = emit_test_service_units_of(host: deployment_srv1_target().host.identity)
   let text = pipeline_steps_text(
     steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
   )
@@ -1359,13 +1370,13 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 // handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
 // on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
 // exactly that port.
-test fn the_fabric_db_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
-  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_db_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
-  let route = deployment_fabric_db_serve_endpoint()
-  unit.contains("--function fabric_db_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_db_listen_port)], ""))
+test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
+  let route = deployment_fabric_storage_serve_endpoint()
+  unit.contains("--function fabric_storage_serve_handle")
+    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
     && !unit.contains("0.0.0.0")
-    && route.https_port == fabric_db_https_port
-    && (route.backend as String) == to_string(fabric_db_listen_port)
+    && route.https_port == fabric_storage_https_port
+    && (route.backend as String) == to_string(fabric_storage_listen_port)
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }

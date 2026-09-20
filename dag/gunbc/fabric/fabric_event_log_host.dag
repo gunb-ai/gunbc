@@ -6,7 +6,7 @@ import extdeps.clock { Clock }
 import product.placement_supply { HostIdentity }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
 import gunbc.fabric_event_log { event_log_binding_for }
-import gunbc.fabric_db_client { FabricDbBinding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import v2.std.optional { Present }
 
 // WHERE THE EVENT LOG IS FROM THE EXECUTING HOST'S POINT OF VIEW: the dashboard instance declared
@@ -16,7 +16,7 @@ import v2.std.optional { Present }
 // harness's seats, the belt's quotas -- so the binding is derived once.
 
 type HostEventLogStore
-  = HostStoreResolved { store: FabricDbBinding, executor: HostIdentity }
+  = HostStoreResolved { store: FabricStorageBinding, executor: HostIdentity }
   | HostStoreRefused { detail: String }
 
 fn event_log_store_for_host(short_hostname: String) -> HostEventLogStore {
