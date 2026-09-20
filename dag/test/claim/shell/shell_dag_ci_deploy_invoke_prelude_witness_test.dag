@@ -1,0 +1,62 @@
+module test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.ci_spec { gunbc_ci_deploy_invoke, gunbc_ci_deploy_srv1_stage }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-ci-deploy-invoke-prelude, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that gunbc.ci_spec gunbc_ci_deploy_invoke stops stamping its ROOT prelude
+// as ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd) and reads the toplevel through typed
+// git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (DESIGN
+// §5): when the toplevel read fails, the working directory is silently substituted as the repo
+// root and every later deploy step acts on the wrong tree with no diagnostic. The red arms assert
+// the rendered invoke carries no fallback and no shell control word (`set -e`, `||`, `&&`, `;`,
+// `2>/dev/null`); they are red on today's prelude and turn green only when the toplevel read is
+// typed and a nonzero git exit refuses with a typed cause instead of substituting pwd. Enrolled in
+// v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (gunbc_ci_deploy_invoke and the
+// gunbc_ci_deploy_srv1_stage fixture) must survive the rebind, because this witness cannot be
+// re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+// RED TODAY: the rendered invoke carries the prelude's absorbing fallback and stderr swallow.
+// Greens when the toplevel read is typed git.Core.ShowToplevel with a nonzero-refuse arm.
+test fn deploy_invoke_prelude_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: w))
+}
+
+// RED TODAY, the absorbing fallback named alone: `|| pwd` substitutes the working directory for a
+// failed toplevel read and reports nothing. Greens when the fallback spelling is deleted, not
+// preserved.
+test fn deploy_invoke_prelude_has_no_pwd_fallback() -> Bool {
+  !string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "|| pwd")
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the invoke still reads the repository
+// toplevel — the rebind changes who constructs the read (typed git.Core.ShowToplevel over the same
+// upstream argv), never what is read.
+test fn deploy_invoke_still_reads_the_repo_toplevel() -> Bool {
+  string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "rev-parse")
+    && string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: "--show-toplevel")
+}
+
+// POSITIVE CONTROL, green today and after: the invoke runs the declared stage's entry and
+// function — the rest of the thin-invoke is untouched by the rebind.
+test fn deploy_invoke_runs_the_declared_stage() -> Bool {
+  string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: gunbc_ci_deploy_srv1_stage.entry)
+    && string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: gunbc_ci_deploy_srv1_stage.function)
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arms are red; green only when every clause holds over the typed rebind.
+test fn ci_deploy_invoke_prelude_acceptance_holds() -> Bool {
+  deploy_invoke_prelude_renders_no_shell_control_word()
+    && deploy_invoke_prelude_has_no_pwd_fallback()
+    && deploy_invoke_still_reads_the_repo_toplevel()
+    && deploy_invoke_runs_the_declared_stage()
+}
