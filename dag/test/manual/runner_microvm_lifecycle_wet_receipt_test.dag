@@ -5,10 +5,7 @@ import std.algebra { trim }
 import std.resources { Network, Filesystem }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
-import extdeps.linux.cgroup_v2 {
-  cgroup_v2_mount_point, cgroup_v2_child_path,
-  cgroup_v2_freeze_path, cgroup_v2_frozen_value, cgroup_v2_thawed_value,
-}
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -201,104 +198,31 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
   }
 }
 
-// RED 3 -- THE ONE THAT DOES NOT EXIST, AND THIS IS WHAT IS THERE INSTEAD.
+// RED 3 -- THE ONE THAT DOES NOT EXIST, AND THIS BLOCK IS WHAT IS THERE INSTEAD OF IT.
 //
-// ForceStopBoundExceeded HAS NO WET PRODUCER ON THIS HOST, and saying so is the point of this block.
-// The arm means a task the KERNEL could not end. Its two producers are uninterruptible sleep and --
-// on cgroup v1 -- a frozen cgroup. D state needs a wedged device or a hung filesystem on a host
-// running other people's CI, and manufacturing one is a worse defect than the one it would cover.
+// ForceStopBoundExceeded HAS NO WET PRODUCER ON THIS HOST AND THE ARM IS DECLARED UNEXECUTED. It
+// means a task the KERNEL could not end. Its producers are uninterruptible sleep and, on cgroup v1,
+// a frozen cgroup. D state needs a wedged device or a hung filesystem on a host running other
+// people's CI, and manufacturing one is a worse defect than the one it would cover.
 //
-// THE FREEZER WAS OFFERED AS THE SAFE PRODUCER AND IT DOES NOT WORK ON v2. A review
-// (vivid-stag-809, relayed by sunny-ant-606) proposed freezing the cgroup, which is real on cgroup
-// v1. cgroup v2 deliberately reversed it: the admin guide states that unlike the v1 freezer, tasks
-// in a frozen v2 cgroup CAN be killed. Measured on srv1 rather than taken from the page -- freeze a
-// slice holding a live sleep, confirm `frozen 1`, write cgroup.kill, and the slice reads
-// `populated 0` three seconds later. So the claim that was written against it FAILED, and it failed
-// because its premise was wrong rather than because the controller was.
+// THE FREEZER WAS OFFERED AS THE SAFE PRODUCER AND IT IS NOT ONE ON v2. A review (vivid-stag-809,
+// relayed by sunny-ant-606) proposed freezing the cgroup, which is real on cgroup v1. cgroup v2
+// deliberately reversed it: the admin guide states that unlike the v1 freezer, tasks in a frozen v2
+// cgroup CAN be killed. Measured on srv1 rather than taken from the page -- freeze a slice holding a
+// live sleep, confirm `frozen 1`, write cgroup.kill, and the slice reads `populated 0` three seconds
+// later. So the claim written against that design failed, and it failed because its premise was
+// wrong rather than because the controller was.
 //
-// SO THE ARM STAYS UNEXECUTED AND IS DECLARED THAT WAY. What is claimed below is the fact the
-// experiment DID establish, which is worth keeping on its own: the cell-wide force is not defeated
-// by a frozen cgroup. Its hermetic counterpart --
-// test.claim.runner.runner_microvm_lifecycle_witness_test
-// an_exceeded_bound_still_refutes_and_still_names_its_pids -- supplies the arm and checks what the
-// controller does with it; nothing has produced it against a real kernel.
-test fn a_frozen_cell_is_still_ended_by_the_cell_wide_force() -> Bool
-  uses net: Network, fs: Filesystem
-{
-  if !clear_slice() {
-    false
-  } else if !start_payload(unit: "gunbc-wet-frozen.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
-    false
-  } else if read_freeze_after(wrote: write_freeze(value: cgroup_v2_frozen_value)) != cgroup_v2_frozen_value {
-    false
-  } else {
-    let stopped = stop_attempt(unit: "gunbc-wet-frozen.service" as NonEmptyStr, slice: wet_slice)
-    let thawed = write_freeze_after(value: cgroup_v2_thawed_value, after: stopped)
-    thawed && stop_was_by_force(stop: stopped) && readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
-  }
-}
-
-fn stop_was_by_force(stop: TeardownStop) -> Bool {
-  match stop {
-    StoppedByForce => true
-    ForceStopBoundExceeded { survivors: _ } => false
-    ForceStopOutcomeUnobservable { reason: _ } => false
-    StoppedGracefully => false
-  }
-}
-
-// THE FREEZE IS READ BACK BEFORE THE CLAIM RESTS ON IT. A write that silently did not take would
-// make the rest of this claim a statement about an unfrozen cgroup, which is a different and much
-// less interesting fact; and when the claim fails, this is what says whether the freeze or the force
-// was the part that did not do what it says.
-// THE READBACK TAKES THE WRITE'S RESULT AS ITS ARGUMENT, so it cannot be hoisted above it. Order in
-// this substrate is data dependence and nothing else; an `else if` chain sequences its CONDITIONS,
-// but two effectful calls inside one condition have no edge between them unless one consumes the
-// other. A readback that ran first would read the cgroup's state before the freeze and report it as
-// the freeze's result.
-fn read_freeze_after(wrote: Bool) -> String
-  uses net: Network
-{
-  if wrote == false { "" } else { read_freeze() }
-}
-
-fn read_freeze() -> String
-  uses net: Network
-{
-  let read = linux.CgroupV2.ReadInterfaceFile(
-    file_path: cgroup_v2_freeze_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr),
-  )
-  if read.success == false { "" } else { trim(s: read.value) }
-}
-
-fn write_freeze(value: String) -> Bool
-  uses fs: Filesystem
-{
-  Filesystem.Write(
-    path: cgroup_v2_freeze_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr) as String,
-    content: value,
-  ).success
-}
-
-// THE THAW TAKES THE STOP AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this substrate is
-// data dependence and nothing else; a thaw that took no argument would be a node the evaluator may
-// run before the stop, which would unfreeze the cgroup the claim depends on being frozen. It runs
-// whatever the stop returned, so a failure to restore the host is visible here rather than to
-// whoever runs next.
-fn write_freeze_after(value: String, after: TeardownStop) -> Bool
-  uses fs: Filesystem
-{
-  stop_names_an_outcome(stop: after) && write_freeze(value: value)
-}
-
-fn stop_names_an_outcome(stop: TeardownStop) -> Bool {
-  match stop {
-    ForceStopBoundExceeded { survivors: _ } => true
-    ForceStopOutcomeUnobservable { reason: _ } => true
-    StoppedGracefully => true
-    StoppedByForce => true
-  }
-}
+// AND A SECOND REASON IT CANNOT BE A CLAIM HERE TODAY, worth recording because it is a fact about
+// this repository rather than about the kernel: Filesystem.Write returns success=false for
+// `cgroup.freeze` while it writes `cgroup.kill` on the same host in the same run -- the force claim
+// below is that write executing and working. So the freezer has no .dag writer, which is why this
+// corpus carries no cgroup.freeze rows: modelling an interface nothing can drive would be dangling
+// (DESIGN 3c). It returns when a consumer can reach it.
+//
+// WHAT COVERS THE ARM MEANWHILE: test.claim.runner.runner_microvm_lifecycle_witness_test supplies it
+// and checks what the controller does with it -- that it refutes, that it names its pid, and that it
+// is not confused with the unobservable arm. Nothing has produced it against a real kernel.
 
 // RED 4 -- A CGROUP READ THAT FAILS IS UNOBSERVABLE, NEVER EMPTY.
 //
