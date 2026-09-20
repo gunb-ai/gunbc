@@ -170,6 +170,7 @@ import gunbc.runner_slot_population_census {
 }
 import gunbc.runner_slot_retirement {
   transition_required_retiring,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
   observe_retirement_standings,
   surplus_observation_from_census_and_retirement,
 }
@@ -3913,7 +3914,7 @@ fn realize_live_deploy_apply_on_host(
     let census = surplus_observation(
       census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
     )
-    let required = transition_required_retiring(host: host)
+    let required_standing = transition_required_retiring(host: host)
     let admission = runner_host_deploy_for(host: host)
     realize_shell_on_host(
       script: retained_srvn(
@@ -3930,14 +3931,21 @@ fn realize_live_deploy_apply_on_host(
                 cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
               }
             RunnerHostDeployFound { deploy: _ } =>
-              cap_converge_decision(
-                host: host,
-                required_retiring: required,
-                observation: surplus_observation_from_census_and_retirement(
-                  census: census,
-                  standings: observe_retirement_standings(transport: transport, units: required),
-                ),
-              )
+              match required_standing {
+                RetireesUnresolved { host: uh, cause: rc } =>
+                  CapConvergeWithheld {
+                    cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+                  }
+                RetireesKnown { units: required } =>
+                  cap_converge_decision(
+                    host: host,
+                    required_retiring: required,
+                    observation: surplus_observation_from_census_and_retirement(
+                      census: census,
+                      standings: observe_retirement_standings(transport: transport, units: required),
+                    ),
+                  )
+              }
           },
         ),
         reason: "live_deploy apply (unit install + start)",
