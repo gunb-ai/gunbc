@@ -1303,6 +1303,33 @@ fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
   measure_count(r)
 }
 
+// The same token rate at Milli: a count of N is N/1000 tokens per second, so a client figure quoted
+// to three decimals ("17.39 tok/s") is carried exactly as 17390 without a bare Nat whose scale lives
+// only in its field name. Same Frequency axis as TokensPerSecond; the scale marker, not a suffix,
+// says milli. First consumer: gunbc.spark.serving_load_probe client throughput.
+type MilliTokensPerSecond = Measure<Frequency, Milli, Nat>
+
+fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {
+  Measure { count: count }
+}
+
+fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
+// An offered REQUEST arrival rate at Milli (vllm bench serve `--request-rate`). Frequency axis like
+// its token sibling, a different thing counted: a request is not a token. First consumer:
+// extdeps.vllm.bench_serve PoissonProcess.
+type MilliRequestsPerSecond = Measure<Frequency, Milli, Nat>
+
+fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
+  Measure { count: count }
+}
+
+fn milli_requests_per_second_count(r: MilliRequestsPerSecond) -> Nat {
+  measure_count(r)
+}
+
 // EVAL STEPS PER MILLISECOND -- the conversion the required floor's claim ceiling is denominated
 // through. Frequency family, period marker in the type, exactly as `EventsPerMinute` and
 // `MegatransfersPerSecond` are.

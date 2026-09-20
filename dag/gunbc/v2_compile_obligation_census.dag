@@ -15,7 +15,7 @@ import gunbc.guarantee_rung {
 }
 import gunbc.witness_deferral_freeze { frozen_path_deferral_covers }
 import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
-import v2.workflow.required_floor { required_gate_prefixes }
+import v2.workflow.required_floor { required_gate_admits }
 import gunbc.witness_v2_native_route { native_route_universe_member }
 
 // WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
@@ -210,19 +210,17 @@ fn witness_subject_is_frozen(w: WitnessSubject) -> Bool {
 
 data required_gate_authority: DeclarationRef = decl_ref(
   module_path: "v2.workflow.required_floor",
-  decl_name: "required_gate_prefixes"
+  decl_name: "required_gate_admits"
 )
 
-fn witness_subject_is_inside_gate_closure_in(prefixes: List<String>, w: WitnessSubject) -> Bool {
-  fold(
-    prefixes,
-    init: false,
-    f: fn(found, prefix) { found || starts_with(s: w.module_path, prefix: prefix) }
-  )
-}
-
+// THE GATE DECISION IS ASKED OF ITS AUTHORITY, NOT RE-IMPLEMENTED AS A PREFIX FOLD. This used to
+// fold `starts_with` over `required_gate_prefixes` itself, which was one reading of the gate while
+// the gate had one selector kind; the gate now also admits authored module names under the
+// segment-boundary rule (`RequiredGateSelector`), and a local prefix fold would have declined
+// every module admitted that way -- a second authority for the admission question, wrong in
+// exactly the population the second kind exists for.
 fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
-  witness_subject_is_inside_gate_closure_in(prefixes: required_gate_prefixes(), w: w)
+  required_gate_admits(module_path: w.module_path)
 }
 
 // WHAT IS DERIVED, WHAT IS ASSUMED, AND WHY THE ASSUMPTION IS A NAMED ARM RATHER THAN A COMMENT.
@@ -239,13 +237,15 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
 // be satisfied is not a subtraction that was checked.
 //
-// THE PREFIX TEST IS A PREFIX TEST. Two cuts of this module used string_contains here and declared
-// the imprecision as debt — first discharged onto the wrong trigger, then given its own. Both were
-// answers to a question with a better answer: starts_with IS in the substrate, and
-// gunbc.witness_v2_native_route native_route_universe_member calls it for exactly this purpose one
-// module over. A declared debt for a capability that already exists is not honesty, it is a
-// permanent excuse with a receipt attached — so the premise, its trigger and its number are DELETED
-// rather than kept as documentation of a problem that no longer exists.
+// THE GATE TEST IS THE GATE'S OWN. Two cuts of this module used string_contains here and declared
+// the imprecision as debt — first discharged onto the wrong trigger, then given its own; a third
+// folded starts_with over the prefix roster, exact for the one selector kind the gate then had.
+// Each was an answer to a question with a better answer: the gate's admission decision is a
+// declared function of its authority, and asking it is what keeps this census from becoming a
+// second reading of the gate that drifts when the gate grows a selector kind. A declared debt for
+// a capability that already exists is not honesty, it is a permanent excuse with a receipt
+// attached — so the premise, its trigger and its number are DELETED rather than kept as
+// documentation of a problem that no longer exists.
 //
 // WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
 // covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
