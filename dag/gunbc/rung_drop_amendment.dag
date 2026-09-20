@@ -1,6 +1,7 @@
 module gunbc.rung_drop_amendment
 
 import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.rung_drop { RungDropStanding, Standing, Retired }
 
 // A LATER RULING AMENDING A STANDING RUNG DROP -- THE ONE THING gunbc.rung_drop COULD NOT CARRY.
 // A DESIGN section 4b(3) declaration is written once, at the moment the guarantee falls: previous
@@ -15,15 +16,16 @@ import std.types { String, NonEmptyStr, List, Bool }
 // DESIGN section 6's manual application committed as source, and the repair is not to re-hand-edit
 // the bytes: it is this carrier.
 //
-// WHY THIS IS NOT A COMMENTARY FIELD. An amendment is not a note. It is a specific claim with a
-// specific consequence, and the consequence is the field that makes it one: a later event that
-// bears on a standing drop either leaves its restoration trigger whole or replaces it, and there
-// is no third answer that does not silently rewrite the trigger. DESIGN section 4b(3) says a drop
-// is retired BY ITS TRIGGER AND BY NOTHING ELSE, so an amendment that could quietly change what
-// restores the guarantee, without saying so, is the one thing this carrier must refuse to express.
-// `AmendedTrigger` is therefore closed and both arms are load-bearing: `TriggerStandsWhole` asserts
-// the declaration below it is unchanged, and `TriggerSuperseded` names what replaced it.
-//
+// WHY THIS CARRIES NO CLAIM ABOUT THE RESTORATION TRIGGER. The first draft of this type had an
+// `AmendedTrigger = TriggerStandsWhole | TriggerSuperseded` field, so that the amendment could say
+// what it did to the declaration below it. That is a SECOND AUTHORITY for a fact the drop already
+// owns: whether the guarantee is still down is `RungDropStanding` on the row, and whether the
+// trigger fired is `Retired { trigger_fired }` -- so an amendment asserting the trigger stands
+// whole beside a Retired row would be two answers to one question, and DESIGN section 4b(3) is
+// explicit that a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE. The sentence is therefore
+// DERIVED from the row's own standing at render time and is authored nowhere. An amendment states
+// what happened in the world and what it bears on; it does not get a vote on the declaration.
+
 // WHY IT IS A SEPARATE CARRIER RATHER THAN A FIELD ON `RungDrop`. The precedent is inside
 // gunbc.rung_drop itself: gunbc.deleted_cadence_reference_census carried `lost_with` BESIDE a drop
 // rather than widening the shared record. The same two reasons hold here and one more. Most drops
@@ -38,36 +40,32 @@ import std.types { String, NonEmptyStr, List, Bool }
 // every amendment against gunbc.rung_drop.roster at identity grain and refuses a dangling key, with
 // a control amendment naming no drop to keep the assertion discriminating.
 
-// WHAT A LATER RULING DID TO THE STANDING DECLARATION BELOW IT. Closed, two arms, no default: see
-// the note above on why a silent third answer is the state this type exists to make unwritable.
-type AmendedTrigger
-  = TriggerStandsWhole
-  | TriggerSuperseded { replacement: NonEmptyStr }
-
 type RungDropAmendment {
   drop_identity: NonEmptyStr
   amended: String
   later_event: NonEmptyStr
   bearing: NonEmptyStr
-  trigger: AmendedTrigger
 }
 
 // THE ONE RENDERING, for the same reason gunbc.rung_drop carries exactly one: a consumer that spelled
 // the amendment itself would be a second authority for it and the two would drift.
-fn rung_drop_amendment_message(a: RungDropAmendment) -> String {
+fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding) -> String {
   concat(
     concat(concat("AMENDED ", a.amended), concat(": ", (a.later_event as String))),
     concat(
       concat("; ", (a.bearing as String)),
-      concat(". ", amended_trigger_sentence(t: a.trigger))
+      concat(". ", standing_sentence(standing: standing))
     )
   )
 }
 
-fn amended_trigger_sentence(t: AmendedTrigger) -> String {
-  match t {
-    TriggerStandsWhole => "The restoration trigger above stands whole."
-    TriggerSuperseded { replacement: r } => concat("The restoration trigger above is superseded: ", concat((r as String), "."))
+// THE CLOSING SENTENCE, READ OFF THE ROW'S OWN STANDING. This is the derivation the note above
+// argues for: the amendment supplies neither arm, so a row that is retired cannot be described by
+// its amendment as one whose trigger still stands.
+fn standing_sentence(standing: RungDropStanding) -> String {
+  match standing {
+    Standing => "The restoration trigger above stands whole."
+    Retired { trigger_fired: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
   }
 }
 

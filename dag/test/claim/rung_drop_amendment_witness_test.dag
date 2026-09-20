@@ -2,9 +2,9 @@ module test.claim.rung_drop_amendment_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.rung_drop_amendment {
-  RungDropAmendment, TriggerStandsWhole, TriggerSuperseded,
-  rung_drop_amendment_message, every_amendment_names_a_rostered_drop,
+  RungDropAmendment, rung_drop_amendment_message, every_amendment_names_a_rostered_drop,
 }
+import gunbc.rung_drop { Standing, Retired }
 import gunbc.rung_drop_amendment.roster { rung_drop_amendment_roster, amendments_for_drop }
 import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign {
   namespace_wave_admission_carrier_redesign,
@@ -18,7 +18,6 @@ data control_dangling_amendment: RungDropAmendment = RungDropAmendment {
   amended: "2026-01-01",
   later_event: "control later event" as NonEmptyStr,
   bearing: "control bearing" as NonEmptyStr,
-  trigger: TriggerSuperseded { replacement: "control replacement trigger" as NonEmptyStr },
 }
 
 fn rostered_drop_identities() -> List<String> {
@@ -48,22 +47,25 @@ test fn amendments_are_selected_by_drop_identity() -> Bool {
     && length(xs: amendments_for_drop(identity: "floor_cut_heal" as NonEmptyStr)) == 0
 }
 
-// THE RENDERING CARRIES THE RESCUED REASONING AND ITS CONSEQUENCE. The needles are the two facts
-// the paragraph exists to keep -- that the carrier redesign had already landed, and that the ruling
-// priced the gate itself -- plus the trigger sentence that keeps the amendment from being read as a
-// change to the restoration trigger.
-test fn the_amendment_renders_its_reasoning_and_its_trigger_effect() -> Bool {
-  let rendered = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign)
+// THE RENDERING CARRIES THE RESCUED REASONING. The needles are the two facts the paragraph exists
+// to keep: that the carrier redesign had already landed, and that the ruling priced the gate itself.
+test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool {
+  let rendered = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing)
   contains_text(haystack: rendered, needle: "gunbc#11704")
     && contains_text(haystack: rendered, needle: "prices the gate itself")
-    && contains_text(haystack: rendered, needle: "The restoration trigger above stands whole.")
-    && !contains_text(haystack: rendered, needle: "superseded")
 }
 
-// A SUPERSEDING AMENDMENT RENDERS DIFFERENTLY, which is what makes the arm above an assertion
-// rather than a constant. A renderer that ignored the trigger arm would fail here.
-test fn a_superseding_amendment_renders_its_replacement() -> Bool {
-  let rendered = rung_drop_amendment_message(a: control_dangling_amendment)
-  contains_text(haystack: rendered, needle: "is superseded: control replacement trigger.")
-    && !contains_text(haystack: rendered, needle: "stands whole")
+// THE CLOSING SENTENCE IS READ OFF THE DROP'S STANDING AND IS AUTHORED NOWHERE. Same amendment,
+// two standings, two sentences: a renderer that ignored the standing -- which is what an authored
+// trigger field would have let it do -- agrees with itself here and is caught. This is the
+// assertion that keeps the amendment from becoming a second authority for retirement.
+test fn the_closing_sentence_is_derived_from_the_rows_standing() -> Bool {
+  let standing = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing)
+  let retired = rung_drop_amendment_message(
+    a: namespace_wave_admission_carrier_redesign,
+    standing: Retired { trigger_fired: "control trigger fired" as NonEmptyStr },
+  )
+  contains_text(haystack: standing, needle: "The restoration trigger above stands whole.")
+    && !contains_text(haystack: retired, needle: "stands whole")
+    && contains_text(haystack: retired, needle: "has since fired")
 }

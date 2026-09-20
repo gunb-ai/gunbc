@@ -1,12 +1,12 @@
 module gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop_amendment { RungDropAmendment, TriggerStandsWhole }
+import gunbc.rung_drop_amendment { RungDropAmendment }
 
 // THE FACT THIS ROW RESCUES WAS WRITTEN AS BYTES IN A GENERATED FILE AND DIED THERE. gunbc#11774
 // appended it to docs/design-rung-drops.md, which is a projection of gunbc.rung_drop; gunbc#11789
 // regenerated the file and the paragraph went with it. It is restored here, in the authority, with
-// its consequence typed: the ruling's own restoration trigger is unchanged by it.
+// its closing sentence derived from the drop's own standing rather than authored beside it.
 //
 // WHY IT IS WORTH A ROW. Without it the next reader of the drop meets a deletion whose stated
 // occasion is a billing loop that charged bystanders -- and the obvious inference from that
@@ -25,6 +25,4 @@ data namespace_wave_admission_carrier_redesign: RungDropAmendment = RungDropAmen
   later_event: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion" as NonEmptyStr,
 
   bearing: "the ruling prices the gate itself, not only its billing, and removes the redesigned wall with the old one" as NonEmptyStr,
-
-  trigger: TriggerStandsWhole,
 }

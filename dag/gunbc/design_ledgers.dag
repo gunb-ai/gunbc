@@ -143,7 +143,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 // by the next regeneration, which is the whole reason the carrier exists; rendering it here is what
 // makes the carrier consumed rather than declared.
 fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {
-  map(amendments_for_drop(identity: d.identity), a => p(text: rung_drop_amendment_message(a: a)))
+  map(amendments_for_drop(identity: d.identity), a => p(text: rung_drop_amendment_message(a: a, standing: d.standing)))
 }
 
 // THE LEDGER RENDERED A RETIRED DROP AND A STANDING ONE IDENTICALLY, which made it unable to
