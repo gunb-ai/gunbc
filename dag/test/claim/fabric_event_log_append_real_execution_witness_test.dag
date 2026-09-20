@@ -4,6 +4,9 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, Int, List }
 import std.algebra { trim }
 import extdeps.shell
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import gunbc.command_runner { run_shell_commands, LocalExec }
+import std.process { ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
@@ -50,7 +53,13 @@ fn scratch_path(dir: FilePath) -> FilePath {
 }
 
 fn plant_scratch_as_dev_null(dir: FilePath) -> Bool {
-  shell.Symlink.AtomicReplace(target: "/dev/null" as FilePath, link: scratch_path(dir: dir)).success
+  match run_shell_commands(
+    commands: [ln_symbolic_force_command(target: "/dev/null", link_name: scratch_path(dir: dir) as String)],
+    transport: LocalExec,
+  ) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
 }
 
 fn witness_event(parent: String?, at: Int, payload: PoolEvent) -> ChainEvent<PoolEvent> {

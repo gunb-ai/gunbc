@@ -62,6 +62,9 @@ import extdeps.tools.sha512sum {
   Sha512FileObservationRefused,
 }
 import extdeps.tools.node
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.command_runner { run_shell_commands, LocalExec }
 import gunbc.codex_runtime_paths {
   codex_runtime_current_link_path,
   codex_bundled_executable_at_current_link,
@@ -482,16 +485,22 @@ fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
   )
 }
 
-// Typed symlink publish via extdeps.shell.Symlink.AtomicReplace (ln -sfnT argv binding). Runs
-// inside materialize_codex_runtime_bundle during gunbc run materialize, not on the
-// host_effect_apply observe/ensure/read-back transport.
-
+// Typed symlink publish through extdeps.tools.gnu_coreutils ln_symbolic_force_command (the one
+// home of `ln -sfnT`; the consumerless-looking shell.Symlink service that used to carry the same
+// argv was folded onto it, review 68813 on #11760). Runs inside materialize_codex_runtime_bundle
+// during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport.
 fn publish_codex_runtime_current_link(
   release_parent: FilePath,
   release_root: FilePath,
 ) -> Bool {
   let link = codex_runtime_current_link_path(release_parent: release_parent)
-  shell.Symlink.AtomicReplace(target: release_root, link: link).success
+  match run_shell_commands(
+    commands: [ln_symbolic_force_command(target: release_root as String, link_name: link as String)],
+    transport: LocalExec,
+  ) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
 }
 
 fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {

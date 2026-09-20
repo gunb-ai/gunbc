@@ -91,6 +91,14 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
 // this path a symlink to that target, or refuse" -- and the name carries all of them so a caller
 // cannot obtain the target-directory form by dropping a flag.
 //
+// THIS IS THE ONE HOME OF `ln -sfnT`. extdeps.shell carried a `shell.Symlink AtomicReplace` service
+// with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
+// publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
+// builder and the service deleted, so one upstream fact has one declaration (review 68813 on
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget configfs_op_line still
+// hand-spells `ln -sf` inside a script string; that is a declared frontier of its own
+// (configfs_op_render_dissolution_trigger) and folds onto this row when it dissolves.
+//
 // -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
 // -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits
 // 0 having created D/T's-basename, so the command succeeds while the intended path was never made a
