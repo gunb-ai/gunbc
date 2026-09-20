@@ -1518,6 +1518,28 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
     && string_contains(s: script, pattern: approval_broker_tree_receipt_path)
 }
 
+// ── THE DIGEST IS SUBSTITUTED, NOT SPLICED BARE ─────────────────────────────────────────────
+// THE DEFECT THIS EXISTS FOR ACTUALLY SHIPPED (review 69066). The receipt command rendered
+// `printf '...%s\n' (cd /opt/... | cut -d' ' -f1) | install ...` -- a BARE parenthesised group in
+// printf's argument position, which is a bash SYNTAX ERROR, and with strict options at the head of
+// the same script it aborts the whole dark install before any step runs.
+//
+// IT SHIPPED BECAUSE THE ONLY CHECKS WERE SHAPE CHECKS over bytes nobody executed: string_contains
+// for "rsync -a --delete" and for the receipt path. Both stayed green over a script that could not
+// parse. That is DESIGN section 5's "a .contains() grep is not a consumer" landing as a defect
+// rather than as a caution.
+//
+// WHAT THIS CLAIM IS AND IS NOT. It is still a shape check -- a .dag claim cannot run bash -- but it
+// DISCRIMINATES THIS CLASS rather than merely witnessing presence: the first conjunct fails on the
+// exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
+// would word-split a digest containing whitespace. What it does NOT establish is that the script
+// parses; only executing it does, and the honest place for that is the stage-A run itself.
+test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  string_contains(s: script, pattern: "\"$(cd ")
+    && !string_contains(s: script, pattern: "%s\\n' (cd ")
+}
+
 // THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
 // handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
 // on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to

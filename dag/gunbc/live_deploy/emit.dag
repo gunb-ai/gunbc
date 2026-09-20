@@ -1573,10 +1573,27 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches, and a
 // binary to interpret them.
 //
-// THE BINARY IS COPIED RATHER THAN SHARED, and that is the same isolation argument as the tree.
-// /opt/gunbc/bin/gunbc is the ROADMAP's binary, frozen with the roadmap; a seed binary older than
-// the sources it is handed refuses to parse constructs those sources use, so a shared binary would
-// reintroduce exactly the coupling the separate root removes.
+// THE BINARY IS SHARED, NOT COPIED, AND THAT IS A REAL OPEN HAZARD. This note previously asserted
+// the opposite -- "THE BINARY IS COPIED RATHER THAN SHARED" -- and the diff contained no such copy:
+// approval_broker_tree_subdirs is ["dag", "src/v2"], and the unit's ExecStart takes
+// spec.approval_broker.serve_binary, which is the instance's /opt/gunbc/bin/gunbc. So the annotation
+// claimed the isolation while the declaration below shipped the coupling (review 69066).
+//
+// WHY IT MATTERS RATHER THAN BEING A WORDING SLIP: /opt/gunbc/bin/gunbc is the ROADMAP's binary and
+// the roadmap is frozen at its release by operator ruling. A seed binary older than the sources it
+// is handed REFUSES TO PARSE constructs those sources use -- the broker's own modules are newer
+// than that binary by construction, since they did not exist when it was built. The failure mode is
+// a unit that starts, refuses at parse, and restart-loops: the same symptom as the missing tree,
+// from the other half of the pair.
+//
+// IT IS NAMED HERE RATHER THAN FIXED because the repair is not mine to guess: the binary that can
+// parse these sources is the one BUILT FROM THE CANDIDATE, and which artifact on the runner carries
+// it -- the release-bins pack, a fresh cargo build in the deploy job, or a third thing -- is a
+// question for the lane that owns the deploy job's inputs. Copying /opt/gunbc/bin/gunbc to the
+// broker root would change nothing: it is the same frozen bytes at a new path.
+//
+// TRIGGER: the broker unit's ExecStart naming a binary built from the candidate this deploy
+// installs, observed by that binary parsing the broker's own entry rather than refusing it.
 data approval_broker_tree_receipt_path: String = "/opt/gunbc/approval-broker/.gunbc-tree-receipt"
 
 data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
@@ -1601,12 +1618,25 @@ data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
 // dissolves when v2.workflow.bash_emit can render a piped command from modeled parts, at which
 // point the program rows above become the arguments to that emitter instead of substrings of a
 // join. The names are already correct by then; only the assembly changes.
+// IT RETURNS THE PIPELINE, NOT A SUBSHELL, and the caller wraps it. The first cut returned
+// "(cd ... | cut -d' ' -f1)" -- a BARE parenthesised group with no `$` -- and spliced it into
+// printf's argument position, where `(` is a bash SYNTAX ERROR. With
+// deploy_shell_strict_options_command at the head of the same script, that aborts the entire dark
+// install before any step runs: not a wrong digest, no install at all (review 69066).
+//
+// It shipped because nothing ever rendered it. The only witness over this script asked
+// string_contains for "rsync -a --delete" and the receipt path -- a SHAPE check over bytes nobody
+// executed, which is DESIGN section 5's "a .contains() grep is not a consumer" exactly. The marker
+// one declaration up names medium-as-string as a hazard; this is that hazard landing.
+//
+// Returning the pipeline and substituting at the use site also puts the quoting where a reader can
+// see it: one "$( ... )" at the caller rather than parentheses buried in a join.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "(cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
+    "cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
     " -type f -print0 | ", sort_program as String, " -z | ",
     xargs_program as String, " -0 ", sha256sum_program as String, " | ",
-    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1)",
+    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1",
   ], "")
 }
 
@@ -1646,7 +1676,7 @@ fn approval_broker_tree_receipt_command(root: String, revision: ReleaseRevisionB
   join([
     printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
-    approval_broker_tree_digest_expr(root: root),
+    "\"$(", approval_broker_tree_digest_expr(root: root), ")\"",
     " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path,
   ], "")
 }
