@@ -40,6 +40,8 @@ import gunbc.runner_microvm_lifecycle_realize {
   cgroup_subtree_readback_of_readings, resource_readback_of_presence,
   AttemptResourceSubject, attempt_jail_subject, attempt_storage_subject, attempt_credential_subject,
   observed_path_of_presence,
+  ContainedReadPlan, ContainedByEstablishedAbsence, EnumerateInsideContainer,
+  ContainedByUnreadableContainer, contained_read_plan,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -295,4 +297,34 @@ test fn every_wet_red_slot_index_is_outside_the_hosts_committed_population() -> 
 
 test fn the_first_slot_index_is_a_committed_member_so_the_premise_discriminates() -> Bool {
   !names_no_committed_slot(index: 1)
+}
+
+// ── containment: the rule that makes a CLEAN teardown observable at all ──────────────────────
+
+// A path under a directory that is ESTABLISHED absent is absent -- there is no filesystem in which
+// /a/b exists and /a does not -- and without that the successful case cannot be proven: the
+// attempt directory's deletion is what a successful teardown IS, so a listing of it taken
+// afterwards fails, and the jail and credential facts would be unobservable on exactly the runs
+// that worked.
+test fn an_established_absence_of_the_container_answers_for_what_is_inside_it() -> Bool {
+  match contained_read_plan(container: ResourceAbsent) {
+    ContainedByEstablishedAbsence => true
+    _ => false
+  }
+}
+
+test fn a_container_that_is_still_there_is_enumerated_rather_than_assumed() -> Bool {
+  match contained_read_plan(container: ResourcePresent { detail: "w-1 is still listed" as NonEmptyStr }) {
+    EnumerateInsideContainer => true
+    _ => false
+  }
+}
+
+// THE RED. One keystroke from the fail-open that releases a cell on a directory nobody could list:
+// an unreadable container must NOT inherit absence downward, because nothing was established.
+test fn an_unreadable_container_leaves_its_contents_unreadable_and_never_absent() -> Bool {
+  match contained_read_plan(container: ResourceUnreadable { reason: "Permission denied" as NonEmptyStr }) {
+    ContainedByUnreadableContainer { reason: r } => string_contains(s: r as String, pattern: "Permission denied")
+    _ => false
+  }
 }

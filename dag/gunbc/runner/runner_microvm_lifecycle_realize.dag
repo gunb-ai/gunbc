@@ -353,18 +353,35 @@ type AttemptResourceObservations {
   credential_disk: ObservedPath
 }
 
+// THE CHOICE IS A PURE FOLD SO IT CAN BE WITNESSED WITHOUT A HOST, and it is the whole content of
+// the containment rule: an established absence of the container answers for everything under it,
+// a container that is still there must be enumerated, and a container nobody could read leaves its
+// contents unreadable. The third arm is the one worth a red of its own -- it is one keystroke from
+// the fail-open that releases a cell on a directory nobody could list.
+type ContainedReadPlan
+  = ContainedByEstablishedAbsence
+  | EnumerateInsideContainer
+  | ContainedByUnreadableContainer { reason: NonEmptyStr }
+
+fn contained_read_plan(container: ResourceReadback) -> ContainedReadPlan {
+  match container {
+    ResourceAbsent => ContainedByEstablishedAbsence
+    ResourcePresent { detail: _ } => EnumerateInsideContainer
+    ResourceUnreadable { reason: r } => ContainedByUnreadableContainer { reason: r }
+  }
+}
+
 fn observe_attempt_resources(attempt: MicroVmAttempt, after: ObservedStop) -> AttemptResourceObservations {
-  let storage_subject = attempt_storage_subject(attempt: attempt)
-  let storage = observe_attempt_resource(subject: storage_subject)
-  match storage.readback {
-    ResourceAbsent =>
+  let storage = observe_attempt_resource(subject: attempt_storage_subject(attempt: attempt))
+  match contained_read_plan(container: storage.readback) {
+    ContainedByEstablishedAbsence =>
       AttemptResourceObservations {
         storage: storage,
         jail: contained_absence(subject: attempt_jail_subject(attempt: attempt)),
         credential_disk: contained_absence(subject: attempt_credential_subject(attempt: attempt)),
       }
-    ResourcePresent { detail: _ } => observe_resources_inside_attempt(attempt: attempt, storage: storage, after: after)
-    ResourceUnreadable { reason: r } =>
+    EnumerateInsideContainer => observe_resources_inside_attempt(attempt: attempt, storage: storage, after: after)
+    ContainedByUnreadableContainer { reason: r } =>
       AttemptResourceObservations {
         storage: storage,
         jail: contained_unreadable(subject: attempt_jail_subject(attempt: attempt), reason: r),
