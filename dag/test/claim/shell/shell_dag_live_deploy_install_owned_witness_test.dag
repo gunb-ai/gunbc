@@ -1,0 +1,62 @@
+module test.claim.shell.shell_dag_live_deploy_install_owned_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.live_deploy.emit { install_d_owned_command }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-live-deploy-install-owned, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that gunbc.live_deploy.emit install_d_owned_command and its
+// install_directory_owned_command callers stop rendering install/chown shell text: the directory
+// lands through a typed filesystem write and the ownership through a typed ownership effect. An
+// install -d -o line authored as text carries a permission decision — who owns what on a
+// production host — that no type can check. The red arm plants an install path carrying a command
+// separator and asserts the rendered install surface carries no shell control word (`set -e`,
+// `||`, `&&`, `;`, `2>/dev/null`); today the hazard is rendered into the line, and the arm turns
+// green only when the typed realization refuses what it cannot express or carries the path as
+// data, never as shell. Enrolled in v2.workflow.floor_expected_red; the transition red -> green
+// IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (install_d_owned_command over the
+// deployment_spec_srv1 fixture) must survive the rebind, because this witness cannot be
+// re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+// RED TODAY: an install path carrying a command separator is rendered into the privileged install
+// line. Greens when the typed fs-write and ownership realization refuses the hazard or carries the
+// path as data — an ownership the typed effect cannot express refuses.
+test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(
+    s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc"),
+    pattern: w
+  ))
+}
+
+// POSITIVE CONTROL, green today and after: the benign install surface carries no shell control
+// word, so the red arm discriminates on the hazard it plants and not on the honest rendering.
+test fn benign_install_line_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(
+    s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"),
+    pattern: w
+  ))
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the install realizes the declared path owned
+// by the deployment's declared service principal — the typed write and ownership effect decide the
+// same path and the same principal.
+test fn install_line_realizes_the_declared_path_and_principal() -> Bool {
+  string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: "/opt/gunbc/attempt-state")
+    && string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: deployment_spec_srv1().service.service_user as String)
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arm is red; green only when every clause holds over the typed rebind.
+test fn live_deploy_install_owned_acceptance_holds() -> Bool {
+  adversarial_install_path_renders_no_shell_control_word()
+    && benign_install_line_renders_no_shell_control_word()
+    && install_line_realizes_the_declared_path_and_principal()
+}
