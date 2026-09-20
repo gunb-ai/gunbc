@@ -444,7 +444,8 @@ fn runner_microvm_host_observe_wet() -> ProcessExit
 // one that disclaimed the grant -- because an apply reached outside gunbc.fleet.fleet_converge_plan
 // inherits none of fleet_converge_plan_held_lease, so two applies against one baseline could both
 // proceed, and an applier that lives beside the disclaimer inherits the disclaimer's blind spots.
-// The grant is emitted into the full-host apply script by fleet_converge_host_wide_grant_lines.
+// The grant is emitted into the full-host apply script by gunbc.fleet.fleet_converge_plan
+// host_wide_grant_apply_lines.
 // WHAT THIS MODULE OWNS IS THE READBACK, at the point the capability is CLAIMED: the standing above
 // carries the executor's group enrolment as its own typed fact, so a host whose grant never landed
 // refuses here with a cause that names the login and the group.
