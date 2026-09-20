@@ -29,6 +29,7 @@ jobs:
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     permissions:
       contents: read
     steps:
@@ -143,6 +144,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Declare which ledger rows this repair covers
+        id: repair_declaration
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function heal_repair_declaration
@@ -152,8 +154,9 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet_verified
-        if: failure() && steps.generated_artifact_gate.outcome == 'failure'
+        if: failure() && steps.generated_artifact_gate.outcome == 'failure' && steps.repair_declaration.outcome == 'success'
       - name: Produce the sealed repair candidate
+        id: repair_candidate
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate.dag --function heal_candidate_produce_wet
@@ -163,7 +166,7 @@ jobs:
           HEAL_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAL_BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAL_RUN_ID: ${{ github.run_id }}
-        if: failure() && steps.generated_artifact_gate.outcome == 'failure' && steps.repair_regen.outcome == 'success'
+        if: failure() && steps.generated_artifact_gate.outcome == 'failure' && steps.repair_declaration.outcome == 'success' && steps.repair_regen.outcome == 'success'
       - name: Upload the sealed repair candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -171,4 +174,4 @@ jobs:
           path: target/heal-repair-candidate
           if-no-files-found: error
           retention-days: 3
-        if: failure() && steps.generated_artifact_gate.outcome == 'failure' && steps.repair_regen.outcome == 'success'
+        if: failure() && steps.generated_artifact_gate.outcome == 'failure' && steps.repair_declaration.outcome == 'success' && steps.repair_regen.outcome == 'success' && steps.repair_candidate.outcome == 'success'

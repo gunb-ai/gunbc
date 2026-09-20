@@ -81,8 +81,15 @@ data heal_same_repository_clause: String = "github.event.pull_request.head.repo.
 
 data heal_not_dependabot_clause: String = "github.actor != 'dependabot[bot]'"
 
+// A DISPATCH CARRIES NO PULL REQUEST, so the fork clauses would read null and skip the job on the
+// one event this workflow still answers (it became dispatch-only when the required gate took its
+// work). The dispatcher holds write access already, which is the same authority the fork clauses
+// establish for a pull request.
 fn heal_workflow_job_condition() -> String {
-  join([heal_same_repository_clause, " && ", heal_not_dependabot_clause], "")
+  join([
+    "github.event_name == 'workflow_dispatch' || (",
+    heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")"
+  ], "")
 }
 
 fn heal_pull_request_head_sha_expression() -> String {
