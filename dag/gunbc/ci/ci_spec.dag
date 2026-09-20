@@ -944,6 +944,21 @@ data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main",
 }
 
+// THE REPAIR WRITES AND THEN PROVES THE TREE IT WROTE, in one process. main_wet_verified runs
+// main_wet and then the drift gate body over the result, so the repair is admitted only if the
+// rewritten tree is a FIXED POINT and every artifact's extra validation passes.
+//
+// WHY THIS IS NOT THE PRE-WRITE GATE AGAIN: that gate proved the committed tree was stale, which is
+// a fact about the OLD bytes. It says nothing about the new ones. A generator that is order-dependent
+// or not idempotent, or an artifact whose validation refuses, produces a candidate the publisher
+// would push -- and the publisher now admits a failed producing run by design, so the run's own red
+// verdict is no longer what stops it. Verifying in the same process costs nothing measurable: the
+// corpus is already loaded (6:01 for write+verify against 6:08 for the write alone, srv2 2026-09-19).
+data gunbc_ci_heal_regen_verified_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "main_wet_verified",
+}
+
 // THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
 // regeneration overwrites every committed projection from this checkout's authorities, so after it
 // no reader can report what the write repaired -- the defect and the evidence for it disappear
@@ -2278,11 +2293,11 @@ fn gunbc_ci_generated_artifact_verify_invoke() -> String {
   )
 }
 
-fn gunbc_ci_generated_artifact_regen_only_invoke() -> String {
+fn gunbc_ci_generated_artifact_regen_verified_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_regen_target.entry,
-    function: gunbc_ci_heal_regen_target.function,
+    entry: gunbc_ci_heal_regen_verified_target.entry,
+    function: gunbc_ci_heal_regen_verified_target.function,
     claim_run: false,
     receipt_rel: none
   )

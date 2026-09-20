@@ -23,8 +23,11 @@ module gunbc.compiler_gate_workflow
 //      required_gate_prefixes, trimmed in this change), and refuses on a failed claim,
 //   4. runs the generated-artifact drift gate as its LAST verdict -- one invocation, `main`, on the
 //      pristine checkout, so a stale committed artifact BLOCKS THE MERGE,
-//   5. and only when that gate refused, spends the repair invocations (declare, write, seal) and
-//      uploads the candidate heal-publish pushes.
+//   5. and only when that gate refused, spends the repair invocations (declare, write-and-verify,
+//      seal) and uploads the candidate heal-publish pushes. The write is main_wet_verified, so the
+//      rewritten tree is proven a fixed point before anything seals it, and the seal additionally
+//      requires that step's own success -- the publisher admits a failed producing run, so the
+//      run's red verdict cannot be what guards the repair.
 // A drift-free push -- the ordinary case -- therefore pays for the gate once and skips the repair
 // entirely, where heal paid all four invocations on every push.
 //
@@ -89,7 +92,7 @@ import gunbc.witness_floor_workflow {
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.ci_spec {
   gunbc_ci_generated_artifact_verify_invoke,
-  gunbc_ci_generated_artifact_regen_only_invoke,
+  gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
   gunbc_ci_heal_candidate_invoke
 }
@@ -108,6 +111,7 @@ data compiler_gate_job_id: String = "witnesses"
 data compiler_gate_timeout_minutes: Int = 90
 data compiler_gate_build_step_name: String = "Build the compiler and the witness executor"
 data compiler_gate_drift_step_id: String = "generated_artifact_gate"
+data compiler_gate_repair_regen_step_id: String = "repair_regen"
 data compiler_gate_candidate_retention_days: Int = 3
 
 // THE CHECKOUT IS THE PULL REQUEST HEAD, NOT THE MERGE COMMIT, because a repair candidate describes
@@ -173,6 +177,18 @@ fn compiler_gate_repair_condition() -> String {
   concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'"))
 }
 
+// SEALING ASKS FOR THE VERIFIED TREE, NOT MERELY FOR A REFUSED GATE. The drift condition above is a
+// fact about the bytes as committed; it does not say the regenerated tree is sound. The publisher
+// pushes what this job seals and admits a failed producing run by design, so a candidate sealed from
+// an unverified rewrite would be committed automatically. Requiring the write-and-verify step's own
+// success is what keeps the repair path from publishing a tree no verifier ever judged.
+fn compiler_gate_seal_condition() -> String {
+  concat(
+    compiler_gate_repair_condition(),
+    concat(" && steps.", concat(compiler_gate_repair_regen_step_id, ".outcome == 'success'"))
+  )
+}
+
 fn compiler_gate_repair_declaration_step() -> Step {
   RunStep {
     name: Present { value: "Declare which ledger rows this repair covers" },
@@ -189,9 +205,9 @@ fn compiler_gate_repair_declaration_step() -> Step {
 
 fn compiler_gate_regen_step() -> Step {
   RunStep {
-    name: Present { value: "Regenerate every committed generated artifact" },
-    id: none,
-    run: concat(gunbc_ci_generated_artifact_regen_only_invoke(), "\n"),
+    name: Present { value: "Regenerate every committed generated artifact, then verify the tree it wrote" },
+    id: Present { value: compiler_gate_repair_regen_step_id },
+    run: concat(gunbc_ci_generated_artifact_regen_verified_invoke(), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -217,7 +233,7 @@ fn compiler_gate_candidate_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: Present { value: compiler_gate_repair_condition() },
+    if_condition: Present { value: compiler_gate_seal_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -237,7 +253,7 @@ fn compiler_gate_candidate_upload_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: compiler_gate_repair_condition() },
+    if_condition: Present { value: compiler_gate_seal_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
