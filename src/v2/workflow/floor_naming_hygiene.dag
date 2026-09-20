@@ -12,6 +12,18 @@ import v2.std.optional {
 }
 import v2.std.algebra { fold_list }
 
+// SINGLE AUTHORITY for floor witness sidecar placement and the test-decl name scan predicates. Host
+// discovery walks files and projects rows; these pure fns decide whether an entry placement is
+// admissible and which decls a *_test.dag enrols.
+//
+// The line scan is still a SECOND PARSER of the authored `test` marker. Its replacement is not a
+// refactor of this module: it needs the canonical parser to retain the marker, which v1 now does
+// (v1.std.core DeclarationMarker TestMarked, set by v1.compiler.parse test_marked_item_result) and
+// so does v2 (v2.extdeps.languages.dag dag_production_test_fn_decl parses it; v2.compiler.test_marker_capture
+// carries it on its own channel). The grammar is no longer the obstacle; cost is, because floor
+// discovery deliberately neither parses nor resolves the files it enumerates. The TRIGGER for
+// retiring the scan is stated once, beside the producer it retires, at v2.compiler.body_lowering_fold
+// body_lower_test_fn_decl_to_member -- not restated here, so the two cannot drift.
 data floor_test_sidecar_suffix: String = "_test.dag"
 data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"
 
@@ -236,16 +248,3 @@ fn floor_entries_requiring_test_sidecar(entry_paths: List<String>) -> List<Strin
     }
   )
 }
-
-// SINGLE AUTHORITY for floor witness sidecar placement and the test-decl name scan predicates. Host
-// discovery walks files and projects rows; these pure fns decide whether an entry placement is
-// admissible and which decls a *_test.dag enrols.
-//
-// The line scan is still a SECOND PARSER of the authored `test` marker. Its replacement is not a
-// refactor of this module: it needs the canonical parser to retain the marker, which v1 now does
-// (v1.std.core DeclarationMarker TestMarked, set by v1.compiler.parse test_marked_item_result) and
-// so does v2 (v2.extdeps.languages.dag dag_production_test_fn_decl parses it; v2.compiler.test_marker_capture
-// carries it on its own channel). The grammar is no longer the obstacle; cost is, because floor
-// discovery deliberately neither parses nor resolves the files it enumerates. The TRIGGER for
-// retiring the scan is stated once, beside the producer it retires, at v2.compiler.body_lowering_fold
-// body_lower_test_fn_decl_to_member -- not restated here, so the two cannot drift.

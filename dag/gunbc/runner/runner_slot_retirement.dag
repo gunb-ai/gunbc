@@ -1011,11 +1011,14 @@ fn authoritative_standing_for(
   if list_length(items: mine) == 0 {
     StandingAbsent { unit: unit }
   } else {
-    let first = mine |> fold(init: mine.first(), f: (acc, s) => acc)
-    if all(mine, s => retirement_standing_wire(s: s) == retirement_standing_wire(s: first)) {
-      StandingUnique { standing: first }
-    } else {
-      StandingConflicting { unit: unit, readings: list_length(items: mine) }
+    match mine.first() {
+      Absent => StandingAbsent { unit: unit }
+      Present { value: first } =>
+        if all(mine, s => retirement_standing_wire(s: s) == retirement_standing_wire(s: first)) {
+          StandingUnique { standing: first }
+        } else {
+          StandingConflicting { unit: unit, readings: list_length(items: mine) }
+        }
     }
   }
 }

@@ -135,23 +135,31 @@ fn decode_jit_suffix(slot_instance: String, name: String, suffix: String) -> Reg
       ], ""),
     }
   } else {
-    match parse_nonneg_int_field(text: parts.first()) {
-      Absent =>
-        RegistrationNameNoMatch {
-          name: name,
-          slot_instance: slot_instance,
-          cause: join(["the epoch field `", parts.first(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `date +%s` substitution"], ""),
-        }
-      Present { value: epoch } =>
-        match parse_nonneg_int_field(text: parts.last()) {
-          Absent =>
-            RegistrationNameNoMatch {
-              name: name,
-              slot_instance: slot_instance,
-              cause: join(["the pid field `", parts.last(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `$$` substitution"], ""),
+    match parts.first() {
+      Absent => RegistrationNameNoMatch { name: name, slot_instance: slot_instance, cause: "the two-field suffix yielded no first field" }
+      Present { value: epoch_text } =>
+        match parts.last() {
+          Absent => RegistrationNameNoMatch { name: name, slot_instance: slot_instance, cause: "the two-field suffix yielded no last field" }
+          Present { value: pid_text } =>
+            match parse_nonneg_int_field(text: epoch_text) {
+              Absent =>
+                RegistrationNameNoMatch {
+                  name: name,
+                  slot_instance: slot_instance,
+                  cause: join(["the epoch field `", epoch_text, "` is not a non-negative integer, so this name was not written by jit-runner.sh's `date +%s` substitution"], ""),
+                }
+              Present { value: epoch } =>
+                match parse_nonneg_int_field(text: pid_text) {
+                  Absent =>
+                    RegistrationNameNoMatch {
+                      name: name,
+                      slot_instance: slot_instance,
+                      cause: join(["the pid field `", pid_text, "` is not a non-negative integer, so this name was not written by jit-runner.sh's `$$` substitution"], ""),
+                    }
+                  Present { value: pid } =>
+                    MatchedJitInstance { slot_instance: slot_instance, epoch_seconds: epoch, pid: pid }
+                }
             }
-          Present { value: pid } =>
-            MatchedJitInstance { slot_instance: slot_instance, epoch_seconds: epoch, pid: pid }
         }
     }
   }

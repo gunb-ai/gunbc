@@ -116,6 +116,7 @@ import gunbc.build_provenance_join {
   build_provenance_join_holds,
   build_provenance_join_text,
 }
+import gunbc.runner_host_deploy { github_app_runner_org }
 import gunbc.runner_registration_capture {
   local_population_wire,
   binding_wire,

@@ -336,6 +336,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
   match mode {
     OrgActionsObserve => FleetSshKeyNotConsumed
     OrgRunnerRosterObserve => FleetSshKeyNotConsumed
+    RunnerSlotRetire => FleetSshKeyConsumed
     FullHostPlan => FleetSshKeyConsumed
     LaunchEnvironmentPlan => FleetSshKeyConsumed
     AllocationStorePlan => FleetSshKeyConsumed
