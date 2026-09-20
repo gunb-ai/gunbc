@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { RevolutionsPerMinute, celsius_count, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
-import extdeps.bmc.endpoint { Ipmi }
+import extdeps.bmc.endpoint { AmiMegaRac, Ipmi, OpenBmc }
 import extdeps.bmc.phosphor_fan_control {
   ZoneSensorNonFunctional,
   ZoneSensorUnavailable,
@@ -88,9 +88,6 @@ import product.fan_policy_standing {
   FanPolicySteadyCurveOverCeiling,
   FanPolicyWithinSiteCeiling,
   fan_drive_against_duty_ceiling,
-  ConvergeRouteBound,
-  ConvergeRouteUnbound,
-  FanDutyConvergeRoute,
   fan_policy_against_ceiling,
   fan_policy_standing_label,
   fan_policy_standing_of_sample,
@@ -118,6 +115,7 @@ import gunbc.fleet_acoustic_intent {
   residence_duty_verdict,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // WHAT IS SUPPLIED HERE AND WHAT IS EXECUTED, STATED FIRST BECAUSE THE PAIRING OBLIGATION TURNS ON
 // IT (DESIGN §3, a witness discriminates at one interface).
@@ -688,40 +686,10 @@ fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPo
   )
 }
 
-// THE TWO FAMILY ROUTES, EACH CITING ITS OWN UPSTREAM AND NOTHING ELSE. The OpenBMC one names three
-// declarations that actually exist in extdeps.bmc.openbmc_fan_control and extdeps.ssh.password_session
-// - the fan-config projection that writes the duty, the transport it is uploaded over, and the
-// verify fold that reads it back - so "this family can be converged" is checkable by resolving
-// names. The MegaRAC one is unbound and carries what would bind it.
-data witness_openbmc_route: FanDutyConvergeRoute = ConvergeRouteBound {
-  authority: FanPolicyAuthority {
-    declaration: DeclarationRef {
-      module_path: "extdeps.bmc.phosphor_fan_control",
-      decl_name: "phosphor_fan_zone_policy_contract",
-      field: WholeDeclaration
-    }
-  },
-  write_operation: DeclarationRef {
-    module_path: "extdeps.bmc.openbmc_fan_control",
-    decl_name: "openbmc_fan_config_project_local",
-    field: WholeDeclaration
-  },
-  transport: DeclarationRef {
-    module_path: "extdeps.bmc.openbmc_fan_control",
-    decl_name: "openbmc_upload_file",
-    field: WholeDeclaration
-  },
-  readback: DeclarationRef {
-    module_path: "extdeps.bmc.openbmc_fan_control",
-    decl_name: "openbmc_fan_config_verify",
-    field: WholeDeclaration
-  },
-}
-
-data witness_megarac_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
-  authority: witness_authority,
-  read_obligation: "bind extdeps.bmc.megarac_fan_policy megarac_fan_mode_surface to the build's documented fan-mode operation before any ceiling can be converged on this family",
-}
+// THE TWO FAMILY ROUTES ARE PRODUCTION ROWS NOW, NOT FIXTURES. Both were authored here, which made
+// them a route no production consumer could reach: gunbc.fleet_fan_converge_routes holds them and
+// Mt. Jade's fan standing dispatches on them, so this claim exercises the rows a real host uses
+// rather than a witness-local pair that happened to have the same shape.
 
 // A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. This is the arm that matters most and
 // the one MegaRAC lands on today: there is no modeled way to set a duty on that family, so no
@@ -732,7 +700,7 @@ test fn witness_ceiling_is_unenforceable_without_a_converge_route() -> Bool {
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Present { value: tenths_dba(200) },
-    route: witness_megarac_route,
+    route: fan_converge_route_for_family(family: AmiMegaRac),
   ) {
     FanPolicyCeilingUnenforceable { cause: c } => string_contains(c as String, "megarac_fan_mode_surface")
     _ => false
@@ -748,7 +716,7 @@ test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Present { value: tenths_dba(598) },
-    route: witness_openbmc_route,
+    route: fan_converge_route_for_family(family: OpenBmc),
   ) {
     FanPolicySteadyCurveOverCeiling { comparison: _ } => true
     _ => false
@@ -756,7 +724,7 @@ test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
     standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Present { value: tenths_dba(598) },
-    route: witness_openbmc_route,
+    route: fan_converge_route_for_family(family: OpenBmc),
   ) {
     FanPolicyFailsafeWindowOverCeiling { comparison: _, bound: b } => match b {
       NoPostTransitionWindow => true
@@ -774,7 +742,7 @@ test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Present { value: tenths_dba(200) },
-    route: witness_openbmc_route,
+    route: fan_converge_route_for_family(family: OpenBmc),
   ) {
     FanPolicyWithinSiteCeiling => true
     _ => false
@@ -782,7 +750,7 @@ test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Absent,
-    route: witness_openbmc_route,
+    route: fan_converge_route_for_family(family: OpenBmc),
   ) {
     FanPolicyCeilingUnderdetermined { cause: _ } => true
     _ => false
@@ -790,7 +758,7 @@ test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_listening_ceiling,
     level_at_drive: Present { value: tenths_dba(598) },
-    route: witness_openbmc_route,
+    route: fan_converge_route_for_family(family: OpenBmc),
   ) {
     FanPolicyCeilingUnderdetermined { cause: _ } => true
     _ => false
