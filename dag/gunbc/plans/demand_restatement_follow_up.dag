@@ -9,7 +9,7 @@ import std.types { NonEmptyStr, List, String }
 // merge, and every merge of main brought more. The rows rostered below arrived that way, AFTER the
 // measured population was fixed.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..41b39f8d91b" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..87c6658641e" as NonEmptyStr
 
 // THE ROSTER, carried rather than deleted on the assumption that these rows would have typed the
 // same way. Deleting them unmeasured is the fail-open the cut exists to avoid: a row whose derived
@@ -17,7 +17,7 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..41b3
 // the only thing that distinguishes the two is the measurement. The first module carries most of
 // them, so one unmeasured sweep there would be several silent flips rather than one. RE-DERIVED AT
 // THE LANDING HEAD (reviews 69155, 69171): the range tip is the main this change merged, and the
-// eight production modules after review_sheet_tab_locator are the ones that gained `uses` rows
+// nine production modules after review_sheet_tab_locator are the ones that gained `uses` rows
 // between the earlier tip and that head -- enumerated by the row form, not by resolving, which is
 // why they are ROSTERED here rather than cut. THE NEXT CUT
 // TAKES THEM: re-resolve these modules, apply the same criterion, delete the rows whose derived
@@ -39,6 +39,7 @@ data demand_restatement_follow_up_modules: List<String> = [
   "gunbc.review_sheet_formula_observation",
   "gunbc.github_effect_perform",
   "gunbc.bmc_custody_read",
+  "gunbc.microvm_controller_app_key_converge",
 ]
 
 // THE MODULE PATHS, for a consumer that renders the roster as prose. The roster is module paths and
