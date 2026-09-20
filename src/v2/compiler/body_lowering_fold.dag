@@ -2847,8 +2847,11 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 // body_lower_try_postfix_projection, and in body_lower_try_body_lowered (the brace-body route)
 // body_lower_try_primary_ident_call preempts it, so the receiver-method reading and the
 // field-access refusal of that matcher were never reached on the route, only by the claims that
-// call it directly (review 68231 on gunbc#11683 read the third site statically as reachable; the
-// local-receiver control in v2.test.claim.body_lowering_qualified_path is the executed answer). Those direct-call claims keep their subject; the route now lowers every dotted
+// call it directly (review 68231 on gunbc#11683 read the third site statically as reachable;
+// v2.test.claim.body_lowering_qualified_path body_lowering_block_body_site_keeps_the_whole_call
+// is the executed answer, calling body_lower_try_body_lowered over a supplied chain, and
+// body_lowering_first_atom_fallback_would_truncate_the_chain is what it discriminates against).
+// Those direct-call claims keep their subject; the route now lowers every dotted
 // chain to one spine and leaves what the head denotes to v2.compiler.resolve
 // try_resolve_qualified_name_node, which refuses a chain whose head is a local binder as Unbound
 // (its own header states that standing) -- loud where the route was silent.
