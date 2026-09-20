@@ -3,7 +3,7 @@ module v2.std.integer
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map, list_snoc_item }
 import v2.std.collection {
   List,
   list_at_optional
@@ -276,11 +276,55 @@ fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
   }
 }
 
+// THE LADDER IS ONE COMPUTATION, CARRIED. Every power of two up to the widest standard machine
+// width is a prefix of one doubling chain, so the ten interval specs (and every other demand
+// for 2^n at n <= 128) share the chain's prefix rather than each climbing it from 2^0. Authored
+// as a recursion alone, integer_pow2_magnitude(127) and integer_pow2_magnitude(63) were two
+// independent ladders whose shared prefix only a result memo could serve; the table below is
+// the std.materialization_ladder Share for that prefix -- built once per frame by the same
+// doubling the recursion performs, so index n holds exactly what the recursion returns for n.
+fn integer_pow2_ladder_loop(acc: List<DecimalNonZeroMagnitude>, last: DecimalNonZeroMagnitude, remaining: Int) -> List<DecimalNonZeroMagnitude> {
+  if remaining <= 0 {
+    acc
+  } else {
+    let next = decimal_nonzero_double(m: last)
+    integer_pow2_ladder_loop(acc: list_snoc_item(xs: acc, item: next), last: next, remaining: remaining - 1)
+  }
+}
+
+data integer_pow2_magnitude_widest_carried_exponent: Int = 128
+
+data integer_pow2_magnitudes_carried: List<DecimalNonZeroMagnitude> = integer_pow2_ladder_loop(
+  acc: [DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }],
+  last: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty },
+  remaining: integer_pow2_magnitude_widest_carried_exponent
+)
+
+// Walk the carried ladder by structure: the nth Cons holds 2^n, so reaching the target index is
+// the answer and running off the end means the exponent lies beyond what is carried, in which
+// case the chain continues from the last carried power by the same doubling. There is no index
+// lookup and therefore no miss arm inside the carried range: the table's length IS the range.
+fn integer_pow2_from_ladder(ladder: List<DecimalNonZeroMagnitude>, last: DecimalNonZeroMagnitude, exponent: Int) -> DecimalNonZeroMagnitude {
+  match ladder {
+    Cons { head: carried, tail: rest } =>
+      if exponent == 0 { carried } else { integer_pow2_from_ladder(ladder: rest, last: carried, exponent: exponent - 1) }
+    Empty => integer_pow2_beyond_ladder(from: last, remaining: exponent + 1)
+  }
+}
+
+fn integer_pow2_beyond_ladder(from: DecimalNonZeroMagnitude, remaining: Int) -> DecimalNonZeroMagnitude {
+  if remaining <= 0 { from } else { integer_pow2_beyond_ladder(from: decimal_nonzero_double(m: from), remaining: remaining - 1) }
+}
+
 fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
   if exponent <= 0 {
     DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
   } else {
-    decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
+    integer_pow2_from_ladder(
+      ladder: integer_pow2_magnitudes_carried,
+      last: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty },
+      exponent: exponent
+    )
   }
 }
 
@@ -412,11 +456,28 @@ fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> Int
   }
 }
 
+// READS THE MODULE'S OWN DATA ROWS, NEVER RE-DERIVES. This used to call
+// integer_machine_interval_spec directly, which made it a second way to compute a bound beside
+// the rows below (int8_interval_spec .. uint128_interval_spec) and, being a fn, paid the
+// decimal-doubling ladder on EVERY demand: the node decoder folds it over all ten standard
+// types per decode, so one integer-node decode re-derived 2^127 and its nine siblings. The
+// instrument that ranks it is the required floor's own demand census
+// (required_floor_cross_claim_demand.tsv, within-claim repeats = evals - claims per producer),
+// re-derived by any required-floor run rather than transcribed here. The rows carry each spec
+// once per frame; this match is the projection from the type to its row.
 fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
-  integer_machine_interval_spec(
-    signedness: integer_standard_integer_type_signedness(standard_integer_type: standard_integer_type),
-    width_bits: integer_standard_integer_type_width_bits(standard_integer_type: standard_integer_type)
-  )
+  match standard_integer_type {
+    Int128 => int128_interval_spec
+    Int64 => int64_interval_spec
+    Int32 => int32_interval_spec
+    Int16 => int16_interval_spec
+    Int8 => int8_interval_spec
+    UInt128 => uint128_interval_spec
+    UInt64 => uint64_interval_spec
+    UInt32 => uint32_interval_spec
+    UInt16 => uint16_interval_spec
+    UInt8 => uint8_interval_spec
+  }
 }
 
 data integer_standard_integer_type_roster: List<StandardIntegerType> = [
@@ -424,24 +485,50 @@ data integer_standard_integer_type_roster: List<StandardIntegerType> = [
   UInt128, UInt64, UInt32, UInt16, UInt8
 ]
 
+// One standard integer type beside the interval node its spec projects to: the decoder's
+// comparison table, built once per frame rather than once per candidate per decode.
+type StandardIntegerTypeIntervalNode {
+  standard_integer_type: StandardIntegerType
+  node: Node
+}
+
+fn integer_standard_integer_type_interval_node_row(t: StandardIntegerType) -> StandardIntegerTypeIntervalNode {
+  StandardIntegerTypeIntervalNode {
+    standard_integer_type: t,
+    node: integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: t))
+  }
+}
+
+// One enumeration of the closed set: the roster above is the only place the ten types are listed,
+// so a type added there reaches this table and the decoder without a second list to forget.
+data integer_standard_integer_type_interval_nodes: List<StandardIntegerTypeIntervalNode> = list_map(xs: integer_standard_integer_type_roster, f: fn(t) { integer_standard_integer_type_interval_node_row(t: t) })
+
+fn integer_standard_integer_type_from_node_step(
+  node: Node,
+  acc: Outcome<StandardIntegerType>,
+  candidate: StandardIntegerTypeIntervalNode
+) -> Outcome<StandardIntegerType> {
+  match acc {
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
+      if node == candidate.node {
+        Accepted { value: candidate.standard_integer_type, diagnostics: None }
+      } else {
+        acc
+      }
+  }
+}
+
 fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
   fold_list(
-    xs: integer_standard_integer_type_roster,
+    xs: integer_standard_integer_type_interval_nodes,
     empty: Rejected {
       diagnostics: diagnostics_singleton(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
     },
     cons: fn(acc, candidate) {
-      match acc {
-        Accepted { value: _, diagnostics: _ } => acc
-        Rejected { diagnostics: _ } =>
-          if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
-            Accepted { value: candidate, diagnostics: None }
-          } else {
-            acc
-          }
-      }
+      integer_standard_integer_type_from_node_step(node: node, acc: acc, candidate: candidate)
     }
   )
 }

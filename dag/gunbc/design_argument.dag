@@ -108,8 +108,8 @@ data conformance_domains: List<ConformanceDomain> = [
   },
   ConformanceDomain {
     key: "conformance-leasing",
-    label: "leasing / locking / grants",
-    question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- without inhabiting the corpus's lease and grant model, and if it departs from that model, does it say why?",
+    label: "leasing / locking / grants / privileged access",
+    question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- or perform a privileged effect -- a Secret Manager read or write, an IAM binding, a credential mint, a GitHub App token -- without inhabiting the corpus's lease, grant and authorization-pattern model, and if it departs from that model, does it say why? Who may perform an effect and how that permission was granted is one question: the authorization pattern (workload identity federation with a scoped grant, per-effect operator approval through the ntfy loop, or a named human-only step) is SELECTED by gunbc.auth.authorization_pattern_selection from the effect's characteristics, never chosen at the call site, and an operator credential relayed by chat or between sessions is the pattern that selection refuses.",
     homes: ConformanceHomes {
       first: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
       rest: [
@@ -118,14 +118,26 @@ data conformance_domains: List<ConformanceDomain> = [
         decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
         decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
         decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
+        decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "select_authorization_pattern"),
+        decl_ref(module_path: "gunbc.auth.github_gcp_federation", decl_name: "github_wif_provider"),
+        decl_ref(module_path: "gunbc.auth.gcp_secret_access", decl_name: "SecretAccessGrant"),
+        decl_ref(module_path: "gunbc.auth.access_request", decl_name: "AccessRequest"),
+        decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "ApprovalCapability"),
+        decl_ref(module_path: "gunbc.auth.approval_broker", decl_name: "redeem_capability"),
+        decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "select_access_token_source"),
+        decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
       ],
     },
     tells: [
       "a flag file, a sleep, a retry loop or a bare Bool standing where a lease with a declared deadline was available",
       "a write to a shared head that does not carry the expectation it was computed against",
-      "an effect performed without the grant that names who may perform it and how it is released"
+      "an effect performed without the grant that names who may perform it and how it is released",
+      "a privileged effect whose token source is bound at the call site (GcloudPrintToken or OperatorSuppliedToken spelled in the entry) rather than resolved by gunbc.auth.access_token_source, with no row in gunbc.auth.privileged_effect_census stating why",
+      "a PR body, message or brief that asks the operator to paste, forward or relay an access token; a GUNBC_GCP_ACCESS_TOKEN_FILE filled from chat; a token value crossing a session boundary by any channel other than the one its issuer issued it on",
+      "a one-off or irreversible effect performed by a dispatched run under the federated identity with no approval request, or a recurring effect gated on a per-run phone tap",
+      "a dashboard-only or checkout-only action performed by prose instruction with no std.human_intervention row naming the step"
     ],
-    narrative: "exclusive or bounded use: leases with a declared deadline, compare-and-set expectations, scoped authorizations, grants naming who may perform an effect and how it is released, resource handles",
+    narrative: "exclusive or bounded use and privileged access are one domain: leases with a declared deadline, compare-and-set expectations, scoped authorizations, grants naming who may perform an effect and how it is released, resource handles -- and, since 2026-09-19, which AUTHORIZATION PATTERN performs a privileged effect. That pattern is a §3d selection (gunbc.auth.authorization_pattern_selection consumes std.decision over the effect's frequency, reversibility, surface, workload-identity binding, minted reach and billing consequence): workload identity federation with a per-secret cell for recurring automated effects, one operator approval through the ntfy loop for one-off or witnessed effects, a named human-only step where no API exists, and a refusal for an operator token relayed by chat or between sessions. The census (gunbc.auth.privileged_effect_census) classifies every current site by executing that selection, so the reviewer's three-valued answer is derived for the sites that exist and asked of the site a change adds",
   },
   ConformanceDomain {
     key: "conformance-compute",

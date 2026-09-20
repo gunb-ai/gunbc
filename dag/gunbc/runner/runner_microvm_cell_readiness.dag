@@ -34,10 +34,24 @@ data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
 // -- and settle -- the wrong cell's attempt under A's key (side-chat ruling on #11670). The attempt's
 // slot DERIVES its cell, so the key and the attempt are checked against each other where the store is
 // read, and an attempt the key disagrees with makes the store unsound rather than recoverable.
+// THE CREDENTIAL DEVICE'S PATH IS CARRIED, NOT RE-DERIVED, because it stopped being derivable from
+// the attempt. The device used to sit at an attempt-derived path beside the attempt directory;
+// gunbc#11677 moved it INSIDE the jailer's chroot, whose root depends on the firecracker binary's
+// own file name -- a fact the launch PLAN owns and this record cannot recompute. Recomputing it
+// from a convention would make teardown prove some other path absent while the staged device
+// survived, and a convention that drifts is exactly what the in-flight record exists to outlive:
+// the controller that staged the device may be gone, and what recovery needs is the path that WAS
+// staged, not the path today's code would have chosen.
+//
+// IT IS NOT PART OF THE ATTEMPT'S IDENTITY. in_flight_attempt_same compares unit, invocation and
+// registration; two records agreeing on those and disagreeing on the device path are one attempt
+// whose record is incoherent, not two attempts, and folding the path into equality would spell that
+// as a mismatch and send a reader at the wrong fact.
 type InFlightAttempt {
   attempt: MicroVmAttempt
   invocation_id: NonEmptyStr
   jit_registration_id: NonEmptyStr
+  credential_device_path: String
 }
 
 type CellReadinessRecord
