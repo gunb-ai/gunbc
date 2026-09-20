@@ -13,10 +13,27 @@ import std.bitwise { bitwise_pow2 }
 // operator per type.
 //
 // WHY THIS IS NOT A SECOND AUTHORITY FOR THE TYPES. std.integer declares WHICH bounded naturals
-// exist; this module declares WHAT ARITHMETIC ON ONE MEANS. The binding between them -- UInt32's
-// width read from its own declaration -- is the one part that cannot be written yet: it needs the N
-// of MachineWidth<N> reified at compile time (operator ruling, 2026-09-20). Until that lands the
-// width arrives as a value and NOTHING here names a width.
+// exist; this module declares WHAT ARITHMETIC ON ONE MEANS. Reification of the N in MachineWidth<N>
+// (operator ruling, 2026-09-20) would let a CALLER stop naming a width; until it lands the width
+// arrives as a value and nothing here names one.
+//
+// REIFICATION IS NOT WHAT STANDS BETWEEN THIS FAMILY AND ITS FIRST CONSUMER, AND SAYING SO WAS A
+// TRIGGER STATED AT THE WRONG GRAIN (review 69054 of gunbc#11645; DESIGN 4b(3): a trigger naming
+// less than the capability it gates is satisfied while the capability stays dead). The operations
+// take a width as a VALUE and the witnesses pass bit_width(count: 32) today, so nothing stops
+// std.bitwise passing one too.
+//
+// THE ACTUAL BLOCKER IS AN IMPORT CYCLE. std.bounded_nat imports std.bitwise for bitwise_pow2, so
+// std.bitwise cannot import std.bounded_nat back, and DESIGN 3 makes acyclicity the import graph's
+// ONLY structural law -- a wall rather than a preference. It is breakable: relocate bitwise_pow2
+// below both and the cycle is gone.
+//
+// THE SECOND COST, STATED BESIDE IT so the next reader sees the real shape rather than a one-line
+// blocker: after the cycle is broken, every word32_* operation answers a BoundedNatArith, a six-arm
+// coproduct, and threading that through SHA-256's 64-round compression fold is the crypto
+// restructuring this family's first consumer actually costs. It is deferred to its own change with
+// the P-256 suite as its gate (operator-lane ruling, 2026-09-20), in that order -- because the only
+// suite covering that fold has never returned a result.
 //
 // THE DEFECT THIS EXISTS TO REMOVE is gunbc.recurring_failure_mode
 // bounded_natural_arithmetic_evaluated_as_unbounded_int: the v1 interpreter evaluates infix
