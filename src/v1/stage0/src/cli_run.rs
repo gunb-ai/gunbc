@@ -186,14 +186,14 @@ pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
 mod test_migration;
 pub(crate) use test_migration::*;
-// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
-// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
+// is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
-#[path = "namespace_wave_admission.rs"]
-pub mod namespace_wave_admission;
+#[path = "namespace_baseline.rs"]
+pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
@@ -10440,6 +10440,7 @@ pub enum WitnessRuntimeCause {
     ArgvExceedsHostArgMax,
     HostToolRelativePathAmbiguous,
     ShellOutputLimitExceeded,
+    ShellSpawnRefused,
     CallContractMismatch,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
@@ -10477,6 +10478,7 @@ impl WitnessRuntimeCause {
                 "host-tool-relative-path-ambiguous"
             }
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
+            WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
@@ -10512,6 +10514,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::HostToolRelativePathAmbiguous
             }
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
+            E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
@@ -42959,6 +42962,9 @@ fn spawn_floor_heartbeat() {
             )
         );
         beat += 1;
+        // The raw memory.stat counters every beat (one file read); the full multi-level
+        // envelope every tenth. See floor_cgroup_stat_beat for why the cadences differ.
+        floor_cgroup_stat_beat(&format!("beat-{beat}"));
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }

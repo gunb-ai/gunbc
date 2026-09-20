@@ -75,3 +75,17 @@ fn cpu_memory_envelope(
     network: none,
   }
 }
+
+// THE MEMORY-ONLY ENVELOPE, FOR AN OFFER OR A WORK THAT STATES BYTES AND NO THREAD FLOOR. Threads
+// already have their own cited home in HardRequirements, so a runner cell describing what it grants
+// states its memory ceiling here and its core count there, and a memory-only constructor keeps the
+// cpu axis honestly unstated rather than restating the thread count a second time.
+fn memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
+  ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: min_bytes } },
+    storage: none,
+    network: none,
+  }
+}
