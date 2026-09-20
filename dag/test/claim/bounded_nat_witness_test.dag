@@ -6,7 +6,7 @@ import std.measure { BitWidth, bit_width }
 import std.bounded_nat {
   BoundedNat, BoundedNatMint, Minted, OutOfWidth, WidthRefused,
   BoundedNatAdmission, WidthAdmitted, WidthExceedsHostInt,
-  BoundedNatArith, Within, Overflows, NegativeResult, DividesByZero, WidthMismatch, ProductExceedsHostInt,
+  BoundedNatArith, Within, Overflows, NegativeResult, DividesByZero, WidthMismatch, WrappingProductUnavailableAtWidth,
   bounded_nat, bounded_nat_admit, bounded_nat_add, bounded_nat_sub, bounded_nat_mul,
   bounded_nat_div, bounded_nat_rem, bounded_nat_add_mod, bounded_nat_mul_mod,
 }
@@ -127,7 +127,7 @@ test fn a_small_product_of_a_wide_type_is_not_refused_for_its_width() -> Bool {
 // operand that is valid and computable? It did, for the WRAPPING product, and this is the red that
 // would have caught it. Both vectors have a 64-bit full product, so neither answer is reachable by
 // forming the product on this host -- the split is doing the work, not luck. The paired half is that
-// the CHECKED product on the same operands reports Overflows -- not ProductExceedsHostInt. The two
+// the CHECKED product on the same operands reports Overflows -- not WrappingProductUnavailableAtWidth. The two
 // arms give different ANSWERS about the same operands because they are asked different questions:
 // the wrapping arm returns the low 32 bits, the checked arm reports that the product left the width.
 // Neither refuses for want of host headroom.
@@ -138,17 +138,23 @@ test fn the_wrapping_product_is_computed_where_the_checked_one_cannot_be() -> Bo
   all_ones && mixed && checked_reports_overflow
 }
 
-// THE RESIDUAL CEILING IS REAL AND IS ASSERTED AT ITS EDGE, so that widening it later is a change
-// this witness reports rather than absorbs. 41 is the last width the split admits; 42 is the first
-// it refuses, and the refusal names its own arm.
-test fn the_wrapping_product_ceiling_sits_between_41_and_42() -> Bool {
-  let admitted = match on2(a: m(bits: bit_width(count: 41), value: 3), b: m(bits: bit_width(count: 41), value: 5), f: bounded_nat_mul_mod) {
-    Present { value: Within { n: _ } } => true
+// THE RESIDUAL CEILING IS ASSERTED WITH OPERANDS THAT ACTUALLY REACH IT. An earlier version of this
+// witness asserted a REFUSAL at width 42 for 3 * 5, whose product is 15 -- so it certified an
+// off-by-one instead of catching it, and it exercised only the admission predicate rather than the
+// intermediate bound that predicate is about (review of gunbc#11645).
+//
+// The admitted edge is therefore near-MAXIMAL width-42 operands: (2^42 - 1)^2 mod 2^42 = 1, whose
+// largest split intermediate is 9223367638806167553 against a host maximum of 9223372036854775807.
+// That answer is unobtainable by forming the product -- the true product has 84 bits -- so this
+// discriminates the split at the exact width where the bound nearly binds. 43 is the first width
+// whose worst intermediate genuinely does not fit, and it refuses.
+test fn the_wrapping_product_ceiling_sits_between_42_and_43() -> Bool {
+  let w42 = bit_width(count: 42)
+  let at_the_edge = arm_value(r: on2(a: m(bits: w42, value: 4398046511103), b: m(bits: w42, value: 4398046511103), f: bounded_nat_mul_mod)) == Present { value: 1 }
+  let refused = match on2(a: m(bits: bit_width(count: 43), value: 8796093022207), b: m(bits: bit_width(count: 43), value: 8796093022207), f: bounded_nat_mul_mod) {
+    Present { value: WrappingProductUnavailableAtWidth { bits: _ } } => true
     _ => false
   }
-  let refused = match on2(a: m(bits: bit_width(count: 42), value: 3), b: m(bits: bit_width(count: 42), value: 5), f: bounded_nat_mul_mod) {
-    Present { value: ProductExceedsHostInt { bits: _ } } => true
-    _ => false
-  }
-  admitted && refused
+  at_the_edge && refused
 }
+

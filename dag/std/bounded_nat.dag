@@ -43,9 +43,24 @@ type BoundedNatAdmission
   | WidthNotStatic
   | WidthExceedsHostInt { bits: BitWidth }
 
-// The host bound, stated once.
+// The CARRIER bound, stated once: the widest bounded natural this family admits.
 fn bounded_nat_host_bit_ceiling() -> Int {
   62
+}
+
+// THE HOST'S POSITIVE CAPACITY, WHICH IS A DIFFERENT LIMIT AND MUST NOT SHARE A CONSTANT WITH THE
+// ONE ABOVE. The carrier ceiling is 62 because a SUM of two N-bit values needs N + 1 bits; the host
+// integer itself represents positives up to 2^63 - 1, so an intermediate is representable while its
+// bit demand is at most 63. Those two facts are unrelated, and collapsing them cost exactly one
+// width: the wrapping split was refusing width 42, whose largest intermediate is 9223367638808264705
+// against a host maximum of 9223372036854775807 -- representable, with room to spare.
+//
+// THIS IS THE SAME DEFECT THIS FILE REMOVED ONE LEVEL UP, RECURRING (review of gunbc#11645). The
+// checked and wrapping products were forced through one admission predicate; splitting them left two
+// unrelated LIMITS still sharing one CONSTANT. A predicate that serves two facts is the shape to
+// distrust, not the particular pair.
+fn bounded_nat_host_positive_bit_capacity() -> Int {
+  63
 }
 
 // WIDTH-EXCEEDS-HOST IS A CEILING WITH A TRIGGER, NOT A TERMINAL DESIGN (DESIGN 4b(2): no untracked
@@ -129,19 +144,27 @@ fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
 // because they answer different questions, not because one has more headroom than the other.
 //
 // THE WRAPPING CEILING IS REAL BUT HIGHER, AND IS STATED RATHER THAN ROUNDED. The split admits a
-// width only while max(h + N, (N - h) + N) stays inside the host bound, which is N <= 41 -- not every
-// width the carrier admits. Widths 42..62 still refuse, and that residual is a property of the NAIVE
-// HOST REALIZATION rather than of bounded naturals. NEXT-RUNG TRIGGER for it, a capability: routing
-// the wrapping product through std.bignat's multi-limb arithmetic (or a recursive split), SUFFICIENT
-// FOR every width this carrier admits to have a computable wrapping product, at which point
-// bounded_nat_wrapping_product_admitted is constantly true and dissolves.
+// width only while max(h + N, (N - h) + N) stays inside the HOST'S POSITIVE CAPACITY -- 63, not the
+// carrier ceiling of 62 -- which is N <= 42. Width 43 is the first whose worst intermediate genuinely
+// does not fit, so 43..62 refuse.
+//
+// THAT RESIDUAL IS A PROPERTY OF THIS ONE-LEVEL SPLIT, NOT OF BOUNDED NATURALS, AND THE ARM IS NAMED
+// FOR THAT. A refusal at width 43 says nothing about the operands: 3 * 5 is 15 there, and calling
+// that "product exceeds host int" would state a falsehood about values in order to describe a
+// realization's limit, which is anemic modeling in the diagnostic layer.
+//
+// NEXT-RUNG TRIGGER, a capability, and it names BOTH routes because either suffices: RECURSIVE
+// SPLITTING (applying the same identity to the sub-products until every intermediate fits) or
+// routing the wrapping product through std.bignat's multi-limb arithmetic -- SUFFICIENT FOR every
+// width this carrier admits to have a computable wrapping product, at which point
+// bounded_nat_wrapping_product_admitted is constantly true and dissolves along with its arm.
 type BoundedNatArith
   = Within { n: BoundedNat }
   | Overflows { bits: BitWidth }
   | NegativeResult { bits: BitWidth }
   | DividesByZero
   | WidthMismatch { left: BitWidth, right: BitWidth }
-  | ProductExceedsHostInt { bits: BitWidth }
+  | WrappingProductUnavailableAtWidth { bits: BitWidth }
 
 fn bounded_nat_widths_agree(a: BoundedNat, b: BoundedNat) -> Bool {
   bit_width_count(b: a.bits) == bit_width_count(b: b.bits)
@@ -173,11 +196,19 @@ fn bounded_nat_sub(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   }
 }
 
-// OVERFLOW IS DECIDED BEFORE THE PRODUCT IS FORMED, WHICH IS WHY THE CHECKED ARM NEEDS NO HEADROOM
-// AT ALL. `a * b > 2^N - 1` is equivalent to `a > (2^N - 1) / b` under integer division, and that
-// comparison forms no product. So the question is answered without the intermediate whose size used
-// to be the reason for refusing, and when the comparison ADMITS, the product is bounded by 2^N - 1 --
-// already inside the carrier's own admitted width, hence inside the host bound.
+// THE PRE-CHECK DISCIPLINE AND THE DIVISION-BASED BOUND TEST ARE NOT DERIVED HERE. std.checked_arithmetic
+// already owns both -- "PRE-CHECK, NEVER POST-CHECK: each function decides whether the operation WOULD
+// cross the bound before performing it", realized in checked_int_multiply as a division-based bound
+// test per sign quadrant. This is that pattern CONSUMED, not restated: re-deriving it in a second
+// module would be the DESIGN 3 fork, and the earlier width-wide rule here was exactly that fork
+// wearing a stricter rule (review of gunbc#11645).
+//
+// WHAT IS GENUINELY LOCAL is only the BOUND. std.checked_arithmetic tests against the HOST's
+// representable range; this family tests against the CARRIER's width, 2^N - 1, which is a different
+// and smaller bound. The shape of the test is borrowed; the limit it is applied to is this module's
+// own fact. `a * b > 2^N - 1` iff `a > (2^N - 1) / b` under integer division, which forms no product,
+// and when it admits, the product is bounded by 2^N - 1 -- inside the carrier's admitted width and so
+// inside the host's.
 //
 // THIS REPLACED A WIDTH-KEYED REFUSAL THAT REJECTED VALID PRODUCTS (review of gunbc#11645). The old
 // rule asked `2N <= 62` and so refused 40-bit 3 * 3, whose product is 9: it keyed on the TYPE's width
@@ -241,7 +272,7 @@ fn bounded_nat_add_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
 // product's 2N; see the note above the carrier for the identity and the residual 42..62 ceiling.
 fn bounded_nat_wrapping_product_admitted(bits: BitWidth) -> Bool {
   bit_width_count(b: bits) + (bit_width_count(b: bits) - bit_width_count(b: bits) / 2)
-    <= bounded_nat_host_bit_ceiling()
+    <= bounded_nat_host_positive_bit_capacity()
 }
 
 // The low N bits of a product, without ever forming the whole product.
@@ -258,7 +289,7 @@ fn bounded_nat_mul_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   if !bounded_nat_widths_agree(a: a, b: b) {
     WidthMismatch { left: a.bits, right: b.bits }
   } else if !bounded_nat_wrapping_product_admitted(bits: a.bits) {
-    ProductExceedsHostInt { bits: a.bits }
+    WrappingProductUnavailableAtWidth { bits: a.bits }
   } else {
     Within { n: BoundedNat { bits: a.bits, value: bounded_nat_wrapping_product(bits: a.bits, a: a.value, b: b.value) } }
   }
