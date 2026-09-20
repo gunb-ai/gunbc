@@ -1995,6 +1995,25 @@ fn gunbc_ci_runner_slot_retire_dispatch_admission_invoke() -> String {
   )
 }
 
+// THIS RECEIPT PATH IS SPELLED TWICE ON PURPOSE, AND THE SECOND SPELLING CANNOT BE REMOVED TODAY.
+// The authority is `gunbc.runner_slot_retire_run` `runner_slot_retire_receipt_path`, which the writer
+// and the workflow's upload step both consume. This step spells the same string instead, so the two
+// can drift -- they agree at this writing, so the exposure is a future edit to one of them, not a
+// present mismatch.
+//
+// WHY THE ORDINARY REPAIR IS NOT AVAILABLE. Importing the datum here was tried and the compiler
+// REFUSES it as a circular dependency. Adding an edge A -> B closes a cycle when B already reaches A,
+// and `gunbc.runner_slot_retire_run` does reach `gunbc.ci_spec` -- ten hops, out through
+// `gunbc.runner_host_grants` into the fabric chain and back through the `v2.workflow.ci_*_emit`
+// modules. The reverse, this module reaching the retirement route, does not exist at all. That
+// asymmetry is the whole reason the sibling receipt-path imports in this file are fine and this one
+// is not: their modules do not reach here.
+//
+// SAID AT THE GRAIN THAT WAS ACTUALLY ESTABLISHED: THIS consolidation is blocked. Not that no repair
+// exists -- breaking any edge on that returning path, or rehoming the datum, would do it, and neither
+// belongs in the change that introduced this step. This note exists because two reviewers have now
+// proposed the import citing the absent DIRECT edge, which is true and is not the question;
+// reachability is. A third would cost more than these lines do.
 fn gunbc_ci_runner_slot_retire_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
