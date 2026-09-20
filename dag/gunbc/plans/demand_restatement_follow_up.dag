@@ -38,3 +38,36 @@ data demand_restatement_follow_up_modules: List<String> = [
 fn demand_restatement_follow_up_module_paths() -> List<String> {
   demand_restatement_follow_up_modules
 }
+
+// THE ROWS THE CRITERION CANNOT TYPE AT ALL, kept by cut (c) and distinct from the roster above:
+// those arrived after the census, these were IN it and came back untypeable. A `uses` row is
+// deletable when its function's DERIVED service demand is nonempty, and derived demand comes from
+// the module's registry entry -- so a module that does not resolve has no entry, and its rows have
+// nothing to compare against. Deleting on a refusal is deleting on ignorance, which is why they
+// stand. The two modules below refuse at PRE-EXISTING type errors this cut did not introduce and
+// does not repair (`gunbc.auth.patterns` at its own line 60, expected String got Secret). Note the
+// rows are ordinary `fn`s, NOT pattern declarations -- the reason they survive is the module, not
+// the declaration kind. TRIGGER: when a module here resolves, the criterion types its rows and the
+// next cut takes them by the same rule as every other row.
+
+data demand_restatement_untypeable_by_refusing_module: List<String> = [
+  "gunbc.auth.patterns",
+  "gunbc.assimilate.bmc_bootstrap_provision",
+]
+
+// THE PATTERN-DECLARATION ROWS, the other half of what cut (c) kept. `pattern` declarations are not
+// in the function registry, so the criterion does not range over them at all -- this is a scope
+// boundary rather than a measurement that came back empty. TRIGGER: derived demand covers pattern
+// declarations, or the rows are dispositioned under whatever authority owns patterns.
+
+data demand_restatement_untypeable_by_declaration_kind: List<String> = [
+  "gunbc.auth.credentials",
+  "gunbc.tailscale_acl_phase2_credential",
+]
+
+// THE MODULES THE CRITERION COULD NOT TYPE, for the same prose consumer as the roster.
+
+fn demand_restatement_untypeable_module_paths() -> List<String> {
+  concat(demand_restatement_untypeable_by_refusing_module, demand_restatement_untypeable_by_declaration_kind)
+}
+
