@@ -23,7 +23,7 @@ import gunbc.runner_microvm_network_converge {
   SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,
   ConvergeRefusal, SlotTapIpv6Unread, SlotTapIpv6Enabled, SlotAddressNotHeld, SlotRouteNotHeld,
   IpForwardingOff, RulesetUnread, HelperStandingUnread, HelperAutoAssignmentOn, HelpersAttached,
-  converge_outcome,
+  converge_outcome, absent_from_kernel_or_unread,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -276,4 +276,23 @@ test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() ->
   }
   outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: clean_host())) == "converged"
     && outcome_label(o: converge_outcome(slots: [host_address_form], h: clean_host())) == "no-route"
+}
+
+// AN ABSENT SYSCTL NAMES THE KERNEL IT IS ABSENT FROM, OR IT IS UNREAD. AbsentFromKernel is the
+// strongest helper reading -- there is no setting left to turn back on -- so asserting it with no
+// release named would be the strongest claim on the weakest evidence. The reds: a refused `uname -r`
+// reported as absent-from-kernel, and an empty release string accepted as one (review 69021).
+test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool {
+  match absent_from_kernel_or_unread(kernel_release: "6.8.0-138-generic", kernel_read: true) {
+    AutoAssignmentAbsentFromKernel { kernel_release: k } => (k as String) == "6.8.0-138-generic"
+    _ => false
+  }
+    && match absent_from_kernel_or_unread(kernel_release: "", kernel_read: false) {
+      AutoAssignmentUnread { reason: _ } => true
+      _ => false
+    }
+    && match absent_from_kernel_or_unread(kernel_release: "", kernel_read: true) {
+      AutoAssignmentUnread { reason: _ } => true
+      _ => false
+    }
 }

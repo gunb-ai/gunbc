@@ -218,9 +218,24 @@ fn route_reading_carries(stdout: String, cidr: String) -> Bool {
 // dropped automatic helper assignment entirely, so on a kernel that has no such sysctl there is no
 // setting to get wrong; on an older one the value must read 0. A file that exists and reads 1 is
 // AutoAssignmentOn, and an unreadable probe is neither -- it is unread, and refuses the receipt.
-fn parse_auto_assignment(observed: FilesystemFileObservation, kernel_release: String) -> HelperAutoAssignment {
+// ABSENCE IS ATTRIBUTED TO A KERNEL, SO THE KERNEL MUST HAVE BEEN READ. AbsentFromKernel is the
+// strongest reading this type offers -- it says there is no setting left to turn back on -- and it
+// names the release that lacks it. A `uname -r` that did not answer leaves that name empty, so the
+// receipt would assert the strongest arm against no kernel at all (review 69021). Every sibling
+// probe here carries its own unread arm; this one now does too.
+fn absent_from_kernel_or_unread(kernel_release: String, kernel_read: Bool) -> HelperAutoAssignment {
+  if !kernel_read {
+    AutoAssignmentUnread { reason: "nf_conntrack_helper is absent, but uname -r did not answer, so the absence names no kernel" as NonEmptyStr }
+  } else if trim(s: kernel_release) == "" {
+    AutoAssignmentUnread { reason: "nf_conntrack_helper is absent, but uname -r printed no release, so the absence names no kernel" as NonEmptyStr }
+  } else {
+    AutoAssignmentAbsentFromKernel { kernel_release: trim(s: kernel_release) as NonEmptyStr }
+  }
+}
+
+fn parse_auto_assignment(observed: FilesystemFileObservation, kernel_release: String, kernel_read: Bool) -> HelperAutoAssignment {
   match observed {
-    FilesystemFileAbsent(_) => AutoAssignmentAbsentFromKernel { kernel_release: kernel_release as NonEmptyStr }
+    FilesystemFileAbsent(_) => absent_from_kernel_or_unread(kernel_release: kernel_release, kernel_read: kernel_read)
     FilesystemFileIndeterminate { cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper could not be observed: ", c], "") as NonEmptyStr }
     FilesystemFileObservationsDisagree { path: _, cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper moved while it was observed: ", c], "") as NonEmptyStr }
     FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper path refused: ", c], "") as NonEmptyStr }
@@ -513,6 +528,7 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration) -> HostRead
     auto_assignment: parse_auto_assignment(
       observed: observe_helper_sysctl_wet(),
       kernel_release: trim(s: outcome_stdout(o: kernel)),
+      kernel_read: outcome_ran(o: kernel),
     ),
     nft_ct_helper_statements: surface_reading(
       o: ruleset,
