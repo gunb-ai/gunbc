@@ -1,0 +1,1373 @@
+module gunbc.runner_microvm_lifecycle_realize
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure { Second, second, second_count }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasOutcome, CasCommitted,
+  CasPreconditionFailed, CasStoreRefused, CasStoreFailure, CasSlotObservation, CasObservedReadable,
+  CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, cas_generation_count,
+  cas_unreadable_slot_detail,
+}
+import gunbc.durable_cas_file_store {
+  observe_cas_slot_state, file_compare_and_set, OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+}
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.systemd {
+  SystemdUnitProperty, SubState, LoadState, MainPID, ExecMainStatus, ControlGroup,
+  EnvironmentProperty, RemainAfterExitProperty,
+}
+import extdeps.systemd.systemctl {
+  systemctl_kill_unit_command, KillSigterm, KillSigkill, systemctl_show_value_command, systemctl_stop_command,
+  systemctl_reset_failed_command,
+}
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_retained_transient_unit_command }
+import extdeps.systemd.journalctl { journalctl_unit_messages_command }
+import extdeps.tools.findutils { find_directories_command, find_named_files_cat_command }
+import extdeps.tools.grep { grep_fixed_string_in_file_command }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_file_type_command }
+import extdeps.tools.sleep { sleep_seconds_command, SleepCommand, SleepCommandDurationRefused }
+import extdeps.tools.hostname { hostname_short_read_command }
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved, FactObservedFailing,
+  SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable, SanitationFact,
+  sanitation_fact_label, sanitation_fact_of_label, cell_readiness_line,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity, runner_slot_instance_name }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_guest_image { console_carries_guest_booted, console_carries_runner_listening }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
+  runner_microvm_attempt_unit_name, runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
+  runner_microvm_attempt_slice_property,
+}
+import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied, AttemptStagingReceipt }
+import gunbc.runner_microvm_network { SanitationSubjectRefusal, SlotNotInConvergedPopulation }
+import gunbc.runner_microvm_cell_readiness {
+  InFlightAttempt, CellReadinessRecord, CellAttemptInFlight, CellSettled,
+  CellReadinessStoreRead, StoreRead, StoreUnreadable, CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
+  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
+  CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
+  WriteRefusedAttemptMismatch, WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted,
+  WriteRefusedStoreUnsound, WriteRefusedRecoveryOwed, WriteRefusedIncoherent,
+  cell_incarnation_admission, apply_cell_readiness_write, CellBoundAttempt,
+}
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, CellBoundIdentity, ControllerStart, StartAttempt, StartRecovery,
+  StartQuarantineUnattributedResidue, StartRefused, StartBindingRefused, controller_start,
+  BringUpPhase, AttemptPrepared, VmmStarted, GuestBooted, RunnerListening, SlotServing,
+  BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation, BringUpRefusedOutOfOrder,
+  advance_bring_up, TerminalTrigger, VmmExited, DeadlineReached, StopRequested, ControllerLost,
+  StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, StopUnobservable,
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, ObservedSlotNetwork, SlotNetworkSubjectRefused,
+  TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSettlement,
+  attempt_teardown_readback, settle_teardown,
+}
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe, LocalExec }
+
+data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
+
+// THE WET CONTROLLER: gunbc.runner_microvm_lifecycle's decisions, performed against a host.
+//
+// gunbc.runner_microvm_lifecycle says what the controller DECIDES at each step; this module is what
+// it DOES -- reads the store, launches the VMM's transient unit into the cell's slice, watches the
+// unit and its journal, stops it in two bounded phases, reads the cell back, and commits the
+// settlement. Every observation is produced here as the decision layer's own carrier (a
+// CgroupSubtreeReadback, a ResourceReadback, a TeardownStop) and handed to that layer's folds; this
+// module adds no verdict of its own. That is the whole shape: the realization performs the steps and
+// the decisions are made where they were modeled.
+//
+// THE PROCESS TOPOLOGY, STATED ONCE. gunbc.runner_microvm VmmUnderLifecycleController: this
+// controller runs as the slot unit's MainPID, and the VMM runs BENEATH it -- not as its child
+// process but as its own transient unit (gunbc.runner_microvm_attempt runner_microvm_attempt_unit_name)
+// placed in the cell's slice (runner_microvm_attempt_slice_property). Two consequences carry the
+// whole design: the cell slice's cgroup subtree contains the VMM and everything the VMM leaves
+// behind and NOT this controller, so reading that subtree empty is a fact about the tenant alone;
+// and the VMM's unit carries the incarnation it was launched for in its environment, so a stop
+// reads back WHICH incarnation it is about to stop from the unit itself rather than trusting the
+// unit's name, which the warm pool reuses.
+//
+// THE STOP HAS THREE OBSERVED OUTCOMES AND TWO BOUNDED PHASES. Phase one signals the unit
+// (systemctl kill --kill-whom=all SIGTERM) and waits, bounded, for the cell subtree to empty. Phase
+// two kills the cell -- the whole slice cgroup through cgroup.kill, not the unit, because a process
+// that double-forked into a sibling cgroup is in the cell and outside the unit -- and waits,
+// bounded, again. What survives the second bound is reported as survivors: a task in
+// uninterruptible sleep survives SIGKILL and is not "still stopping".
+//
+// WHAT IS SUPPLIED AND WHAT IS PRODUCED. The controller takes the attempt's identity and the
+// argv it is to run as the VMM; in production the argv is reachable only from the sealed
+// gunbc.runner_attempt_launch AttemptStagingReceipt (vmm_command_of_receipt below), which is
+// constructible only by attempt_staging_verdict -- the join that #11677 defers to this lane: a VMM
+// starts only when THIS attempt's JitDeviceStaged and the same plan's workspace readiness both hold.
+// The RED harness (gunbc.runner_microvm_lifecycle_red) supplies a misbehaving process in place of
+// the jailer; the launch, the watch, the stop, the readbacks and the settlement are the same
+// functions on both routes, and the substitution is at exactly one parameter.
+
+// ── the host-local store, realized over the durable CAS file store ─────────────────────────────
+
+// ONE SLOT HOLDS THE WHOLE STORE, keyed under a root only root may write. The readiness module
+// indexes the store WHOLE before it answers for any cell (host-grain withdrawal is a property of
+// the store), so the store's unit of read and write is the whole record list, and one CAS slot is
+// the carrier whose generation makes every write a compare-and-set against the exact records the
+// decision was made over. A write that lost a race is refused, not retried: the controller's
+// decision was over a store that no longer exists.
+data cell_readiness_store_root: NonEmptyStr = "/var/lib/gunbc/cell-readiness" as NonEmptyStr
+
+data cell_readiness_store_key: NonEmptyStr = "cells" as NonEmptyStr
+
+data cell_readiness_wire_header: String = "gunbc-cell-readiness v1"
+
+data wire_field_separator: String = "\t"
+
+// ROOT OWNERSHIP IS READ FROM THE ROOT DIRECTORY, because that is what O_EXCL creation is gated on:
+// a directory not writable by others admits no generation file from anyone else. Owner uid 0 and no
+// group or other write bit; a mode digit with its write bit (2) set is a store any tenant can extend.
+fn mode_digit_has_write_bit(digit: String) -> Bool {
+  digit == "2" || digit == "3" || digit == "6" || digit == "7"
+}
+
+fn mode_digits_admit_root_only_write(mode: String) -> Bool {
+  let m = trim(s: mode)
+  let n = length(m)
+  if n < 3 {
+    false
+  } else {
+    let group = substring(s: m, start: n - 2, end: n - 1)
+    let other = substring(s: m, start: n - 1, end: n)
+    !mode_digit_has_write_bit(digit: group) && !mode_digit_has_write_bit(digit: other)
+  }
+}
+
+type StoreOwnershipReading
+  = OwnershipRead { ownership: CellReadinessStoreOwnership }
+  | OwnershipUnreadable { reason: NonEmptyStr }
+
+fn store_ownership_wet(root: NonEmptyStr) -> StoreOwnershipReading {
+  match run_shell_command_capture(command: stat_owner_uid_command(path: root as String), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      OwnershipUnreadable { reason: join(["stat of the store root refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+    ProcessOutputAbsent => OwnershipUnreadable { reason: "stat of the store root printed no owner" as NonEmptyStr }
+    ProcessOutputPresent { text: uid_text } =>
+      match run_shell_command_capture(command: stat_mode_command(path: root as String), transport: LocalExec) {
+        ProcessRefused { exit_code: c, stderr: e } =>
+          OwnershipUnreadable { reason: join(["stat of the store root mode refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+        ProcessOutputAbsent => OwnershipUnreadable { reason: "stat of the store root printed no mode" as NonEmptyStr }
+        ProcessOutputPresent { text: mode_text } =>
+          match parse_int(s: trim(s: uid_text)) {
+            Absent => OwnershipUnreadable { reason: join(["stat printed a non-numeric owner: ", trim(s: uid_text)], "") as NonEmptyStr }
+            Present { value: uid } =>
+              if uid == 0 && mode_digits_admit_root_only_write(mode: mode_text) {
+                OwnershipRead { ownership: StoreRootOwned }
+              } else {
+                OwnershipRead { ownership: StoreNotRootOwned { owner_uid: uid, mode: trim(s: mode_text) as NonEmptyStr } }
+              }
+          }
+      }
+  }
+}
+
+// ── the record wire ─────────────────────────────────────────────────────────────────────────────
+//
+// One record per line, tab-separated, a header line first so an empty store is still a non-empty
+// value and a store written by a later wire refuses here by its header rather than by a field
+// count. The in-flight record persists the attempt itself (its slot, its id, its invocation, its
+// registration and its staged device path) -- the readiness module's rule -- so recovery tears down
+// the attempt that was staged, not the one today's code would derive.
+
+type WireEncoding
+  = WireEncoded { text: NonEmptyStr }
+  | WireRefusedSeparatorInField { record_cell: CellId, field: String }
+
+fn field_carries_separator(field: String) -> Bool {
+  string_contains(s: field, pattern: wire_field_separator) || string_contains(s: field, pattern: "\n")
+}
+
+fn observation_wire(o: SanitationObservation) -> List<String> {
+  match o {
+    FactConfirmed { fact: f } => [sanitation_fact_label(fact: f), "confirmed", ""]
+    FactRefuted { fact: f, detail: d } => [sanitation_fact_label(fact: f), "refuted", d as String]
+    FactUnobservable { fact: f, reason: r } => [sanitation_fact_label(fact: f), "unobservable", r as String]
+  }
+}
+
+fn unproven_wire(u: UnprovenFact) -> List<String> {
+  match u {
+    FactNotObserved { fact: f } => [sanitation_fact_label(fact: f), "not-observed", ""]
+    FactObservedFailing { observation: o } => observation_wire(o: o)
+  }
+}
+
+fn readiness_wire(r: CellReadiness) -> List<String> {
+  match r {
+    CellReady { cell: _ } => ["ready"]
+    CellQuarantined { cell: _, unproven: u } =>
+      concat(["quarantined", to_string(u |> count)], fold(u, init: [] as List<String>, f: (acc, x) => concat(acc, unproven_wire(u: x))))
+  }
+}
+
+fn record_fields(record: CellReadinessRecord) -> List<String> {
+  match record {
+    CellAttemptInFlight { cell: c, generation: g, attempt: a } =>
+      [
+        "in-flight", c as String, to_string(g),
+        a.attempt.slot.host as String, to_string(a.attempt.slot.slot_index), a.attempt.attempt_id.value as String,
+        a.invocation_id as String, a.jit_registration_id as String, a.credential_device_path,
+      ]
+    CellSettled { cell: c, generation: g, readiness: r } =>
+      concat(["settled", c as String, to_string(g)], readiness_wire(r: r))
+  }
+}
+
+fn record_cell_of(record: CellReadinessRecord) -> CellId {
+  match record {
+    CellAttemptInFlight { cell: c, generation: _, attempt: _ } => c
+    CellSettled { cell: c, generation: _, readiness: _ } => c
+  }
+}
+
+fn record_line(record: CellReadinessRecord) -> WireEncoding {
+  let fields = record_fields(record: record)
+  match filter(fields, f => field_carries_separator(field: f)).first() {
+    Present { value: bad } => WireRefusedSeparatorInField { record_cell: record_cell_of(record: record), field: bad }
+    Absent => WireEncoded { text: join(fields, wire_field_separator) as NonEmptyStr }
+  }
+}
+
+fn encode_store(records: List<CellReadinessRecord>) -> WireEncoding {
+  fold(records, init: WireEncoded { text: cell_readiness_wire_header as NonEmptyStr }, f: (acc, r) =>
+    match acc {
+      WireRefusedSeparatorInField { record_cell: c, field: f } => WireRefusedSeparatorInField { record_cell: c, field: f }
+      WireEncoded { text: t } =>
+        match record_line(record: r) {
+          WireRefusedSeparatorInField { record_cell: c, field: f } => WireRefusedSeparatorInField { record_cell: c, field: f }
+          WireEncoded { text: line } => WireEncoded { text: join([t as String, "\n", line as String], "") as NonEmptyStr }
+        }
+    })
+}
+
+type WireDecoding
+  = WireDecoded { records: List<CellReadinessRecord> }
+  | WireMalformed { line: Int, detail: String }
+
+fn field_at(fields: List<String>, i: Int) -> String? {
+  get(xs: fields, index: i)
+}
+
+fn nonneg_nat_of_text(text: String) -> Nat? {
+  match parse_int(s: text) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: nat_magnitude(a: n) } }
+  }
+}
+
+fn decode_unproven_at(fields: List<String>, i: Int) -> UnprovenFact? {
+  match field_at(fields: fields, i: i) {
+    Absent => none
+    Present { value: label } =>
+      match sanitation_fact_of_label(label: label) {
+        Absent => none
+        Present { value: fact } =>
+          match field_at(fields: fields, i: i + 1) {
+            Absent => none
+            Present { value: kind } =>
+              match field_at(fields: fields, i: i + 2) {
+                Absent => none
+                Present { value: text } =>
+                  match kind {
+                    "not-observed" => Present { value: FactNotObserved { fact: fact } }
+                    "confirmed" => Present { value: FactObservedFailing { observation: FactConfirmed { fact: fact } } }
+                    "refuted" =>
+                      if text == "" { none } else { Present { value: FactObservedFailing { observation: FactRefuted { fact: fact, detail: text as NonEmptyStr } } } }
+                    "unobservable" =>
+                      if text == "" { none } else { Present { value: FactObservedFailing { observation: FactUnobservable { fact: fact, reason: text as NonEmptyStr } } } }
+                    _ => none
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_unproven_list(fields: List<String>, i: Int, remaining: Int, acc: List<UnprovenFact>) -> List<UnprovenFact>? {
+  if remaining == 0 {
+    Present { value: acc }
+  } else {
+    match decode_unproven_at(fields: fields, i: i) {
+      Absent => none
+      Present { value: u } => decode_unproven_list(fields: fields, i: i + 3, remaining: remaining - 1, acc: append(acc, items: [u]))
+    }
+  }
+}
+
+fn decode_settled(fields: List<String>) -> CellReadinessRecord? {
+  match field_at(fields: fields, i: 1) {
+    Absent => none
+    Present { value: cell_text } =>
+      match field_at(fields: fields, i: 2) {
+        Absent => none
+        Present { value: gen_text } =>
+          match parse_int(s: gen_text) {
+            Absent => none
+            Present { value: g } =>
+              match field_at(fields: fields, i: 3) {
+                Absent => none
+                Present { value: kind } =>
+                  if cell_text == "" {
+                    none
+                  } else {
+                    let cell = cell_text as CellId
+                    match kind {
+                      "ready" => Present { value: CellSettled { cell: cell, generation: g, readiness: CellReady { cell: cell } } }
+                      "quarantined" =>
+                        match field_at(fields: fields, i: 4) {
+                          Absent => none
+                          Present { value: n_text } =>
+                            match parse_int(s: n_text) {
+                              Absent => none
+                              Present { value: n } =>
+                                match decode_unproven_list(fields: fields, i: 5, remaining: n, acc: []) {
+                                  Absent => none
+                                  Present { value: u } =>
+                                    Present { value: CellSettled { cell: cell, generation: g, readiness: CellQuarantined { cell: cell, unproven: u } } }
+                                }
+                            }
+                        }
+                      _ => none
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_in_flight(fields: List<String>) -> CellReadinessRecord? {
+  if (fields |> count) != 9 {
+    none
+  } else {
+    match field_at(fields: fields, i: 2) {
+      Absent => none
+      Present { value: gen_text } =>
+        match parse_int(s: gen_text) {
+          Absent => none
+          Present { value: g } =>
+            match field_at(fields: fields, i: 4) {
+              Absent => none
+              Present { value: index_text } =>
+                match nonneg_nat_of_text(text: index_text) {
+                  Absent => none
+                  Present { value: index } => decode_in_flight_slot(fields: fields, generation: g, index: index)
+                }
+            }
+        }
+    }
+  }
+}
+
+fn field_or_empty(fields: List<String>, i: Int) -> String {
+  match field_at(fields: fields, i: i) {
+    Absent => ""
+    Present { value: v } => v
+  }
+}
+
+fn decode_in_flight_slot(fields: List<String>, generation: Int, index: Nat) -> CellReadinessRecord? {
+  let cell_text = field_or_empty(fields: fields, i: 1)
+  let host_text = field_or_empty(fields: fields, i: 3)
+  let invocation = field_or_empty(fields: fields, i: 6)
+  let registration = field_or_empty(fields: fields, i: 7)
+  if cell_text == "" || host_text == "" || invocation == "" || registration == "" {
+    none
+  } else {
+    let slot = RunnerSlotIdentity { host: host_text as HostIdentity, slot_index: index }
+    match microvm_attempt(slot: slot, attempt_id: field_or_empty(fields: fields, i: 5)) {
+      MicroVmAttemptRefused { refusal: _ } => none
+      MicroVmAttemptAccepted { attempt: a } =>
+        Present {
+          value: CellAttemptInFlight {
+            cell: cell_text as CellId,
+            generation: generation,
+            attempt: InFlightAttempt {
+              attempt: a,
+              invocation_id: invocation as NonEmptyStr,
+              jit_registration_id: registration as NonEmptyStr,
+              credential_device_path: field_or_empty(fields: fields, i: 8),
+            },
+          },
+        }
+    }
+  }
+}
+
+fn decode_record_line(line: String) -> CellReadinessRecord? {
+  let fields = split(s: line, delimiter: wire_field_separator)
+  match fields.first() {
+    Absent => none
+    Present { value: kind } =>
+      match kind {
+        "in-flight" => decode_in_flight(fields: fields)
+        "settled" => decode_settled(fields: fields)
+        _ => none
+      }
+  }
+}
+
+fn decode_store_lines(lines: List<String>, i: Int, acc: List<CellReadinessRecord>) -> WireDecoding {
+  match get(xs: lines, index: i) {
+    Absent => WireDecoded { records: acc }
+    Present { value: line } =>
+      if line == "" {
+        decode_store_lines(lines: lines, i: i + 1, acc: acc)
+      } else {
+        match decode_record_line(line: line) {
+          Absent => WireMalformed { line: i + 1, detail: line }
+          Present { value: r } => decode_store_lines(lines: lines, i: i + 1, acc: append(acc, items: [r]))
+        }
+      }
+  }
+}
+
+fn decode_store(text: String) -> WireDecoding {
+  let lines = split(s: text, delimiter: "\n")
+  match lines.first() {
+    Absent => WireMalformed { line: 1, detail: "empty store value" }
+    Present { value: header } =>
+      if header != cell_readiness_wire_header {
+        WireMalformed { line: 1, detail: join(["unrecognised header: ", header], "") }
+      } else {
+        decode_store_lines(lines: lines, i: 1, acc: [])
+      }
+  }
+}
+
+// ── observing and committing ───────────────────────────────────────────────────────────────────
+
+// THE READ CARRIES THE GENERATION IT WAS TAKEN AT, so the write that follows is a compare-and-set
+// against exactly the records the admission was decided over. A malformed store is UNREADABLE, never
+// empty: "no records" out of a file that could not be decoded is the empty-observation narrow.
+type CellReadinessStoreObservation {
+  read: CellReadinessStoreRead
+  head: CasExpectation
+}
+
+fn observe_cell_readiness_store_wet(root: NonEmptyStr) -> CellReadinessStoreObservation {
+  match store_ownership_wet(root: root) {
+    OwnershipUnreadable { reason: r } =>
+      CellReadinessStoreObservation { read: StoreUnreadable { reason: r }, head: ExpectSlotAbsent }
+    OwnershipRead { ownership: o } =>
+      match observe_cas_slot_state(root: root, key: cell_readiness_store_key) {
+        CasObservedUnreadable { cause: c } =>
+          CellReadinessStoreObservation {
+            read: StoreUnreadable { reason: join(["the store slot could not be observed: ", cas_unreadable_slot_detail(cause: c)], "") as NonEmptyStr },
+            head: ExpectSlotAbsent,
+          }
+        CasObservedReadable { readable: r } =>
+          match r {
+            CasReadableAbsent => CellReadinessStoreObservation { read: StoreRead { ownership: o, records: [] }, head: ExpectSlotAbsent }
+            CasReadablePresent { version: v } =>
+              match decode_store(text: v.value as String) {
+                WireMalformed { line: n, detail: d } =>
+                  CellReadinessStoreObservation {
+                    read: StoreUnreadable { reason: join(["store generation ", to_string(cas_generation_count(g: v.generation)), " is malformed at line ", to_string(n), ": ", d], "") as NonEmptyStr },
+                    head: ExpectSlotGeneration { generation: v.generation },
+                  }
+                WireDecoded { records: rs } =>
+                  CellReadinessStoreObservation { read: StoreRead { ownership: o, records: rs }, head: ExpectSlotGeneration { generation: v.generation } }
+              }
+          }
+      }
+  }
+}
+
+fn store_records(read: CellReadinessStoreRead) -> List<CellReadinessRecord> {
+  match read {
+    StoreUnreadable { reason: _ } => []
+    StoreRead { ownership: _, records: rs } => rs
+  }
+}
+
+// THE COMMIT: decide over the observed records, encode, compare-and-set at the observed head. Each
+// way the write can fail to land is its own arm; none of them is "assume it landed".
+type CellReadinessCommit
+  = CommitLanded { generation: Int, records: List<CellReadinessRecord> }
+  | CommitRefusedByStore { result: CellReadinessWriteResult }
+  | CommitStoreUnreadable { reason: NonEmptyStr }
+  | CommitStoreNotRootOwned { owner_uid: Int, mode: NonEmptyStr }
+  | CommitWireRefused { record_cell: CellId, field: String }
+  | CommitLostRace { expected: CasExpectation }
+  | CommitCasRefused { cause: CasStoreFailure }
+  | CommitKeyRefused { key: NonEmptyStr }
+
+fn commit_cell_readiness_write_wet(root: NonEmptyStr, write: CellReadinessWrite) -> CellReadinessCommit {
+  let observed = observe_cell_readiness_store_wet(root: root)
+  match observed.read {
+    StoreUnreadable { reason: r } => CommitStoreUnreadable { reason: r }
+    StoreRead { ownership: o, records: rs } =>
+      match o {
+        StoreNotRootOwned { owner_uid: u, mode: m } => CommitStoreNotRootOwned { owner_uid: u, mode: m }
+        StoreRootOwned =>
+          match apply_cell_readiness_write(records: rs, write: write) {
+            WriteAccepted { records: next } => commit_records_wet(root: root, head: observed.head, records: next)
+            refused => CommitRefusedByStore { result: refused }
+          }
+      }
+  }
+}
+
+fn commit_records_wet(root: NonEmptyStr, head: CasExpectation, records: List<CellReadinessRecord>) -> CellReadinessCommit {
+  match encode_store(records: records) {
+    WireRefusedSeparatorInField { record_cell: c, field: f } => CommitWireRefused { record_cell: c, field: f }
+    WireEncoded { text: payload } =>
+      match admit_cas_attempt_for_derived_payload(key: cell_readiness_store_key, expected: head, proposed: payload) {
+        DerivedPayloadKeyNotSlotAddressable { key: k } => CommitKeyRefused { key: k }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+            CasCommitted { committed: c } => CommitLanded { generation: cas_generation_count(g: c.generation), records: records }
+            CasPreconditionFailed { expected: e, observed: _ } => CommitLostRace { expected: e }
+            CasStoreRefused { cause: c } => CommitCasRefused { cause: c }
+          }
+      }
+  }
+}
+
+fn commit_landed(c: CellReadinessCommit) -> Bool {
+  match c {
+    CommitLanded { generation: _, records: _ } => true
+    _ => false
+  }
+}
+
+fn write_result_text(r: CellReadinessWriteResult) -> String {
+  match r {
+    WriteAccepted { records: rs } => join(["accepted (", to_string(rs |> count), " records)"], "")
+    WriteRefusedStale { cell: c, stored: s, offered: o } => join(["refused-stale cell=", c as String, " stored=", to_string(s), " offered=", to_string(o)], "")
+    WriteRefusedWouldLoosenQuarantine { cell: c, generation: g } => join(["refused-would-loosen-quarantine cell=", c as String, " generation=", to_string(g)], "")
+    WriteRefusedAttemptMismatch { cell: c, stored_attempt: s, offered_attempt: o } => join(["refused-attempt-mismatch cell=", c as String, " stored=", s as String, " offered=", o as String], "")
+    WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g } => join(["refused-attempt-already-recorded cell=", c as String, " generation=", to_string(g)], "")
+    WriteRefusedNotAdmitted { cell: c, admission: _ } => join(["refused-not-admitted cell=", c as String], "")
+    WriteRefusedStoreUnsound { withdrawal: _ } => "refused-store-unsound"
+    WriteRefusedRecoveryOwed { cell: c, in_flight_generation: g, in_flight_attempt: a } => join(["refused-recovery-owed cell=", c as String, " generation=", to_string(g), " attempt=", a as String], "")
+    WriteRefusedIncoherent { withdrawal: _ } => "refused-incoherent"
+  }
+}
+
+fn commit_text(c: CellReadinessCommit) -> String {
+  match c {
+    CommitLanded { generation: g, records: rs } => join(["landed generation=", to_string(g), " records=", to_string(rs |> count)], "")
+    CommitRefusedByStore { result: r } => join(["refused-by-store: ", write_result_text(r: r)], "")
+    CommitStoreUnreadable { reason: r } => join(["store-unreadable: ", r as String], "")
+    CommitStoreNotRootOwned { owner_uid: u, mode: m } => join(["store-not-root-owned uid=", to_string(u), " mode=", m as String], "")
+    CommitWireRefused { record_cell: c, field: f } => join(["wire-refused cell=", c as String, " field=", f], "")
+    CommitLostRace { expected: _ } => "lost-race"
+    CommitCasRefused { cause: _ } => "cas-refused"
+    CommitKeyRefused { key: k } => join(["key-refused ", k as String], "")
+  }
+}
+
+// ── host observations, each producing the decision layer's carrier ───────────────────────────────
+
+fn hostname_wet() -> String? {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => if trim(s: t) == "" { none } else { Present { value: trim(s: t) } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+fn unit_property_wet(unit: NonEmptyStr, property: SystemdUnitProperty) -> ProcessOutcome {
+  run_shell_command_capture(command: systemctl_show_value_command(unit: unit, property: property), transport: LocalExec)
+}
+
+fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
+  match unit_property_wet(unit: unit, property: property) {
+    ProcessOutputPresent { text: t } => Present { value: trim(s: t) }
+    ProcessOutputAbsent => Present { value: "" }
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// THE SLICE'S CGROUP PATH IS READ FROM THE MANAGER, not derived: systemd nests a dashed slice name
+// under each of its prefixes (fabric-cell-srv1-90.slice lives under fabric.slice/fabric-cell.slice/
+// fabric-cell-srv1.slice/), and ControlGroup is the manager's own statement of where it put it. A
+// slice with no cgroup answers an empty ControlGroup, which is a failed read of the subtree -- not
+// an empty subtree.
+type SliceCgroupPath
+  = SliceCgroupAt { path: String }
+  | SliceCgroupUnknown { reason: NonEmptyStr }
+
+fn slice_cgroup_path_wet(slice: NonEmptyStr) -> SliceCgroupPath {
+  match unit_property_wet(unit: slice, property: ControlGroup) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      SliceCgroupUnknown { reason: join(["systemctl show ControlGroup refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+    ProcessOutputAbsent => SliceCgroupUnknown { reason: join(["the manager reports no control group for ", slice as String], "") as NonEmptyStr }
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" {
+        SliceCgroupUnknown { reason: join(["the manager reports no control group for ", slice as String], "") as NonEmptyStr }
+      } else {
+        SliceCgroupAt { path: join([cgroup_v2_mount_point as String, trim(s: t)], "") }
+      }
+  }
+}
+
+fn nonempty_lines(text: String) -> List<String> {
+  filter(map(split(s: text, delimiter: "\n"), l => trim(s: l)), l => l != "")
+}
+
+fn pid_of_line(line: String) -> Int? {
+  parse_int(s: line)
+}
+
+// THE RECURSIVE READBACK: every cgroup.procs under the slice's cgroup, in one walk. A walk that
+// failed -- the root absent, a file unreadable -- is CgroupSubtreeReadFailed with find's own
+// stderr; only a walk that completed with no pid is Empty.
+fn cgroup_subtree_readback_wet(slice: NonEmptyStr) -> CgroupSubtreeReadback {
+  match slice_cgroup_path_wet(slice: slice) {
+    SliceCgroupUnknown { reason: r } => CgroupSubtreeReadFailed { reason: r }
+    SliceCgroupAt { path: p } => cgroup_subtree_readback_at_wet(path: p)
+  }
+}
+
+// THE ROOT MUST ITSELF BE A CGROUP. Every cgroup directory carries cgroup.procs; a root without one
+// is not a cgroup -- a path masked by another mount, a directory that is not on cgroupfs -- and a
+// walk that found no cgroup.procs files under it would otherwise report the masked cell EMPTY.
+data cgroup_procs_file: String = "cgroup.procs"
+
+fn cgroup_subtree_readback_at_wet(path: String) -> CgroupSubtreeReadback {
+  match path_readback_wet(path: join([path, "/", cgroup_procs_file], "")) {
+    ResourceAbsent => CgroupSubtreeReadFailed { reason: join([path, " carries no cgroup.procs, so it is not a cgroup this host can read"], "") as NonEmptyStr }
+    ResourceUnreadable { reason: r } => CgroupSubtreeReadFailed { reason: r }
+    ResourcePresent { detail: _ } => cgroup_subtree_walk_wet(path: path)
+  }
+}
+
+fn cgroup_subtree_walk_wet(path: String) -> CgroupSubtreeReadback {
+  match run_shell_command_capture(command: find_named_files_cat_command(search_root: path, file_name: cgroup_procs_file), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      CgroupSubtreeReadFailed { reason: join(["cgroup subtree walk of ", path, " refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+    ProcessOutputAbsent => CgroupSubtreeEmpty
+    ProcessOutputPresent { text: t } => {
+      let lines = nonempty_lines(text: t)
+      match filter(lines, l => match pid_of_line(line: l) { Absent => true  Present { value: _ } => false }).first() {
+        Present { value: bad } => CgroupSubtreeReadFailed { reason: join(["cgroup.procs under ", path, " carried a non-pid line: ", bad], "") as NonEmptyStr }
+        Absent =>
+          if (lines |> count) == 0 {
+            CgroupSubtreeEmpty
+          } else {
+            match run_shell_command_capture(command: find_directories_command(search_root: path), transport: LocalExec) {
+              ProcessRefused { exit_code: c, stderr: e } =>
+                CgroupSubtreeReadFailed { reason: join(["cgroup directory walk of ", path, " refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+              ProcessOutputAbsent => CgroupSubtreeReadFailed { reason: join(["cgroup directory walk of ", path, " listed nothing, not even the root"], "") as NonEmptyStr }
+              ProcessOutputPresent { text: dirs } =>
+                CgroupSubtreePopulated {
+                  pids: map(lines, l => match pid_of_line(line: l) { Present { value: n } => n  Absent => 0 - 1 }),
+                  cgroups: map(nonempty_lines(text: dirs), d => d as NonEmptyStr),
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn cgroup_pids(r: CgroupSubtreeReadback) -> List<Int> {
+  match r {
+    CgroupSubtreeEmpty => []
+    CgroupSubtreePopulated { pids: p, cgroups: _ } => p
+    CgroupSubtreeReadFailed { reason: _ } => []
+  }
+}
+
+// A PATH IS ABSENT ONLY WHEN THE HOST SAYS SO: stat's ENOENT is the absence; any other refusal is
+// unreadable, and a stat that answered is presence with the kind it printed.
+data stat_enoent_marker: String = "No such file or directory"
+
+fn path_readback_wet(path: String) -> ResourceReadback {
+  match run_shell_command_capture(command: stat_file_type_command(path: path), transport: LocalExec) {
+    ProcessOutputPresent { text: kind } => ResourcePresent { detail: join([trim(s: kind), " present at ", path], "") as NonEmptyStr }
+    ProcessOutputAbsent => ResourcePresent { detail: join(["present at ", path, " (kind unreported)"], "") as NonEmptyStr }
+    ProcessRefused { exit_code: c, stderr: e } =>
+      if string_contains(s: e, pattern: stat_enoent_marker) {
+        ResourceAbsent
+      } else {
+        ResourceUnreadable { reason: join(["stat of ", path, " refused (exit ", to_string(c), "): ", trim(s: e)], "") as NonEmptyStr }
+      }
+  }
+}
+
+// NO MOUNT UNDER THE JAIL ROOT: the kernel's own mount table, filtered for the root as a fixed
+// string. Exit 1 is grep's "no line matched"; exit 2 is a table it could not read.
+data proc_self_mountinfo: NonEmptyStr = "/proc/self/mountinfo" as NonEmptyStr
+
+fn mounts_readback_wet(jail_base: String) -> ResourceReadback {
+  let obs = run_shell_command_observe(command: grep_fixed_string_in_file_command(pattern: jail_base as NonEmptyStr, path: proc_self_mountinfo), transport: LocalExec)
+  if obs.exit_code == 0 {
+    ResourcePresent { detail: join(["mount table still lists ", jail_base, ": ", trim(s: obs.stdout)], "") as NonEmptyStr }
+  } else if obs.exit_code == 1 {
+    ResourceAbsent
+  } else {
+    ResourceUnreadable { reason: join(["mount table read refused (exit ", to_string(obs.exit_code), "): ", trim(s: obs.stderr)], "") as NonEmptyStr }
+  }
+}
+
+fn attempt_ground_wet(attempt: MicroVmAttempt) -> AttemptGround {
+  match path_readback_wet(path: runner_microvm_attempt_dir(attempt: attempt)) {
+    ResourceAbsent =>
+      match mounts_readback_wet(jail_base: runner_microvm_attempt_jail_base(attempt: attempt)) {
+        ResourceAbsent => GroundClear
+        ResourcePresent { detail: _ } => GroundOccupied
+        ResourceUnreadable { reason: _ } => GroundOccupied
+      }
+    ResourcePresent { detail: _ } => GroundOccupied
+    ResourceUnreadable { reason: _ } => GroundOccupied
+  }
+}
+
+// ── bounded waiting ──────────────────────────────────────────────────────────────────────────────
+
+data lifecycle_poll_interval: Second = second(count: 1)
+
+// A FAILED SLEEP IS NOT A COMPLETED WAIT (gunbc.spark.serving_relaunch_transaction's rule, kept):
+// a `sleep` that could not run would turn every bounded wait below into a tight loop, so the wait
+// reports its own refusal and the loop that asked for it stops.
+type WaitStep
+  = Waited
+  | WaitRefused { reason: NonEmptyStr }
+
+fn wait_one_interval_wet() -> WaitStep {
+  match sleep_seconds_command(duration: lifecycle_poll_interval) {
+    SleepCommandDurationRefused { duration: d } =>
+      WaitRefused { reason: join(["the poll interval renders as ", to_string(second_count(s: d)), " seconds, which is not a wait"], "") as NonEmptyStr }
+    SleepCommand { command: c } =>
+      match run_shell_command_capture(command: c, transport: LocalExec) {
+        ProcessRefused { exit_code: x, stderr: e } =>
+          WaitRefused { reason: join(["sleep exited ", to_string(x), ": ", trim(s: e)], "") as NonEmptyStr }
+        _ => Waited
+      }
+  }
+}
+
+// ── the VMM unit: launch, watch, stop ──────────────────────────────────────────────────────────
+
+// THE UNIT CARRIES ITS INCARNATION. The attempt's invocation id (the slot unit's own InvocationID,
+// the incarnation this controller runs as) is placed in the VMM unit's environment at launch, and
+// the stop reads it back from the unit before signalling anything. That is what makes
+// ObservedStop.invocation_id an OBSERVATION of the unit about to be stopped rather than a copy of
+// the request: a unit of the same name launched by a later incarnation answers a different id and
+// the teardown join refuses it as a foreign subject.
+data vmm_unit_incarnation_variable: String = "GUNBC_ATTEMPT_INVOCATION"
+
+fn vmm_unit_incarnation_property(identity: AttemptIdentity) -> SystemdRunProperty {
+  SystemdRunProperty {
+    property: EnvironmentProperty,
+    value: join([vmm_unit_incarnation_variable, "=", identity.invocation_id as String], "") as NonEmptyStr,
+  }
+}
+
+fn vmm_unit_properties(identity: AttemptIdentity) -> List<SystemdRunProperty> {
+  [
+    runner_microvm_attempt_slice_property(attempt: identity.attempt),
+    vmm_unit_incarnation_property(identity: identity),
+    SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
+  ]
+}
+
+fn vmm_unit_of(identity: AttemptIdentity) -> NonEmptyStr {
+  runner_microvm_attempt_unit_name(attempt: identity.attempt)
+}
+
+type VmmLaunch
+  = VmmLaunched { unit: NonEmptyStr }
+  | VmmLaunchRefused { unit: NonEmptyStr, detail: NonEmptyStr }
+
+// THE JAILER COMMAND IS REACHABLE ONLY FROM THE SEALED RECEIPT. AttemptStagingReceipt has one
+// constructor, gunbc.runner_attempt_launch attempt_staging_verdict, which admits it only when THIS
+// attempt's JitDeviceStaged and the same plan's WorkspaceReady both hold; there is no parameter here
+// through which a workspace observation alone could reach a launch.
+fn vmm_command_of_receipt(receipt: AttemptStagingReceipt) -> ArgvCommand {
+  receipt.jailer
+}
+
+fn command_argv(command: ArgvCommand) -> List<String> {
+  concat([command.program as String], command.arguments)
+}
+
+fn launch_vmm_unit_wet(identity: AttemptIdentity, vmm: ArgvCommand) -> VmmLaunch {
+  let unit = vmm_unit_of(identity: identity)
+  match run_shell_command_capture(
+    command: systemd_run_retained_transient_unit_command(unit: unit, properties: vmm_unit_properties(identity: identity), command_argv: command_argv(command: vmm)),
+    transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      VmmLaunchRefused { unit: unit, detail: join(["systemd-run exited ", to_string(c), ": ", trim(s: e)], "") as NonEmptyStr }
+    _ => VmmLaunched { unit: unit }
+  }
+}
+
+// WHAT THE MANAGER SAYS ABOUT THE UNIT, read as three properties and classified once.
+type UnitStanding
+  = UnitRunning { main_pid: Int }
+  | UnitFinished { exit_status: Int }
+  | UnitNotLoaded
+  | UnitStandingUnreadable { reason: NonEmptyStr }
+
+fn unit_standing_wet(unit: NonEmptyStr) -> UnitStanding {
+  match unit_property_text(unit: unit, property: LoadState) {
+    Absent => UnitStandingUnreadable { reason: join(["systemctl show LoadState refused for ", unit as String], "") as NonEmptyStr }
+    Present { value: load } =>
+      if load != "loaded" {
+        UnitNotLoaded
+      } else {
+        match unit_property_text(unit: unit, property: SubState) {
+          Absent => UnitStandingUnreadable { reason: join(["systemctl show SubState refused for ", unit as String], "") as NonEmptyStr }
+          Present { value: sub } =>
+            if sub == "running" || sub == "start" || sub == "start-pre" || sub == "start-post" {
+              match unit_property_text(unit: unit, property: MainPID) {
+                Absent => UnitStandingUnreadable { reason: "systemctl show MainPID refused" as NonEmptyStr }
+                Present { value: pid_text } =>
+                  match parse_int(s: pid_text) {
+                    Absent => UnitStandingUnreadable { reason: join(["MainPID is not numeric: ", pid_text], "") as NonEmptyStr }
+                    Present { value: pid } => UnitRunning { main_pid: pid }
+                  }
+              }
+            } else {
+              match unit_property_text(unit: unit, property: ExecMainStatus) {
+                Absent => UnitStandingUnreadable { reason: "systemctl show ExecMainStatus refused" as NonEmptyStr }
+                Present { value: status_text } =>
+                  match parse_int(s: status_text) {
+                    Absent => UnitStandingUnreadable { reason: join(["ExecMainStatus is not numeric: ", status_text], "") as NonEmptyStr }
+                    Present { value: status } => UnitFinished { exit_status: status }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn unit_journal_wet(unit: NonEmptyStr) -> String {
+  match run_shell_command_capture(command: journalctl_unit_messages_command(unit: unit), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => t
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
+// THE INCARNATION THE UNIT CARRIES, read from its environment. Absent when the unit is not loaded or
+// carries no such variable -- which is a unit this controller did not launch.
+fn unit_incarnation_wet(unit: NonEmptyStr) -> String? {
+  match unit_property_text(unit: unit, property: EnvironmentProperty) {
+    Absent => none
+    Present { value: env } => {
+      let prefix = concat(vmm_unit_incarnation_variable, "=")
+      match filter(split(s: env, delimiter: " "), w => starts_with(s: w, prefix: prefix)).first() {
+        Absent => none
+        Present { value: w } => Present { value: substring(s: w, start: length(prefix), end: length(w)) }
+      }
+    }
+  }
+}
+
+// ── bring-up, observed ─────────────────────────────────────────────────────────────────────────
+
+data bring_up_poll_bound: Int = 60
+
+type BringUpOutcome
+  = BringUpReached { phase: BringUpPhase }
+  | BringUpEndedByTerminal { at: BringUpPhase, trigger: TerminalTrigger }
+  | BringUpRefused { at: BringUpPhase, transition: BringUpTransition }
+  | BringUpDeadline { at: BringUpPhase }
+  | BringUpUnobservable { at: BringUpPhase, reason: NonEmptyStr }
+
+fn next_phase_from_console(at: BringUpPhase, console: String) -> BringUpPhase? {
+  match at {
+    VmmStarted => if console_carries_guest_booted(console: console) { Present { value: GuestBooted } } else { none }
+    GuestBooted => if console_carries_runner_listening(console: console) { Present { value: RunnerListening } } else { none }
+    RunnerListening => Present { value: SlotServing }
+    AttemptPrepared => none
+    SlotServing => none
+  }
+}
+
+// EACH STEP IS AN EVENT NAMING THE LIVE INCARNATION, advanced through advance_bring_up so a skipped
+// phase refuses here exactly as it does in the decision layer. The unit's standing is read on every
+// poll: a unit that finished during bring-up ends it with the VMM's exit as the terminal trigger.
+fn observe_bring_up_wet(identity: AttemptIdentity, at: BringUpPhase, remaining: Int) -> BringUpOutcome {
+  let unit = vmm_unit_of(identity: identity)
+  match at {
+    SlotServing => BringUpReached { phase: SlotServing }
+    _ =>
+      match unit_standing_wet(unit: unit) {
+        UnitStandingUnreadable { reason: r } => BringUpUnobservable { at: at, reason: r }
+        UnitNotLoaded => BringUpUnobservable { at: at, reason: join(["the VMM unit ", unit as String, " is not loaded"], "") as NonEmptyStr }
+        UnitFinished { exit_status: s } => BringUpEndedByTerminal { at: at, trigger: VmmExited { exit_code: s } }
+        UnitRunning { main_pid: _ } =>
+          match next_phase_from_console(at: at, console: unit_journal_wet(unit: unit)) {
+            Present { value: reached } =>
+              match advance_bring_up(live: identity, at: at, event: BringUpEvent { identity: identity, reached: reached }) {
+                BringUpAdvanced { phase: p } => observe_bring_up_wet(identity: identity, at: p, remaining: remaining)
+                refused => BringUpRefused { at: at, transition: refused }
+              }
+            Absent =>
+              if remaining <= 0 {
+                BringUpDeadline { at: at }
+              } else {
+                match wait_one_interval_wet() {
+                  WaitRefused { reason: r } => BringUpUnobservable { at: at, reason: r }
+                  Waited => observe_bring_up_wet(identity: identity, at: at, remaining: remaining - 1)
+                }
+              }
+          }
+      }
+  }
+}
+
+// ── the terminal condition ─────────────────────────────────────────────────────────────────────
+
+// HOW THIS INCARNATION ENDS is decided by the caller: wait for the VMM to exit within a bound, or
+// stop it now on behalf of a named incarnation. The stop is admitted through
+// stop_request_admission BEFORE any signal is sent; a stale request never reaches systemctl.
+type TerminalPlan
+  = AwaitVmmExit { poll_bound: Int }
+  | StopOnBehalfOf { requests: List<AttemptIdentity> }
+
+// EVERY STOP REQUEST'S ADMISSION IS KEPT, in order: a refused request is evidence (the stale one
+// that must not land), and the first admitted one is the trigger. No admitted request leaves the
+// unit running and the cell in flight, which is a refusal, not a settlement.
+type TerminalOutcome
+  = TerminalReached { trigger: TerminalTrigger, admissions: List<StopAdmission> }
+  | TerminalStopRefused { admissions: List<StopAdmission> }
+  | TerminalUnobservable { reason: NonEmptyStr }
+
+fn await_vmm_exit_wet(unit: NonEmptyStr, remaining: Int) -> TerminalOutcome {
+  match unit_standing_wet(unit: unit) {
+    UnitStandingUnreadable { reason: r } => TerminalUnobservable { reason: r }
+    UnitNotLoaded => TerminalUnobservable { reason: join(["the VMM unit ", unit as String, " is not loaded, so its exit cannot be read"], "") as NonEmptyStr }
+    UnitFinished { exit_status: s } => TerminalReached { trigger: VmmExited { exit_code: s }, admissions: [] }
+    UnitRunning { main_pid: _ } =>
+      if remaining <= 0 {
+        TerminalReached { trigger: DeadlineReached, admissions: [] }
+      } else {
+        match wait_one_interval_wet() {
+          WaitRefused { reason: r } => TerminalUnobservable { reason: r }
+          Waited => await_vmm_exit_wet(unit: unit, remaining: remaining - 1)
+        }
+      }
+  }
+}
+
+fn terminal_condition_wet(identity: AttemptIdentity, plan: TerminalPlan) -> TerminalOutcome {
+  match plan {
+    AwaitVmmExit { poll_bound: b } => await_vmm_exit_wet(unit: vmm_unit_of(identity: identity), remaining: b)
+    StopOnBehalfOf { requests: rs } => admit_stop_requests(identity: identity, requests: rs, admissions: [])
+  }
+}
+
+fn admit_stop_requests(identity: AttemptIdentity, requests: List<AttemptIdentity>, admissions: List<StopAdmission>) -> TerminalOutcome {
+  match requests.first() {
+    Absent => TerminalStopRefused { admissions: admissions }
+    Present { value: r } => {
+      let a = stop_request_admission(live: identity, requested: r)
+      let seen = append(admissions, items: [a])
+      match a {
+        StopAdmitted { trigger: t } => TerminalReached { trigger: t, admissions: seen }
+        StopRefusedStaleIncarnation { live_generation: _, requested_generation: _ } =>
+          admit_stop_requests(identity: identity, requests: requests.skip(n: 1), admissions: seen)
+      }
+    }
+  }
+}
+
+// ── the stop: two bounded phases over the cell ─────────────────────────────────────────────────
+
+data graceful_stop_poll_bound: Int = 10
+
+data force_stop_poll_bound: Int = 5
+
+data cgroup_kill_file: String = "cgroup.kill"
+
+fn subtree_populated(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreeEmpty => false
+    CgroupSubtreePopulated { pids: _, cgroups: _ } => true
+    CgroupSubtreeReadFailed { reason: _ } => true
+  }
+}
+
+// WAIT FOR THE CELL SUBTREE TO EMPTY, or run out of bound. A failed read counts as populated: the
+// wait cannot end on a fact it could not read.
+fn await_subtree_empty_wet(slice: NonEmptyStr, remaining: Int) -> CgroupSubtreeReadback {
+  let r = cgroup_subtree_readback_wet(slice: slice)
+  if !subtree_populated(r: r) || remaining <= 0 {
+    r
+  } else {
+    match wait_one_interval_wet() {
+      WaitRefused { reason: _ } => r
+      Waited => await_subtree_empty_wet(slice: slice, remaining: remaining - 1)
+    }
+  }
+}
+
+type CellKill
+  = CellKillWritten
+  | CellKillRefused { reason: NonEmptyStr }
+
+// THE FORCE PHASE KILLS THE CELL, NOT THE UNIT. cgroup.kill on the slice's cgroup delivers SIGKILL to
+// every task in the subtree, including a task that left the unit's cgroup for a sibling one -- which
+// is the double-forked daemon a unit-scoped kill never reaches.
+fn kill_cell_wet(slice: NonEmptyStr) -> CellKill {
+  match slice_cgroup_path_wet(slice: slice) {
+    SliceCgroupUnknown { reason: r } => CellKillRefused { reason: r }
+    SliceCgroupAt { path: p } => {
+      let w = Filesystem.Write(path: join([p, "/", cgroup_kill_file], ""), content: "1\n")
+      if w.success { CellKillWritten } else { CellKillRefused { reason: join(["cgroup.kill write refused: ", w.error], "") as NonEmptyStr } }
+    }
+  }
+}
+
+type StopPerformed {
+  outcome: TeardownStop
+  graceful_readback: CgroupSubtreeReadback
+  forced_readback: CgroupSubtreeReadback
+  kill: CellKill
+}
+
+fn stop_cell_wet(identity: AttemptIdentity) -> StopPerformed {
+  let unit = vmm_unit_of(identity: identity)
+  let slice = fabric_cell_slice_name(slot: identity.attempt.slot) as NonEmptyStr
+  let _term = run_shell_command_capture(command: systemctl_kill_unit_command(unit: unit, signal: KillSigterm), transport: LocalExec)
+  let after_term = await_subtree_empty_wet(slice: slice, remaining: graceful_stop_poll_bound)
+  match after_term {
+    CgroupSubtreeEmpty =>
+      StopPerformed { outcome: StoppedGracefully, graceful_readback: after_term, forced_readback: after_term, kill: CellKillWritten }
+    _ => {
+      let _kill_unit = run_shell_command_capture(command: systemctl_kill_unit_command(unit: unit, signal: KillSigkill), transport: LocalExec)
+      let kill = kill_cell_wet(slice: slice)
+      let after_kill = await_subtree_empty_wet(slice: slice, remaining: force_stop_poll_bound)
+      match after_kill {
+        CgroupSubtreeEmpty => StopPerformed { outcome: StoppedByForce, graceful_readback: after_term, forced_readback: after_kill, kill: kill }
+        CgroupSubtreePopulated { pids: p, cgroups: _ } =>
+          StopPerformed { outcome: ForceStopBoundExceeded { survivors: p }, graceful_readback: after_term, forced_readback: after_kill, kill: kill }
+        CgroupSubtreeReadFailed { reason: r } =>
+          StopPerformed { outcome: StopUnobservable { reason: r }, graceful_readback: after_term, forced_readback: after_kill, kill: kill }
+      }
+    }
+  }
+}
+
+// ── teardown: stop, read back, join, settle, commit ─────────────────────────────────────────────
+
+type TeardownRefusal
+  = TeardownHostUnobservable { reason: NonEmptyStr }
+  | TeardownUnitIncarnationUnobservable { unit: NonEmptyStr }
+  | TeardownForeignSubject { binding: TeardownReadbackBinding }
+
+type TeardownPerformed
+  = TeardownSettled { settlement: TeardownSettlement, observed: ObservedTeardown, stop: StopPerformed, commit: CellReadinessCommit }
+  | TeardownRefusedToSettle { refusal: TeardownRefusal, stop: StopPerformed? }
+
+// THE INCARNATION IS READ FROM THE UNIT BEFORE THE FIRST SIGNAL. After the stop the unit may be
+// collected, and an observation taken from a unit that no longer exists would be a value invented
+// at the moment it was needed. NAMED LIMIT: an attempt in recovery whose unit was already collected
+// (ControllerLost with nothing left to read) cannot settle through this route -- its in-flight record
+// stays, recovery stays owed, and an operator establishes the facts. Its route is the recovery
+// frontier below, not a fabricated incarnation.
+fn teardown_wet(store_root: NonEmptyStr, bound: CellBoundAttempt, identity: AttemptIdentity, trigger: TerminalTrigger, network: ObservedSlotNetwork) -> TeardownPerformed {
+  let unit = vmm_unit_of(identity: identity)
+  match unit_incarnation_wet(unit: unit) {
+    Absent => TeardownRefusedToSettle { refusal: TeardownUnitIncarnationUnobservable { unit: unit }, stop: none }
+    Present { value: incarnation } =>
+      match hostname_wet() {
+        Absent => TeardownRefusedToSettle { refusal: TeardownHostUnobservable { reason: "hostname could not be read" as NonEmptyStr }, stop: none }
+        Present { value: host } => {
+          let stop = stop_cell_wet(identity: identity)
+          let _reap = run_shell_command_capture(command: systemctl_stop_command(unit: unit), transport: LocalExec)
+          let _reset = run_shell_command_capture(command: systemctl_reset_failed_command(unit: unit), transport: LocalExec)
+          let observed = ObservedTeardown {
+            host: host,
+            generation: identity.allocation_generation,
+            stop: ObservedStop { unit: unit, invocation_id: incarnation as NonEmptyStr, outcome: stop.outcome },
+            cgroup: ObservedCgroup {
+              root: fabric_cell_slice_name(slot: identity.attempt.slot) as NonEmptyStr,
+              readback: cgroup_subtree_readback_wet(slice: fabric_cell_slice_name(slot: identity.attempt.slot) as NonEmptyStr),
+            },
+            mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: identity.attempt), readback: mounts_readback_wet(jail_base: runner_microvm_attempt_jail_base(attempt: identity.attempt)) },
+            attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: identity.attempt), readback: path_readback_wet(path: runner_microvm_attempt_dir(attempt: identity.attempt)) },
+            credential_disk: ObservedPath { path: identity.credential_device_path, readback: path_readback_wet(path: identity.credential_device_path) },
+            network: network,
+          }
+          match attempt_teardown_readback(bound: bound, observed: observed) {
+            TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
+              TeardownRefusedToSettle { refusal: TeardownForeignSubject { binding: TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } }, stop: Present { value: stop } }
+            TeardownReadbackBound { readback: r } => {
+              let settlement = settle_teardown(readback: r, trigger: trigger)
+              TeardownSettled {
+                settlement: settlement,
+                observed: observed,
+                stop: stop,
+                commit: commit_cell_readiness_write_wet(root: store_root, write: settlement.record),
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// ── the whole incarnation ───────────────────────────────────────────────────────────────────────
+
+// THE CONTROLLER'S RUN, END TO END. Admission from the store, the start decision, the in-flight
+// record, the launch, bring-up, the terminal condition, the teardown and the commit -- each step's
+// refusal is an arm of the result, and the receipt below prints whichever was reached.
+type IncarnationOutcome
+  = IncarnationSettled { start: ControllerStart, launch: VmmLaunch, bring_up: BringUpOutcome, terminal: TerminalOutcome, teardown: TeardownPerformed }
+  | IncarnationRecovered { start: ControllerStart, teardown: TeardownPerformed }
+  | IncarnationQuarantinedOnStart { start: ControllerStart, commit: CellReadinessCommit }
+  | IncarnationStartRefused { start: ControllerStart, store: CellReadinessStoreObservation }
+  | IncarnationInFlightRecordRefused { start: ControllerStart, commit: CellReadinessCommit }
+  | IncarnationLaunchRefused { start: ControllerStart, launch: VmmLaunch, teardown: TeardownPerformed }
+  | IncarnationStopRefused { start: ControllerStart, launch: VmmLaunch, bring_up: BringUpOutcome, terminal: TerminalOutcome }
+  | IncarnationTerminalUnobservable { start: ControllerStart, launch: VmmLaunch, bring_up: BringUpOutcome, terminal: TerminalOutcome, teardown: TeardownPerformed }
+
+// THE SLOT NETWORK IS A DECLARED FRONTIER OF THIS REALIZATION (DESIGN 3c). The seven readings
+// gunbc.runner_microvm_network SlotNetworkReadings names have no wet producer in this tree, and
+// no host carries a ConvergedSlotNetwork receipt (that converge is
+// gunbc.runner_microvm_network converged_slot_network_frontier). Until both exist the controller
+// observes the slot's network subject as REFUSED -- SlotNotInConvergedPopulation -- which the
+// decision layer maps onto SlotNetworkQuiescent unobservable: the cell quarantines on it. That is
+// the honest answer on every host today, and it is why no transient-unit run below can end
+// CellReady: the process facts are established, the network fact is not.
+// NAMED CONSUMER: teardown_wet's network parameter. TRIGGER: the converge lands the receipt on srvN
+// AND a wet producer folds the seven commands into SlotNetworkReadings, so this arm is replaced by
+// slot_network_readback over a subject the host admitted. SUFFICIENT FOR deleting this row. NOT
+// satisfied by a fixture receipt supplied beside the controller.
+data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize teardown_wet network parameter. TRIGGER: gunbc.runner_microvm_network's converge produces ConvergedSlotNetwork on the host AND a wet producer folds runner_slot_guest_originated_conntrack_list_command, runner_slot_guest_destined_conntrack_list_command, runner_slot_guest_neighbour_show_command, runner_host_expectation_list_command, the tap holder and disable_ipv6 reads and runner_microvm_nft_list_command into SlotNetworkReadings, so the controller passes SlotNetworkReadbackTaken over a subject the host admitted. SUFFICIENT FOR deleting this row and the SlotNetworkSubjectRefused default in run_incarnation_wet. NOT satisfied by a fixture ConvergedSlotNetwork supplied beside the controller." as NonEmptyStr,
+)
+
+fn slot_network_unconverged() -> ObservedSlotNetwork {
+  SlotNetworkSubjectRefused { refusal: SlotNotInConvergedPopulation }
+}
+
+fn run_incarnation_wet(store_root: NonEmptyStr, identity: AttemptIdentity, vmm: ArgvCommand, plan: TerminalPlan) -> IncarnationOutcome {
+  let cell = runner_slot_instance_name(slot: identity.attempt.slot) as CellId
+  let store = observe_cell_readiness_store_wet(root: store_root)
+  let admission = cell_incarnation_admission(store: store.read, cell: cell, allocation_generation: identity.allocation_generation)
+  let start = controller_start(admission: admission, ground: attempt_ground_wet(attempt: identity.attempt), identity: identity)
+  match start {
+    StartAttempt { bound: b, record: r } =>
+      match commit_cell_readiness_write_wet(root: store_root, write: r) {
+        CommitLanded { generation: _, records: _ } => run_launched_attempt_wet(store_root: store_root, start: start, bound: b, identity: identity, vmm: vmm, plan: plan)
+        refused => IncarnationInFlightRecordRefused { start: start, commit: refused }
+      }
+    StartRecovery { bound: b, trigger: t } =>
+      IncarnationRecovered {
+        start: start,
+        teardown: teardown_wet(store_root: store_root, bound: b, identity: identity, trigger: t, network: slot_network_unconverged()),
+      }
+    StartQuarantineUnattributedResidue { trigger: _, record: r } =>
+      IncarnationQuarantinedOnStart { start: start, commit: commit_cell_readiness_write_wet(root: store_root, write: r) }
+    StartRefused { admission: _ } => IncarnationStartRefused { start: start, store: store }
+    StartBindingRefused { binding: _ } => IncarnationStartRefused { start: start, store: store }
+  }
+}
+
+fn run_launched_attempt_wet(store_root: NonEmptyStr, start: ControllerStart, bound: CellBoundIdentity, identity: AttemptIdentity, vmm: ArgvCommand, plan: TerminalPlan) -> IncarnationOutcome {
+  let launch = launch_vmm_unit_wet(identity: identity, vmm: vmm)
+  match launch {
+    VmmLaunchRefused { unit: _, detail: _ } =>
+      IncarnationLaunchRefused {
+        start: start,
+        launch: launch,
+        teardown: teardown_wet(store_root: store_root, bound: bound.attempt, identity: identity, trigger: ControllerLost, network: slot_network_unconverged()),
+      }
+    VmmLaunched { unit: _ } => {
+      let bring_up = observe_bring_up_wet(identity: identity, at: VmmStarted, remaining: bring_up_poll_bound)
+      let terminal = match bring_up {
+        BringUpReached { phase: _ } => terminal_condition_wet(identity: identity, plan: plan)
+        BringUpEndedByTerminal { at: _, trigger: t } => TerminalReached { trigger: t, admissions: [] }
+        BringUpRefused { at: _, transition: _ } => TerminalReached { trigger: ControllerLost, admissions: [] }
+        BringUpDeadline { at: _ } => TerminalReached { trigger: DeadlineReached, admissions: [] }
+        BringUpUnobservable { at: _, reason: r } => TerminalUnobservable { reason: r }
+      }
+      match terminal {
+        TerminalReached { trigger: t, admissions: _ } =>
+          IncarnationSettled {
+            start: start, launch: launch, bring_up: bring_up, terminal: terminal,
+            teardown: teardown_wet(store_root: store_root, bound: bound.attempt, identity: identity, trigger: t, network: slot_network_unconverged()),
+          }
+        TerminalStopRefused { admissions: _ } => IncarnationStopRefused { start: start, launch: launch, bring_up: bring_up, terminal: terminal }
+        TerminalUnobservable { reason: _ } =>
+          IncarnationTerminalUnobservable {
+            start: start, launch: launch, bring_up: bring_up, terminal: terminal,
+            teardown: teardown_wet(store_root: store_root, bound: bound.attempt, identity: identity, trigger: ControllerLost, network: slot_network_unconverged()),
+          }
+      }
+    }
+  }
+}
+
+// ── receipts ─────────────────────────────────────────────────────────────────────────────────────
+
+fn stop_outcome_text(s: TeardownStop) -> String {
+  match s {
+    StoppedGracefully => "stopped-gracefully"
+    StoppedByForce => "stopped-by-force"
+    ForceStopBoundExceeded { survivors: p } => join(["force-stop-bound-exceeded survivors=", join(map(p, x => to_string(x)), ",")], "")
+    StopUnobservable { reason: r } => join(["stop-unobservable: ", r as String], "")
+  }
+}
+
+fn cgroup_readback_text(r: CgroupSubtreeReadback) -> String {
+  match r {
+    CgroupSubtreeEmpty => "empty"
+    CgroupSubtreePopulated { pids: p, cgroups: c } =>
+      join(["populated pids=", join(map(p, x => to_string(x)), ","), " cgroups=", to_string(c |> count)], "")
+    CgroupSubtreeReadFailed { reason: x } => join(["read-failed: ", x as String], "")
+  }
+}
+
+fn resource_readback_text(r: ResourceReadback) -> String {
+  match r {
+    ResourceAbsent => "absent"
+    ResourcePresent { detail: d } => join(["present: ", d as String], "")
+    ResourceUnreadable { reason: x } => join(["unreadable: ", x as String], "")
+  }
+}
+
+fn trigger_text(t: TerminalTrigger) -> String {
+  match t {
+    VmmExited { exit_code: c } => join(["vmm-exited exit=", to_string(c)], "")
+    RunnerExited { exit_code: c } => join(["runner-exited exit=", to_string(c)], "")
+    DeadlineReached => "deadline-reached"
+    StopRequested => "stop-requested"
+    ControllerLost => "controller-lost"
+    ResourcesFoundOnRecovery => "resources-found-on-recovery"
+  }
+}
+
+fn phase_text(p: BringUpPhase) -> String {
+  match p {
+    AttemptPrepared => "attempt-prepared"
+    VmmStarted => "vmm-started"
+    GuestBooted => "guest-booted"
+    RunnerListening => "runner-listening"
+    SlotServing => "slot-serving"
+  }
+}
+
+fn bring_up_text(b: BringUpOutcome) -> String {
+  match b {
+    BringUpReached { phase: p } => join(["reached ", phase_text(p: p)], "")
+    BringUpEndedByTerminal { at: p, trigger: t } => join(["ended at ", phase_text(p: p), " by ", trigger_text(t: t)], "")
+    BringUpRefused { at: p, transition: tr } =>
+      match tr {
+        BringUpRefusedForeignIncarnation => join(["refused at ", phase_text(p: p), ": foreign incarnation"], "")
+        BringUpRefusedOutOfOrder { from: f, to: t } => join(["refused at ", phase_text(p: p), ": out of order ", phase_text(p: f), " -> ", phase_text(p: t)], "")
+        BringUpAdvanced { phase: q } => join(["advanced to ", phase_text(p: q)], "")
+      }
+    BringUpDeadline { at: p } => join(["deadline at ", phase_text(p: p)], "")
+    BringUpUnobservable { at: p, reason: r } => join(["unobservable at ", phase_text(p: p), ": ", r as String], "")
+  }
+}
+
+fn stop_admission_text(a: StopAdmission) -> String {
+  match a {
+    StopAdmitted { trigger: t } => join(["admitted ", trigger_text(t: t)], "")
+    StopRefusedStaleIncarnation { live_generation: l, requested_generation: r } =>
+      join(["refused-stale-incarnation live=", to_string(l), " requested=", to_string(r)], "")
+  }
+}
+
+fn terminal_text(t: TerminalOutcome) -> String {
+  match t {
+    TerminalReached { trigger: x, admissions: a } => join(concat(map(a, y => stop_admission_text(a: y)), [trigger_text(t: x)]), "; ")
+    TerminalStopRefused { admissions: a } => join(concat(map(a, y => stop_admission_text(a: y)), ["no stop admitted"]), "; ")
+    TerminalUnobservable { reason: r } => join(["unobservable: ", r as String], "")
+  }
+}
+
+fn observation_text(o: SanitationObservation) -> String {
+  match o {
+    FactConfirmed { fact: f } => join([sanitation_fact_label(fact: f), ": confirmed"], "")
+    FactRefuted { fact: f, detail: d } => join([sanitation_fact_label(fact: f), ": refuted -- ", d as String], "")
+    FactUnobservable { fact: f, reason: r } => join([sanitation_fact_label(fact: f), ": unobservable -- ", r as String], "")
+  }
+}
+
+fn launch_text(l: VmmLaunch) -> String {
+  match l {
+    VmmLaunched { unit: u } => join(["launched ", u as String], "")
+    VmmLaunchRefused { unit: u, detail: d } => join(["launch refused ", u as String, ": ", d as String], "")
+  }
+}
+
+fn start_text(s: ControllerStart) -> String {
+  match s {
+    StartAttempt { bound: b, record: _ } => join(["start-attempt cell=", b.attempt.cell as String, " generation=", to_string(b.attempt.generation)], "")
+    StartRecovery { bound: b, trigger: t } => join(["start-recovery cell=", b.cell as String, " generation=", to_string(b.generation), " ", trigger_text(t: t)], "")
+    StartQuarantineUnattributedResidue { trigger: t, record: _ } => join(["start-quarantine-unattributed-residue ", trigger_text(t: t)], "")
+    StartRefused { admission: _ } => "start-refused (admission)"
+    StartBindingRefused { binding: _ } => "start-refused (binding)"
+  }
+}
+
+fn teardown_text(t: TeardownPerformed) -> List<String> {
+  match t {
+    TeardownRefusedToSettle { refusal: r, stop: s } =>
+      concat(
+        [match r {
+          TeardownHostUnobservable { reason: x } => join(["teardown: refused to settle, host unobservable: ", x as String], "")
+          TeardownUnitIncarnationUnobservable { unit: u } => join(["teardown: refused to settle, unit ", u as String, " carries no incarnation"], "")
+          TeardownForeignSubject { binding: b } =>
+            match b {
+              TeardownReadbackForeignSubject { subject: _, expected: e, observed: o } => join(["teardown: refused to settle, foreign subject expected=", e, " observed=", o], "")
+              TeardownReadbackBound { readback: _ } => "teardown: refused to settle (bound?)"
+            }
+        }],
+        match s { Absent => []  Present { value: p } => [join(["stop: ", stop_outcome_text(s: p.outcome)], "")] },
+      )
+    TeardownSettled { settlement: st, observed: o, stop: sp, commit: c } =>
+      concat(
+        [
+          join(["stop: ", stop_outcome_text(s: sp.outcome), " (after-term ", cgroup_readback_text(r: sp.graceful_readback), "; after-kill ", cgroup_readback_text(r: sp.forced_readback), ")"], ""),
+          join(["cgroup: ", cgroup_readback_text(r: o.cgroup.readback)], ""),
+          join(["mounts: ", resource_readback_text(r: o.mounts.readback)], ""),
+          join(["attempt-storage: ", resource_readback_text(r: o.attempt_storage.readback)], ""),
+          join(["credential-disk: ", resource_readback_text(r: o.credential_disk.readback)], ""),
+          join(["settled: ", cell_readiness_line(readiness: st.readiness)], ""),
+          join(["store: ", commit_text(c: c)], ""),
+        ],
+        [],
+      )
+  }
+}
+
+fn incarnation_text(o: IncarnationOutcome) -> String {
+  join(
+    match o {
+      IncarnationSettled { start: s, launch: l, bring_up: b, terminal: t, teardown: td } =>
+        concat([start_text(s: s), launch_text(l: l), join(["bring-up: ", bring_up_text(b: b)], ""), join(["terminal: ", terminal_text(t: t)], "")], teardown_text(t: td))
+      IncarnationRecovered { start: s, teardown: td } => concat([start_text(s: s)], teardown_text(t: td))
+      IncarnationQuarantinedOnStart { start: s, commit: c } => [start_text(s: s), join(["store: ", commit_text(c: c)], "")]
+      IncarnationStartRefused { start: s, store: st } =>
+        [start_text(s: s), match st.read { StoreUnreadable { reason: r } => join(["store: unreadable: ", r as String], "")  StoreRead { ownership: _, records: rs } => join(["store: ", to_string(rs |> count), " records"], "") }]
+      IncarnationInFlightRecordRefused { start: s, commit: c } => [start_text(s: s), join(["store: ", commit_text(c: c)], "")]
+      IncarnationLaunchRefused { start: s, launch: l, teardown: td } => concat([start_text(s: s), launch_text(l: l)], teardown_text(t: td))
+      IncarnationStopRefused { start: s, launch: l, bring_up: b, terminal: t } =>
+        [start_text(s: s), launch_text(l: l), join(["bring-up: ", bring_up_text(b: b)], ""), join(["terminal: ", terminal_text(t: t)], "")]
+      IncarnationTerminalUnobservable { start: s, launch: l, bring_up: b, terminal: t, teardown: td } =>
+        concat([start_text(s: s), launch_text(l: l), join(["bring-up: ", bring_up_text(b: b)], ""), join(["terminal: ", terminal_text(t: t)], "")], teardown_text(t: td))
+    },
+    "\n",
+  )
+}

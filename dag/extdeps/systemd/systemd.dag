@@ -81,6 +81,7 @@ type SystemdUnitProperty
   | KillModeProperty
   | ExitTypeProperty
   | EnvironmentProperty
+  | RemainAfterExitProperty
   | AfterProperty
   | WantsProperty
   | InvocationIDProperty
@@ -120,6 +121,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     KillModeProperty => "KillMode" as NonEmptyStr
     ExitTypeProperty => "ExitType" as NonEmptyStr
     EnvironmentProperty => "Environment" as NonEmptyStr
+    RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     AfterProperty => "After" as NonEmptyStr
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr

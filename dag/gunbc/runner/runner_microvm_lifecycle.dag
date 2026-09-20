@@ -18,7 +18,8 @@ import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied 
 import gunbc.build_cache_instance { runner_slot_identity_equal, runner_slot_instance_name }
 import gunbc.runner_microvm_network {
   BoundSlotNetworkReadback, SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted,
-  SlotNetworkUnobservable, slot_network_fact_label,
+  SlotNetworkUnobservable, slot_network_fact_label, SanitationSubjectRefusal,
+  sanitation_subject_refusal_label,
   bound_slot_network_readback_slot, bound_slot_network_readback_result,
 }
 import gunbc.runner_microvm_cell_readiness {
@@ -250,10 +251,15 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 // which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
 // survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
 // it whatever the cgroup readback says afterwards.
+// A STOP WHOSE OWN READBACK FAILED IS UNOBSERVED, NOT FORCED. The force phase establishes its
+// outcome by reading the cell after the bound; when that read fails there is no fact about
+// survivors either way, and labelling it StoppedByForce would be a plausible sentence over a missing
+// observation. The arm carries the read's reason and maps to NoSurvivingProcesses unobservable.
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | StopUnobservable { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
 // cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
@@ -287,6 +293,20 @@ type ResourceReadback
 // readback is what ObservedTeardown carries, its slot is one of the subjects
 // attempt_teardown_readback joins against the attempt, and only a readback that survived that join
 // is mapped onto SlotNetworkQuiescent.
+// A SLOT WITH NO CONVERGED NETWORK HAS NO READBACK TO BIND, AND THAT IS AN OBSERVATION TOO. The bound
+// readback is sealed behind gunbc.runner_microvm_network slot_network_sanitation_subject, which refuses
+// a slot outside the host's converged population. Making the network field the sealed readback alone
+// left that case with no carrier at all: a controller on a host whose slot network was never converged
+// could not assemble a teardown and so could not settle -- an in-flight record forever, for want of a
+// fact the host can state plainly. So the field is a coproduct: the readback that was taken, or the
+// subject refusal the network module answered. The refused arm maps onto SlotNetworkQuiescent as
+// FactUnobservable with the refusal as its reason -- the cell quarantines, as it must, and the
+// operator is sent at the converge that never ran. The slot join is asked only of the taken arm; the
+// refused arm names no slot, so there is nothing for it to disagree with.
+type ObservedSlotNetwork
+  = SlotNetworkReadbackTaken { readback: BoundSlotNetworkReadback }
+  | SlotNetworkSubjectRefused { refusal: SanitationSubjectRefusal }
+
 type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
 
 type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
@@ -301,7 +321,7 @@ type ObservedTeardown {
   mounts: ObservedPath
   attempt_storage: ObservedPath
   credential_disk: ObservedPath
-  network: BoundSlotNetworkReadback
+  network: ObservedSlotNetwork
 }
 
 type TeardownSubject
@@ -345,10 +365,18 @@ fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<
 // attempt's, through the identity's own equality. It is checked beside the string-rendered subjects
 // rather than inside teardown_subject_pairs because it is the one subject that is not a path.
 fn slot_network_subject_foreign(bound: CellBoundAttempt, o: ObservedTeardown) -> Bool {
-  !runner_slot_identity_equal(
-    a: bound.attempt.attempt.slot,
-    b: bound_slot_network_readback_slot(b: o.network),
-  )
+  match o.network {
+    SlotNetworkSubjectRefused { refusal: _ } => false
+    SlotNetworkReadbackTaken { readback: b } =>
+      !runner_slot_identity_equal(a: bound.attempt.attempt.slot, b: bound_slot_network_readback_slot(b: b))
+  }
+}
+
+fn observed_slot_network_name(o: ObservedSlotNetwork) -> String {
+  match o {
+    SlotNetworkSubjectRefused { refusal: r } => join(["(no subject: ", sanitation_subject_refusal_label(refusal: r), ")"], "")
+    SlotNetworkReadbackTaken { readback: b } => runner_slot_instance_name(slot: bound_slot_network_readback_slot(b: b))
+  }
 }
 
 fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
@@ -356,7 +384,7 @@ fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown
     TeardownReadbackForeignSubject {
       subject: SubjectSlotNetwork,
       expected: runner_slot_instance_name(slot: bound.attempt.attempt.slot),
-      observed: runner_slot_instance_name(slot: bound_slot_network_readback_slot(b: observed.network)),
+      observed: observed_slot_network_name(o: observed.network),
     }
   } else {
     attempt_teardown_readback_after_network(bound: bound, observed: observed)
@@ -382,6 +410,17 @@ fn resource_observation(fact: SanitationFact, readback: ResourceReadback) -> San
 // EACH OF THE NETWORK MODULE'S SEVEN FACTS KEEPS ITS NAME IN THE DETAIL, because "the slot network is
 // not quiescent" is unactionable while "tap-unheld: refuted ..." sends an operator at the right thing.
 // Its refuted and unobservable arms stay distinct here exactly as they are there.
+fn observed_slot_network_observation(o: ObservedSlotNetwork) -> SanitationObservation {
+  match o {
+    SlotNetworkReadbackTaken { readback: b } => slot_network_observation(result: bound_slot_network_readback_result(b: b))
+    SlotNetworkSubjectRefused { refusal: r } =>
+      FactUnobservable {
+        fact: SlotNetworkQuiescent,
+        reason: join(["no sanitation subject for this slot: ", sanitation_subject_refusal_label(refusal: r)], "") as NonEmptyStr,
+      }
+  }
+}
+
 fn slot_network_observation(result: SlotNetworkReadback) -> SanitationObservation {
   match result {
     SlotNetworkConfirmed => FactConfirmed { fact: SlotNetworkQuiescent }
@@ -420,6 +459,7 @@ fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadba
       FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
+    StopUnobservable { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
   }
 }
 
@@ -437,7 +477,7 @@ fn teardown_observations(o: ObservedTeardown) -> List<SanitationObservation> {
     surviving_process_observation(stop: o.stop.outcome, cgroup: o.cgroup.readback),
     cgroup_observation(readback: o.cgroup.readback),
     resource_observation(fact: MountsRemoved, readback: o.mounts.readback),
-    slot_network_observation(result: bound_slot_network_readback_result(b: o.network)),
+    observed_slot_network_observation(o: o.network),
     resource_observation(fact: WritableLayersDeleted, readback: o.attempt_storage.readback),
     resource_observation(fact: SecretsRemoved, readback: o.credential_disk.readback),
   ]

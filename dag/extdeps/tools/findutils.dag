@@ -58,3 +58,19 @@ fn find_symlink_target_glob_command(
     ],
   )
 }
+
+// EVERY DIRECTORY AT OR BELOW A ROOT, ONE PER LINE. find(1) exits nonzero when the root cannot be
+// read at all, and a caller whose evidence is "this subtree is empty" reads that exit before the
+// (empty) listing -- an unreadable root is not an empty one.
+fn find_directories_command(search_root: String) -> ArgvCommand {
+  argv_command(program: find_program, arguments: [search_root, "-type", "d"])
+}
+
+// THE CONTENTS OF EVERY FILE WITH ONE NAME UNDER A ROOT, CONCATENATED. `-exec cat {} +` hands all
+// matches to one cat, so the read is one walk plus one process, and find's own exit reports both a
+// walk that failed and a cat that could not open a file (find(1): the exit status is nonzero if any
+// -exec command returned nonzero). The recursion is the substance: a cgroup listing that reads only
+// the root's cgroup.procs misses every process one level down.
+fn find_named_files_cat_command(search_root: String, file_name: String) -> ArgvCommand {
+  argv_command(program: find_program, arguments: [search_root, "-type", "f", "-name", file_name, "-exec", "cat", "{}", "+"])
+}

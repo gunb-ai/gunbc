@@ -48,7 +48,7 @@ import gunbc.runner_microvm_lifecycle {
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
-  SubjectSlotNetwork,
+  SubjectSlotNetwork, SlotNetworkReadbackTaken,
   ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, TeardownSettlement,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSubject,
   SubjectInvocation, attempt_teardown_readback, settle_teardown,
@@ -226,7 +226,7 @@ fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
     mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
     attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
     credential_disk: ObservedPath { path: id.credential_device_path, readback: facts.credential_disk },
-    network: facts.network,
+    network: SlotNetworkReadbackTaken { readback: facts.network },
   }
 }
 

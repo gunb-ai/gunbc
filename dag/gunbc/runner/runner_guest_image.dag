@@ -367,6 +367,21 @@ fn guest_console_observations(console: String) -> List<GuestObservationKind> {
   })
 }
 
+// THE TWO QUESTIONS THE LIFECYCLE CONTROLLER ASKS OF A CONSOLE, named so it need not import the
+// observation variants -- whose spellings (GuestBooted, RunnerListening) it also uses for its own
+// bring-up phases. Each is guest_console_carries over one kind; neither is a second reader.
+fn guest_booted_observation_line(image: RunnerGuestImage) -> String {
+  guest_observation_line(event: GuestBooted, image: image)
+}
+
+fn console_carries_guest_booted(console: String) -> Bool {
+  guest_console_carries(console: console, kind: GuestEmitted { event: GuestBooted })
+}
+
+fn console_carries_runner_listening(console: String) -> Bool {
+  guest_console_carries(console: console, kind: RunnerListening)
+}
+
 fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
   any(xs: guest_console_observations(console: console), predicate: fn(k) {
     guest_observation_kind_label(kind: k) == guest_observation_kind_label(kind: kind)

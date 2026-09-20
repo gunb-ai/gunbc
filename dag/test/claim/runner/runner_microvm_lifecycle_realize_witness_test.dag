@@ -1,0 +1,208 @@
+module gunbc.test.claim.runner.runner_microvm_lifecycle_realize_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved, FactObservedFailing,
+  FactRefuted, FactUnobservable, FactConfirmed, SanitationObservation, NoSurvivingProcesses, CgroupEmpty,
+  SlotNetworkQuiescent, MountsRemoved, sanitation_fact_label, cell_is_ready,
+}
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_guest_image { guest_booted_observation_line }
+import gunbc.runner_microvm_attempt { MicroVmAttempt, MicroVmAttemptAccepted, microvm_attempt, runner_microvm_attempt_jail_base }
+import gunbc.runner_microvm_cell_readiness {
+  InFlightAttempt, CellReadinessRecord, CellAttemptInFlight, CellSettled, in_flight_attempt_unit,
+}
+import gunbc.runner_microvm_network { SlotNotInConvergedPopulation }
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, BringUpPhase, VmmStarted, GuestBooted, RunnerListening, SlotServing, AttemptPrepared,
+  TeardownStop, StoppedGracefully, StopUnobservable, CgroupSubtreeReadback, CgroupSubtreeEmpty,
+  ObservedSlotNetwork, SlotNetworkSubjectRefused, observed_slot_network_observation, surviving_process_observation,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  WireEncoding, WireEncoded, WireRefusedSeparatorInField, WireDecoding, WireDecoded, WireMalformed,
+  encode_store, decode_store, mode_digits_admit_root_only_write, next_phase_from_console, cell_readiness_wire_header,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv2, slot_index: 7 }
+
+data cell: CellId = runner_slot_instance_name(slot: witness_slot) as CellId
+
+fn attempt() -> MicroVmAttempt? {
+  match microvm_attempt(slot: witness_slot, attempt_id: "w-9") {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: a }
+    _ => none
+  }
+}
+
+fn in_flight_record() -> CellReadinessRecord? {
+  match attempt() {
+    Absent => none
+    Present { value: a } =>
+      Present {
+        value: CellAttemptInFlight {
+          cell: cell,
+          generation: 9,
+          attempt: InFlightAttempt {
+            attempt: a,
+            invocation_id: "inv-9" as NonEmptyStr,
+            jit_registration_id: "reg-9" as NonEmptyStr,
+            credential_device_path: join([runner_microvm_attempt_jail_base(attempt: a), "/firecracker/w/root/jit.bin"], ""),
+          },
+        },
+      }
+  }
+}
+
+fn quarantined_record() -> CellReadinessRecord {
+  CellSettled {
+    cell: cell,
+    generation: 3,
+    readiness: CellQuarantined {
+      cell: cell,
+      unproven: [
+        FactNotObserved { fact: MountsRemoved },
+        FactObservedFailing { observation: FactRefuted { fact: NoSurvivingProcesses, detail: "pids 4242 are still running" as NonEmptyStr } },
+        FactObservedFailing { observation: FactUnobservable { fact: CgroupEmpty, reason: "cgroup.procs: EIO" as NonEmptyStr } },
+      ],
+    },
+  }
+}
+
+fn ready_record() -> CellReadinessRecord {
+  CellSettled { cell: cell, generation: 4, readiness: CellReady { cell: cell } }
+}
+
+fn roundtrip(records: List<CellReadinessRecord>) -> List<CellReadinessRecord>? {
+  match encode_store(records: records) {
+    WireRefusedSeparatorInField { record_cell: _, field: _ } => none
+    WireEncoded { text: t } =>
+      match decode_store(text: t as String) {
+        WireMalformed { line: _, detail: _ } => none
+        WireDecoded { records: rs } => Present { value: rs }
+      }
+  }
+}
+
+fn record_generation(r: CellReadinessRecord) -> Int {
+  match r {
+    CellAttemptInFlight { cell: _, generation: g, attempt: _ } => g
+    CellSettled { cell: _, generation: g, readiness: _ } => g
+  }
+}
+
+fn unproven_labels(r: CellReadinessRecord) -> List<String> {
+  match r {
+    CellSettled { cell: _, generation: _, readiness: CellQuarantined { cell: _, unproven: u } } =>
+      map(u, x => match x {
+        FactNotObserved { fact: f } => join([sanitation_fact_label(fact: f), "/not-observed"], "")
+        FactObservedFailing { observation: o } =>
+          match o {
+            FactConfirmed { fact: f } => join([sanitation_fact_label(fact: f), "/confirmed"], "")
+            FactRefuted { fact: f, detail: d } => join([sanitation_fact_label(fact: f), "/refuted/", d as String], "")
+            FactUnobservable { fact: f, reason: x } => join([sanitation_fact_label(fact: f), "/unobservable/", x as String], "")
+          }
+      })
+    _ => []
+  }
+}
+
+// THE POSITIVE CONTROL AND THE IDENTITY JOIN: three records of the three shapes go through the wire
+// and come back with their generations, their attempt (unit, invocation, registration, device
+// path) and every unproven fact's kind and text intact.
+test fn the_store_wire_round_trips_every_record_shape() -> Bool {
+  match in_flight_record() {
+    Absent => false
+    Present { value: inflight } =>
+      match roundtrip(records: [inflight, quarantined_record(), ready_record()]) {
+        Absent => false
+        Present { value: back } =>
+          (back |> count) == 3
+            && join(map(back, r => to_string(record_generation(r: r))), ",") == "9,3,4"
+            && (match get(xs: back, index: 0) {
+                 Present { value: CellAttemptInFlight { cell: c, generation: _, attempt: a } } =>
+                   (c as String) == (cell as String)
+                     && (in_flight_attempt_unit(attempt: a) as String) == (match inflight { CellAttemptInFlight { cell: _, generation: _, attempt: x } => in_flight_attempt_unit(attempt: x) as String  _ => "" })
+                     && (a.invocation_id as String) == "inv-9"
+                     && (a.jit_registration_id as String) == "reg-9"
+                     && string_contains(s: a.credential_device_path, pattern: "/jit.bin")
+                 _ => false
+               })
+            && (match get(xs: back, index: 1) { Present { value: r } => join(unproven_labels(r: r), ";") == join(unproven_labels(r: quarantined_record()), ";")  Absent => false })
+            && (match get(xs: back, index: 2) { Present { value: CellSettled { cell: _, generation: _, readiness: CellReady { cell: _ } } } => true  _ => false })
+      }
+  }
+}
+
+// A STORE WRITTEN BY ANOTHER WIRE IS UNREADABLE, NOT EMPTY: a foreign header refuses at line 1,
+// and a record line that does not decode refuses at its own line -- never a shorter record list.
+test fn a_foreign_header_or_a_bad_line_is_malformed_not_a_shorter_store() -> Bool {
+  let foreign = decode_store(text: "some-other-store v7\nsettled\tsrv2-07\t4\tready")
+  let bad_line = decode_store(text: join([cell_readiness_wire_header, "\nsettled\tsrv2-07\t4\tready\nsettled\tsrv2-07\tfour\tready"], ""))
+  let empty = decode_store(text: "")
+  (match foreign { WireMalformed { line: 1, detail: _ } => true  _ => false })
+    && (match bad_line { WireMalformed { line: 3, detail: _ } => true  _ => false })
+    && (match empty { WireMalformed { line: _, detail: _ } => true  _ => false })
+}
+
+// A FIELD CARRYING THE SEPARATOR REFUSES TO ENCODE rather than producing a line that decodes as a
+// different record: a refuted detail with a tab in it is the case, and the refusal names the cell.
+test fn a_separator_inside_a_field_refuses_the_encoding() -> Bool {
+  let tabbed = CellSettled {
+    cell: cell,
+    generation: 5,
+    readiness: CellQuarantined {
+      cell: cell,
+      unproven: [FactObservedFailing { observation: FactRefuted { fact: NoSurvivingProcesses, detail: "pid 1\tstill" as NonEmptyStr } }],
+    },
+  }
+  match encode_store(records: [ready_record(), tabbed]) {
+    WireRefusedSeparatorInField { record_cell: c, field: _ } => (c as String) == (cell as String)
+    WireEncoded { text: _ } => false
+  }
+}
+
+// ROOT-ONLY WRITE IS A FACT ABOUT THE GROUP AND OTHER DIGITS, in the digits stat(1) %a prints.
+test fn the_store_root_mode_admits_only_root_writable_directories() -> Bool {
+  mode_digits_admit_root_only_write(mode: "700")
+    && mode_digits_admit_root_only_write(mode: "755")
+    && mode_digits_admit_root_only_write(mode: "2755")
+    && !mode_digits_admit_root_only_write(mode: "775")
+    && !mode_digits_admit_root_only_write(mode: "757")
+    && !mode_digits_admit_root_only_write(mode: "777")
+    && !mode_digits_admit_root_only_write(mode: "7")
+}
+
+// BRING-UP ADVANCES ONE PHASE PER MARKER, from the console the unit's journal carries: the booted
+// marker moves VmmStarted forward and nothing else does; the listener's own line moves GuestBooted.
+test fn the_console_advances_bring_up_one_phase_per_marker() -> Bool {
+  let booted = join(["random line\n", guest_booted_observation_line(image: gunbc_runner_guest_image), "\n"], "")
+  let listening = "2026-09-20 red: Listening for Jobs\n"
+  (match next_phase_from_console(at: VmmStarted, console: booted) { Present { value: GuestBooted } => true  _ => false })
+    && (match next_phase_from_console(at: VmmStarted, console: listening) { Absent => true  Present { value: _ } => false })
+    && (match next_phase_from_console(at: GuestBooted, console: listening) { Present { value: RunnerListening } => true  _ => false })
+    && (match next_phase_from_console(at: GuestBooted, console: booted) { Absent => true  Present { value: _ } => false })
+    && (match next_phase_from_console(at: RunnerListening, console: "") { Present { value: SlotServing } => true  _ => false })
+    && (match next_phase_from_console(at: AttemptPrepared, console: booted) { Absent => true  Present { value: _ } => false })
+}
+
+// A SLOT WITH NO NETWORK SUBJECT IS AN UNOBSERVABLE NETWORK FACT, which quarantines: the refused
+// arm maps onto SlotNetworkQuiescent as FactUnobservable naming the refusal, never as confirmed.
+test fn a_refused_network_subject_is_an_unobservable_network_fact() -> Bool {
+  match observed_slot_network_observation(o: SlotNetworkSubjectRefused { refusal: SlotNotInConvergedPopulation }) {
+    FactUnobservable { fact: SlotNetworkQuiescent, reason: r } => string_contains(s: r as String, pattern: "slot-not-in-converged-population")
+    _ => false
+  }
+}
+
+// A STOP WHOSE OWN READBACK FAILED ESTABLISHES NO SURVIVOR FACT EITHER WAY.
+test fn an_unobserved_stop_leaves_surviving_processes_unobservable() -> Bool {
+  match surviving_process_observation(stop: StopUnobservable { reason: "cgroup.procs: masked" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty) {
+    FactUnobservable { fact: NoSurvivingProcesses, reason: _ } => true
+    _ => false
+  }
+}

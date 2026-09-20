@@ -1,0 +1,64 @@
+module extdeps.tools.util_linux
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/fsfreeze.8.html"
+  }
+}
+
+data extdeps_mount_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/mount.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.util_linux",
+      decl_name: "fsfreeze_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_mount_authority]
+}
+
+data fsfreeze_program: NonEmptyStr = "fsfreeze"
+
+data mount_program: NonEmptyStr = "mount"
+
+data umount_program: NonEmptyStr = "umount"
+
+// A FROZEN FILESYSTEM IS THE ONE PORTABLE WAY TO PUT A PROCESS BEYOND SIGKILL. fsfreeze(8): after
+// --freeze, any process that writes to the filesystem blocks in the kernel until --unfreeze, and a
+// task blocked that way is in uninterruptible sleep -- it does not run signal handlers and does not
+// die on SIGKILL until it wakes. That is exactly the "unkillable task" a bounded force-stop must
+// report rather than wait out, and the lifecycle RED harness creates one this way on purpose. The
+// pair is modeled together because a freeze without its unfreeze is a host with a wedged mount.
+fn fsfreeze_freeze_command(mount_point: String) -> ArgvCommand {
+  argv_command(program: fsfreeze_program, arguments: ["--freeze", mount_point])
+}
+
+fn fsfreeze_unfreeze_command(mount_point: String) -> ArgvCommand {
+  argv_command(program: fsfreeze_program, arguments: ["--unfreeze", mount_point])
+}
+
+// mount(8) `-o loop` attaches a regular file through a loop device and mounts it in one step; the
+// device is released by umount. The filesystem type is the operand mount would otherwise probe, given
+// explicitly so a stale image of another type refuses rather than mounting as something else.
+fn mount_loop_image_command(image_path: String, fs_type: NonEmptyStr, mount_point: String) -> ArgvCommand {
+  argv_command(program: mount_program, arguments: ["-t", fs_type as String, "-o", "loop", image_path, mount_point])
+}
+
+fn umount_command(mount_point: String) -> ArgvCommand {
+  argv_command(program: umount_program, arguments: [mount_point])
+}

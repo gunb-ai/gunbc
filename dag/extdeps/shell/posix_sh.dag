@@ -1,0 +1,39 @@
+module extdeps.shell.posix_sh
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.shell.posix_sh",
+      decl_name: "posix_sh_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data posix_sh_program: NonEmptyStr = "sh"
+
+// ONE SCRIPT BODY AS ONE ARGV WORD. POSIX sh(1): `-c` reads commands from the command_string operand,
+// and $0 is set from the operand that follows it. The body travels as a single argument, never
+// re-parsed by a caller's shell, so a body containing quotes or spaces is the body the process
+// receives. The only in-tree consumer is the lifecycle RED harness, whose subject is a PROCESS that
+// misbehaves in a named way (ignores SIGTERM, escapes its cgroup, blocks in the kernel); the behaviours
+// are shell one-liners because that is the cheapest faithful process with each property, and a
+// production launch never reaches this builder -- its VMM argv comes from the sealed staging receipt.
+fn posix_sh_inline_command(body: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: posix_sh_program, arguments: ["-c", body as String, posix_sh_program as String])
+}

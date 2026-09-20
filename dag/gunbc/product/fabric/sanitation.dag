@@ -77,6 +77,23 @@ fn sanitation_fact_label(fact: SanitationFact) -> String {
   }
 }
 
+// THE LABEL READ BACK, the same rows in the other direction: a host-local store that persists a
+// quarantine's unproven facts (gunbc.runner_microvm_lifecycle_realize) writes the label and must read
+// the fact, and a second spelling of the row set there would drift from this one. An unknown label is
+// Absent, never a default fact.
+fn sanitation_fact_of_label(label: String) -> SanitationFact? {
+  match label {
+    "no-surviving-processes" => Present { value: NoSurvivingProcesses }
+    "cgroup-empty" => Present { value: CgroupEmpty }
+    "mounts-removed" => Present { value: MountsRemoved }
+    "network-namespace-removed" => Present { value: NetworkNamespaceRemoved }
+    "slot-network-quiescent" => Present { value: SlotNetworkQuiescent }
+    "writable-layers-deleted" => Present { value: WritableLayersDeleted }
+    "secrets-removed" => Present { value: SecretsRemoved }
+    _ => none
+  }
+}
+
 fn network_sanitation_fact(scope: SandboxNetworkScope) -> SanitationFact {
   match scope {
     AttemptScopedNetwork => NetworkNamespaceRemoved

@@ -6,6 +6,7 @@ import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
 
@@ -75,5 +76,18 @@ service sleep.Delay {
     mock_response {
       0 => { success: true } "hermetic sleep.Delay.Seconds"
     }
+  }
+}
+
+// THE SAME WORDS AS A COMMAND, for a caller that waits through extdeps.exec.command's transport;
+// the non-positive refusal is carried, not dropped, exactly as the argv rendering carries it.
+type SleepCommandRendering
+  = SleepCommand { command: ArgvCommand }
+  | SleepCommandDurationRefused { duration: Second }
+
+fn sleep_seconds_command(duration: Second) -> SleepCommandRendering {
+  match sleep_seconds_argv(duration: duration) {
+    SleepDurationRefused { duration: d } => SleepCommandDurationRefused { duration: d }
+    SleepArgv { words: w } => SleepCommand { command: argv_command(program: sleep_cli_tool.name as NonEmptyStr, arguments: w.skip(n: 1)) }
   }
 }

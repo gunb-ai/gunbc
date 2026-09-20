@@ -669,3 +669,45 @@ fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
     ),
   )
 }
+
+// --- ArgvCommand builders for the microVM lifecycle controller (gunbc#11820) ---
+//
+// THE SIGNAL IS A NAME systemctl(1) ACCEPTS, and --kill-whom=all is fixed rather than a parameter:
+// the controller stops a WHOLE unit, never its main process alone, because the double-forked child
+// the main process left behind is exactly the process a `--kill-whom=main` would miss.
+type SystemctlKillSignal = KillSigterm | KillSigkill
+
+fn systemctl_kill_signal_wire(signal: SystemctlKillSignal) -> NonEmptyStr {
+  match signal {
+    KillSigterm => "SIGTERM" as NonEmptyStr
+    KillSigkill => "SIGKILL" as NonEmptyStr
+  }
+}
+
+fn systemctl_kill_unit_command(unit: NonEmptyStr, signal: SystemctlKillSignal) -> ArgvCommand {
+  argv_command(
+    program: systemctl_binary_path(),
+    arguments: ["kill", "--kill-whom=all", concat("--signal=", systemctl_kill_signal_wire(signal: signal) as String), unit as String],
+  )
+}
+
+// ONE PROPERTY, VALUE ONLY: the same words systemctl_show_property_argv renders, minted as a command.
+// A unit the manager has not loaded still answers -- with the manager's default for the property --
+// so a reader that needs "is this unit loaded" reads LoadState first (see the note on
+// systemctl_show_properties_argv); this builder does not pretend otherwise.
+fn systemctl_show_value_command(unit: NonEmptyStr, property: SystemdUnitProperty) -> ArgvCommand {
+  argv_command(
+    program: systemctl_binary_path(),
+    arguments: ["show", unit as String, concat("--property=", systemd_unit_property_wire(property: property) as String), "--value"],
+  )
+}
+
+fn systemctl_stop_command(unit: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: systemctl_binary_path(), arguments: ["stop", unit as String])
+}
+
+// A FAILED TRANSIENT UNIT STAYS LOADED UNTIL SOMEONE RESETS IT (systemctl(1) reset-failed); the
+// controller that launched it without --collect is that someone, after it has read the exit.
+fn systemctl_reset_failed_command(unit: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: systemctl_binary_path(), arguments: ["reset-failed", unit as String])
+}

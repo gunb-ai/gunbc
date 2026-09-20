@@ -881,6 +881,19 @@ type SanitationSubjectResult
   = SanitationSubjectAdmitted { subject: SlotNetworkSanitationSubject }
   | SanitationSubjectRefused { refusal: SanitationSubjectRefusal }
 
+// ONE WORD PER REFUSAL, for the consumer that carries a refused subject into a sanitation readback
+// (gunbc.runner_microvm_lifecycle ObservedSlotNetwork) and must say WHICH premise was missing.
+fn sanitation_subject_refusal_label(refusal: SanitationSubjectRefusal) -> String {
+  match refusal {
+    ReceiptForDifferentHost { slot_host: s, receipt_host: r } =>
+      join(["receipt-for-different-host (slot ", s as String, ", receipt ", r as String, ")"], "")
+    SlotNotInConvergedPopulation => "slot-not-in-converged-population"
+    ConvergedSlotDisagreesWithDerivation => "converged-slot-disagrees-with-derivation"
+    TapIpv6NotEstablishedDisabled => "tap-ipv6-not-established-disabled"
+    HelpersNotExcluded => "helpers-not-excluded"
+  }
+}
+
 fn converged_slot_of(slot: RunnerSlotIdentity, receipt: ConvergedSlotNetwork) -> ConvergedSlot? {
   fold(receipt.slots, init: none, f: (acc, c) =>
     match acc {

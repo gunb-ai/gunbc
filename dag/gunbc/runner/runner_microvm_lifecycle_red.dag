@@ -1,0 +1,639 @@
+module gunbc.runner_microvm_lifecycle_red
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.checked_arithmetic { nat_magnitude }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.shell.exec { ProcessRefused }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.shell.posix_sh { posix_sh_inline_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
+import extdeps.tools.e2fsprogs { Ext4, mke2fs_format_command }
+import extdeps.tools.busybox { busybox_dd_sparse_image_command }
+import extdeps.tools.util_linux { fsfreeze_unfreeze_command, umount_command }
+import extdeps.systemd.systemctl { systemctl_stop_command, systemctl_reset_failed_command }
+import std.measure { mebibyte }
+import product.fabric.sanitation {
+  CellId, CellReady, CellQuarantined, SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable,
+  SanitationFact, NoSurvivingProcesses, CgroupEmpty, sanitation_fact_label,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity, runner_slot_instance_name }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_guest_image { guest_observation_line, GuestBooted }
+import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt, runner_microvm_attempt_jail_base,
+}
+import gunbc.runner_microvm_cell_readiness {
+  InFlightAttempt, CellReadinessWrite, WriteReadbackSettled, CellBoundAttempt, AttemptBoundToCell, AttemptCellMismatch,
+  bind_attempt_to_cell, WriteRefusedWouldLoosenQuarantine,
+}
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, VmmExited, TeardownStop, StoppedGracefully, StoppedByForce,
+  ForceStopBoundExceeded, StopUnobservable, CgroupSubtreeReadback, CgroupSubtreePopulated,
+  CgroupSubtreeReadFailed, StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, TeardownSettlement,
+  teardown_observations,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  IncarnationOutcome, IncarnationSettled,
+  TeardownPerformed, TeardownSettled, TeardownRefusedToSettle,
+  TerminalPlan, AwaitVmmExit, StopOnBehalfOf, TerminalOutcome, TerminalReached,
+  CellReadinessCommit, CommitLanded, CommitRefusedByStore, commit_cell_readiness_write_wet, commit_landed, commit_text,
+  run_incarnation_wet, incarnation_text, stop_outcome_text, vmm_unit_of, hostname_wet,
+  SliceCgroupPath, SliceCgroupAt, SliceCgroupUnknown, slice_cgroup_path_wet,
+}
+import gunbc.command_runner { run_shell_command_capture, run_shell_commands, LocalExec }
+
+data runner_microvm_lifecycle_red_disposition: Disposition = SingleAuthority
+
+// THE SIX REDS, EXECUTED AGAINST REAL PROCESSES IN TRANSIENT UNITS.
+//
+// gunbc.runner_microvm_lifecycle modeled six ways a cell can be left dirty or a stop can land on the
+// wrong incarnation, and its witness established each as a decision over supplied facts. This
+// module is the other half of that evidence: each RED is a PROCESS with the named property, launched
+// through the wet controller's own launch, watched, stopped and read back by the same functions the
+// production route uses, and settled through the same store. The one supplied input is the VMM
+// argv (gunbc.runner_microvm_lifecycle_realize states the pairing obligation); everything from the
+// launch onward is the real route.
+//
+// NEVER A LIVE SLOT. Every RED runs on a transient cell -- host <hostname>, slot index 90 and up --
+// whose slice is created by the launch and stopped at cleanup, under a store root of its own under
+// /run. The live runner slots are actions-runner@<host>-NN units in their own slice and are never
+// named here; every RED's index is derived from that floor (red_slot_index).
+//
+// WHAT EACH RED ESTABLISHES, and what it cannot. The process facts -- surviving processes, the
+// cgroup subtree, mounts, storage, the credential path -- are established on the host. The slot
+// network fact is NOT: no host carries a converged slot network (the realize module's declared
+// frontier), so every settlement below quarantines on slot-network-quiescent unobservable, and a RED
+// whose process facts are all confirmed reads "quarantined on the network fact alone". The
+// predicates below assert the process facts and the stop outcome, which are the REDs' subjects.
+//
+// EACH ENTRY EXITS 0 ONLY WHEN THE OBSERVED SETTLEMENT HAS THE SHAPE THE RED PREDICTS, so a run of
+// this instrument is a check, not a demonstration: a controller that skipped the force phase,
+// read the cgroup non-recursively, trusted exit 0, or honoured a stale stop makes the matching entry
+// exit nonzero with the receipt saying what it saw instead.
+
+data red_run_root: String = "/run/gunbc-lifecycle-red"
+
+data red_receipt_dir: String = "target"
+
+data red_slot_index_floor: Int = 90
+
+type Red
+  = RedSigtermIgnored
+  | RedDoubleFork
+  | RedUnkillableTask
+  | RedFailedCgroupRead
+  | RedStaleStopRefused
+  | RedSuccessLeavesBackground
+
+fn red_name(r: Red) -> String {
+  match r {
+    RedSigtermIgnored => "sigterm-ignored"
+    RedDoubleFork => "double-fork"
+    RedUnkillableTask => "unkillable-task"
+    RedFailedCgroupRead => "failed-cgroup-read"
+    RedStaleStopRefused => "stale-stop-refused"
+    RedSuccessLeavesBackground => "success-leaves-background"
+  }
+}
+
+fn red_slot_offset(r: Red) -> Int {
+  match r {
+    RedSigtermIgnored => 1
+    RedDoubleFork => 2
+    RedUnkillableTask => 3
+    RedFailedCgroupRead => 4
+    RedStaleStopRefused => 5
+    RedSuccessLeavesBackground => 6
+  }
+}
+
+fn red_dir(r: Red) -> String {
+  join([red_run_root, "/", red_name(r: r)], "")
+}
+
+fn red_store_root(r: Red) -> NonEmptyStr {
+  join([red_dir(r: r), "/store"], "") as NonEmptyStr
+}
+
+fn red_receipt_path(r: Red) -> String {
+  join([red_receipt_dir, "/runner-microvm-lifecycle-red-", red_name(r: r), ".txt"], "")
+}
+
+fn red_generation() -> Int {
+  2
+}
+
+// ── the transient cell ──────────────────────────────────────────────────────────────────────────
+
+fn red_slot_index(r: Red) -> Nat {
+  nat_magnitude(a: red_slot_index_floor + red_slot_offset(r: r))
+}
+
+fn red_slot(host: String, r: Red) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: host as HostIdentity, slot_index: red_slot_index(r: r) }
+}
+
+fn red_attempt(host: String, r: Red, attempt_id: String) -> MicroVmAttempt? {
+  match microvm_attempt(slot: red_slot(host: host, r: r), attempt_id: attempt_id) {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: a }
+    MicroVmAttemptRefused { refusal: _ } => none
+  }
+}
+
+fn red_credential_path(a: MicroVmAttempt) -> String {
+  join([runner_microvm_attempt_jail_base(attempt: a), "/firecracker/red/root/jit.bin"], "")
+}
+
+fn red_identity(host: String, r: Red, generation: Int, invocation: String) -> AttemptIdentity? {
+  match red_attempt(host: host, r: r, attempt_id: join(["red-", red_name(r: r)], "")) {
+    Absent => none
+    Present { value: a } =>
+      Present {
+        value: AttemptIdentity {
+          attempt: a,
+          allocation_generation: generation,
+          invocation_id: invocation as NonEmptyStr,
+          jit_registration_id: "red-registration" as NonEmptyStr,
+          credential_device_path: red_credential_path(a: a),
+          guest_image: gunbc_runner_guest_image,
+        },
+      }
+  }
+}
+
+fn live_invocation(r: Red) -> String {
+  join(["red-", red_name(r: r), "-live"], "")
+}
+
+// THE STORE IS SEEDED WITH A READY READBACK AT THE PREVIOUS GENERATION, because the readiness module
+// admits an incarnation only over one (the first incarnation on a cell needs a readback establishing
+// the empty cell, exactly like every later one). The seed is a settled Ready for a previous attempt
+// on the same cell, written through the store's own write path -- not a record placed in the file.
+fn red_seed_write(host: String, r: Red) -> CellReadinessWrite? {
+  match red_attempt(host: host, r: r, attempt_id: "red-seed") {
+    Absent => none
+    Present { value: a } => {
+      let cell = runner_slot_instance_name(slot: a.slot) as CellId
+      match bind_attempt_to_cell(
+        cell: cell,
+        generation: red_generation() - 1,
+        attempt: InFlightAttempt { attempt: a, invocation_id: "red-seed" as NonEmptyStr, jit_registration_id: "red-seed" as NonEmptyStr, credential_device_path: red_credential_path(a: a) },
+      ) {
+        AttemptCellMismatch { cell: _, attempt_cell: _ } => none
+        AttemptBoundToCell { bound: b } => Present { value: WriteReadbackSettled { bound: b, readiness: CellReady { cell: cell } } }
+      }
+    }
+  }
+}
+
+// ── the misbehaving processes ────────────────────────────────────────────────────────────────────
+
+// THE CONSOLE MARKERS THE CONTROLLER WAITS FOR, printed first by every RED so bring-up reaches
+// SlotServing through the real journal read before the misbehaviour begins.
+fn markers_prologue() -> String {
+  join([
+    "echo '", guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image), "'; ",
+    "echo 'red: ", actions_runner_listening_line_suffix, "'; ",
+  ], "")
+}
+
+// ESCAPE INTO A SIBLING CGROUP OF THE UNIT, UNDER THE CELL SLICE: the process reads its own cgroup,
+// makes a leaf beside it and moves itself there. It is then inside the cell and outside the unit --
+// what a double fork that re-parents and re-homes leaves behind -- and it ignores SIGTERM so the
+// unit's graceful stop cannot be what removes it.
+fn escape_snippet() -> String {
+  join([
+    "cg=$(cut -d: -f3 /proc/self/cgroup); esc=/sys/fs/cgroup$(dirname \"$cg\")/escape; mkdir -p \"$esc\"; ",
+    "sh -c 'trap \"\" TERM; echo $$ > '\"$esc\"'/cgroup.procs; sleep 600' & sleep 1; ",
+  ], "")
+}
+
+// MASK THE CELL'S CGROUP DIRECTORY FROM THE HOST'S VIEW: an empty tmpfs mounted over the slice's
+// cgroup path. The kernel cgroup is untouched -- the process is still accounted to it -- but every
+// path-based read of it (cgroup.procs, the walk, cgroup.kill) now sees a directory that is not a
+// cgroup. That is the failed read the controller must quarantine on rather than read as empty, and
+// it is a fault a host can really present (a stale mount, a masked mount namespace). The harness
+// unmounts it at cleanup by the path the manager still reports.
+fn mask_slice_snippet() -> String {
+  "cg=$(cut -d: -f3 /proc/self/cgroup); mount -t tmpfs none /sys/fs/cgroup$(dirname \"$cg\"); "
+}
+
+fn red_mount_point(r: Red) -> String {
+  join([red_dir(r: r), "/frozen"], "")
+}
+
+fn red_image_path(r: Red) -> String {
+  join([red_dir(r: r), "/frozen.img"], "")
+}
+
+fn red_vmm_script(r: Red) -> String {
+  match r {
+    RedSigtermIgnored => join([markers_prologue(), "trap '' TERM; sleep 600"], "")
+    RedDoubleFork => join([markers_prologue(), escape_snippet(), "sleep 600"], "")
+    RedUnkillableTask =>
+      join([
+        markers_prologue(),
+        "mount -t ext4 -o loop ", red_image_path(r: r), " ", red_mount_point(r: r), " && fsfreeze --freeze ", red_mount_point(r: r), " && ",
+        "sh -c 'echo x > ", red_mount_point(r: r), "/blocked' & sleep 1; sleep 600",
+      ], "")
+    RedFailedCgroupRead => join([markers_prologue(), mask_slice_snippet(), "exit 0"], "")
+    RedStaleStopRefused => join([markers_prologue(), "sleep 600"], "")
+    RedSuccessLeavesBackground => join([markers_prologue(), escape_snippet(), "exit 0"], "")
+  }
+}
+
+fn red_vmm(r: Red) -> ArgvCommand {
+  posix_sh_inline_command(body: red_vmm_script(r: r) as NonEmptyStr)
+}
+
+fn red_plan(host: String, r: Red) -> TerminalPlan? {
+  match r {
+    RedFailedCgroupRead => Present { value: AwaitVmmExit { poll_bound: 30 } }
+    RedSuccessLeavesBackground => Present { value: AwaitVmmExit { poll_bound: 30 } }
+    RedStaleStopRefused =>
+      match red_identity(host: host, r: r, generation: red_generation() - 1, invocation: join(["red-", red_name(r: r), "-stale"], "")) {
+        Absent => none
+        Present { value: stale } =>
+          match red_identity(host: host, r: r, generation: red_generation(), invocation: live_invocation(r: r)) {
+            Absent => none
+            Present { value: live } => Present { value: StopOnBehalfOf { requests: [stale, live] } }
+          }
+      }
+    _ =>
+      match red_identity(host: host, r: r, generation: red_generation(), invocation: live_invocation(r: r)) {
+        Absent => none
+        Present { value: live } => Present { value: StopOnBehalfOf { requests: [live] } }
+      }
+  }
+}
+
+// ── the predicates: what each RED's settlement must look like ───────────────────────────────────
+
+fn settled_of(o: IncarnationOutcome) -> TeardownPerformed? {
+  match o {
+    IncarnationSettled { start: _, launch: _, bring_up: _, terminal: _, teardown: t } => Present { value: t }
+    _ => none
+  }
+}
+
+fn terminal_of(o: IncarnationOutcome) -> TerminalOutcome? {
+  match o {
+    IncarnationSettled { start: _, launch: _, bring_up: _, terminal: t, teardown: _ } => Present { value: t }
+    _ => none
+  }
+}
+
+fn observation_confirmed(obs: List<SanitationObservation>, fact: SanitationFact) -> Bool {
+  any(xs: obs, predicate: o =>
+    match o {
+      FactConfirmed { fact: f } => sanitation_fact_label(fact: f) == sanitation_fact_label(fact: fact)
+      _ => false
+    })
+}
+
+fn observation_refuted(obs: List<SanitationObservation>, fact: SanitationFact) -> Bool {
+  any(xs: obs, predicate: o =>
+    match o {
+      FactRefuted { fact: f, detail: _ } => sanitation_fact_label(fact: f) == sanitation_fact_label(fact: fact)
+      _ => false
+    })
+}
+
+fn observation_unobservable(obs: List<SanitationObservation>, fact: SanitationFact) -> Bool {
+  any(xs: obs, predicate: o =>
+    match o {
+      FactUnobservable { fact: f, reason: _ } => sanitation_fact_label(fact: f) == sanitation_fact_label(fact: fact)
+      _ => false
+    })
+}
+
+fn subtree_populated_in_child(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreePopulated { pids: p, cgroups: c } => (p |> count) > 0 && any(xs: c, predicate: d => string_contains(s: d as String, pattern: "/escape"))
+    _ => false
+  }
+}
+
+fn stop_is(s: TeardownStop, want: TeardownStop) -> Bool {
+  stop_outcome_text(s: s) == stop_outcome_text(s: want)
+}
+
+fn stop_exceeded_bound(s: TeardownStop) -> Bool {
+  match s {
+    ForceStopBoundExceeded { survivors: p } => (p |> count) > 0
+    _ => false
+  }
+}
+
+fn stop_unobserved(s: TeardownStop) -> Bool {
+  match s {
+    StopUnobservable { reason: _ } => true
+    _ => false
+  }
+}
+
+fn cgroup_read_failed(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreeReadFailed { reason: _ } => true
+    _ => false
+  }
+}
+
+fn trigger_is_exit_zero(t: TerminalOutcome) -> Bool {
+  match t {
+    TerminalReached { trigger: tr, admissions: _ } =>
+      match tr {
+        VmmExited { exit_code: c } => c == 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn admission_refused(a: StopAdmission) -> Bool {
+  match a {
+    StopRefusedStaleIncarnation { live_generation: _, requested_generation: _ } => true
+    StopAdmitted { trigger: _ } => false
+  }
+}
+
+fn admission_at_is(a: List<StopAdmission>, i: Int, refused: Bool) -> Bool {
+  match get(xs: a, index: i) {
+    Absent => false
+    Present { value: x } => admission_refused(a: x) == refused
+  }
+}
+
+fn admissions_are_refused_then_admitted(t: TerminalOutcome) -> Bool {
+  match t {
+    TerminalReached { trigger: _, admissions: a } =>
+      (a |> count) == 2 && admission_at_is(a: a, i: 0, refused: true) && admission_at_is(a: a, i: 1, refused: false)
+    _ => false
+  }
+}
+
+fn commit_refused_loosening(c: CellReadinessCommit?) -> Bool {
+  match c {
+    Absent => false
+    Present { value: x } =>
+      match x {
+        CommitRefusedByStore { result: r } =>
+          match r {
+            WriteRefusedWouldLoosenQuarantine { cell: _, generation: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+fn settled_process_facts(t: TeardownPerformed, want_stop: TeardownStop) -> Bool {
+  match t {
+    TeardownSettled { settlement: _, observed: o, stop: sp, commit: c } => {
+      let obs = teardown_observations(o: o)
+      commit_landed(c: c)
+        && stop_is(s: sp.outcome, want: want_stop)
+        && observation_confirmed(obs: obs, fact: NoSurvivingProcesses)
+        && observation_confirmed(obs: obs, fact: CgroupEmpty)
+    }
+    TeardownRefusedToSettle { refusal: _, stop: _ } => false
+  }
+}
+
+fn red_holds(r: Red, outcome: IncarnationOutcome, release_probe: CellReadinessCommit?) -> Bool {
+  match settled_of(o: outcome) {
+    Absent => false
+    Present { value: t } =>
+      match r {
+        RedSigtermIgnored => settled_process_facts(t: t, want_stop: StoppedByForce)
+        RedDoubleFork =>
+          settled_process_facts(t: t, want_stop: StoppedByForce)
+            && (match t { TeardownSettled { settlement: _, observed: _, stop: sp, commit: _ } => subtree_populated_in_child(r: sp.graceful_readback)  _ => false })
+        RedUnkillableTask =>
+          match t {
+            TeardownSettled { settlement: s, observed: o, stop: sp, commit: c } => {
+              let obs = teardown_observations(o: o)
+              commit_landed(c: c) && stop_exceeded_bound(s: sp.outcome) && observation_refuted(obs: obs, fact: NoSurvivingProcesses) && !cell_ready(s: s)
+            }
+            _ => false
+          }
+        RedFailedCgroupRead =>
+          match t {
+            TeardownSettled { settlement: s, observed: o, stop: sp, commit: c } => {
+              let obs = teardown_observations(o: o)
+              commit_landed(c: c)
+                && cgroup_read_failed(r: o.cgroup.readback)
+                && stop_unobserved(s: sp.outcome)
+                && observation_unobservable(obs: obs, fact: CgroupEmpty)
+                && !cell_ready(s: s)
+                && commit_refused_loosening(c: release_probe)
+            }
+            _ => false
+          }
+        RedStaleStopRefused =>
+          settled_process_facts(t: t, want_stop: StoppedGracefully)
+            && (match terminal_of(o: outcome) { Present { value: tm } => admissions_are_refused_then_admitted(t: tm)  Absent => false })
+        RedSuccessLeavesBackground =>
+          settled_process_facts(t: t, want_stop: StoppedByForce)
+            && (match terminal_of(o: outcome) { Present { value: tm } => trigger_is_exit_zero(t: tm)  Absent => false })
+            && (match t { TeardownSettled { settlement: _, observed: _, stop: sp, commit: _ } => subtree_populated_in_child(r: sp.graceful_readback)  _ => false })
+      }
+  }
+}
+
+fn cell_ready(s: TeardownSettlement) -> Bool {
+  match s.readiness {
+    CellReady { cell: _ } => true
+    CellQuarantined { cell: _, unproven: _ } => false
+  }
+}
+
+// ── the run ─────────────────────────────────────────────────────────────────────────────────────
+
+// CLEANUP IS UNCONDITIONAL AND RUNS FIRST AND LAST: the unit, its slice, the frozen mount, the store
+// and the run directory. A previous run that died mid-RED must not be what this run observes.
+fn red_cleanup_commands(host: String, r: Red) -> List<ArgvCommand> {
+  let slice = fabric_cell_slice_name(slot: red_slot(host: host, r: r)) as NonEmptyStr
+  let unit_cleanup = match red_identity(host: host, r: r, generation: red_generation(), invocation: live_invocation(r: r)) {
+    Absent => []
+    Present { value: id } => [systemctl_stop_command(unit: vmm_unit_of(identity: id)), systemctl_reset_failed_command(unit: vmm_unit_of(identity: id))]
+  }
+  let mask_cleanup = match slice_cgroup_path_wet(slice: slice) {
+    SliceCgroupUnknown { reason: _ } => []
+    SliceCgroupAt { path: p } => [umount_command(mount_point: p)]
+  }
+  concat(
+    concat(unit_cleanup, mask_cleanup),
+    [
+      fsfreeze_unfreeze_command(mount_point: red_mount_point(r: r)),
+      umount_command(mount_point: red_mount_point(r: r)),
+      systemctl_stop_command(unit: slice),
+      rm_recursive_force_command(path: red_dir(r: r)),
+    ],
+  )
+}
+
+fn red_prepare_commands(r: Red) -> List<ArgvCommand> {
+  concat(
+    [mkdir_parents_command(path: red_store_root(r: r) as String), mkdir_parents_command(path: red_mount_point(r: r))],
+    match r {
+      RedUnkillableTask =>
+        [
+          busybox_dd_sparse_image_command(busybox_bin: "/usr/bin/busybox" as NonEmptyStr, image_path: red_image_path(r: r), size: mebibyte(count: 16)),
+          mke2fs_format_command(fs: Ext4, image_path: red_image_path(r: r)),
+        ]
+      _ => []
+    },
+  )
+}
+
+// EVERY CLEANUP COMMAND RUNS, WHATEVER THE OTHERS RETURNED: an unfreeze of a mount that was never
+// frozen fails, and the stop of the slice after it must still happen. The count of refusals is
+// returned rather than deciding anything.
+fn run_cleanup_wet(host: String, r: Red) -> Int {
+  fold(red_cleanup_commands(host: host, r: r), init: 0, f: fn(acc, c) {
+    match run_shell_command_capture(command: c, transport: LocalExec) {
+      ProcessRefused { exit_code: _, stderr: _ } => acc + 1
+      _ => acc
+    }
+  })
+}
+
+type RedRun {
+  red: Red
+  outcome: IncarnationOutcome
+  release_probe: CellReadinessCommit?
+  holds: Bool
+}
+
+type RedAttempt
+  = RedRan { run: RedRun }
+  | RedNotRun { reason: String }
+
+fn release_probe_wet(host: String, r: Red) -> CellReadinessCommit? {
+  match red_identity(host: host, r: r, generation: red_generation(), invocation: live_invocation(r: r)) {
+    Absent => none
+    Present { value: id } => {
+      let cell = runner_slot_instance_name(slot: id.attempt.slot) as CellId
+      match bind_attempt_to_cell(cell: cell, generation: id.allocation_generation, attempt: InFlightAttempt { attempt: id.attempt, invocation_id: id.invocation_id, jit_registration_id: id.jit_registration_id, credential_device_path: id.credential_device_path }) {
+        AttemptCellMismatch { cell: _, attempt_cell: _ } => none
+        AttemptBoundToCell { bound: b } =>
+          Present { value: commit_cell_readiness_write_wet(root: red_store_root(r: r), write: WriteReadbackSettled { bound: b, readiness: CellReady { cell: cell } }) }
+      }
+    }
+  }
+}
+
+fn run_red_wet(host: String, r: Red) -> RedAttempt {
+  let _pre = run_cleanup_wet(host: host, r: r)
+  match run_shell_commands(commands: red_prepare_commands(r: r), transport: LocalExec) {
+    ExitSuccess =>
+      match red_seed_write(host: host, r: r) {
+        Absent => RedNotRun { reason: "the seed attempt could not be constructed" }
+        Present { value: seed } =>
+          match commit_cell_readiness_write_wet(root: red_store_root(r: r), write: seed) {
+            CommitLanded { generation: _, records: _ } =>
+              match red_identity(host: host, r: r, generation: red_generation(), invocation: live_invocation(r: r)) {
+                Absent => RedNotRun { reason: "the attempt identity could not be constructed" }
+                Present { value: id } =>
+                  match red_plan(host: host, r: r) {
+                    Absent => RedNotRun { reason: "the terminal plan could not be constructed" }
+                    Present { value: plan } => {
+                      let outcome = run_incarnation_wet(store_root: red_store_root(r: r), identity: id, vmm: red_vmm(r: r), plan: plan)
+                      let probe = match r {
+                        RedFailedCgroupRead => release_probe_wet(host: host, r: r)
+                        _ => none
+                      }
+                      let holds = red_holds(r: r, outcome: outcome, release_probe: probe)
+                      let _post = run_cleanup_wet(host: host, r: r)
+                      RedRan { run: RedRun { red: r, outcome: outcome, release_probe: probe, holds: holds } }
+                    }
+                  }
+              }
+            other => RedNotRun { reason: join(["the seed write did not land: ", commit_text(c: other)], "") }
+          }
+      }
+    _ => RedNotRun { reason: "the run directory could not be prepared" }
+  }
+}
+
+fn red_receipt_text(host: String, a: RedAttempt) -> String {
+  match a {
+    RedNotRun { reason: r } => join(["not-run: ", r], "")
+    RedRan { run: run } =>
+      join([
+        join(["red: ", red_name(r: run.red)], ""),
+        join(["host: ", host, " cell: ", runner_slot_instance_name(slot: red_slot(host: host, r: run.red))], ""),
+        incarnation_text(o: run.outcome),
+        match run.release_probe { Absent => ""  Present { value: p } => join(["release-probe: ", commit_text(c: p)], "") },
+        join(["holds: ", if run.holds { "yes" } else { "no" }], ""),
+      ], "\n")
+  }
+}
+
+fn red_entry_wet(r: Red) -> ProcessExit {
+  match hostname_wet() {
+    Absent => exit_failure(reason: "runner_microvm_lifecycle_red: the hostname could not be read")
+    Present { value: host } => {
+      let a = run_red_wet(host: host, r: r)
+      let text = red_receipt_text(host: host, a: a)
+      let _ = run_shell_commands(commands: [mkdir_parents_command(path: red_receipt_dir)], transport: LocalExec)
+      let w = Filesystem.Write(path: red_receipt_path(r: r), content: concat(text, "\n"))
+      if !w.success {
+        exit_failure(reason: join(["runner_microvm_lifecycle_red: receipt write refused: ", w.error], ""))
+      } else {
+        match a {
+          RedRan { run: run } =>
+            if run.holds {
+              ExitSuccess
+            } else {
+              exit_failure(reason: join(["runner_microvm_lifecycle_red: ", red_name(r: r), " did not settle as the RED predicts --\n", text], ""))
+            }
+          RedNotRun { reason: _ } => exit_failure(reason: join(["runner_microvm_lifecycle_red: ", red_name(r: r), " was not run --\n", text], ""))
+        }
+      }
+    }
+  }
+}
+
+fn red_sigterm_ignored_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedSigtermIgnored)
+}
+
+fn red_double_fork_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedDoubleFork)
+}
+
+fn red_unkillable_task_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedUnkillableTask)
+}
+
+fn red_failed_cgroup_read_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedFailedCgroupRead)
+}
+
+fn red_stale_stop_refused_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedStaleStopRefused)
+}
+
+fn red_success_leaves_background_wet() -> ProcessExit
+  uses net: Network
+{
+  red_entry_wet(r: RedSuccessLeavesBackground)
+}

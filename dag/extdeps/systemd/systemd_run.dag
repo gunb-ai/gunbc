@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 type SystemdRunProperty {
   property: SystemdUnitProperty,
@@ -129,6 +130,28 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
   let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
   let with_separator = list_push(with_properties, "--")
   fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+}
+
+// THE START-AND-RETURN INVOCATION AS A COMMAND, for a caller whose product is the running unit
+// rather than its exit: systemd_run_transient_unit_argv's words, minted. The program is the first
+// word of that argv, so the two cannot disagree about what is run.
+fn systemd_run_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> ArgvCommand {
+  let words = systemd_run_transient_unit_argv(unit: unit, properties: properties, command_argv: command_argv)
+  argv_command(program: "systemd-run" as NonEmptyStr, arguments: words.skip(n: 1))
+}
+
+// WITHOUT --collect, BECAUSE THE CALLER READS THE UNIT AFTER IT ENDS. `--collect` sets
+// CollectMode=inactive-or-failed, which unloads a transient unit the moment it fails -- and with it
+// ExecMainStatus, the one place the main process's exit is recorded. A controller that must read how
+// the VMM ended (gunbc.runner_microvm_lifecycle_realize) launches this way, pairs it with
+// RemainAfterExit=yes so a unit that exited stays loaded and readable, and unloads the unit itself
+// with stop and reset-failed once it has read what it needs. The retained unit is the caller's to
+// reap; a caller that forgets leaves a failed unit listed, which is visible rather than lost.
+fn systemd_run_retained_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> ArgvCommand {
+  let launcher = [concat("--unit=", unit as String)]
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  argv_command(program: "systemd-run" as NonEmptyStr, arguments: fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg)))
 }
 
 
