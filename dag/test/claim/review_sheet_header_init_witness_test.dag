@@ -24,8 +24,13 @@ module test.claim.review_sheet_header_init_witness
 //
 // WHAT THE FIXTURE CANNOT SHOW, said plainly: that the mint passed FORMULA rather than
 // FORMATTED_VALUE to the wire. mock_response ignores its input. formula_whole_tab_render_option
-// is the value the mint passes and is asserted here; a mutation that bypasses it at the call site
-// is invisible to every hermetic claim and is recorded as such in the PR's mutation table.
+// is the value the mint passes and is asserted here under a name that claims exactly that; a
+// mutation that bypasses it at the call site is invisible to every hermetic claim -- an
+// effect-seam limitation, grounded only by request-aware mocking or a live receipt.
+//
+// WHAT THE FIXTURE CANNOT REACH BUT A SUPPLIED VALUE CAN: the carrier-minting boundary after the
+// read. formula_reading_from_admission is a pure map, sealed to the observer and to exactly one
+// claim here, and that claim supplies FormulaGridOccupied and proves it cannot become the carrier.
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -94,6 +99,7 @@ import gunbc.review_sheet_formula_observation {
   FormulaGridOccupied,
   FormulaGridRefused,
   formula_grid_admit,
+  formula_reading_from_admission,
   formula_whole_tab_render_option,
   observe_formula_whole_tab,
 }
@@ -357,12 +363,47 @@ test fn the_mint_refuses_a_returned_tab_that_differs_from_the_requested_one() ->
     == "tab-mismatch requested=Buyer Review returned=hermetic-mock-tab"
 }
 
-test fn the_mint_reads_under_formula_rendering() -> Bool {
+// This measures formula_whole_tab_render_option's VALUE and nothing about the call site; see the
+// module note.
+test fn the_render_option_the_mint_passes_is_formula() -> Bool {
   match formula_whole_tab_render_option() {
     RenderFormula => true
     RenderFormattedValue => false
     RenderUnformattedValue => false
   }
+}
+
+// -- the carrier-minting boundary, executed against an occupied admission -------------------
+
+fn reading_kind(r: FormulaWholeTabReading) -> String {
+  match r {
+    FormulaWholeTabEmpty { observation: o } => concat("empty ", o.tab as String)
+    FormulaWholeTabOccupied { spreadsheet_id: id, tab: t, first: c } =>
+      join(["occupied ", id as String, " ", t as String, " ", cell_text(c: c)], "")
+    FormulaWholeTabRefused { refusal: f } => concat("refused ", refusal_text(r: f))
+  }
+}
+
+// THE ONE ADMITTED CALLER OUTSIDE THE OBSERVER, by name, returning Bool and egressing nothing.
+// The first cut's M20 -- the occupied arm minting the carrier -- survived because this boundary
+// was never executed against an occupied admission; now it is, with the spreadsheet, the tab and
+// the located cell all required to come through, and the empty admission still minting.
+test fn an_occupied_admission_never_becomes_the_carrier() -> Bool {
+  reading_kind(r: formula_reading_from_admission(
+    spreadsheet_id: w_spreadsheet,
+    admission: FormulaGridOccupied {
+      tab: "Buyer Review" as NonEmptyStr,
+      first: OccupiedCell { sheet_row: 1, column_index: 0, raw: "=IF(TRUE,\"\",\"\")" },
+    },
+  )) == "occupied 1hermetic-spreadsheet-id Buyer Review r1c0==IF(TRUE,\"\",\"\")"
+    && reading_kind(r: formula_reading_from_admission(
+      spreadsheet_id: w_spreadsheet,
+      admission: FormulaGridEmpty { tab: "Buyer Review" as NonEmptyStr },
+    )) == "empty Buyer Review"
+    && reading_kind(r: formula_reading_from_admission(
+      spreadsheet_id: w_spreadsheet,
+      admission: FormulaGridRefused { refusal: FormulaReadRangeUnqualified { range: "A1:B2" } },
+    )) == "refused unqualified A1:B2"
 }
 
 // -- the mint's refusals the fixture cannot answer, at the admission fold ------------------

@@ -69,13 +69,25 @@ import gunbc.review_sheet_values_actuator {
 // is executed both over supplied grids and, through the mint, over the fixture.
 //
 // THE MINT PERFORMS THE READ, AND THERE IS NO OTHER MINT. The type is sole_constructor, so the
-// record literal is unwritable outside this module, and the one function that writes it,
-// observe_formula_whole_tab, issues the values.get itself: it takes a request and a spreadsheet,
-// never a ValueRange. A caller cannot hand it a grid it read some other way -- under FORMATTED
-// rendering, of a bounded range, of a different tab -- and receive the carrier. There is
+// record literal is unwritable outside this module; the one function that writes it,
+// formula_reading_from_admission, is admit_callers-sealed to observe_formula_whole_tab (which
+// issues the values.get itself: it takes a request and a spreadsheet, never a ValueRange) and to
+// one exact witness claim. A caller cannot hand the mint a grid it read some other way -- under
+// FORMATTED rendering, of a bounded range, of a different tab -- and receive the carrier. There is
 // deliberately no render field on the record: a field that can hold RenderFormula can hold
-// RenderFormattedValue, and a consumer would have to check it; a constructor that only ever
-// passes RenderFormula makes the contrary unwritable.
+// RenderFormattedValue, and a consumer would have to check it.
+//
+// WHAT IS ESTABLISHED, AT ITS ACTUAL STANDING (DESIGN 4b(1)), because the two things above are
+// not established the same way. (a) That an occupied admission never becomes the carrier is
+// EXECUTED: formula_reading_from_admission is discriminated with a supplied FormulaGridOccupied,
+// and the planner-level ignore-the-grid of the first cut is unwritable (the planner holds no
+// grid). (b) That the mint reads under FORMULA rendering is NOT mechanically established by the
+// hermetic evidence: the mock_response ignores valueRenderOption, so a call-site mutation passing
+// RenderFormattedValue is unobservable; the claim over formula_whole_tab_render_option measures
+// that function's value and nothing about the call site. This is an effect-seam limitation until
+// request-aware mocking or a live receipt -- the named ground is an H2 live qualification against
+// a temporary tab holding a blank-rendering formula (=IF(TRUE,"","")), whose FORMULA reading must
+// come back occupied at that cell.
 //
 // THE FOLDS AROUND THE READ ARE PURE AND PUBLIC SO A WITNESS CAN REDDEN THEM, and none of them
 // returns the carrier. admit_whole_tab_request (gunbc.review_sheet_sheets, shared with the ensure
@@ -257,10 +269,40 @@ fn formula_whole_tab_render_option() -> SheetsValueRenderOption {
   RenderFormula
 }
 
+// THE CARRIER-MINTING BOUNDARY, EXTRACTED SO IT CAN BE EXECUTED AGAINST AN OCCUPIED ADMISSION.
+// spreadsheet_id x FormulaGridAdmission -> FormulaWholeTabReading is a PURE mapping that happens
+// AFTER the read is finished, and this is the only function that writes the carrier literal. The
+// first cut of gunbc#11769 wrote it inline in the mint, where mutation M20 -- the occupied arm
+// minting the carrier anyway -- survived, because the one hermetic fixture is empty and the mint's
+// occupied arm was never executed. Extracted, the mapping is discriminated with a SUPPLIED
+// FormulaGridOccupied. It is admit_callers-sealed to the observer and to ONE exact witness claim
+// that returns Bool and egresses nothing (test.claim.review_sheet_header_init_witness
+// an_occupied_admission_never_becomes_the_carrier): an admitted call edge does not confine a
+// value when an exported wrapper returns it (gunbc#11725 side-chat), so no wrapper exists and
+// adding a claim means adding a row here.
+fn formula_reading_from_admission(
+  spreadsheet_id: NonEmptyStr,
+  admission: FormulaGridAdmission,
+) -> FormulaWholeTabReading admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_formula_observation", decl_name: "observe_formula_whole_tab"),
+  decl_ref(module_path: "test.claim.review_sheet_header_init_witness", decl_name: "an_occupied_admission_never_becomes_the_carrier")
+] {
+  match admission {
+    FormulaGridRefused { refusal: r } => FormulaWholeTabRefused { refusal: r }
+    FormulaGridOccupied { tab: t, first: c } =>
+      FormulaWholeTabOccupied { spreadsheet_id: spreadsheet_id, tab: t, first: c }
+    FormulaGridEmpty { tab: t } =>
+      FormulaWholeTabEmpty {
+        observation: FormulaWholeTabObservation { spreadsheet_id: spreadsheet_id, tab: t }
+      }
+  }
+}
+
 // THE ONLY MINT. A bounded or column-bounded request is refused before the read is spent; the read
 // is the values actuator's one call site under FORMULA rendering; the answer is judged by
-// formula_grid_admit; only an EMPTY judgement becomes the carrier, and it is written here and
-// nowhere else. An occupied tab is carried through located, with the spreadsheet it was read from.
+// formula_grid_admit and mapped by formula_reading_from_admission, so only an EMPTY judgement
+// becomes the carrier. An occupied tab is carried through located, with the spreadsheet it was
+// read from.
 fn observe_formula_whole_tab(
   spreadsheet_id: NonEmptyStr,
   requested: SheetA1Range,
@@ -269,22 +311,17 @@ fn observe_formula_whole_tab(
     WholeTabRequestRejected { cause: c } =>
       FormulaWholeTabRefused { refusal: FormulaRequestRejected { cause: c } }
     WholeTabRequestEncoded { wire: a1 } =>
-      match formula_grid_admit(
-        requested: requested,
-        read: read_values_rendered(
-          spreadsheet_id: spreadsheet_id,
-          a1: a1,
-          render: formula_whole_tab_render_option(),
+      formula_reading_from_admission(
+        spreadsheet_id: spreadsheet_id,
+        admission: formula_grid_admit(
+          requested: requested,
+          read: read_values_rendered(
+            spreadsheet_id: spreadsheet_id,
+            a1: a1,
+            render: formula_whole_tab_render_option(),
+          ),
         ),
-      ) {
-        FormulaGridRefused { refusal: r } => FormulaWholeTabRefused { refusal: r }
-        FormulaGridOccupied { tab: t, first: c } =>
-          FormulaWholeTabOccupied { spreadsheet_id: spreadsheet_id, tab: t, first: c }
-        FormulaGridEmpty { tab: t } =>
-          FormulaWholeTabEmpty {
-            observation: FormulaWholeTabObservation { spreadsheet_id: spreadsheet_id, tab: t }
-          }
-      }
+      )
   }
 }
 

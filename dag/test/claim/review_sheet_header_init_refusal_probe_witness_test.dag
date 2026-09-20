@@ -76,3 +76,30 @@ test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> B
     wanted_subject: "HeaderRowWriteAuthorization",
   ) == 1
 }
+
+// THE CARRIER-MINTING BOUNDARY IS SEALED TO ITS CALLERS, MEASURED. formula_reading_from_admission is
+// the only function that writes FormulaWholeTabObservation, and it is admit_callers-sealed to the
+// observer and one exact witness claim; an outside module calling it with an admission of its own
+// choosing is refused at that callee by name (ConstructorCallAdmissionRefused, subject = the callee's
+// decl name). The green control is the same shape calling the public observer, which is not refused,
+// so the red is the seal and not the import failing.
+data outside_caller_of_the_minting_boundary_source: String = "module probe_formula_reading_outside_caller\nimport std.types { NonEmptyStr }\nimport gunbc.review_sheet_formula_observation { FormulaWholeTabReading, FormulaGridEmpty, formula_reading_from_admission }\nfn probe_forge(spreadsheet_id: NonEmptyStr) -> FormulaWholeTabReading {\n  formula_reading_from_admission(spreadsheet_id: spreadsheet_id, admission: FormulaGridEmpty { tab: \"Buyer Review\" as NonEmptyStr })\n}\n"
+
+data outside_caller_of_the_observer_source: String = "module probe_formula_observer_outside_caller\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.review_sheet_sheets { SheetA1Range }\nimport gunbc.review_sheet_formula_observation { FormulaWholeTabReading, observe_formula_whole_tab }\nfn probe_observe(spreadsheet_id: NonEmptyStr, requested: SheetA1Range) -> FormulaWholeTabReading uses net: Network {\n  observe_formula_whole_tab(spreadsheet_id: spreadsheet_id, requested: requested)\n}\n"
+
+test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee() -> Bool {
+  blocking_subject_count_for(
+    source: outside_caller_of_the_minting_boundary_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    wanted_subject: "formula_reading_from_admission",
+  ) == 1
+}
+
+test fn an_outside_module_calling_the_observer_is_not_refused() -> Bool {
+  total_blocking_count_for(source: outside_caller_of_the_observer_source) != 0 - 1
+    && blocking_subject_count_for(
+      source: outside_caller_of_the_observer_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "formula_reading_from_admission",
+    ) == 0
+}
