@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem, Network }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -95,6 +96,30 @@ data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthor
 // a store any tenant can mark Ready. Ownership is observed on the DIRECTORY rather than on each
 // file, because a directory no one else may write is a directory in which no one else may create,
 // replace or rename a record, whatever a single file's own mode happens to say.
+// DECLARED GAP (DESIGN 4b(2), no untracked stall): THIS MODULE'S FILESYSTEM I/O HAS NO WET RECEIPT.
+//
+// The codec, the cell-to-file addressing and every refusal are covered hermetically, and the
+// one-writer-one-cell property is STRUCTURAL -- persist_one_record writes record_of_write's single
+// record to the path that write's own cell names, so there is no expression through which it could
+// hold another cell's bytes. What is NOT established is that the directory read and the record write
+// work against a real filesystem: reading the store, listing it, writing one record and reading it
+// back have never executed.
+//
+// WHY NOT SIMPLY WRITE THE WET CLAIM. The only path this module can address is the production store
+// root below, so a wet claim would have to create or destroy a real host's store to run. On a host
+// where the microVM path is live that is a claim that breaks the thing it tests, and a guard that
+// skipped when a store already existed would be a claim that silently does not run exactly where it
+// matters most.
+//
+// TRIGGER, at capability grain: a store ROOT carried as a value rather than fixed here, the shape
+// std.artifact_store's MaterializationStoreRoot already uses -- one production row for the real root
+// and a caller-supplied root for a receipt, so the wet claim addresses a directory it owns. SUFFICIENT
+// FOR deleting this row. NOT satisfied by a wet claim against the production path, whatever guards it
+// carries.
+data cell_readiness_store_filesystem_receipt_gap: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.runner_microvm_cell_readiness_store reaches the filesystem -- read_cell_readiness_store lists and reads, persist_one_record writes and reads back -- and none of it has executed against a real filesystem, because the only addressable path is the production store root. TRIGGER: the store root carried as a value (the std.artifact_store MaterializationStoreRoot shape), so a receipt can address a directory it owns. SUFFICIENT FOR deleting this row. NOT satisfied by a wet claim against the production path." as NonEmptyStr,
+)
+
 data cell_readiness_store_dir: String = "/var/lib/gunbc/microvm-cell-readiness"
 
 data cell_record_suffix: String = ".json"
