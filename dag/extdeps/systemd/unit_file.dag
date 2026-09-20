@@ -275,6 +275,9 @@ fn systemd_readiness_from_active_state(mode: SystemdServiceMode) -> ReadinessFro
 // unit stays active after the process exits -- which is how a unit whose job is to INSTALL state
 // (load a ruleset, apply a sysctl) reports that the state is in place rather than that a program is
 // running. The boolean renders as systemd's own yes/no rather than true/false.
+type SystemdServiceDirective
+  = ServiceType { mode: SystemdServiceMode }
+  | RemainAfterExit { active: Bool }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
   | ExecStartPost { command: NonEmptyStr }
@@ -299,9 +302,6 @@ fn systemd_readiness_from_active_state(mode: SystemdServiceMode) -> ReadinessFro
   | RestartSec { duration: NonEmptyStr }
   | ServiceTasksMax { count: Int }
   | TimeoutStopSec { duration: NonEmptyStr }
-type SystemdServiceDirective
-  = ServiceType { mode: SystemdServiceMode }
-  | RemainAfterExit { active: Bool }
 
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
