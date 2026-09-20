@@ -1,0 +1,82 @@
+module test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.live_deploy.emit { tree_sync_restart_step_with_diagnosis, tailscale_serve_apply_step }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import v2.std.orchestration { Pipeline, PipelineStep, FailFast }
+import v2.workflow.orchestration_bash_emit_support { orch_bash_emit_pipeline }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-live-deploy-restart-tailscale, RED BY DESIGN UNTIL THE NODE
+// IS DONE. The node's bar is that gunbc.live_deploy.emit tree_sync_restart_step_with_diagnosis and
+// tailscale_serve_apply_step stop rendering privileged shell through
+// shell_privileged_command_text_of_argv and execute the same file's own sudo_elevate_argv pattern
+// as typed privileged argv. Today the restart step re-joins its diagnosis as appended shell text —
+// `|| { echo ... >&2; ...; exit 1; }` — so the rendered step carries both a fallback arm and
+// command separators. The red arm asserts the rendered restart step carries no shell control word
+// (`set -e`, `||`, `&&`, `;`, `2>/dev/null`); it turns green when the restart is typed privileged
+// argv and the diagnosis survives as data, not as appended shell text. Enrolled in
+// v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (the two step producers over the
+// deployment_spec_srv1 fixture, each yielding a PipelineStep) must survive the rebind, because
+// this witness cannot be re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+data witness_emit_refused_poison: String = "__WITNESS_ORCH_EMIT_REFUSED__ the witness's single-step render was rejected; this marker carries no shell control word so a refusal reads as the red it is, never as a pass"
+
+fn render_step(step: PipelineStep) -> String {
+  orch_bash_emit_pipeline(
+    p: Pipeline { steps: [step], on_failure: FailFast },
+    refused_poison: witness_emit_refused_poison
+  )
+}
+
+// RED TODAY: the restart step's diagnosis is appended shell text — a `||` fallback arm with `;`
+// separators. Greens when the restart is typed privileged argv and the diagnosis content survives
+// as data.
+test fn tree_sync_restart_step_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(
+    s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())),
+    pattern: w
+  ))
+}
+
+// POSITIVE CONTROL, green today and after: the tailscale apply step already renders no shell
+// control word, so the red arm discriminates on the restart step's appended text and not on the
+// pair.
+test fn tailscale_serve_apply_step_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(
+    s: render_step(step: tailscale_serve_apply_step(spec: deployment_spec_srv1())),
+    pattern: w
+  ))
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the restart step acts on the deployment's
+// declared tree-sync unit — the typed privileged argv names the same unit.
+test fn restart_step_names_the_declared_unit() -> Bool {
+  string_contains(
+    s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())),
+    pattern: deployment_spec_srv1().names.tree_sync_unit_name as String
+  )
+}
+
+// POSITIVE CONTROL, green today and after: both steps elevate through sudo — the elevation
+// mechanism is unchanged; only its construction moves to typed privileged argv.
+test fn both_steps_elevate_through_sudo() -> Bool {
+  string_contains(s: render_step(step: tree_sync_restart_step_with_diagnosis(spec: deployment_spec_srv1())), pattern: "sudo")
+    && string_contains(s: render_step(step: tailscale_serve_apply_step(spec: deployment_spec_srv1())), pattern: "sudo")
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arm is red; green only when every clause holds over the typed rebind.
+test fn live_deploy_restart_tailscale_acceptance_holds() -> Bool {
+  tree_sync_restart_step_renders_no_shell_control_word()
+    && tailscale_serve_apply_step_renders_no_shell_control_word()
+    && restart_step_names_the_declared_unit()
+    && both_steps_elevate_through_sudo()
+}
