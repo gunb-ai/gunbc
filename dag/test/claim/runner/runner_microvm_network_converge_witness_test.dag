@@ -1,0 +1,207 @@
+module gunbc.test.claim.runner.runner_microvm_network_converge_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
+  SystemdDaemonReload, SystemdEnableUnit,
+}
+import gunbc.runner_microvm_network {
+  runner_slot_network, runner_slot_host_cidr,
+  TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
+  AutoAssignmentAbsentFromKernel, AutoAssignmentOn, AutoAssignmentUnread,
+  ConvergedSlotNetwork, ConvergeGeneration, runner_microvm_shared_host_grain,
+}
+import gunbc.runner_microvm_network_converge {
+  parse_disable_ipv6, ip_forward_is_on, ct_helper_statement_count,
+  microvm_network_converge_operations, converge_staged_files, StagedFile,
+  SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,
+  ConvergeRefusal, SlotTapIpv6Unread, SlotTapIpv6Enabled, SlotAddressNotHeld, SlotRouteNotHeld,
+  IpForwardingOff, RulesetUnread, HelperStandingUnread, HelperAutoAssignmentOn, HelpersAttached,
+  converge_outcome, render_slot_subnet,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slot(i: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }
+}
+
+data converged_digest: Sha256Digest = Sha256Digest {
+  hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex,
+}
+
+// A HOST THAT READ BACK CLEAN. Every field is a reading, so a witness that wants a receipt has to
+// supply every one -- which is the point of the type.
+fn clean_host() -> HostReading {
+  HostReading {
+    host: operator_host_srv1,
+    generation: "run-3" as ConvergeGeneration,
+    ip_forward_on: true,
+    ruleset_listed: true,
+    ruleset_digest: converged_digest,
+    auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
+    xtables_ct_helper_targets: 0,
+    userspace_helpers: 0,
+    expectations: 0,
+    helper_probes_read: true,
+  }
+}
+
+fn clean_slot(i: Nat) -> SlotReading {
+  let net = runner_slot_network(slot: slot(i: i))
+  SlotReading {
+    slot: slot(i: i),
+    tap_ipv6: TapIpv6Disabled,
+    addr_stdout: join(["7: gunbc-tap", to_string(i), "    inet ", runner_slot_host_cidr(net: net), " scope global gunbc-tap", to_string(i)], ""),
+    route_stdout: join([render_slot_subnet(net: net), " proto kernel scope link src ", runner_slot_host_cidr(net: net)], ""),
+  }
+}
+
+fn outcome_label(o: ConvergeOutcome) -> String {
+  match o {
+    ConvergedNetwork { receipt: _ } => "converged"
+    ConvergeRefused { refusal: r } => match r {
+      SlotTapIpv6Unread { slot: _, standing: _ } => "tap-ipv6-unread"
+      SlotTapIpv6Enabled { slot: _ } => "tap-ipv6-on"
+      SlotAddressNotHeld { slot: _, expected: _ } => "no-address"
+      SlotRouteNotHeld { slot: _, expected: _ } => "no-route"
+      IpForwardingOff => "no-forwarding"
+      RulesetUnread { reason: _ } => "ruleset-unread"
+      HelperStandingUnread { reason: _ } => "helpers-unread"
+      HelperAutoAssignmentOn => "auto-helpers-on"
+      HelpersAttached { xtables_targets: _, userspace: _, expectations: _ } => "helpers-attached"
+    }
+  }
+}
+
+fn receipt_slots(o: ConvergeOutcome) -> Int {
+  match o {
+    ConvergedNetwork { receipt: r } => length(r.slots)
+    ConvergeRefused { refusal: _ } => 0
+  }
+}
+
+// THE PROC VALUE IS THE FACT, AND EVERY OTHER READING IS UNREAD RATHER THAN A DEFAULT. "1" is
+// disabled, "0" is enabled, an unreadable probe and an unexpected value are both Unread -- never
+// silently one of the two real answers.
+test fn a_tap_ipv6_reading_is_the_value_or_it_is_unread() -> Bool {
+  match parse_disable_ipv6(readable: true, text: "1\n") { TapIpv6Disabled => true, _ => false }
+    && match parse_disable_ipv6(readable: true, text: "0\n") { TapIpv6Enabled => true, _ => false }
+    && match parse_disable_ipv6(readable: false, text: "") { TapIpv6Unread { reason: _ } => true, _ => false }
+    && match parse_disable_ipv6(readable: true, text: "") { TapIpv6Unread { reason: _ } => true, _ => false }
+    && match parse_disable_ipv6(readable: true, text: "yes") { TapIpv6Unread { reason: _ } => true, _ => false }
+    && ip_forward_is_on(readable: true, text: "1\n")
+    && !ip_forward_is_on(readable: true, text: "0\n")
+    && !ip_forward_is_on(readable: false, text: "1\n")
+}
+
+// THE POSITIVE CONTROL: with every fact read and holding, the receipt carries one row per slot read.
+test fn a_receipt_is_produced_only_when_every_fact_was_read_and_holds() -> Bool {
+  let o = converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host())
+  outcome_label(o: o) == "converged" && receipt_slots(o: o) == 2
+}
+
+// EVERY UNREAD OR FAILING FACT REFUSES THE RECEIPT, AND NAMES ITSELF. The red is any arm that
+// defaults a missing reading -- a receipt built on an unread helper probe or an unlisted ruleset
+// would let the sanitation subject admit slots on a host nobody observed.
+test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool {
+  let net1 = runner_slot_network(slot: slot(i: 1))
+  let ipv6_on = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Enabled, addr_stdout: "", route_stdout: "" }
+  let ipv6_unread = SlotReading {
+    slot: slot(i: 1),
+    tap_ipv6: TapIpv6Unread { reason: "probe refused" as NonEmptyStr },
+    addr_stdout: "",
+    route_stdout: "",
+  }
+  let no_addr = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Disabled, addr_stdout: "", route_stdout: "" }
+  let no_route = SlotReading {
+    slot: slot(i: 1),
+    tap_ipv6: TapIpv6Disabled,
+    addr_stdout: join(["inet ", runner_slot_host_cidr(net: net1)], ""),
+    route_stdout: "",
+  }
+  outcome_label(o: converge_outcome(slots: [ipv6_on], h: clean_host())) == "tap-ipv6-on"
+    && outcome_label(o: converge_outcome(slots: [ipv6_unread], h: clean_host())) == "tap-ipv6-unread"
+    && outcome_label(o: converge_outcome(slots: [no_addr], h: clean_host())) == "no-address"
+    && outcome_label(o: converge_outcome(slots: [no_route], h: clean_host())) == "no-route"
+    && receipt_slots(o: converge_outcome(slots: [no_addr], h: clean_host())) == 0
+}
+
+// THE HOST'S OWN FACTS REFUSE THE SAME WAY, INCLUDING EVERY HELPER ARM. Forwarding off, a ruleset
+// that did not list, an unread helper probe, automatic assignment on, and an attached helper are
+// five different remedies and five different refusals.
+test fn each_host_fact_refuses_under_its_own_name() -> Bool {
+  let c = clean_host()
+  let no_fwd = HostReading { host: c.host, generation: c.generation, ip_forward_on: false, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: c.xtables_ct_helper_targets, userspace_helpers: c.userspace_helpers, expectations: c.expectations, helper_probes_read: c.helper_probes_read }
+  let unlisted = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: false, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: c.xtables_ct_helper_targets, userspace_helpers: c.userspace_helpers, expectations: c.expectations, helper_probes_read: c.helper_probes_read }
+  let unread_probe = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: false }
+  let auto_on = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: AutoAssignmentOn, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: true }
+  let unread_auto = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: true }
+  let attached = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 2, helper_probes_read: true }
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: no_fwd)) == "no-forwarding"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unlisted)) == "ruleset-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unread_probe)) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: auto_on)) == "auto-helpers-on"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unread_auto)) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: attached)) == "helpers-attached"
+}
+
+// A HELPER ATTACHED BY ANY TABLE COUNTS, because an expectation is created by whichever helper is
+// attached, not only by one in our table. The red is a count taken over our own rendered ruleset.
+test fn ct_helper_statements_are_counted_over_the_whole_listing() -> Bool {
+  ct_helper_statement_count(ruleset_listing: "table ip docker {\n  ct helper ftp-standard\n}\n") == 1
+    && ct_helper_statement_count(ruleset_listing: "ct helper a\nct helper b\n") == 2
+    && ct_helper_statement_count(ruleset_listing: "table inet gunbc_microvm {\n  chain forward {\n  }\n}\n") == 0
+}
+
+// THE SLOTS' FILES LAND BEFORE THE HOST'S, AND THE HOST'S END IN AN ENABLE AND A RESTART. Installing
+// the ruleset before the taps exist leaves a window where a tap is up and unfiltered, and `start` on
+// an already-active oneshot would leave the OLD ruleset live while reporting success.
+test fn the_operations_install_slots_before_the_host_and_restart_the_loader() -> Bool {
+  let ops = microvm_network_converge_operations(slots: [slot(i: 1)])
+  map(ops, op => match op {
+    InstallFile { source: _, destination: d, owner: _, group: _, mode: _ } => d as String
+    SystemdReloadUnit { unit: u } => join(["reload ", u as String], "")
+    SystemdRestartUnit { unit: u } => join(["restart ", u as String], "")
+    SystemdEnableUnit { unit: u } => join(["enable ", u as String], "")
+    SystemdDaemonReload => "daemon-reload"
+    _ => "other"
+  }) == [
+    "/etc/systemd/network/50-gunbc-tap1.netdev",
+    "/etc/systemd/network/50-gunbc-tap1.network",
+    "/etc/sysctl.d/50-gunbc-tap1-ipv6.conf",
+    "reload systemd-networkd",
+    "/etc/gunbc/microvm.nft",
+    "/etc/systemd/system/gunbc-microvm-nft.service",
+    "/etc/sysctl.d/50-gunbc-microvm-forward.conf",
+    "daemon-reload",
+    "restart systemd-sysctl.service",
+    "enable gunbc-microvm-nft.service",
+    "restart gunbc-microvm-nft.service",
+  ]
+}
+
+// EVERY FILE THE OPERATIONS INSTALL IS A FILE THE CONVERGE STAGES. The red is a staged set that
+// misses one: the install then runs against whatever that path held from a previous converge, or
+// fails outright, and either way the bytes on the host are not the bytes the model rendered.
+test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool {
+  let staged = converge_staged_files(
+    slots: [slot(i: 1)],
+    host: runner_microvm_shared_host_grain,
+    tap_owner: "ghrunner" as NonEmptyStr,
+  )
+  map(staged, f => f.path as String) == [
+    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1.netdev",
+    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1.network",
+    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-tap1-ipv6.conf",
+    "/var/lib/gunbc/fleet-converge/microvm-network/microvm.nft",
+    "/var/lib/gunbc/fleet-converge/microvm-network/gunbc-microvm-nft.service",
+    "/var/lib/gunbc/fleet-converge/microvm-network/forward.conf",
+  ]
+    && fold(staged, init: true, f: (acc, x) => acc && x.content != "")
+}

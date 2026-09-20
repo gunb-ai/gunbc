@@ -11,15 +11,17 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equ
 import product.placement_supply { HostIdentity }
 import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,
+  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
+  SystemdDaemonReload, SystemdEnableUnit, ReadNftTable,
 }
+import gunbc.fleet_posix_accounts { fleet_nft_binary_path }
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
   NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftInput, NftOutput, NftInputInterface, NftPolicy, NftPolicyAccept, NftPolicyDrop,
   NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
-  NftConnectionTrackingEstablished, nft_table_wire,
+  NftConnectionTrackingEstablished, nft_table_wire, nft_family_wire,
   NftDestinationAddressPrefix, NftTransportDestinationPort, NftNetworkProtocolIpv6,
   NftTransport, NftTcp, NftUdp, nft_list_table_command,
 }
@@ -699,6 +701,96 @@ fn runner_slot_network_install_operations(
   ]
 }
 
+// --- the host's own network files: the ruleset, its loader unit, and forwarding ---
+
+// THE RULESET IS A FILE LOADED BY A ONESHOT UNIT, WHICH IS WHY THE CONVERGE NEEDS NO nft GRANT TO
+// APPLY IT. The unit runs as root and its ExecStart is the only nft invocation in the fleet's apply
+// path; the converge's own authority is limited to installing files and driving systemctl, verbs it
+// already holds. It is also what makes the ruleset survive a reboot without a converge run.
+//
+// RESTART, NOT START. `nft -f` on a file that begins by replacing its own table converges, so
+// re-running it is safe -- and a RemainAfterExit oneshot that is already active ignores `start`, so
+// a converge that installed new bytes and then started the unit would report success over the OLD
+// live ruleset.
+data runner_microvm_nft_ruleset_path: NonEmptyStr = "/etc/gunbc/microvm.nft" as NonEmptyStr
+
+data runner_microvm_nft_unit: NonEmptyStr = "gunbc-microvm-nft.service" as NonEmptyStr
+
+data runner_microvm_systemd_unit_dir: NonEmptyStr = "/etc/systemd/system" as NonEmptyStr
+
+fn runner_microvm_nft_unit_path() -> String {
+  join([runner_microvm_systemd_unit_dir as String, "/", runner_microvm_nft_unit as String], "")
+}
+
+// After= networkd, because the ruleset's rules name tap devices networkd creates; nft accepts rules
+// for a device that does not exist yet, but ordering it after removes the window where a tap is up
+// and unfiltered.
+fn runner_microvm_nft_unit_text() -> String {
+  join([
+    "[Unit]\n",
+    "Description=gunbc microVM host ruleset\n",
+    "After=systemd-networkd.service\n",
+    "Wants=systemd-networkd.service\n",
+    "\n",
+    "[Service]\n",
+    "Type=oneshot\n",
+    "RemainAfterExit=yes\n",
+    "ExecStart=", fleet_nft_binary_path as String, " -f ", runner_microvm_nft_ruleset_path as String, "\n",
+    "\n",
+    "[Install]\n",
+    "WantedBy=multi-user.target\n",
+  ], "")
+}
+
+// FORWARDING IS WHAT MAKES THE TAP A ROUTED LINK RATHER THAN A DEAD END. Without it the guest's
+// packets reach the host and stop, and the masquerade never runs.
+data runner_microvm_forward_sysctl_path: NonEmptyStr = "/etc/sysctl.d/50-gunbc-microvm-forward.conf" as NonEmptyStr
+
+data runner_microvm_ip_forward_proc_path: NonEmptyStr = "/proc/sys/net/ipv4/ip_forward" as NonEmptyStr
+
+fn runner_microvm_forward_sysctl_text() -> String {
+  "net.ipv4.ip_forward = 1\n"
+}
+
+data runner_microvm_sysctl_unit: NonEmptyStr = "systemd-sysctl.service" as NonEmptyStr
+
+// THE HOST'S OPERATIONS, IN THE ORDER THEY DEPEND ON EACH OTHER: the files first, then the daemon
+// reload that makes systemd see a new unit, then the sysctl re-read, then enable (so it survives a
+// reboot) and restart (so the bytes just installed are the live ones).
+fn runner_microvm_host_network_install_operations(
+  staged_ruleset: NonEmptyStr,
+  staged_unit: NonEmptyStr,
+  staged_forward_sysctl: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  [
+    InstallFile {
+      source: staged_ruleset,
+      destination: runner_microvm_nft_ruleset_path,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_unit,
+      destination: runner_microvm_nft_unit_path() as NonEmptyStr,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_forward_sysctl,
+      destination: runner_microvm_forward_sysctl_path,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    SystemdDaemonReload,
+    SystemdRestartUnit { unit: runner_microvm_sysctl_unit },
+    SystemdEnableUnit { unit: runner_microvm_nft_unit },
+    SystemdRestartUnit { unit: runner_microvm_nft_unit },
+  ]
+}
+
 // --- the slot network readback: what sanitation reads after an attempt ---
 
 // THE TAP AND THE RULESET OUTLIVE THE ATTEMPT BY DESIGN, SO SANITATION CANNOT PROVE THEM ABSENT.
@@ -838,9 +930,14 @@ fn helpers_excluded(h: HelperStanding) -> Bool {
     && h.expectations_at_generation == 0
 }
 
+// THE GENERATION IS AN IDENTITY, NOT A COUNT. What a consumer needs is "which converge established
+// this", and the converge run already has a name; a number would invite arithmetic on something that
+// only ever supports equality, and would need a counter with state of its own.
+type ConvergeGeneration = NonEmptyStr where brand("ConvergeGeneration")
+
 type ConvergedSlotNetwork {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   slots: List<ConvergedSlot>
   helpers: HelperStanding
   nft_digest: Sha256Digest
@@ -972,13 +1069,13 @@ type SlotResidueReading {
 
 type HostResidueReading {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   observation: ResidueObservation
 }
 
 type RulesetReading {
   host: HostIdentity
-  generation: Int
+  generation: ConvergeGeneration
   observation: RulesetObservation
 }
 
@@ -1068,8 +1165,9 @@ fn slot_residue_readback(s: SlotNetworkSanitationSubject, fact: SlotNetworkFact,
   }
 }
 
-fn at_receipt(s: SlotNetworkSanitationSubject, host: HostIdentity, generation: Int) -> Bool {
-  (s.converged.host as String) == (host as String) && s.converged.generation == generation
+fn at_receipt(s: SlotNetworkSanitationSubject, host: HostIdentity, generation: ConvergeGeneration) -> Bool {
+  (s.converged.host as String) == (host as String)
+    && (s.converged.generation as String) == (generation as String)
 }
 
 fn host_residue_readback(s: SlotNetworkSanitationSubject, fact: SlotNetworkFact, r: HostResidueReading) -> SlotNetworkReadback {
@@ -1200,6 +1298,13 @@ fn runner_host_expectation_list_command() -> ArgvCommand {
 
 fn runner_microvm_nft_list_command() -> ArgvCommand {
   nft_list_table_command(family: NftInet, name: runner_microvm_nft_table_name)
+}
+
+// THE SAME LISTING, AS A GRANTED OPERATION. Listing a table needs CAP_NET_ADMIN, so the converge and
+// the lifecycle controller reach it through the operation type that also renders the sudoers line;
+// the bare ArgvCommand above is the unelevated spelling for a caller that already has the capability.
+fn runner_microvm_nft_read_operation() -> ExecutorPrivilegedOperation {
+  ReadNftTable { family: nft_family_wire(f: NftInet) as NonEmptyStr, table: runner_microvm_nft_table_name }
 }
 
 // DECLARED FRONTIER (DESIGN 3c). The readback and the three commands that feed it have no

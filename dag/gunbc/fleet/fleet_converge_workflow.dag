@@ -174,6 +174,7 @@ type FleetConvergeWorkflowMode
   | OrgActionsObserve
   | AppControlPlaneObserve
   | MicrovmHostConverge
+  | MicrovmNetworkConverge
   | GuestImageObserve
   | GuestImageConverge
   | MicrovmBootProbe
@@ -200,6 +201,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     OrgActionsObserve => "org_actions_observe"
     AppControlPlaneObserve => "app_control_plane_observe"
     MicrovmHostConverge => "microvm_host_converge"
+    MicrovmNetworkConverge => "microvm_network_converge"
     GuestImageObserve => "guest_image_observe"
     GuestImageConverge => "guest_image_converge"
     MicrovmBootProbe => "microvm_boot_probe"
@@ -240,7 +242,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -271,6 +273,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     OrgActionsObserve => none
     AppControlPlaneObserve => none
     MicrovmHostConverge => none
+    MicrovmNetworkConverge => none
     GuestImageObserve => none
     GuestImageConverge => none
     MicrovmBootProbe => none
@@ -669,6 +672,8 @@ data fleet_converge_microvm_boot_probe_step_if: String = fleet_converge_mode_ste
 
 data fleet_converge_microvm_host_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmHostConverge)
 
+data fleet_converge_microvm_network_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmNetworkConverge)
+
 
 
 
@@ -927,6 +932,45 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
     if_condition: Present { value: fleet_converge_microvm_host_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+// THE NETWORK CONVERGE IS ITS OWN MODE, NOT A STEP OF THE HOST CONVERGE. The host converge installs
+// the VMM; this installs the slots' taps, their v6 sysctls, the host ruleset and forwarding, and
+// then READS the host back into a ConvergedSlotNetwork receipt. They are separate dispatches because
+// they fail for different reasons and an operator routinely wants one without the other: a
+// Firecracker release that will not verify says nothing about a tap that will not carry an address.
+fn fleet_converge_microvm_network_converge_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner micro-VM network: install the slot taps, ruleset and forwarding, then read the host back" },
+    id: Present { value: "microvm_network_converge" },
+    run: gunbc_ci_runner_microvm_network_converge_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_microvm_network_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+// THE RECEIPT UPLOADS ON FAILURE TOO, because a refusal is the reading worth having: it names which
+// fact the host did not establish.
+fn fleet_converge_microvm_network_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner micro-VM network converge receipt" },
+    id: Present { value: "microvm_network_converge_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-microvm-network-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/microvm-network-converge.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -1592,6 +1636,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_guest_image_receipt_upload_step(),
         fleet_converge_microvm_host_converge_step(),
         fleet_converge_microvm_host_standing_upload_step(),
+        fleet_converge_microvm_network_converge_step(),
+        fleet_converge_microvm_network_receipt_upload_step(),
         fleet_converge_microvm_boot_probe_step(),
         fleet_converge_microvm_boot_probe_receipt_upload_step(),
         fleet_converge_spark_grants_step(),

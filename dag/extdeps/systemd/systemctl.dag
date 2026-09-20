@@ -124,6 +124,13 @@ data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
 // verb rather than silently restarting, so this cannot degrade into that.
 data systemctl_reload_verb: NonEmptyStr = "reload" as NonEmptyStr
 
+// RESTART IS THE ONLY VERB THAT RE-RUNS A ONESHOT UNIT'S ExecStart. `start` on a RemainAfterExit
+// oneshot that is already active is a no-op, so a converge that installs new file contents and then
+// starts the unit leaves the OLD contents in effect while reporting success -- the fabricated-success
+// arm. A oneshot whose ExecStart is idempotent (nft -f replaces its own table) is safe to restart on
+// every converge, and that is what makes the installed bytes and the live state the same fact.
+data systemctl_restart_verb: NonEmptyStr = "restart" as NonEmptyStr
+
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_enable_verb as String, unit as String]
 }
@@ -138,7 +145,7 @@ fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
 }
 
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "restart", unit as String]
+  ["systemctl", systemctl_restart_verb as String, unit as String]
 }
 
 fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {

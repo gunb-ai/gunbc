@@ -19,7 +19,7 @@ import gunbc.runner_microvm_network {
   SlotNetworkFact, TapUnheldFact, GuestOriginatedConntrackEmptyFact, GuestDestinedConntrackEmptyFact,
   RulesetMatchesConvergedFact,
   SlotNetworkSubject, slot_network_subject, runner_slot_host_cidr,
-  ConvergedSlot, ConvergedSlotNetwork, HelperStanding,
+  ConvergedSlot, ConvergedSlotNetwork, ConvergeGeneration, HelperStanding,
   AutoAssignmentAbsentFromKernel, AutoAssignmentSysctlOff, AutoAssignmentOn,
   TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled,
   SanitationSubjectResult, SanitationSubjectAdmitted, SanitationSubjectRefused,
@@ -255,7 +255,7 @@ fn subject(i: Nat) -> SlotNetworkSubject {
   slot_network_subject(slot: slot(i: i))
 }
 
-data converged_generation: Int = 7
+data converged_generation: ConvergeGeneration = "run-7" as ConvergeGeneration
 
 fn converged_slot(i: Nat) -> ConvergedSlot {
   let net = runner_slot_network(slot: slot(i: i))
@@ -453,7 +453,7 @@ test fn readings_about_another_subject_never_sanitize_this_one() -> Bool {
     && verdict(r: readback_slot_1(r: with_to(r: c, c: slot_residue(i: 2, o: ResidueAbsent)))) == "unobservable:conntrack-to"
     && verdict(r: readback_slot_1(r: with_neighbour(r: c, c: slot_residue(i: 2, o: ResidueAbsent)))) == "unobservable:neighbour"
     && verdict(r: readback_slot_1(r: with_expectations(r: c, e: HostResidueReading { host: operator_host_srv1, generation: converged_generation, observation: ResidueAbsent }))) == "unobservable:expectations"
-    && verdict(r: readback_slot_1(r: with_ruleset(r: c, l: RulesetReading { host: operator_host_srv2, generation: 6, observation: RulesetListed { digest: converged_digest } }))) == "unobservable:ruleset"
+    && verdict(r: readback_slot_1(r: with_ruleset(r: c, l: RulesetReading { host: operator_host_srv2, generation: "run-6" as ConvergeGeneration, observation: RulesetListed { digest: converged_digest } }))) == "unobservable:ruleset"
 }
 
 // TEARDOWN FLUSHES BOTH CONNTRACK DIRECTIONS AND THIS SLOT'S NEIGHBOUR ENTRY, ON THIS SLOT'S TAP; THE

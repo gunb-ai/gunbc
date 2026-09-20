@@ -230,6 +230,14 @@ data fleet_tailscale_binary_path: NonEmptyStr = "/usr/bin/tailscale"
 
 data fleet_rm_binary_path: NonEmptyStr = "/usr/bin/rm"
 
+// nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
+// readback of the installed ruleset is a granted command like any mutation.
+data fleet_nft_binary_path: NonEmptyStr = "/usr/sbin/nft"
+
+// conntrack(8) READS AND WRITES THE KERNEL'S CONNECTION TRACKING TABLE, both of which need
+// CAP_NET_ADMIN -- listing the expectation table is as privileged as flushing a flow.
+data fleet_conntrack_binary_path: NonEmptyStr = "/usr/sbin/conntrack"
+
 // A CLOSED VOCABULARY OF WHAT THIS PRINCIPAL MAY SUDO, so that emitting an ungranted sudo command
 // has no spelling rather than being a mistake something downstream has to notice.
 //
@@ -260,6 +268,8 @@ type CiRunnerSudoBinary
   | SudoRm
   | SudoUseradd
   | SudoUsermod
+  | SudoNft
+  | SudoConntrack
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -271,6 +281,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoRm => fleet_rm_binary_path
     SudoUseradd => fleet_useradd_binary_path
     SudoUsermod => fleet_usermod_binary_path
+    SudoNft => fleet_nft_binary_path
+    SudoConntrack => fleet_conntrack_binary_path
   }
 }
 
@@ -284,6 +296,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoRm => NopasswdExecuteCheck { check_argv: "--version" }
     SudoUseradd => NopasswdExecuteCheck { check_argv: "-D" }
     SudoUsermod => NopasswdExecuteCheck { check_argv: "--help" }
+    SudoNft => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoConntrack => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
