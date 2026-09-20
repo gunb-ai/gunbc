@@ -47,8 +47,23 @@ type SanitationFact
   | CgroupEmpty
   | MountsRemoved
   | NetworkNamespaceRemoved
+  | SlotNetworkQuiescent
   | WritableLayersDeleted
   | SecretsRemoved
+
+// THE NETWORK FACT DEPENDS ON WHO OWNS THE NETWORK, AND THE TWO OWNERS OWE DIFFERENT FACTS.
+//
+// A sandbox whose network namespace is created per attempt owes its REMOVAL: a namespace that
+// survives can hold the previous tenant's listening socket. A sandbox attached to network state the
+// SLOT owns across attempts -- a microVM's tap and nft rules, converged per slot -- owes no removal,
+// because that state exists by design between attempts. What it owes instead is QUIESCENCE: nothing
+// holds the slot's interface, no connection-tracking state for the reused guest address survives,
+// and the ruleset is the converged one. These are different contracts, so they are different facts
+// rather than one name read two ways; and the scope is declared on the readback, so which one is
+// required is decided here rather than by whichever consumer maps its observation onto a name.
+type SandboxNetworkScope
+  = AttemptScopedNetwork
+  | SlotScopedNetwork
 
 fn sanitation_fact_label(fact: SanitationFact) -> String {
   match fact {
@@ -56,17 +71,25 @@ fn sanitation_fact_label(fact: SanitationFact) -> String {
     CgroupEmpty => "cgroup-empty"
     MountsRemoved => "mounts-removed"
     NetworkNamespaceRemoved => "network-namespace-removed"
+    SlotNetworkQuiescent => "slot-network-quiescent"
     WritableLayersDeleted => "writable-layers-deleted"
     SecretsRemoved => "secrets-removed"
   }
 }
 
-fn required_sanitation_facts() -> List<SanitationFact> {
+fn network_sanitation_fact(scope: SandboxNetworkScope) -> SanitationFact {
+  match scope {
+    AttemptScopedNetwork => NetworkNamespaceRemoved
+    SlotScopedNetwork => SlotNetworkQuiescent
+  }
+}
+
+fn required_sanitation_facts(scope: SandboxNetworkScope) -> List<SanitationFact> {
   [
     NoSurvivingProcesses,
     CgroupEmpty,
     MountsRemoved,
-    NetworkNamespaceRemoved,
+    network_sanitation_fact(scope: scope),
     WritableLayersDeleted,
     SecretsRemoved,
   ]
@@ -105,6 +128,7 @@ fn observation_confirms(observation: SanitationObservation) -> Bool {
 type SanitationReadback {
   cell: CellId
   sandbox: SandboxId
+  network_scope: SandboxNetworkScope
   observations: List<SanitationObservation>
 }
 
@@ -153,7 +177,7 @@ fn unproven_for_required(
 }
 
 fn unproven_facts(readback: SanitationReadback) -> List<UnprovenFact> {
-  fold(required_sanitation_facts(), init: [], f: (acc, required) =>
+  fold(required_sanitation_facts(scope: readback.network_scope), init: [], f: (acc, required) =>
     concat(acc, unproven_for_required(readback: readback, required: required)))
 }
 
@@ -203,10 +227,11 @@ fn cell_readiness_line(readiness: CellReadiness) -> String {
 // a missing report as nothing-to-clean. That is the same narrow one level out: no observation
 // becomes no problem. An absent readback yields every required fact unobserved, so the cell
 // quarantines with a full list rather than returning to supply.
-fn readiness_without_readback(cell: CellId, sandbox: SandboxId) -> CellReadiness {
+fn readiness_without_readback(cell: CellId, sandbox: SandboxId, network_scope: SandboxNetworkScope) -> CellReadiness {
   cell_readiness_after(readback: SanitationReadback {
     cell: cell,
     sandbox: sandbox,
+    network_scope: network_scope,
     observations: [],
   })
 }
