@@ -13,6 +13,7 @@ import gunbc.harness.harness_seat {
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
 }
+import gunbc.serving.serving_enrollment { serving_route_ceiling, serving_route_turn_ceiling_count }
 import gunbc.harness.harness_cli {
   harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds,
 }
@@ -32,6 +33,12 @@ fn w_tolerant_ceiling(group: FabricGroup) -> Int {
     SeatCeilingByDeclaredPolicy { class: _, pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
     AdmissionCeilingUnestablished { group: _, cause: _ } => -1
   }
+}
+
+// The route's own declared allocation, read from the row that owns it, so the claims below compare
+// the harness's reading against its authority rather than against a copy of it.
+fn w_route_ceiling(group: FabricGroup) -> Int {
+  serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
 }
 
 // The engine's OWN scheduler count limit, read straight off the desired unit. This witness needs it
@@ -120,9 +127,19 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // halves are asserted, and the tolerant one is asserted DIFFERENT from the desired unit's
 // max_num_seqs -- the stale launch-line reading this lane declined to inherit -- so a future edit
 // that quietly re-derived it from that row goes red here.
+//
+// THE TOLERANT NUMBERS ARE READ FROM THE ROW THAT OWNS THEM, NOT TRANSCRIBED. This claim used to
+// spell 4 and 1 for groups A and B; gunbc.serving.serving_enrollment serving_group_b_route_turn_ceiling
+// was then superseded 1 -> 4 (#11617, 2026-09-18) and the copy here went red against a legitimate
+// change while asserting nothing the copy was needed for. What the claim discriminates is the ROUTE
+// of the number: the harness pool's ceiling is the route's declared allocation (serving_route_ceiling),
+// not harness_interactive_quality_seats and not the engine's max_num_seqs. A build that re-read the
+// ceiling off the desired unit fails the last conjunct; one that fused the two classes fails the
+// second; the row moving no longer fails anything, which is the point of not copying it.
 test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
-  w_tolerant_ceiling(group: FabricGroupA) == 4
-    && w_tolerant_ceiling(group: FabricGroupB) == 1
+  w_tolerant_ceiling(group: FabricGroupA) == w_route_ceiling(group: FabricGroupA)
+    && w_tolerant_ceiling(group: FabricGroupB) == w_route_ceiling(group: FabricGroupB)
+    && w_tolerant_ceiling(group: FabricGroupA) != w_ceiling(group: FabricGroupA)
     && w_ceiling(group: FabricGroupA) == 1
     && w_ceiling(group: FabricGroupB) == 1
     && w_tolerant_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
