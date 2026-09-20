@@ -597,13 +597,6 @@ fn derived_memory_admitted_width(host: HostIdentity) -> DerivedAdmittedWidth {
   }
 }
 
-fn derived_width_slots_or(s: DerivedAdmittedWidth, fallback: Int) -> Int {
-  match s {
-    DerivedWidth { host: _, slots: n } => n
-    DerivedWidthUnestablished { host: _, cause: _ } => fallback
-  }
-}
-
 fn derived_width_is_unestablished(s: DerivedAdmittedWidth) -> Bool {
   match s {
     DerivedWidth { host: _, slots: _ } => false
