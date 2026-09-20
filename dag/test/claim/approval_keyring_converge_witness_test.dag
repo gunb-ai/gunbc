@@ -1,0 +1,88 @@
+module test.claim.approval_keyring_converge_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import v2.std.algebra { list_head, HeadFound }
+import gunbc.fleet_posix_accounts { fleet_usermod_binary_path }
+import std.process { ExitSuccess }
+import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix }
+import gunbc.auth.approval_keyring_converge {
+  sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
+  keyring_host_must_be_srv1,
+  approval_keyring_converge_refuses_off_srv1, approval_mac_key_digest_standing,
+  keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
+  ntfy_group_admit_argv, roadmap_unit_restart_argv,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn matching_prefix_is_converged() -> Bool {
+  match sha256_prefix_compare(observed_hex: "113a3274bd95aabb", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMatches { prefix: p } => p == approval_mac_key_payload_sha256_prefix
+    _ => false
+  }
+}
+
+test fn mismatched_prefix_refuses() -> Bool {
+  match sha256_prefix_compare(observed_hex: "000000000000aabb", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256PrefixMismatch { expected: e, observed: o } =>
+      e == approval_mac_key_payload_sha256_prefix && o as String == "000000000000"
+    _ => false
+  }
+}
+
+test fn short_digest_is_unavailable_not_a_match() -> Bool {
+  match sha256_prefix_compare(observed_hex: "11", expected_prefix: approval_mac_key_payload_sha256_prefix) {
+    Sha256Unavailable { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn keyring_converge_is_srv1_only() -> Bool {
+  keyring_host_must_be_srv1(host: operator_host_srv1 as String)
+    && !keyring_host_must_be_srv1(host: operator_host_srv2 as String)
+    && match approval_keyring_converge_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
+}
+
+test fn digest_standing_admits_the_modeled_prefix_and_refuses_a_mismatch() -> Bool {
+  match approval_mac_key_digest_standing(observed_hex: "113a3274bd95aabb", expected_prefix: approval_mac_key_payload_sha256_prefix, role: "capability") { ExitSuccess => true  _ => false }
+    && match approval_mac_key_digest_standing(observed_hex: "000000000000aabb", expected_prefix: approval_mac_key_payload_sha256_prefix, role: "capability") { ExitSuccess => false  _ => true }
+    && match approval_mac_key_digest_standing(observed_hex: "01f19b2e2c7aaabb", expected_prefix: approval_submission_mac_key_payload_sha256_prefix, role: "submission") { ExitSuccess => true  _ => false }
+    && match approval_mac_key_digest_standing(observed_hex: "000000000000aabb", expected_prefix: approval_submission_mac_key_payload_sha256_prefix, role: "submission") { ExitSuccess => false  _ => true }
+}
+
+test fn keyring_mkdir_is_install_not_a_local_sudo() -> Bool {
+  match list_head(xs: keyring_mkdir_argv()) {
+    HeadFound { value: w } => w == "install"
+    _ => false
+  }
+}
+
+test fn store_root_mkdir_is_install_not_a_local_sudo() -> Bool {
+  match list_head(xs: store_root_mkdir_argv()) {
+    HeadFound { value: w } => w == "install"
+    _ => false
+  }
+}
+
+test fn claim_store_root_mkdir_is_install_for_the_ci_runner() -> Bool {
+  match list_head(xs: claim_store_root_mkdir_argv()) {
+    HeadFound { value: w } => w == "install"
+    _ => false
+  }
+}
+
+test fn ntfy_group_admit_is_usermod_not_a_token_chown() -> Bool {
+  match list_head(xs: ntfy_group_admit_argv()) {
+    HeadFound { value: w } => w == (fleet_usermod_binary_path as String)
+    _ => false
+  }
+}
+
+test fn roadmap_unit_restart_is_systemctl_restart() -> Bool {
+  match list_head(xs: roadmap_unit_restart_argv()) {
+    HeadFound { value: w } => w == "systemctl"
+    _ => false
+  }
+}
