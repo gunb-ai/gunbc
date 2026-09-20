@@ -120,22 +120,34 @@ fn runner_microvm_attempt_dir(attempt: MicroVmAttempt) -> String {
   ], "")
 }
 
+// THE ENTRY NAMES ARE ROWS, because a path is a directory and a NAME, and teardown asks about the
+// name: proving a resource absent is a listing of its directory that does not name it
+// (extdeps.filesystem.filesystem_io), so a reader that split the rendered path back apart would be
+// a second, positional authority for a composition performed right here.
+data runner_microvm_attempt_rootfs_entry_name: String = "rootfs.ext4"
+
+data runner_microvm_attempt_jit_drive_entry_name: String = "jit.img"
+
+data runner_microvm_attempt_vm_config_entry_name: String = "vm-config.json"
+
+data runner_microvm_attempt_jail_entry_name: String = "jail"
+
 fn runner_microvm_attempt_rootfs_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/rootfs.ext4"], "")
+  join([runner_microvm_attempt_dir(attempt: attempt), "/", runner_microvm_attempt_rootfs_entry_name], "")
 }
 
 fn runner_microvm_attempt_jit_drive_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/jit.img"], "")
+  join([runner_microvm_attempt_dir(attempt: attempt), "/", runner_microvm_attempt_jit_drive_entry_name], "")
 }
 
 fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/vm-config.json"], "")
+  join([runner_microvm_attempt_dir(attempt: attempt), "/", runner_microvm_attempt_vm_config_entry_name], "")
 }
 
 // THE JAILER'S CHROOT BASE IS ATTEMPT-OWNED. A shared /run/jail is a prior-resource collision
 // across attempts; the attempt directory is already the storage isolation this module owns.
 fn runner_microvm_attempt_jail_base(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/jail"], "")
+  join([runner_microvm_attempt_dir(attempt: attempt), "/", runner_microvm_attempt_jail_entry_name], "")
 }
 
 // THE VMM'S TRANSIENT UNIT NAMES THE ATTEMPT, so a leaked unit says which attempt leaked it. A

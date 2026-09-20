@@ -48,6 +48,7 @@ import gunbc.runner_microvm_network { BoundSlotNetworkReadback }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
   runner_microvm_attempt_jit_drive_path, runner_microvm_attempt_slice_property,
+  runner_microvm_attempt_jail_entry_name, runner_microvm_attempt_jit_drive_entry_name,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric_cell_converge { fabric_cell_attempt_root_path, fabric_cell_slice_name }
@@ -167,7 +168,7 @@ type AttemptResourceSubject {
 fn attempt_jail_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
   AttemptResourceSubject {
     directory: runner_microvm_attempt_dir(attempt: attempt),
-    name: "jail",
+    name: runner_microvm_attempt_jail_entry_name,
     path: runner_microvm_attempt_jail_base(attempt: attempt),
   }
 }
@@ -183,7 +184,7 @@ fn attempt_storage_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
 fn attempt_credential_subject(attempt: MicroVmAttempt) -> AttemptResourceSubject {
   AttemptResourceSubject {
     directory: runner_microvm_attempt_dir(attempt: attempt),
-    name: "jit.img",
+    name: runner_microvm_attempt_jit_drive_entry_name,
     path: runner_microvm_attempt_jit_drive_path(attempt: attempt),
   }
 }
