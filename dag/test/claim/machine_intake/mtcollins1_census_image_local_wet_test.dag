@@ -7,14 +7,19 @@ import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureBound,
   HostCaptureStage,
+  HostCaptureUnbound,
+  host_capture_bind,
+  host_capture_bound_edac_clean,
+  host_capture_bound_nproc_exact,
+  host_capture_bound_section_exit_zero,
+  host_capture_bound_workload_stable,
+  host_capture_census_stages,
   host_capture_program,
-  host_capture_envelope_complete,
-  host_capture_nproc_exact,
-  host_capture_edac_clean_section,
-  host_capture_workload_stable,
-  host_capture_section_exit_zero,
+  host_capture_workload_command,
 }
+import gunbc.machine_intake_host_capture_historical_binding { bindings_hold_against_capture }
 import extdeps.shell
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -47,16 +52,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // attempt=3 was written by the program this grammar reconstructs, so the grammar must read it on
 // every axis the census verdict uses. A reconstruction that drifted from the real framing fails here.
-test fn the_attempt_three_capture_parses_under_the_reconstructed_grammar() -> Bool {
+// attempt=3's capture must BIND -- one begin, the matching end for the same machine and run -- and
+// every verdict axis must read that bound envelope. This is the committed file, not a copy.
+test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
   let read = Filesystem.Read(path: "artifacts/bmc/mtcollins1-host-capture.txt")
-  let capture = read.content
-  read.success
-    && host_capture_envelope_complete(capture: capture, machine: "mtcollins1")
-    && host_capture_nproc_exact(capture: capture, threads: "160")
-    && host_capture_edac_clean_section(capture: capture, name: "edac-before")
-    && host_capture_edac_clean_section(capture: capture, name: "edac-after")
-    && host_capture_workload_stable(capture: capture)
-    && host_capture_section_exit_zero(capture: capture, name: "boot-media")
+  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } =>
+      host_capture_bound_nproc_exact(envelope: e, threads: "160")
+        && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
+        && host_capture_bound_edac_clean(envelope: e, name: "edac-after")
+        && host_capture_bound_workload_stable(envelope: e)
+        && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media")
+  }
+}
+
+// THE HISTORICAL MAP IS CHECKED AGAINST THE BYTES, not by eye: every binding row's `original` must be
+// the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
+// and the omitted section must be present in the file and absent from the roster.
+test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: "artifacts/bmc/mtcollins1-host-capture.txt")
+  read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
+  }
 }
 
 // A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter
@@ -85,11 +104,14 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
   )
   let out = obs.stdout
   obs.exit_code == 0
-    && host_capture_envelope_complete(capture: out, machine: "witness")
-    && host_capture_nproc_exact(capture: out, threads: "160")
-    && host_capture_edac_clean_section(capture: out, name: "edac-before")
-    && host_capture_workload_stable(capture: out)
-    && host_capture_section_exit_zero(capture: out, name: "boot-media") == false
+    && match host_capture_bind(capture: out, machine: "witness") {
+      HostCaptureUnbound { reason: _ } => false
+      HostCaptureBound { envelope: e } =>
+        host_capture_bound_nproc_exact(envelope: e, threads: "160")
+          && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
+          && host_capture_bound_workload_stable(envelope: e)
+          && host_capture_bound_section_exit_zero(envelope: e, name: "boot-media") == false
+    }
     && string_contains(s: out, pattern: "----EXIT boot-media: 3")
     && string_contains(s: out, pattern: "\nit's quoted\n")
 }
@@ -135,4 +157,64 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote_probe.success && wrote_record.success && wrote_other.success && wrote_same.success
     && absent && diverged && resolved
+}
+
+// THE WORKLOAD'S OWN FAILURE MODES, EXECUTED ON THE REAL RENDERED BODY. The token this stage emits is
+// what the census verdict reads, so the body must not be able to emit it over a workload that hashed
+// nothing. POSIX shell functions take precedence over PATH, so each case prefixes the UNMODIFIED body
+// with stubs for the two tools it calls -- no 64 GiB is written and no real hashing happens, while
+// every line of the body under test is the one the image carries.
+fn workload_case(stubs: String) -> Int {
+  run_shell_command_observe(
+    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
+    transport: LocalExec,
+  ).exit_code
+}
+
+fn workload_case_stdout(stubs: String) -> String {
+  run_shell_command_observe(
+    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
+    transport: LocalExec,
+  ).stdout
+}
+
+data workload_stub_dd: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
+
+// Every named chunk hashes, both passes agree: the one case that may emit the token.
+data workload_stub_complete: String = "sha256sum() { for f in \"$@\"; do echo \"deadbeef  $f\"; done; };"
+
+// Both passes fail and print nothing. The two empty manifests AGREE -- this is the case a
+// compare-only body calls stable.
+data workload_stub_both_empty: String = "sha256sum() { return 1; };"
+
+// Both passes omit the same chunk and exit zero. The manifests agree again, over three files.
+data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$f\" in *chunk3) continue;; esac; echo \"deadbeef  $f\"; done; };"
+
+// Complete passes that DISAGREE: the genuine instability this stage exists to detect.
+data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
+
+test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
+  let complete = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_complete))
+  let complete_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
+  string_contains(s: complete, pattern: "\nworkload-digest-stable=yes\n") && complete_rc == 0
+}
+
+// THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both
+// empty agree, both partial agree, and the disagreeing case is the ordinary instability. None may
+// emit the token, and each must leave the stage nonzero.
+test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
+  let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
+  let empty = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_both_empty))
+  let empty_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
+  let partial = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_partial))
+  let partial_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
+  let cleared_again = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
+  let disagree = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_disagree))
+  let disagree_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
+  string_contains(s: empty, pattern: "workload-digest-stable=yes") == false
+    && empty_rc != 0
+    && string_contains(s: partial, pattern: "workload-digest-stable=yes") == false
+    && partial_rc != 0
+    && string_contains(s: disagree, pattern: "workload-digest-stable=yes") == false
+    && disagree_rc != 0
 }

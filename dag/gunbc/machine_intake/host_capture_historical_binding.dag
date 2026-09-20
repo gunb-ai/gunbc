@@ -1,0 +1,302 @@
+module gunbc.machine_intake_host_capture_historical_binding
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import std.measure { ByteSize }
+import v2.std.optional { Present }
+import gunbc.machine_intake_host_capture_envelope {
+  BoundHostCaptureEnvelope,
+  HostCaptureStage,
+  host_capture_bound_section_argv,
+  host_capture_census_stages,
+}
+import gunbc.machine_intake_mtcollins1_memory_census_observation {
+  mtcollins1_host_capture_artifact_path,
+  mtcollins1_host_capture_byte_count,
+  mtcollins1_host_capture_digest,
+}
+
+// WHAT THE CENSUS PROGRAM ACTUALLY IS, stated at the strength the evidence supports. It is a NEWLY
+// AUTHORED PRODUCER CONSTRAINED BY attempt=3's OUTPUT -- not attempt=3's executable recovered from
+// its bytes, which no commit contains. The distinction is not pedantry: a reader who believes the
+// second will trust the new program wherever the old one was trusted, including for facts the new
+// program computes differently. The workload is the sharpest case -- its ARGV line in the capture is
+// a PROSE DESCRIPTION ("4 x 16GiB tmpfs chunks, urandom-seeded, sha256 x2 passes, compare"), so the
+// implementation here was written from that description and shares no line with whatever ran.
+//
+// SO THE RELATION IS CARRIED ROW BY ROW rather than asserted in prose. Every section the historical
+// capture contains gets exactly one disposition against the new roster, bound to the capture's own
+// committed identity; a mutation to a stage the binding calls EXACT makes the map fail rather than
+// passing quietly.
+
+type HistoricalCaptureIdentity {
+  path: NonEmptyStr
+  digest: ContentHash
+  byte_count: ByteSize
+}
+
+// The capture this producer is constrained by, by its committed identity rather than by its name:
+// the three rows are gunbc.machine_intake_mtcollins1_memory_census_observation's, consumed here
+// rather than re-minted, so a re-captured artifact moves both readings at once.
+data census_historical_capture: HistoricalCaptureIdentity = HistoricalCaptureIdentity {
+  path: mtcollins1_host_capture_artifact_path,
+  digest: mtcollins1_host_capture_digest,
+  byte_count: mtcollins1_host_capture_byte_count,
+}
+
+// HOW ONE HISTORICAL SECTION RELATES TO THE NEW ROSTER.
+//  Exact                -- the new stage's command IS the historical ARGV, byte for byte. The row
+//                          quotes that ARGV so the pair is checkable without the file, and the wet
+//                          claim proves the quote is what the committed capture actually carries.
+//  Normalized           -- deliberately changed, carrying what it was, what it became and why.
+//  DeliberatelyOmitted  -- the section is not carried at all, with its reason.
+//  AuthoredFromDescription -- the capture's ARGV line for this section is PROSE, not a command
+//                          (`read /sys/...`, "4 x 16GiB tmpfs chunks, ..."), so there is nothing to
+//                          carry over: the new command is authored to produce the output the capture
+//                          shows, and no literal comparison to a historical command is possible.
+//  NewlyIntroduced      -- the new roster has a stage the capture never had.
+type HistoricalStageDisposition
+  = HistoricalStageExact { argv: NonEmptyStr }
+  | HistoricalStageNormalized { original: NonEmptyStr, replacement: NonEmptyStr, reason: NonEmptyStr }
+  | HistoricalStageAuthoredFromDescription { original: NonEmptyStr, reason: NonEmptyStr }
+  | HistoricalStageDeliberatelyOmitted { reason: NonEmptyStr }
+  | HistoricalStageNewlyIntroduced { reason: NonEmptyStr }
+
+type HistoricalStageBinding {
+  name: NonEmptyStr
+  disposition: HistoricalStageDisposition
+}
+
+data census_shell_wrapper_reason: NonEmptyStr = "attempt=3 ran this stage's pipeline through an explicit `sh -c` wrapper and suppressed tool stderr with 2>/dev/null; the new program already runs every stage under `sh -c` and captures stderr into the section (2>&1), so the wrapper is redundant and the suppression would hide the reason a stage failed" as NonEmptyStr
+
+// ONE ROW PER SECTION THE CAPTURE CONTAINS, in the capture's own order. The ARGV strings on the
+// Normalized rows are attempt=3's, quoted from the committed file; the Exact rows assert the new
+// stage command IS the historical one and are checked against the file by the wet claim rather than
+// by eye.
+data census_historical_stage_bindings: List<HistoricalStageBinding> = [
+  HistoricalStageBinding { name: "subject-system", disposition: HistoricalStageExact { argv: "dmidecode --type 1" } },
+  HistoricalStageBinding { name: "subject-baseboard", disposition: HistoricalStageExact { argv: "dmidecode --type 2" } },
+  HistoricalStageBinding { name: "subject-chassis", disposition: HistoricalStageExact { argv: "dmidecode --type 3" } },
+  HistoricalStageBinding { name: "boot-id", disposition: HistoricalStageExact { argv: "cat /proc/sys/kernel/random/boot_id" } },
+  HistoricalStageBinding { name: "boot-cmdline", disposition: HistoricalStageExact { argv: "cat /proc/cmdline" } },
+  HistoricalStageBinding { name: "kernel", disposition: HistoricalStageExact { argv: "uname -a" } },
+  HistoricalStageBinding {
+    name: "boot-media",
+    disposition: HistoricalStageNormalized {
+      original: "sh -c ls -l /dev/disk/by-label 2>/dev/null; blkid 2>/dev/null | head -20",
+      replacement: "ls -l /dev/disk/by-label; blkid",
+      reason: census_shell_wrapper_reason,
+    },
+  },
+  HistoricalStageBinding { name: "nproc", disposition: HistoricalStageExact { argv: "nproc" } },
+  HistoricalStageBinding { name: "lscpu", disposition: HistoricalStageExact { argv: "lscpu" } },
+  HistoricalStageBinding {
+    name: "numa",
+    disposition: HistoricalStageNormalized {
+      original: "sh -c cat /sys/devices/system/node/online; numactl -H 2>/dev/null",
+      replacement: "cat /sys/devices/system/node/online; numactl -H",
+      reason: census_shell_wrapper_reason,
+    },
+  },
+  HistoricalStageBinding {
+    name: "meminfo",
+    disposition: HistoricalStageNormalized {
+      original: "sh -c grep -E \"MemTotal|MemAvailable\" /proc/meminfo",
+      replacement: "grep -E 'MemTotal|MemAvailable' /proc/meminfo",
+      reason: "the sh -c wrapper is redundant as above, and the pattern is single-quoted so the alternation reaches grep rather than the shell" as NonEmptyStr,
+    },
+  },
+  HistoricalStageBinding { name: "dmidecode-type16", disposition: HistoricalStageExact { argv: "dmidecode --type 16" } },
+  HistoricalStageBinding { name: "dmidecode-type17", disposition: HistoricalStageExact { argv: "dmidecode --type 17" } },
+  HistoricalStageBinding {
+    name: "edac-mc-name",
+    disposition: HistoricalStageNormalized {
+      original: "sh -c for d in /sys/devices/system/edac/mc/mc*; do echo \"$d/mc_name = $(cat $d/mc_name 2>/dev/null)\"; done",
+      replacement: "for d in /sys/devices/system/edac/mc/mc*; do echo \"$d/mc_name = $(cat $d/mc_name)\"; done",
+      reason: census_shell_wrapper_reason,
+    },
+  },
+  HistoricalStageBinding {
+    name: "edac-find",
+    disposition: HistoricalStageNormalized {
+      original: "sh -c find /sys/devices/system/edac 2>/dev/null | sort",
+      replacement: "find /sys/devices/system/edac | sort",
+      reason: census_shell_wrapper_reason,
+    },
+  },
+  HistoricalStageBinding {
+    name: "edac-before",
+    disposition: HistoricalStageAuthoredFromDescription {
+      original: "read /sys/devices/system/edac",
+      reason: "attempt=3's ARGV line is a DESCRIPTION rather than a command -- `read <path>` is not what ran -- so the counter walk is newly authored to emit the `<path> == <value>` lines the capture's own output shows, which is what the verdict reads" as NonEmptyStr,
+    },
+  },
+  HistoricalStageBinding {
+    name: "workload",
+    disposition: HistoricalStageAuthoredFromDescription {
+      original: "4 x 16GiB tmpfs chunks, urandom-seeded, sha256 x2 passes, compare",
+      reason: "attempt=3's ARGV line is PROSE, not a command, so no source exists to carry over: the body in gunbc.machine_intake_host_capture_envelope host_capture_workload_command is written from that description and from the capture's output tokens, and shares no line with whatever ran. It is the stage least constrained by the historical bytes, which is why its own execution controls carry the weight" as NonEmptyStr,
+    },
+  },
+  HistoricalStageBinding {
+    name: "edac-after",
+    disposition: HistoricalStageAuthoredFromDescription {
+      original: "read /sys/devices/system/edac",
+      reason: "same as edac-before: the historical ARGV is a description, and the walk is authored to emit the counter lines the verdict reads" as NonEmptyStr,
+    },
+  },
+  HistoricalStageBinding {
+    name: "dmesg-full",
+    disposition: HistoricalStageDeliberatelyOmitted {
+      reason: "the image boots with console=ttyAMA0, so the kernel ring buffer is already on the serial stream the envelope is written to; printing it again inside the envelope made it most of attempt=3's capture without adding a fact" as NonEmptyStr,
+    },
+  },
+]
+
+fn historical_binding_names() -> List<String> {
+  map(census_historical_stage_bindings, b => b.name as String)
+}
+
+fn historical_binding_for(name: String) -> HistoricalStageBinding? {
+  fold(
+    census_historical_stage_bindings,
+    init: none,
+    f: (acc, b) => match acc {
+      Present { value: _ } => acc
+      Absent => if (b.name as String) == name { Present { value: b } } else { none }
+    },
+  )
+}
+
+// What the new roster must say about a binding, so a reader can check the pair without running the
+// capture: an Exact or Normalized row is carried and its command must equal the replacement (for
+// Exact, the replacement IS the historical ARGV, which the wet claim reads off the file); an omitted
+// row must not be carried at all.
+fn historical_binding_expected_command(b: HistoricalStageBinding) -> NonEmptyStr? {
+  match b.disposition {
+    HistoricalStageExact { argv: a } => Present { value: a }
+    HistoricalStageNormalized { original: _, replacement: r, reason: _ } => Present { value: r }
+    HistoricalStageAuthoredFromDescription { original: _, reason: _ } => none
+    HistoricalStageDeliberatelyOmitted { reason: _ } => none
+    HistoricalStageNewlyIntroduced { reason: _ } => none
+  }
+}
+
+fn historical_binding_is_carried(b: HistoricalStageBinding) -> Bool {
+  match b.disposition {
+    HistoricalStageExact { argv: _ } => true
+    HistoricalStageNormalized { original: _, replacement: _, reason: _ } => true
+    HistoricalStageAuthoredFromDescription { original: _, reason: _ } => true
+    HistoricalStageDeliberatelyOmitted { reason: _ } => false
+    HistoricalStageNewlyIntroduced { reason: _ } => true
+  }
+}
+
+fn stage_named(stages: List<HostCaptureStage>, name: String) -> HostCaptureStage? {
+  fold(
+    stages,
+    init: none,
+    f: (acc, s) => match acc {
+      Present { value: _ } => acc
+      Absent => if (s.name as String) == name { Present { value: s } } else { none }
+    },
+  )
+}
+
+// EVERY CARRIED BINDING IS IN THE ROSTER AND EVERY OMITTED ONE IS NOT, and a Normalized row's
+// replacement must be the roster's command verbatim. This is the half that does not need the file:
+// it fails the moment a stage command is edited away from what the binding says it became.
+fn roster_matches_bindings(stages: List<HostCaptureStage>) -> Bool {
+  fold(
+    census_historical_stage_bindings,
+    init: true,
+    f: (acc, b) => acc && match stage_named(stages: stages, name: b.name as String) {
+      Absent => historical_binding_is_carried(b: b) == false
+      Present { value: stage } =>
+        historical_binding_is_carried(b: b) && match historical_binding_expected_command(b: b) {
+          Absent => true
+          Present { value: expected } => (stage.command as String) == (expected as String)
+        }
+    },
+  )
+}
+
+// NO ROSTER STAGE IS UNACCOUNTED FOR. A stage added to the roster without a binding row is exactly
+// the drift this map exists to refuse: it would ride into the census with no statement of whether
+// the historical capture had it.
+fn census_roster_matches_bindings() -> Bool {
+  roster_matches_bindings(stages: host_capture_census_stages)
+}
+
+fn census_roster_is_fully_bound() -> Bool {
+  fold(
+    host_capture_census_stages,
+    init: true,
+    f: (acc, s) => acc && match historical_binding_for(name: s.name as String) {
+      Absent => false
+      Present { value: _ } => true
+    },
+  )
+}
+
+// WHAT THE BOUND ENVELOPE MUST SAY FOR ONE BINDING TO HOLD. Exact means the file's ARGV line IS
+// the roster's command; Normalized and AuthoredFromDescription mean the file's ARGV line is the row's
+// `original` (so an edit to that quote is caught against the bytes); DeliberatelyOmitted means the
+// file has the section and the roster does not. The capture is SUPPLIED, so this stays a pure fold
+// and the wet claim's only job is to hand it the real file.
+fn binding_holds_against_capture(envelope: BoundHostCaptureEnvelope, stages: List<HostCaptureStage>, b: HistoricalStageBinding) -> Bool {
+  let historical = host_capture_bound_section_argv(envelope: envelope, name: b.name as String)
+  let carried = stage_named(stages: stages, name: b.name as String)
+  match historical {
+    Absent => false
+    Present { value: argv } =>
+      match b.disposition {
+        HistoricalStageExact { argv: quoted } =>
+          (quoted as String) == argv
+            && match carried {
+              Absent => false
+              Present { value: stage } => (stage.command as String) == argv
+            }
+        HistoricalStageNormalized { original: o, replacement: r, reason: _ } =>
+          (o as String) == argv
+            && match carried {
+              Absent => false
+              Present { value: stage } => (stage.command as String) == (r as String)
+            }
+        HistoricalStageAuthoredFromDescription { original: o, reason: _ } =>
+          (o as String) == argv
+            && match carried {
+              Absent => false
+              Present { value: _ } => true
+            }
+        HistoricalStageDeliberatelyOmitted { reason: _ } =>
+          match carried {
+            Absent => true
+            Present { value: _ } => false
+          }
+        HistoricalStageNewlyIntroduced { reason: _ } => false
+      }
+  }
+}
+
+fn bindings_hold_against_capture(envelope: BoundHostCaptureEnvelope, stages: List<HostCaptureStage>) -> Bool {
+  fold(
+    census_historical_stage_bindings,
+    init: true,
+    f: (acc, b) => acc && binding_holds_against_capture(envelope: envelope, stages: stages, b: b),
+  )
+}
+
+// THE MUTATION THE MAP MUST REFUSE: one bound stage's command edited away from what its row says.
+// A roster carrying it is not the roster this binding describes, and saying so is the whole point of
+// carrying the map rather than a sentence.
+fn census_stages_with_mutated_command(name: NonEmptyStr, command: NonEmptyStr) -> List<HostCaptureStage> {
+  map(
+    host_capture_census_stages,
+    s => if (s.name as String) == (name as String) {
+      HostCaptureStage { name: s.name, command: command }
+    } else {
+      s
+    },
+  )
+}
