@@ -64,7 +64,7 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
 }
 
 fn rust_i32_python_int_refinement_widening_predicate() -> Outcome<PreservationPredicate> {
-  let source = rust_inhabitant_i32_node()
+  let source = rust_inhabitant_i32_node
   let candidate = python_int_inhabitant_node()
   bind_outcome(
     o: coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: source),
@@ -89,7 +89,7 @@ fn rust_i32_python_int_refinement_widening_predicate() -> Outcome<PreservationPr
 
 fn python_int_rust_i32_refinement_narrowing_predicate() -> Outcome<PreservationPredicate> {
   let source = python_int_inhabitant_node()
-  let candidate = rust_inhabitant_i32_node()
+  let candidate = rust_inhabitant_i32_node
   bind_outcome(
     o: coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: source),
     f: fn(source_value_set) {

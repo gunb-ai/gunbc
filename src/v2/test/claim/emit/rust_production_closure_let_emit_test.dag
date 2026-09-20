@@ -48,7 +48,7 @@ fn rpcl_serialize(expr: TargetValueExpression, target: TargetModel) -> Outcome<S
   match target_value_expression_to_concrete_tokens(
     expr: expr,
     projection: rust_value_expression_projection(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: rust_operator_realizations_catalog_node
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {

@@ -267,11 +267,11 @@ fn rust_pick_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: rust_add_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -283,7 +283,7 @@ fn rust_pick_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -303,7 +303,7 @@ fn rust_pick_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -348,7 +348,7 @@ fn rust_sgb_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     )
   ]
 }
@@ -638,7 +638,7 @@ fn rust_call_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_call_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -646,7 +646,7 @@ fn rust_call_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_call_target_model_staging() -> TargetModel {
   TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: rust_target_model_bundle_core(),
+    bundle: rust_target_model_bundle_core,
     lex: rust_call_lex(),
     binding_spellings: rust_call_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -659,11 +659,11 @@ fn rust_match_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: rust_add_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -675,7 +675,7 @@ fn rust_match_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -695,7 +695,7 @@ fn rust_match_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -756,7 +756,7 @@ fn rust_match_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_match_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -958,11 +958,11 @@ fn rust_loop_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: rust_add_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -974,7 +974,7 @@ fn rust_loop_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -994,7 +994,7 @@ fn rust_loop_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -1055,7 +1055,7 @@ fn rust_loop_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_loop_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -1084,7 +1084,7 @@ fn rust_semantic_decl_target_model_staging() -> TargetModel {
       children: [
         rust_named_edge(
           name: ^target_model_edge_semantic_decl_emission,
-          target: rust_semantic_decl_emission_bundle_node()
+          target: rust_semantic_decl_emission_bundle_node
         )
       ],
       occurrence_id: OccurrenceSynthetic
@@ -1135,7 +1135,7 @@ fn rust_classical_not_ingested_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_classical_not_ingested_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -1191,7 +1191,7 @@ fn rust_classical_not_translation_rules_node() -> Node {
 
 fn rust_classical_not_target_model_bundle_core() -> Node {
   let core = rust_target_model_core_edges_with_operators(
-    operator_catalog: rust_operator_realizations_catalog_node()
+    operator_catalog: rust_operator_realizations_catalog_node
   )
   Node {
     kind: TypeNode { connective: Conj },
@@ -1409,11 +1409,11 @@ fn rust_field_access_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -1425,7 +1425,7 @@ fn rust_field_access_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -1445,7 +1445,7 @@ fn rust_field_access_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -1506,7 +1506,7 @@ fn rust_field_access_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_field_access_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -1728,11 +1728,11 @@ fn rust_variant_construct_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -1744,7 +1744,7 @@ fn rust_variant_construct_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -1764,7 +1764,7 @@ fn rust_variant_construct_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -1825,7 +1825,7 @@ fn rust_variant_construct_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_variant_construct_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -2035,11 +2035,11 @@ fn rust_logic_complement_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -2051,7 +2051,7 @@ fn rust_logic_complement_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -2071,7 +2071,7 @@ fn rust_logic_complement_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -2132,7 +2132,7 @@ fn rust_logic_complement_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_logic_complement_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -2296,11 +2296,11 @@ fn rust_bool_fn_target_model_core_edges(
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -2312,7 +2312,7 @@ fn rust_bool_fn_target_model_core_edges(
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -2332,7 +2332,7 @@ fn rust_bool_fn_target_model_core_edges(
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -2394,7 +2394,7 @@ fn rust_bool_fn_host_runtime_row_with_width(
         },
         runtime_value_codec: FixedWidthBytes { width: codec_width }
       },
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -2796,7 +2796,7 @@ fn rust_match_loop_fold_family_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_match_loop_fold_family_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -2987,11 +2987,11 @@ fn rust_rec_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -3003,7 +3003,7 @@ fn rust_rec_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -3023,7 +3023,7 @@ fn rust_rec_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -3245,11 +3245,11 @@ fn rust_rec_nine_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -3261,7 +3261,7 @@ fn rust_rec_nine_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -3281,7 +3281,7 @@ fn rust_rec_nine_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -3342,7 +3342,7 @@ fn rust_rec_nine_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_rec_nine_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -3567,11 +3567,11 @@ fn rust_fold_call_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_declared_inhabitants_root()
+      target: rust_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
@@ -3583,7 +3583,7 @@ fn rust_fold_call_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -3603,7 +3603,7 @@ fn rust_fold_call_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -3613,7 +3613,7 @@ fn rust_fold_call_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_operator_realizations,
-      target: rust_operator_realizations_catalog_node()
+      target: rust_operator_realizations_catalog_node
     )
   ]
 }
@@ -3664,7 +3664,7 @@ fn rust_fold_call_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: rust_fold_call_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   }
 }
@@ -3924,7 +3924,7 @@ fn rust_bind_literal_translation_rules_node() -> Node {
 
 fn rust_bind_literal_target_model_bundle() -> Node {
   let core = rust_target_model_core_edges_with_operators(
-    operator_catalog: rust_operator_realizations_catalog_node()
+    operator_catalog: rust_operator_realizations_catalog_node
   )
   Node {
     kind: TypeNode { connective: Conj },
@@ -4346,7 +4346,7 @@ fn rust_filesystem_read_family_runtime_row(fixture_content: String) -> TargetEmi
     family: FilesystemReadFamily,
     present: EmitHostRuntimeRow {
       transport: rust_filesystem_read_family_host_transport_descriptor(fixture_content: fixture_content),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   )
 }
@@ -4472,7 +4472,7 @@ fn rust_shell_exec_run_family_runtime_row() -> TargetEmitHostRuntimeRow {
     family: ShellExecRunFamily,
     present: EmitHostRuntimeRow {
       transport: rust_shell_exec_run_family_host_transport_descriptor(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   )
 }
@@ -4556,30 +4556,30 @@ fn rust_body_add_target_model_staging() -> TargetModel {
 
 // Shared minimal bundle core used by multiple emit-test fixtures.
 // Omits the semantic_decl_emission edge that production rust_target_model_bundle_core includes.
-// Uses production rust_translation_rules_node() and rust_add_serialize_source_node()
+// Uses production rust_translation_rules_node and rust_add_serialize_source_node
 // since fn_add body tests use the same relations.
 
 fn rust_minimal_target_model_core_edges() -> List<Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
-      target: rust_selection_policy_node()
+      target: rust_selection_policy_node
     ),
     rust_named_edge(
       name: ^target_model_edge_declared_inhabitants,
-      target: rust_add_declared_inhabitants_root()
+      target: rust_add_declared_inhabitants_root
     ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
-      target: rust_translation_rules_node()
+      target: rust_translation_rules_node
     ),
     rust_named_edge(
       name: ^target_model_edge_serialize_source,
-      target: rust_add_serialize_source_node()
+      target: rust_add_serialize_source_node
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
-      target: rust_collection_realization_catalog_node()
+      target: rust_collection_realization_catalog_node
     ),
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,
@@ -4599,7 +4599,7 @@ fn rust_minimal_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
-      target: rust_type_expression_projection_bundle_node()
+      target: rust_type_expression_projection_bundle_node
     ),
     rust_named_edge(
       name: ^target_model_edge_value_expression_projection,
@@ -4609,7 +4609,7 @@ fn rust_minimal_target_model_core_edges() -> List<Edge> {
     ),
     rust_named_edge(
       name: ^target_model_edge_operator_realizations,
-      target: rust_operator_realizations_catalog_node()
+      target: rust_operator_realizations_catalog_node
     )
   ]
 }
@@ -4623,14 +4623,14 @@ fn rust_minimal_target_model_bundle_core() -> Node {
 }
 
 // ===== rust_call_emit fixture bundle =====
-// Replaces rust_target_model_bundle_core() in the test's inline TargetModel builder.
+// Replaces rust_target_model_bundle_core in the test's inline TargetModel builder.
 
 fn rust_call_target_model_bundle_core() -> Node {
   rust_minimal_target_model_bundle_core()
 }
 
 // ===== rust_bind_let_emit fixture bundle =====
-// Replaces rust_target_model_bundle_core() in the test's inline TargetModel builder.
+// Replaces rust_target_model_bundle_core in the test's inline TargetModel builder.
 
 fn rust_bind_let_target_model_bundle_core() -> Node {
   rust_minimal_target_model_bundle_core()
@@ -4695,11 +4695,11 @@ fn rust_sg2_type_expression_projection_bundle() -> Node {
     children: [
       rust_named_edge(
         name: ^target_model_edge_type_expression_projection,
-        target: rust_type_expression_projection_bundle_node()
+        target: rust_type_expression_projection_bundle_node
       ),
       rust_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: rust_sg2_serialize_source_node()
+        target: rust_sg2_serialize_source_node
       ),
       rust_named_edge(
         name: ^target_model_edge_translation_rules,

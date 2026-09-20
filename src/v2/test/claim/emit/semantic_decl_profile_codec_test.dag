@@ -20,7 +20,7 @@ import v2.std.node { Symbol }
 
 fn decoded_profile() -> Outcome<TargetSemanticDeclSerializeProfile> {
   decode_semantic_decl_serialize_profile_bundle(
-    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+    bundle: rust_semantic_decl_serialize_profile_bundle_node
   )
 }
 

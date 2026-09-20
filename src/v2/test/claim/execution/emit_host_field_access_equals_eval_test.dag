@@ -95,7 +95,7 @@ data emit_field_eval_subgraph_node: Node = dag_field_access_body_fixture
 fn emit_field_eval_facts_with_descent(node: Node, descent_symbol: Symbol) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: rust_emit_host_runtime_primitive_type_node,
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -165,7 +165,7 @@ fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
 fn emit_field_eval_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      primitive_type: rust_emit_host_runtime_primitive_type_node,
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }

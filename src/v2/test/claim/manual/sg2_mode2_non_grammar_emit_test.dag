@@ -93,14 +93,14 @@ fn sg2_mode2_facts_lookup(_key: Node) -> Optional<InferredFacts> {
 }
 
 data sg2_mode2_inferred_tree: InferredTree = InferredTree {
-  root: rust_sg2_instantiation_source_type_node(),
+  root: rust_sg2_instantiation_source_type_node,
   facts: PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }
 }
 
 data sg2_mode2_perturbed_inferred_tree: InferredTree = InferredTree {
-  root: rust_sg2_foobar_xy_no_rc_source_type_node(),
+  root: rust_sg2_foobar_xy_no_rc_source_type_node,
   facts: PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }
@@ -165,7 +165,7 @@ fn sg2_mode2_translate_emitted() -> Node {
 
 test fn sg2_mode2_translate_matches_golden() -> Bool {
   content_hash(n: sg2_mode2_translate_emitted()) ==
-    content_hash(n: rust_sg2_rc_foobar_xy_emitted())
+    content_hash(n: rust_sg2_rc_foobar_xy_emitted)
 }
 
 test fn sg2_mode2_emit_accepts() -> Bool {
@@ -248,23 +248,23 @@ fn sg2_mode2_outcome_return_shell() -> Node {
 }
 
 test fn sg2_mode2_golden_wire_has_no_grammar_row() -> Bool {
-  sg2_mode2_emitted_has_no_grammar_row(emitted: rust_sg2_rc_foobar_xy_emitted())
+  sg2_mode2_emitted_has_no_grammar_row(emitted: rust_sg2_rc_foobar_xy_emitted)
 }
 
 test fn sg2_mode2_golden_wire_has_kind_authority() -> Bool {
-  sg2_mode2_wire_has_kind_authority(emitted: rust_sg2_rc_foobar_xy_emitted())
+  sg2_mode2_wire_has_kind_authority(emitted: rust_sg2_rc_foobar_xy_emitted)
 }
 
 fn sg2_mode2_arrow_serialized_text_matches_expected() -> Bool {
-  sg2_mode2_serialized_text(emitted: rust_sg2_arrow_xy_emitted()) == sg2_mode2_expected_arrow_text
+  sg2_mode2_serialized_text(emitted: rust_sg2_arrow_xy_emitted) == sg2_mode2_expected_arrow_text
 }
 
 test fn sg2_mode2_conj_serialized_text_matches_expected() -> Bool {
-  sg2_mode2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_mode2_expected_conj_text
+  sg2_mode2_serialized_text(emitted: rust_sg2_conj_xy_emitted) == sg2_mode2_expected_conj_text
 }
 
 test fn sg2_mode2_sum_serialized_text_matches_expected() -> Bool {
-  sg2_mode2_serialized_text(emitted: rust_sg2_sum_xy_emitted()) == sg2_mode2_expected_sum_text
+  sg2_mode2_serialized_text(emitted: rust_sg2_sum_xy_emitted) == sg2_mode2_expected_sum_text
 }
 
 test fn sg2_mode2_gap1_outcome_return_rc_serializes() -> Bool {
@@ -273,10 +273,10 @@ test fn sg2_mode2_gap1_outcome_return_rc_serializes() -> Bool {
 }
 
 fn sg2_mode2_gap2_lex_only_atom_rejects_binding_spellings() -> Bool {
-  !sg2_mode2_serialize_accepts(emitted: rust_sg2_lex_only_atom_emitted())
+  !sg2_mode2_serialize_accepts(emitted: rust_sg2_lex_only_atom_emitted)
 }
 
 fn sg2_mode2_gap2_lex_only_atom_serializes_via_ident_token() -> Bool {
-  sg2_mode2_serialized_text(emitted: rust_sg2_lex_only_atom_emitted()) ==
+  sg2_mode2_serialized_text(emitted: rust_sg2_lex_only_atom_emitted) ==
     rust_sg2_lex_only_atom_spelling
 }

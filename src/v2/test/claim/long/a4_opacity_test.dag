@@ -20,7 +20,7 @@ data a4_opacity_authority_source_text: String = "a4_opacity_test"
 
 data a4_opacity_target_model: TargetModel = TargetModel {
   produced_decl_support: ProducedDeclUnwired,
-  bundle: rust_target_model_node(),
+  bundle: rust_target_model_node,
   lex: rust_fn_add_lex(),
   binding_spellings: rust_binding_spellings(),
   token_class_emit_transforms: target_model_emit_transforms_empty,

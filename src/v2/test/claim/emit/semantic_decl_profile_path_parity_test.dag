@@ -58,7 +58,7 @@ fn binding_in_bundle_matches_emission(
 
 test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
   match decode_semantic_decl_serialize_profile_bundle(
-    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+    bundle: rust_semantic_decl_serialize_profile_bundle_node
   ) {
     Accepted { value: direct, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: direct) {
@@ -93,7 +93,7 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
 // consumers do not: they derive the profile from the staging fixture instead.
 test fn all_bundle_rows_match_emission_profile() -> Bool {
   match decode_semantic_decl_serialize_profile_bundle(
-    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+    bundle: rust_semantic_decl_serialize_profile_bundle_node
   ) {
     Accepted { value: direct, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: direct) {

@@ -151,7 +151,7 @@ fn blp_emits(bool_form: TargetBoolLiteralShape, golden: String) -> Bool {
   match blp_emit(
     target: rust_emit_small_bool_projection_target(),
     projection: blp_projection_with(bool_form: bool_form),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: rust_operator_realizations_catalog_node
   ) {
     Accepted { value: text, diagnostics: _ } => text == golden
     Rejected { diagnostics: _ } => false
@@ -181,7 +181,7 @@ test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
   blp_production_emits(
     target: rust_target_model(),
     projection: rust_value_expression_projection(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: rust_operator_realizations_catalog_node
   )
 }
 

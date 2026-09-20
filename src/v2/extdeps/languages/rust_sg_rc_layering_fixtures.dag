@@ -65,7 +65,7 @@ fn sg_rc_layering_fixture_ownership_catalog_edge() -> Edge {
 fn sg_rc_layering_fixture_type_expression_projection_edge() -> Edge {
   rust_named_edge(
     name: ^target_model_edge_type_expression_projection,
-    target: rust_type_expression_projection_bundle_node()
+    target: rust_type_expression_projection_bundle_node
   )
 }
 

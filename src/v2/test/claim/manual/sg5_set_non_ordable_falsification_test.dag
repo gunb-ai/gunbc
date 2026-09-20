@@ -12,7 +12,7 @@ import v2.std.logic { Bool }
 
 test fn sg5_set_non_ordable_projection_rejects() -> Bool {
   match translate_type_expression_project(
-    node: rust_sg5_set_non_ordable_source_type_node(),
+    node: rust_sg5_set_non_ordable_source_type_node,
     target: rust_sg2_type_expr_target_model(),
     projection: rust_type_expression_projection()
   ) {

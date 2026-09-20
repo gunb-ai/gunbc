@@ -158,7 +158,7 @@ fn dc_emit(rules: Node, target: TargetModel, emitted: Node) -> Outcome<String> {
 
 fn dc_enum_text(emitted: Node) -> Outcome<String> {
   dc_emit(
-    rules: rust_enum_general_decl_productions_only_translation_rules(),
+    rules: rust_enum_general_decl_productions_only_translation_rules,
     target: rust_enum_general_decl_structural_target_model(),
     emitted: emitted
   )
@@ -166,7 +166,7 @@ fn dc_enum_text(emitted: Node) -> Outcome<String> {
 
 fn dc_struct_text(emitted: Node) -> Outcome<String> {
   dc_emit(
-    rules: rust_struct_general_decl_productions_only_translation_rules(),
+    rules: rust_struct_general_decl_productions_only_translation_rules,
     target: rust_struct_general_decl_structural_target_model(),
     emitted: emitted
   )

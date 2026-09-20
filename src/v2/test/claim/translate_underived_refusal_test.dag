@@ -288,7 +288,7 @@ fn translate_underived_grammar_match_bundle() -> Node {
       ),
       rust_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: rust_selection_policy_node()
+        target: rust_selection_policy_node
       )
     ],
     occurrence_id: OccurrenceSynthetic

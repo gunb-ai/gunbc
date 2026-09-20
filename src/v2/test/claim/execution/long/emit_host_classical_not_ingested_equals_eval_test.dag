@@ -323,7 +323,7 @@ fn ingested_arrow_has_match_body(source: String) -> Bool {
 fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
-    algebra: rust_emit_host_runtime_primitive_type_node(),
+    algebra: rust_emit_host_runtime_primitive_type_node,
     descent: Holds {
       value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
@@ -340,7 +340,7 @@ fn ingested_classical_not_composed_facts(key: Node) -> InferredFacts {
 fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      primitive_type: rust_emit_host_runtime_primitive_type_node,
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }

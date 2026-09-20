@@ -134,7 +134,7 @@ fn rust_emit_small_add_translate_target() -> TargetModel {
     bundle: target_model_type_conj_node(children: [
       target_model_named_edge(
         name: ^target_model_edge_type_expression_projection,
-        target: rust_type_expression_projection_bundle_node()
+        target: rust_type_expression_projection_bundle_node
       ),
       target_model_named_edge(
         name: ^target_model_edge_translation_rules,

@@ -58,7 +58,7 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
           tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)
             && tokens_for_rules(
               surface: surface,
-              rules: rust_enum_general_decl_productions_only_translation_rules()
+              rules: rust_enum_general_decl_productions_only_translation_rules
             )
         Rejected { diagnostics: _ } => false
       }

@@ -33,7 +33,7 @@ fn fmc_fixture_bundle_core() -> Node {
     children: [
       Edge {
         label: Named { name: ^target_model_edge_type_expression_projection },
-        target: rust_type_expression_projection_bundle_node()
+        target: rust_type_expression_projection_bundle_node
       },
       Edge {
         label: Named { name: ^target_model_edge_collection_realization },
@@ -47,7 +47,7 @@ fn fmc_fixture_bundle_core() -> Node {
 fn fmc_minimal_collection_realization_catalog() -> Node {
   fold_list_node(
     xs: Cons {
-      head: rust_free_monoid_collection_realization_bundle_node(),
+      head: rust_free_monoid_collection_realization_bundle_node,
       tail: Empty
     },
     item_node: fn(row) { row }

@@ -80,7 +80,7 @@ fn bool_serialize_target(lex: LexRules, bindings: Map<Symbol, String>) -> Target
       children: [
         target_model_named_edge(
           name: ^target_model_edge_translation_rules,
-          target: rust_enum_general_decl_productions_only_translation_rules()
+          target: rust_enum_general_decl_productions_only_translation_rules
         )
       ]
     ),
@@ -106,7 +106,7 @@ fn bool_text_with_target(target: TargetModel) -> Outcome<String> {
         f: fn(surface) {
           serialize_surface_with_target(
             surface: surface,
-            rules: rust_enum_general_decl_productions_only_translation_rules(),
+            rules: rust_enum_general_decl_productions_only_translation_rules,
             target: target
           )
         }
@@ -128,7 +128,7 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
-                rules: rust_enum_general_decl_productions_only_translation_rules(),
+                rules: rust_enum_general_decl_productions_only_translation_rules,
                 emitted: surface
               ) {
                 Accepted { value: row, diagnostics: _ } =>
@@ -184,7 +184,7 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
           ) {
             Accepted { value: surface, diagnostics: _ } =>
               match grammar_relation_row_for_emitted(
-                rules: rust_enum_general_decl_productions_only_translation_rules(),
+                rules: rust_enum_general_decl_productions_only_translation_rules,
                 emitted: surface
               ) {
                 Accepted { value: row, diagnostics: _ } =>
@@ -309,12 +309,12 @@ test fn generic_row_profile_matches_golden() -> Bool {
         Accepted { value: surface, diagnostics: _ } =>
           match semantic_decl_serialize_target(
             profile: emission.enum_serialize_profile,
-            rules: rust_enum_general_decl_productions_only_translation_rules()
+            rules: rust_enum_general_decl_productions_only_translation_rules
           ) {
             Accepted { value: target, diagnostics: _ } =>
               match serialize_surface_with_target(
                 surface: surface,
-                rules: rust_enum_general_decl_productions_only_translation_rules(),
+                rules: rust_enum_general_decl_productions_only_translation_rules,
                 target: target
               ) {
                 Accepted { value: t, diagnostics: _ } => t == bool_golden

@@ -25,7 +25,7 @@ fn int_source_grounding_fixture() -> CanonicalGrounding {
 fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
   CoercionCandidateSet {
     set: CandidateSet {
-      candidates: [rust_inhabitant_i32_node()],
+      candidates: [rust_inhabitant_i32_node],
       closedness: StructuralPropertyWitness {
         property: ^fixture_property_candidate_set_closedness,
         evidence: int_source_node()
@@ -38,7 +38,7 @@ fn coercion_fold_int_to_i32_fixture() -> Outcome<CoercionResult> {
     source: int_source_grounding_fixture(),
     candidates: rust_i32_candidate_fixture(),
     policy: TargetDeclaredPriority {
-      priority: rust_inhabitant_i32_node()
+      priority: rust_inhabitant_i32_node
     }
   )
 }

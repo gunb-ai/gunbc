@@ -83,14 +83,14 @@ fn python_unbounded_int_grounding() -> CanonicalGrounding {
 fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
-      inhabitants_root: rust_declared_inhabitants_root(),
+      inhabitants_root: rust_declared_inhabitants_root,
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       coercion_fold(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
-        policy: TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
+        policy: TargetDeclaredPriority { priority: rust_inhabitant_i32_node }
       )
     }
   )
@@ -150,7 +150,7 @@ data claim_int_cross_target_coercion_module_compiles: TestClaim = CompilesClaim 
 }
 
 fn rust_i32_grounding() -> CanonicalGrounding {
-  let source = rust_inhabitant_i32_node()
+  let source = rust_inhabitant_i32_node
   CanonicalGrounding {
     node: source,
     witness: CanonicalGroundingWitness {
@@ -203,14 +203,14 @@ test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
 fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
-      inhabitants_root: rust_declared_inhabitants_root(),
+      inhabitants_root: rust_declared_inhabitants_root,
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       coercion_fold_python_int_to_rust_i32_narrowing(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
-        priority: rust_inhabitant_i32_node()
+        priority: rust_inhabitant_i32_node
       )
     }
   )

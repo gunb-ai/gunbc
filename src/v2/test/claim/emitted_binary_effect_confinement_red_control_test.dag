@@ -51,7 +51,7 @@ fn rostered_row(family: EmittedEffectFamily) -> TargetEmitHostRuntimeRow {
     family: family,
     present: EmitHostRuntimeRow {
       transport: synthetic_transport(),
-      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node
     }
   )
 }
