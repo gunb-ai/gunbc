@@ -129,6 +129,32 @@ re-deriving it is owed an entry point.
    it ingests to the import closure of the modules it enrolls. *What this does not establish:* the
    cost of prepare and eval. Almost nothing reached them, so both are unmeasured, and the historical
    cost of a passing fold cannot be read off this run.
+10. **The front-end wall is attributed, and most of it is grammar rather than corpus.** v2's
+   productions (`v2.extdeps.languages.dag` `dag_grammar_*_expr` under the ordered-`Choice`,
+   greedy-repeat semantics of `v2.compiler.02_parse`) were mirrored outside the compiler and run
+   over the same 6,378 files; the mirror rejects 673 of 673 census parse refusals, over-rejects one
+   and under-rejects none. At that agreement each refusal is attributable to a first blocking
+   construct rather than correlated with one. The distribution is not what "teach the grammar the
+   missing forms" suggests:
+   - The **largest single cause is an ordering defect, not a missing feature** — 194 files.
+     `dag_grammar_expr_expr` offers `match_expr` before `binary_expr`, so a `match`/`if` block
+     heading a `&&` or `==` chain is consumed alone and the operator is orphaned, although
+     `dag_grammar_primary_expr_core` already reaches those forms. One reordering, no corpus edits.
+   - The **effect and transport declaration families** — `uses`, `service`, `admit_callers`,
+     `pattern`, `resource` — are 267 files and **none of them is under `src/v2`**. They do not block
+     self-hosting, which settles the sequencing question §3(2) raised: the wall the CLI hits over
+     full roots belongs to the corpus the retained profile does not contain.
+   - `src/v2`'s own parse refusals are dominated by two cheap items: keyword-spelled binding
+     *references* (the declaration and expression sites use different terminals) and the ordering
+     defect above.
+   - A **leading-`|` coproduct is exactly equivalent** to the accepted spelling, so either side
+     works and one optional-pipe row beats editing 87 files; **positional variant payloads**,
+     `if` without `else`, and numeric generic arguments have no meaning-preserving rewrite, and the
+     last of those is DESIGN §2's own one-axis integer and float projection.
+   - Taught in order, the top three forms clear 392 of 673 and all nineteen clear 648.
+   *What this does not establish:* the 156 later-stage refusals. Census rows carry no byte offset,
+   so postfix field access, wrapper retention and the rest correlate with candidate spellings but
+   are not localized; that needs offsets the census does not emit.
 
 ## 4. The program is already carried; this document proposes deltas to it
 
@@ -252,8 +278,10 @@ single place the frontier is read.
 1. **The namespace prerequisite** (§5, first bullet): does `NamespaceFixForwardComplete` keep
    `SelfHostSeedRetirement` as a prerequisite, or does 4b's re-cut change it?
 2. The admitted source universe (§5).
-3. Whether v2's grammar admits the small parse forms of §3(3) or the corpus is normalised; the seed
-   admits them today.
+3. Grammar or corpus, now answerable per form rather than in aggregate (§3(10)): the roster says
+   grammar for all but about thirteen files, one cause is a defect rather than a feature at all,
+   and the large declaration families can be deferred without blocking self-hosting. What remains
+   yours is whether the forms with no meaning-preserving rewrite are admitted or designed out.
 4. Where the designated executor of 4c runs: a retired CI slot, or a host whose envelope is
    established first.
 5. Who integrates `gunbc.roadmap_authority`.
