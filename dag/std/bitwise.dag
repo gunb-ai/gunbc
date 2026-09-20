@@ -172,9 +172,22 @@ fn word64_not(a: Word64) -> Word64 {
   Word64 { hi: word32_not(a: a.hi), lo: word32_not(a: a.lo) }
 }
 
+// THE SAME REPAIR AS word32_add, WHICH THIS SKIPPED IN THE DIFF THAT MADE IT (review 69076 of
+// gunbc#11645). It was `let lo = a.lo + b.lo` over two UInt32 halves, reaching 2^33 - 2 while
+// typed UInt32, and `a.hi + b.hi + carry` doing it again -- the same population the note above
+// says word32_xor, word32_or and word32_add were rewritten to leave. Applying a repair to the
+// 32-bit family and not the 64-bit one in one change is the defect surviving inside its own fix,
+// and it was LIVE rather than latent: sha256_fips_witness_test drives lo to exactly 2^32.
+//
+// The carry is decided BEFORE either sum is formed, by the same comparison word32_add uses, and
+// both halves are then produced by word32_add itself rather than by a raw `%` -- so the wrap is
+// computed once, in one place, and no intermediate here leaves [0, 2^32).
 fn word64_add(a: Word64, b: Word64) -> Word64 {
-  let lo = a.lo + b.lo
-  Word64 { hi: (a.hi + b.hi + lo / word32_modulus) % word32_modulus, lo: lo % word32_modulus }
+  let carry = if a.lo >= word32_modulus - b.lo { 1 } else { 0 }
+  Word64 {
+    hi: word32_add(a: word32_add(a: a.hi, b: b.hi), b: carry),
+    lo: word32_add(a: a.lo, b: b.lo),
+  }
 }
 
 // Shift right by n in [0, 64).
