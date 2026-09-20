@@ -9,6 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -488,13 +489,44 @@ fn serve_publish_handler_response_for_instance(
 // code for exactly one change and is deleted with it; what stays is the regression control that
 // this table answers nothing for the four approval pairs.
 
+// WHICH ROUTES THE ROADMAP STILL MOUNTS IS A TOTAL MATCH, NOT A WILDCARD, and the difference is
+// what stops this window widening on its own. This fold used to map over ALL of
+// approval_broker_route_specs(), which reads as "one authority, two mounts" -- true, and it is why
+// a reviewer cleared it -- but its SUBJECT is narrower than its EXPRESSION: it is "the four routes
+// being cut over", written as "whatever the broker serves". The gap is invisible until someone adds
+// a fifth row, at which point the roadmap silently starts serving it too, for the whole cutover
+// window, with no edit here and no reviewer looking.
+//
+// THAT IS NOT HYPOTHETICAL. wise-owl-628 is holding six App Attest device routes that extend
+// approval_broker_route_specs under this same construction; under the wildcard, landing them would
+// have enrolled the roadmap process as a second server of device enrolment and redemption. The
+// store stays safe -- approval_write_admission refuses a non-writer before any mutation -- but the
+// roadmap would be answering assertion-authenticated routes it has no business answering, with
+// every marker on those responses reading roadmap/.
+//
+// SO A NEW HANDLER ARM MUST BE CLASSIFIED RATHER THAN INHERITED. The match below is total over
+// ApprovalBrokerHandler: adding an arm does not compile until someone says, here, whether the
+// roadmap serves it during the cutover. That is the construction DESIGN section 5 prefers to a
+// check -- the widening becomes unwritable instead of merely reviewable.
+fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
+  match h {
+    ApprovalConfirmPageHandler => true
+    ApprovalDecideHandler => true
+    ApprovalSubmitHandler => true
+    ApprovalStatusHandler => true
+  }
+}
+
 fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   if roadmap_still_mounts_approval_routes() {
-    map(approval_broker_route_specs(), spec => ServedRouteSpec {
-      method: spec.method,
-      raw: spec.raw,
-      handler: ApprovalBrokerCutoverHandler { route: spec.handler },
-    })
+    map(
+      filter(approval_broker_route_specs(), spec => roadmap_mounts_during_cutover(h: spec.handler)),
+      spec => ServedRouteSpec {
+        method: spec.method,
+        raw: spec.raw,
+        handler: ApprovalBrokerCutoverHandler { route: spec.handler },
+      },
+    )
   } else {
     []
   }
