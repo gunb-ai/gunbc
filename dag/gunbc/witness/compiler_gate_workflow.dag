@@ -395,8 +395,16 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // than the only one -- an approving maintainer should not have to know that approval here means fleet
 // execution. A fork pull request therefore reports no required check and cannot merge until a
 // GitHub-hosted lane exists for it.
+// THE GUARD IS SCOPED TO PULL REQUEST EVENTS, and getting that wrong is worse than not guarding.
+// merge_group and workflow_dispatch carry NO pull_request context, so the fork clauses read null
+// there and skip the job -- and a skipped required check never reports, which means a queue entry
+// waits for a status nothing will ever send and the merge queue stalls for good. This workflow
+// answers three events where heal answered one, so the clauses cannot simply be inherited.
 fn compiler_gate_job_condition() -> String {
-  join([heal_same_repository_clause, " && ", heal_not_dependabot_clause], "")
+  join([
+    "github.event_name != 'pull_request' || (",
+    heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")"
+  ], "")
 }
 
 fn compiler_gate_job() -> Job {

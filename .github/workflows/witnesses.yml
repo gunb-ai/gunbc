@@ -29,7 +29,7 @@ jobs:
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     permissions:
       contents: read
     steps:
