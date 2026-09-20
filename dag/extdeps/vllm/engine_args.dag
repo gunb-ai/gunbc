@@ -163,12 +163,22 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
 type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla
 
+// THE WIRE SPELLINGS, CORRECTED AGAINST THE ENGINE'S OWN CHOICE LIST. This map carried
+// KvFp16 => "fp16" and KvBf16 => "bf16", which no consumer had ever sent -- the pair requests fp8
+// spellings only -- so the error was invisible until 2026-09-17, when the GLM native arm launched
+// with `--kv-cache-dtype bf16` and vLLM v0.28.1rc1.dev580+g385dce36b refused at argument parse:
+// `invalid choice: 'bf16' (choose from 'auto', 'bfloat16', 'float16', 'fp8', 'fp8_ds_mla',
+// 'fp8_e4m3', 'fp8_e5m2', 'fp8_inc', 'fp8_per_token_head', 'int4_per_token_head',
+// 'int8_per_token_head', 'nvfp4', 'nvfp4_4over6', 'nvfp4_ds_mla', 'turboquant_3bit_nc',
+// 'turboquant_4bit_nc', 'turboquant_k3v4_nc', 'turboquant_k8v4')`. The engine's list is the
+// authority for the two spellings fixed here; the request type remains the five variants any
+// consumer has a reason to name, which is why most of that list has no variant.
 fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   match request {
     KvAuto => "auto" as NonEmptyStr
     KvFp8 => "fp8" as NonEmptyStr
-    KvFp16 => "fp16" as NonEmptyStr
-    KvBf16 => "bf16" as NonEmptyStr
+    KvFp16 => "float16" as NonEmptyStr
+    KvBf16 => "bfloat16" as NonEmptyStr
     KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
   }
 }
