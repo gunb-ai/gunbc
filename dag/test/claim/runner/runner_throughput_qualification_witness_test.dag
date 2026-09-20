@@ -366,6 +366,7 @@ test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
   let a = assess_runner_throughput(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
     && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
+    && a.assessed_facts.length() == 0
 }
 
 // THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not

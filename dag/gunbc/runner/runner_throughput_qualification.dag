@@ -697,6 +697,8 @@ fn slot_width_refusal(s: SlotWidthStanding) -> List<ThroughputRefusal> {
 //
 // `assessed_facts` is the whole of what the claim covers. Phase walls join it only when ceilings
 // were supplied; `floor_eval_steps` never does -- it is carried for the reader and covers nothing.
+// An assessment whose subject join or sampling refused covers NOTHING and says so with an empty
+// list, rather than naming facts it never computed (review 68940).
 type AssessedFact
   = InterpreterRateAgainstPin
   | SlotMemoryEnvelope
@@ -756,7 +758,7 @@ fn assess_runner_throughput<P>(
     phase_roster: roster,
     phase_walls: walls,
     slot_width: width,
-    assessed_facts: assessed_facts_for(ceilings: selection.phase_ceilings),
+    assessed_facts: if joined { assessed_facts_for(ceilings: selection.phase_ceilings) } else { [] },
     refusals: concat(
       join_refusals,
       concat(
