@@ -38,15 +38,20 @@ data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
 // controller exits. This module is what the controller decides at each step, from what it has
 // observed; the realization that performs the steps consumes these decisions and adds none.
 //
-// DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
-// no production entry calls it yet. NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize, the
-// controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
-// stop_request_admission and settle_teardown, reading and writing the store through
-// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
-// adhoc-3faa2033-f8f lane. TRIGGER: that module lands with srv1 transient-unit receipts for the
-// modeled REDs (SIGTERM-ignoring child, double-fork, unkillable task, failed cgroup read, stale stop,
-// background process after success). SUFFICIENT FOR retiring this paragraph. NOT satisfied by that
-// module compiling, or by it existing without an entry the slot unit execs.
+// DECLARED FRONTIER (DESIGN 3c), NARROWED BY THE WET CONTROLLER AND NOT YET RETIRED.
+// gunbc.runner_microvm_lifecycle_realize now exists and calls stop_request_admission,
+// attempt_teardown_readback and settle_teardown over readings it takes from a real host, and its
+// wet witness drives that path against transient units on srv1 for the modeled REDs: a
+// SIGTERM-ignoring child, a double-forked escapee in a sibling scope, a task the kernel will not
+// reap, a cgroup read that failed, a stale stop, and a job that exited 0 leaving a process. So the
+// receipts half of the old trigger is discharged and the paragraph stays for the half that is not.
+// WHAT IS STILL OWED: an entry the slot unit execs. controller_start and advance_bring_up have no
+// caller outside a witness, because the bring-up they order reaches the jailer only through
+// gunbc.runner_attempt_launch attempt_staging_verdict, which lands in gunbc#11677.
+// NAMED CONSUMER: the slot unit's ExecStart entry, in the change that follows #11677 in this lane.
+// TRIGGER: that entry exists and the unit's ExecStart names it. SUFFICIENT FOR retiring this
+// paragraph. NOT satisfied by the realize module compiling, and not by its wet witness, which is
+// evidence about the teardown folds rather than about an entry.
 //
 // THE RULE THE WHOLE MODULE IS SHAPED BY: A GUEST EVENT MAY TRIGGER TEARDOWN, AND NO GUEST EVENT
 // MAY ESTABLISH SANITATION. The guest is the tenant. "The runner exited 0" and "the guest powered

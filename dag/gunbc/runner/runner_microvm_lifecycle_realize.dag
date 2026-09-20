@@ -43,7 +43,16 @@ import gunbc.runner_microvm_lifecycle {
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
   TeardownSubject, attempt_teardown_readback,
 }
-import gunbc.runner_microvm_cell_readiness { CellBoundAttempt, in_flight_attempt_unit }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fabric.sanitation { CellId }
+import gunbc.runner_microvm_cell_readiness {
+  CellBoundAttempt, CellIncarnationAdmission, CellReadinessWrite, WriteAttemptStarted,
+  cell_incarnation_admission, in_flight_attempt_unit,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  CellReadinessWritten, cell_readiness_store_root, read_cell_readiness_store,
+  write_cell_readiness_record,
+}
 import gunbc.runner_microvm_network { BoundSlotNetworkReadback }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_dir, runner_microvm_attempt_jail_base,
@@ -586,3 +595,70 @@ fn read_freeze_state_at(root: NonEmptyStr) -> SliceFreezeReadback
     }
   }
 }
+
+// ── THE STORE, AS THE CONTROLLER USES IT ──────────────────────────────────────────────────────
+
+// ADMISSION IS A READ OF THE STORE, AND THE CONTROLLER DOES NOT RE-DERIVE IT.
+// gunbc.runner_microvm_cell_readiness decides what the records mean; this hands it the records the
+// host actually holds. The generation is the allocation's, supplied by whoever allocated the cell:
+// deriving it here from the store would make the store answer its own question.
+fn admit_next_incarnation(cell: CellId, allocation_generation: Int) -> CellIncarnationAdmission {
+  cell_incarnation_admission(
+    store: read_cell_readiness_store(root: cell_readiness_store_root),
+    cell: cell,
+    allocation_generation: allocation_generation,
+  )
+}
+
+// THE TERMINAL PATH, END TO END: observe, settle, record. The settlement already carries the write
+// the readiness module decided on, so this performs THAT write rather than composing a second one
+// -- a controller that built its own write here could record a readiness the settlement did not
+// reach.
+//
+// A FOREIGN OBSERVATION WRITES NOTHING. It is a defect in the controller, not a verdict about the
+// cell, and recording a quarantine for it would let a misread turn into a cell nobody may use.
+type AttemptTeardownRecord
+  = TeardownRecorded { settlement: TeardownSettlement, written: CellReadinessWritten }
+  | TeardownNotRecordedObservationForeign { subject: TeardownSubject, expected: String, observed: String }
+
+fn settle_and_record_attempt_teardown(
+  bound: CellBoundAttempt,
+  network: BoundSlotNetworkReadback,
+  trigger: TerminalTrigger,
+) -> AttemptTeardownRecord
+  uses net: Network
+{
+  match settle_attempt_teardown(bound: bound, network: network, trigger: trigger) {
+    TeardownObservationForeign { subject: s, expected: e, observed: o } =>
+      TeardownNotRecordedObservationForeign { subject: s, expected: e, observed: o }
+    TeardownSettled { settlement: settlement } =>
+      TeardownRecorded {
+        settlement: settlement,
+        written: write_cell_readiness_record(root: cell_readiness_store_root, write: settlement.record),
+      }
+  }
+}
+
+// THE FIRST DURABLE ACT OF A NEW ATTEMPT, which is the in-flight record and not the launch. It is
+// written BEFORE anything is staged, so a controller lost at any later point leaves a record that
+// says cleanup is owed rather than the previous attempt's settled Ready -- which would readmit a
+// cell whose VMM may still be running.
+fn record_attempt_started(bound: CellBoundAttempt) -> CellReadinessWritten {
+  write_cell_readiness_record(root: cell_readiness_store_root, write: WriteAttemptStarted { bound: bound })
+}
+
+// DECLARED FRONTIER (DESIGN 3c). The consumer of everything above is the slot unit's MainPID: one
+// entry that proves the cell, records the attempt, stages and launches, waits for a terminal
+// trigger, and calls settle_and_record_attempt_teardown. It is not in this change, and it cannot
+// be: the launch half reaches gunbc.runner_attempt_launch attempt_staging_verdict, which joins THIS
+// attempt's staged JIT device against the same plan's workspace readiness, and that fold lands in
+// gunbc#11677. Consuming it before it lands would fork it.
+//
+// NAMED CONSUMER: the slot unit's ExecStart entry, in the change that follows #11677 in this lane.
+// TRIGGER: that entry exists, the unit's ExecStart names it, and it reaches the jailer only through
+// attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by this module
+// compiling, and NOT satisfied by the wet witness executing it -- the witness drives the teardown
+// half against real processes, which is evidence about these folds and not about an entry.
+data runner_microvm_lifecycle_realize_entry_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot unit's ExecStart entry, in the change that follows gunbc#11677. TRIGGER: that entry exists, the unit's ExecStart names it, and it reaches the jailer only through gunbc.runner_attempt_launch attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by this module compiling or by the wet witness executing its folds." as NonEmptyStr,
+)
