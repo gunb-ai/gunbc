@@ -206,13 +206,17 @@ fn unit_signalled(outcome: HostOperationOutcome) -> Bool {
 // EVERY STEP THAT CHANGES THE WORLD TAKES THE STEP BEFORE IT AS AN ARGUMENT, and that argument is
 // the only thing making these claims sequences at all.
 //
-// This file is evaluated as a dependency graph, so two `let`s with no edge between them are not
-// ordered by the order they are written in -- and every claim here is a SEQUENCE whose meaning is
-// destroyed by reordering: a sweep that ran before the controller's stop would kill the adversary
-// first and the stop would report StoppedGracefully, which is a green for a controller that did
-// nothing. The `after` parameter is a Bool derived from the observation the step must not precede,
-// so the edge exists and the claim reads in the order it runs. The same defect in the production
-// fold is filed as gunbc.recurring_failure_mode.readback_ordered_only_by_statement_position.
+// Every claim here is a SEQUENCE whose meaning is destroyed by reordering: a sweep evaluated
+// before the controller's stop would kill the adversary first, and the stop would then report
+// StoppedGracefully -- a green for a controller that did nothing. Two `let`s with no edge between
+// them are not ordered by the order they are written in; what orders them is an edge, and the
+// `after` parameter is a Bool derived from the observation the step must not precede.
+//
+// THE SEED INTERPRETER IS EAGER, so this is not fixing an observed misreading -- it is moving the
+// ordering from the executor's evaluation strategy into the program, which matters more here than
+// in production code: these claims are the EVIDENCE, and evidence whose validity depends on how
+// the runner happens to walk the tree is evidence about the runner. Same class as the production
+// one, filed as gunbc.recurring_failure_mode.readback_ordered_only_by_statement_position.
 fn freeze_unit(unit: NonEmptyStr, after: Bool) -> Bool {
   if !after {
     false

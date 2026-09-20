@@ -607,11 +607,16 @@ fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr, after: UnitS
 // EVERY READBACK TAKES THE STOP AS AN INPUT, AND THAT PARAMETER IS THE WORD "AFTER".
 //
 // A readback taken BEFORE the stop answers about a cell that was still running, which is not the
-// question -- and in a pure dependency graph there is no statement order to rely on: a reading with
-// no edge to the stop may be evaluated on either side of it. So the stop is bound first and handed
-// to each readback, which makes "after the stop" a real edge rather than a line in a file. The
-// readbacks do not otherwise consult it; the sequencing IS the use, and it is the only mechanism a
-// graph affords for it.
+// question. The fields of a record have no order in this model, so writing the readbacks after the
+// stop says nothing: what would order them is an EDGE, and a reading whose inputs are only the
+// attempt has none. The stop is therefore bound first and handed to each readback.
+//
+// WHAT THIS IS AND IS NOT FIXING, stated so the parameter is not read as ceremony. The seed
+// interpreter is EAGER -- it evaluates every argument before the call, in order -- so field order
+// happens to hold today and no wrong reading has been observed. The edge is what makes the
+// ordering a property of the PROGRAM rather than of the executor walking it, which is what a
+// second realization, or a demand engine that defers what nothing asks for, would otherwise
+// change silently. The readbacks do not otherwise consult the stop; the sequencing is the use.
 
 // THE SLOT NETWORK READBACK IS A PARAMETER, AND IT IS NOT AN OMISSION.
 //
