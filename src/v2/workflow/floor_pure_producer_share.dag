@@ -506,9 +506,14 @@ import v2.std.collection { List }
 // new-witness budget. Re-derive with claim_batch --entry on that file
 // ([witness] eval_steps for the claim) and the floor run's COMPLETED-OVER-COST line for it. Serving the
 // parse leaves the claim paying only what it is about, the two normalize_node calls and their hashes.
-// Serve below recompute: the value is Outcome<ParseArtifact>, Nodes and the span index, portable to
-// the bottom. WARM: nullary, source inline in the witness. The claim is about lowering, not parsing,
-// so sharing the parse does not hand it its answer.
+// The value is Outcome<ParseArtifact>, Nodes and the span index, portable to the bottom -- which
+// establishes that it CAN be served, not that serving is cheaper. THIS ROW RESTS ON PLURAL DEMAND,
+// NOT ON A MEASURED COST COMPARISON: the instrument that decides serve-below-recompute is the
+// required floor's own shared-fill ledger for this row ([floor-shared-fill] marginal vs fill cost,
+// beside required_floor_claim_cost.tsv for the two claim identities). If that ledger does not show
+// both identities hitting one stored fill below their recompute, the row is measured again or
+// removed. WARM: nullary, source inline in the witness. The claims are about lowering, not parsing,
+// so sharing the parse does not hand them their answer.
 //
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
