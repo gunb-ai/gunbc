@@ -20,7 +20,6 @@ import gunbc.fleet_host_budget {
   HostAllocationOversubscribed,
   HostAllocationUnchargeable,
   oomd_actuation_floor,
-  gunbc_runner_pool_budget_for,
 }
 import gunbc.ci_runner_placement {
   host_usable_ram_or_refusal,
@@ -39,9 +38,11 @@ import gunbc.host_memory_observation {
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_demand_sum_memory_max,
   gunbc_runner_slot_desired,
-  gunbc_committed_runner_slot_allocations,
+  gunbc_admitted_runner_slot_allocations,
+  gunbc_runner_slice_cap_for_width,
   host_memory_admitted_width,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_slot_shape_standing,
   RunnerSlotShapeAdmitted,
   RunnerSlotShapeRefusedZeroMemoryMax,
@@ -98,12 +99,37 @@ fn witness_allocation_conserves(
 // 125 GiB machine; the 2026-08-22 upgrade made the literal describe a different computer than the
 // pool did, and the row went red for that mismatch rather than for anything about conservation.
 // Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
+fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => n == host_memory_admitted_width(host: host)
+  }
+}
+
+// THE CHARGE IS SUPPLIED, NOT DEFAULTED. An earlier revision of this change read the live width and
+// mapped an unresolved answer to byte_size(0) -- and this row feeds that value straight into the
+// conservation arithmetic, where a zero runner charge makes conservation EASIER to satisfy. That is
+// the same substitution the production code stopped making, reappearing in the test that checks it:
+// if srv1's width ever stopped resolving, the row would go on passing for the strongest possible
+// reason. The subject here is the comparison interface -- does a host of this size conserve with
+// this much runner memory charged -- so the charge is a deliberate fixture and no live resolution
+// is consulted. The live-derived claims live in the rows that match the resolution and fail on
+// unresolved.
+//
+// TEN IS A CHOSEN CHARGE, NOT srv1'S WIDTH, and the difference is deliberate: a fixture equal to
+// the live commitment would read as a transcription of it and would have to be re-authored every
+// time the width moved (DESIGN 5 -- a measurement copied from the same current tree is not an
+// oracle). Ten 26 GiB slots is 260 GiB against srv1's measured RAM with the overhead and headroom
+// this row already supplies, which is the "pools fit" side of the boundary the four controls below
+// pin from both directions at the live width.
+data witness_srv1_fixture_slot_count: Int = 10
+
 test fn allocation_conserves_when_pools_fit() -> Bool {
   witness_allocation_conserves(
     host: usable_ram_of(host: operator_host_srv1),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
+    runner_pool: gunbc_runner_slice_cap_for_width(slots: witness_srv1_fixture_slot_count),
     session_pool: byte_size(0),
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced
@@ -235,15 +261,17 @@ fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   )
 }
 
+// THE CONDITIONAL IS GONE AND THE ROSTER DOES ITS WORK. Every row in the admitted roster has a
+// resolved width, which on this fleet is the same condition the `session_charge_is_established`
+// guard was testing for -- so the guard was re-stating, per row, the reason the row now cannot
+// exist. The bounding row below still pins WHICH host is excused, and it pins it against the
+// reservation policy directly rather than against this fold.
 test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
-    a => if session_charge_is_established(host: a.host) {
-      conserves_at_width(host: a.host, slots: a.slots_per_host)
-    } else {
-      true
-    }
+    gunbc_admitted_runner_slot_allocations(),
+    a => conserves_at_width(host: a.host, slots: a.slots_per_host)
   )
+    && (gunbc_admitted_runner_slot_allocations() |> count) > 0
 }
 
 // THE SKIP ABOVE IS BOUNDED BY THIS ROW, and without it the check could go green by skipping every
@@ -279,19 +307,19 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
   )
 }
 
 // The minimum cannot exceed either of its arguments, and this row is the executable form of that:
 // no host may commit a width its RAM does not admit. It goes red if a future axis is folded into
-// gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a
+// gunbc_runner_committed_width with the comparison inverted, which is the one edit that would turn a
 // constraint into a grant.
 
 test fn committed_width_never_exceeds_memory_admission() -> Bool {
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
   )
 }
@@ -309,24 +337,16 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // passing while the other moved -- which is exactly how the srv4 roster-versus-prose disagreement
 // this test exists to prevent got started.
 
-// THE 29 AND THE TWO 21s ARE DELETED (2026-09-18): pre-transition figures that left this row red on
-// main. The row's own note says what it is for -- asserting the MEMORY VERDICT and the COMMITMENT
-// SEPARATELY, "because they were equal when it was written and are not equal now" -- a relation
-// between two axes rather than a pair of numbers.
-//
-// THE STRICT INEQUALITY IS ALSO DELETED (2026-09-19), AND IT IS A RECEIPT FOR THE RULE IT BROKE. An
-// intermediate revision asserted memory strictly ABOVE the commitment, reasoning that this would
-// fail "if memory becomes the binding axis on srv4 again". That event happened within the day: main's
-// one-core-per-slot policy makes memory bind srv1/srv3/srv4, so memory admitted EQUALS the
-// commitment and a strict inequality is false. Swapping a transcribed number for a claim about which
-// axis currently binds is the same defect wearing a relation's clothes -- both encode a fleet state
-// that moves. Which axis binds is main's subject now (WidthAxisStanding, host_width_binding_label);
-// what this row keeps is the SEPARATION -- that the memory verdict and the commitment are two
-// readings, obtained independently and both positive.
+// THE LITERALS ARE REPLACED BY THE RELATION THEY WERE MEANT TO STATE, BECAUSE THEY HAD GONE STALE.
+// This row read `host_memory_admitted_width(srv4) == 29` and `committed == 21`; at the 26 GiB slot
+// those are 17 and 17, so the row was asserting a configuration the fleet left behind (the same
+// transcribed-figure decay DESIGN 6 warns about: a number copied out of the authority that owns
+// it). The property this row is FOR is that srv4 commits its MEMORY width with disk gated at apply
+// rather than lowering allocation -- which is a relation, holds at any width, and is what is
+// asserted now.
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) > 0
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == gunbc_runner_slots_per_host(host: operator_host_srv3)
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) > 0
+  committed_equals_memory_admission(host: operator_host_srv4)
+    && committed_equals_memory_admission(host: operator_host_srv3)
     && match host_disk_admitted_width(host: operator_host_srv4) {
       DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
       DiskAdmitsWidth { slots: _, provenance: _ } => false
@@ -420,7 +440,7 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
 
 // THIS WITNESS WAS NOT TESTING SESSIONS, and the repair matters more than the deletion that
 // surfaced it. It asserted a single negative while mixing a LIVE authority
-// (gunbc_runner_pool_budget_for(srv1)) into an otherwise authored 125 GiB fixture host. Executed
+// (the live runner pool of srv1) into an otherwise authored 125 GiB fixture host. Executed
 // with the session term at ZERO it STILL PASSES — measured, not inferred — because srv1 is now a
 // ~502 GiB host whose live runner pool alone exceeds the fixture. The sessions term contributed
 // nothing to the verdict, so the witness has been green-by-coincidence since that memory upgrade.
@@ -1106,6 +1126,6 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
 test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
   hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
     && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
-    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
+    && committed_equals_memory_admission(host: operator_host_srv1)
+    && committed_equals_memory_admission(host: operator_host_srv3)
 }

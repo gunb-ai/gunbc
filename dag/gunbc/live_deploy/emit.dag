@@ -49,7 +49,7 @@ import extdeps.systemd.unit_file {
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
-  SystemdServiceDirective, ServiceType, ExecStart, Restart,
+  SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
   AccuracySec, RandomizedDelaySec, Persistent,
@@ -107,7 +107,6 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
-  runner_slot_service_units_for_host,
 }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
@@ -527,7 +526,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: concat([
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -565,7 +564,7 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: concat([
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -629,7 +628,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: concat([
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -677,7 +676,7 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ServiceUser { name: spec.names.publication_principal },
       ServiceGroup { name: spec.names.publication_principal },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -830,7 +829,7 @@ fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
       text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
     }],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -886,7 +885,7 @@ fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: OneshotMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },

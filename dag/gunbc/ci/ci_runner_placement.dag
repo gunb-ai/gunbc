@@ -11,12 +11,14 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation {
-  host_width_binding_label, host_width_unmeasured_reasons,
   RunnerSlotCpuQuota,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
   gunbc_runner_slot_desired,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+  gunbc_runner_slice_cap_for_width,
 }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
@@ -27,7 +29,6 @@ import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
 }
 import gunbc.fleet_host_budget {
-  gunbc_runner_pool_budget_for,
   host_allocation_verdict,
   HostAllocationVerdict,
   HostAllocationConserves,
@@ -229,7 +230,8 @@ type HostRunnerDeploymentRefusal
   | CompilePoolUnavailable { cause: String }
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
-  | ZeroRunnerWidth { cause: String }
+  | ZeroRunnerWidth
+  | CommittedWidthUnresolved { cause: String }
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
@@ -337,35 +339,16 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 // derivation is the one that survives, because it is the one that charges memory: a purely
 // core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
 // own header records as the reason the memory bound exists.
-// A REPORTED DEFECT THIS CHANGE DELIBERATELY DOES NOT FIX, recorded so the next reader does not
-// have to rediscover it (side-analyst review, 2026-09-18). runner_count is the host's total
-// committed slot width, while gunbc.runner_slot_provision desired_runner_slot_members materializes
-// only the slots that are NOT fabric members -- so placement and runner_deploy_emit report one
-// runner per fabric cell that the provisioner never creates. The two populations have disagreed
-// since the first fabric cell landed; at one cell on one host that was a single phantom runner, and
-// widening to two cells on each of srv3 and srv4 makes it four.
-//
-// THE CLASS IS FILED AND COUNTABLE, not left as this comment (review 68086, DESIGN 4b): the row is
-// gunbc.recurring_failure_mode.a_count_field_whose_subject_drifted_from_its_producer, which carries
-// the invalid state, why it grows without an edit, the rung it was found at, and a next-rung trigger
-// naming the capability -- RunnerHostDeployment carrying the deployable Actions population as its own
-// field. A finding recorded only in prose beside the line that widens it is not a deferral, it is an
-// unfiled defect, and DESIGN 6 is explicit that a missing dissolution condition makes it worse.
-//
-// SUBSTITUTING host_github_slot_count HERE WAS TRIED AND REVERTED, and the reason is the useful
-// part. Two witnesses in test.claim.runner_placement_witness assert the CURRENT subject outright --
-// witness_live_effective_runners_derives_declared_count compares this field to
-// gunbc_runner_slots_per_host and its note says "THE SUBJECT IS srv3'S DECLARED WIDTH", and
-// witness_live_plan_is_conservation_sound folds it. So the field is not mislabelled by accident: it
-// means the width, and something else needs to mean the deployable Actions count. That is a subject
-// SEPARATION -- a new field, its emit surface, and the witnesses moving with it -- not a one-line
-// substitution, and doing it inside an envelope-derivation change would have been the third subject
-// this PR carries.
-fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
+// THE WIDTH IS SUPPLIED, NOT RE-READ. Both fields below are functions of one width, and this
+// function used to read it twice by two names -- gunbc_runner_slots_per_host for the count and
+// gunbc_runner_pool_budget_for for the cap it implies -- so a host whose width does not resolve
+// could not be refused from here at all: each read would have had to answer something. The width
+// is resolved once by the caller, which is also the only place a refusal can be constructed.
+fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
-    runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
+    runner_count: slots,
+    runner_slice_cap: gunbc_runner_slice_cap_for_width(slots: slots),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
@@ -548,59 +531,33 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     CompilePoolUnavailable { cause: t } => concat("compile_pool_unavailable ", t)
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
-    ZeroRunnerWidth { cause: t } => concat("zero_runner_width ", t)
+    ZeroRunnerWidth => "zero_runner_width"
+    CommittedWidthUnresolved { cause: t } => concat("committed_width_unresolved ", t)
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
   }
 }
 
-// THE ZERO-WIDTH REFUSAL CARRIES WHY, AND THE ROUTE BY WHICH IT DOES IS WORTH STATING EXACTLY,
-// BECAUSE AN EARLIER REVISION OF THIS NOTE CLAIMED A ROUTE THE DIFF DID NOT HAVE (review 69079,
-// DESIGN 4b(1)). It said the envelope's four causes were consumed here. They were not: this arm
-// reached them through host_width_binding_label, which renders axis NAMES, and the only other
-// reader of host_runner_memory_envelope_resolution was the Int shim, which discards the cause. So
-// the causes were constructed and unread -- DESIGN 3c's red state -- underneath a sentence
-// asserting the opposite, which is the rung inflation 4b(1) names.
+// A ZERO WIDTH HERE NOW MEANS ZERO, WHICH IS WHY THIS ARM CARRIES NO CAUSE (merge with #11762).
+// This branch spent three revisions giving ZeroRunnerWidth a cause, because a host whose width
+// could not be DERIVED arrived here as a zero and was reported as a machine with no capacity --
+// opposite operator instructions wearing one symbol. main closed the same class one link earlier:
+// gunbc_runner_committed_width refuses with RunnerWidthUnresolved, the caller carries that into
+// CommittedWidthUnresolved, and an unresolved width no longer reaches this branch at all. So the
+// cause belongs to the sibling variant and this one is honestly bare.
 //
-// The route now exists rather than being described. gunbc.runner_slot_allocation
-// host_memory_width_is_established keys on the RESOLUTION instead of on session_reservation_bytes
-// alone, so a host whose overhead or usable RAM is unread reports AxisUnmeasured carrying the
-// envelope's own cause instead of AxisAdmits { memory, 0 }; and host_width_unmeasured_reasons
-// carries those reasons out to this refusal, which is the surface with room for them. Without that
-// fold this arm reported a bare ZeroRunnerWidth that could not say whether the host had no memory
-// or had never been measured. Operationally those are opposite instructions -- one is a capacity
-// fact, the other is a reading somebody owes -- and the refusal was unable to tell an operator
-// which.
-//
-// ZeroRunnerWidth IS THE ONLY VARIANT IN THIS COPRODUCT THAT CARRIED NO CAUSE, which is the tell
-// that the fact was being dropped rather than that it did not exist. It now matches its siblings.
+// WHAT IS STILL OPEN, so the next reader does not mistake this for the whole class: main's
+// host_memory_denominator keys on session_reservation_bytes alone, which is one of the five inputs
+// host_runner_memory_envelope_resolution folds. A host whose FIXED OVERHEAD or USABLE RAM is unread
+// -- the srv5 case gunbc.host_memory_observation exists to make expressible -- still passes the
+// denominator check and divides an envelope the Int shim flattened to zero. Filed as a roadmap item
+// rather than forked here (review 69079).
 fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) -> HostRunnerDeploymentStanding {
   if dep.runner_count == 0 {
-    refuse_host(host: host_id, cause: ZeroRunnerWidth { cause: zero_width_cause(host: host_id) })
+    refuse_host(host: host_id, cause: ZeroRunnerWidth)
   } else {
     HostRunnerDeploymentDerived { deployment: dep }
-  }
-}
-
-// THE CAUSE IS READ FROM THE WIDTH AUTHORITY, NOT INFERRED HERE (review 67902), AND THAT AUTHORITY
-// IS NOW MAIN'S RATHER THAN THIS BRANCH'S. An earlier revision of this function matched the memory
-// envelope and, on its derived arm, ASSERTED that a zero width must have come from the envelope
-// being smaller than one slot -- a cause it did not compute, and on the live fleet the least likely
-// of the four routes to zero. This branch then grew its own cause-walk to fix that.
-//
-// WHILE IT SAT IN REVIEW, main BUILT THE SAME THING AND BUILT IT BETTER: WidthAxisStanding with an
-// AxisUnmeasured arm, host_width_axes over memory/cores/disk, and host_width_binding_label, whose
-// own note records the identical defect reaching an operator panel -- including the srv2 case, where
-// the memory axis is unmeasured for want of a session denominator rather than admitting a width. Two
-// authorities for one fact is the fork DESIGN 3 forbids, and the one to delete is the newer, narrower
-// branch-local one. host_width_binding_label is consumed here instead.
-fn zero_width_cause(host: HostIdentity) -> String {
-  let reasons = host_width_unmeasured_reasons(host: host)
-  if reasons == "" {
-    host_width_binding_label(host: host)
-  } else {
-    concat(concat(host_width_binding_label(host: host), " · "), reasons)
   }
 }
 
@@ -636,8 +593,45 @@ fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: Fabric
   }
 }
 
+// THE WIDTH IS RESOLVED BEFORE THE CONSERVATION WALL AND AFTER THE SESSION SLICE, AND BOTH HALVES
+// OF THAT ORDER ARE DELIBERATE. Before the wall, because the runner pool it checks IS slots x
+// MemoryMax: an unresolved width charged the wall a zero pool, a zero charge always conserves, and
+// the wall therefore returned HostAllocationConserves for exactly the hosts it could say least
+// about. After the session slice, because on this fleet an unestablished session reservation is
+// what makes a width unresolvable -- resolving width first would refuse srv2 with the derived cause
+// and leave SessionReservationUnestablished with no production producer, replacing a specific
+// refusal with a general one and killing an arm that names the actual root.
 fn host_standing_with_session_slice(
   offer: ComputeOffer,
+  cpu: CpuFacts,
+  host_id: HostIdentity,
+  host_ram: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize,
+  control_plane_placement: FabricControlPlanePlacement
+) -> HostRunnerDeploymentStanding {
+  match gunbc_runner_committed_width(host: host_id) {
+    RunnerWidthUnresolved { cause: wc } =>
+      refuse_host(host: host_id, cause: CommittedWidthUnresolved {
+        cause: runner_width_unresolved_cause_text(cause: wc)
+      })
+    RunnerWidthDerived { slots: slots } =>
+      host_standing_at_width(
+        offer: offer,
+        slots: slots,
+        cpu: cpu,
+        host_id: host_id,
+        host_ram: host_ram,
+        headroom: headroom,
+        session_pool: session_pool,
+        control_plane_placement: control_plane_placement,
+      )
+  }
+}
+
+fn host_standing_at_width(
+  offer: ComputeOffer,
+  slots: Int,
   cpu: CpuFacts,
   host_id: HostIdentity,
   host_ram: ByteSize,
@@ -662,7 +656,7 @@ fn host_standing_with_session_slice(
             host: host_ram,
             overhead: overhead,
             headroom: headroom,
-            runner_pool: gunbc_runner_pool_budget_for(host: host_id),
+            runner_pool: gunbc_runner_slice_cap_for_width(slots: slots),
             session_pool: session_pool,
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
@@ -692,6 +686,7 @@ fn host_standing_with_session_slice(
                       admit_or_refuse_zero_width(
                         dep: conservation_host_deployment(
                           offer: offer,
+                          slots: slots,
                           build_tokens: derive_jobserver_tokens(
                             nproc: cpu_facts_threads(cpu: cpu),
                             mem_total: host_ram,

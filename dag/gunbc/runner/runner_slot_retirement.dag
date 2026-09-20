@@ -5,10 +5,16 @@ import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_width_transition {
+  required_retirees_for_host,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
+}
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthDerived,
+  RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
@@ -486,23 +492,42 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // gunbc.fabric_cell_converge acquires its desired members. An authored list would have to be
 // remembered, and the evidence that it would not be is that this hole opened the first time.
 //
+// THE WIDTH IS NOW A RESOLUTION RATHER THAN AN Int (#11762), AND THIS FOLD REFUSES THROUGH IT
+// INSTEAD OF SUBSTITUTING A NUMBER. A host whose committed width does not resolve cannot say which
+// of its fabric identities it ever provisioned as a runner, so it states no obligation and carries
+// the width authority's own cause outward -- the same arm required_retirees_for_host takes.
+//
 // MEMBERSHIP IS INTERSECTED WITH THE COMMITTED WIDTH ON PURPOSE. A fabric identity outside the width
 // is not a slot the host ever provisioned as a runner, so there is no runner to retire and asserting
 // one would invent an obligation nobody owes.
-fn fabric_purpose_retirees_for_host(host: HostIdentity) -> List<NonEmptyStr> {
-  fabric_execution_slot_identities()
-    |> filter(id => (id.host as String) == (host as String)
-                 && id.slot_index <= gunbc_runner_slots_per_host(host: host))
-    |> map(id => runner_slot_unit_name(slot: id))
+fn fabric_purpose_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      RetireesUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: w } =>
+      RetireesKnown {
+        units: fabric_execution_slot_identities()
+          |> filter(id => (id.host as String) == (host as String) && id.slot_index <= w)
+          |> map(id => runner_slot_unit_name(slot: id))
+      }
+  }
 }
 
 // THE TWO SOURCES ARE UNIONED, NOT SUBSTITUTED. A host mid-width-transition that also reassigns a
 // purpose owes both sets, and dropping either would retire fewer units than the transition requires.
-fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
-  concat(
-    required_retirees_for_host(host: host),
-    fabric_purpose_retirees_for_host(host: host)
-  )
+// EITHER SIDE BEING UNRESOLVED REFUSES THE WHOLE ANSWER: a partial roster read as complete would
+// retire fewer units than the transition owes, which is the silent widen DESIGN 5 forbids.
+fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
+  match required_retirees_for_host(host: host) {
+    RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
+    RetireesKnown { units: width_units } =>
+      match fabric_purpose_retirees_for_host(host: host) {
+        RetireesUnresolved { host: h2, cause: c2 } => RetireesUnresolved { host: h2, cause: c2 }
+        RetireesKnown { units: fabric_units } =>
+          RetireesKnown { units: concat(width_units, fabric_units) }
+      }
+  }
+}
 }
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the
@@ -1008,12 +1033,19 @@ fn observe_transition_retirement_evidence(
 ) -> SlotRetirementEvidence
   uses net: Network
 {
-  SlotRetirementEvidencePresent {
-    authorization: auth,
-    standings: observe_retirement_standings(
-      transport: transport,
-      units: transition_required_retiring(host: host),
-    ),
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([
+          "the retirement obligation for ", uh as String,
+          " is not derivable, so there is no set of required retirees to observe standings for: ", c,
+        ], ""),
+      }
+    RetireesKnown { units: units } =>
+      SlotRetirementEvidencePresent {
+        authorization: auth,
+        standings: observe_retirement_standings(transport: transport, units: units),
+      }
   }
 }
 
@@ -1021,11 +1053,33 @@ fn observe_transition_retirement_evidence(
 // refuse a partially-authorized transition without performing anything. Retiring only the covered
 // subset would release ceilings against a population that is still running, so an uncovered required
 // retiree refuses the whole transition rather than narrowing it.
+// AN UNRESOLVED OBLIGATION IS NOT A FULLY PERMITTED ONE. Coverage is a decision over a set, and a
+// host with no derivable set has nothing to cover -- which under the previous List shape arrived
+// here as the empty set and therefore as TransitionFullyPermitted: the strongest possible answer,
+// reached because nothing could be asked.
 fn transition_retirement_admission(
   host: HostIdentity,
   auth: InterruptionAuthorization,
 ) -> SlotRetirementEvidence {
-  match transition_interruption_coverage(auth: auth, required: transition_required_retiring(host: host)) {
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([
+          "the retirement obligation for ", uh as String,
+          " is not derivable, so no interruption coverage can be decided over it and no retirement is admitted: ", c,
+        ], ""),
+      }
+    RetireesKnown { units: required } =>
+      transition_retirement_admission_over(host: host, auth: auth, required: required)
+  }
+}
+
+fn transition_retirement_admission_over(
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+  required: List<NonEmptyStr>,
+) -> SlotRetirementEvidence {
+  match transition_interruption_coverage(auth: auth, required: required) {
     TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
       SlotRetirementEvidenceAbsent {
         cause: join(
@@ -1083,8 +1137,15 @@ fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
 // reobservation of a different one whose standings happen to look similar. The required set is the
 // transition's observable content: a changed prior width or target changes these rows even when every
 // disposition is unchanged.
+// THE UNRESOLVED OBLIGATION IS ITS OWN ROW rather than no row, for the reason the note above gives
+// about absent evidence: a plan built while a host's obligation was underivable must not fingerprint
+// identically to one built while the host had converged to nothing required.
 fn transition_baseline_rows(host: HostIdentity) -> List<String> {
-  transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: _ } =>
+      [join(["required-unresolved:", uh as String], "")]
+    RetireesKnown { units: units } => units |> map(u => join(["required:", u as String], ""))
+  }
 }
 
 // ── Batched readings: one show and one events read for every retiree ──────────────────────────────

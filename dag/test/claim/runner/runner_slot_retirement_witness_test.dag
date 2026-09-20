@@ -18,8 +18,18 @@ import gunbc.host_axis_caps {
   SurplusSlotsObserved,
   SurplusSlotsUnobserved,
 }
+import gunbc.runner_slot_allocation {
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished,
+}
 import gunbc.runner_width_transition {
   required_retirees_for_host,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
+  TransitionPopulationUndecidable,
+  transition_population_agreement_over,
+  transition_required_retirees_at,
+  transition_row_for_host,
+  RunnerWidthTransition,
   host_width_transition_standing,
   HostHasNoOpenTransition,
   HostTransitionOpen,
@@ -900,8 +910,25 @@ test fn the_events_read_operation_targets_cgroup_events() -> Bool {
 
 // srv4'S AUTHORIZATION DOES NOT COVER srv1'S OBLIGATION. Permission is host-scoped; borrowing
 // srv4's row must refuse rather than silently shrinking srv1's required set.
+// THE OBLIGATION IS MATCHED, NOT PROJECTED. A host whose width does not resolve owes an obligation
+// nobody can enumerate, and reading that as the empty set would make every coverage row below pass
+// by having nothing to cover.
+fn known_obligation_of(host: HostIdentity) -> List<NonEmptyStr> {
+  match required_retirees_for_host(host: host) {
+    RetireesKnown { units: units } => units
+    RetireesUnresolved { host: _, cause: _ } => []
+  }
+}
+
+fn obligation_is_unresolved(host: HostIdentity) -> Bool {
+  match required_retirees_for_host(host: host) {
+    RetireesUnresolved { host: _, cause: _ } => true
+    RetireesKnown { units: _ } => false
+  }
+}
+
 test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv1)
+  let required = known_obligation_of(host: operator_host_srv1)
   list_length(items: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
@@ -916,7 +943,7 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
 // srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION, including the 22..50 remainder a 21-wide prior
 // would have left outside every standing. Without this row the production observer stays absent.
 test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv1)
+  let required = known_obligation_of(host: operator_host_srv1)
   list_length(items: required) > 0
     && match interruption_authorization_for_host(host: operator_host_srv1) {
       HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
@@ -939,7 +966,7 @@ test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
 // srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for
 // coverage; without it every refusal above is satisfied by a check that never admits.
 test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv4)
+  let required = known_obligation_of(host: operator_host_srv4)
   list_length(items: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
@@ -954,7 +981,7 @@ test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
 // for. A host whose surplus has entirely delisted still owes exactly the same identities -- that is
 // what closes the orphan escape, where required=[] and census=[] and standings=[] once admitted.
 test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv4)
+  let required = known_obligation_of(host: operator_host_srv4)
   match cap_raise_standing(
     required_retiring: required,
     observation: surplus_observation_from_census_and_retirement(
@@ -971,10 +998,101 @@ test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
 
 // A HOST WITH NO OPEN TRANSITION OWES NOTHING, and that is a different fact from a host that has
 // converged. srv2's admission refused rather than narrowed, so it has no transition row at all.
+// A HOST WITH NO OPEN TRANSITION OWES NOTHING, AND THAT IS A DERIVED EMPTY OBLIGATION RATHER THAN
+// AN UNRESOLVED ONE. srv2 is the host this distinction is about: it has no transition row, so it
+// owes nothing -- which is a different fact from its committed width being underivable, and the two
+// must not both arrive as `[]`.
 test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
   match host_width_transition_standing(host: operator_host_srv2) {
-    HostHasNoOpenTransition { host: _ } => list_length(items: required_retirees_for_host(host: operator_host_srv2)) == 0
+    HostHasNoOpenTransition { host: _ } =>
+      match required_retirees_for_host(host: operator_host_srv2) {
+        RetireesKnown { units: units } => list_length(items: units) == 0
+        RetireesUnresolved { host: _, cause: _ } => false
+      }
     HostTransitionOpen { transition: _, required: _ } => false
+  }
+}
+
+// THE OBLIGATION OF A HOST WITH AN OPEN TRANSITION IS THE PRIOR MINUS THE TARGET, AND IT IS
+// DERIVED RATHER THAN EMPTY. This is the positive half of the carrier introduced for the unresolved
+// arm: srv4's target resolves, so its obligation is a real set that includes the top of the prior
+// population and excludes the members it keeps.
+test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
+  match required_retirees_for_host(host: operator_host_srv4) {
+    RetireesKnown { units: units } =>
+      list_length(items: units) > 0
+        && !any(units, u => string_contains(s: u as String, pattern: "srv4-01."))
+    RetireesUnresolved { host: _, cause: _ } => false
+  }
+}
+
+// WHY THE UNRESOLVED ARM HAS NO EXECUTED RED HERE, STATED RATHER THAN IMPLIED (DESIGN 4b: ask
+// whether the red is authorable before writing the check). `RetireesUnresolved` is produced by
+// `transition_required_retirees` whenever a transition's host has no derivable committed width, and
+// no such state exists in the corpus today: the three transition rows name srv1, srv3 and srv4,
+// whose widths all resolve, and srv2 -- the one host whose width does not -- has no transition row.
+// `RunnerWidthTransition` is a sole-constructor type, so a witness cannot author the combination
+// either, and authoring a transition row for srv2 would be a fleet policy change smuggled in as
+// test data.
+//
+// THAT IS NO LONGER THE STATE, AND THE PARAGRAPH ABOVE IS KEPT ONLY AS THE REASONING IT CORRECTS.
+// `transition_required_retirees_at` takes the target width as a SUPPLIED value, so the unresolved
+// arm is exercised below on inputs that exist today, and the production wrapper's real-path read
+// is asserted beside it. An earlier revision of this note claimed the TYPE was the enrolled
+// evidence -- that the arm "cannot be reintroduced as an empty list without a compile refusal".
+// That was wrong, and it is the exact overclaim this change exists to remove one layer down: the
+// mutation `RunnerWidthUnresolved { cause: _ } => RetireesKnown { units: [] }` is well-typed. A
+// coproduct makes the distinction expressible; only a control establishes that the producer chose
+// the right arm.
+fn srv4_declared_transition() -> RunnerWidthTransition? {
+  transition_row_for_host(host: operator_host_srv4).first()
+}
+
+test fn an_unresolved_target_width_yields_an_unresolved_obligation() -> Bool {
+  match srv4_declared_transition() {
+    Absent => false
+    Present { value: t } =>
+      match transition_required_retirees_at(
+        t: t,
+        target_width: RunnerWidthUnresolved {
+          cause: WidthMemoryDenominatorUnestablished {
+            host: operator_host_srv4,
+            cause: "supplied: the session reservation on this host is unestablished" as NonEmptyStr,
+          },
+        },
+      ) {
+        RetireesUnresolved { host: h, cause: c } =>
+          (h as String) == (operator_host_srv4 as String)
+            && string_contains(s: c, pattern: "is UNRESOLVED, not zero")
+        RetireesKnown { units: _ } => false
+      }
+  }
+}
+
+// THE DERIVED COUNTERPART ON THE SAME ROW, so the row above discriminates the ARM and not the
+// transition: the same transition with a derived target yields prior-minus-target.
+test fn a_derived_target_width_yields_the_prior_minus_target_obligation() -> Bool {
+  match srv4_declared_transition() {
+    Absent => false
+    Present { value: t } =>
+      match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 19 }) {
+        RetireesKnown { units: units } =>
+          list_length(items: units) == 2
+            && any(units, u => string_contains(s: u as String, pattern: "srv4-20"))
+            && any(units, u => string_contains(s: u as String, pattern: "srv4-21"))
+            && !any(units, u => string_contains(s: u as String, pattern: "srv4-19"))
+        RetireesUnresolved { host: _, cause: _ } => false
+      }
+  }
+}
+
+// AND THE WRAPPER REACHES THE DECISION ON THE REAL PATH, which is what keeps the two supplied-input
+// rows above from being claims about a function nothing calls: srv4's width resolves today, so the
+// production read yields the same derived obligation the decision produces for that width.
+test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
+  match required_retirees_for_host(host: operator_host_srv4) {
+    RetireesKnown { units: units } => list_length(items: units) > 0
+    RetireesUnresolved { host: _, cause: _ } => false
   }
 }
 
@@ -987,17 +1105,74 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
   ) {
     TransitionPopulationDisagrees { unexpected: u } => list_length(items: u) == 1
     TransitionPopulationAgrees => false
+    TransitionPopulationUndecidable { host: _, cause: _ } => false
   }
 }
 
 // AND THE AGREEING CASE, so the row above is not satisfied by a check that always disagrees.
+//
+// THE UNIT IS TAKEN FROM THE OBLIGATION RATHER THAN WRITTEN DOWN, because the written one had gone
+// stale. This row supplied `actions-runner@srv4-13.service`, which was inside the manifest when
+// srv4's obligation ran 13..21; at the 26/25 GiB width srv4 commits 17 and the requirement is
+// 18..21, so slot 13 is now OUTSIDE it and the row asserted agreement against a decision that
+// correctly disagrees. Reading the first member of the live obligation keeps the specimen inside
+// the manifest at any width -- and if the obligation ever stops resolving there is no member to
+// read and the row fails rather than quietly passing (DESIGN 6: name the instrument, never
+// transcribe its output).
+//
+// PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still
+// covers 13-50; that is what the operator permitted, not what this transition requires, and it is
+// not edited to match.
 test fn a_surplus_inside_the_manifest_agrees() -> Bool {
-  match transition_population_agreement(
+  match known_obligation_of(host: operator_host_srv4).first() {
+    Absent => false
+    Present { value: required_unit } =>
+      match transition_population_agreement(
+        host: operator_host_srv4,
+        observed_surplus: [required_unit],
+      ) {
+        TransitionPopulationAgrees => true
+        TransitionPopulationDisagrees { unexpected: _ } => false
+        TransitionPopulationUndecidable { host: _, cause: _ } => false
+      }
+  }
+}
+
+// AND THE OBLIGATION THAT CANNOT DECIDE, SUPPLIED RATHER THAN WAITED FOR. An earlier revision of
+// this row read `obligation_is_unresolved(srv2) == false || match ...`, and srv2 has no transition
+// row -- so its obligation is correctly RetireesKnown { units: [] }, the left disjunct was TRUE,
+// and the whole assertion held whatever the agreement decision answered. It named a branch it
+// never reached. The obligation is now handed in, so the undecidable arm is exercised on inputs
+// that exist today, and the wrapper's real-path read is asserted separately below.
+test fn a_surplus_on_a_host_with_an_unresolved_obligation_is_undecidable() -> Bool {
+  match transition_population_agreement_over(
     host: operator_host_srv4,
-    observed_surplus: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    required: RetireesUnresolved {
+      host: operator_host_srv4,
+      cause: "supplied: this host's committed width does not resolve",
+    },
+    observed_surplus: ["actions-runner@srv4-19.service" as NonEmptyStr],
+  ) {
+    TransitionPopulationUndecidable { host: h, cause: c } =>
+      (h as String) == (operator_host_srv4 as String)
+        && string_contains(s: c, pattern: "does not resolve")
+    TransitionPopulationAgrees => false
+    TransitionPopulationDisagrees { unexpected: _ } => false
+  }
+}
+
+// THE SAME SURPLUS ON THE SAME HOST WITH A DERIVED OBLIGATION DECIDES, which is what makes the row
+// above a claim about the unresolved ARM rather than about the host or the unit. Only the supplied
+// obligation differs between the two.
+test fn the_same_surplus_with_a_derived_obligation_is_decided() -> Bool {
+  match transition_population_agreement_over(
+    host: operator_host_srv4,
+    required: RetireesKnown { units: ["actions-runner@srv4-19.service" as NonEmptyStr] },
+    observed_surplus: ["actions-runner@srv4-19.service" as NonEmptyStr],
   ) {
     TransitionPopulationAgrees => true
     TransitionPopulationDisagrees { unexpected: _ } => false
+    TransitionPopulationUndecidable { host: _, cause: _ } => false
   }
 }
 
