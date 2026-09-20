@@ -320,16 +320,19 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // WHICH MODES CONSUME HOST SSH AUTHORITY is declared per mode, exhaustively, so a new mode cannot
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
-// roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Only those two modes are established API-only by this declaration;
-// every other mode keeps the key it held before, which is the status quo rather than a finding
-// that it needs it.
+// roster read, both of which reach GitHub over gh and open no host session; and the two R2 modes,
+// which reach api.cloudflare.com and secretmanager.googleapis.com over HTTPS as the run's own
+// federated identity and likewise open none) must not hold host SSH authority it never uses. Those
+// modes are established API-only by this declaration; every other mode keeps the key it held
+// before, which is the status quo rather than a finding that it needs it.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
   match mode {
     OrgActionsObserve => FleetSshKeyNotConsumed
     OrgRunnerRosterObserve => FleetSshKeyNotConsumed
+    R2BucketEnsure => FleetSshKeyNotConsumed
+    R2BucketAdminMint => FleetSshKeyNotConsumed
     FullHostPlan => FleetSshKeyConsumed
     LaunchEnvironmentPlan => FleetSshKeyConsumed
     AllocationStorePlan => FleetSshKeyConsumed
