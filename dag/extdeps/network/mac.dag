@@ -169,6 +169,10 @@ type MacOctetResult =
     MacOctetOk { value: UInt8 }
   | MacOctetErr { error: MacParseError }
 
+// A two-character component IS a lowercase-hex octet, so the codec decides it: base16_decode_lower
+// refuses an uppercase or non-hex spelling by returning absent, which becomes MacOctetNotHex. The
+// width is established first, so a component of the wrong length keeps its own MacOctetWrongWidth
+// cause rather than arriving at the codec as "not hex".
 fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
     Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
@@ -179,8 +183,6 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
         }
       } else {
-        // A two-character component IS a lowercase-hex octet, so the codec decides: it refuses an
-        // uppercase or non-hex spelling by returning absent, and the width was established above.
         match base16_decode_lower(hex: raw) {
           Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
           Present { value: octets } =>
