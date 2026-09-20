@@ -1,0 +1,155 @@
+module test.claim.fleet_health_read_only_witness
+
+import std.types { Bool, List, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node { Node }
+import v2.std.fn_index { FnArrowDecl, atom_identities_in_node, call_reachable_decls, fn_arrow_decl_facts_live }
+import v2.std.compilers.lexing { symbol_lexeme }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// NO MUTATION IS REACHABLE FROM THE FLEET HEALTH ENTRY -- as far as this instrument can see, which
+// this witness measures rather than assumes.
+//
+// The health check is out-of-band and read-only by standing rule (operator, 2026-09-18), and the
+// ruling on it asks for REACHABILITY rather than a layering guard: from the health entry, every
+// machine interaction the route can reach must be an admitted read.
+//
+// INSTRUMENT: v2.std.fn_index -- fn_arrow_decl_facts_live over the health closure's own files, and
+// call_reachable_decls from the entry module, the same transitive walk v2.lens.determinism and
+// v2.lens.effect_reach consume. The reached set is the entry's real CALL closure, not its imports,
+// and every callee and constructor spelling in every reached body is collected.
+//
+// WHAT IT ESTABLISHES: no reached body spells a mutating bare call -- the credential mint, store and
+// rotate helpers, the host-OS execution legs, the SSH transports.
+//
+// WHAT IT DOES NOT: a mutation written as a SERVICE call is invisible here, and that gap is pinned
+// by a_service_call_mutation_is_invisible_to_this_instrument below rather than left to prose.
+data health_entry_module: String = "gunbc.fleet_health"
+
+data health_closure_modules: List<String> = [
+  "gunbc.fleet_health",
+  "gunbc.fleet_health_observe",
+  "product.host_health",
+  "product.fan_tach",
+  "product.fan_tach_health",
+  "gunbc.bmc_custody_read",
+  "gunbc.bmc_health_reader",
+  "extdeps.bmc.redfish_telemetry",
+  "extdeps.bmc.openbmc_message_registry",
+]
+
+data health_pool_files: List<String> = [
+  "dag/gunbc/fleet/fleet_health.dag",
+  "dag/gunbc/fleet/fleet_health_observe.dag",
+  "dag/gunbc/product/host_health.dag",
+  "dag/gunbc/product/fan_tach.dag",
+  "dag/gunbc/product/fan_tach_health.dag",
+  "dag/gunbc/bmc/bmc_custody_read.dag",
+  "dag/gunbc/bmc/bmc_health_reader.dag",
+  "dag/extdeps/bmc/redfish_telemetry.dag",
+  "dag/extdeps/bmc/openbmc_message_registry.dag",
+]
+
+data health_fixture_module: String = "test.fixture.health_read_only.mutation_probe"
+
+data health_fixture_files: List<String> = ["dag/test/fixture/health_read_only/mutation_probe.dag"]
+
+data health_fixture_closure: List<String> = ["test.fixture.health_read_only.mutation_probe"]
+
+data health_no_roots: List<String> = []
+
+data health_no_terminals: List<String> = []
+
+// The mutating vocabulary this corpus declares as ordinary declarations: the credential mint, store
+// and rotate surface, the host-OS execution legs, and the SSH transports.
+data forbidden_spellings: List<String> = [
+  "CreateAccount",
+  "SetAccountPassword",
+  "ssh_session_exec",
+  "typed_argv_exec_over_ssh",
+  "typed_argv_exec_over_fleet_ssh",
+  "host_operation_exec",
+  "run_shell_commands",
+  "run_shell_command_capture",
+  "SshShell",
+  "FleetSsh",
+  "bmc_rotate_credential",
+  "bmc_store_credential_verified",
+  "bmc_establish_custody_container",
+  "bmc_takeover_credential",
+  "mint_bmc_credential",
+  "create_secret_container",
+  "RecursiveForce",
+]
+
+fn atoms_below(node: Node) -> List<String> {
+  concat(
+    map(atom_identities_in_node(node: node), s => symbol_lexeme(sym: s)),
+    flat_map(node.children, e => atoms_below(node: e.target)),
+  )
+}
+
+fn reached_decls(entry_module: String, closure_modules: List<String>, pool_files: List<String>) -> List<FnArrowDecl> {
+  call_reachable_decls(
+    entry_module: entry_module,
+    terminal_callee_symbols: health_no_terminals,
+    closure_modules: closure_modules,
+    decls: fn_arrow_decl_facts_live(pool_roots: health_no_roots, pool_files: pool_files),
+  )
+}
+
+fn reached_spellings(entry_module: String, closure_modules: List<String>, pool_files: List<String>) -> List<String> {
+  flat_map(reached_decls(entry_module: entry_module, closure_modules: closure_modules, pool_files: pool_files), d => atoms_below(node: d.output))
+}
+
+fn forbidden_found(spellings: List<String>) -> List<String> {
+  filter(forbidden_spellings, f => any(spellings, s => s == f))
+}
+
+test fn no_mutation_is_reachable_from_the_health_entry() -> Bool {
+  count(forbidden_found(spellings: reached_spellings(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files))) == 0
+}
+
+// THE DISCRIMINATING RED, ENROLLED. The same derivation over the forbidden-program fixture must find
+// its bare-call mutations BY IDENTITY. Without it the claim above would pass for a walk that reached
+// nothing, or for a collector that stopped seeing callee atoms.
+test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool {
+  let found = forbidden_found(spellings: reached_spellings(entry_module: health_fixture_module, closure_modules: health_fixture_closure, pool_files: health_fixture_files))
+  any(found, f => f == "CreateAccount")
+    && any(found, f => f == "ssh_session_exec")
+    && any(found, f => f == "SshShell")
+}
+
+// THE POSITIVE CONTROL. observe_host_health is the collector's own entry, three call levels below
+// fleet_health_check, and health_redfish_read is the one function that performs a Redfish read, so a
+// walk that stopped at the entry body fails here.
+test fn the_walk_reaches_the_collector() -> Bool {
+  let names = map(reached_decls(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files), d => d.name)
+  any(names, n => n == "observe_host_health") && any(names, n => n == "health_redfish_read")
+}
+
+// THE BLIND SPOT, EXECUTED RATHER THAN PROMISED (DESIGN section 4b: ask whether the check's RED is
+// authorable before writing the check).
+//
+// A mutation written as a SERVICE call -- how every real Redfish and Secret Manager write in this
+// corpus is written -- is invisible to the declaration census both instruments project: neither
+// v2.std.fn_index's fn-arrow skeleton nor v2.std.decl_index's declaration skeleton carries a service
+// call's operation identity. Measured 2026-09-20 on this fixture and on the live collector, whose
+// five admitted Redfish GETs are equally invisible; ordinary calls and record constructors ARE
+// visible, which is what the claims above range over.
+//
+// So the wall above covers bare-call mutations only, and this claim pins the residual as an
+// ABSENCE: the fixture's service-call SetAccountPassword is not found. It is written to FAIL the day
+// the instrument gains service-call operation identity, and that failure is the trigger to extend
+// the roster check to service operations and delete this claim.
+//
+// WHAT BOUNDS THE RISK MEANWHILE, stated as the review property it is rather than as a wall: the
+// reached set is confined by construction to the nine health modules, and every service call in them
+// is one of the five admitted Redfish GETs plus the Secret Manager read.
+test fn a_service_call_mutation_is_invisible_to_this_instrument() -> Bool {
+  count(filter(
+    reached_spellings(entry_module: health_fixture_module, closure_modules: health_fixture_closure, pool_files: health_fixture_files),
+    s => s == "SetAccountPassword",
+  )) == 0
+}
