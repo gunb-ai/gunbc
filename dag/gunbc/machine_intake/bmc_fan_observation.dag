@@ -8,8 +8,8 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
   SdrFanNoReading,
-  SdrFanReading,
   SdrFanReadingUnrecognised,
+  SdrLineResult,
   SdrFanRpm,
   SdrTypeLine,
   SdrTemperaturePublication,
