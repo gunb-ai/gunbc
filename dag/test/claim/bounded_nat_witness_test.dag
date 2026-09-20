@@ -108,28 +108,34 @@ test fn the_mod_operations_wrap_where_the_checked_ones_refuse() -> Bool {
 }
 
 // A product needs twice the width, so a width the host can hold may still have no admissible product.
-test fn a_product_too_wide_for_the_host_refuses_on_its_own_arm() -> Bool {
+test fn a_small_product_of_a_wide_type_is_not_refused_for_its_width() -> Bool {
   let w40 = bit_width(count: 40)
-  match on2(a: m(bits: w40, value: 3), b: m(bits: w40, value: 3), f: bounded_nat_mul) {
-    Present { value: ProductExceedsHostInt { bits: _ } } => true
-    _ => false
-  }
+  let tiny = arm_value(r: on2(a: m(bits: w40, value: 3), b: m(bits: w40, value: 3), f: bounded_nat_mul)) == Present { value: 9 }
+  let genuinely_over = arm_is_overflow(r: on2(a: m(bits: w40, value: 1048576), b: m(bits: w40, value: 1048576), f: bounded_nat_mul))
+  let at_the_edge = arm_value(r: on2(a: m(bits: w40, value: 1099511627775), b: m(bits: w40, value: 1), f: bounded_nat_mul)) == Present { value: 1099511627775 }
+  tiny && genuinely_over && at_the_edge
 }
 
-// THE REVIEWER'S DISCRIMINATING CASE (review of gunbc#11645): does the host-width rule refuse an
+
+// THE REVIEWER'S SECOND DISCRIMINATING CASE (review of gunbc#11645): 40-bit 3 * 3 is 9, and the
+// checked multiplication used to REFUSE it because the old admission keyed on the TYPE's width
+// (2N <= 62) rather than the OPERANDS' values. This witness previously asserted that refusal, so it
+// encoded the defect instead of catching it; it now asserts the corrected behaviour at three points
+// -- a tiny product of a wide type, a genuinely overflowing one, and the exact top of the width.
+//
+// THE REVIEWER'S FIRST DISCRIMINATING CASE (review of gunbc#11645): does the host-width rule refuse an
 // operand that is valid and computable? It did, for the WRAPPING product, and this is the red that
 // would have caught it. Both vectors have a 64-bit full product, so neither answer is reachable by
 // forming the product on this host -- the split is doing the work, not luck. The paired half is that
-// the CHECKED product on the same operands still refuses, which is correct rather than a gap: the
-// whole product is what detects overflow, and it does not exist here.
+// the CHECKED product on the same operands reports Overflows -- not ProductExceedsHostInt. The two
+// arms give different ANSWERS about the same operands because they are asked different questions:
+// the wrapping arm returns the low 32 bits, the checked arm reports that the product left the width.
+// Neither refuses for want of host headroom.
 test fn the_wrapping_product_is_computed_where_the_checked_one_cannot_be() -> Bool {
   let all_ones = arm_value(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 4294967295), f: bounded_nat_mul_mod)) == Present { value: 1 }
   let mixed = arm_value(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 3735928559), f: bounded_nat_mul_mod)) == Present { value: 559038737 }
-  let checked_still_refuses = match on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 4294967295), f: bounded_nat_mul) {
-    Present { value: ProductExceedsHostInt { bits: _ } } => true
-    _ => false
-  }
-  all_ones && mixed && checked_still_refuses
+  let checked_reports_overflow = arm_is_overflow(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 4294967295), f: bounded_nat_mul))
+  all_ones && mixed && checked_reports_overflow
 }
 
 // THE RESIDUAL CEILING IS REAL AND IS ASSERTED AT ITS EDGE, so that widening it later is a change

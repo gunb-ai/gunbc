@@ -110,22 +110,23 @@ fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
 // operands of one operation. Widening the narrower one silently is exactly the fail-open this family
 // exists to remove, so the disagreement is reported rather than resolved.
 //
-// PRODUCT WIDTH IS A SEPARATE ADMISSION FROM SUM WIDTH, AND THE TWO MULTIPLICATIONS DO NOT SHARE ONE.
-// A sum of two N-bit values needs N + 1 bits. The CHECKED product needs 2N, because detecting that a
-// product left the width requires the WHOLE product to exist -- so bounded_nat_mul is admitted only
-// while 2N stays inside the host bound, and above that it refuses rather than letting the host
-// integer overflow, which in the substrate is a raised refusal and would stop the line somewhere this
-// family cannot describe.
+// THE TWO MULTIPLICATIONS ANSWER DIFFERENT QUESTIONS AND NEITHER IS ADMITTED BY WIDTH. A sum of two
+// N-bit values needs N + 1 bits. A product would need 2N -- but NEITHER ARM EVER FORMS ONE IT CANNOT
+// HOLD, so neither needs 2N of host headroom, and a width-keyed refusal on either was rejecting
+// operands whose actual product was small. The checked arm decides overflow by comparison BEFORE
+// multiplying; the wrapping arm computes the low N bits by splitting. Each is described where it is
+// defined below.
 //
-// THE WRAPPING PRODUCT NEEDS NO SUCH THING, AND GIVING IT THE CHECKED CEILING WAS AN OVER-PROHIBITION
+// THE WRAPPING PRODUCT NEEDS NO FULL PRODUCT EITHER, AND GIVING IT THE CHECKED CEILING WAS AN OVER-PROHIBITION
 // (DESIGN 4d: a mechanism that forbids more than the evidence supports costs the thing you never did).
 // Reduction modulo 2^N depends only on the LOW N bits, which a host int can carry for widths the full
 // product would overflow. Splitting one operand at h = N / 2 gives the identity
 //   (a * b) mod 2^N  =  ((a1 * b) mod 2^(N - h)) * 2^h  +  a0 * b   (mod 2^N),   a = a1 * 2^h + a0
 // whose largest intermediates are a0 * b and a1 * b, of h + N and (N - h) + N bits. So UInt32
-// wrapping multiplication is computable here and no longer refuses, while UInt32 CHECKED
-// multiplication still refuses -- correctly, because its full 64-bit product does not exist on this
-// host. That is the distinction the shared ceiling was hiding.
+// wrapping multiplication is computable here for EVERY pair of operands, including those whose full
+// product does not exist on this host -- which is what the checked arm's comparison cannot do, since
+// it answers whether a product fits rather than what its low bits are. The two arms are separate
+// because they answer different questions, not because one has more headroom than the other.
 //
 // THE WRAPPING CEILING IS REAL BUT HIGHER, AND IS STATED RATHER THAN ROUNDED. The split admits a
 // width only while max(h + N, (N - h) + N) stays inside the host bound, which is N <= 41 -- not every
@@ -172,16 +173,27 @@ fn bounded_nat_sub(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   }
 }
 
-// Admitted only while twice the width fits the host integer; see the note above.
-fn bounded_nat_product_admitted(bits: BitWidth) -> Bool {
-  2 * bit_width_count(b: bits) <= bounded_nat_host_bit_ceiling()
+// OVERFLOW IS DECIDED BEFORE THE PRODUCT IS FORMED, WHICH IS WHY THE CHECKED ARM NEEDS NO HEADROOM
+// AT ALL. `a * b > 2^N - 1` is equivalent to `a > (2^N - 1) / b` under integer division, and that
+// comparison forms no product. So the question is answered without the intermediate whose size used
+// to be the reason for refusing, and when the comparison ADMITS, the product is bounded by 2^N - 1 --
+// already inside the carrier's own admitted width, hence inside the host bound.
+//
+// THIS REPLACED A WIDTH-KEYED REFUSAL THAT REJECTED VALID PRODUCTS (review of gunbc#11645). The old
+// rule asked `2N <= 62` and so refused 40-bit 3 * 3, whose product is 9: it keyed on the TYPE's width
+// rather than the OPERANDS' values, which is the over-prohibition arm of DESIGN 4d in its purest
+// form -- the refused population was every small product of a wide type. The earlier claim that the
+// checked arm "needs the full product in order to detect overflow" was simply false, and the witness
+// that asserted the old refusal encoded the defect rather than catching it.
+fn bounded_nat_product_overflows(bits: BitWidth, a: Int, b: Int) -> Bool {
+  b != 0 && a > (bounded_nat_modulus(bits: bits) - 1) / b
 }
 
 fn bounded_nat_mul(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   if !bounded_nat_widths_agree(a: a, b: b) {
     WidthMismatch { left: a.bits, right: b.bits }
-  } else if !bounded_nat_product_admitted(bits: a.bits) {
-    ProductExceedsHostInt { bits: a.bits }
+  } else if bounded_nat_product_overflows(bits: a.bits, a: a.value, b: b.value) {
+    Overflows { bits: a.bits }
   } else {
     bounded_nat_in_width(bits: a.bits, value: a.value * b.value)
   }
