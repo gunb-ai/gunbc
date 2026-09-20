@@ -1233,10 +1233,11 @@ fn floor_route_gap_expectation_chunk_16() -> List<FloorRouteGapExpectation> {
 }
 
 // THE FABRIC DB WET EVIDENCE: the nine file-store identities (one of them the served handler's
-// store side), the three event-log identities over it, and the three read-only readout identities. First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment:
-// this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
-// witness_exclusion_frontier LocalRepoWetLane rows for fabric_db_file_store_wet_witness_test.dag and
-// fabric_event_log_wet_witness_test.dag.
+// store side), the three event-log identities over it, and the three read-only readout identities.
+// First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier LocalRepoWetLane rows for fabric_db_file_store_wet_witness_test.dag,
+// fabric_event_log_wet_witness_test.dag and fabric_partition_read_wet_witness_test.dag.
 fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_db_file_store_wet_witness.a_chain_appended_through_the_store_is_read_back_whole_by_the_closure", operation: "DirWithTemplate", ground: NoMockResponse {} },
