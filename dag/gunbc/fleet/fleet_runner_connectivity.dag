@@ -244,24 +244,63 @@ fn incident_registration(
   }
 }
 
-data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+// THE CORPUS IS AUTHORED PER HOST AND CONCATENATED, SO A HOST SLICE IS A PROJECTION AND NOT A
+// SECOND SPELLING. The 2026-09-13 26/25 GiB transition (gunbc.runner_slot_allocation) deleted
+// srv2's held width: its commitment is unestablished, gunbc_runner_slots_per_host answers 0 and
+// committed_slot_identities(srv2) is empty, so srv2-01/02/05 below now decode
+// RegistrationNamesNoCommittedSlot and gunbc.runner_capacity_plan REFUSES any plan handed the
+// whole-org corpus. That refusal is correct -- three owned registrations on a host with no
+// established commitment are exactly the surplus convergence must account for -- and the rows are
+// NOT deleted from the corpus, because the corpus is what the org held on 2026-08-06. Witnesses
+// whose subject is the managed pair supply the srv3/srv4 slice instead of the whole org, and the
+// slice is the same rows under one authority rather than a copy that could drift from them.
+data incident_2026_08_06_srv1_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv1, id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
   incident_registration(host: operator_host_srv1, id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv2_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv2, id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv2, id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv2, id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv3, id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv4, id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
 ]
+
+data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  concat(incident_2026_08_06_srv1_registrations, incident_2026_08_06_srv2_registrations),
+  concat(incident_2026_08_06_srv3_registrations, incident_2026_08_06_srv4_registrations),
+)
+
+// THE MANAGED-PAIR SLICE OF THE SAME CORPUS: srv3 and srv4 hold {01,02,04,05} each, 03 missing on
+// both. This is the roster a claim about the managed pair's additions is entitled to -- the holes
+// are the discriminating content, and srv1/srv2 are not in its subject.
+data incident_2026_08_06_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  incident_2026_08_06_srv3_registrations,
+  incident_2026_08_06_srv4_registrations,
+)
+
+fn organization_runner_roster_managed_hosts_incident_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-06" as NonEmptyStr,
+    registrations: incident_2026_08_06_managed_registrations,
+  }
+}
 
 fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {

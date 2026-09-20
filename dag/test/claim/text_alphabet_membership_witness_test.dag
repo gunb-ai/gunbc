@@ -1,0 +1,188 @@
+module test.claim.text_alphabet_membership_witness
+
+import std.algebra { Cons, Empty }
+import extdeps.posix.shell_command_language { posix_name_ok }
+import v2.extdeps.languages.bash_orch_if { bash_path_unquoted_ok }
+import v2.workflow.effect_plan_bash_materialize { effect_plan_bash_decimal_integer_ok, effect_plan_bash_operand_carries_shell_spelling }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_sanitize_word }
+import v2.compiler.emit_orchestration { orch_emit_step, orch_shell_test_operand_ok, orch_shell_unquoted_path_ok }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.orchestration { Comment, PipelineStep }
+import v2.std.text { string_all_chars_in, string_any_char_in, string_contains_char }
+
+data lower: String = "abcdefghijklmnopqrstuvwxyz"
+
+test fn empty_string_has_every_char_drawn_from_any_alphabet() -> Bool {
+  string_all_chars_in(s: "", alphabet: lower)
+}
+
+test fn all_chars_in_admits_a_word_over_the_alphabet() -> Bool {
+  string_all_chars_in(s: "abc", alphabet: lower)
+}
+
+test fn all_chars_in_refuses_a_character_outside_the_alphabet() -> Bool {
+  !string_all_chars_in(s: "ab1", alphabet: lower)
+}
+
+test fn any_char_in_is_false_on_the_empty_string() -> Bool {
+  !string_any_char_in(s: "", alphabet: lower)
+}
+
+test fn any_char_in_finds_one_admitted_character() -> Bool {
+  string_any_char_in(s: "1a1", alphabet: lower)
+}
+
+// The Char operand is destructured out of a one-character string rather than written as a literal:
+// the substrate has no Char literal, and introducing one would be a language change this claim is
+// not about. The `Empty` arm cannot be reached by a one-character subject and answers false, so a
+// realization that lost the head would red here rather than pass vacuously.
+test fn contains_char_is_membership_not_substring_search() -> Bool {
+  match "c" {
+    Empty => false
+    Cons { head: c, tail: _ } => string_contains_char(s: lower, c: c)
+  }
+}
+
+// THE REAL PRODUCTION ROUTE, NOT A SECOND COPY OF THE RULE. The rows above discriminate the text
+// operation at its own interface; these run the two switched production admissions --
+// v2.compiler.emit_orchestration's redirection-target rule and the POSIX name rule at its one home
+// in extdeps.posix.shell_command_language, which v2.compiler.emit_orchestration now reads for its
+// exit-status binder and which v2.extdeps.languages.bash_orch_if and
+// v2.workflow.effect_plan_bash_materialize already read. Deleting the switched call in either
+// module makes them red, so the claims above cannot stand in for execution of the production path
+// (DESIGN section 3, pairing obligation).
+
+test fn emitted_redirection_path_admits_an_alphabet_word() -> Bool {
+  orch_shell_unquoted_path_ok(path: "build/out-1.log")
+}
+
+test fn emitted_redirection_path_refuses_a_space() -> Bool {
+  !orch_shell_unquoted_path_ok(path: "build/out 1.log")
+}
+
+test fn emitted_redirection_path_refuses_the_empty_path() -> Bool {
+  !orch_shell_unquoted_path_ok(path: "")
+}
+
+// The discriminator the substring spelling could not make: `$(` is not a member of the alphabet,
+// and neither of its characters is, so a membership scan refuses it at the first character.
+test fn emitted_redirection_path_refuses_a_command_substitution() -> Bool {
+  !orch_shell_unquoted_path_ok(path: "out$(id).log")
+}
+
+test fn posix_name_admits_an_identifier() -> Bool {
+  posix_name_ok(name: "status_1")
+}
+
+// THE FIRST-CHARACTER RULE, which the two alphabets exist to separate: a digit is admitted after
+// the first position and refused at it.
+test fn posix_name_refuses_a_leading_digit() -> Bool {
+  !posix_name_ok(name: "1status")
+}
+
+test fn posix_name_refuses_the_empty_name() -> Bool {
+  !posix_name_ok(name: "")
+}
+
+test fn posix_name_refuses_a_hyphen() -> Bool {
+  !posix_name_ok(name: "a-b")
+}
+
+// THE REMAINING SWITCHED CONSUMERS OF THE SAME OPERATION, each run at its own production entry.
+
+test fn bash_path_operand_admits_an_alphabet_word() -> Bool {
+  bash_path_unquoted_ok(path: "dag/std/text.dag")
+}
+
+test fn bash_path_operand_refuses_a_quote() -> Bool {
+  !bash_path_unquoted_ok(path: "a'b")
+}
+
+test fn bash_path_operand_refuses_the_empty_operand() -> Bool {
+  !bash_path_unquoted_ok(path: "")
+}
+
+test fn bash_test_operand_admits_a_decimal_integer() -> Bool {
+  effect_plan_bash_decimal_integer_ok(s: "12")
+}
+
+// `[ a -ne b ]` on a non-integer takes the ELSE branch with status 2, so these refusals are the
+// wall that arm exists for: a bare sign carries no digits and must not be admitted.
+test fn bash_test_operand_admits_a_negative_decimal_integer() -> Bool {
+  effect_plan_bash_decimal_integer_ok(s: "-12")
+}
+
+test fn bash_test_operand_refuses_a_bare_sign() -> Bool {
+  !effect_plan_bash_decimal_integer_ok(s: "-")
+}
+
+test fn bash_test_operand_refuses_a_non_digit() -> Bool {
+  !effect_plan_bash_decimal_integer_ok(s: "1a")
+}
+
+test fn bash_test_operand_refuses_the_empty_operand() -> Bool {
+  !effect_plan_bash_decimal_integer_ok(s: "")
+}
+
+test fn bash_predicate_operand_carries_no_shell_spelling_in_a_plain_word() -> Bool {
+  !effect_plan_bash_operand_carries_shell_spelling(operand: "plain")
+}
+
+test fn bash_predicate_operand_carries_a_shell_spelling() -> Bool {
+  effect_plan_bash_operand_carries_shell_spelling(operand: "$HOME")
+}
+
+// The sanitizer projects THROUGH the alphabet: an admitted word is returned unchanged and a
+// refused character is replaced, so no byte outside the alphabet survives into emitted shell.
+test fn invoke_sanitizer_returns_an_admitted_word_unchanged() -> Bool {
+  gunbc_invoke_sanitize_word(word: "build/out.log") == "build/out.log"
+}
+
+test fn invoke_sanitizer_replaces_every_refused_character() -> Bool {
+  gunbc_invoke_sanitize_word(word: "a;b c") == "a_b_c"
+}
+
+test fn invoke_sanitizer_returns_the_empty_word_for_the_empty_word() -> Bool {
+  gunbc_invoke_sanitize_word(word: "") == ""
+}
+
+test fn emitted_test_operand_admits_a_quoted_parameter() -> Bool {
+  orch_shell_test_operand_ok(operand: "\"$1\"")
+}
+
+test fn emitted_test_operand_refuses_a_semicolon() -> Bool {
+  !orch_shell_test_operand_ok(operand: "a;b")
+}
+
+test fn emitted_test_operand_refuses_the_empty_operand() -> Bool {
+  !orch_shell_test_operand_ok(operand: "")
+}
+
+fn text_alphabet_comment_step(text: String) -> PipelineStep {
+  Comment { text: text }
+}
+
+// A `#` comment ends at its first line break, so a comment carrying one would emit a second bash
+// line outside the construct. This runs the emitter itself, not the membership predicate, so the
+// claim reds if the switched arm stops consulting the line-break alphabet.
+test fn emitted_comment_admits_a_single_line() -> Bool {
+  match orch_emit_step(s: text_alphabet_comment_step(text: "build the seed"), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried == "# build the seed"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emitted_comment_refuses_a_newline() -> Bool {
+  match orch_emit_step(s: text_alphabet_comment_step(text: "one\ntwo"), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn emitted_comment_refuses_a_carriage_return() -> Bool {
+  match orch_emit_step(s: text_alphabet_comment_step(text: "one\rtwo"), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
