@@ -517,11 +517,11 @@ test fn a_non_positive_vcpu_count_is_refused() -> Bool {
 // 33 is the boundary refusal, 64 refuses harder. The range is the pinned release's row
 // (extdeps.virtualization.firecracker firecracker_vcpu_range_v1_16_1), not a literal here.
 test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool {
-  admission_is_admitted(a: admission_of_machine(vcpus: firecracker_vcpu_range_v1_16_1.maximum, mib: 4096))
-    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: firecracker_vcpu_range_v1_16_1.maximum + 1, mib: 4096))
+  admission_is_admitted(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum), mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum) + 1, mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: 64, mib: 4096))
-    && firecracker_vcpu_range_v1_16_1.maximum == 32
-    && firecracker_vcpu_range_v1_16_1.minimum == 1
+    && hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum) == 32
+    && hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.minimum) == 1
 }
 
 // AN UNREPRESENTABLE MEMORY SIZE IS REFUSED RATHER THAN WRAPPED. mebibyte_to_byte_size multiplies
@@ -1026,7 +1026,7 @@ fn relative_only_refuses_unsupported(threads: Int) -> Bool {
     MicroVmShapeRefused { refusal: r } =>
       match r {
         ShapeRefusedVcpuCountUnsupported { requested: q, minimum: lo, maximum: hi } =>
-          hardware_thread_count_value(t: q) == threads && lo == 1 && hi == 32
+          hardware_thread_count_value(t: q) == threads && hardware_thread_count_value(t: lo) == 1 && hardware_thread_count_value(t: hi) == 32
         _ => false
       }
   }

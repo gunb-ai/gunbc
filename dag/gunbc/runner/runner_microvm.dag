@@ -293,10 +293,10 @@ fn guest_resources_of_machine_config(mc: FirecrackerMachineConfig) -> GuestResou
           cause: "the guest machine configuration declares a vCPU count that is zero or negative, which is not a cardinality; the guest could not be started with it",
         }
       } else {
-        match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: mc.vcpu_count) {
+        match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: hardware_thread_count(count: mc.vcpu_count)) {
           VcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
             GuestResourcesInvalid {
-              cause: join(["the guest machine configuration declares ", to_string(r), " vCPUs, outside the ", to_string(lo), "..", to_string(hi), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], ""),
+              cause: join(["the guest machine configuration declares ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(hardware_thread_count_value(t: lo)), "..", to_string(hardware_thread_count_value(t: hi)), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], ""),
             }
           VcpuCountAdmitted { count: _ } =>
             GuestResourcesValidated {
@@ -513,7 +513,7 @@ type RunnerMicroVmShape {
 }
 
 type RunnerMicroVmShapeRefusal
-  = ShapeRefusedVcpuCountUnsupported { requested: HardwareThreadCount, minimum: Int, maximum: Int }
+  = ShapeRefusedVcpuCountUnsupported { requested: HardwareThreadCount, minimum: HardwareThreadCount, maximum: HardwareThreadCount }
   | ShapeRefusedWorkThreadsExceedEntitlement { required: HardwareThreadCount, entitled: HardwareThreadCount }
   | ShapeRefusedWorkMemoryUnstated
   | ShapeRefusedReserveUnmodeled { cause: String }
@@ -530,7 +530,7 @@ type RunnerMicroVmShapeResolution
 fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
   match r {
     ShapeRefusedVcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
-      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(lo), "..", to_string(hi), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], "")
+      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(hardware_thread_count_value(t: lo)), "..", to_string(hardware_thread_count_value(t: hi)), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], "")
     ShapeRefusedWorkThreadsExceedEntitlement { required: r, entitled: e } =>
       join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " threads and the cell entitles ", to_string(hardware_thread_count_value(t: e))], "")
     ShapeRefusedWorkMemoryUnstated =>
@@ -560,7 +560,7 @@ fn runner_microvm_shape(
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
-  match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: hardware_thread_count_value(t: work.shape.hard.threads)) {
+  match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: work.shape.hard.threads) {
     VcpuCountUnsupported { requested: _, minimum: lo, maximum: hi } =>
       MicroVmShapeRefused {
         refusal: ShapeRefusedVcpuCountUnsupported { requested: work.shape.hard.threads, minimum: lo, maximum: hi },
