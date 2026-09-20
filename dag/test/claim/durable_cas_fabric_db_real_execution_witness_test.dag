@@ -1,0 +1,151 @@
+module test.claim.durable_cas_fabric_db_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, cas_attempt, cas_generation_count,
+}
+import gunbc.durable_cas_file_store { CasAttemptAdmitted, admit_cas_attempt, VerifiedCasAttempt }
+import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles }
+import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady }
+import gunbc.durable_cas_fabric_db { fabric_db_compare_and_set, fabric_db_observe_cas_slot, cas_slot_head }
+import gunbc.fabric_db_client { fabric_db_head, fabric_db_put, fabric_db_advance }
+import std.fabric_db { FabricObject, FabricObjectRef, fabric_object_ref_eq, FabricHeadObserved, FabricHeadAt, ExpectHeadAt, FabricObjectStored, FabricHeadMoved }
+import std.types { List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COMPARE-AND-SET OVER A FABRIC-DB HEAD, BY REAL EXECUTION against a file-backed store in a
+// temporary directory, through TWO bindings to it -- the shape two executors have (one placed
+// store, every executor reaching the same instance). Established here and nowhere hermetic: an
+// absent slot reads absent through both; a create-if-absent commits generation 1 and the other
+// binding reads it back at that generation with those bytes; a second create-if-absent through the
+// other binding is a precondition failure carrying the committed version, not a second
+// generation 1; an update expecting generation 1 commits generation 2; an update expecting the
+// stale generation 1 after that fails naming generation 2.
+
+fn dcel_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn dcel_store(dir: FilePath) -> FabricDbBinding {
+  FabricDbLocalFiles { root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr) }
+}
+
+fn dcel_store_ready(dir: FilePath) -> Bool {
+  match fabric_db_file_root_ensure(root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr)) { FabricDbRootReady => true  _ => false }
+}
+
+fn dcel_verified(key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr) -> VerifiedCasAttempt? {
+  let expected = if expected_generation == 0 { ExpectSlotAbsent } else { ExpectSlotGeneration { generation: expected_generation } }
+  match admit_cas_attempt(attempt: cas_attempt(key: key, expected: expected, proposed: value, proposed_content: content_hash_of_value(value: value))) {
+    CasAttemptAdmitted { verified: v } => Present { value: v }
+    _ => none
+  }
+}
+
+fn dcel_commits_at(store: FabricDbBinding, key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr, generation: Int) -> Bool {
+  match dcel_verified(key: key, expected_generation: expected_generation, value: value) {
+    Absent => false
+    Present { value: v } =>
+      match fabric_db_compare_and_set(store: store, verified: v) {
+        CasCommitted { committed: c } => cas_generation_count(g: c.generation) == generation && (c.value as String) == (value as String)
+        _ => false
+      }
+  }
+}
+
+fn dcel_fails_seeing(store: FabricDbBinding, key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr, observed_generation: Int) -> Bool {
+  match dcel_verified(key: key, expected_generation: expected_generation, value: value) {
+    Absent => false
+    Present { value: v } =>
+      match fabric_db_compare_and_set(store: store, verified: v) {
+        CasPreconditionFailed { expected: _, observed: CasReadablePresent { version: o } } => cas_generation_count(g: o.generation) == observed_generation
+        _ => false
+      }
+  }
+}
+
+fn dcel_reads(store: FabricDbBinding, key: NonEmptyStr, generation: Int, value: String) -> Bool {
+  match fabric_db_observe_cas_slot(store: store, key: key) {
+    CasObservedReadable { readable: CasReadablePresent { version: v } } => cas_generation_count(g: v.generation) == generation && (v.value as String) == value
+    _ => false
+  }
+}
+
+fn dcel_reads_absent(store: FabricDbBinding, key: NonEmptyStr) -> Bool {
+  match fabric_db_observe_cas_slot(store: store, key: key) {
+    CasObservedReadable { readable: CasReadableAbsent } => true
+    _ => false
+  }
+}
+
+test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution() -> Bool {
+  dcel_with_temp_dir(scenario: fn(dir) {
+    let e1 = dcel_store(dir: dir)
+    let e2 = dcel_store(dir: dir)
+    let key = "witness-slot" as NonEmptyStr
+    dcel_store_ready(dir: dir)
+      && dcel_reads_absent(store: e1, key: key)
+      && dcel_reads_absent(store: e2, key: key)
+      && dcel_commits_at(store: e1, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
+      && dcel_reads(store: e2, key: key, generation: 1, value: "first")
+      && dcel_fails_seeing(store: e2, key: key, expected_generation: 0, value: "second-create" as NonEmptyStr, observed_generation: 1)
+      && dcel_commits_at(store: e2, key: key, expected_generation: 1, value: "second" as NonEmptyStr, generation: 2)
+      && dcel_fails_seeing(store: e1, key: key, expected_generation: 1, value: "stale" as NonEmptyStr, observed_generation: 2)
+      && dcel_reads(store: e1, key: key, generation: 2, value: "second")
+      && dcel_reads_absent(store: e1, key: "another-slot" as NonEmptyStr)
+  })
+}
+
+// A VALUE THAT CYCLES DOES NOT COLLAPSE THE GENERATION, AT THE STORE BOUNDARY THE REPAIR LIVES
+// AT. W1 observes the slot at A@1 and keeps the head's exact object ref O1; the slot moves to B@2
+// and back to A@3 (O3). The repair is that O3 != O1 -- each generation object carries the
+// generation it lands, so the same value at another generation is another object -- and W1's
+// advance expecting O1 is FabricHeadMoved carrying the A@3 head. Without the generation in the
+// object O3 == O1 and that stale advance would pass the head's object comparison; a fresh
+// compare-and-set after the cycle would refuse on either implementation (it re-observes
+// generation 3), so this drives fabric_db_advance directly with W1's stale expectation.
+test fn a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution() -> Bool {
+  dcel_with_temp_dir(scenario: fn(dir) {
+    let store = dcel_store(dir: dir)
+    let key = "cycling-slot" as NonEmptyStr
+    dcel_store_ready(dir: dir)
+      && dcel_commits_at(store: store, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
+      && (match dcel_head_object(store: store, key: key) {
+            Absent => false
+            Present { value: o1 } =>
+              dcel_commits_at(store: store, key: key, expected_generation: 1, value: "second" as NonEmptyStr, generation: 2)
+                && dcel_commits_at(store: store, key: key, expected_generation: 2, value: "first" as NonEmptyStr, generation: 3)
+                && (match dcel_head_object(store: store, key: key) {
+                      Absent => false
+                      Present { value: o3 } =>
+                        !fabric_object_ref_eq(a: o1, b: o3)
+                          && (match fabric_db_put(binding: store, object: FabricObject { links: [] as List<FabricObjectRef>, body: "{\"value\":\"stale\"}" as NonEmptyStr }) {
+                                FabricObjectStored { object: target } =>
+                                  (match fabric_db_advance(binding: store, name: cas_slot_head(key: key), expected: ExpectHeadAt { object: o1 }, target: target) {
+                                    FabricHeadMoved { expected: _, observed: FabricHeadAt { object: now, generation: g } } => fabric_object_ref_eq(a: now, b: o3) && cas_generation_count(g: g) == 3
+                                    _ => false
+                                  })
+                                _ => false
+                              })
+                          && dcel_reads(store: store, key: key, generation: 3, value: "first")
+                    })
+          })
+  })
+}
+
+fn dcel_head_object(store: FabricDbBinding, key: NonEmptyStr) -> FabricObjectRef? {
+  match fabric_db_head(binding: store, name: cas_slot_head(key: key)) {
+    FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } => Present { value: o }
+    _ => none
+  }
+}

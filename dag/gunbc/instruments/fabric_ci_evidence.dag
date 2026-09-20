@@ -3,6 +3,7 @@ module tools.fabric_ci_evidence
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
+import std.hex { hex_word_value }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import tools.fabric_ci_evidence_projection_fixture {
@@ -76,33 +77,8 @@ fn fabric_ci_shell_crossing_coordinates_hash(values: List<NonEmptyStr>) -> Conte
   content_hash_of_value(value: fabric_ci_framed_coordinates(values: values))
 }
 
-fn fabric_ci_hex_value(c: String) -> Int? {
-  let found = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], init: -1, f: fn(acc, i) {
-    if substring(s: "0123456789ABCDEF", start: i, end: i + 1) == c { i } else { acc }
-  })
-  if found < 0 { none } else { Present { value: found } }
-}
-
 fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
-  match fabric_ci_hex_value(c: char_at(s: wire, pos: at)) {
-    Absent => Absent
-    Present { value: a } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 1)) {
-      Absent => Absent
-      Present { value: b } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 2)) {
-        Absent => Absent
-        Present { value: c } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 3)) {
-          Absent => Absent
-          Present { value: d } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 4)) {
-            Absent => Absent
-            Present { value: e } => match fabric_ci_hex_value(c: char_at(s: wire, pos: at + 5)) {
-              Absent => Absent
-              Present { value: f } => Present { value: a * 1048576 + b * 65536 + c * 4096 + d * 256 + e * 16 + f }
-            }
-          }
-        }
-      }
-    }
-  }
+  hex_word_value(word: substring(s: wire, start: at, end: at + 6), max_digits: 6)
 }
 
 type FabricCiDecodeState

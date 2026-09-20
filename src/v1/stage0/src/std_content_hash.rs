@@ -239,6 +239,14 @@ pub enum ContentHashComparison {
     ContentHashCrossFamilyIncomparable,
 }
 
+pub fn content_hash_equal(left: Rc<ContentHash>, right: Rc<ContentHash>) -> bool {
+    match compare_content_hash(left.clone(), right.clone()) {
+        ContentHashComparison::ContentHashEqual => true,
+        ContentHashComparison::ContentHashDifferent => false,
+        ContentHashComparison::ContentHashCrossFamilyIncomparable => false,
+    }
+}
+
 pub fn compare_content_hash(
     left: Rc<ContentHash>,
     right: Rc<ContentHash>,
@@ -301,6 +309,66 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
         ContentHash::Sha256Hash(d) => sha256_digest_wire_form(d.clone()),
         ContentHash::Sha1Hash(d) => d.hex.clone(),
         ContentHash::Sha512Hash(d) => sha512_digest_wire_form(d.clone()),
+    }
+}
+
+pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
+    if v1_rt::starts_with(wire.clone(), "sha256:".to_string()) {
+        match Rc::new(
+            wire.clone()
+                .split(&"sha256:".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .get((1) as usize)
+        .cloned()
+        {
+            std::option::Option::None => std::option::Option::None,
+            Some(hex) => match sha256_hex_digest(hex.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(d) => Some(as_content_hash_cryptographic(d.clone())),
+            },
+        }
+    } else {
+        if v1_rt::starts_with(wire.clone(), "sha512:".to_string()) {
+            match Rc::new(
+                wire.clone()
+                    .split(&"sha512:".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .get((1) as usize)
+            .cloned()
+            {
+                std::option::Option::None => std::option::Option::None,
+                Some(hex) => match sha512_hex_digest(hex.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(d) => Some(as_content_hash_sha512(d.clone())),
+                },
+            }
+        } else {
+            if content_hash_validate_lower_hex_length(wire.clone(), 40) {
+                match sha1_hex_digest(wire.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(d) => Some(as_content_hash_sha1(d.clone())),
+                }
+            } else {
+                content_hash_from_structural_digest(wire.clone())
+            }
+        }
+    }
+}
+
+pub fn parse_content_hash(wire: String) -> Option<Rc<ContentHash>> {
+    match parse_content_hash_candidate(wire.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(parsed) => {
+            if (serialize_content_hash(parsed.clone()) == wire.clone()) {
+                Some(parsed.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
     }
 }
 

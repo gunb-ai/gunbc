@@ -1,0 +1,192 @@
+module gunbc.durable_cas_fabric_db
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash }
+import std.durable_compare_and_set {
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasSlotObservationRefused, CasGenerationPublicationRefused,
+  cas_generation_count, cas_generation_next, cas_generation_first,
+}
+import gunbc.durable_cas_file_store { VerifiedCasAttempt }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_int, json_object, serialize_json }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import product.capacity.event_json { member_string, member_nonempty, member_nat }
+import std.fabric_db {
+  FabricObject, FabricObjectRef, FabricStoredObject, fabric_db_fault_wire,
+  FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, FabricHeadExpectation,
+  FabricObjectStored, FabricPutRefused, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
+}
+import gunbc.fabric_db_client { FabricDbBinding, fabric_db_put, fabric_db_advance, fabric_db_closure }
+
+// ── A SECOND REALIZATION OF THE DURABLE COMPARE-AND-SET: ONE SLOT IS ONE FABRIC-DB HEAD ────────
+//
+// std.durable_compare_and_set is a shape, and gunbc.durable_cas_file_store is one handler bound to
+// it: an exclusive create under a root on ONE filesystem, whose own authority says its guarantee
+// holds only for writers addressing the same store instance. A claim that has to be single-use
+// across the FLEET -- an operator's consent to a destructive transaction, consumed once whichever
+// executor runs it -- cannot live there: two hosts have two roots, and each sees the other's slot
+// absent. The fabric DB (std.fabric_db, one placed store every host reaches through
+// gunbc.fabric_db_client) is exactly the fleet-wide linearization such a claim needs: a named head
+// advanced by a compare-and-set on the expected object, whose generation the store itself keeps.
+// So this module binds the same CAS shape to a head. DESIGN §3: transport is a realization handler
+// bound to the shape, one of N, never a fact about the operation -- the attempt a caller builds is
+// the same CasAttempt<NonEmptyStr> the file store takes, and the caller chooses the store.
+//
+// THE MAPPING. The slot key names the head `cas-slot-<key>`; every committed generation is one
+// link-free object whose body carries the value, its content digest AND THE GENERATION IT LANDS
+// (the one the writer derived from its observation), so the object's identity is never the value
+// alone: a value that cycles A -> B -> A lands three distinct objects, and a writer that observed
+// A at generation 1 cannot advance against the A at generation 3 -- the head's expected-object
+// compare-and-set would otherwise collapse to value identity. The slot's generation is the head's
+// own (the store's compare-and-set generation), the object's carried generation must equal it on
+// every read, and ExpectSlotAbsent / ExpectSlotGeneration are an advance against an absent head /
+// against the object the observed generation holds -- so the store's head decides the race, and a
+// writer that observed generation N while another landed N+1 is FabricHeadMoved, re-observed so
+// the losing side reports what is now there. An unreadable head is CasStoreRefused, never an
+// absent slot.
+//
+// THE DIGEST OBLIGATION IS DISCHARGED AT THE SAME MINT. The interface says the immutable object
+// store that holds the bytes verifies bytes against digest; the file store's admit_cas_attempt is
+// that mint and this store takes only its VerifiedCasAttempt, so one admission serves both
+// handlers rather than each re-spelling the comparison. The head name is the key under one prefix
+// and no separator, the one predicate the file store's slot addressing asks.
+
+data cas_slot_head_prefix: String = "cas-slot-"
+
+fn cas_slot_head(key: NonEmptyStr) -> NonEmptyStr {
+  join([cas_slot_head_prefix, key as String], "") as NonEmptyStr
+}
+
+// The generation object: the value, the content digest the attempt was admitted with, and the
+// generation it lands.
+fn cas_slot_object(value: NonEmptyStr, content: ContentHash, generation: CasGeneration) -> FabricObject {
+  FabricObject { links: [] as List<FabricObjectRef>, body: serialize_json(v: json_object(members: [
+    json_kv(key: "value", value: json_string(s: value as String)),
+    json_kv(key: "content", value: json_string(s: serialize_content_hash(hash: content) as String)),
+    json_kv(key: "generation", value: json_int(n: cas_generation_count(g: generation))),
+  ])) as NonEmptyStr }
+}
+
+type CasSlotBody
+  = CasSlotBodyDecoded { value: NonEmptyStr, content: ContentHash, generation: Int }
+  | CasSlotBodyMalformed { detail: String }
+
+fn cas_slot_body_decode(text: String) -> CasSlotBody {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => CasSlotBodyMalformed { detail: "the slot object is not a JSON document" }
+    JsonDocumentParsed { value: doc } =>
+      match member_nonempty(doc: doc, key: "value") {
+        Absent => CasSlotBodyMalformed { detail: "the slot object carries no value" }
+        Present { value: v } =>
+          match member_string(doc: doc, key: "content") {
+            Absent => CasSlotBodyMalformed { detail: "the slot object carries no content digest" }
+            Present { value: c } =>
+              match parse_content_hash(wire: c) {
+                Absent => CasSlotBodyMalformed { detail: "the slot object's content digest is not a content-hash wire" }
+                Present { value: h } =>
+                  match member_nat(doc: doc, key: "generation") {
+                    Absent => CasSlotBodyMalformed { detail: "the slot object carries no generation" }
+                    Present { value: g } => CasSlotBodyDecoded { value: v, content: h, generation: g }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── THE OBSERVATION ────────────────────────────────────────────────────────────────────────────
+
+// What the head holds, with the object the next advance must expect. Kept beside the readable
+// slot rather than folded into it because the interface's CasReadableSlot deliberately carries
+// no store position -- the head's object is this realization's fact.
+type CasSlotHead
+  = CasSlotHeadAbsent
+  | CasSlotHeadAt { object: FabricObjectRef, version: CasSlotVersion<NonEmptyStr> }
+  | CasSlotHeadUnreadable { cause: CasUnreadableSlot }
+
+fn fabric_db_observe_cas_slot_head(store: FabricDbBinding, key: NonEmptyStr) -> CasSlotHead {
+  match fabric_db_closure(binding: store, name: cas_slot_head(key: key), bound: 1) {
+    FabricClosureRefused { fault: f } => CasSlotHeadUnreadable { cause: CasUnreadableReadRefused { detail: fabric_db_fault_wire(fault: f) as NonEmptyStr } }
+    FabricClosureBudgetExhausted { at: _, bound: _ } => CasSlotHeadUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: 1 } }
+    FabricClosureRead { reading: r, newest_first: xs } =>
+      match r {
+        FabricHeadAbsent => CasSlotHeadAbsent
+        FabricHeadAt { object: o, generation: g } =>
+          match first(xs) {
+            Absent => CasSlotHeadUnreadable { cause: CasUnreadableMalformed { detail: "the head names an object the closure did not return" as NonEmptyStr } }
+            Present { value: stored } =>
+              match cas_slot_body_decode(text: stored.content.body as String) {
+                CasSlotBodyMalformed { detail: d } => CasSlotHeadUnreadable { cause: CasUnreadableMalformed { detail: d as NonEmptyStr } }
+                CasSlotBodyDecoded { value: v, content: c, generation: og } =>
+                  if og != cas_generation_count(g: g) { CasSlotHeadUnreadable { cause: CasUnreadableMalformed { detail: join(["the head is at generation ", to_string(cas_generation_count(g: g)), " but its object was written for generation ", to_string(og)], "") as NonEmptyStr } } }
+                  else { CasSlotHeadAt { object: o, version: CasSlotVersion { generation: g, content: c, value: v } } }
+              }
+          }
+      }
+  }
+}
+
+fn fabric_db_observe_cas_slot(store: FabricDbBinding, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  match fabric_db_observe_cas_slot_head(store: store, key: key) {
+    CasSlotHeadUnreadable { cause: c } => CasObservedUnreadable { cause: c }
+    CasSlotHeadAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    CasSlotHeadAt { object: _, version: v } => CasObservedReadable { readable: CasReadablePresent { version: v } }
+  }
+}
+
+// ── THE COMPARE-AND-SET ────────────────────────────────────────────────────────────────────────
+//
+// THE EXPECTATION IS COMPARED TO WHAT THE STORE HOLDS, and the advance then names the observed
+// object; the store's head decides the race. A moved head re-observes so the losing side reports
+// what is now there; the committed generation is the one the store reports, never a prediction.
+fn fabric_db_compare_and_set(store: FabricDbBinding, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  let attempt = verified.attempt
+  match fabric_db_observe_cas_slot_head(store: store, key: attempt.key) {
+    CasSlotHeadUnreadable { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
+    CasSlotHeadAbsent =>
+      match attempt.expected {
+        ExpectSlotGeneration { generation: _ } => CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
+        ExpectSlotAbsent => cas_slot_advance(store: store, verified: verified, expected: ExpectHeadAbsent, target: cas_generation_first())
+      }
+    CasSlotHeadAt { object: o, version: v } =>
+      match attempt.expected {
+        ExpectSlotAbsent => CasPreconditionFailed { expected: attempt.expected, observed: CasReadablePresent { version: v } }
+        ExpectSlotGeneration { generation: g } =>
+          if cas_generation_count(g: g) == cas_generation_count(g: v.generation) {
+            cas_slot_advance(store: store, verified: verified, expected: ExpectHeadAt { object: o }, target: cas_generation_next(g: v.generation))
+          } else {
+            CasPreconditionFailed { expected: attempt.expected, observed: CasReadablePresent { version: v } }
+          }
+      }
+  }
+}
+
+fn cas_slot_advance(store: FabricDbBinding, verified: VerifiedCasAttempt, expected: FabricHeadExpectation, target: CasGeneration) -> CasOutcome<NonEmptyStr> {
+  let attempt = verified.attempt
+  match fabric_db_put(binding: store, object: cas_slot_object(value: attempt.proposed, content: attempt.proposed_content, generation: target)) {
+    FabricPutRefused { fault: f } => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: fabric_db_fault_wire(fault: f) as NonEmptyStr } }
+    FabricObjectStored { object: stored } =>
+      match fabric_db_advance(binding: store, name: cas_slot_head(key: attempt.key), expected: expected, target: stored) {
+        FabricHeadAdvanced { object: _, generation: g } =>
+          if cas_generation_count(g: g) != cas_generation_count(g: target) {
+            CasStoreRefused { cause: CasGenerationPublicationRefused { detail: join(["the store advanced the head to generation ", to_string(cas_generation_count(g: g)), ", not the ", to_string(cas_generation_count(g: target)), " this writer derived from its observation"], "") as NonEmptyStr } }
+          } else {
+            CasCommitted { committed: CasSlotVersion { generation: g, content: attempt.proposed_content, value: attempt.proposed } }
+          }
+        FabricHeadAdvanceRefused { fault: f } =>
+          CasStoreRefused { cause: CasGenerationPublicationRefused { detail: fabric_db_fault_wire(fault: f) as NonEmptyStr } }
+        FabricHeadMoved { expected: _, observed: _ } =>
+          match fabric_db_observe_cas_slot(store: store, key: attempt.key) {
+            CasObservedUnreadable { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
+            CasObservedReadable { readable: r } => CasPreconditionFailed { expected: attempt.expected, observed: r }
+          }
+      }
+  }
+}

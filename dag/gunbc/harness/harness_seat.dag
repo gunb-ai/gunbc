@@ -70,6 +70,8 @@ import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import extdeps.systemd { InvocationIDProperty }
 import std.algebra { trim }
+import gunbc.spark.pair_serving_authority { pair_serving_authority_for, pair_serving_apply_admits }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire }
 import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context, fleet_locus_ssh_target }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -1108,7 +1110,39 @@ type HarnessAcquisition
 // which is the leak the ceiling of one exists to prevent, arriving through the recovery path
 // (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
 // could not give back is named in the reason.
+// THE AUTHORITY IS READ AGAIN AFTER THE SEAT'S COMPARE-AND-SET, AND A MOVED AUTHORITY RELEASES THE
+// SEAT. The pre-check in harness_acquire_on saves an attempt; it does not settle a race, because
+// the authority and the seat live on different partitions and a suspension can land between the
+// read and the seat's write. So the seat is provisional until the authority is read once more
+// AFTER the grant: still admitting, the seat stands; moved, the seat is released on its own
+// partition and no binding is returned -- and if that release cannot land, the refusal says so,
+// because a seat that may still be held is not a turn to place elsewhere. This is the same shape
+// harness_fence_grant already gives the engine's continuity, and it runs FIRST, so the seat never
+// outlives a fence by the length of an HTTP read.
+type SeatAfterGrant
+  = SeatStillAdmitted
+  | SeatReleasedAuthorityMoved { cause: String }
+  | SeatUnreleasedAuthorityMoved { cause: String, release_detail: String }
+
+fn harness_seat_after_grant_authority(store: FabricDbBinding, group: FabricGroup, partition: PartitionId, ceiling: Nat, grant: LeaseGrant, now: EpochSecs) -> SeatAfterGrant {
+  match harness_seat_authority_gate(store: store, group: group, now: now) {
+    SeatAuthorityUngoverned => SeatStillAdmitted
+    SeatAuthorityAdmits => SeatStillAdmitted
+    SeatAuthorityRefuses { cause: why } =>
+      match release_retry(store: store, partition: partition, ceiling: ceiling, reference: grant.reference, reason: "the pair-serving authority moved between admission and the seat's acquisition" as NonEmptyStr, now: now) {
+        HarnessSeatReleased { partition: _ } => SeatReleasedAuthorityMoved { cause: why }
+        HarnessSeatReleaseRefused { detail: d } => SeatUnreleasedAuthorityMoved { cause: why, release_detail: d }
+      }
+  }
+}
+
 fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricDbBinding, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
+  match harness_seat_after_grant_authority(store: store, group: candidate.group, partition: partition, ceiling: candidate.ceiling, grant: grant, now: now) {
+    SeatReleasedAuthorityMoved { cause: why } =>
+      AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the pair-serving authority moved between admission and the seat's acquisition, and the seat was released: ", why], "")) }
+    SeatUnreleasedAuthorityMoved { cause: why, release_detail: d } =>
+      AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the pair-serving authority moved between admission and the seat's acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why, " (release: ", d, ")"], "")) }
+    SeatStillAdmitted =>
   match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine_at(endpoint: candidate.endpoint, at: now).launch, now: to_string(now)).reading {
     EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
       let released = release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
@@ -1140,10 +1174,46 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
           },
         }
   }
+  }
 }
 
+// A SEAT IS MINTED ONLY UNDER AN ACTIVE PAIR-SERVING AUTHORITY, READ AT ACQUIRE TIME. The Cut D
+// transaction's first write (gunbc.spark.pair_serving_d0) suspends a group's authority so that
+// nothing starts on its hosts while it is read and settled; a seat is new work admitted to the
+// answering engine, so it is one of the things that must not start. The offer was observed
+// under whatever authority stood when the route was read; the authority is read AGAIN here, at
+// the acquire, so a suspension that lands between observing the offer and taking the seat
+// refuses the seat rather than using stale offer evidence. A group the pair-serving authority
+// does not claim (the canary) is not governed by it and is not gated here; a claimed group whose
+// authority cannot be read is refused -- unreadability is never permission.
+type SeatAuthorityGate
+  = SeatAuthorityUngoverned
+  | SeatAuthorityAdmits
+  | SeatAuthorityRefuses { cause: String }
+
+fn harness_seat_authority_gate(store: FabricDbBinding, group: FabricGroup, now: EpochSecs) -> SeatAuthorityGate {
+  match pair_serving_authority_for(group: group) {
+    Absent => SeatAuthorityUngoverned
+    Present { value: _ } =>
+      match current_pair_serving_authority(store: store, group: group, at: now) {
+        CurrentAuthorityUnread { group: _, step: st, reason: why } =>
+          SeatAuthorityRefuses { cause: join(["the pair-serving authority could not be read at ", st, ", so no seat is minted: ", why], "") }
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+          if pair_serving_apply_admits(a: a) { SeatAuthorityAdmits }
+          else { SeatAuthorityRefuses { cause: join(["the pair-serving authority does not admit new work: ", authority_wire(a: a)], "") } }
+      }
+  }
+}
 
 fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricDbBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
+  match harness_seat_authority_gate(store: store, group: candidate.group, now: now) {
+    SeatAuthorityRefuses { cause: why } => AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why) }
+    SeatAuthorityUngoverned => harness_acquire_under_authority(candidate: candidate, class: class, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round)
+    SeatAuthorityAdmits => harness_acquire_under_authority(candidate: candidate, class: class, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round)
+  }
+}
+
+fn harness_acquire_under_authority(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricDbBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group, class: class) {
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }

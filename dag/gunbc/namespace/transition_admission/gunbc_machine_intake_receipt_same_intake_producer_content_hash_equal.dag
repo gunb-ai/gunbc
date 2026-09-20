@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_machine_intake_receipt_same_intake_producer_content_hash_equal
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
+
+data gunbc_machine_intake_receipt_same_intake_producer_content_hash_equal: TransitionAdmission = TransitionAdmission {
+  label: "content_hash_equal is homed in std.content_hash beside the comparison it folds (review 67905); gunbc.machine_intake_subject's mint is deleted and its consumers rebind" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.machine_intake_receipt", "same_intake_producer"),
+    spelling: "content_hash_equal" as NonEmptyStr,
+    expected_candidates: [decl_ref("std.content_hash", "content_hash_equal")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: PullRequest { number: 11666 as UInt32 },
+  owner_pull_request: 11555 as UInt32,
+}
