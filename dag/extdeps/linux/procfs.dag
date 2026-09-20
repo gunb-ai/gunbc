@@ -27,6 +27,7 @@ type ProcfsPath
   | ProcNetUnix
   | ProcSwaps
   | ProcSysKernelHostname
+  | ProcNetPnp
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -37,6 +38,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcNetUnix => "/proc/net/unix"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
+    ProcNetPnp => "/proc/net/pnp"
   }
 }
 
@@ -48,6 +50,15 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // majflt is field 12 of that line (1-based, counting pid and comm), the count of page
 // faults that required reading a page back from disk — the process's own record of its
 // resident pages having been evicted and refaulted.
+// ProcNetPnp IS READ BY A GUEST THIS REPOSITORY BUILDS, NOT BY A PROCESS IT RUNS, and it is rostered
+// here because the read is one this repository CAUSES. The kernel's IP autoconfiguration
+// (Documentation/admin-guide/nfs/nfsroot.rst, "ip=" and the /proc/net/pnp section) exports the
+// <dns0-ip> field of the ip= boot directive to /proc/net/pnp under the prefix "nameserver ", in a
+// form DNS resolvers recognise, and states that /etc/resolv.conf is linked to it on such systems.
+// gunbc.runner_guest_image installs exactly that link, so every resolver library in a booted guest
+// reads this path. The file is synthesised by the kernel's ipconfig, not by proc.5's process table,
+// and exists only on a kernel with IP_PNP -- the guest kernel this fleet boots with ip= is one by
+// construction, since ip= is that option's directive.
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStat,
@@ -56,6 +67,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
+  ProcNetPnp,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
@@ -180,5 +192,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.linux.procfs.extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [nfsroot_ip_autoconfiguration_authority]
+}
+
+// /proc/net/pnp IS DOCUMENTED BY THE KERNEL'S NFS-ROOT GUIDE, NOT BY proc.5, so the roster's
+// ProcNetPnp row cites its own document rather than borrowing the anchor above.
+data nfsroot_ip_autoconfiguration_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/nfs/nfsroot.html"
+  }
 }
