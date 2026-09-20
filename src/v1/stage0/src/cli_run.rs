@@ -186,14 +186,14 @@ pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
 mod test_migration;
 pub(crate) use test_migration::*;
-// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
-// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
+// is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
-#[path = "namespace_wave_admission.rs"]
-pub mod namespace_wave_admission;
+#[path = "namespace_baseline.rs"]
+pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
