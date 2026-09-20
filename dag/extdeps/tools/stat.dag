@@ -81,6 +81,20 @@ fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }
 
+// %u AND %a AND %s AS COMMANDS, for a caller that reads back a file it just staged: numeric owner,
+// octal mode, size in bytes. One token each, for the reason the argv pair above states.
+fn stat_owner_uid_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%u", "--", path])
+}
+
+fn stat_mode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%a", "--", path])
+}
+
+fn stat_size_bytes_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
+}
+
 // %b IS THE NUMBER OF BLOCKS ALLOCATED and %B the size of each in bytes, so their product is the
 // bytes a file actually occupies -- which for a sparse image is the bytes WRITTEN, not the
 // apparent size %s reports. That is the reading a workspace image's usage wants, and it is the

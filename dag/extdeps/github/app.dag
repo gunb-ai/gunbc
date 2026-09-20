@@ -1080,8 +1080,10 @@ service github.AppPublicRegistry {
 // THE APP-JWT CREDENTIAL IS READ AT THE TRANSPORT FROM THE ENVIRONMENT, NOT TAKEN AS AN OPERATION
 // INPUT, following the extdeps.google.sheets and github.Checks precedent and for the reason
 // list_app_installations_citation states outright: "You must use a JWT to access this endpoint." That
-// JWT is RS256-signed with the App's private key, and NOTHING IN THIS CORPUS CAN SIGN RS256 - verified,
-// not assumed. So the minting step is external and hourly (org_admin_auth: iat backdated up to 60s,
+// JWT is RS256-signed with the App's private key. The corpus CAN sign one on a host that holds the key
+// FILE -- the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize, performed by gunbc.github_effect_perform -- but
+// this service's callers (the census and org instruments) run where no key file is custodied, so for
+// them the minting step is still external and hourly (org_admin_auth: iat backdated up to 60s,
 // exp at most 10 minutes), and the boundary this module holds is that no caller can interpolate a token
 // into an argument list: the transport reads GITHUB_APP_JWT or the request goes out unauthenticated and
 // upstream refuses it with a status this operation classifies.
@@ -1200,10 +1202,11 @@ fn installation_from_record(record: GitHubAppInstallationRecord) -> Installation
 // GitHubInstallationTokenRequest above carried the narrowing vocabulary and the verdict fold but had
 // no spelling of the POST body those narrowings become, so the half of the budget path that IS
 // decidable here - what we would ask for, and whether it exceeds the installation - stopped short of
-// the wire. The endpoint is named through org_admin_auth's citation-bearing builder rather than
-// respelled. There is no operation: the request needs an RS256-signed App JWT, and nothing in this
-// corpus can sign one, so declaring an operation would be a route that cannot execute (DESIGN 4b:
-// do not cite a check for a red it cannot produce).
+// the wire. installation_token_request_url names the endpoint through org_admin_auth's
+// citation-bearing builder. The OPERATION is github.AppInstallationAccessTokens below, taking the
+// App JWT as an input; its rest path template is necessarily a transport literal (the template
+// language interpolates the id into the path, it cannot call a builder), and it names the same
+// endpoint -- a divergence of spelling the transport forces, stated rather than hidden.
 fn installation_token_request_url(request: GitHubInstallationTokenRequest) -> String {
   github_app_installation_access_token_url(installation_id: request.installation_id.value)
 }
@@ -1262,4 +1265,42 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.list_app_installations_citation,
     extdeps.github.app.webhook_events_citation
   ]
+}
+
+// POST /app/installations/{installation_id}/access_tokens, cited by
+// extdeps.github.org_admin_auth installation_token_citation. It authenticates AS THE APP -- the
+// Bearer is an RS256 App JWT (extdeps.auth.jws), never an installation or user token -- and answers
+// 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
+// String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
+// classifies it through extdeps.transports.rest classify_rest_outcome as RestMutationExchange.
+service github.AppInstallationAccessTokens {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation Create {
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      token: Secret from "token"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/app/installations/\{installation_id\}/access_tokens",
+      body: { }
+    }
+    response {
+      201 => GitHubInstallationAccessTokenBody
+    }
+  }
+}
+
+type GitHubInstallationAccessTokenBody {
+  token: String
+  expires_at: String
 }
