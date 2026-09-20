@@ -6,7 +6,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4,
   glm_native_concurrent_profile, serving_topology_rank_count,
 }
 import gunbc.spark.serving_arm_launch { arm_node_roster, ArmNodesResolved, ArmNodeRosterRefused }
@@ -32,10 +32,15 @@ type FabricServingAssignment sole_constructor {
   profile: ServingLaunchProfile
 }
 
+// THE RUNTIME IS GunbcGlm53DerivedGb10, THE IMAGE THE ARM IS ACTUALLY SERVING (sha256:c7d63d15...,
+// read from the running glm-native-tp4 container on srv9, 2026-09-18). This row first named
+// GunbcGlm53NopeDerivedGb10, whose pin is the OLDER 2026-09-12 hand build (sha256:41366caf...); a
+// relaunch planned from it would have moved group B backwards onto an image it no longer serves.
+// The NoPE row stays in gunbc.spark.serving_arm as history, not as an alternative (#11565).
 data glm_group_b_serving_assignment: FabricServingAssignment = FabricServingAssignment {
   group: FabricGroupB,
   checkpoint: Glm53NativeFp8,
-  runtime: GunbcGlm53NopeDerivedGb10,
+  runtime: GunbcGlm53DerivedGb10,
   topology: FourSparkTp4,
   profile: glm_native_concurrent_profile,
 }

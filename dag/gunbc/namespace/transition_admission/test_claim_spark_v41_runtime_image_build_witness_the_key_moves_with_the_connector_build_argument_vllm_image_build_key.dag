@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_spark_v41_runtime_image_build_witness_the_key_moves_with_the_connector_build_argument_vllm_image_build_key
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_spark_v41_runtime_image_build_witness_the_key_moves_with_the_connector_build_argument_vllm_image_build_key: TransitionAdmission = TransitionAdmission {
+  label: "IMAGE-IDENTITY EXTRACTION vllm_image_build_key home gunbc.spark.vllm_image_identity" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.spark.v41_runtime_image_build_witness", "the_key_moves_with_the_connector_build_argument"),
+    spelling: "vllm_image_build_key" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.spark.vllm_image_identity", "vllm_image_build_key")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11565 as UInt32,
+}

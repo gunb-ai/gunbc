@@ -21,18 +21,18 @@ import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
 }
-import gunbc.spark.pair_serving_realization {
-  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
-}
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread, VllmUsageStatsContentClass,
   ConfigurationAndHardwareMetadataOnly, CarriesRequestMaterial,
-  vllm_usage_stats_reporting,
+  vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding }
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+}
+import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
@@ -204,7 +204,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
     basis: "The operator asserts that the Spark serving groups serve gunbc itself and nobody else as of this date. Attributable assertion, not a measurement: who the served turns are for is a fact about our intent, which no probe can read off a running engine.",
   },
   serves: "gunbc itself. Every turn placed on this route originates inside this repository's own harness and control plane; no turn is served to any party outside gunbc and none crosses an organisational or national boundary.",
-  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats). WHETHER THAT PATH IS ACTIVE FOR THIS FLEET'S LAUNCH IS UNESTABLISHED and this row does not assert it: gunbc.spark.first_party_serving spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, so nothing here establishes that the reporter runs, or that it does not. AND THE REMEDY IS NOT A DECLARATION EDIT. An earlier spelling said zero egress was one environment variable away -- VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch. This module no longer reads the declared launch environment at all, so setting either changes what the launch is DECLARED to do and changes nothing this decision consults; a reader following that advice would observe no change and have no way to learn why. What resolves the route is the evidence named at spark_serving_usage_stats_declared_environment_obligation.",
+  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats). WHETHER THAT PATH IS ACTIVE FOR THIS FLEET'S LAUNCH IS READ, NOT ASSERTED: both serving renders declare the reporter off (VLLM_NO_USAGE_STATS=1, spelled from extdeps.vllm.usage_stats' own row), and gunbc.spark.first_party_serving spark_serving_usage_stats_standing classifies the ANSWERING CONTAINER'S effective environment -- Config.Env carried by the incarnation observation -- by upstream's exact-equality predicate, so the route's telemetry path is Absent when the reading shows the disable, Located under the operator's 2026-09-11 ruling when it shows the documented metadata-only default, and unread when no incarnation is observed or the destination is overridden. A declaration edit alone still resolves nothing: what changed on 2026-09-17 is that the reading exists.",
   hardware_custody: "operator-owned and operator-held. There is no third-party agreement governing this route because there is no third party: no hosting contract, no processor, and no service terms stand between us and the hardware.",
 }
 
@@ -488,6 +488,7 @@ type SparkServingRealization {
   readback: VllmModelsRouteReadbackStanding
   endpoint: VllmEndpointProcessLaunch
   incarnation: EndpointIncarnationStanding
+  declared_model_path: String?
 }
 
 
@@ -507,11 +508,12 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // something answered, not what it is.
 //
 // WHAT IS LAUNCH-BOUND IS WHAT THE PROCESS ITSELF REPORTED. gunbc.spark.vllm_observed's models-route
-// readback carries the configured_model_path the running engine answered with, and
-// gunbc.spark.pair_serving_realization derives the path the pair-serving launch is declared to
-// serve from its pinned snapshot. Those two agreeing is evidence ABOUT THE PROCESS rather than about
-// our intent for it: a different engine serving a different checkpoint answers with a different
-// path, and a readback this repository could not decode answers with none at all.
+// readback carries the configured_model_path the running engine answered with, and the realization
+// carries the path the GROUP'S launch is declared to serve, derived from its pinned snapshot by the
+// group's own serving authority (gunbc.spark.serving_group_launch: the pair-serving realization for
+// group A, the native arm's for group B). Those two agreeing is evidence ABOUT THE PROCESS rather
+// than about our intent for it: a different engine serving a different checkpoint answers with a
+// different path, and a readback this repository could not decode answers with none at all.
 //
 // WHAT THIS JOIN ANSWERS AND WHAT IT DOES NOT, stated as two separate questions because an earlier
 // spelling of this note ran them together and its own author then read it as a caveat about weights.
@@ -521,7 +523,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // -- a second engine started with the same model path reports the same string. Nothing observable
 // here separates them, so the residual is real rather than pending: no widening of this comparison
 // closes it. The ARM NAME now carries that limit rather than this sentence -- it is
-// RealizationMatchesPairServingConfiguration, which is what it establishes. The consequence is
+// RealizationMatchesDeclaredConfiguration, which is what it establishes. The consequence is
 // carried where it matters, at spark_serving_usage_stats_declared_environment_obligation: because
 // this arm does not establish which launch answered, no declared fact about that launch -- its
 // container environment above all -- may be attributed to the process on the strength of it.
@@ -543,7 +545,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // validation standing where construction was available, and a case mismatch in exactly that pattern
 // cost a floor run on this branch.
 type SparkRealizationIdentity
-  = RealizationMatchesPairServingConfiguration { configured_model_path: NonEmptyStr }
+  = RealizationMatchesDeclaredConfiguration { configured_model_path: NonEmptyStr }
   | RealizationReportedPathDiffers { reported: NonEmptyStr, declared: NonEmptyStr }
   | RealizationDeclaredPathUnpinned
   | RealizationReadbackUnresolved
@@ -551,10 +553,10 @@ type SparkRealizationIdentity
 fn spark_realization_identity(realization: SparkServingRealization) -> SparkRealizationIdentity {
   match realization.readback {
     ModelsRouteRead { readback: r } =>
-      match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+      match realization.declared_model_path {
         Present { value: declared } =>
           if (r.configured_model_path as String) == declared {
-            RealizationMatchesPairServingConfiguration { configured_model_path: r.configured_model_path }
+            RealizationMatchesDeclaredConfiguration { configured_model_path: r.configured_model_path }
           } else {
             RealizationReportedPathDiffers {
               reported: r.configured_model_path,
@@ -596,7 +598,18 @@ data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extd
 // leaves open, since matching a configuration is not being the launch that configuration describes.
 // Adding comparisons to the join makes the match narrower without making the attribution licensed,
 // so every arm refuses while the environment is declared rather than read.
-data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the only environment this repository holds for a serving container is the one gunbc.spark.pair_serving_realization spark_pair_container_env declares it is CREATED with, and no producer anywhere in the corpus reads the environment of a container that is already running. So whether this deployment's reporter is disabled is unknown for THIS deployment, however well its declared configuration matches. THE CAPABILITY THAT DISCHARGES THIS, and nothing smaller does: a reading of the EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED, bound to the offered launch, covering BOTH whether the reporter runs AND WHERE IT SENDS. The destination is not a detail: extdeps.vllm.usage_stats vllm_usage_stats_reporting carries server_override_env VLLM_USAGE_STATS_SERVER beside its default_server, so a launch matching our declared model path, served name and context length can still be reporting to a DIFFERENT RECIPIENT, and a payload that stays metadata-only says nothing about who receives it. A second construction function, a wider configuration comparison, or a restatement of the declared environment does NOT discharge it, because none of them observes the process; what is missing is a reading, not a better declaration. THE READING NEEDS ACCESS NOBODY HOLDS: the serving container gunbc.spark.pair_serving_realization spark_pair_container_name is readable only through the docker socket, and the one principal that reaches the Sparks holds no grant to it, so the reader cannot run until gunbc.spark.managed_access_bootstrap InspectServingContainer is installed through gunbc.spark.managed_grant_install. That grant yields Config.Env of the container, which is the environment docker exec hands vllm serve because the pair realization execs it with no added environment; it is still a reading of the container rather than of the process, so the destination half of this obligation stays a claim about the container until a process-grain read exists. Note also that the content class it would be read against is itself bound to a revision by that module's established_against, so it is a fact about the vLLM source that was read and not a timeless property of anything presenting a vLLM-compatible response."
+// THE CAPABILITY THIS OBLIGATION NAMED IS LANDED (2026-09-17): the incarnation observation carries
+// the answering container's effective environment -- Config.Env read by the inspect leg under the
+// InspectServingContainer grant, bound to the launch by the cgroup/inspect id agreement -- and
+// spark_serving_usage_stats_standing classifies that reading by upstream's own predicate. What
+// remains true and is what this text now carries: the standing is only as good as the observation,
+// so a realization whose incarnation is UNOBSERVED is unread however well its declared
+// configuration matches; the reading is of the container's environment, not the process's, so the
+// destination half stays a container-grain fact until a process-grain read exists; and the content
+// class it is read against is bound to a revision by extdeps.vllm.usage_stats established_against,
+// a fact about the vLLM source that was read, not a timeless property of anything presenting a
+// vLLM-compatible response.
+data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the effective-environment reading this obligation named is LANDED -- the incarnation observation carries the answering container's Config.Env through the inspect leg, and the standing classifies it by upstream's exact-equality predicate. This cause therefore means the observation itself is absent: the incarnation was not bound on this offer, so there is no answering container whose environment could be read, and a declaration-side match is not a substitute. The reading remains container-grain rather than process-grain, and the content class it is read against is bound to a cited vLLM source revision by extdeps.vllm.usage_stats established_against."
 
 data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: one or more hosts of the realization that answered has no observed fabric lane, so the telemetry answer would rest on its siblings. Partial evidence is missing evidence, and this arm refuses rather than answering from the observed half. READING THOSE LANES IS NECESSARY AND IS NOT SUFFICIENT: an earlier spelling ended by asking for them as though the path would then resolve. A fully lane-covered realization still refuses, because a lane's DECLARED container environment is not a reading of the process that answered -- see spark_serving_usage_stats_declared_environment_obligation."
 
@@ -627,7 +640,7 @@ fn spark_serving_usage_stats_unread_cause(realization: SparkServingRealization) 
     RealizationDeclaredPathUnpinned => TelemetryDeclaredPathUnpinned
     RealizationReportedPathDiffers { reported: rep, declared: dec } =>
       TelemetryReportedPathDiffers { reported: rep, declared: dec }
-    RealizationMatchesPairServingConfiguration { configured_model_path: matched } =>
+    RealizationMatchesDeclaredConfiguration { configured_model_path: matched } =>
       if count(realization.hosts) == 0 {
         TelemetryNoHostMembership
       } else if count(spark_realization_hosts_without_lanes(realization: realization)) > 0 {
@@ -662,29 +675,105 @@ fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmp
   }
 }
 
-fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
-  UsageStatsLaunchUnread {
-    obligation: spark_telemetry_unread_obligation(
-      cause: spark_serving_usage_stats_unread_cause(realization: realization),
-    ),
+data spark_serving_usage_stats_destination_override_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the answering container's effective environment sets VLLM_USAGE_STATS_SERVER to a recipient that is not upstream's documented default, so the documented-payload basis does not describe this launch's report: extdeps.vllm.usage_stats vllm_usage_stats_reporting states what is sent to https://stats.vllm.ai, and who receives THIS launch's report is a fact nobody has assessed. The remedy is to assess that recipient (operator, jurisdiction, payload) as its own route path, or to remove the override and re-observe. This arm exists because a launch matching our declared configuration can still report elsewhere, and admitting it under the default server's documentation would be exactly the attribution defect this module was rebuilt against."
+
+// AN ASSIGNMENT IS NAME=VALUE SPLIT ON THE FIRST '=', because values may themselves carry '='.
+// A segment with no '=' is not an assignment and classifies nothing.
+fn spark_env_assignment_value(assignment: String) -> String? {
+  match list_tail(xs: split(s: assignment, delimiter: "=")) {
+    TailAbsent => none
+    TailFound { tail: rest } => Present { value: join(rest, "=") }
   }
 }
 
-// THE LOCATED ARM IS RETAINED AND IS CURRENTLY UNREACHABLE, DELIBERATELY AND ON THE RECORD. It is
-// the right answer for an ESTABLISHED applicable reporter, and the operator's 2026-09-11 ruling
-// governs exactly that case: a metadata-only reporter may be admitted despite its undocumented
-// jurisdiction. That ruling is not withdrawn here and this change does not overturn it. What the
-// ruling never established is the different claim this module was making -- that because ONE upstream
-// reporter is documented metadata-only, the telemetry path OF THE LAUNCH THAT ANSWERED is therefore
-// established. Attribution is the defect; the located answer is not.
-//
-// SO NOTHING REACHES THIS ARM TODAY, because spark_serving_usage_stats_standing no longer claims a
-// launch is reporting or not reporting from facts about what we declared. It becomes reachable again
-// when an admission path carries evidence of the effective telemetry configuration bound to the
-// offered launch. The empty population this leaves is recorded where a reader looks for it, at
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits, as EMPTY PENDING that evidence rather
-// than as a deleted subject -- the distinction matters, because a drop recorded as deleted would make
-// the ruling silently unreachable while its own record went on claiming otherwise.
+fn spark_env_assignment_name(assignment: String) -> String {
+  match first(split(s: assignment, delimiter: "=")) {
+    Absent => ""
+    Present { value: name } => name
+  }
+}
+
+// THE DISABLE READING IS UPSTREAM'S OWN PREDICATE, exact equality on name and disabling value
+// (extdeps.vllm.usage_stats vllm_usage_stats_assignment_disables) -- not truthiness, not case
+// folding, the reading review 64043 corrected.
+fn spark_env_assignment_disables_reporting(assignment: String) -> Bool {
+  let name = spark_env_assignment_name(assignment: assignment)
+  match spark_env_assignment_value(assignment: assignment) {
+    Absent => false
+    Present { value: value } =>
+      if name == "" {
+        false
+      } else {
+        any(vllm_usage_stats_reporting.disable_terms, t =>
+          vllm_usage_stats_assignment_disables(term: t, name: name as NonEmptyStr, value: value))
+      }
+  }
+}
+
+fn spark_env_override_value(env: List<String>, variable: NonEmptyStr) -> String? {
+  first(flat_map(env, a =>
+    if (spark_env_assignment_name(assignment: a) as String) == (variable as String) {
+      match spark_env_assignment_value(assignment: a) {
+        Absent => [] as List<String>
+        Present { value: v } => [v]
+      }
+    } else {
+      [] as List<String>
+    }))
+}
+
+// THE STANDING IS A READING NOW, DISCHARGED 2026-09-17. Until this change every arm returned
+// UsageStatsLaunchUnread: the only environment the repository held was the one the container is
+// DECLARED to be created with, and the module refused to attribute a reporter to the launch that
+// answered from its own declaration. The incarnation observation now carries the answering
+// container's EFFECTIVE environment -- Config.Env read by the inspect leg under the
+// InspectServingContainer grant, bound to the launch by the cgroup/inspect id agreement -- so the
+// standing classifies that reading:
+//   a disabling assignment (upstream's predicate) -> the reporter does not run; there is NO
+//     telemetry path for this launch, and the telemetry path projection is ProviderPathAbsent;
+//   no disable and no destination override -> the reporter runs with upstream's documented
+//     payload to the default recipient, and the content class decides (metadata-only is located
+//     under the operator's 2026-09-11 ruling; request-material refuses);
+//   a destination override naming another recipient -> UNREAD, because the documented payload
+//     statement describes the default path and this launch's recipient has been assessed by no one.
+// When no incarnation is observed the standing stays unread with the located cause, exactly as
+// before -- a launch we cannot bind is a launch whose reporter we cannot read.
+fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
+  match realization.incarnation {
+    EndpointIncarnationUnobserved { obligation: _ } =>
+      UsageStatsLaunchUnread {
+        obligation: spark_telemetry_unread_obligation(
+          cause: spark_serving_usage_stats_unread_cause(realization: realization),
+        ),
+      }
+    EndpointIncarnationObserved { observation: obs } =>
+      match first(filter(obs.container_env, a => spark_env_assignment_disables_reporting(assignment: a))) {
+        Present { value: disabling } =>
+          UsageStatsDisabledByLaunch { mechanism: spark_env_assignment_name(assignment: disabling) as NonEmptyStr }
+        Absent =>
+          match spark_env_override_value(env: obs.container_env, variable: vllm_usage_stats_reporting.server_override_env) {
+            Present { value: recipient } =>
+              if recipient == (vllm_usage_stats_reporting.default_server as String) {
+                UsageStatsEnabledByDefault { basis: "the answering container's effective environment (Config.Env, read through the inspect leg and bound to the launch by the incarnation observation) carries no disabling assignment and names the documented default recipient, so the reporter runs with upstream's documented payload to the documented server" as NonEmptyStr }
+              } else {
+                UsageStatsLaunchUnread { obligation: spark_serving_usage_stats_destination_override_obligation }
+              }
+            Absent =>
+              UsageStatsEnabledByDefault { basis: "the answering container's effective environment (Config.Env, read through the inspect leg and bound to the launch by the incarnation observation) carries no disabling assignment and no destination override, so the reporter runs by upstream default with the documented payload to the documented server" as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// THE LOCATED AND ABSENT ARMS ARE BOTH REACHABLE NOW, THROUGH THE READING. Until 2026-09-17 the
+// standing was unread for every input, because the only environment the repository held was the
+// declared one; the incarnation observation now carries the answering container's effective
+// environment, so a DISABLED reporter projects to ProviderPathAbsent -- there is no telemetry path
+// to locate -- and an ENABLED one reaches the located arm the operator's 2026-09-11 ruling governs
+// (a metadata-only reporter admitted despite its undocumented jurisdiction). The rung-drop row
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits recorded the located arm's empty
+// population as EMPTY PENDING this evidence; the evidence is landed, and that row's retirement is
+// owed to its own trigger.
 fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> ProviderPathStanding {
   match spark_serving_usage_stats_standing(realization: realization) {
     UsageStatsLaunchUnread { obligation: _ } =>
@@ -693,9 +782,8 @@ fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> Pro
         consulted: [],
       }
     UsageStatsDisabledByLaunch { mechanism: _ } =>
-      ProviderPathUnread {
-        obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_declared_environment_obligation"),
-        consulted: [],
+      ProviderPathAbsent {
+        evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
       }
     UsageStatsEnabledByDefault { basis: _ } =>
       match vllm_usage_stats_reporting.content_class {
