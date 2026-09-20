@@ -1,0 +1,30 @@
+module gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment, TriggerStandsWhole }
+
+// THE FACT THIS ROW RESCUES WAS WRITTEN AS BYTES IN A GENERATED FILE AND DIED THERE. gunbc#11774
+// appended it to docs/design-rung-drops.md, which is a projection of gunbc.rung_drop; gunbc#11789
+// regenerated the file and the paragraph went with it. It is restored here, in the authority, with
+// its consequence typed: the ruling's own restoration trigger is unchanged by it.
+//
+// WHY IT IS WORTH A ROW. Without it the next reader of the drop meets a deletion whose stated
+// occasion is a billing loop that charged bystanders -- and the obvious inference from that
+// premise is that the redesign which removed the billing loop retires the drop. It does not. The
+// redesign had already landed when the ruling was made, and the ruling deleted the redesigned wall
+// anyway, because what was priced was the gate itself and not only how it billed. That is the
+// premise that stops the drop being re-litigated wrongly, and it is exactly what the restoration
+// trigger's own closing sentence -- re-adding the deleted arms verbatim does NOT retire this row --
+// depends on to be read correctly.
+
+data namespace_wave_admission_carrier_redesign: RungDropAmendment = RungDropAmendment {
+  drop_identity: "namespace_wave_admission_wall_removed" as NonEmptyStr,
+
+  amended: "2026-09-20",
+
+  later_event: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion" as NonEmptyStr,
+
+  bearing: "the ruling prices the gate itself, not only its billing, and removes the redesigned wall with the old one" as NonEmptyStr,
+
+  trigger: TriggerStandsWhole,
+}
