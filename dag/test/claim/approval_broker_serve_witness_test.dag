@@ -13,7 +13,7 @@ import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, BrokerNoRouteMatched,
-  approval_broker_served_token, approval_serving_process_label,
+  approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler,
@@ -243,11 +243,11 @@ test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool 
     process: RoadmapProcess,
   )
   let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
-    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
   let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
-    MarkerObserved { process: p, marker: _ } => approval_serving_process_label(p: p) as String
+    MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
   by_broker.status == 200 && by_roadmap.status == 200

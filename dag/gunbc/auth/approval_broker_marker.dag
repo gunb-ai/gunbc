@@ -62,20 +62,40 @@ type ApprovalBrokerMarker
   | BrokerAdapterRefused
   | BrokerStaticRouteServed
 
-// THESE ARE BARE FOLD NAMES AND ARE NEVER MATCHED ON DIRECTLY. `status` or `decision` alone would
-// match prose inside a refusal reason and read as a marker; the `approval-broker/<process>/` prefix
-// that approval_broker_served_token puts in front is what makes the observation about this corpus
-// AND about one process. A reader matching these strings would reproduce review 68539's defect.
-fn approval_serving_process_label(p: ApprovalServingProcess) -> NonEmptyStr {
+// IT IS A TOKEN, NOT A LABEL, AND THE NAME IS THE FIX (review 68760). This fold was
+// approval_serving_process_label -- the same name, the same signature, over the same
+// ApprovalServingProcess, as gunbc.auth.approval_writer_authority's fold ONE IMPORT EDGE AWAY,
+// which returns operator prose ("the roadmap serve process (gunbc-roadmap.service)"). One name,
+// two materially different meanings: DESIGN section 3's meaning fork, the dual of nicknaming.
+//
+// THE STAKES WERE THIS MODULE'S OWN. approval_broker_served_token is the SOLE discriminator the
+// stage-5 probe uses to tell the broker from the roadmap -- the hole review 68539 exists to close.
+// An edit resolving the authority module's fold here would silently change the emitted token and
+// reopen it, with nothing in the type system objecting because the signatures agree. Sharper than
+// the review's reading: .dag names resolve corpus-wide rather than by import list, so WHICH of two
+// identically-named folds wins is not settled by the braces at the top of this file.
+//
+// NEITHER TOKEN IS A PREFIX OF THE OTHER, which is what keeps the substring reader below from
+// answering `broker` on a roadmap-served body. That is a property of these two spellings and not
+// of the scheme, so it is stated where a third process would be added.
+fn approval_serving_process_token(p: ApprovalServingProcess) -> NonEmptyStr {
   match p {
     RoadmapProcess => "roadmap" as NonEmptyStr
     BrokerProcess => "broker" as NonEmptyStr
   }
 }
 
-// NEITHER LABEL IS A PREFIX OF THE OTHER, which is what keeps the substring reader below from
-// answering `broker` on a roadmap-served body. That is a property of these two spellings and not of
-// the scheme, so it is stated where a third process would be added.
+// THESE ARE BARE FOLD NAMES AND ARE NEVER MATCHED ON DIRECTLY. `status` or `decision` alone would
+// match prose inside a refusal reason and read as a marker; the `approval-broker/<process>/` prefix
+// that approval_broker_served_token puts in front is what makes the observation about this corpus
+// AND about one process. A reader matching these strings would reproduce review 68539's defect.
+//
+// THESE TWO ANNOTATIONS WERE ATTACHED TO EACH OTHER'S FOLDS until review 68760 sent me back here:
+// the process-token fold was inserted above this one during the process-segment repair, and each
+// comment stayed where it was, so each described its neighbour. Recorded rather than silently
+// swapped because it is the failure mode DESIGN section 4c exists to bound -- an annotation is
+// unreadable by any Accepted program, so nothing but a reader can notice it has drifted onto the
+// wrong declaration.
 fn approval_broker_marker_token(m: ApprovalBrokerMarker) -> NonEmptyStr {
   match m {
     ConfirmHandlerObserved => "confirm-page" as NonEmptyStr
@@ -101,7 +121,7 @@ data approval_broker_markers: List<ApprovalBrokerMarker> = [
 fn approval_broker_served_token(p: ApprovalServingProcess, m: ApprovalBrokerMarker) -> NonEmptyStr {
   join([
     "approval-broker/",
-    approval_serving_process_label(p: p) as String,
+    approval_serving_process_token(p: p) as String,
     "/",
     approval_broker_marker_token(m: m) as String,
   ], "") as NonEmptyStr
