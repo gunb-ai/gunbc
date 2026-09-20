@@ -198,6 +198,20 @@ fn expected_tach_count(expectation: HostFanTachExpectation) -> Int {
 // srv1/FAN4 and srv1/FAN5 are declared expected and read as absent, which is the finding rather
 // than a reason to drop them.
 
+// THE ALTRAD8UD-1L2T'S SECONDARY TACH HEADERS. Both BMC images the fleet runs publish FAN1_1..FAN5_1
+// beside FAN1..FAN5 (read with the gunbc_health account 2026-09-18: ASRock 2.07 as Sensors
+// fantach_FANn_1, OpenBMC 3.22 in Thermal.Fans), and on every host they read null. No fleet host
+// wires a fan to them, so each is declared as not expected to rotate: a live collector reports every
+// header the board publishes, and a header without an expectation row is an authority gap. Plugging
+// a fan into one would surface as UnexpectedRotation rather than pass unseen.
+data altrad8ud_secondary_tach_headers: List<FanHeaderExpectationRow> = [
+  tach_not_expected(header: "FAN1_1"),
+  tach_not_expected(header: "FAN2_1"),
+  tach_not_expected(header: "FAN3_1"),
+  tach_not_expected(header: "FAN4_1"),
+  tach_not_expected(header: "FAN5_1"),
+]
+
 // srv1/srv2 - 4U, Noctua NH-D9 AMP-4926 4U on FAN1, four chassis bays on FAN2..FAN5.
 // FAN1 is expected to expose the processor-cooler tach. The number of physical fans driven by
 // that header, and which of them supplies the tach conductor, are UNOBSERVED in this layer -
@@ -206,24 +220,24 @@ fn expected_tach_count(expectation: HostFanTachExpectation) -> Int {
 // of how these two machines were built.
 data srv1_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
   host: operator_host_srv1,
-  headers: [
+  headers: concat([
     cooler_tach_expected(header: "FAN1"),
     chassis_tach_expected(header: "FAN2"),
     chassis_tach_expected(header: "FAN3"),
     chassis_tach_expected(header: "FAN4"),
     chassis_tach_expected(header: "FAN5"),
-  ],
+  ], altrad8ud_secondary_tach_headers),
 }
 
 data srv2_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
   host: operator_host_srv2,
-  headers: [
+  headers: concat([
     cooler_tach_expected(header: "FAN1"),
     chassis_tach_expected(header: "FAN2"),
     chassis_tach_expected(header: "FAN3"),
     chassis_tach_expected(header: "FAN4"),
     chassis_tach_expected(header: "FAN5"),
-  ],
+  ], altrad8ud_secondary_tach_headers),
 }
 
 // srv3/srv4 - 2U, Dynatron W1 on FAN1, three chassis bays. THE TWO HOSTS USE DIFFERENT INDICES
@@ -231,22 +245,22 @@ data srv2_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation 
 // check comparing counts passes while the configuration is wrong.
 data srv3_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
   host: operator_host_srv3,
-  headers: [
+  headers: concat([
     cooler_tach_expected(header: "FAN1"),
     tach_not_expected(header: "FAN2"),
     chassis_tach_expected(header: "FAN3"),
     chassis_tach_expected(header: "FAN4"),
     chassis_tach_expected(header: "FAN5"),
-  ],
+  ], altrad8ud_secondary_tach_headers),
 }
 
 data srv4_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
   host: operator_host_srv4,
-  headers: [
+  headers: concat([
     cooler_tach_expected(header: "FAN1"),
     chassis_tach_expected(header: "FAN2"),
     chassis_tach_expected(header: "FAN3"),
     chassis_tach_expected(header: "FAN4"),
     tach_not_expected(header: "FAN5"),
-  ],
+  ], altrad8ud_secondary_tach_headers),
 }

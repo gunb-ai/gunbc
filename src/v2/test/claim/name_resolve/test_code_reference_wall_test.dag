@@ -1,0 +1,493 @@
+module v2.test.name_resolve.test_code_reference_wall
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WALL AT ONE INTERFACE: name resolution (v2.compiler.name_resolve resolve_with_admission, the
+// multi-root door the native compile uses), handed normalized module roots as SUPPLIED VALUES. Each
+// claim reports the head refusal reason or ACCEPTED, so a red that refuses for some OTHER reason (an
+// unbound name, a malformed root) does not pass for the wall.
+//
+// The owner ruling (2026-09-16/17): a test-marked declaration may be referenced by NOTHING, a test fn
+// in the same module included. The wall is ITEM-scoped: an unmarked declaration is ordinary code even
+// in a module that declares tests (a whole-module rule is wrong in both directions, the lesson of the
+// v1 wall in gunbc#11505). The shapes below are the ones v1's reviewers found one per round, each
+// with its red or its control: same-module and cross-module references, a QUALIFIED path to a test
+// fn, precedence of a module's own declaration over an imported one of the same name, and a
+// reference from a parameter default -- which v2 cannot express at all (it refuses at parse).
+//
+// WHY THE ROOTS ARE SUPPLIED (DESIGN section 3). Producing two roots from source costs two tokenize,
+// parse and normalize passes (about 120k eval steps for two one-line modules) before resolution
+// starts, and resolution itself is about 67k, so a from-source claim exceeds the floor's 72,300-step
+// new-witness budget by roughly three times while its assertions inspect only the resolution verdict.
+// The pairing obligation is discharged by `supplied_root_is_what_normalize_emits_holds`: the real
+// front end, run on the source text below, emits a root whose content hash equals the supplied one
+// and a marker channel that marks exactly the supplied names -- so a fixture that drifted from the
+// producer turns that claim red rather than leaving these green over a tree nothing produces.
+//
+// The fixtures are expression-bodied (`fn f() -> T = g()`), because the member shape they encode is
+// what normalize emits for that form. A block body holding a call is not a usable fixture today:
+// `{ g() }` lowers to a Transform over the brace token with the call gone (tracked as its own work
+// item), so it hands resolution no reference at all.
+
+fn wall_atom(identity: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn wall_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
+}
+
+// `name: () -> Bool = body`, in the shape normalize emits for an expression-bodied, zero-parameter fn.
+fn wall_member(name: Symbol, body: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: Node {
+      kind: TypeNode { connective: Arrow },
+      children: [
+        Edge { label: Positional, target: wall_conj(children: []) },
+        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+// `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
+fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: Node {
+      kind: TypeNode { connective: Arrow },
+      children: [
+        Edge {
+          label: Positional,
+          target: wall_conj(children: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }])
+        },
+        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+// `module wall.<leaf_segment>` with `members`, grafted as normalize grafts a two-segment module. The
+// leaf body is the graft's body conj: its identity projection first, the producer marker
+// namespace_graft_module_body_marker_node (v2.compiler.namespace_graft namespace_graft_build_body_conj,
+// gunbc#11694), then the members.
+fn wall_module_body(members: List<Edge>) -> Node {
+  wall_conj(children: concat(
+    [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    members
+  ))
+}
+
+fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
+  wall_conj(children: [
+    Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
+    Edge {
+      label: Named { name: ^grammar_production_captured_node_projection },
+      target: wall_conj(children: [
+        Edge {
+          label: Named { name: ^wall },
+          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_module_body(members: members) }])
+        }
+      ])
+    }
+  ])
+}
+
+fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
+  TestMarkerChannel {
+    marked: fold(marked, init: [], f: fn(acc, name) { list_snoc_item(xs: acc, item: TestMarkedDeclaration { name: name }) })
+  }
+}
+
+fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+}
+
+fn wall_verdict(outcome: Outcome<ResolvedTree>) -> String {
+  match outcome {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+// Resolves module wall.<subject_segment> as the only root: the door for the same-module halves,
+// which need no second module and pay for none.
+fn wall_resolve_alone(subject_segment: Symbol, subject: Outcome<NormalizedTree>) -> String {
+  match subject {
+    Rejected { diagnostics: _ } => "SUBJECT_NOT_ADMITTED"
+    Accepted { value: s, diagnostics: _ } =>
+      wall_verdict(outcome: resolve_with_admission(
+        lm: dag_language_model(),
+        roots: Cons { head: s, tail: Empty },
+        admission: Admission {
+          subject: ResolutionSubject { name: Cons { head: ^wall, tail: Cons { head: subject_segment, tail: Empty } } },
+          imports: Empty
+        }
+      ))
+  }
+}
+
+// Resolves module wall.<subject_segment> with one peer root beside it.
+fn wall_resolve(subject_segment: Symbol, subject: Outcome<NormalizedTree>, peer: Outcome<NormalizedTree>) -> String {
+  match subject {
+    Rejected { diagnostics: _ } => "SUBJECT_NOT_ADMITTED"
+    Accepted { value: s, diagnostics: _ } =>
+      match peer {
+        Rejected { diagnostics: _ } => "PEER_NOT_ADMITTED"
+        Accepted { value: p, diagnostics: _ } =>
+          wall_verdict(outcome: resolve_with_admission(
+            lm: dag_language_model(),
+            roots: Cons { head: s, tail: Cons { head: p, tail: Empty } },
+            admission: Admission {
+              subject: ResolutionSubject { name: Cons { head: ^wall, tail: Cons { head: subject_segment, tail: Empty } } },
+              imports: Empty
+            }
+          ))
+      }
+  }
+}
+
+// module wall.peer -- `fn shared_fixture() -> Bool = true`, `test fn peer_leaf() -> Bool = shared_fixture()`
+fn peer_test_module() -> Outcome<NormalizedTree> {
+  wall_tree(
+    root: wall_module_root(leaf_segment: ^peer, members: [
+      wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
+    ]),
+    marked: [^peer_leaf]
+  )
+}
+
+// The smallest module that carries every producer shape the supplied roots rely on, one member per
+// fixture builder: wall_member with a `true` body (`shared_fixture`), wall_member_returning_its_param
+// (`helper`, the one-parameter domain), and wall_member with a name-reference body carrying the test
+// marker (`peer_leaf`), and wall_qualified (`qualified_user`). Four members because the builders have four distinct bodies; the front
+// end's cost grows with the source and this claim pays for one real tokenize, parse and normalize.
+// SINCE gunbc#11683 THERE IS NO SUPPLIED NODE HERE THAT NO SOURCE PRODUCES. A bare dotted body chain
+// now lowers to the qualified-name spine, so wall_qualified became producible the day that landed --
+// and a supplied builder whose producer has moved is exactly what the pairing obligation exists to
+// catch. The fourth member of the paired source and fixture below (`qualified_user`) joins it to the
+// real front end, so the whole-root content_hash comparison reds if that lowering moves again.
+fn inhabitance_module() -> Outcome<NormalizedTree> {
+  wall_tree(
+    root: wall_module_root(leaf_segment: ^peer, members: [
+      wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
+      wall_member_returning_its_param(name: ^helper, param: ^leaf),
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture)),
+      wall_member(name: ^qualified_user, body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf]))
+    ]),
+    marked: [^peer_leaf]
+  )
+}
+
+data inhabitance_module_source: String = "module wall.peer\nfn shared_fixture() -> Bool = true\nfn helper(leaf: Bool) -> Bool = leaf\ntest fn peer_leaf() -> Bool = shared_fixture()\nfn qualified_user() -> Bool = wall.peer.peer_leaf\n"
+
+// module wall.peer -- `fn shared_fixture() -> Bool = true`, no test code.
+fn peer_serving_module() -> Outcome<NormalizedTree> {
+  wall_tree(
+    root: wall_module_root(leaf_segment: ^peer, members: [wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true))]),
+    marked: []
+  )
+}
+
+// A one-member serving module wall.serving whose only fn's body is `body`.
+fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
+  wall_tree(root: wall_module_root(leaf_segment: ^serving, members: [wall_member(name: ^uses_peer, body: body)]), marked: [])
+}
+
+// INHABITANCE, THE ROUTE THE SUPPLIED ROOTS STAND ON: the real front end, on the source text the
+// inhabitance fixture encodes (built with the same wall_member and wall_module_root every claim below
+// uses), emits the same root (by content hash, which does not read occurrence ids) and a
+// channel marking exactly `peer_leaf` -- one claim per half, both reading the one shared front-end
+// value below. They are the two things every claim below reads.
+// ONE PRODUCER, TWO READERS, AND NO WARM-SHARE ROW. Both inhabitance claims call this one function,
+// so the source literal and the producer are shared; the VALUE is not. Claim frames are isolated, so
+// each claim recomputes this front-end run. A row enrolling it would have to be admitted by a
+// controlled row-present against row-absent measurement on the required floor, and the restored floor
+// publishes no claim-cost table, no shared-fill ledger and no receipt to make one -- so the row that
+// stood here is deleted rather than argued from the value being portable, which establishes only that
+// it CAN be served, never that serving is cheaper.
+// WHEN THE ROOT CLAIM REDS: render BOTH trees with their EDGE LABELS and compare those. A read by
+// child index is what made the graft-marker drift (#11694, a leading edge on the module body) look
+// like a change inside the member Arrow, and cost two lanes to find.
+fn inhabitance_normalized() -> Outcome<NormalizedTree> {
+  let lm = dag_language_model()
+  match tokenize(text: inhabitance_module_source, file: ^wall_peer_file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } => normalize(parse_tree: artifact.tree)
+      }
+  }
+}
+
+test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
+  match inhabitance_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: emitted, diagnostics: _ } =>
+      match inhabitance_module() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: supplied, diagnostics: _ } => content_hash(n: emitted.root) == content_hash(n: supplied.root)
+      }
+  }
+}
+
+test fn supplied_channel_is_what_normalize_emits_holds() -> Bool {
+  match inhabitance_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: emitted, diagnostics: _ } =>
+      (test_marker_channel_count(channel: emitted.test_markers) == 1)
+        && test_marker_channel_marks(channel: emitted.test_markers, name: ^peer_leaf)
+  }
+}
+
+// RED: a test fn calling another test fn in its own module -- the case the ruling names explicitly.
+test fn test_fn_calling_a_test_fn_is_refused_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^rollup, body: wall_atom(identity: ^leaf))
+      ]),
+      marked: [^leaf, ^rollup]
+    )
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// RED: serving code calling a test fn in its own module.
+test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^helper, body: wall_atom(identity: ^leaf))
+      ]),
+      marked: [^leaf]
+    )
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// RED: serving code calling a test fn another module declares.
+test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool {
+  wall_resolve(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^peer_leaf)),
+    peer: peer_test_module()
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// CONTROL: the intended shape, a test fn calling an ordinary fn, resolves.
+test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^helper, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_helper, body: wall_atom(identity: ^helper))
+      ]),
+      marked: [^uses_helper]
+    )
+  ) == "ACCEPTED"
+}
+
+// CONTROL: a parameter that shares a test fn's name binds to the parameter, not to the test fn.
+test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member_returning_its_param(name: ^helper, param: ^leaf)
+      ]),
+      marked: [^leaf]
+    )
+  ) == "ACCEPTED"
+}
+
+// CONTROL, ITEM SCOPE: an unmarked declaration of a module that declares tests is ordinary code, and
+// serving code may reference it.
+test fn an_ordinary_declaration_of_a_test_module_resolves_holds() -> Bool {
+  wall_resolve(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}
+
+// `wall.peer.peer_leaf` as a qualified-path node, the spine qualified_name_from_node reads.
+fn wall_qualified(segments: List<Symbol>) -> Node {
+  fold_list_node(xs: segments, item_node: fn(sym) { wall_atom(identity: sym) })
+}
+
+// RED: a QUALIFIED path to another module's test fn is refused at the qualified-path door
+// (v2.compiler.resolve try_resolve_qualified_name_node), which binds by the whole path rather than a
+// bare name. The node is SUPPLIED here because this claim's subject is the door, not the lowering
+// that produces the path -- and since gunbc#11683 that lowering is real, so the shape is joined to
+// its producer by `inhabitance_module`'s `qualified_user` member rather than standing alone.
+test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
+  wall_resolve(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf])),
+    peer: peer_test_module()
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// CONTROL, PRECEDENCE: a module's own declaration beats a same-named declaration elsewhere. The
+// subject declares an ordinary `peer_leaf`; the peer's `peer_leaf` is a test fn. The subject's
+// reference binds to its own, so it resolves.
+test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
+  wall_resolve(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^peer_leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^peer_leaf))
+      ]),
+      marked: []
+    ),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}
+
+data default_reference_source: String = "module m\nfn f(x: T = g()) -> T = x\n"
+
+// A reference from a parameter DEFAULT cannot be written in v2: the grammar has no default, and the
+// source refuses at parse, before resolution could miss it. If this ever parses, the default has
+// become a place a reference can hide, and it needs its own red.
+test fn a_parameter_default_is_refused_at_parse_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: default_reference_source, file: ^wall_default_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+// Resolves module wall.<subject_segment> under the IMPORT-SCOPED policy with `wall.peer` imported, so
+// the peer's names bind at the subject's root scope as admitted imports and the wall reads their
+// origin from Namespace.imported_origins (v2.compiler.resolve root_binding_origin).
+fn wall_resolve_importing_peer(subject_segment: Symbol, subject: Outcome<NormalizedTree>, peer: Outcome<NormalizedTree>) -> String {
+  match subject {
+    Rejected { diagnostics: _ } => "SUBJECT_NOT_ADMITTED"
+    Accepted { value: s, diagnostics: _ } =>
+      match peer {
+        Rejected { diagnostics: _ } => "PEER_NOT_ADMITTED"
+        Accepted { value: p, diagnostics: _ } =>
+          wall_verdict(outcome: resolve_with_admission_policy(
+            lm: dag_language_model(),
+            roots: Cons { head: s, tail: Cons { head: p, tail: Empty } },
+            admission: Admission {
+              subject: ResolutionSubject { name: Cons { head: ^wall, tail: Cons { head: subject_segment, tail: Empty } } },
+              imports: Cons {
+                head: Import { target: Cons { head: ^wall, tail: Cons { head: ^peer, tail: Empty } }, visibility: ImportVisible },
+                tail: Empty
+              }
+            },
+            index: source_root_index_empty(),
+            active_roots: Empty,
+            policy: ImportScoped
+          ))
+      }
+  }
+}
+
+// RED, THE IMPORT DOOR: a test fn reached through an admitted import is refused. Its origin comes from
+// the admission's imported_origins, not the subject's own declarations.
+test fn an_imported_test_fn_is_refused_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^peer_leaf)),
+    peer: peer_test_module()
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// THE SHADOW CASE THE WALL NEVER SEES (review 69014 on gunbc#11580). The review read a defect here:
+// a module that BOTH imports a name and declares it would bind locally while Namespace.imported_origins
+// still held the PEER's path, so root_binding_origin would hand the wall a path the reference never
+// bound to -- refusing an ordinary local shadowed by an imported test fn, and, silently, ACCEPTING a
+// reference to a local test fn shadowed by an ordinary import. The reading of root_binding_origin is
+// right. THE STATE IS UNREACHABLE: admission refuses that module first, in BOTH directions, so the
+// wall is never asked. AND NOTHING CAN MANUFACTURE THE COLLISION AROUND THAT ADMISSION: across the
+// whole corpus there are eight constructions of Namespace.imported_origins, and seven build it EMPTY
+// (v2.compiler.resolve empty_namespace and build_program_namespace, v2.compiler.name_resolve
+// admission_namespace_base, and the four test fixtures that construct a Namespace directly). The one
+// non-empty construction is admitted_subject_from_bindings, whose origins come only from an
+// AdmissionAccepted, and the only writer into that map is admit_named_exports -- the same fold that
+// refuses the collision. So a fixture cannot hand resolution an origin map that admission never saw.
+// These three rows are that measurement, and they are why this PR carries no
+// shadow-aware origin lookup -- a lookup guarding a state admission has already made unwritable would
+// be validation restating a constraint the model carries (DESIGN section 5, correctness by
+// construction over validation), and its red would not be authorable.
+
+// RED: a subject that declares `peer_leaf` AND imports a peer exporting `peer_leaf` is refused at
+// ADMISSION as an ambiguous export -- the direction where the local declaration is ordinary and the
+// peer's is a test fn.
+test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admission_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^peer_leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^peer_leaf))
+      ]),
+      marked: []
+    ),
+    peer: peer_test_module()
+  ) == "resolve_ambiguous_export"
+}
+
+// RED, THE OTHER DIRECTION, and the one the review called silent: the subject's own declaration is
+// TEST-MARKED and the peer's is ordinary. Admission refuses this too, so no reference to test code is
+// accepted without a diagnostic -- the arm DESIGN section 5 forbids is closed upstream of the wall.
+test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^shared_fixture))
+      ]),
+      marked: [^shared_fixture]
+    ),
+    peer: peer_test_module()
+  ) == "resolve_ambiguous_export"
+}
+
+// CONTROL for the two above: the refusal is caused by the SHADOW and not by the shape of these
+// fixtures. The same subject and the same import, with a locally declared name the peer does not
+// export, resolves. Without this row the two reds could both be passing on a malformed module.
+test fn a_local_declaration_the_peer_does_not_export_resolves_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^only_local, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^only_local))
+      ]),
+      marked: []
+    ),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}
+
+// CONTROL for the import door: the same import, referencing the peer's ordinary declaration, resolves.
+test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}

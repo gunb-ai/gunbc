@@ -3,6 +3,17 @@ module test.claim.nbd_proxy_virtual_media_install
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
+// claims check does not depend on which bytes the actuator serves, only on the path reaching the
+// intent; the real resolution route is exercised by test.claim.mtcollins1_census_image.
+data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
+  built: ubuntu_seeded_install_media_built(
+    input: srv3_seeded_install_media_input,
+    output_digest: "abababababababababababababababababababababababababababababababab",
+  ),
+  path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
+}
+
 // The mapping is the subject here and it is unchanged: a boot target is derived
 // from the mechanism, never hardcoded to Pxe. What changed is that srv3 no
 // longer REACHES the mapping — its 3.22.00 evidence refuses before a mechanism
@@ -24,7 +35,7 @@ test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
 // propagates and the plan refuses. A plan that survived the firmware change
 // would be the defect this witness exists to catch.
 test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
+  match srv3_os_install_actuator_plan_standing(image: srv3_resolved_image_fixture) {
     ActuatorPlanRefused { cause: _ } => true
     ActuatorPlanReady { plan: _ } => false
   }
@@ -63,6 +74,9 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
     }
 }
 
+// steps.first() is an Optional, so an ABSENT first step may not read as ready; the realization is
+// taken against the resolved census image. Both facts are load-bearing and neither side of the
+// merge that introduced them carried the other.
 test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
   let steps = os_install_actuator_steps(
     mechanism: NbdProxyVirtualMediaInstall,
@@ -71,7 +85,7 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
   let first_step_ready = match steps.first() {
     Absent => false
     Present { value: first_step } =>
-      match actuator_step_realization(step: first_step) {
+      match actuator_step_realization(step: first_step, image: srv3_resolved_image_fixture) {
         ActuatorStepReady { intent: intent } =>
           match intent.target {
             HostOs { node: h } =>
@@ -108,19 +122,22 @@ test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
 // needs no host effect" — so an install plan could report ready while omitting the very effects
 // that perform the install.
 test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool {
-  match actuator_step_realization(step: ActuatorRedfishInsertMedia) {
+  match actuator_step_realization(step: ActuatorRedfishInsertMedia, image: srv3_resolved_image_fixture) {
     ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
     ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
+    ActuatorStepRefused { cause: ActuatorStepImageUnresolved { step: _, reason: _ } } => false
     ActuatorStepReady { intent: _ } => false
   }
-    && match actuator_step_realization(step: ActuatorPxeNetworkBootStaging) {
+    && match actuator_step_realization(step: ActuatorPxeNetworkBootStaging, image: srv3_resolved_image_fixture) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
          ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
+         ActuatorStepRefused { cause: ActuatorStepImageUnresolved { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
-    && match actuator_step_realization(step: ActuatorFirmwareUpdate) {
+    && match actuator_step_realization(step: ActuatorFirmwareUpdate, image: srv3_resolved_image_fixture) {
          ActuatorStepRefused { cause: ActuatorStepRealizationAbsent { step: _ } } => true
          ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable { step: _, reason: _ } } => false
+         ActuatorStepRefused { cause: ActuatorStepImageUnresolved { step: _, reason: _ } } => false
          ActuatorStepReady { intent: _ } => false
        }
 }
@@ -132,9 +149,49 @@ test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
     steps: os_install_actuator_steps(
       mechanism: PxeHttpInstall,
       export: srv3_nbd_proxy_export_placeholder
-    )
+    ),
+    image: srv3_resolved_image_fixture,
   ) {
     ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 1
     ActuatorPlanRealized { intents: _ } => false
   }
+}
+
+fn nbd_serve_step_refuses_image(step: OsInstallActuatorStep, image: SeededImageResolution) -> Bool {
+  match actuator_step_realization_under(step: step, selection: ActuatorSelected { host: srv1_host }, image: image) {
+    ActuatorStepRefused { cause: ActuatorStepImageUnresolved { step: _, reason: _ } } => true
+    _ => false
+  }
+}
+
+// THE SERVED PATH IS THE RESOLVED IMAGE'S, and an unresolved image REFUSES the serve step. Both
+// directions under a satisfiable actuator selection, so the image is the only thing that differs:
+// the resolved arm must carry exactly the fixture's path into the NBD intent, and each unresolved
+// arm must refuse by name rather than serve a path of its own.
+test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one() -> Bool {
+  let selection = ActuatorSelected { host: srv1_host }
+  match os_install_actuator_steps(
+    mechanism: NbdProxyVirtualMediaInstall,
+    export: srv3_nbd_proxy_export_placeholder
+  ).first() {
+    Absent => false
+    Present { value: step } => nbd_serve_step_claims_hold(step: step, selection: selection)
+  }
+}
+
+fn nbd_serve_step_claims_hold(step: OsInstallActuatorStep, selection: OsInstallActuatorSelection) -> Bool {
+  let served = match actuator_step_realization_under(step: step, selection: selection, image: srv3_resolved_image_fixture) {
+    ActuatorStepReady { intent: i } =>
+      match i.effect {
+        Srv3NbdProxyServe { intent: nbd, lease_key: _ } =>
+          nbd.iso_path == "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"
+        _ => false
+      }
+    ActuatorStepRefused { cause: _ } => false
+  }
+  served
+    && nbd_serve_step_refuses_image(step: step, image: SeededImageNotBuilt { record_path: "/var/lib/gunbc/artifacts/.x.built" })
+    && nbd_serve_step_refuses_image(step: step, image: SeededImageRecordDiverged { path: "/var/lib/gunbc/artifacts/x.iso", recorded: "ab", observed: "cd" })
+    && nbd_serve_step_refuses_image(step: step, image: SeededImageRecordedImageAbsent { path: "/var/lib/gunbc/artifacts/x.iso", recorded: "ab" })
+    && nbd_serve_step_refuses_image(step: step, image: SeededImageUnobservable { reason: "record unreadable" })
 }

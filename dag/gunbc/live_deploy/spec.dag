@@ -3,7 +3,7 @@ module gunbc.live_deploy.spec
 import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
+import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
@@ -34,6 +34,7 @@ import gunbc.fleet_intent_network {
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
+  srv1_gunbc_approval_broker_root,
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
@@ -47,6 +48,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_compute_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
@@ -248,6 +250,7 @@ type DeploymentHostTarget {
 type DeploymentServiceConfig {
   unit_name: NonEmptyStr
   serve_binary: NonEmptyStr
+  serve_entry: NonEmptyStr
   serve_function: NonEmptyStr
   instance_root: NonEmptyStr
   repo_root: NonEmptyStr
@@ -346,6 +349,172 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // neither.\n\nUnit and tailscale-mapping names travel together as DeploymentNames, supplied by the
 // caller. The annotation on DeploymentNames explains why they are passed rather than derived, and
 // why that is a deliberate stop short of the stronger model rather than the model itself.
+
+// ── THE ENTRY EACH SERVED PROCESS IS LAUNCHED WITH ──────────────────────────────────────────
+// THE ENTRY FILE USED TO BE A LITERAL IN THE EMITTER. `--entry dag/gunbc/roadmap/roadmap_serve.dag`
+// was spelled inside the ExecStart renderer, which was tolerable while there was exactly one served
+// process and became a fork the moment there were two: the approval broker is a different entry in
+// a different module, and an emitter that reaches for a literal cannot render it. The entry is a
+// fact about WHICH SERVER this config describes, so it sits beside serve_function, which is the
+// other half of the same fact.
+
+data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
+
+data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"
+
+// ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
+// Every other unit this deployment installs is named per deployment identity, so a lab twin gets
+// its own and collides with nothing. The broker is deliberately NOT: its names are host-level
+// constants, because the thing it serves is a host-level SINGLE-WRITER store
+// (gunbc.auth.approval_decision_store approval_decision_store_root, 0600 generations owned by one
+// process). Two brokers on one host would be two writers, and the store's whole discipline is that
+// there is one.
+//
+// THIS FIXES A HAZARD THAT ALREADY EXISTED RATHER THAN CREATING A NEW CONSTRAINT. Before the split,
+// srv1-live and srv1-lab both served /approve and /approvals from the same route table against the
+// same store root -- two processes able to write it, differing only in whether anyone routed to the
+// second. Removing the routes from every roadmap instance and putting them in one host unit is what
+// makes "one writer" a fact about the deployment rather than a fact about the traffic.
+//
+// THE CONSEQUENCE FOR MEMBERSHIP IS DELIBERATE: the broker units are written by the deploy beside
+// the slice unit rather than enrolled as owned artifact steps. Owned means torn down by retract,
+// and a per-instance retract that removed the host's broker would take the approval loop down for
+// every other instance -- the same hazard attempt_state_root_member_note and the ensured-directory
+// ruling already caught for host-level resources (operator ruling 2026-08-08: a twin retract must
+// not remove what production owns).
+//
+// AND THAT REASONING COVERED ONLY HALF THE HAZARD, WHICH REVIEW 68094 FOUND. It stopped a twin
+// RETRACT from removing the unit and did nothing about a twin APPLY re-owning it. Every spec that
+// flows through the release-member emitter wrote /etc/systemd/system/gunbc-approval-broker.service
+// and restarted it, and that file's content is instance-derived -- WorkingDirectory, serve_binary
+// and instance_root all come from the instance being applied. gunbc.live_deploy.desired
+// desired_deployment_roster carries srv1_lab beside production ON THE SAME HOST, so a lab apply
+// would have overwritten the host's broker unit to point at the lab tree and restarted it, killing
+// and replacing production's broker on the same port. That is precisely the state the paragraph
+// above claims is unwritable, asserted in prose while the mechanism did not reach it -- the same
+// shape as the freeze review 68050 removed, one layer further in.
+//
+// SO OWNERSHIP IS DECLARED AND THE EMITTER READS IT. One instance per host owns the broker unit;
+// every other spec emits no broker step at all, writes nothing and restarts nothing.
+// THE INSTANCE THAT OWNS THE HOST'S BROKER. It is srv1-live because that is where the approval
+// store is: gunbc.auth.approval_decision_store approval_decision_store_root is one path on one
+// host, and the whole point of a single-writer store is that exactly one process opens it.
+//
+// IT IS A DECLARED OWNER RATHER THAN A DERIVATION FROM THE INSTANCE because "which deployment runs
+// the approval loop" is not recoverable from any field an instance carries -- srv1-live and
+// srv1-lab are the same shape on the same host, and the only thing that distinguishes them for this
+// purpose is that one of them was chosen. Deriving it would mean inventing a rule that happens to
+// select production today.
+//
+// A SECOND HOST SERVING APPROVALS IS WHAT RETIRES THIS ROW, at which point the owner becomes a
+// per-host lookup and the store root becomes host-derived with it. Until then a single row is the
+// honest shape: there is one approval loop, and it has one home.
+data gunbc_approval_broker_owning_instance: NonEmptyStr = "srv1-live"
+
+data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
+
+data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+
+// A SPEC THAT DOES NOT OWN THE BROKER EMITS NO BROKER STEP. This is the predicate the emitter
+// consults; it is not a validation standing beside a write that would otherwise happen, because the
+// steps are CONSTRUCTED from it -- a non-owning apply produces an empty list, so there is nothing to
+// skip and nothing to get wrong.
+fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
+  (spec.instance_id as String) == (gunbc_approval_broker_owning_instance as String)
+}
+
+fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_approval_broker_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_approval_broker_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process
+// needs -- a unit name, a binary, an entry, a function, a root to run in, a principal, an address
+// and a pair of evaluation caps -- does not differ by which routes it serves, and minting a second
+// record for the second server would be one concept in two shapes (DESIGN section 2, horizontal).
+// What differs is the VALUES, and every one of them that differs is a value this function supplies.
+//
+// IT REUSES THE INSTANCE'S ROOTS DELIBERATELY. The broker runs the same admitted binary out of the
+// same published tree as the roadmap server on that host; sharing the tree is not co-tenancy,
+// because a tree is read and a heap is not. What it does NOT share is the cgroup, the process, the
+// restart lifecycle or the port -- which is the entire content of the split.
+//
+// ONE PORT, FOR THE PROCESS'S WHOLE LIFE (side-chat HOLD item 1). An earlier cut derived this from
+// the cutover's routing row so the broker sat on a second "dark" port until the front door moved;
+// that made the repoint stage name a port nothing was bound to, and it never delivered the property
+// it was reaching for, because a loopback client reaches a process whatever the front door says.
+// What actually keeps a second writer off the store is gunbc.auth.approval_writer_authority,
+// consulted by both serving processes before any store effect, and this address stays put so that
+// every stage's release readback, MainPID and measured demand describe the same process.
+//
+// THE EVALUATION CAPS ARE THE ROADMAP'S, and that is a stated divergence rather than a derivation:
+// the broker's own per-request cost has never been measured, the roadmap's caps are an order of
+// magnitude above any measured render, and a cap that is too loose fails as a slow request while a
+// cap invented for an unmeasured workload fails as a refused approval. The cutover plan's
+// measurement stage (gunbc.auth.approval_broker_cutover) is what replaces them with the broker's
+// own, and until it runs, inheriting a known-safe ceiling is the honest arm.
+// THE BROKER DOES NOT INHERIT THE ROADMAP INSTANCE'S LISTEN HOST, and the stage-A run is why this
+// is stated rather than assumed. It did inherit it, which is instance.listen_host = 0.0.0.0, so the
+// dark unit bound every interface on srv1. The readiness probe still passed -- it dials 127.0.0.1
+// and 0.0.0.0 includes loopback -- so the deployment reported a correct bind while the broker was
+// reachable from anything that could route to the host, bypassing the tailnet front door and
+// therefore the identity header the decide route requires.
+//
+// The host now comes from gunbc.auth.approval_broker_endpoint approval_broker_listen_host, which is
+// the SAME declaration the loopback URL builder consumes, so the address the unit binds and the
+// address a client dials cannot drift apart.
+//
+// THE REPO ROOT IS THE BROKER'S OWN AND NOT THE INSTANCE'S, for the same class of reason. It used
+// to be instance.repo_root -- the roadmap's deployed tree -- which is frozen at a release that
+// predates this module, so the unit could not resolve its own entry and systemd restart-looped it
+// (stage-A run, 2026-09-20). gunbc.host_layout srv1_gunbc_approval_broker_root is a root this
+// deployment populates from the candidate during the dark install, so the broker's tree and the
+// roadmap's move independently -- which is what a separate process at a separate revision means.
+// THE BROKER HAS NO CONSTANT SERVE BINARY, so this field cannot answer for it and says so rather
+// than naming a binary the unit does not run. It used to carry instance.serve_binary --
+// /opt/gunbc/bin/gunbc, the ROADMAP's binary, frozen at a release predating this module. A seed
+// older than the sources it is handed refuses to parse them, so the unit would have started,
+// refused and restart-looped (review 69066, and the operator ruling 2026-09-20 that resolved it).
+//
+// The binary the broker runs is COPIED INTO ITS PER-CANDIDATE RELEASE LOCUS from the verified
+// release-bins artifact in the same job, so it is a function of the revision being deployed --
+// gunbc.live_deploy.emit approval_broker_release_binary_path -- and there is no constant this field
+// could hold that would be true. Holding the roadmap's path "for shape" is exactly the fork that
+// shipped the hazard: a field read as authoritative while the real answer lived elsewhere.
+//
+// A POISON RATHER THAN A PLAUSIBLE PATH because the two failure modes are not comparable. A wrong
+// path installs and starts something, or silently starts nothing; this marker is not a valid
+// executable path, so a consumer that reads this field renders a line systemd rejects and the
+// failure names its own cause (DESIGN section 5). Nothing reads it today -- the broker's unit
+// builder takes the release path -- and that is what makes the refusal the honest value rather than
+// a landmine.
+//
+// DISSOLVES WHEN DeploymentServiceConfig carries the binding rather than a path: a service either
+// runs a constant binary or one resolved per release, and that is a two-armed fact the type can
+// hold. At that point this field becomes PerReleaseBinary and the poison deletes.
+data approval_broker_serve_binary_is_per_release_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker's serve binary was read from DeploymentServiceConfig. The broker runs a binary copied into its per-candidate release locus, so this field holds no constant that is true; gunbc.live_deploy.emit approval_broker_release_binary_path is the authority. This marker is not a valid executable path, so a unit rendered from it fails loudly rather than starting the roadmap's frozen binary against the broker's newer sources (DESIGN section 5)."
+
+fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig {
+  DeploymentServiceConfig {
+    unit_name: gunbc_approval_broker_unit_name,
+    serve_binary: approval_broker_serve_binary_is_per_release_poison as NonEmptyStr,
+    serve_entry: approval_broker_serve_entry_file,
+    serve_function: "approval_broker_handle" as NonEmptyStr,
+    instance_root: instance.instance_root as String as NonEmptyStr,
+    repo_root: srv1_gunbc_approval_broker_root as String as NonEmptyStr,
+    service_user: gunbc_service_user,
+    service_uid: gunbc_service_uid,
+    listen: HttpServerListenConfig {
+      host: approval_broker_listen_host as String,
+      port: port,
+    },
+    serve_cpu_limit: dashboard_serve_cpu_limit(),
+    serve_wall_limit: dashboard_serve_wall_limit(),
+  }
+}
 
 // THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL.
 // Deriving it from instance_id is what this module should eventually do — derivation is what
@@ -742,6 +911,7 @@ type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
   service: DeploymentServiceConfig
+  approval_broker: DeploymentServiceConfig
   names: DeploymentNames
   instance_id: NonEmptyStr
 }
@@ -1019,6 +1189,7 @@ fn deployment_service_config(
   DeploymentServiceConfig {
     unit_name: names.unit_name,
     serve_binary: instance.serve_binary as String as NonEmptyStr,
+    serve_entry: roadmap_serve_entry_file,
     serve_function: instance.serve_function,
     instance_root: instance.instance_root as String as NonEmptyStr,
     repo_root: instance.repo_root as String as NonEmptyStr,
@@ -1056,6 +1227,10 @@ fn deployment_spec_for(
     service: deployment_service_config(
       instance: instance,
       names: names,
+    ),
+    approval_broker: approval_broker_service_config(
+      instance: instance,
+      port: approval_broker_listen_port,
     ),
     names: names,
     instance_id: instance.instance_id,

@@ -1,0 +1,160 @@
+module gunbc.machine_intake_mtcollins1_census_image
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { Bandwidth, bandwidth, bandwidth_count }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  NoCloudSeedFile,
+  UbuntuSeededInstallMediaBuildInput,
+  ubuntu_seeded_install_media_grub_kernel_cmdline,
+}
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
+import gunbc.os_install_emit { autoinstall_live_commands_user_data }
+import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_diskless_image_name }
+import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
+import gunbc.seeded_install_media_publish {
+  BmcExportBoundary,
+  SeededImagePublication,
+  SeededImageResolution,
+  publish_seeded_image,
+  resolve_seeded_image,
+}
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureStage,
+  host_capture_census_stages,
+  host_capture_program,
+}
+
+// THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
+// that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
+// with its own identity -- the bytes differ from stock, so it never takes the stock name and the
+// stock file in the export is never touched.
+//
+// THE RUNTIME SHAPE, in order: UEFI boots the medium; grub passes autoinstall and the NoCloud
+// seedfrom; subiquity reads the seed from the medium and runs its early-commands before any other
+// step; the one early command runs the capture program off the medium, which writes the envelope to
+// the serial console, syncs, and powers off. Nothing is fetched at runtime: the program rides in the
+// seed directory. If the power-off does not happen, every later installer section is interactive,
+// so the machine waits at the installer rather than touching storage.
+//
+// The unit's name in the capture envelope. The boot run's verdict matches envelope markers against
+// its subject's machine, so this and that must be one value.
+data mtcollins1_census_machine: NonEmptyStr = "mtcollins1"
+
+// The Altra host's serial console is the PL011 at ttyAMA0 -- the console the BMC's SOL carries and
+// the one attempt=3's envelope arrived on. THE TTY IS ONE ROW because the program writes to the
+// device and the kernel is told to console on the same tty: authored twice, an edit to one spelling
+// sends the census to a device nothing is reading, and the envelope's absence would be reported as a
+// boot failure -- the misattribution this lane exists to end. Both spellings derive from here.
+data mtcollins1_census_console_tty: NonEmptyStr = "ttyAMA0"
+
+// THE RATE IS A MEASURE, not text: the corpus already models a serial console's rate as
+// std.measure Bandwidth (extdeps.network.mikrotik_crs812 rj45 console data_rate), so the kernel
+// argument RENDERS this row rather than restating the number.
+data mtcollins1_census_console_baud: Bandwidth = bandwidth(count: 115200)
+
+data mtcollins1_census_console_device: NonEmptyStr = concat("/dev/", mtcollins1_census_console_tty as String) as NonEmptyStr
+
+data mtcollins1_census_console_arg: NonEmptyStr = concat(
+  "console=", mtcollins1_census_console_tty as String, ",",
+  bandwidth_count(b: mtcollins1_census_console_baud) as String,
+) as NonEmptyStr
+
+// The seed directory the earlier census booted with (its /proc/cmdline in attempt=3 reads
+// ds=nocloud;s=/cdrom/gunbc-census/), kept so the two captures are comparable.
+data mtcollins1_census_nocloud_dir: NonEmptyStr = "gunbc-census"
+
+data mtcollins1_census_program_file: NonEmptyStr = "capture.sh"
+
+// poweroff -f does not return on success. If it fails, the installer continues into a session whose
+// every section is interactive (see the seed), so no storage action is reachable without a human.
+data mtcollins1_census_halt_command: NonEmptyStr = "poweroff -f"
+
+// ISO 9660 limits a volume id to 32 d-characters. This is the label the booted host reports for the
+// medium, so the boot-media check expects it rather than the stock "Ubuntu-Server 24.04.3 LTS arm64".
+data mtcollins1_census_volume_id: NonEmptyStr = "GUNBC_MTC1_CENSUS_2404_3"
+
+data mtcollins1_census_image_stem: NonEmptyStr = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64"
+
+fn mtcollins1_census_capture_program(stages: List<HostCaptureStage>) -> NonEmptyStr {
+  host_capture_program(
+    machine: mtcollins1_census_machine,
+    console_device: mtcollins1_census_console_device,
+    stages: stages,
+    halt_command: mtcollins1_census_halt_command,
+  )
+}
+
+fn mtcollins1_census_program_on_medium() -> NonEmptyStr {
+  concat("/cdrom/", mtcollins1_census_nocloud_dir as String, "/", mtcollins1_census_program_file as String) as NonEmptyStr
+}
+
+// THE STAGE ROSTER IS THE PARAMETER. The census image is this function applied to the census roster;
+// a roster that appends stages after the census ones yields a different image with a different
+// digest and name, built by the same derivation. Nothing here may run before the census stages or
+// between them and the envelope's END.
+fn mtcollins1_seeded_image_input(stages: List<HostCaptureStage>, image_stem: NonEmptyStr, volume_id: NonEmptyStr) -> UbuntuSeededInstallMediaBuildInput {
+  UbuntuSeededInstallMediaBuildInput {
+    stock_artifact: noble_numbat_2404_3_live_server_arm64,
+    nocloud_dir_on_iso: mtcollins1_census_nocloud_dir,
+    user_data_body: autoinstall_live_commands_user_data(
+      payload: UbuntuAutoinstallLiveCommands {
+        autoinstall_version: 1,
+        early_commands: [concat("sh ", mtcollins1_census_program_on_medium() as String) as NonEmptyStr],
+      },
+    ) as NonEmptyStr,
+    seed_files: [
+      NoCloudSeedFile {
+        name: mtcollins1_census_program_file,
+        content: mtcollins1_census_capture_program(stages: stages),
+      },
+    ],
+    grub_kernel_cmdline: concat(
+      ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: mtcollins1_census_nocloud_dir) as String,
+      " ",
+      mtcollins1_census_console_arg as String,
+    ) as NonEmptyStr,
+    volume_id: volume_id,
+    pinned_dates: seeded_install_media_pinned_dates,
+    image_stem: image_stem,
+    builder_revision: seeded_install_media_builder_revision,
+  }
+}
+
+data mtcollins1_census_image_input: UbuntuSeededInstallMediaBuildInput = mtcollins1_seeded_image_input(
+  stages: host_capture_census_stages,
+  image_stem: mtcollins1_census_image_stem,
+  volume_id: mtcollins1_census_volume_id,
+)
+
+// DECLARED FRONTIER (DESIGN §3c): the two effectful entries below have NO consumer in this change,
+// and each names the one that lands next. mtcollins1_census_image_publish is consumed by stage 0B/0C:
+// a step in the fleet-converge workflow run on srv2 (host=srv2, the SM/WIF credential prelude, the same
+// job shape as gunbc.machine_intake_mtcollins1_boot_image_fetch mtcollins1_fetch_boot_image), which
+// builds and publishes inside /srv/bmc and emits the published name and digest as its receipt.
+// mtcollins1_census_image_resolve is consumed by stage 0D: gunbc.machine_intake_mtcollins1_boot_run
+// (#11484) resolves the census image before the approval-gated boot, and its signed boot subject binds
+// the resolved image_name and output_digest instead of the stock ones. TRIGGER THAT RETIRES THIS
+// FRONTIER: that fleet-converge step and that boot-run binding landing, each calling these functions;
+// until both do, neither is reachable from an entry point, and nothing here claims otherwise.
+//
+// BUILT WHERE IT IS SERVED. The build reads the stock medium already verified into srv2's export and
+// writes the derived image into the same export, admitted against that export's ownership
+// requirement like every other write the controller will read -- so the image never leaves the host
+// that serves it, and the stock file beside it is read and never replaced.
+fn mtcollins1_census_image_stock_path() -> NonEmptyStr {
+  boot_image_published_path(export_dir: mtcollins1_boot_export_dir, image_name: mtcollins1_diskless_image_name)
+}
+
+fn mtcollins1_census_image_publish() -> SeededImagePublication {
+  publish_seeded_image(
+    input: mtcollins1_census_image_input,
+    stock_path: mtcollins1_census_image_stock_path(),
+    boundary: BmcExportBoundary { export_dir: mtcollins1_boot_export_dir },
+  )
+}
+
+fn mtcollins1_census_image_resolve() -> SeededImageResolution {
+  resolve_seeded_image(input: mtcollins1_census_image_input, dir: mtcollins1_boot_export_dir)
+}
