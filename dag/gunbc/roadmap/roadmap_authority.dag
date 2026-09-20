@@ -2873,7 +2873,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "egress-numeric-bit-sealed-carrier",
       owner: "primitive-egress",
       path: "docs/plans/demand-engine-program.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "NUMERIC-BIT cut 1: one sealed octet carrier minted only by admission (gunbc#11643)",
         boundary: "A sole_constructor QualifiedOctets { members: List<UInt8> } minted only by the admission functions, RealizableWidth sole_constructor, and every bit-width operation consuming the sealed carrier. UInt8 is a Phantom transparent to Int and cannot carry the proof, so 256 inhabits List<UInt8> today.",
         displaced_cost: "Every downstream encoder (base64, SHA-256, CBOR) re-checks or silently accepts an out-of-range octet; the forged-octet divergence row exists only because the carrier is literal-writable.",
@@ -2881,7 +2881,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A literal QualifiedOctets outside the admission functions refuses at resolve; an admission fed 256 refuses with a typed cause; a forged-octet witness that once diverged has no author.",
         out_of_scope: "Kernel arms and multi-limb carriers are the next two rows.",
         handback: "Return the landed head, the admission roster, and the deleted divergence row."
-      )
+      ), on: "2026-09-20", note: "LANDED: gunbc#11643 merged at 6bb950a5589 with the sealed QualifiedOctets / QualifiedWord / RealizableWidth carriers and the mint proxy closed. The row stays active until its acceptance receipt is recorded; no further slice is owed on it.")
     ),
     active(
       identity: "rn_06FZGM9B7W8J44J7R6QXA1MJWM",
@@ -2892,7 +2892,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "NUMERIC-BIT cut 2: Width32/Width64 kernel arms in the interpreter and the emitter",
         boundary: "The bit operations over the sealed carrier at machine widths 32 and 64 realized as kernel arms in the v1 interpreter and in the Rust emitter, with one differential witness proving both targets agree on a discriminating corpus.",
         displaced_cost: "SHA-256 and every rotate-heavy primitive run as interpreted folds over Int, which is the cost that gates CRYPTO-0's landing.",
-        first_slice: "Interpreter arms for the four rotate/shift/mask operations at Width32, the emitter twin, the differential witness.",
+        first_slice: "FIRST the §3 fork: gunbc#11645 landed std.bitwise (word32_* over Int) beside std.machine_word in the same window -- two bit-operation authorities on main. Consolidate onto one before any kernel arm, then interpreter arms for the four rotate/shift/mask operations at Width32, the emitter twin, the differential witness.",
         red_control: "A mutated emitter arm reds the differential witness while the interpreter arm stays green; an unrealized width refuses rather than falling back to the fold.",
         out_of_scope: "Multi-limb widths above 64.",
         handback: "Return both realizations, the witness, and the measured cost of SHA-256 through the arms."
@@ -2919,13 +2919,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "primitive-egress",
       path: "docs/plans/demand-engine-program.md",
       t: fields(
-        headline: "CRYPTO-0: land pure .dag SHA-256 and HMAC with utf8_encode_octets (gunbc#11647)",
-        boundary: "gunbc#11647 retargeted onto the kernel arms and landed: SHA-256, HMAC-SHA256 and utf8_encode_octets as pure .dag, the native receipt instrument row //gunbc/instruments:crypto-native, and the two hmac evidence rows in gunbc.primitive_egress.dispositions_text deleted in the same change (review 69198: with the primitives gone they join no identity and every primitive-egress-census label exits 1).",
-        displaced_cost: "Every hashing primitive is still a host route the substrate cannot see, and the hmac evidence rows stay as un-retired debt.",
-        first_slice: "Retarget, floor clean, land; then the instrument row and the evidence-row retirement.",
-        red_control: "A mutated round constant reds the FIPS 180-4 vectors; the native instrument refuses on a wrong label rather than reporting pass.",
+        headline: "CRYPTO-0: after the HMAC landing -- the native receipt instrument and the cost of interpreted SHA-256",
+        boundary: "SHA-256 landed on main as extdeps.crypto.sha2 over std.bitwise (gunbc#11645); HMAC-SHA-256 over it, utf8_encode_octets, and the deletion of the hmac interpreter primitives, crate and evidence rows land in the wind-down consolidation (gunbc#11895, superseding #11647). What remains of this row: the native receipt instrument //gunbc/instruments:crypto-native, and a measured cost of SHA-256 as interpreted folds against the floor budget, which is what decides whether the kernel arms are needed for cost or only for the fork.",
+        displaced_cost: "Without the instrument the .dag hash has no native receipt, and without the cost measurement the kernel-arms row is scheduled on a guess.",
+        first_slice: "The instrument row and the cost measurement, once gunbc#11895 has landed.",
+        red_control: "The native instrument refuses on a wrong label rather than reporting pass; a mutated round constant reds the FIPS 180-4 vectors in sha256_fips_witness_test.",
         out_of_scope: "SHA-384/512, P-256 and ES256 are the next row.",
-        handback: "Return the landed head, the instrument row, and the retired evidence rows."
+        handback: "Return the instrument row and the measured cost."
       )
     ),
     active(
@@ -2948,7 +2948,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "egress-encoding-0-cbor-der-landing",
       owner: "primitive-egress",
       path: "docs/plans/demand-engine-program.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "ENCODING-0: land pure .dag CBOR, DER and X.509 parsing (gunbc#11727)",
         boundary: "gunbc#11727 (approved, receipt 8 modules / 170 claims / 0 failed) retargeted from the sharp-raven base onto main once the sealed carrier lands, fresh receipt, landed.",
         displaced_cost: "The attestation parsers sit approved but unlandable, and every consumer of std.octet_span waits on them.",
@@ -2956,7 +2956,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "The three mutant REDs in the receipt stay red on the retargeted head.",
         out_of_scope: "content_hash consolidation, UTF-8 causes and the bytes seam are their own rows.",
         handback: "Return the landed head and the fresh receipt."
-      )
+      ), on: "2026-09-20", note: "LANDING in gunbc#11895 (the wind-down consolidation) merged onto current main rather than retargeted separately; the row stays active until its acceptance receipt.")
     ),
     active(
       identity: "rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX",
@@ -2978,7 +2978,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "egress-effects-1-filesystem-provider",
       owner: "primitive-egress",
       path: "docs/plans/demand-engine-program.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "EFFECTS-1: land cut (c) and the E2 LocalFilesystem provider",
         boundary: "gunbc#11744 (head b170ce27, CLEAN, 412 uses rows cut with zero residue) lands once its follow-up roster is re-derived: it declares 26 rows over 5ff323b6d29..a35c7cede3e while the head carries 48 across 9 modules, and the roster is rendered into docs/plans/demand-engine-program.md whose regeneration refuses under host memory pressure. Then E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the 48 rows retire, and a refusal lands on any new restatement row.",
         displaced_cost: "Filesystem effects in the emitted closure still reach a bare primitive that is neither the handler nor the interface, and restatement rows accrue without a wall.",
@@ -2986,7 +2986,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses under the handler binding.",
         out_of_scope: "Network and process effects are later program cuts.",
         handback: "Return the landed cut, the handler binding, and the restatement refusal."
-      )
+      ), on: "2026-09-20", note: "Cut (c) lands in gunbc#11895 with the follow-up roster re-derived at the landing head (ten production modules, range tip = the merged main); E2 and the restatement refusal remain the open slices.")
     ),
     active(
       identity: "rn_5NMAXZFR0Q4ER63G6VYDH6NHA5",
