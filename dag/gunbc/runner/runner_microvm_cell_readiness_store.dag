@@ -8,7 +8,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused, filesystem_listing_observation,
 }
-import gunbc.product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved, FactObservedFailing,
   SanitationFact, SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable,
