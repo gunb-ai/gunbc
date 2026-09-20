@@ -1,0 +1,1424 @@
+module gunbc.spark.serving_load_probe
+
+import std.types { Bool, String, NonEmptyStr, EpochSecs, Int }
+import std.nat { Nat }
+import std.measure {
+  Millisecond, millisecond, millisecond_count, TokenCount, token_count, token_count_value, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, TokensPerSecond, tokens_per_second, tokens_per_second_count,
+}
+import std.decimal { ExactDecimal, canonical_exact_decimal, checked_decimal_rescale, checked_decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, CheckedIntReady, CheckedIntOverflow }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import product.capacity.lease { LeaseGrant }
+import extdeps.prometheus.client {
+  PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary, PrometheusUntyped, prometheus_metric_type_word,
+  SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
+}
+import extdeps.vllm.metrics {
+  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal, HistogramSum, HistogramCount, vllm_metric_type,
+}
+import extdeps.vllm.bench_serve {
+  VllmBenchServeRequest, PoissonProcess, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_source_standing, vllm_bench_backend_route,
+}
+import extdeps.vllm.server { vllm_route_path }
+import gunbc.spark.model_snapshot_materialize { SparkRemoteRun, RemoteRan, RemoteUnreachable }
+import gunbc.harness.harness_backend {
+  harness_gauge_value, harness_gauge_count, harness_histogram_statistic_value, harness_queue_from_body, text_labeled_count, text_labeled_head_count, text_field_last_word, text_without_sudo_prompt,
+}
+import gunbc.serving.turn_admission {
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
+}
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+}
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile, glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire,
+}
+import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
+import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, serving_performance_subject_wire, serving_subject_axes_wire,
+}
+import gunbc.spark.serving_rank_observe {
+  ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
+}
+import extdeps.vllm.engine_args { SpeculativeDecodingOff }
+import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
+
+// ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
+//
+// A RATE WITHOUT ITS SUBJECT, PROTOCOL, REALIZATION AND WINDOW STANDING is uncomparable.
+// Saturation is not decidable from one run. Completion accounting is fail-closed: a request that
+// emits tokens and then fails cannot be denominated in tokens. A quiet endpoint read is not an
+// isolation receipt.
+//
+// THE RATE IS DERIVED FROM THE CLIENT LEDGER, never from generation_tokens_total. That engine
+// counter includes foreign decode on this arm. Surplus (engine minus client, floored at zero)
+// bounds shared work. A latency distribution beside declared contention is still a distribution;
+// an aggregate capacity claim is not available from a shared window.
+
+type DrainReceipt
+  = DrainObservedIdle
+  | DrainNotIdle { running: Nat }
+  | DrainUnread { cause: NonEmptyStr }
+
+type ProtectedSubjectField sole_constructor {
+  subject: ServingPerformanceSubject
+  served_alias: NonEmptyStr
+  route: NonEmptyStr
+}
+
+fn protected_subject_field(
+  subject: ServingPerformanceSubject,
+  served_alias: NonEmptyStr,
+  route: NonEmptyStr,
+) -> ProtectedSubjectField {
+  ProtectedSubjectField { subject: subject, served_alias: served_alias, route: route }
+}
+
+fn protected_subject_key(p: ProtectedSubjectField) -> NonEmptyStr {
+  join([
+    serving_performance_subject_wire(s: p.subject) as String,
+    "/",
+    p.served_alias as String,
+    "/",
+    p.route as String,
+  ], "") as NonEmptyStr
+}
+
+fn protected_subject_matches(a: ProtectedSubjectField, b: ProtectedSubjectField) -> Bool {
+  (protected_subject_key(p: a) as String) == (protected_subject_key(p: b) as String)
+}
+
+type ExclusionReceipt
+  = ExclusionEstablished { how: NonEmptyStr, protected: ProtectedSubjectField }
+  | ExclusionNotEstablished { cause: NonEmptyStr }
+
+type ProbeWindowStanding
+  = WindowIsolated {
+      grant: LeaseGrant
+      protected: ProtectedSubjectField
+      deadline: EpochSecs
+      drain: DrainReceipt
+      exclusion: ExclusionReceipt
+    }
+  | WindowIsolationNotEstablished { cause: NonEmptyStr, drain: DrainReceipt }
+  | ForeignTrafficObserved { attributed_receipt: NonEmptyStr, drain: DrainReceipt }
+  | ForeignTrafficNotObserved { drain: DrainReceipt }
+  | ForeignTrafficUnread { cause: NonEmptyStr, drain: DrainReceipt }
+
+fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
+  match q {
+    QueueDepthUnread { obligation: o } => DrainUnread { cause: o }
+    QueueDepthRead { waiting: _, running: r, pressure: _ } =>
+      if r == 0 { DrainObservedIdle } else { DrainNotIdle { running: r } }
+  }
+}
+
+// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT, not exclusion. The probe still refuses to START on a
+// non-idle queue: that would mix already-running foreign requests into the client window without a
+// join. An idle start without lease/exclusion/protected subject is WindowIsolationNotEstablished.
+// Actors who may share Group B during a capture, none of which a drain snapshot excludes: operator
+// interactive long-context sessions, gunbc.harness.harness_cli harness_probe_cli turns, and nccl-tests
+// all_reduce_perf buffers. Naming them is not a traffic observation.
+fn window_from_drain(drain: DrainReceipt) -> ProbeWindowStanding {
+  match drain {
+    DrainUnread { cause: c } => WindowIsolationNotEstablished { cause: c, drain: drain }
+    DrainNotIdle { running: n } =>
+      WindowIsolationNotEstablished {
+        cause: join(["the engine already had ", to_string(n), " running requests; the probe refuses a non-idle start"], "") as NonEmptyStr,
+        drain: drain,
+      }
+    DrainObservedIdle =>
+      WindowIsolationNotEstablished {
+        cause: "idle drain is not exclusion; isolation requires an exact lease, exclusion, idle drain, and protected subject" as NonEmptyStr,
+        drain: drain,
+      }
+  }
+}
+
+fn isolated_window(
+  grant: LeaseGrant,
+  measured: ProtectedSubjectField,
+  deadline: EpochSecs,
+  drain: DrainReceipt,
+  exclusion: ExclusionReceipt,
+) -> ProbeWindowStanding {
+  match exclusion {
+    ExclusionNotEstablished { cause: c } =>
+      WindowIsolationNotEstablished { cause: c, drain: drain }
+    ExclusionEstablished { how: _, protected: ep } =>
+      if !protected_subject_matches(a: measured, b: ep) {
+        WindowIsolationNotEstablished {
+          cause: "exclusion was not over the measured arm, route, and subject" as NonEmptyStr,
+          drain: drain,
+        }
+      } else if (grant.reference as String) != (protected_subject_key(p: measured) as String) {
+        WindowIsolationNotEstablished {
+          cause: "the lease was not over the measured arm, route, and subject" as NonEmptyStr,
+          drain: drain,
+        }
+      } else {
+        match drain {
+          DrainObservedIdle =>
+            WindowIsolated { grant: grant, protected: measured, deadline: deadline, drain: drain, exclusion: exclusion }
+          DrainNotIdle { running: _ } =>
+            WindowIsolationNotEstablished { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
+          DrainUnread { cause: c } =>
+            WindowIsolationNotEstablished { cause: c, drain: drain }
+        }
+      }
+  }
+}
+
+type BacklogStanding
+  = BacklogObserved { running: Nat, waiting: Nat, capacity_waiting: Nat, preemptions: Nat }
+  | NoBacklogObserved { running: Nat, preemptions: Nat }
+  | BacklogUnread { cause: NonEmptyStr }
+
+fn capacity_waiting_count(p: ServingCapacityPressure) -> Nat? {
+  match p {
+    CapacityPressureUnread { obligation: _ } => none
+    RouteAdmittingMore => Present { value: 0 }
+    RouteHoldingForCapacity { held: n } => Present { value: n }
+  }
+}
+
+fn backlog_from_body(body: String, preemptions: Nat?) -> BacklogStanding {
+  match preemptions {
+    Absent => BacklogUnread { cause: "vllm:num_preemptions_total could not be read as a count" as NonEmptyStr }
+    Present { value: p } =>
+      match harness_queue_from_body(body: body) {
+        QueueDepthUnread { obligation: o } => BacklogUnread { cause: o }
+        QueueDepthRead { waiting: w, running: r, pressure: pr } =>
+          match capacity_waiting_count(p: pr) {
+            Absent => BacklogUnread { cause: "capacity-reason waiting could not be read" as NonEmptyStr }
+            Present { value: c } =>
+              if w == 0 && c == 0 {
+                NoBacklogObserved { running: r, preemptions: p }
+              } else {
+                BacklogObserved { running: r, waiting: w, capacity_waiting: c, preemptions: p }
+              }
+          }
+      }
+  }
+}
+
+type CounterContinuity
+  = SameExporter { start_field: NonEmptyStr }
+  | ExporterChanged { before: NonEmptyStr, after: NonEmptyStr }
+  | ContinuityUnread { cause: NonEmptyStr }
+
+fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmEndpointProcessLaunchObservation) -> CounterContinuity {
+  match before {
+    LaunchUnobserved { group: _, obligation: o } =>
+      ContinuityUnread { cause: join(["the exporter start field was unobserved before the window: ", o as String], "") as NonEmptyStr }
+    LaunchObserved { launch: b, receipt: _ } =>
+      match after {
+        LaunchUnobserved { group: _, obligation: o } =>
+          ContinuityUnread { cause: join(["the exporter start field was unobserved after the window: ", o as String], "") as NonEmptyStr }
+        LaunchObserved { launch: a, receipt: _ } =>
+          if (b.process_start_field as String) == (a.process_start_field as String) {
+            SameExporter { start_field: b.process_start_field }
+          } else {
+            ExporterChanged { before: b.process_start_field, after: a.process_start_field }
+          }
+      }
+  }
+}
+
+// THE RAW DELTA IS DIMENSION-AGNOSTIC ON PURPOSE. `histogram_delta` is the one shared parse and
+// subtract for any vLLM histogram. `sum` is the EXACT decimal difference of the two cumulative sums,
+// so a decrease or a fraction of any size survives to the check that must see it; each projection
+// then applies its own unit (latency floors seconds to whole milliseconds, tokens require an exact
+// whole number and refuse any fraction). `count` is how many observations the histogram recorded. It is not a receipt field: the
+// observation stores only the typed projections below, so a seconds sum and a booked-token sum can
+// never be read through one carrier.
+type HistogramDelta
+  = HistogramDeltaRead { sum: ExactDecimal, count: Nat }
+  | HistogramDeltaUnread { cause: NonEmptyStr }
+  | HistogramCounterReset { cause: NonEmptyStr }
+
+fn nat_from_nonneg_int(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
+// EXACT THOUSANDTHS OR NOTHING. Scaling up goes through std.decimal checked_decimal_rescale, so an
+// overflow refuses rather than wrapping; a value with a nonzero digit past the third decimal refuses
+// rather than truncating. Counters and bench figures read through this may not lose precision.
+fn milli_from_exact(d: ExactDecimal) -> Nat? {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    none
+  } else if c.fraction_digits > 3 {
+    none
+  } else {
+    match checked_decimal_rescale(units: c.units, by: 3 - c.fraction_digits) {
+      CheckedIntReady { value: scaled } => nat_from_nonneg_int(n: scaled)
+      CheckedIntOverflow { cause: _ } => none
+    }
+  }
+}
+
+// WHOLE MILLISECONDS, FLOORED ON PURPOSE. A latency sum carries sub-millisecond digits the receipt
+// does not keep; flooring is the declared projection here, and only here. Scaling up is still checked.
+fn milli_floor_from_exact(d: ExactDecimal) -> Nat? {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    none
+  } else if c.fraction_digits > 3 {
+    match checked_decimal_pow10(exponent: c.fraction_digits - 3) {
+      CheckedIntReady { value: p } => nat_from_nonneg_int(n: c.units / p)
+      CheckedIntOverflow { cause: _ } => none
+    }
+  } else {
+    match checked_decimal_rescale(units: c.units, by: 3 - c.fraction_digits) {
+      CheckedIntReady { value: scaled } => nat_from_nonneg_int(n: scaled)
+      CheckedIntOverflow { cause: _ } => none
+    }
+  }
+}
+
+fn field_to_milli(field: String) -> Nat? {
+  match prometheus_sample_value_reading(field: field) {
+    SampleValueNotFinite { lexeme: _ } => none
+    SampleValueUnreadable { lexeme: _ } => none
+    SampleValueExact { value: d } => milli_from_exact(d: d)
+  }
+}
+
+// A sample read as its exact decimal; a non-finite or unreadable lexeme is absent, never rounded.
+fn field_to_exact(field: String) -> ExactDecimal? {
+  match prometheus_sample_value_reading(field: field) {
+    SampleValueNotFinite { lexeme: _ } => none
+    SampleValueUnreadable { lexeme: _ } => none
+    SampleValueExact { value: d } => Present { value: d }
+  }
+}
+
+fn nat_delta(after: Nat, before: Nat) -> Nat? {
+  if after < before { none } else { Present { value: after - before } }
+}
+
+fn histogram_family_refused(t: PrometheusMetricType) -> HistogramDelta {
+  HistogramDeltaUnread { cause: join(["this metric is a ", prometheus_metric_type_word(t: t), " family; this reader takes sum/count as a histogram delta only from a histogram family"], "") as NonEmptyStr }
+}
+
+// The sum is read through the projection's own reader, so its unit is the caller's, never guessed here.
+fn histogram_delta(before_body: String, after_body: String, metric: VllmServingMetric) -> HistogramDelta {
+  match vllm_metric_type(m: metric) {
+    PrometheusCounter => histogram_family_refused(t: PrometheusCounter)
+    PrometheusGauge => histogram_family_refused(t: PrometheusGauge)
+    PrometheusSummary => histogram_family_refused(t: PrometheusSummary)
+    PrometheusUntyped => histogram_family_refused(t: PrometheusUntyped)
+    PrometheusHistogram => {
+    match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramSum) {
+      Absent => HistogramDeltaUnread { cause: "histogram sum missing on the first body" as NonEmptyStr }
+      Present { value: bs } =>
+        match harness_histogram_statistic_value(body: after_body, metric: metric, statistic: HistogramSum) {
+          Absent => HistogramDeltaUnread { cause: "histogram sum missing on the second body" as NonEmptyStr }
+          Present { value: asv } =>
+            match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramCount) {
+              Absent => HistogramDeltaUnread { cause: "histogram count missing on the first body" as NonEmptyStr }
+              Present { value: bc } =>
+                match harness_histogram_statistic_value(body: after_body, metric: metric, statistic: HistogramCount) {
+                  Absent => HistogramDeltaUnread { cause: "histogram count missing on the second body" as NonEmptyStr }
+                  Present { value: ac } =>
+                    match field_to_exact(field: bs) {
+                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not an exact decimal" as NonEmptyStr }
+                      Present { value: bsm } =>
+                        match field_to_exact(field: asv) {
+                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not an exact decimal" as NonEmptyStr }
+                          Present { value: asm } =>
+                            match harness_gauge_count(text: bc) {
+                              Absent => HistogramDeltaUnread { cause: "histogram count before was not an exact count" as NonEmptyStr }
+                              Present { value: bcn } =>
+                                match harness_gauge_count(text: ac) {
+                                  Absent => HistogramDeltaUnread { cause: "histogram count after was not an exact count" as NonEmptyStr }
+                                  Present { value: acn } =>
+                                    if bsm.units < 0 {
+                                      HistogramDeltaUnread { cause: "histogram sum before was negative, outside a cumulative sum's domain" as NonEmptyStr }
+                                    } else if asm.units < 0 {
+                                      HistogramDeltaUnread { cause: "histogram sum after was negative, outside a cumulative sum's domain" as NonEmptyStr }
+                                    } else {
+                                    match exact_decimal_sub(a: asm, b: bsm) {
+                                      ExactDifferenceUnrepresentable { cause: _ } => HistogramDeltaUnread { cause: "histogram sum delta does not fit a 64-bit exact decimal" as NonEmptyStr }
+                                      ExactDifferenceOperandScaleRefused { observed_fraction_digits: _ } => HistogramDeltaUnread { cause: "histogram sum carried a negative decimal scale" as NonEmptyStr }
+                                      ExactDifference { value: ds } =>
+                                    if ds.units < 0 {
+                                      HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
+                                    } else {
+                                        match nat_delta(after: acn, before: bcn) {
+                                          Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
+                                          Present { value: dc } => HistogramDeltaRead { sum: ds, count: dc }
+                                        }
+                                    }
+                                    }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+  }
+}
+
+// vllm:inter_token_latency_seconds: the sum is SECONDS, so thousandths of it are milliseconds.
+type LatencyHistogramDelta
+  = LatencyHistogramRead { sum: Millisecond, observations: Nat }
+  | LatencyHistogramUnread { cause: NonEmptyStr }
+  | LatencyHistogramReset { cause: NonEmptyStr }
+
+// vllm:iteration_tokens_total: the sum is TOKENS BOOKED across scheduler iterations, not a
+// duration, and the count is histogram observations, not an engine-step count the probe may rely on.
+type TokenHistogramDelta
+  = TokenHistogramRead { booked: TokenCount, observations: Nat }
+  | TokenHistogramUnread { cause: NonEmptyStr }
+  | TokenHistogramReset { cause: NonEmptyStr }
+
+fn itl_latency_delta(before_body: String, after_body: String) -> LatencyHistogramDelta {
+  match histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds) {
+    HistogramDeltaRead { sum: s, count: c } =>
+      match milli_floor_from_exact(d: s) {
+        Absent => LatencyHistogramUnread { cause: "inter-token latency sum delta did not project to milliseconds" as NonEmptyStr }
+        Present { value: ms } => LatencyHistogramRead { sum: millisecond(count: ms), observations: c }
+      }
+    HistogramDeltaUnread { cause: x } => LatencyHistogramUnread { cause: x }
+    HistogramCounterReset { cause: x } => LatencyHistogramReset { cause: x }
+  }
+}
+
+fn iteration_tokens_booked_delta(before_body: String, after_body: String) -> TokenHistogramDelta {
+  match histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal) {
+    HistogramDeltaRead { sum: s, count: c } => {
+      let d = canonical_exact_decimal(d: s)
+      if d.fraction_digits != 0 {
+        TokenHistogramUnread { cause: "iteration_tokens_total sum delta was not a whole token count" as NonEmptyStr }
+      } else {
+        match nat_from_nonneg_int(n: d.units) {
+          Absent => TokenHistogramUnread { cause: "iteration_tokens_total sum delta was negative" as NonEmptyStr }
+          Present { value: t } => TokenHistogramRead { booked: token_count(count: t), observations: c }
+        }
+      }
+    }
+    HistogramDeltaUnread { cause: x } => TokenHistogramUnread { cause: x }
+    HistogramCounterReset { cause: x } => TokenHistogramReset { cause: x }
+  }
+}
+
+fn preemption_count(body: String) -> Nat? {
+  match harness_gauge_value(body: body, metric: NumPreemptionsTotal) {
+    Absent => none
+    Present { value: t } => harness_gauge_count(text: t)
+  }
+}
+
+type OperationLedger
+  = LedgerClosed { offered: Nat, completed: Nat, failed: Nat }
+  | LedgerIncomplete { because: NonEmptyStr }
+
+fn ledger_admits_token_denomination(l: OperationLedger) -> Bool {
+  match l {
+    LedgerIncomplete { because: _ } => false
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      c == o && f == 0
+  }
+}
+
+type TokenDelta
+  = TokenDeltaRead { tokens: TokenCount }
+  | TokenDeltaScoped { tokens: TokenCount, incarnation: ObservedRankIncarnation }
+  | TokenDeltaUnread { cause: NonEmptyStr }
+  | TokenDeltaReset { cause: NonEmptyStr }
+
+fn token_delta_tokens(d: TokenDelta) -> TokenCount? {
+  match d {
+    TokenDeltaRead { tokens: t } => Present { value: t }
+    TokenDeltaScoped { tokens: t, incarnation: _ } => Present { value: t }
+    TokenDeltaUnread { cause: _ } => none
+    TokenDeltaReset { cause: _ } => none
+  }
+}
+
+fn generation_token_delta(before_body: String, after_body: String) -> TokenDelta {
+  match harness_gauge_value(body: before_body, metric: GenerationTokensTotal) {
+    Absent => TokenDeltaUnread { cause: "vllm:generation_tokens_total missing on the first body" as NonEmptyStr }
+    Present { value: b } =>
+      match harness_gauge_value(body: after_body, metric: GenerationTokensTotal) {
+        Absent => TokenDeltaUnread { cause: "vllm:generation_tokens_total missing on the second body" as NonEmptyStr }
+        Present { value: a } =>
+          match field_to_milli(field: b) {
+            Absent => TokenDeltaUnread { cause: "generation_tokens_total before was not an exact decimal" as NonEmptyStr }
+            Present { value: bm } =>
+              match field_to_milli(field: a) {
+                Absent => TokenDeltaUnread { cause: "generation_tokens_total after was not an exact decimal" as NonEmptyStr }
+                Present { value: am } =>
+                  match nat_delta(after: am, before: bm) {
+                    Absent => TokenDeltaReset { cause: "generation_tokens_total decreased; the exporter likely restarted" as NonEmptyStr }
+                    Present { value: d } =>
+                      if d % 1000 == 0 {
+                        TokenDeltaRead { tokens: token_count(count: d / 1000) }
+                      } else {
+                        TokenDeltaUnread { cause: "generation_tokens_total delta was not a whole token count" as NonEmptyStr }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn generation_token_delta_scoped(
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
+  before_body: String,
+  after_body: String,
+) -> TokenDelta {
+  match before_incarnation {
+    Absent => TokenDeltaUnread { cause: "generation_tokens_total is not scoped: the before scrape has no ObservedRankIncarnation" as NonEmptyStr }
+    Present { value: b } =>
+      match after_incarnation {
+        Absent => TokenDeltaUnread { cause: "generation_tokens_total is not scoped: the after scrape has no ObservedRankIncarnation" as NonEmptyStr }
+        Present { value: a } =>
+          if !observed_rank_incarnations_agree(a: b, b: a) {
+            TokenDeltaUnread {
+              cause: join([
+                "generation_tokens_total is not comparable across incarnations: before ",
+                observed_rank_incarnation_text(i: b),
+                " after ",
+                observed_rank_incarnation_text(i: a),
+              ], "") as NonEmptyStr
+            }
+          } else {
+            match generation_token_delta(before_body: before_body, after_body: after_body) {
+              TokenDeltaUnread { cause: c } => TokenDeltaUnread { cause: c }
+              TokenDeltaReset { cause: c } => TokenDeltaReset { cause: c }
+              TokenDeltaRead { tokens: t } => TokenDeltaScoped { tokens: t, incarnation: a }
+              TokenDeltaScoped { tokens: t, incarnation: i } => TokenDeltaScoped { tokens: t, incarnation: i }
+            }
+          }
+      }
+  }
+}
+
+type ArrivalSkew
+  = ArrivalSkewObserved { max_stagger_millis: Millisecond }
+  | ArrivalSkewUnread { cause: NonEmptyStr }
+
+fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
+  match req.arrival {
+    SendAllImmediately =>
+      ArrivalSkewUnread { cause: "SendAllImmediately is input policy, not observed skew; vLLM's max_concurrency semaphore can run prompts in waves, and per-request start times were not retained" as NonEmptyStr }
+    PoissonProcess { request_rate: _, burstiness: _ } =>
+      ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
+  }
+}
+
+type OccupancySample {
+  running: Nat
+  waiting: Nat
+  capacity_waiting: Nat
+  preemptions: Nat
+  prompt_tokens: TokenCount
+}
+
+type BoundaryOccupancyReceipt
+  = OccupancyBoundariesUnread { cause: NonEmptyStr }
+  | OccupancyBoundariesRead { before: OccupancySample, after: OccupancySample }
+
+fn metric_token_count(body: String, metric: VllmServingMetric) -> TokenCount? {
+  match harness_gauge_value(body: body, metric: metric) {
+    Absent => none
+    Present { value: t } =>
+      match field_to_milli(field: t) {
+        Absent => none
+        Present { value: m } =>
+          if m % 1000 == 0 { Present { value: token_count(count: m / 1000) } } else { none }
+      }
+  }
+}
+
+fn occupancy_from_body(body: String) -> OccupancySample? {
+  match harness_queue_from_body(body: body) {
+    QueueDepthUnread { obligation: _ } => none
+    QueueDepthRead { waiting: w, running: r, pressure: p } =>
+      match preemption_count(body: body) {
+        Absent => none
+        Present { value: pr } =>
+          match capacity_waiting_count(p: p) {
+            Absent => none
+            Present { value: c } =>
+              match metric_token_count(body: body, metric: PromptTokensTotal) {
+                Absent => none
+                Present { value: pt } =>
+                  Present { value: OccupancySample { running: r, waiting: w, capacity_waiting: c, preemptions: pr, prompt_tokens: pt } }
+              }
+          }
+      }
+  }
+}
+
+fn occupancy_trace_from_endpoint_scrapes(before_body: String, after_body: String) -> BoundaryOccupancyReceipt {
+  match occupancy_from_body(body: before_body) {
+    Absent => OccupancyBoundariesUnread { cause: "a bound scrape could not yield running/waiting/prompt_tokens on the before body" as NonEmptyStr }
+    Present { value: a } =>
+      match occupancy_from_body(body: after_body) {
+        Absent => OccupancyBoundariesUnread { cause: "a bound scrape could not yield running/waiting/prompt_tokens on the after body; one boundary is not a series" as NonEmptyStr }
+        Present { value: b } => OccupancyBoundariesRead { before: a, after: b }
+      }
+  }
+}
+
+type ClientOutputTokens
+  = ClientOutputTokensObserved { tokens: TokenCount }
+  | ClientOutputTokensUnread { cause: NonEmptyStr }
+
+type LedgerCounterAgreement
+  = LedgerAndCounterAgree { generation_tokens: TokenCount, completed_requests: Nat }
+  | LedgerCounterDisagree { because: NonEmptyStr }
+  | AgreementUnread { because: NonEmptyStr }
+
+data generation_client_token_agreement_bound: Nat = 0
+
+fn nat_abs_diff(a: Nat, b: Nat) -> Nat {
+  if a >= b { a - b } else { b - a }
+}
+
+fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, client_output: ClientOutputTokens) -> LedgerCounterAgreement {
+  match token_delta_tokens(d: generation) {
+    Absent =>
+      match generation {
+        TokenDeltaUnread { cause: c } => AgreementUnread { because: c }
+        TokenDeltaReset { cause: c } => AgreementUnread { because: c }
+        TokenDeltaRead { tokens: _ } => AgreementUnread { because: "generation token delta had no count" as NonEmptyStr }
+        TokenDeltaScoped { tokens: _, incarnation: _ } => AgreementUnread { because: "generation token delta had no count" as NonEmptyStr }
+      }
+    Present { value: g } =>
+      match ledger {
+        LedgerIncomplete { because: c } => AgreementUnread { because: c }
+        LedgerClosed { offered: _, completed: n, failed: _ } =>
+          if token_count_value(t: g) > 0 && n == 0 {
+            LedgerCounterDisagree { because: "generation_tokens_total advanced while the client ledger completed zero requests; foreign load is the remaining explanation" as NonEmptyStr }
+          } else {
+            match client_output {
+              ClientOutputTokensUnread { cause: c } =>
+                AgreementUnread { because: c }
+              ClientOutputTokensObserved { tokens: c } =>
+                if nat_abs_diff(a: token_count_value(t: c), b: token_count_value(t: g)) <= generation_client_token_agreement_bound {
+                  LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
+                } else {
+                  LedgerCounterDisagree { because: "generation_tokens_total includes foreign decode beside this client ledger; surplus bounds shared work and is not a refuse of the client rate" as NonEmptyStr }
+                }
+            }
+          }
+      }
+  }
+}
+
+type ForeignWorkBound
+  = ForeignWorkUnread { because: NonEmptyStr }
+  | ForeignWorkBounded { engine_generation: TokenCount, client_output: TokenCount, surplus: TokenCount }
+  | ForeignWorkContradiction { engine_generation: TokenCount, client_output: TokenCount, because: NonEmptyStr }
+
+fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens) -> ForeignWorkBound {
+  match token_delta_tokens(d: generation) {
+    Absent =>
+      match generation {
+        TokenDeltaUnread { cause: c } => ForeignWorkUnread { because: c }
+        TokenDeltaReset { cause: c } => ForeignWorkUnread { because: c }
+        TokenDeltaRead { tokens: _ } => ForeignWorkUnread { because: "generation token delta had no count" as NonEmptyStr }
+        TokenDeltaScoped { tokens: _, incarnation: _ } => ForeignWorkUnread { because: "generation token delta had no count" as NonEmptyStr }
+      }
+    Present { value: g } =>
+      match client_output {
+        ClientOutputTokensUnread { cause: c } => ForeignWorkUnread { because: c }
+        ClientOutputTokensObserved { tokens: c } =>
+          if token_count_value(t: g) >= token_count_value(t: c) {
+            ForeignWorkBounded { engine_generation: g, client_output: c, surplus: token_count(count: token_count_value(t: g) - token_count_value(t: c)) }
+          } else {
+            ForeignWorkContradiction {
+              engine_generation: g,
+              client_output: c,
+              because: "client completed-output tokens exceeded engine generation_tokens_total on the same incarnation; the interval or identity is inconsistent, not evidence of zero foreign work" as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+type DerivedRate
+  = RateFromClientOutputTokens { tokens: TokenCount, scrape_millis: Millisecond }
+  | RateUndenominable { because: NonEmptyStr }
+  | RateUnreadable { because: NonEmptyStr }
+
+fn tokens_per_observation_second(r: DerivedRate) -> TokensPerSecond? {
+  match r {
+    RateUndenominable { because: _ } => none
+    RateUnreadable { because: _ } => none
+    RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
+      if millisecond_count(m: ms) == 0 { none } else { Present { value: tokens_per_second(count: (token_count_value(t: t) * 1000) / millisecond_count(m: ms)) } }
+  }
+}
+
+fn derive_rate_honest(
+  ledger: OperationLedger,
+  scrape_millis: Millisecond?,
+  client_output: ClientOutputTokens,
+) -> DerivedRate {
+  if !ledger_admits_token_denomination(l: ledger) {
+    RateUndenominable { because: "the operation ledger does not admit token denomination" as NonEmptyStr }
+  } else {
+    match client_output {
+      ClientOutputTokensUnread { cause: c } => RateUnreadable { because: c }
+      ClientOutputTokensObserved { tokens: c } =>
+        match scrape_millis {
+          Absent => RateUnreadable { because: "the client interval is not a positive span" as NonEmptyStr }
+          Present { value: ms } => RateFromClientOutputTokens { tokens: c, scrape_millis: ms }
+        }
+    }
+  }
+}
+
+type ClientRateQualificationFrontier sole_constructor {
+  request_start_events: NonEmptyStr
+  reserved_window: NonEmptyStr
+  interval_occupancy: NonEmptyStr
+  serve_py_digest: NonEmptyStr
+}
+
+data glm_native_qualification_frontier: ClientRateQualificationFrontier = ClientRateQualificationFrontier {
+  request_start_events: "per-request start events so ArrivalSkewObserved can be minted; SendAllImmediately stays ArrivalSkewUnread until that producer exists" as NonEmptyStr,
+  reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over ProtectedSubjectField; the follow-up PR needs the operator to grant an exclusive Group B window" as NonEmptyStr,
+  interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
+  serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py file or package digest inside the running image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
+}
+
+type DecodeCorroboration
+  = CorroborationNotApplicable { because: NonEmptyStr }
+  | CorroborationUnread { because: NonEmptyStr }
+
+// A single-stream decode figure would need a future single-stream protocol variant of the
+// serving-load capture; glm_native_serving_load_wet today runs only the c=2 smoke protocol, and
+// this module holds no such figure. A multi-stream observation can neither corroborate nor
+// falsify one, and a single-stream observation has not yet been captured here.
+fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorroboration {
+  match req.max_concurrency {
+    Present { value: 1 } =>
+      CorroborationUnread { because: "a single-stream decode figure would need a future single-stream protocol variant of the serving-load capture, which today runs only the c=2 smoke protocol; this observation holds no such figure" as NonEmptyStr }
+    Present { value: _ } =>
+      CorroborationNotApplicable { because: "a multi-stream protocol is not a single-stream measurement, so it cannot corroborate or falsify a single-stream decode figure" as NonEmptyStr }
+    Absent =>
+      CorroborationNotApplicable { because: "unbounded concurrency is not a single-stream measurement" as NonEmptyStr }
+  }
+}
+
+type ClientBenchLatency
+  = ClientBenchLatencyUnread { cause: NonEmptyStr }
+  | ClientBenchLatencyReported {
+      output_throughput: MilliTokensPerSecond
+      tpot_milli: Millisecond
+      itl_milli: Millisecond?
+      ttft_milli: Millisecond
+      window: ProbeWindowStanding
+    }
+
+type ItlTailCause
+  = ItlTailCauseUnestablished { because: NonEmptyStr }
+
+type ClientItlDistribution
+  = ClientItlDistributionUnread { cause: NonEmptyStr }
+  | ClientItlDistributionObserved { mean_milli: Millisecond, median_milli: Millisecond, p99_milli: Millisecond, cause: ItlTailCause }
+
+type ClientRequestConcurrencyStanding
+  = ClientConcurrencyUnread { cause: NonEmptyStr }
+  | SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: Nat, bucket_peak: Nat }
+
+type ProbeProvenance
+  = SamePrincipal { principal: NonEmptyStr }
+  | DriverObserverSplit { driver: NonEmptyStr, observer: NonEmptyStr }
+
+// ONE REMOTE OPERATION IS ONE EXECUTION. The mint takes SparkRemoteRun whole, so an exit from
+// run A cannot be paired with stdout from run B at this interface.
+type BenchServeExecution
+  = BenchServeRan { protocol: VllmBenchServeRequest, exit_code: Int, stdout: String, stderr: String }
+  | BenchServeUnreachable { protocol: VllmBenchServeRequest, cause: NonEmptyStr }
+
+fn bench_serve_from_remote(protocol: VllmBenchServeRequest, remote: SparkRemoteRun) -> BenchServeExecution {
+  match remote {
+    RemoteUnreachable { cause: c } =>
+      BenchServeUnreachable { protocol: protocol, cause: c as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      BenchServeRan { protocol: protocol, exit_code: code, stdout: out, stderr: err }
+  }
+}
+
+fn bench_execution_protocol(e: BenchServeExecution) -> VllmBenchServeRequest {
+  match e {
+    BenchServeRan { protocol: p, exit_code: _, stdout: _, stderr: _ } => p
+    BenchServeUnreachable { protocol: p, cause: _ } => p
+  }
+}
+
+fn bench_execution_stdout(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => ""
+    BenchServeRan { protocol: _, exit_code: _, stdout: out, stderr: _ } => out
+  }
+}
+
+fn bench_execution_stderr(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => ""
+    BenchServeRan { protocol: _, exit_code: _, stdout: _, stderr: err } => err
+  }
+}
+
+fn bench_summary_unread_cause(e: BenchServeExecution) -> NonEmptyStr {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: c } => c
+    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
+      join(["vllm bench serve exited ", to_string(code), "; stdout is not a client-fact summary"], "") as NonEmptyStr
+  }
+}
+
+fn bench_summary_stdout(e: BenchServeExecution) -> String? {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => none
+    BenchServeRan { protocol: _, exit_code: code, stdout: out, stderr: _ } =>
+      if code == 0 { Present { value: out } } else { none }
+  }
+}
+
+fn bench_serve_ledger(e: BenchServeExecution) -> OperationLedger {
+  match bench_summary_stdout(e: e) {
+    Absent => LedgerIncomplete { because: bench_summary_unread_cause(e: e) }
+    Present { value: body } => ledger_from_bench_stdout(body: body, offered: bench_execution_protocol(e: e).num_prompts)
+  }
+}
+
+fn bench_serve_completed_output(e: BenchServeExecution) -> ClientOutputTokens {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientOutputTokensUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_output_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_interval(e: BenchServeExecution) -> Millisecond? {
+  match bench_summary_stdout(e: e) {
+    Absent => none
+    Present { value: body } => scrape_millis_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_latency(e: BenchServeExecution, window: ProbeWindowStanding) -> ClientBenchLatency {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientBenchLatencyUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_latency_from_bench_stdout(body: body, window: window)
+  }
+}
+
+fn client_itl_text(d: ClientItlDistribution) -> String {
+  match d {
+    ClientItlDistributionUnread { cause: c } => join(["unread ", c as String], "")
+    ClientItlDistributionObserved { mean_milli: m, median_milli: md, p99_milli: p, cause: ItlTailCauseUnestablished { because: b } } =>
+      join([
+        "mean_ms=", to_string(millisecond_count(m: m)),
+        " median_ms=", to_string(millisecond_count(m: md)),
+        " p99_ms=", to_string(millisecond_count(m: p)),
+        " tail_cause=unestablished (", b as String, ")",
+      ], "")
+  }
+}
+
+fn client_bucket_peak_text(p: ClientRequestConcurrencyStanding) -> String {
+  match p {
+    ClientConcurrencyUnread { cause: c } => join(["unread ", c as String], "")
+    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: c, bucket_peak: b } =>
+      join(["client_max_concurrency=", to_string(c), " successful_request_second_bucket_peak=", to_string(b), " (a per-second completion bucket, not concurrent occupancy)"], "")
+  }
+}
+
+fn bench_serve_itl(e: BenchServeExecution) -> ClientItlDistribution {
+  match bench_summary_stdout(e: e) {
+    Absent => ClientItlDistributionUnread { cause: bench_summary_unread_cause(e: e) }
+    Present { value: body } => client_itl_from_bench_stdout(body: body)
+  }
+}
+
+fn bench_serve_bucket_peak(e: BenchServeExecution) -> ClientRequestConcurrencyStanding {
+  match bench_execution_protocol(e: e).max_concurrency {
+    Absent => ClientConcurrencyUnread { cause: "the protocol did not declare max-concurrency" as NonEmptyStr }
+    Present { value: c } =>
+      match bench_summary_stdout(e: e) {
+        Absent => ClientConcurrencyUnread { cause: bench_summary_unread_cause(e: e) }
+        Present { value: body } => client_bucket_peak_from_bench_stdout(body: body, client_max_concurrency: c)
+      }
+  }
+}
+
+type CapturedText sole_constructor {
+  kind: NonEmptyStr
+  digest: ContentHash
+  body: String
+}
+
+fn captured_text(kind: NonEmptyStr, body: String) -> CapturedText {
+  CapturedText {
+    kind: kind,
+    digest: content_hash_of_value(value: join([kind as String, "\n", body], "") as NonEmptyStr),
+    body: body,
+  }
+}
+
+type ServingLoadEvidence sole_constructor {
+  metrics_before: CapturedText
+  metrics_after: CapturedText
+  bench_stdout: CapturedText
+  bench_stderr: CapturedText
+}
+
+fn serving_load_evidence(before_body: String, after_body: String, bench: BenchServeExecution) -> ServingLoadEvidence {
+  ServingLoadEvidence {
+    metrics_before: captured_text(kind: "metrics-before" as NonEmptyStr, body: before_body),
+    metrics_after: captured_text(kind: "metrics-after" as NonEmptyStr, body: after_body),
+    bench_stdout: captured_text(kind: "bench-stdout" as NonEmptyStr, body: bench_execution_stdout(e: bench)),
+    bench_stderr: captured_text(kind: "bench-stderr" as NonEmptyStr, body: bench_execution_stderr(e: bench)),
+  }
+}
+
+fn captured_text_block(c: CapturedText) -> String {
+  join([
+    "--- ", c.kind as String, " digest=", serialize_content_hash(hash: c.digest) as String, " ---\n",
+    c.body,
+    "\n",
+  ], "")
+}
+
+fn serving_load_evidence_text(ev: ServingLoadEvidence) -> String {
+  join([
+    captured_text_block(c: ev.metrics_before),
+    captured_text_block(c: ev.metrics_after),
+    captured_text_block(c: ev.bench_stdout),
+    captured_text_block(c: ev.bench_stderr),
+  ], "")
+}
+
+fn qualification_frontier_text(f: ClientRateQualificationFrontier) -> String {
+  join([
+    "request-start-events: ", f.request_start_events as String,
+    " | reserved-window: ", f.reserved_window as String,
+    " | interval-occupancy: ", f.interval_occupancy as String,
+    " | serve-py-digest: ", f.serve_py_digest as String,
+  ], "")
+}
+
+type ServingLoadObservation sole_constructor {
+  execution: BenchServeExecution
+  bench_source_standing: CitedFigureStanding
+  subject: ServingPerformanceSubjectStanding
+  protocol: VllmBenchServeRequest
+  window: ProbeWindowStanding
+  continuity: CounterContinuity
+  arrival: ArrivalSkew
+  occupancy: BoundaryOccupancyReceipt
+  agreement: LedgerCounterAgreement
+  before_backlog: BacklogStanding
+  after_backlog: BacklogStanding
+  generation: TokenDelta
+  itl_latency: LatencyHistogramDelta
+  iteration_tokens_booked: TokenHistogramDelta
+  ledger: OperationLedger
+  admission: AdmissionCost
+  corroboration: DecodeCorroboration
+  provenance: ProbeProvenance
+  client_latency: ClientBenchLatency
+  foreign_work: ForeignWorkBound
+  rate: DerivedRate
+  qualification_frontier: ClientRateQualificationFrontier
+  evidence: ServingLoadEvidence
+}
+
+fn serving_load_observation(
+  subject: ServingPerformanceSubjectStanding,
+  window: ProbeWindowStanding,
+  continuity: CounterContinuity,
+  occupancy: BoundaryOccupancyReceipt,
+  before_body: String,
+  after_body: String,
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
+  bench: BenchServeExecution,
+  provenance: ProbeProvenance,
+) -> ServingLoadObservation {
+  let protocol = bench_execution_protocol(e: bench)
+  let before_p = preemption_count(body: before_body)
+  let after_p = preemption_count(body: after_body)
+  let generation = generation_token_delta_scoped(
+    before_incarnation: before_incarnation,
+    after_incarnation: after_incarnation,
+    before_body: before_body,
+    after_body: after_body,
+  )
+  let ledger = bench_serve_ledger(e: bench)
+  let client_output = bench_serve_completed_output(e: bench)
+  let agreement = ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output)
+  let foreign = foreign_work_bound(generation: generation, client_output: client_output)
+  let rate = derive_rate_honest(
+    ledger: ledger,
+    scrape_millis: bench_serve_interval(e: bench),
+    client_output: client_output,
+  )
+  let arrival = arrival_from_protocol(req: protocol)
+  ServingLoadObservation {
+    execution: bench,
+    bench_source_standing: vllm_bench_serve_source_standing,
+    subject: subject,
+    protocol: protocol,
+    window: window,
+    continuity: continuity,
+    arrival: arrival,
+    occupancy: occupancy,
+    agreement: agreement,
+    before_backlog: backlog_from_body(body: before_body, preemptions: before_p),
+    after_backlog: backlog_from_body(body: after_body, preemptions: after_p),
+    generation: generation,
+    itl_latency: itl_latency_delta(before_body: before_body, after_body: after_body),
+    iteration_tokens_booked: iteration_tokens_booked_delta(before_body: before_body, after_body: after_body),
+    ledger: ledger,
+    admission: glm_native_workload_admission,
+    corroboration: decode_corroboration_for_protocol(req: protocol),
+    provenance: provenance,
+    client_latency: bench_serve_latency(e: bench, window: window),
+    foreign_work: foreign,
+    rate: rate,
+    qualification_frontier: glm_native_qualification_frontier,
+    evidence: serving_load_evidence(before_body: before_body, after_body: after_body, bench: bench),
+  }
+}
+
+fn serving_load_observation_text(o: ServingLoadObservation) -> String {
+  join([
+    "serving-load observation\n",
+    "execution: ", bench_execution_text(e: o.execution), "\n",
+    "subject: ", subject_standing_text(s: o.subject), "\n",
+    "arrival: ", arrival_text(a: o.arrival), "\n",
+    "bench source standing: ", cited_standing_text(s: o.bench_source_standing), "\n",
+    "window: ", window_text(s: o.window), "\n",
+    "continuity: ", continuity_text(c: o.continuity), "\n",
+    "before backlog: ", backlog_text(b: o.before_backlog), "\n",
+    "after backlog: ", backlog_text(b: o.after_backlog), "\n",
+    "occupancy: ", occupancy_text(t: o.occupancy), "\n",
+    "agreement: ", agreement_text(a: o.agreement), "\n",
+    "generation: ", token_delta_text(d: o.generation), "\n",
+    "itl latency (not a rate): ", latency_histogram_text(d: o.itl_latency), "\n",
+    "iteration_tokens booked (not occupancy): ", token_histogram_text(d: o.iteration_tokens_booked), "\n",
+    "ledger: ", ledger_text(l: o.ledger), "\n",
+    "admission: ", admission_text(a: o.admission), "\n",
+    "corroboration: ", corroboration_text(c: o.corroboration), "\n",
+    "provenance: ", provenance_text(p: o.provenance), "\n",
+    "client latency: ", client_latency_text(c: o.client_latency), "\n",
+    "foreign work: ", foreign_work_text(f: o.foreign_work), "\n",
+    "rate: ", rate_text(r: o.rate), "\n",
+    "qualification frontier: ", qualification_frontier_text(f: o.qualification_frontier), "\n",
+    serving_load_evidence_text(ev: o.evidence),
+  ], "")
+}
+
+// The standing is rendered as the subject authority states it: a Partial's belief is printed as a
+// belief and its settling obligation as an obligation, never as a reading of the unknown axes.
+fn subject_standing_text(s: ServingPerformanceSubjectStanding) -> String {
+  match s {
+    SubjectEstablished { subject: sub } =>
+      join(["established ", serving_performance_subject_wire(s: sub) as String], "")
+    SubjectPartial { subject: sub, unknown_axes: axes, believed: b, would_settle: w } =>
+      join([
+        "partial ", serving_performance_subject_wire(s: sub) as String,
+        " unknown_axes=", serving_subject_axes_wire(axes: axes),
+        " believed (unverified)=", b as String,
+        " would_settle=", w as String,
+      ], "")
+  }
+}
+
+fn arrival_text(a: ArrivalSkew) -> String {
+  match a {
+    ArrivalSkewUnread { cause: c } => join(["unread ", c as String], "")
+    ArrivalSkewObserved { max_stagger_millis: m } =>
+      join(["observed max_stagger_ms=", to_string(millisecond_count(m: m))], "")
+  }
+}
+
+fn foreign_work_text(f: ForeignWorkBound) -> String {
+  match f {
+    ForeignWorkUnread { because: c } => join(["unread ", c as String], "")
+    ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } =>
+      join(["engine=", to_string(token_count_value(t: g)), " client=", to_string(token_count_value(t: c)), " surplus=", to_string(token_count_value(t: s))], "")
+    ForeignWorkContradiction { engine_generation: g, client_output: c, because: b } =>
+      join(["contradiction engine=", to_string(token_count_value(t: g)), " client=", to_string(token_count_value(t: c)), " ", b as String], "")
+  }
+}
+
+fn client_latency_text(c: ClientBenchLatency) -> String {
+  match c {
+    ClientBenchLatencyUnread { cause: x } => join(["unread ", x as String], "")
+    ClientBenchLatencyReported { output_throughput: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, window: w } =>
+      join([
+        "bench-serve throughput_milli_tok_s=", to_string(milli_tokens_per_second_count(r: th)),
+        " tpot_ms=", to_string(millisecond_count(m: tpot)),
+        " itl_ms=",
+        match itl {
+          Absent => "unread"
+          Present { value: n } => to_string(millisecond_count(m: n))
+        },
+        " ttft_ms=", to_string(millisecond_count(m: ttft)),
+        " window=", window_text(s: w),
+      ], "")
+  }
+}
+
+fn provenance_text(p: ProbeProvenance) -> String {
+  match p {
+    SamePrincipal { principal: w } => join(["same-principal ", w as String], "")
+    DriverObserverSplit { driver: d, observer: o } =>
+      join(["driver-observer-split driver=", d as String, " observer=", o as String], "")
+  }
+}
+
+fn bench_execution_text(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: c } => join(["unreachable ", c as String], "")
+    BenchServeRan { protocol: _, exit_code: code, stdout: _, stderr: _ } =>
+      join(["exited ", to_string(code)], "")
+  }
+}
+
+fn cited_standing_text(s: CitedFigureStanding) -> String {
+  match s {
+    CitedToAuthority { authority: _ } => "cited-to-authority"
+    TranscribedUncited { read_obligation: o } => join(["transcribed-uncited ", o as String], "")
+  }
+}
+
+fn corroboration_text(c: DecodeCorroboration) -> String {
+  match c {
+    CorroborationNotApplicable { because: b } => join(["not-applicable ", b as String], "")
+    CorroborationUnread { because: b } => join(["unread ", b as String], "")
+  }
+}
+
+fn occupancy_sample_text(s: OccupancySample) -> String {
+  join([
+    "running=", to_string(s.running),
+    " waiting=", to_string(s.waiting),
+    " prompt_tokens=", to_string(token_count_value(t: s.prompt_tokens)),
+    " preemptions=", to_string(s.preemptions),
+  ], "")
+}
+
+fn occupancy_text(t: BoundaryOccupancyReceipt) -> String {
+  match t {
+    OccupancyBoundariesUnread { cause: c } => join(["unread ", c as String], "")
+    OccupancyBoundariesRead { before: a, after: b } =>
+      join(["boundaries before=", occupancy_sample_text(s: a), " after=", occupancy_sample_text(s: b)], "")
+  }
+}
+
+fn agreement_text(a: LedgerCounterAgreement) -> String {
+  match a {
+    LedgerAndCounterAgree { generation_tokens: g, completed_requests: n } =>
+      join(["agree generation=", to_string(token_count_value(t: g)), " completed=", to_string(n)], "")
+    LedgerCounterDisagree { because: c } => join(["disagree ", c as String], "")
+    AgreementUnread { because: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn admission_text(a: AdmissionCost) -> String {
+  match a {
+    AdmissionCostUnestablished { cause: c } => join(["unread ", c as String], "")
+    AdmissionCostBlocks { blocks: _ } => "blocks (must not be minted from a pool/length quotient)"
+  }
+}
+
+fn window_text(s: ProbeWindowStanding) -> String {
+  match s {
+    WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } => "isolated"
+    WindowIsolationNotEstablished { cause: c, drain: d } =>
+      join(["isolation-not-established drain=", drain_text(d: d), " cause=", c as String], "")
+    ForeignTrafficObserved { attributed_receipt: t, drain: d } =>
+      join(["foreign-traffic-observed drain=", drain_text(d: d), " attributed=", t as String], "")
+    ForeignTrafficNotObserved { drain: d } =>
+      join(["foreign-traffic-not-observed drain=", drain_text(d: d)], "")
+    ForeignTrafficUnread { cause: c, drain: d } =>
+      join(["foreign-traffic-unread drain=", drain_text(d: d), " cause=", c as String], "")
+  }
+}
+
+fn drain_text(d: DrainReceipt) -> String {
+  match d {
+    DrainObservedIdle => "idle"
+    DrainNotIdle { running: n } => join(["not-idle running=", to_string(n)], "")
+    DrainUnread { cause: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn continuity_text(c: CounterContinuity) -> String {
+  match c {
+    SameExporter { start_field: f } => join(["same-exporter ", f as String], "")
+    ExporterChanged { before: b, after: a } => join(["exporter-changed ", b as String, " -> ", a as String], "")
+    ContinuityUnread { cause: x } => join(["unread ", x as String], "")
+  }
+}
+
+fn backlog_text(b: BacklogStanding) -> String {
+  match b {
+    BacklogObserved { running: r, waiting: w, capacity_waiting: c, preemptions: p } =>
+      join(["observed running=", to_string(r), " waiting=", to_string(w), " capacity=", to_string(c), " preemptions=", to_string(p)], "")
+    NoBacklogObserved { running: r, preemptions: p } =>
+      join(["none running=", to_string(r), " preemptions=", to_string(p)], "")
+    BacklogUnread { cause: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn latency_histogram_text(d: LatencyHistogramDelta) -> String {
+  match d {
+    LatencyHistogramRead { sum: s, observations: n } =>
+      join(["delta sum_ms=", to_string(millisecond_count(m: s)), " observations=", to_string(n)], "")
+    LatencyHistogramUnread { cause: c } => join(["unread ", c as String], "")
+    LatencyHistogramReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn token_histogram_text(d: TokenHistogramDelta) -> String {
+  match d {
+    TokenHistogramRead { booked: t, observations: n } =>
+      join(["delta booked_tokens=", to_string(token_count_value(t: t)), " observations=", to_string(n)], "")
+    TokenHistogramUnread { cause: c } => join(["unread ", c as String], "")
+    TokenHistogramReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn ledger_text(l: OperationLedger) -> String {
+  match l {
+    LedgerIncomplete { because: c } => join(["incomplete ", c as String], "")
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      join(["aggregate-summary closed offered=", to_string(o), " completed=", to_string(c), " failed=", to_string(f)], "")
+  }
+}
+
+fn token_delta_text(d: TokenDelta) -> String {
+  match d {
+    TokenDeltaRead { tokens: n } =>
+      join(["delta tokens=", to_string(token_count_value(t: n)), " incarnation=unscoped — generation_token_delta_scoped did not bind this reading"], "")
+    TokenDeltaScoped { tokens: n, incarnation: i } =>
+      join(["delta tokens=", to_string(token_count_value(t: n)), " incarnation=", observed_rank_incarnation_text(i: i)], "")
+    TokenDeltaUnread { cause: c } => join(["unread ", c as String], "")
+    TokenDeltaReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn rate_text(r: DerivedRate) -> String {
+  match r {
+    RateUndenominable { because: c } => join(["undenominable ", c as String], "")
+    RateUnreadable { because: c } => join(["unreadable ", c as String], "")
+    RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
+      join([
+        "completed_output_tokens=", to_string(token_count_value(t: t)),
+        " scrape_millis=", to_string(millisecond_count(m: ms)),
+        " output_tokens_per_s=",
+        match tokens_per_observation_second(r: r) {
+          Absent => "none"
+          Present { value: v } => to_string(tokens_per_second_count(r: v))
+        },
+      ], "")
+  }
+}
+
+// ── ADMISSION FOR THE SESSIONS THIS FLEET ACTUALLY SERVES ─────────────────────────────────────
+//
+// Real sessions sit at ~100k-130k tokens of context after compacting a 262k window. They idle
+// between turns. Each turn is a separate request whose KV frees on completion while the prefix
+// stays in the prefix cache. A 100k-prefix load protocol is not modeled here: it is the heaviest
+// prefill this arm can construct, and it waits on the qualification window (exact lease and
+// exclusion, idle drain, protected subject).
+//
+// THAT IS NOT AN ADMISSION CAPACITY. vLLM's printed token pool is floor(max_concurrency ×
+// max_model_len) — the same fact twice — and GLM's hybrid KV (full / sliding-window / Mamba) does
+// not scale linearly with sequence length. Dividing the pool by 100k–130k overestimates concurrent
+// sessions. Live per-request cost is extdeps.vllm.kv_layout cold_admission_blocks; with an empty
+// group roster that fold is AdmissionCostUnestablished, which is the honest state today.
+
+data glm_native_workload_admission: AdmissionCost = AdmissionCostUnestablished {
+  cause: "the live cache-group roster is unobserved, so cold_admission_blocks cannot establish per-request cost; a token-pool divided by request length is not an admission capacity" as NonEmptyStr
+}
+
+data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
+  placement: HubCachePlacement { cache_root: glm_native_weights_container_dir },
+  repo: glm53_native_fp8_row.repo,
+  revision: glm53_native_fp8_row.revision,
+)
+
+data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
+  input_len: token_count(count: 256),
+  output_len: token_count(count: 128),
+  prefix_len: token_count(count: 0),
+}
+
+data glm_native_bench_seed: Nat = 20260918
+
+// The loopback base URL both the bench client and the metrics scrape address, from the profile's port.
+fn glm_native_serve_base_url() -> NonEmptyStr {
+  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr
+}
+
+// The live probe's protocol: 256-in/128-out, SendAllImmediately, c=2. SendAllImmediately is wiring,
+// not a comparable rate protocol (arrival skew is unread). The derived rate counts completed output
+// tokens; bench-serve's total token throughput also counts prefill and answers a different question.
+data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
+  backend: OpenaiChat,
+  base_url: glm_native_serve_base_url(),
+  model: glm_native_concurrent_profile.served_alias,
+  tokenizer: glm_native_engine_tokenizer_path,
+  dataset: glm_native_sweep_dataset,
+  num_prompts: 4,
+  arrival: SendAllImmediately,
+  max_concurrency: Present { value: 2 },
+  ignore_eos: true,
+  seed: glm_native_bench_seed,
+)
+
+fn bench_labeled_nat(body: String, label: String) -> Nat? {
+  text_labeled_count(body: text_without_sudo_prompt(body: body), label: label)
+}
+
+fn bench_labeled_thousandths(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: text_without_sudo_prompt(body: body), label: label) {
+    Absent => none
+    Present { value: last_word } => field_to_milli(field: last_word)
+  }
+}
+
+fn bench_labeled_whole_milli(body: String, label: String) -> Millisecond? {
+  match text_labeled_head_count(body: text_without_sudo_prompt(body: body), label: label) {
+    Absent => none
+    Present { value: n } => Present { value: millisecond(count: n) }
+  }
+}
+
+fn ledger_from_bench_stdout(body: String, offered: Nat) -> OperationLedger {
+  match bench_labeled_nat(body: body, label: "Successful requests") {
+    Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Successful requests aggregate-summary line" as NonEmptyStr }
+    Present { value: completed } =>
+      match bench_labeled_nat(body: body, label: "Failed requests") {
+        Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Failed requests aggregate-summary line" as NonEmptyStr }
+        Present { value: failed } =>
+          if completed == offered && failed == 0 {
+            LedgerClosed { offered: offered, completed: completed, failed: failed }
+          } else {
+            LedgerIncomplete { because: "the aggregate summary is not a per-request ledger; closed standing requires completed == offered and failed == 0" as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn client_output_from_bench_stdout(body: String) -> ClientOutputTokens {
+  match bench_labeled_nat(body: body, label: "Total generated tokens") {
+    Absent => ClientOutputTokensUnread { cause: "vllm bench serve stdout carried no unique Total generated tokens line" as NonEmptyStr }
+    Present { value: t } => ClientOutputTokensObserved { tokens: token_count(count: t) }
+  }
+}
+
+fn scrape_millis_from_bench_stdout(body: String) -> Millisecond? {
+  match bench_labeled_thousandths(body: body, label: "Benchmark duration (s)") {
+    Absent => none
+    Present { value: n } => Present { value: millisecond(count: n) }
+  }
+}
+
+fn client_itl_from_bench_stdout(body: String) -> ClientItlDistribution {
+  match bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)") {
+    Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique Mean ITL (ms) line" as NonEmptyStr }
+    Present { value: mean_m } =>
+      match bench_labeled_whole_milli(body: body, label: "Median ITL (ms)") {
+        Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique Median ITL (ms) line" as NonEmptyStr }
+        Present { value: med } =>
+          match bench_labeled_whole_milli(body: body, label: "P99 ITL (ms)") {
+            Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique P99 ITL (ms) line" as NonEmptyStr }
+            Present { value: p99 } =>
+              ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: ItlTailCauseUnestablished { because: "client stream ITL is elapsed time between SSE messages; cause is unestablished until an attributed engine or scheduler population joins it" as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+fn client_bucket_peak_from_bench_stdout(body: String, client_max_concurrency: Nat) -> ClientRequestConcurrencyStanding {
+  match bench_labeled_nat(body: body, label: "Peak concurrent requests") {
+    Absent => ClientConcurrencyUnread { cause: "vllm bench serve stdout carried no unique Peak concurrent requests line" as NonEmptyStr }
+    Present { value: peak } =>
+      SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: client_max_concurrency, bucket_peak: peak }
+  }
+}
+
+fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -> ClientBenchLatency {
+  match bench_labeled_thousandths(body: body, label: "Output token throughput (tok/s)") {
+    Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Output token throughput (tok/s) line" as NonEmptyStr }
+    Present { value: th } =>
+      match bench_labeled_whole_milli(body: body, label: "Mean TPOT (ms)") {
+        Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Mean TPOT (ms) line" as NonEmptyStr }
+        Present { value: tpot } =>
+          match bench_labeled_whole_milli(body: body, label: "Mean TTFT (ms)") {
+            Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Mean TTFT (ms) line" as NonEmptyStr }
+            Present { value: ttft } =>
+              ClientBenchLatencyReported {
+                output_throughput: milli_tokens_per_second(count: th),
+                tpot_milli: tpot,
+                itl_milli: bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)"),
+                ttft_milli: ttft,
+                window: window,
+              }
+          }
+      }
+  }
+}
+
+// max_num_seqs and the other launch figures are read from glm_native_concurrent_profile, the one row that owns them.
+// Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
+data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
+  checkpoint: Glm53NativeFp8,
+  checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
+  runtime: GunbcGlm53DerivedGb10,
+  runtime_image_reference: runtime_artifact_wire(a: glm53_derived_row.artifact),
+  topology: Present { value: FourSparkTp4 },
+  rank_population: Present { value: 4 },
+  context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
+  max_num_batched_tokens: glm_native_concurrent_profile.max_num_batched_tokens,
+  max_num_seqs: Present { value: glm_native_concurrent_profile.max_num_seqs },
+  kv_cache_dtype: none,
+  speculative: Present { value: SpeculativeDecodingOff },
+  collective_transport: none,
+)
+
+fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
+  serving_subject_standing(
+    subject: glm_native_live_subject,
+    believed: "collective transport was unread; the KV cache dtype is unread because glm_native_concurrent_profile declares kv_cache_dtype_wire auto while the running group B unit was launched from a different plan; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
+    would_settle: "read the running launch's NCCL transport announcement and its --kv-cache-dtype on this incarnation" as NonEmptyStr,
+  )
+}
+
+data glm_native_protected_subject: ProtectedSubjectField = protected_subject_field(
+  subject: glm_native_live_subject,
+  served_alias: glm_native_concurrent_profile.served_alias,
+  route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
+)

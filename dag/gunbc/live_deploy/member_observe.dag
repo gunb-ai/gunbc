@@ -21,7 +21,7 @@ import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, Typ
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
   DeploymentStep, ArtifactStep, Dependency,
-  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, FabricEventLogRoot,
+  DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
 }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for, ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -485,7 +485,6 @@ fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
       DispatchWorktreeRoot => [DirectoryRoot { path: art.path }]
       AttemptStateRoot => [DirectoryRoot { path: art.path }]
       ComputeRoot => [DirectoryRoot { path: art.path }]
-      FabricEventLogRoot => [DirectoryRoot { path: art.path }]
       _ => []
     }
     Dependency { step: _ } => []

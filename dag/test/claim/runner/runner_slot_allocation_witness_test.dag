@@ -15,10 +15,9 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
   gunbc_runner_cores_per_slot,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
+  host_cpu_admitted_width,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
   gunbc_runner_slots_per_host,
   host_memory_admitted_width,
   host_memory_width_is_established,
@@ -138,8 +137,7 @@ test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
 // runner_slot_allocation_committed_widths_MATCH_MEMORY_ADMISSION was an accurate description of a
 // coincidence -- memory was the binding axis on every host, so committed equalled admitted -- and
 // a name that states a coincidence as a law is how the next reader learns the wrong invariant.
-// Committed width is the MINIMUM over memory, CPU and disk wherever it is DERIVED, and on the three
-// hosts that derive it, it is now strictly below what memory admits.
+// Committed width is the MINIMUM over memory, CPU and disk wherever it is DERIVED.
 //
 // srv2 IS DELIBERATELY NOT HELD TO THAT LAW, AND THE CONJUNCT ASSERTING IT WAS DELETED RATHER THAN
 // RETUNED. It read `committed == host_memory_admitted_width(srv2)`, which related srv2's width to a
@@ -148,29 +146,29 @@ test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
 // property under test. An assertion whose oracle is an unestablished derivation is worse than a
 // missing one, because it reads as coverage. srv2's width is asserted on its own terms, as a hold,
 // by srv2_width_is_held_rather_than_derived above.
-// CPU STILL BINDS AT 26 GiB, AND THE REASON IS THAT THE TWO AXES ARE NOT INDEPENDENT.
 //
-// The first draft of this row asserted that the binding axis flipped to memory -- srv1 15,
-// srv3/srv4 17 -- and it was WRONG, caught by this witness rather than by reading. cores_per_slot
-// is DERIVED from the slot's memory ceiling (`gunbc_runner_cores_per_slot`:
-// ceil(memory_max / memory_per_core), against the cited Ubicloud arm64 ratio of 3 GB decimal per
-// vCPU). So raising memory 16 -> 26 GiB raises cores_per_slot 6 -> 10, and the CPU axis falls
-// 128/6 = 21 to 128/10 = 12. Memory admits 15 and 17; CPU admits 12; the minimum is 12 everywhere.
-//
-// THE COUPLING IS THE FINDING AND IT IS RECORDED HERE BECAUSE IT IS INVISIBLE AT THE LITERAL. A
-// reader raising the memory ceiling sees a memory decision and pays a CPU one, at a ratio taken
-// from a cloud vendor's shape catalog rather than from any measurement of this workload -- whose
-// floor run uses about one core sustained (cpu 20 min against 24 min wall). Most of the width lost
-// by this change is therefore not bought by the memory it needed; it is bought by CPU quota
-// nothing asked for.
+// MEMORY BINDS AGAIN AS OF 2026-09-19, AND THIS TIME BY POLICY RATHER THAN COINCIDENCE. From
+// 2026-08-23 to 2026-09-19 cores_per_slot was DERIVED from the slot's memory ceiling against a
+// vendor memory-per-vCPU ratio, so raising memory 16 -> 26 GiB took cores_per_slot 6 -> 10 and the
+// CPU axis 21 -> 12, binding every host at 12 -- a coupling this witness caught when a draft
+// claimed 15/17/17. The operator ruling of 2026-09-19 ("there is no CPU demand - the processes we
+// run are single core") replaced the derivation with an authored policy of 1
+// (gunbc_runner_cores_per_slot_policy): the CPU axis admits 128 on every M128-30 host and cannot
+// bind below memory on any host in this fleet, so the committed widths are the memory admissions
+// 15 and 17. The equality conjuncts below are the RED for the coupling coming back: a
+// cores_per_slot re-derived from memory_max would drop these widths below memory admission and
+// fail the `== host_memory_admitted_width` clauses, and the CPU clause pins the axis at the
+// cited core count so a policy above 1 is a visible edit here rather than a silent narrowing.
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 12
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 15
     && gunbc_runner_slots_per_host(host: operator_host_srv2) == 0
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 12
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 12
-    && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) < host_memory_admitted_width(host: operator_host_srv3)
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 17
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 17
+    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == host_memory_admitted_width(host: operator_host_srv4)
+    && host_cpu_admitted_width(host: operator_host_srv1) == 128
+    && host_cpu_admitted_width(host: operator_host_srv3) > host_memory_admitted_width(host: operator_host_srv3)
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
@@ -433,14 +431,15 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
          == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
 }
 
-test fn the_slot_row_quota_is_the_surveyed_cores_per_slot() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
-      match gunbc_runner_slot_desired().cpu_quota {
-        CpuQuotaRefused { cause: _ } => false
-        CpuQuotaResolved { threads: q } =>
-          hardware_thread_count_value(t: t) == hardware_thread_count_value(t: q)
-      }
+// THE SLOT ROW DECLARES ONE CORE PER SLOT AND NO CPU CEILING, AND THE TWO ARE NOT ONE FACT. Until
+// 2026-09-19 the quota WAS the cores_per_slot, so this row asserted their equality; under the
+// ruling a 100% quota at one core per slot would throttle parallel link/codegen, so the quota is
+// SlotCpuQuotaUnbounded while cores_per_slot is 1. RED: a quota re-derived from cores_per_slot
+// resolves to one thread and fails the first clause; a cores_per_slot policy above 1 fails the
+// second.
+test fn the_slot_row_declares_one_core_and_no_ceiling() -> Bool {
+  match gunbc_runner_slot_desired().cpu_quota {
+    CpuQuotaResolved { threads: _ } => false
+    SlotCpuQuotaUnbounded => hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
   }
 }

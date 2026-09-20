@@ -174,7 +174,7 @@ fn read_remote_main_hex() -> RemoteRefRead {
     if line == "" {
       RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
         Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
         Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
       }

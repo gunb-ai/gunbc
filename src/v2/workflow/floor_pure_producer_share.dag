@@ -516,7 +516,27 @@ import v2.std.collection { List }
 // CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
 // touch of this fill dies on the lane's margin and restarts per claim. The module is under
 // src/v2/extdeps, so it resolves in every required-floor subject.
+// THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
+// PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
+// v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
+// its four context-consuming identities were refused COMPLETED-OVER-COST-REQUIREMENT at
+// 197116-200054 evaluator steps against the 72300-step new-witness budget (run 35464948266, job
+// 105955463881; observed cpu_ms=463-476, recorded and not gated on). The claims assert over one
+// module's outcome each -- resolve-refused, file-refused and resolved -- so the front end they
+// rebuilt per claim is work no row is about: DESIGN section 3's "a claim whose evaluation is
+// dominated by ONE call whose RESULT SHAPE is all it inspects".
+// THE SHARE POINT IS THE DECIDED OUTCOMES, not the context that produced them. NativeTestContext
+// carries a resolution context, which is the origin-bound shape this roster refuses at publication;
+// CensusProbeOutcomes carries three NativeCensusModuleOutcome variants plus an Int, and those carry
+// only diagnostics -- symbols, loci and nodes -- so the stored value is positively portable for the
+// same reason collision_resolved's ResolvedTree is.
+// WARM, NEVER CLAIM-FORCED, for the reason the rows above give: the fill costs more than one
+// claim's whole budget on this lane, so an in-fold fill would die mid-flight exactly as
+// prepare_grammar's did. The instrument that decides this row is the required floor's
+// [floor-shared-fill] ledger showing disposition=Stored at preparation, joined against
+// required_floor_claim_cost.tsv showing the four identities reaching verdict_reached=true.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",

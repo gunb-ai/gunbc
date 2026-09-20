@@ -451,22 +451,22 @@ fn conflict_marker_locations_from_lines_at(
   grammar: GitEffectiveConflictMarkerGrammar,
   parsed: ConflictMarkerParseFold,
 ) -> List<ConflictMarkerLocation> {
-  if index >= count(lines) {
-    parsed.locations
-  } else {
-    conflict_marker_locations_from_lines_at(
-      lines: lines,
-      index: index + 1,
-      path: path,
-      grammar: grammar,
-      parsed: conflict_marker_parse_line(
-        fold_state: parsed,
+  match lines.skip(n: index).first() {
+    Absent => parsed.locations
+    Present { value: line } =>
+      conflict_marker_locations_from_lines_at(
+        lines: lines,
+        index: index + 1,
         path: path,
-        line: lines.skip(n: index).first(),
-        line_number: index + 1,
         grammar: grammar,
-      ),
-    )
+        parsed: conflict_marker_parse_line(
+          fold_state: parsed,
+          path: path,
+          line: line,
+          line_number: index + 1,
+          grammar: grammar,
+        ),
+      )
   }
 }
 
@@ -861,15 +861,18 @@ fn commit_writer_blob_coverage_refusals(
     } else if count(matching_index) > 1 {
       []
     } else {
-      let index_entry = matching_index.first()
-      if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
-        []
-      } else {
-        [CommitWriterIndexBlobIdentityMismatchRefusal {
-          path: blob.path,
-          index_oid: index_entry.oid,
-          observed_index_oid: blob.indexed_oid,
-        }]
+      match matching_index.first() {
+        Absent => []
+        Present { value: index_entry } =>
+          if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
+            []
+          } else {
+            [CommitWriterIndexBlobIdentityMismatchRefusal {
+              path: blob.path,
+              index_oid: index_entry.oid,
+              observed_index_oid: blob.indexed_oid,
+            }]
+          }
       }
     },
     items: append(
@@ -2356,11 +2359,14 @@ fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
 fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> Bool {
   if left.count() != right.count() {
     false
-  } else if left.count() == 0 {
-    true
   } else {
-    witness_seam_eq(a: left.first(), b: right.first())
-      && witness_seam_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Absent => true
+      Present { value: l } => match right.first() {
+        Absent => false
+        Present { value: r } => witness_seam_eq(a: l, b: r) && witness_seam_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+      }
+    }
   }
 }
 
@@ -2480,13 +2486,13 @@ fn declaration_field_is_whole(field: DeclField) -> Bool {
 }
 
 fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
-  if declarations.count() == 0 {
-    true
-  } else {
-    !declaration_ref_in_list(
-      target: declarations.first(),
-      refs: declarations.skip(n: 1)
-    ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
+  match declarations.first() {
+    Absent => true
+    Present { value: head } =>
+      !declaration_ref_in_list(
+        target: head,
+        refs: declarations.skip(n: 1)
+      ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
   }
 }
 
@@ -2511,12 +2517,14 @@ fn demand_check_count(check: CommitCheckKind, rows: List<EnrollmentWitnessDemand
 }
 
 fn first_duplicate_commit_check(roster: List<CommitCheckEnrollment>) -> DuplicateCommitCheck {
-  if roster.count() == 0 {
-    NoDuplicateCommitCheck
-  } else if commit_check_count(check: roster.first().check, roster: roster) > 1 {
-    DuplicateCommitCheckFound { check: roster.first().check }
-  } else {
-    first_duplicate_commit_check(roster: roster.skip(n: 1))
+  match roster.first() {
+    Absent => NoDuplicateCommitCheck
+    Present { value: head } =>
+      if commit_check_count(check: head.check, roster: roster) > 1 {
+        DuplicateCommitCheckFound { check: head.check }
+      } else {
+        first_duplicate_commit_check(roster: roster.skip(n: 1))
+      }
   }
 }
 
@@ -2604,12 +2612,12 @@ fn project_named_declaration_demands(
   names: List<String>,
   declarations: List<DeclarationRef>,
 ) -> NamedDeclarationDemandOutcome {
-  if names.count() == 0 {
-    NamedDeclarationsQualified { declarations: [] }
-  } else {
+  match names.first() {
+    Absent => NamedDeclarationsQualified { declarations: [] }
+    Present { value: name } =>
     let matching = filter(
       declarations,
-      declaration => declaration_matches_name(declaration: declaration, name: names.first())
+      declaration => declaration_matches_name(declaration: declaration, name: name)
     )
     if matching.count() == 0 {
       NamedDeclarationMissing {
@@ -2627,7 +2635,7 @@ fn project_named_declaration_demands(
         NamedDeclarationMissing { cause } => NamedDeclarationMissing { cause: cause }
         NamedDeclarationAmbiguous { cause } => NamedDeclarationAmbiguous { cause: cause }
         NamedDeclarationsQualified { declarations: rest } =>
-          let selected = concat([matching.first()], rest)
+          let selected = concat(matching.take(n: 1), rest)
           if declaration_refs_unique(declarations: selected) {
             NamedDeclarationsQualified { declarations: selected }
           } else {
@@ -2740,10 +2748,10 @@ fn project_enrollment_witness_demands_unchecked(
   roster: List<CommitCheckEnrollment>,
   discoveries: List<EntryDeclarationDiscovery>,
 ) -> EnrollmentDemandOutcome {
-  if roster.count() == 0 {
-    DemandQualified { rows: [] }
-  } else {
-    let check = roster.first().check
+  match roster.first() {
+    Absent => DemandQualified { rows: [] }
+    Present { value: head } =>
+    let check = head.check
     match project_one_enrollment_witness_demand(
       check: check,
       discoveries: discoveries
@@ -2828,12 +2836,12 @@ fn seam_list_contains(seams: List<WitnessSeam>, seam: WitnessSeam) -> Bool {
 }
 
 fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
-  if seams.count() == 0 {
-    true
-  } else {
-    witness_seam_wellformed(seam: seams.first())
-      && !seam_list_contains(seams: seams.skip(n: 1), seam: seams.first())
-      && seams_wellformed_and_distinct(seams: seams.skip(n: 1))
+  match seams.first() {
+    Absent => true
+    Present { value: head } =>
+      witness_seam_wellformed(seam: head)
+        && !seam_list_contains(seams: seams.skip(n: 1), seam: head)
+        && seams_wellformed_and_distinct(seams: seams.skip(n: 1))
   }
 }
 
@@ -2904,24 +2912,28 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
 fn gate_lists_eq(left: List<Gate>, right: List<Gate>) -> Bool {
   if length(left) != length(right) {
     false
-  } else if length(left) == 0 {
-    true
-  } else if !gate_eq(a: left.first(), b: right.first()) {
-    false
   } else {
-    gate_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Absent => true
+      Present { value: l } => match right.first() {
+        Absent => false
+        Present { value: r } => if !gate_eq(a: l, b: r) { false } else { gate_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
+      }
+    }
   }
 }
 
 fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) -> Bool {
   if length(left) != length(right) {
     false
-  } else if length(left) == 0 {
-    true
-  } else if !local_tidy_check_eq(a: left.first(), b: right.first()) {
-    false
   } else {
-    local_tidy_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Absent => true
+      Present { value: l } => match right.first() {
+        Absent => false
+        Present { value: r } => if !local_tidy_check_eq(a: l, b: r) { false } else { local_tidy_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1)) }
+      }
+    }
   }
 }
 
