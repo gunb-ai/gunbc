@@ -172,6 +172,28 @@ fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
   }
 }
 
+// THE INHABITANTS, SO THE INVERSE IS READ FROM THE SAME TABLE RATHER THAN RE-SPELLED. An exhaustive
+// match owes an arm per inhabitant, so a sixth jurisdiction must be added here to compile, and the
+// parse below then recognises it without a second edit.
+fn r2_jurisdictions() -> List<R2Jurisdiction> {
+  [R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs]
+}
+
+// ONE GRAMMAR READ BACKWARD (DESIGN section 4): the wire token is spelled once, by
+// r2_jurisdiction_wire, and the parse selects from those same rows rather than carrying a second
+// copy of the five literals. A corrected spelling therefore moves both directions together; a
+// hand-written parse would have gone silently unrecognising instead.
+fn parse_r2_jurisdiction(raw: String) -> R2Jurisdiction? {
+  fold(
+    r2_jurisdictions(),
+    init: none,
+    f: (acc, j) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if r2_jurisdiction_wire(jurisdiction: j) == raw { Present { value: j } } else { none }
+    },
+  )
+}
+
 type R2S3Endpoint {
   account_id: String
   jurisdiction: R2Jurisdiction

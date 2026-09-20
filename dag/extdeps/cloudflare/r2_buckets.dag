@@ -16,7 +16,7 @@ import extdeps.cloudflare.r2 {
   r2_get_bucket_authority,
   r2_error_codes_authority,
   R2Jurisdiction,
-  R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs,
+  parse_r2_jurisdiction,
   r2_not_entitled_error_code,
   r2_no_such_bucket_error_code,
 }
@@ -55,21 +55,6 @@ type R2BucketResponse {
   location: String?
 }
 
-fn parse_r2_jurisdiction(raw: String) -> R2Jurisdiction? {
-  if raw == "default" {
-    Present { value: R2JurisdictionDefault }
-  } else if raw == "eu" {
-    Present { value: R2JurisdictionEu }
-  } else if raw == "fedramp" {
-    Present { value: R2JurisdictionFedramp }
-  } else if raw == "fedramp-high" {
-    Present { value: R2JurisdictionFedrampHigh }
-  } else if raw == "us" {
-    Present { value: R2JurisdictionUs }
-  } else {
-    none
-  }
-}
 
 // THE JURISDICTION HEADER IS NOT CARRIED, AND THAT IS WHY BOTH OPERATIONS ARE DEFAULT-ONLY. Create
 // and Get take jurisdiction as the cf-r2-jurisdiction HEADER (r2_create_bucket_location_hint_reading),
