@@ -13,7 +13,7 @@
     dead_code,  // 3
 )]
 
-use crate::cli_run::namespace_wave_admission::git_stdout;
+use crate::cli_run::namespace_baseline::git_stdout;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};

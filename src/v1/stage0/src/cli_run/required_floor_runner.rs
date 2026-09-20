@@ -1395,7 +1395,7 @@ pub(crate) enum ArmSetConsumerPlanning {
     Selected {
         base: String,
         head: String,
-        selection: crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     },
 }
 
@@ -1405,7 +1405,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 /// WHICH INDEX, AND WHY IT IS REACHABLE HERE. `v2.std.decl_index` `decl_facts_at` answers
 /// "what does the corpus declare under this name" and has no base side; it is the wrong
 /// question. The relation that answers "who binds this declaration" is the one
-/// `namespace_wave_admission` already computes from `ModuleDeclarationRecord`, and the parse
+/// `namespace_baseline` already computes from `ModuleDeclarationRecord`, and the parse
 /// phase builds that index in THIS lane before the floor runs (`RequiredCiPhase::Parse` and
 /// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
@@ -1413,7 +1413,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 fn arm_set_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
 ) -> Result<ArmSetConsumerPlanning, String> {
-    use crate::cli_run::namespace_wave_admission::{
+    use crate::cli_run::namespace_baseline::{
         arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
@@ -5668,7 +5668,7 @@ pub fn run_required_floor(
                 head,
                 selection,
             } => {
-                use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+                use crate::cli_run::namespace_baseline::ArmConsumerBinding;
                 let floor_roots = floor_source_roots_workspace_relative(source_roots);
                 let mut flat_channel = 0usize;
                 for change in &selection.changes {
@@ -11730,7 +11730,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         base: &[(&str, &str)],
         head: &[(&str, &str)],
     ) -> (
-        crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
         PathBuf,
     ) {
         let base_fx = arm_set_fixture(name, "base", base);
@@ -11744,7 +11744,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "PLANT MALFORMED: a side indexed no modules"
         );
         (
-            crate::cli_run::namespace_wave_admission::arm_set_changed_match_consumers(
+            crate::cli_run::namespace_baseline::arm_set_changed_match_consumers(
                 &base_index,
                 &head_index,
             ),
@@ -11753,7 +11753,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     }
 
     fn consumers_of(
-        selection: &crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: &crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     ) -> Vec<&str> {
         let mut out: Vec<&str> = selection
             .consumers
@@ -11769,7 +11769,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// -- see the positive control below, which prepares W without Y.
     #[test]
     fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
-        use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+        use crate::cli_run::namespace_baseline::ArmConsumerBinding;
         let (selection, head_fx) = arm_set_selection(
             "red",
             &[
