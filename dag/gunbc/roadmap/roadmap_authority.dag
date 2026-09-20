@@ -2781,7 +2781,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "Without a readback bound to the file id, a landed write reports as a transport failure and a failed write reports as success; without retirement the two generations both answer for one fact.",
         first_slice: "The PATCH and its readback.",
         red_control: "A field mask that does not name every required field of its declared response type decodes short, so fields=id against a DriveFile must refuse rather than report a landed write as a transport failure.",
-        out_of_scope: "No marker relocation, and no retirement before the producers and admission of the preceding node execute.",
+        out_of_scope: "No marker relocation.",
         handback: "The write, the id-bound readback, and the legacy generation retired with its extent settled."
       )
     ),
@@ -2829,6 +2829,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // external review after the edge was added on exactly that reasoning.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
