@@ -315,9 +315,12 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Only those two modes are established API-only by this declaration;
-// every other mode keeps the key it held before, which is the status quo rather than a finding
-// that it needs it.
+// authority it never uses. Three modes are established as not consuming it: the two API-only reads,
+// and the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
+// SSH operation. Every mode that predates this declaration keeps the key it held before, which is
+// the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
+// to keep, so its arm is derived from its operation route (the approval keyring converge executes
+// over fleet SSH to srv1 and consumes it).
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
@@ -347,7 +350,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    MtCollins1Boot => FleetSshKeyConsumed
+    MtCollins1Boot => FleetSshKeyNotConsumed
   }
 }
 
