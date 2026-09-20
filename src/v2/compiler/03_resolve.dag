@@ -629,8 +629,15 @@ fn test_code_referenced_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 // THE WALL (owner ruling 2026-09-16/17): `test` segregates test code from serving code, and no code
 // may reference a test-marked declaration, a test fn in the same module included. It is decided here,
 // where the reference binds, from the path it bound to, and it refuses with the reference's own locus.
-// Every door that binds a module-level name reaches this function: the root scope, the symbol index,
-// and a qualified path (try_resolve_qualified_name_node).
+// TWO ENFORCEMENT SITES, ONE DECISION. This function is reached by the doors whose accepted result is
+// a canonical atom -- the root scope and the symbol index. The qualified-path door
+// (try_resolve_qualified_name_node) cannot route through it, because its accepted arm must first read
+// the resolved node's kind and carry the chain's own pending diagnostics, so it refuses inline
+// instead. Both sites decide from ONE authority, test_code_reach over ctx.namespace.test_code, and
+// raise the same reason through the same test_code_referenced_diagnostic: a change to the RULE is a
+// change to that fold, not to either site. What a later door must not do is bind a module-level name
+// without asking test_code_reach at all -- the per-door reds in
+// v2.test.claim.name_resolve.test_code_reference_wall are what hold that, one per door.
 fn resolve_atom_bound(
   ctx: ResolveContext,
   n: Node,
