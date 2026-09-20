@@ -104,14 +104,21 @@ fn base16_is_digit_code_point(cp: Int) -> Bool {
   any(base16_digit_rows, row => code_point(row.lower) == cp || code_point(row.upper) == cp)
 }
 
+// The uppercase half, for the consumer that refuses a non-canonical spelling BY NAME. A consumer
+// asking this question spelled it `cp >= 65 && cp <= 70`, which is the alphabet's uppercase column
+// re-encoded as an ASCII interval and would not follow the rows if they changed. Digits 0-9 have the
+// same spelling in both columns, so this is true only of a row whose two columns differ.
+fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
+  any(base16_digit_rows, row => code_point(row.upper) == cp && row.lower != row.upper)
+}
+
 fn base16_lower_digit_value_at(cp: Int) -> Int? {
   fold(base16_digit_rows, init: none, f: (acc, row) =>
     if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
 }
 
 fn base16_lower_digit_value(c: String) -> Int? {
-  fold(base16_digit_rows, init: none, f: (acc, row) =>
-    if row.lower == c { Present { value: row.value } } else { acc })
+  base16_lower_digit_value_at(cp: code_point(c))
 }
 
 fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<UInt8>) -> List<UInt8>? {

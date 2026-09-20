@@ -111,6 +111,19 @@ test fn the_leading_zero_octet_survives_the_round_trip() -> Bool {
   }
 }
 
+// FIXED OUTPUT, NOT A ROUND TRIP. Rendering and parsing now read the SAME alphabet rows, so a
+// mutation of those rows moves both directions together and a round trip alone would still hold --
+// the inverse of a wrong table is still its inverse. These pin the rendered text against spellings
+// written here, so the alphabet cannot drift without a claim going red.
+test fn a_known_address_renders_its_canonical_text() -> Bool {
+  (render_mac_address(addr: srv3_burned_in()) as String) == "48:21:0b:81:c7:1d"
+}
+
+test fn every_octet_value_renders_its_two_digit_spelling() -> Bool {
+  (render_mac_address(addr: mac_address(octet1: 255, octet2: 0, octet3: 15, octet4: 16, octet5: 171, octet6: 205)) as String)
+    == "ff:00:0f:10:ab:cd"
+}
+
 test fn the_all_ones_octet_survives_the_round_trip() -> Bool {
   match parse_mac_address(text: "ff:ff:ff:ff:ff:ff") {
     MacParsed { address: a } =>

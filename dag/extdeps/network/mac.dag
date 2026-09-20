@@ -4,7 +4,7 @@ import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
 import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { base16_is_lower_digit_code_point, base16_lower_digit_value_at }
+import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -105,29 +105,12 @@ fn mac_address(
   }
 }
 
-fn mac_hex_digit(value: Int) -> String {
-  match value {
-    0 => "0"
-    1 => "1"
-    2 => "2"
-    3 => "3"
-    4 => "4"
-    5 => "5"
-    6 => "6"
-    7 => "7"
-    8 => "8"
-    9 => "9"
-    10 => "a"
-    11 => "b"
-    12 => "c"
-    13 => "d"
-    14 => "e"
-    _ => "f"
-  }
-}
 
+// Rendering reads the same alphabet the parser does. This spelled the digits as a sixteen-arm match
+// whose default arm totalized every value >= 15 to "f" -- a fifth copy of the alphabet, in the
+// module this cut dissolves, and one that answered for values that are not digits at all.
 fn render_mac_octet(value: UInt8) -> String {
-  join([mac_hex_digit(value: value / 16), mac_hex_digit(value: value % 16)], "")
+  base16_encode_lower(octets: [value])
 }
 
 fn render_mac_address(addr: Eui48Address) -> NonEmptyStr {
@@ -182,16 +165,6 @@ fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
   }
 }
 
-// The digit's value comes from the base16 alphabet. The call is guarded by the membership test
-// above, so the absent arm is unreachable; it answers 0 rather than inventing a digit, and the
-// guard is what makes that honest -- a non-hex octet never reaches here.
-fn mac_lower_digit_value(cp: Int) -> Int {
-  match base16_lower_digit_value_at(cp: cp) {
-    Present { value: v } => v
-    Absent => 0
-  }
-}
-
 type MacOctetResult =
     MacOctetOk { value: UInt8 }
   | MacOctetErr { error: MacParseError }
@@ -206,12 +179,15 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
         }
       } else {
-        if points |> all(c => base16_is_lower_digit_code_point(cp: c)) {
-          MacOctetOk {
-            value: fold(points, init: 0, f: fn(acc, c) { acc * 16 + mac_lower_digit_value(cp: c) }),
-          }
-        } else {
-          MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+        // A two-character component IS a lowercase-hex octet, so the codec decides: it refuses an
+        // uppercase or non-hex spelling by returning absent, and the width was established above.
+        match base16_decode_lower(hex: raw) {
+          Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+          Present { value: octets } =>
+            match octets.first() {
+              Present { value: octet } => MacOctetOk { value: octet }
+              Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+            }
         }
       }
     }
