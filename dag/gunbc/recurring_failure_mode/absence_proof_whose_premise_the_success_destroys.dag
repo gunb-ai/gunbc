@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.absence_proof_whose_premise_the_success_destroys
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absence_proof_whose_premise_the_success_destroys: RecurringFailureMode = RecurringFailureMode {
+  identity: "absence_proof_whose_premise_the_success_destroys" as NonEmptyStr,
+
+  receipts: [
+    "**an absence is established through a container, and the outcome being proven removes the container -- so the CLEAN case is the one case the proof cannot observe** (INVALID STATE: a fact of the form 'X is gone' is established soundly, by a successful enumeration of X's container that does not name it, because a failed read of X itself cannot separate gone from unreadable. Then the very success being verified deletes the container too. The enumeration now fails, the fold answers unobservable exactly as it should, and the verdict is withheld on every run that WORKED. The failing cases still report correctly, so the mechanism looks alive.)",
+
+    "WHY IT SURVIVES REVIEW AND TESTING. Read as a fold it is correct at every step, and it is correct in the direction reviewers check: it never reports a present resource as absent. Every fixture that supplies readings passes, because a fixture supplies the container listing the real world will not have. It is only reachable by executing the whole outcome, which is why this class belongs to the first wet run of a teardown, a cleanup, an uninstall, a retirement -- any operation whose success is a deletion.",
+
+    "SPECIMEN, found 2026-09-20 in gunbc.runner_microvm_lifecycle_realize, before any host had run it. The teardown proves three attempt resources absent: the attempt directory, and the jail root and credential drive INSIDE it. Each was read independently through extdeps.filesystem.filesystem_io -- list the parent, look for the name -- which is the sound shape. But a teardown that did its job deletes the attempt directory, so the listings for the jail root and the credential drive are listings of a directory that is gone: refused, hence FilesystemEntryPresenceIndeterminate, hence ResourceUnreadable, hence two facts unproven, hence CellQuarantined. Every SUCCESSFUL teardown would have quarantined its own cell, and the cell would never have been released to its next incarnation. The wet RED for a clean teardown would have gone red and been read as the controller working.",
+
+    "THE REPAIR IS CONTAINMENT, NOT A WIDER READ OR A RETRY. A path under a directory that is ESTABLISHED absent is absent: there is no filesystem in which /a/b exists and /a does not. So the container is read first and its established absence answers for everything beneath it, and only a container still present is enumerated. The inheritance is from the ESTABLISHED absence and never from a failed read -- a container that could not be read leaves its contents unreadable too, which is the arm that keeps the cell. Note what is NOT the repair: treating the failed listing as absence would make every unreadable directory a clean teardown, which is the fail-open this whole readback exists to prevent.",
+
+    "RECOGNITION RULE: for each fact of the form 'this is gone', name the observation that establishes it, then ask whether the SUCCESS PATH leaves that observation takeable. If the success deletes what the observation reads, the proof is only defined on the failing cases. The same question catches the sibling one level up: a cgroup subtree read for residue, when systemd removes the slice's cgroup as soon as its last unit exits (see gunbc.runner_microvm_lifecycle_realize read_slice_cgroup_path, where a blank ControlGroup is an answer and not a doubt for exactly this reason).",
+
+    "RUNG FOUND AT: mitigatable, by deriving the success path rather than by executing it. CEILING: structurally guaranteed. Containment is a relation the path model can carry, so a proof of absence over a contained subject can be required to reach its container's reading rather than to take its own. NEXT-RUNG TRIGGER, at capability grain: a modeled containment relation between observed subjects, so a fold that establishes absence for a subject inside another cannot be written to enumerate the inner container directly. Until then the wall is authorship, which is the rung this row claims.",
+  ],
+
+  evidence: [],
+}
