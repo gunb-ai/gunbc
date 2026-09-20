@@ -186,14 +186,14 @@ pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
 mod test_migration;
 pub(crate) use test_migration::*;
-// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
-// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
+// is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
-#[path = "namespace_wave_admission.rs"]
-pub mod namespace_wave_admission;
+#[path = "namespace_baseline.rs"]
+pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
@@ -10440,6 +10440,7 @@ pub enum WitnessRuntimeCause {
     ArgvExceedsHostArgMax,
     HostToolRelativePathAmbiguous,
     ShellOutputLimitExceeded,
+    ShellSpawnRefused,
     CallContractMismatch,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
@@ -10477,6 +10478,7 @@ impl WitnessRuntimeCause {
                 "host-tool-relative-path-ambiguous"
             }
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
+            WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
@@ -10512,6 +10514,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::HostToolRelativePathAmbiguous
             }
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
+            E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
@@ -40353,6 +40356,80 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
+/// TEARDOWN ATTRIBUTION FOR THE 168 SILENT SECONDS AFTER THE FLOOR REPORTS ITS VERDICT.
+///
+/// MEASURED, NOT SUPPOSED. On run 35365418267 the `D0-MEASURE: witnesses lane` step printed its
+/// last line -- `required-ci: lane=witnesses phases_run=3 phases_failed=0` -- at 16:40:33 and the
+/// next step did not begin until 16:43:21: 167.8 SECONDS WITH NO OUTPUT. That is not runner
+/// overhead, and the discriminator is in the same log: every other inter-step gap in that job is
+/// between 0.0s and 1.3s, so this one is a hundredfold outlier unique to this step.
+///
+/// WHY THE PROCESS IS STILL RUNNING THERE. `claim_executor`'s `main` returns an `ExitCode` and
+/// calls `process::exit` nowhere, so after the verdict is printed Rust runs destructors over
+/// everything still alive -- and what is still alive is thread-local: the shared resolve index and
+/// its store hold the whole `MultiEntryIndex` (source files, pool parse, typed caches), beside the
+/// per-subject scope and closure memos. Dropping an `Rc`/`im` graph of that size is O(nodes) with
+/// poor locality, which is the right order of magnitude for the gap.
+///
+/// THIS FUNCTION DOES NOT MAKE THAT CHEAPER AND IS NOT THE REPAIR. It moves the cost from after
+/// `main` returns to inside it, where it can be TIMED AND ATTRIBUTED per cache, so the next lane
+/// chooses a repair against a measurement instead of against this paragraph. The eventual repair
+/// is a different question -- exiting without running destructors is the obvious candidate and is
+/// NOT safe by inspection, because `v1_interpreter`'s `InterpContext` has a `Drop` that absorbs
+/// recompute totals into a process global that a CI gate reads. On the measured run that receipt
+/// was printed at 16:36:16, four minutes before the gap, so the contexts dropped during it absorb
+/// into a total nothing reads again -- but that is an argument about one run's ordering, not a
+/// property anyone has established, and it is exactly the kind of claim this file has been wrong
+/// about before.
+///
+/// Silent below one millisecond: a roster of zeroes would bury the one line that matters.
+pub fn drop_process_caches_with_attribution() {
+    fn timed<F: FnOnce()>(name: &str, f: F) {
+        let started = std::time::Instant::now();
+        f();
+        let ms = started.elapsed().as_millis();
+        if ms >= 1 {
+            eprintln!("[floor-teardown] cache={name} drop_ms={ms}");
+        }
+    }
+    let whole = std::time::Instant::now();
+    timed("process_resolve_index", || {
+        entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| *s.borrow_mut() = [None, None]);
+    });
+    timed("process_resolve_store", || {
+        entry_resolve::PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
+    });
+    timed("scope_fragment_caches", || {
+        SCOPE_FRAGMENT_CACHES.with(|c| c.borrow_mut().clear());
+    });
+    timed("reference_closure_indexes", || {
+        REFERENCE_CLOSURE_INDEXES.with(|c| c.borrow_mut().clear());
+    });
+    timed("scope_order_indexes", || {
+        SCOPE_ORDER_INDEXES.with(|c| c.borrow_mut().clear());
+    });
+    timed("module_path_index_cache", || {
+        MODULE_PATH_INDEX_CACHE.with(|c| c.borrow_mut().clear());
+    });
+    timed("module_graph_facts_cache", || {
+        MODULE_GRAPH_FACTS_CACHE.with(|c| c.borrow_mut().clear());
+    });
+    timed("reference_edge_cache", || {
+        REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().clear());
+    });
+    timed("compile_dag_rust_emit_check_memo", || {
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().clear());
+    });
+    timed("compile_dag_diagnostic_census_memo", || {
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().clear());
+    });
+    eprintln!(
+        "[floor-teardown] explicit_total_ms={} (the residue after this line is whatever main's \
+         return still drops)",
+        whole.elapsed().as_millis()
+    );
+}
+
 pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
@@ -42885,6 +42962,9 @@ fn spawn_floor_heartbeat() {
             )
         );
         beat += 1;
+        // The raw memory.stat counters every beat (one file read); the full multi-level
+        // envelope every tenth. See floor_cgroup_stat_beat for why the cadences differ.
+        floor_cgroup_stat_beat(&format!("beat-{beat}"));
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }

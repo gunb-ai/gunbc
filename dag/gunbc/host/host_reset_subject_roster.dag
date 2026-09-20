@@ -9,14 +9,14 @@ import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff_admission,
   oob_handoff_is_admitted,
 }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
 import gunbc.machine_intake_mtcollins1_actuate {
   mtcollins1_bmc_username,
-  mtcollins1_cdrom_device,
-  mtcollins1_cdrom_readback_rendering,
+  mtcollins1_cdrom_selection,
   mtcollins1_power_action,
 }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
@@ -40,21 +40,20 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // and there is no second place to edit.
 // THE PER-HOST RESET POLICY TRAVELS WITH THE ROSTER ROW, and that is the layer it belongs to rather
 // than an accident of convenience. gunbc.machine_intake_oob_boot_handoff takes the boot device, the
-// expected read-back rendering and the power action as PARAMETERS precisely because which of them a
-// workflow picks is business policy, and its own note says so; this roster is the workflow-layer
-// authority that picks them for a reset.
+// boot options, the parameter-5 expectation and the power action as PARAMETERS precisely because
+// which of them a workflow picks is business policy, and its own note says so; this roster is the
+// workflow-layer authority that picks them for a reset.
 //
 // THE VALUES ARE IMPORTED, NEVER RE-SPELLED. gunbc.machine_intake_mtcollins1_actuate already carries
-// the device word, the exact text ipmitool renders for it, and the cycle verb the unit's SEL
-// confirmed. The username is mtcollins1_bmc_username — the BmcSecured managed account, not a
-// factory literal. A host that is not BmcSecured is not a reset candidate.
+// the device word, the boot-options word, the four-axis parameter-5 expectation, and the cycle verb
+// the unit's SEL confirmed. The username is mtcollins1_bmc_username — the BmcSecured managed account,
+// not a factory literal. A host that is not BmcSecured is not a reset candidate.
 type ResetSubjectCandidate {
   host: HostIdentity
   observation: BmcAccessObservation
   capability_row: BmcFirmwareReleaseCapabilityRow
   username: NonEmptyStr
-  boot_device: NonEmptyStr
-  boot_readback_rendering: NonEmptyStr
+  boot_selection: IpmiBootSelection
   power_action: NonEmptyStr
 }
 
@@ -77,8 +76,7 @@ fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
           observation: mtcollins1_access_observation,
           capability_row: mtcollins1_capability_row,
           username: username,
-          boot_device: mtcollins1_cdrom_device,
-          boot_readback_rendering: mtcollins1_cdrom_readback_rendering,
+          boot_selection: mtcollins1_cdrom_selection,
           power_action: mtcollins1_power_action,
         },
       ]
