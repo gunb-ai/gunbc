@@ -348,6 +348,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
+    ApprovalKeyringConverge => FleetSshKeyConsumed
+    MtCollins1Boot => FleetSshKeyConsumed
   }
 }
 

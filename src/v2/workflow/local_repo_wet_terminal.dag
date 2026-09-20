@@ -1112,6 +1112,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
       function: "empty_diff_has_a_real_digest",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "absent_binary_is_a_typed_spawn_refusal" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "absent_binary_is_a_typed_spawn_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "a_refusal_after_a_success_keeps_the_earlier_result" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "a_refusal_after_a_success_keeps_the_earlier_result",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "present_binary_exits" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "present_binary_exits",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "nonzero_exit_is_not_a_spawn_refusal" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "nonzero_exit_is_not_a_spawn_refusal",
+      expectation: ExpectedToHold {}
     }
   ]
 }

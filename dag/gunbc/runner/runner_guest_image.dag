@@ -38,10 +38,10 @@ import extdeps.systemd.unit_file {
   ServiceType, ExecMode, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
-  WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
+  WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in, ServiceTasksMax,
 }
 import gunbc.runner_microvm {
-  RunnerGuestImage, gunbc_runner_guest_image,
+  RunnerGuestImage, gunbc_runner_guest_image, gunbc_runner_microvm_task_ceiling,
   JitDriveDeviceResolution, JitDriveDevice, JitDriveNotAttached, jit_drive_guest_device,
 }
 import gunbc.command_runner {
@@ -426,6 +426,15 @@ fn runner_guest_listener_command() -> NonEmptyStr {
 // before powering off -- a one-job VM has nothing else whose orderly stop matters.
 data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
 
+// THE AGENT UNIT CARRIES THE TASK CEILING THE CELL DECLARES, APPLIED WHERE THE FLOOR'S PROCESSES
+// ACTUALLY LIVE. In the lifecycle-controller topology the host cell's TasksMax bounds only the
+// VMM's threads; the runner and everything it spawns are behind the guest kernel, so the ceiling is
+// re-applied on this unit as its own TasksMax= -- which systemd realizes as pids.max on the unit's
+// cgroup -- reading gunbc.runner_microvm gunbc_runner_microvm_task_ceiling, the one row. It is NOT
+// kernel.pid_max: that is the PID-number wrap ceiling, a different fact. READBACK IS A FRONTIER:
+// the value applied inside the guest is observable only from inside it, and no guest event
+// establishes anything on the host, so the receipt that pids.max holds what this directive says
+// is owed by the first guest floor attempt's console read, not by this row.
 fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyStr) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [
@@ -438,6 +447,7 @@ fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyS
     service: [
       ServiceType { mode: ExecMode },
       Restart { policy: "no" as NonEmptyStr },
+      ServiceTasksMax { count: gunbc_runner_microvm_task_ceiling() },
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
       Environment { assignment: runner_guest_job_path },
       Environment { assignment: runner_guest_job_home },
