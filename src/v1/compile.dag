@@ -4,6 +4,9 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
+
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
@@ -22,7 +25,10 @@ import v1.std.core {
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
-  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens
+  foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens,
+  DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, TestCodeReferenceAdmitted,
+  TestCodeReferenceBudgetMismatch, TestCodeReferenceRowOrphaned, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
+  MatchBoundBinding, ServiceValueBinding
 }
 
 import v1.compiler.annotation_bind { admit_source_annotations }
@@ -213,9 +219,19 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
   )
 }
 
+// WHETHER THIS COMPILE KNOWS THE WHOLE CORPUS, stated by the caller rather than inferred from the
+// census. The census holds the indexed modules OUTSIDE the compile closure, so a whole-tree compile
+// has an empty census and the most complete knowledge there is; reading an empty census as
+// ignorance made the orphan refusal unreachable on exactly the run that deletes a module (review
+// 68429). The caller states CorpusKnown only when its index spans every witness-layer root the
+// ledger's rows are derived from; an index over narrower user roots is CorpusUnknown, because a row
+// whose module lies outside it is absent from that compile, not orphaned (review 68527).
+type CorpusScope = CorpusKnown | CorpusUnknown
+
 type CompilePipelineOptions {
   analyze_complexity: Bool,
-  census_only_sources: List<SourceFile>
+  census_only_sources: List<SourceFile>,
+  corpus: CorpusScope
 }
 
 // Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup,
@@ -224,8 +240,421 @@ type CompilePipelineOptions {
 // invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344
 // diagnostics, the Empty/Cons poisoning class).
 
+// TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
+// segregates test code from serving code, and any reference that reaches a TestMarked declaration
+// crosses that segregation. The marker is item-scoped, so the wall is too:
+//   - a call whose target is a TestMarked declaration, from anywhere, including another test in
+//     its module: a test that calls a test re-runs a claim already enrolled on its own, so its cost
+//     and verdict are duplicated work (DESIGN section 2) and it tests more than one interface
+//     (section 3, a witness discriminates at one interface);
+//   - a TestMarked declaration used as a function VALUE, including as a parameter default, which is
+//     how a test reaches a caller without a call site: a value bound here and applied through a
+//     local binding (LocallyBoundCall) is decided where the value is taken, not where it is applied;
+//   - a named import of a TestMarked declaration, which is serving code depending on test code.
+// A module is never classified by its members: importing an ordinary declaration out of a module
+// that also holds tests is not a reference.
+// All are decided here from the typed graph and the parsed marker, once per compile.
+//
+// THE LEDGER IS A RATCHET AT IDENTITY GRAIN. The references that existed when this wall landed
+// are admitted per (module, referrer, target) with an exact count -- the count is only how many
+// times one referrer names one target -- so a new target under an old referrer has no row and
+// refuses, and a row whose observed count differs in either direction refuses too. The ceiling
+// row is gunbc.compile_clean_diagnostic_policy advisory_class_ceilings TestCodeReferenceAdmitted,
+// and every row carries the dissolution that ends it.
+
+type TestReferenceOccurrence {
+  module_name: String
+  referrer: String
+  target: String
+  span: SourceSpan
+}
+
+// WHAT A ROW IS, typed rather than inferred from its module name. A corpus debt row names a corpus
+// module and must be evaluated wherever the corpus is known; the fixture control row names a module
+// that exists only in the wall's own floor fixture and is evaluated only when that fixture compiles.
+type TestReferenceRowScope = CorpusDebtRow | FixtureControlRow
+
+type TestReferenceDebtRow {
+  module_name: String
+  referrer: String
+  target: String
+  occurrences: Int
+  scope: TestReferenceRowScope
+  dissolution: DissolutionCondition
+}
+
+// WHAT THIS COMPILE KNOWS ABOUT THE REST OF THE CORPUS. Under CorpusKnown the census is every
+// indexed module outside the compile closure (possibly none, on a whole-tree compile), so a module
+// that is neither typed nor in it does not exist. Under CorpusUnknown, as in a single-file or
+// fixture compile, absence says nothing and no row can be judged orphaned.
+type CensusKnowledge = CensusLoaded { modules: Map<String, Bool> } | CensusAbsent
+
+fn test_reference_debt_dissolution() -> DissolutionCondition {
+  unbound_dissolution(description: "the reference is removed: a roll-up test that only re-asserts enrolled tests is deleted, or the shared logic moves into an ordinary fn that both callers use; the row is then deleted, which the equality budget forces" as NonEmptyStr)
+}
+
+fn test_reference_row(module_name: String, referrer: String, target: String, occurrences: Int) -> TestReferenceDebtRow {
+  TestReferenceDebtRow { module_name: module_name, referrer: referrer, target: target, occurrences: occurrences, scope: CorpusDebtRow, dissolution: test_reference_debt_dissolution() }
+}
+
+// THE FIRST ROW IS THE WALL'S OWN CONTROL, NOT DEBT. Every other row names a corpus module, so a
+// fixture that reproduced one would collide with the loaded corpus and the census would refuse
+// instead of answering -- that is how the paid-down claim passed locally and failed on the floor
+// (review 67402). `wall.fixture.paid_down` exists only in the wall's fixture source, so the
+// paid-down arm of the equality budget has an executing red that cannot be paid down out from
+// under it. Its scope is FixtureControlRow, so an orphan judgment never applies to it.
+fn test_reference_debt() -> List<TestReferenceDebtRow> {
+  [
+    TestReferenceDebtRow { module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1, scope: FixtureControlRow, dissolution: test_reference_debt_dissolution() },
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "<import>", target: "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable", occurrences: 1),
+    test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion", occurrences: 1),
+    test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "<import>", target: "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union", occurrences: 1),
+    test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "<import>", target: "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact", occurrences: 1),
+    test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "witness_model_refusal_controls_remain_distinct", target: "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union", occurrences: 1),
+    test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "witness_model_refusal_controls_remain_distinct", target: "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact", occurrences: 1),
+    test_reference_row(module_name: "test.claim.native_witness_transition_receipt_witness", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds", occurrences: 1),
+    test_reference_row(module_name: "test.claim.native_witness_transition_receipt_witness", referrer: "cited_evidence_declaration_is_an_executing_witness", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_every_rank_keeps_the_transport_evidence_producer_on", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_every_rank_names_this_fleets_leg_and_hca", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_engine_argv_states_the_profiles_batching_bounds", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_group_b_arm_plans_exactly_four_ranks", occurrences: 1),
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_utilisation_argv_is_the_profiles_value_at_full_precision", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "<import>", target: "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "cross_language_add_python_to_typescript_chain_status_holds", target: "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_emit_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_grammar_inverse_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_ingest_via_coerce_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_matches_canonical", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.inhabitant_neutralization", referrer: "<import>", target: "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.inhabitant_neutralization", referrer: "inhabitant_neutralization_same_language_cross_language_compile_accepts_holds", target: "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_emit_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_grammar_inverse_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_ingest_via_coerce_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_naming_discriminates", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_naming_discriminates", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_screaming_snake", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_screaming_snake_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_snake_case", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_snake_case_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.sg_rc_layering", referrer: "sg_rc_f1_dual_boundary_holds", target: "v2.test.manual.sg_rc_layering.sg_rc_f1_value_dual_boundary_holds", occurrences: 1)
+  ]
+}
+
+fn test_reference_import_referrer() -> String {
+  "<import>"
+}
+
+fn test_marked_declaration_keys(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  typed.modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items
+      |> filter(item => item.declaration_marker == TestMarked)
+      |> fold(init: acc, f: (inner, item) =>
+        map_insert(inner, concat(authored_name_at(source_indices: source_indices, node: m.module), ".", authored_name_at(source_indices: source_indices, node: item)), true)
+      )
+  )
+}
+
+
+fn call_semantics_source_target(semantics: CallSemantics?) -> String? {
+  match semantics {
+    Present { value: s } =>
+      match s {
+        PlainCallSemantics { target: t } => call_target_declaration_key(target: t)
+        ResolvedDirectCallSemantics { target: t, application_plan: _ } => call_target_declaration_key(target: t)
+        LookupCallSemantics { target: t } => call_target_declaration_key(target: t)
+        FunctionValueCallSemantics => none
+      }
+    Absent => none
+  }
+}
+
+fn call_target_declaration_key(target: CallTargetIdentity) -> String? {
+  match target {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } => Present { value: concat(owner, ".", decl) }
+    RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => none
+    LocallyBoundCall { name: _ } => none
+    CallableTargetUndetermined => none
+  }
+}
+
+// The declaration key a bare function-value name denotes in this module: its own declaration, the
+// member of a module it was imported from BY NAME, or -- for a no-braces `import m` -- any
+// declaration of that module. A local binding of the same spelling is not a FunctionValueBinding,
+// so it never reaches this lookup. Import-all is expanded against the target module's own
+// declarations rather than from import syntax, because identity reconstructed from the import list
+// alone cannot see a wildcard (found in review of gunbc#11505).
+//
+// PRECEDENCE IS THE RESOLVER'S, LOWEST TO HIGHEST: a wildcard import, then a named import, then the
+// module's own declaration. The map is built in that order because map_merge lets its overlay win;
+// folding own declarations first let a wildcard overwrite them, attributing a local name to an
+// imported test and refusing a reference that never left the module (review 67649).
+fn module_declaration_keys(m: TypedModule, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  m.items |> fold(init: empty_map(), f: (acc, item) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: item), concat(module_name, ".", authored_name_at(source_indices: source_indices, node: item)))
+  )
+}
+
+fn visible_declaration_keys(m: TypedModule, module_name: String, modules_by_name: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  let wildcard = module_imports(n: m.module)
+    |> filter(imp => import_is_all(n: imp))
+    |> fold(init: empty_map(), f: (acc, imp) =>
+      match map_get(modules_by_name, authored_name_at(source_indices: source_indices, node: imp)) {
+        Present { value: tm } => map_merge(acc, module_declaration_keys(m: tm, module_name: authored_name_at(source_indices: source_indices, node: imp), source_indices: source_indices))
+        Absent => acc
+      }
+    )
+  let named = module_imports(n: m.module)
+    |> filter(imp => !import_is_all(n: imp))
+    |> fold(init: wildcard, f: (acc, imp) =>
+      import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) =>
+        map_insert(inner, name, concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
+      )
+    )
+  map_merge(named, module_declaration_keys(m: m, module_name: module_name, source_indices: source_indices))
+}
+
+// A NAME THAT INFERENCE NEVER TYPED is still a reference. v1 resolves and retains a parameter or
+// field default but does not infer it, so a default naming a test arrives as an ExprVar with no
+// binding kind at all. It is read against the same visible-declaration map a typed function value
+// uses; a local of the same spelling is typed LocalValueBinding and never reaches this arm.
+fn function_value_target(texpr: Node, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match texpr.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match bk {
+        Present { value: kind } =>
+          match kind {
+            FunctionValueBinding => visible_or_qualified_key(visible: visible, name: authored_name_at(source_indices: source_indices, node: texpr))
+            LocalValueBinding => none
+            VariantValueBinding { parent_enum: _ } => none
+            MatchBoundBinding => none
+            ServiceValueBinding => none
+          }
+        Absent => visible_or_qualified_key(visible: visible, name: authored_name_at(source_indices: source_indices, node: texpr))
+      }
+    ExprFieldAccess { summary: s } =>
+      match s {
+        Present { value: _ } => none
+        Absent => visible_or_qualified_key(visible: visible, name: dotted_reference_text(texpr: texpr, source_indices: source_indices))
+      }
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match cs {
+        Present { value: _ } => call_semantics_source_target(semantics: cs)
+        Absent => visible_or_qualified_key(visible: visible, name: expr_call_func_at(texpr: texpr, source_indices: source_indices))
+      }
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: _ } => none
+        Absent =>
+          match texpr.children |> first {
+            Present { value: receiver } => visible_or_qualified_key(visible: visible, name: concat(dotted_reference_text(texpr: receiver, source_indices: source_indices), ".", expr_method_name_at(texpr: texpr, source_indices: source_indices)))
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+// AN UNINFERRED CALL IS STILL A REFERENCE. v1 retains a parameter or field default without inferring
+// it, so a call written there carries no CallSemantics, and the parser keeps a bare callee on the
+// call node's own name with only the arguments in children -- a walk over children never sees it. A
+// qualified call in the same position parses as a method call on the module path. Both resolve
+// through the same bare-or-qualified lookup a value uses (review 67713). An inferred method call is
+// a real method on a value and carries MethodSemantics, so it never reaches this arm.
+//
+// A QUALIFIED NAME IS ALREADY A DECLARATION KEY. Inference rewrites `module.leaf` into an ExprVar
+// whose kernel span is the dotted declaration key, and the visible map is keyed by bare spellings,
+// so a qualified test taken as a value missed the lookup and refused nothing (review 67685). A
+// bare name resolves through the visible map; a qualified one is its own key. The caller admits a
+// key only when it names a TestMarked declaration, so an unrelated dotted name costs nothing.
+fn visible_or_qualified_key(visible: Map<String, String>, name: String) -> String? {
+  match map_get(visible, name) {
+    Present { value: key } => Present { value: key }
+    Absent => if string_contains(s: name, pattern: ".") { Present { value: name } } else { none }
+  }
+}
+
+// The dotted text of an UNINFERRED field-access chain, e.g. a parameter default `module.leaf`, which
+// v1 retains but does not infer. An inferred field access carries a FieldSummary and is a record
+// field read, never a declaration reference, so only the summary-less form reaches this.
+fn dotted_reference_text(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } => authored_name_at(source_indices: source_indices, node: texpr)
+    ExprFieldAccess { summary: _ } =>
+      match texpr.children |> first {
+        Present { value: base } => concat(dotted_reference_text(texpr: base, source_indices: source_indices), ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+        Absent => field_access_field_at(texpr: texpr, source_indices: source_indices)
+      }
+    _ => ""
+  }
+}
+
+fn test_references_in_expr(module_name: String, referrer: String, texpr: Node, test_keys: Map<String, Bool>, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+  let here = match function_value_target(texpr: texpr, visible: visible, source_indices: source_indices) {
+    Present { value: key } =>
+      if map_contains_key(test_keys, key) { [TestReferenceOccurrence { module_name: module_name, referrer: referrer, target: key, span: texpr.span }] } else { [] }
+    Absent => []
+  }
+  concat(here, texpr.children |> flat_map(child => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: child, test_keys: test_keys, visible: visible, source_indices: source_indices)))
+}
+
+// EVERY EXPRESSION-BEARING POSITION OF A DECLARATION, not just its body. A parameter default and a
+// field default are resolved expressions retained on the typed node, so a test taken as a default
+// value is a reference the body walk alone never visits (found in review of gunbc#11505). Walking
+// the item's own params and children REACHES both; what a default contains is uninferred, so
+// function_value_target decides a bare or qualified value, call or method-call spelling there by
+// name rather than by resolved target (review 67713). The subject is the declaration rather than a
+// hand-picked list of the places a reference may hide.
+fn declaration_test_references(item: Node, module_name: String, test_keys: Map<String, Bool>, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+  let referrer = authored_name_at(source_indices: source_indices, node: item)
+  let in_body = match item.body {
+    Present { value: body } => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: body, test_keys: test_keys, visible: visible, source_indices: source_indices)
+    Absent => []
+  }
+  let in_params = item.params |> flat_map(p => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: p, test_keys: test_keys, visible: visible, source_indices: source_indices))
+  let in_children = item.children |> flat_map(c => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: c, test_keys: test_keys, visible: visible, source_indices: source_indices))
+  concat(in_body, in_params, in_children)
+}
+
+// A REFERENCE IS TO A DECLARATION, NEVER TO A MODULE. An earlier arm refused any import of a module
+// that declares a test by a module that declares none. That classified a whole module by one member
+// and was wrong in both directions: a serving module importing an ordinary helper out of a mixed
+// module was refused, and an ordinary declaration sitting beside a test fn was exempted (found in
+// review of gunbc#11505). The marker is item-scoped, so the wall is too: what refuses is a
+// reference reaching a TestMarked declaration, including a named import of one.
+fn module_test_references(m: TypedModule, modules_by_name: Map<String, TypedModule>, test_keys: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+  let module_name = authored_name_at(source_indices: source_indices, node: m.module)
+  let visible = visible_declaration_keys(m: m, module_name: module_name, modules_by_name: modules_by_name, source_indices: source_indices)
+  let decl_refs = m.items |> flat_map(item => declaration_test_references(item: item, module_name: module_name, test_keys: test_keys, visible: visible, source_indices: source_indices))
+  let member_refs = module_imports(n: m.module) |> flat_map(imp =>
+    import_specific_names_at(n: imp, source_indices: source_indices)
+      |> map(name => concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
+      |> filter(key => map_contains_key(test_keys, key))
+      |> map(key => TestReferenceOccurrence { module_name: module_name, referrer: test_reference_import_referrer(), target: key, span: imp.span })
+  )
+  concat(decl_refs, member_refs)
+}
+
+// One key per (module, referrer, target) identity, so admission and the budget are map lookups built
+// once per compile rather than scans of the ledger or the occurrence list (DESIGN section 6: a
+// quadratic fold is always fixed, whatever the realized n).
+fn test_reference_key(module_name: String, referrer: String, target: String) -> String {
+  concat(module_name, "|", referrer, "|", target)
+}
+
+fn test_reference_occurrence_key(o: TestReferenceOccurrence) -> String {
+  test_reference_key(module_name: o.module_name, referrer: o.referrer, target: o.target)
+}
+
+fn test_reference_occurrence_diag(o: TestReferenceOccurrence, debt_keys: Map<String, Bool>) -> ErrorNode {
+  let referrer = concat(o.module_name, ".", o.referrer)
+  if map_contains_key(debt_keys, test_reference_occurrence_key(o: o)) {
+    make_error_node(diagnostic: TestCodeReferenceAdmitted { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
+  } else {
+    make_error_node(diagnostic: TestCodeReferenced { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
+  }
+}
+
+fn observed_test_reference_count(counts: Map<String, Int>, key: String) -> Int {
+  match map_get(counts, key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// A ROW WHOSE MODULE IS NOT COMPILED is not evidence of anything by itself: most compiles are a
+// closure. It becomes a refusal only when the caller states CorpusKnown and the module is in
+// neither the typed closure nor the census -- the module is gone, and a row
+// that can never be observed again would otherwise persist forever without refusing (review 67730,
+// operator ruling 2026-09-19). The fixture control row is exempt by its declared scope, not by name.
+fn test_reference_unevaluated_row_diag(row: TestReferenceDebtRow, census: CensusKnowledge) -> List<ErrorNode> {
+  match row.scope {
+    FixtureControlRow => []
+    CorpusDebtRow =>
+      match census {
+        CensusAbsent => []
+        CensusLoaded { modules: known } =>
+          if map_contains_key(known, row.module_name) { [] } else {
+            [make_error_node(diagnostic: TestCodeReferenceRowOrphaned { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), span: no_span() }, module_name: row.module_name)]
+          }
+      }
+  }
+}
+
+fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int>, first_spans: Map<String, SourceSpan>, compiled_modules: Map<String, SourceSpan>, census: CensusKnowledge) -> List<ErrorNode> {
+  match map_get(compiled_modules, row.module_name) {
+    Absent => test_reference_unevaluated_row_diag(row: row, census: census)
+    Present { value: module_span } => {
+      let key = test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target)
+      let observed = observed_test_reference_count(counts: counts, key: key)
+      if observed == row.occurrences { [] } else {
+        let span = match map_get(first_spans, key) {
+          Present { value: s } => s
+          Absent => module_span
+        }
+        [make_error_node(diagnostic: TestCodeReferenceBudgetMismatch { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), declared: row.occurrences, observed: observed, span: span }, module_name: row.module_name)]
+      }
+    }
+  }
+}
+
+// ONLY A CORPUS DEBT ROW ADMITS. The fixture control row exists to exercise the paid-down budget
+// arm, and a scope that shields it from the orphan judgment must not also make it admission
+// authority: a source that inhabits its exact identity would otherwise have a new serving-to-test
+// reference admitted with a matching count (side-chat review of 504596b). A reference on the
+// control identity therefore refuses like any unledgered one.
+fn test_reference_admission_insert(acc: Map<String, Bool>, row: TestReferenceDebtRow) -> Map<String, Bool> {
+  match row.scope {
+    CorpusDebtRow => map_insert(acc, test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target), true)
+    FixtureControlRow => acc
+  }
+}
+
+fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>, census: CensusKnowledge) -> List<ErrorNode> {
+  let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
+  let modules_by_name = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m))
+  let compiled_modules = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m.module.span))
+  let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, modules_by_name: modules_by_name, test_keys: test_keys, source_indices: source_indices))
+  let counts = occurrences |> fold(init: empty_map(), f: (acc, o) =>
+    map_insert(acc, test_reference_occurrence_key(o: o), observed_test_reference_count(counts: acc, key: test_reference_occurrence_key(o: o)) + 1)
+  )
+  let first_spans = occurrences |> fold(init: empty_map(), f: (acc, o) =>
+    if map_contains_key(acc, test_reference_occurrence_key(o: o)) { acc } else { map_insert(acc, test_reference_occurrence_key(o: o), o.span) }
+  )
+  let debt = test_reference_debt()
+  let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => test_reference_admission_insert(acc: acc, row: r))
+  let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt_keys: debt_keys))
+  let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules, census: census))
+  concat(occurrence_diags, budget_diags)
+}
+
+fn test_reference_census(fill_modules: List<Node>, census_si: Map<String, NewlineIndex>, corpus: CorpusScope) -> CensusKnowledge {
+  match corpus {
+    CorpusUnknown => CensusAbsent
+    CorpusKnown => CensusLoaded { modules: fill_modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: census_si, node: m), true)) }
+  }
+}
+
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
+  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [], corpus: CorpusUnknown }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1536,10 +1965,11 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
+      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices, census: test_reference_census(fill_modules: fill.modules, census_si: census_si, corpus: options.corpus))
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags),
+        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,

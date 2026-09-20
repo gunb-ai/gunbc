@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.prometheus.client { PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -442,5 +443,48 @@ fn interconnect_counter_note(c: InterconnectCounter) -> NonEmptyStr {
       "RDMA bypasses the netdev path, so these read ~0 while the link is carrying gigabytes; they are not an interconnect-utilisation source on a RoCE fabric" as NonEmptyStr
     RocePortDataCounters =>
       "port_xmit_data and port_rcv_data, in 4-byte words, are the RoCE traffic; measured 2026-09-07 at ~7.9 Gb/s per rank on a 50 Gb/s link during a cold prefill. That is a BULK-TRANSFER reading and bounds bandwidth saturation only: a low average is equally consistent with latency-bound collectives, a straggler rank, or host gaps between kernels, so it does not establish what share of the critical path was communication" as NonEmptyStr
+  }
+}
+
+// ── HISTOGRAM SUM AND COUNT ARE THE ENGINE CLOCK FOR A RATE, NOT A SECOND METRIC NAME ─────────
+//
+// A RATE DERIVED FROM SHELL WALL CLOCK is the instrument that reported a 4-to-8 stream cliff that
+// did not exist (launcher arrival stagger landing in the wall) and understated aggregate at 16
+// streams by about 40%. The engine's own histogram exposition carries `_sum` and `_count` on the
+// families that already live in VllmServingMetric. Those suffixes are Prometheus histogram
+// statistics, not new serving questions, so they are projections of a family rather than new
+// metric variants.
+//
+// InterTokenLatencySeconds: count is completed decode intervals, sum is their seconds. That ratio
+// is a latency distribution, not aggregate tokens/s. IterationTokensTotal: count is recorded
+// iterations, sum is tokens booked in them, not occupancy and not steps. Aggregate throughput is
+// vllm:generation_tokens_total on one exporter across a scrape interval.
+type HistogramStatistic
+  = HistogramSum
+  | HistogramCount
+
+fn vllm_histogram_series_name(m: VllmServingMetric, s: HistogramStatistic) -> NonEmptyStr {
+  match s {
+    HistogramSum => join([vllm_metric_name(m: m) as String, "_sum"], "") as NonEmptyStr
+    HistogramCount => join([vllm_metric_name(m: m) as String, "_count"], "") as NonEmptyStr
+  }
+}
+
+// Each family's Prometheus type as vLLM's metrics module REGISTERS it (Histogram, Counter or Gauge).
+// A projection from the catalog, not a reading of the running exporter's `# TYPE` line.
+fn vllm_metric_type(m: VllmServingMetric) -> PrometheusMetricType {
+  match m {
+    InterTokenLatencySeconds => PrometheusHistogram
+    IterationTokensTotal => PrometheusHistogram
+    KvCacheUsagePerc => PrometheusGauge
+    NumRequestsRunning => PrometheusGauge
+    NumRequestsWaiting => PrometheusGauge
+    NumRequestsWaitingByReason => PrometheusGauge
+    PrefixCacheQueries => PrometheusCounter
+    PrefixCacheHits => PrometheusCounter
+    PromptTokensTotal => PrometheusCounter
+    GenerationTokensTotal => PrometheusCounter
+    NumPreemptionsTotal => PrometheusCounter
+    EstimatedFlopsPerGpuTotal => PrometheusCounter
   }
 }
