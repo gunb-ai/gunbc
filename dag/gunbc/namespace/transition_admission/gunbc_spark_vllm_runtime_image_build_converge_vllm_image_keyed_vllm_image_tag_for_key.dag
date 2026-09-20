@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_spark_vllm_runtime_image_build_converge_vllm_image_keyed_vllm_image_tag_for_key
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_spark_vllm_runtime_image_build_converge_vllm_image_keyed_vllm_image_tag_for_key: TransitionAdmission = TransitionAdmission {
+  label: "IMAGE-IDENTITY EXTRACTION vllm_image_tag_for_key home gunbc.spark.vllm_image_identity" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.spark.vllm_runtime_image_build", "converge_vllm_image_keyed"),
+    spelling: "vllm_image_tag_for_key" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.spark.vllm_image_identity", "vllm_image_tag_for_key")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11565 as UInt32,
+}

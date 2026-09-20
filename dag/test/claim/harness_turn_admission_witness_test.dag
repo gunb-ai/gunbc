@@ -107,6 +107,7 @@ fn t_realization() -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 

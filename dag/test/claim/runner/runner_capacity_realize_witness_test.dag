@@ -21,10 +21,24 @@ import gunbc.runner_capacity_realize {
   HostApplyRefused,
   HostApplySucceeded,
 }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation {
+  committed_slot_identities,
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE SUPPLIES A POPULATION AND THE AUTHORITY IS WHERE IT COMES FROM, so an unresolved host
+// yields the empty list HERE -- in a fixture, where an empty observation is a legitimate input and
+// the row that reads it (a_population_with_one_member_missing_is_not_a_no_op) says what it means.
+// srv3 and srv4 both resolve, so neither row below is reached through this arm.
+fn derived_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationDerived { members: m } => m
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+  }
+}
 
 // THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
 // Slots 06 AND 07 on hosts whose committed width is 6 -- a seventh slot on a six-wide host, the
@@ -164,8 +178,8 @@ test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
   runner_capacity_reapply_plans_zero_additions(
     srv3_width: 5,
     srv4_width: 5,
-    observed_srv3: committed_slot_identities(host: operator_host_srv3),
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
+    observed_srv3: derived_members_of(host: operator_host_srv3),
+    observed_srv4: derived_members_of(host: operator_host_srv4),
   )
 }
 
@@ -176,7 +190,7 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
     srv3_width: 5,
     srv4_width: 5,
     observed_srv3: [],
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
+    observed_srv4: derived_members_of(host: operator_host_srv4),
   )
 }
 

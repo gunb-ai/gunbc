@@ -93,3 +93,40 @@ fn ssh_keyscan_command(host: String, key_type: String, timeout_seconds: Int) -> 
 fn ssh_add_list_identities_command() -> ArgvCommand {
   argv_command(program: ssh_add_program, arguments: ["-l"])
 }
+
+// scp, IN THE ANCHORED POSTURE. extdeps.exec.command scp_command predates the fleet trust anchor
+// and disables host-key checking outright; these two take the rendered trust options of a
+// materialized known-hosts anchor (extdeps.ssh.client_options serialize_ssh_client_options over
+// gunbc.fleet_known_hosts_anchor fleet_openssh_trust_options), so the far side's key is checked
+// against the same verified file every other fleet leg checks it against. Authentication is the
+// agent named by SSH_AUTH_SOCK in the process environment -- as with ssh-add above, arranging the
+// socket is the caller's realization concern, not argv. The remote operand is ONE word,
+// principal@endpoint:path; the path half is interpreted by the far-side scp under the remote
+// user's shell, so the same plain-word discipline as the portable-word allowlist applies to it:
+// these builders take it as a NonEmptyStr and a caller that needs metacharacters in a remote path
+// is modeling a different operation.
+data scp_program: NonEmptyStr = "scp"
+
+fn scp_remote_operand(principal: NonEmptyStr, endpoint: NonEmptyStr, remote_path: NonEmptyStr) -> String {
+  join([principal as String, "@", endpoint as String, ":", remote_path as String], "")
+}
+
+fn scp_download_command(trust_words: List<String>, principal: NonEmptyStr, endpoint: NonEmptyStr, remote_path: NonEmptyStr, local_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: scp_program,
+    arguments: concat(trust_words, [
+      scp_remote_operand(principal: principal, endpoint: endpoint, remote_path: remote_path),
+      local_path as String,
+    ]),
+  )
+}
+
+fn scp_upload_command(trust_words: List<String>, principal: NonEmptyStr, endpoint: NonEmptyStr, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: scp_program,
+    arguments: concat(trust_words, [
+      local_path as String,
+      scp_remote_operand(principal: principal, endpoint: endpoint, remote_path: remote_path),
+    ]),
+  )
+}
