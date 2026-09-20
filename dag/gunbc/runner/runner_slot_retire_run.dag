@@ -108,6 +108,7 @@ import gunbc.runner_host_retirement {
 import extdeps.git
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
+import gunbc.runner_host_deploy { github_app_runner_org }
 import gunbc.runner_registration_capture {
   local_population_wire,
   binding_wire,
