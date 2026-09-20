@@ -1597,13 +1597,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_sized(
+    active(
       identity: "rn_Z4Z5N3JJ9M8D6XBGHFV5HQHJMY",
       id: "test-reference-discipline-remainder",
       owner: "ci-control",
       path: "src/v1/compile.dag",
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
       t: fields(
         headline: "Finish the test-reference discipline: its own evidence onto the gate, and the ledger to zero",
         boundary: "The walls themselves are landed -- v1 refuses any reference to a `test` declaration (a call from anywhere including another test, a function value, a parameter default, a named import) and v2 refuses at name resolution. What remains is around them. THE LEDGER: test_reference_debt carries 39 corpus rows plus one fixture control, an equality budget at (module, referrer, target) refusing in BOTH directions, so a row is paid down only by deleting the reference and its row together. THE EVIDENCE GAP: the v1 wall's three discriminating reds live in test.claim.test_reference_wall_witness, which matches no entry in v2.workflow.required_floor required_gate_prefixes, so they execute nowhere on the merge path while every other gated class runs; the loss is covered generically by gunbc.rung_drop witness_floor_off_the_required_gate rather than specifically. TWO INSTRUMENT GAPS found while landing the four PRs: the warm-roster admission instrument does not execute in the restored floor -- a row naming a declaration that no longer existed passed green, though the roster's own rule says an unresolvable row stops preparation -- and there is no cheap way to read what a producer actually emits, labels included, which is what let a supplied fixture diverge silently until its pairing claim went red.",
