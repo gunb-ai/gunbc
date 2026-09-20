@@ -5,6 +5,9 @@ import std.types { String, List, Bool }
 import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
   command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
 }
+import gunbc.recurring_failure_mode.timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one {
+  timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one,
+}
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome }
 import v2.std.integer { integer_int_to_decimal_string }
@@ -115,7 +118,10 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
       command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String
     )
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
-    GnuCoreutilsTimeoutKill => "extdeps.tools.gnu_coreutils coreutils_timeout_expired_exit_code (status 124 from the same module's timeout_command: the wall-clock bound was reached and the command was killed; carries no cause, so it is a CANNOT-TELL about the subject and never a verdict about the corpus)"
+    GnuCoreutilsTimeoutKill => concat(
+      "extdeps.tools.gnu_coreutils coreutils_timeout_expired_exit_code (status 124 from the same module's timeout_command: the wall-clock bound was reached and the command was killed; carries no cause, so it is a CANNOT-TELL about the subject); limitation: gunbc.recurring_failure_mode.",
+      timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one.identity as String
+    )
     ClassWireOnly => "gunbc.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
   }
 }
@@ -239,6 +245,14 @@ fn timeout_kill_invocation_infra(code: Int) -> InfraSignature? {
   }
 }
 
+// 124 STAYS INFRA AS AN HONEST-WIDE ARM, THE SAME SHAPE 127 TAKES ONE ARM ABOVE: the status cannot
+// distinguish a subject still running when its deadline arrived from one that was wedged or
+// non-terminating, so this arm trades one misclassification for its dual. The class, its specimens,
+// the rung it was found at, its ceiling and its next-rung trigger live on
+// gunbc.recurring_failure_mode.timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one,
+// not in this annotation -- DESIGN section 4c, an annotation is never evidence that a machine claim
+// holds (review 69010).
+//
 // WHY A TIMEOUT KILL IS INFRA AND NOT STRUCTURAL. Before this arm existed, 124 matched no
 // signature, so classify_failure_reason returned its Structural initial value: a run that never
 // reached a verdict was classified as though the corpus had failed. That is a CANNOT-TELL recorded

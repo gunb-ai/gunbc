@@ -4,6 +4,9 @@ import std.decl_ref { declaration_ref_eq, decl_ref }
 import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
   command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
 }
+import gunbc.recurring_failure_mode.timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one {
+  timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,6 +122,8 @@ test fn witness_wall_clock_timeout_kill_is_infra_not_a_subject_verdict() -> Proc
     && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "extdeps.tools.gnu_coreutils coreutils_timeout_expired_exit_code")
     && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "CANNOT-TELL")
     && (list_has_signature(xs: verdict_infra_signatures, target: GnuCoreutilsTimeoutKill) == false)
+    && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "gunbc.recurring_failure_mode.timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one")
+    && (timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one.identity as String) == "timeout_kill_exit_cannot_distinguish_a_wedged_subject_from_a_starved_one"
     && (infra_signature_match_substring(sig: GnuCoreutilsTimeoutKill) == "GnuCoreutilsTimeoutKill") {
     ExitSuccess
   } else {
