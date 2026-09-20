@@ -425,8 +425,7 @@ fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: Entry
     HostFileMetadataUnread { cause: c } =>
       match parent {
         EntryAbsent => HostFilePathAbsent
-        EntryPresent =>
-          HostFilePathUnreadable { cause: join(["the containing directory holds this entry and ", c], "") }
+        EntryPresent => HostFilePathAbsent
         EntryPresenceIndeterminate { cause: pc } =>
           HostFilePathUnreadable { cause: join([c, "; and the containing directory could not establish absence: ", pc], "") }
       }
