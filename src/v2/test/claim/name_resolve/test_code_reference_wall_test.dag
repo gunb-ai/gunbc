@@ -331,8 +331,9 @@ fn wall_qualified(segments: List<Symbol>) -> Node {
 
 // RED: a QUALIFIED path to another module's test fn is refused at the qualified-path door
 // (v2.compiler.resolve try_resolve_qualified_name_node), which binds by the whole path rather than a
-// bare name. v2 lowering does not yet carry a qualified path in a fn BODY (`= wall.peer.peer_leaf`
-// lowers to the atom `wall`; tracked as its own defect), so this supplies the node the door reads.
+// bare name. The node is SUPPLIED here because this claim's subject is the door, not the lowering
+// that produces the path -- and since gunbc#11683 that lowering is real, so the shape is joined to
+// its producer by `inhabitance_module`'s `qualified_user` member rather than standing alone.
 test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
   wall_resolve(
     subject_segment: ^serving,
