@@ -99,9 +99,9 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
+import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
-  srv1_gunbc_approval_broker_root,
   instance_receipts_dir,
   publication_spool_root,
   publication_request_dir,
@@ -613,6 +613,7 @@ fn live_deploy_approval_broker_unit_file_on(
   port: Port,
 ) -> SystemdUnitFile {
   let svc = spec.approval_broker
+  let release_dir = approval_broker_release_dir(root: svc.repo_root as String, revision: revision)
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
@@ -624,9 +625,9 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
-      WorkingDirectory { path: svc.repo_root },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
       ExecStart { command: join([
-        svc.serve_binary as String,
+        approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
         " --host ", svc.listen.host, " --port ", to_string(port),
@@ -1568,33 +1569,80 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 //
 // SCOPED DELIBERATELY NARROW (operator ruling 2026-09-20: "do not generalize it into a second
 // tree-sync"). This is not a sync: no unit, no timer, no reconciliation, no drift detection. It is
-// three directories copied once, at install, from the checkout the dark install is running in --
-// the same $PWD the existing tree-publication step already names as GUNBC_TREE_SRC. What the
-// broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches, and a
-// binary to interpret them.
+// two source directories and one binary copied once, at install, from the checkout the dark install
+// is running in -- the same $PWD the existing tree-publication step already names as GUNBC_TREE_SRC.
+// What the broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches,
+// and a binary that can interpret them.
 //
-// THE BINARY IS SHARED, NOT COPIED, AND THAT IS A REAL OPEN HAZARD. This note previously asserted
-// the opposite -- "THE BINARY IS COPIED RATHER THAN SHARED" -- and the diff contained no such copy:
-// approval_broker_tree_subdirs is ["dag", "src/v2"], and the unit's ExecStart takes
-// spec.approval_broker.serve_binary, which is the instance's /opt/gunbc/bin/gunbc. So the annotation
-// claimed the isolation while the declaration below shipped the coupling (review 69066).
+// THE BINARY IS COPIED INTO A PER-CANDIDATE RELEASE LOCUS, AND THE PREVIOUS TWO NOTES HERE WERE
+// BOTH WRONG IN OPPOSITE DIRECTIONS. The first asserted a copy the diff did not contain; the second
+// corrected it to "shared, and that is a real open hazard" and left the hazard standing. The hazard
+// was real: ExecStart took spec.approval_broker.serve_binary -- the instance's /opt/gunbc/bin/gunbc,
+// which is the ROADMAP's binary, frozen at its release by operator ruling. A seed binary older than
+// the sources it is handed refuses to parse constructs those sources use, and the broker's modules
+// are newer than that binary by construction, so the unit would have started, refused at parse and
+// restart-looped: the same symptom as the missing tree, from the other half of the pair.
 //
-// WHY IT MATTERS RATHER THAN BEING A WORDING SLIP: /opt/gunbc/bin/gunbc is the ROADMAP's binary and
-// the roadmap is frozen at its release by operator ruling. A seed binary older than the sources it
-// is handed REFUSES TO PARSE constructs those sources use -- the broker's own modules are newer
-// than that binary by construction, since they did not exist when it was built. The failure mode is
-// a unit that starts, refuses at parse, and restart-loops: the same symptom as the missing tree,
-// from the other half of the pair.
+// THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
+// 2026-09-20). The fleet-converge job unpacks release-bins.tgz into $ROOT/target/release and runs
+// claim_executor --verify-build-artifacts over every member BEFORE any mode step.
 //
-// IT IS NAMED HERE RATHER THAN FIXED because the repair is not mine to guess: the binary that can
-// parse these sources is the one BUILT FROM THE CANDIDATE, and which artifact on the runner carries
-// it -- the release-bins pack, a fresh cargo build in the deploy job, or a third thing -- is a
-// question for the lane that owns the deploy job's inputs. Copying /opt/gunbc/bin/gunbc to the
-// broker root would change nothing: it is the same frozen bytes at a new path.
+// THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
+// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci_deploy_access
+// ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
+// and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
+// copy is not reaching any further than the tree copy already does. Were the transport ever remote,
+// both would break together and loudly, rather than this one silently copying a file that is not
+// there.
+// The copy source is that artifact; gunbc.ci_release_bins gunbc_release_bin_name is the row both
+// the pack verification and this copy read, so the two spellings cannot drift.
 //
-// TRIGGER: the broker unit's ExecStart naming a binary built from the candidate this deploy
-// installs, observed by that binary parsing the broker's own entry rather than refusing it.
-data approval_broker_tree_receipt_path: String = "/opt/gunbc/approval-broker/.gunbc-tree-receipt"
+// THE LOCUS IS PER-CANDIDATE AND IMMUTABLE, which is what makes the readback mean anything. Under a
+// single mutable root, "the tree is the candidate" is a claim about what the last rsync did, and a
+// redeploy of an older revision overwrites the evidence of the newer one in place. Under
+// releases/<sha>/ the installed digest, the binary and the sources are one directory that either
+// exists for this sha or does not, ExecStart names that directory, and /livez reporting the sha is
+// a statement about a locus a reader can go and hash. Requested-equals-installed becomes decidable
+// rather than asserted.
+//
+// WHAT THIS DELIBERATELY DOES NOT ADD: retention, garbage collection, a `current` symlink, or any
+// reconciliation between release directories. Each is a real obligation and none is needed to
+// observe one dark install; inventing a release-manager here would be the second tree-sync the
+// operator ruled out, arriving under a different name. The unbounded growth is named rather than
+// papered over -- see approval_broker_release_retention_note.
+//
+// UNBOUND REVISIONS REFUSE RATHER THAN NAMING A PATH. RevisionNotInstalled has no sha, so there is
+// no directory it could mean; the path folds emit a poison marker that is not a valid path, which
+// fails the stage loudly instead of installing a release into a directory literally named after a
+// diagnostic (DESIGN section 5: refuse, never widen).
+data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
+
+data approval_broker_release_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+
+// THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
+// today, and reading the row here would still be correct -- but it would make the broker's root a
+// fact this fold knows independently of the service it is emitting a unit for, so a deployment
+// whose config named a different root would install its tree under one path and start its unit from
+// another. The config is the parameter every other member of this unit comes from; the root is not
+// an exception to that.
+fn approval_broker_release_dir(root: String, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([root, "/releases/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_releases_dir(root: String) -> String {
+  join([root, "/releases"], "")
+}
+
+fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+}
+
+fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/.gunbc-tree-receipt"], "")
+}
 
 data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
 
@@ -1672,21 +1720,48 @@ fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
 // quote fails the stage in a way that looks like a copy failure. The comparison does not need to
 // happen in shell: the readback runs IN the deploying checkout, so it computes the source digest
 // itself and compares against what it reads here. Shell reports one fact; the fold decides.
-fn approval_broker_tree_receipt_command(root: String, revision: ReleaseRevisionBinding) -> String {
+// ONE ROOT IN, BOTH PATHS DERIVED. An earlier cut of this took the release directory AND the broker
+// root as separate parameters, which let a caller hand it a pair that did not correspond -- hash one
+// release and write the receipt into another -- and made the release directory a fact two folds knew
+// independently. The directory the digest covers and the directory the receipt lands in are the same
+// directory by construction now, which is a stronger statement than any check over two arguments.
+fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevisionBinding) -> String {
   join([
     printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
-    "\"$(", approval_broker_tree_digest_expr(root: root), ")\"",
-    " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path,
+    "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+    " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path_for(root: base_root, revision: revision),
+  ], "")
+}
+
+// THE BINARY IS INSTALLED BEFORE THE RECEIPT AND AFTER THE SOURCES, and the order is the only thing
+// that makes a partially-installed locus distinguishable from a complete one. The receipt is the
+// last write, so a locus carrying a receipt carries everything the receipt describes; a locus
+// without one was interrupted. install -m 0755 rather than cp because the mode is part of what is
+// being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
+// that will not exec, several steps from the copy that caused it.
+//
+// THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
+// binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
+// job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
+// fact already verified, while the sources -- which nothing else in the job checks -- are exactly
+// what the receipt exists to pin.
+fn approval_broker_binary_install_command(release_dir: String) -> String {
+  join([
+    "install -m 0755 \"$PWD\"/target/release/", gunbc_release_bin_name, " ",
+    release_dir, "/", gunbc_release_bin_name,
   ], "")
 }
 
 fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let root = srv1_gunbc_approval_broker_root as String
+  let base_root = spec.approval_broker.repo_root as String
+  let root = approval_broker_release_dir(root: base_root, revision: revision)
   concat(
     concat(
       [
         deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: base_root)),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: approval_broker_releases_dir(root: base_root))),
         deploy_raw(command: install_d_owned_command(spec: spec, path: root)),
       ],
       map(approval_broker_tree_subdirs, sub =>
@@ -1697,7 +1772,10 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
       map(approval_broker_tree_subdirs, sub =>
         deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
       ),
-      [deploy_raw(command: approval_broker_tree_receipt_command(root: root, revision: revision))],
+      [
+        deploy_raw(command: approval_broker_binary_install_command(release_dir: root)),
+        deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision)),
+      ],
     ),
   )
 }

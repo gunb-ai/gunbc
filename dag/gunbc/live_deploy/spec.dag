@@ -473,10 +473,34 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // (stage-A run, 2026-09-20). gunbc.host_layout srv1_gunbc_approval_broker_root is a root this
 // deployment populates from the candidate during the dark install, so the broker's tree and the
 // roadmap's move independently -- which is what a separate process at a separate revision means.
+// THE BROKER HAS NO CONSTANT SERVE BINARY, so this field cannot answer for it and says so rather
+// than naming a binary the unit does not run. It used to carry instance.serve_binary --
+// /opt/gunbc/bin/gunbc, the ROADMAP's binary, frozen at a release predating this module. A seed
+// older than the sources it is handed refuses to parse them, so the unit would have started,
+// refused and restart-looped (review 69066, and the operator ruling 2026-09-20 that resolved it).
+//
+// The binary the broker runs is COPIED INTO ITS PER-CANDIDATE RELEASE LOCUS from the verified
+// release-bins artifact in the same job, so it is a function of the revision being deployed --
+// gunbc.live_deploy.emit approval_broker_release_binary_path -- and there is no constant this field
+// could hold that would be true. Holding the roadmap's path "for shape" is exactly the fork that
+// shipped the hazard: a field read as authoritative while the real answer lived elsewhere.
+//
+// A POISON RATHER THAN A PLAUSIBLE PATH because the two failure modes are not comparable. A wrong
+// path installs and starts something, or silently starts nothing; this marker is not a valid
+// executable path, so a consumer that reads this field renders a line systemd rejects and the
+// failure names its own cause (DESIGN section 5). Nothing reads it today -- the broker's unit
+// builder takes the release path -- and that is what makes the refusal the honest value rather than
+// a landmine.
+//
+// DISSOLVES WHEN DeploymentServiceConfig carries the binding rather than a path: a service either
+// runs a constant binary or one resolved per release, and that is a two-armed fact the type can
+// hold. At that point this field becomes PerReleaseBinary and the poison deletes.
+data approval_broker_serve_binary_is_per_release_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker's serve binary was read from DeploymentServiceConfig. The broker runs a binary copied into its per-candidate release locus, so this field holds no constant that is true; gunbc.live_deploy.emit approval_broker_release_binary_path is the authority. This marker is not a valid executable path, so a unit rendered from it fails loudly rather than starting the roadmap's frozen binary against the broker's newer sources (DESIGN section 5)."
+
 fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig {
   DeploymentServiceConfig {
     unit_name: gunbc_approval_broker_unit_name,
-    serve_binary: instance.serve_binary as String as NonEmptyStr,
+    serve_binary: approval_broker_serve_binary_is_per_release_poison as NonEmptyStr,
     serve_entry: approval_broker_serve_entry_file,
     serve_function: "approval_broker_handle" as NonEmptyStr,
     instance_root: instance.instance_root as String as NonEmptyStr,

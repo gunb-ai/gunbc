@@ -105,8 +105,11 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
+import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
-  approval_broker_tree_receipt_path,
+  approval_broker_tree_receipt_path_for,
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
   approval_broker_dark_install_script,
   apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
@@ -1502,10 +1505,16 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
+  let release_dir = approval_broker_release_dir(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
   string_contains(s: unit, pattern: join(["--host ", approval_broker_listen_host as String, " --port "], ""))
     && !string_contains(s: unit, pattern: "0.0.0.0")
-    && string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_approval_broker_root as String], ""))
-    && !string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_repo_root as String], ""))
+    && string_contains(s: unit, pattern: join(["WorkingDirectory=", release_dir], ""))
+    && !string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_repo_root as String, "\n"], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc serve"], ""))
+    && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
 }
 
 // AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
@@ -1513,9 +1522,57 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
 // alone would not have caught the stage-A failure.
 test fn the_dark_install_populates_the_broker_tree() -> Bool {
   let script = witness_approval_broker_dark_script_text
-  string_contains(s: script, pattern: srv1_gunbc_approval_broker_root as String)
+  let release_dir = approval_broker_release_dir(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: release_dir)
     && string_contains(s: script, pattern: "rsync -a --delete")
-    && string_contains(s: script, pattern: approval_broker_tree_receipt_path)
+    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
+      root: srv1_gunbc_approval_broker_root as String,
+      revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    ))
+}
+
+// ── THE UNIT AND THE INSTALL NAME THE SAME BINARY, AND IT IS THE CANDIDATE'S ─────────────────
+// THE DEFECT THIS EXISTS FOR WAS SHIPPED AND CAUGHT BEFORE STAGE A RAN AGAIN (review 69066,
+// operator ruling 2026-09-20). ExecStart named /opt/gunbc/bin/gunbc -- the ROADMAP's binary, frozen
+// at a release predating this module. It would have started, refused to parse the broker's own
+// sources, and restart-looped: the same symptom as the empty tree, from the other half of the pair,
+// and the claim above could not see it because the tree was by then perfectly correct.
+//
+// WHAT THE THREE CONJUNCTS DISCRIMINATE, each against a different way of getting this wrong. The
+// first fails if the install stops copying a binary at all -- the state stage A was actually in.
+// The second fails if the unit and the install disagree about WHERE it lands, which is the failure
+// that installs a real binary and starts a missing one. The third fails on the specific regression
+// of pointing ExecStart back at the shared instance path, which is the tempting repair because it
+// is the one that makes the unit look complete.
+//
+// THE FOURTH CONJUNCT IS THE RED FOR THE SPEC-SIDE HALF OF THE REPAIR. DeploymentServiceConfig has
+// no constant that is true for this service, so gunbc.live_deploy.spec parks a refusal marker in
+// serve_binary rather than a plausible path. That marker is only honest while nothing renders it --
+// so this asserts it does not appear in the unit, and a future edit that reconnects ExecStart to the
+// config field fails here with the marker's own text naming the cause, instead of shipping a unit
+// systemd rejects on a host.
+//
+// ITS CEILING: this says the emitted bytes name a copy of the verified artifact at the path the unit
+// starts. It does NOT say that binary can parse the sources beside it -- that is a fact about two
+// files on a host, and the stage-A readback is where it is established, by the process answering
+// /livez at all.
+test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
+  let script = witness_approval_broker_dark_script_text
+  let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
+  let binary = approval_broker_release_binary_path(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: script, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
+    && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
+    && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
 }
 
 // ── THE DIGEST IS SUBSTITUTED, NOT SPLICED BARE ─────────────────────────────────────────────

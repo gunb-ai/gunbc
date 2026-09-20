@@ -826,6 +826,14 @@ fn dark_install_evidence(
 // Reading it establishes that THE COPY FOR THIS CANDIDATE RAN AND RECORDED A DIGEST -- which a
 // stale tree from an earlier deploy fails, and which the /livez echo cannot tell you at all.
 //
+// THE PATH IS PER-CANDIDATE NOW, AND THAT CHANGES WHAT "STALE" CAN EVEN MEAN (operator ruling
+// 2026-09-20). The receipt lives inside releases/<candidate sha>/, and the readback derives the path
+// it reads from the candidate it just deployed -- so an earlier deploy's receipt is not an older
+// line at the same path that this fold must out-argue, it is a file somewhere else entirely. The
+// failure mode collapses from "read the wrong revision's receipt and believe it" to "the file is
+// absent", which is the arm below that refuses. A mutable shared root is what made the first
+// reading necessary; the immutable locus makes it structural.
+//
 // WHAT IT DOES NOT YET ESTABLISH, named rather than implied: that the installed digest EQUALS a
 // digest computed independently over the deploying checkout. That comparison needs the source-side
 // digest computed at readback time, and this fold does not compute it. So the receipt is a subject
