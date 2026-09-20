@@ -4,7 +4,11 @@ import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 
 // THE OBLIGATION TO RETIRE IS A PROPERTY OF THE TRANSITION, NOT OF ANYONE'S PERMISSION TO ACT ON IT.
 //
@@ -28,7 +32,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 // SO THE PRIOR POPULATION IS DECLARED, AND THE OBLIGATION IS DERIVED FROM IT.
 //
 // The prior width is the population the host was ADMITTED to run before this change. It cannot be
-// recovered from the model once `gunbc_runner_slots_per_host` answers the new width -- that is the
+// recovered from the model once `gunbc_runner_committed_width` answers the new width -- that is the
 // whole reason it has to be declared rather than computed -- and it must not be re-derived from a
 // later census, because a census that has already lost a member would silently shrink the obligation
 // at exactly the moment the member is least visible. That durability across passes is the property
@@ -76,7 +80,7 @@ data slot_width_transition_26_25: List<RunnerWidthTransition> = [
 ]
 
 type HostWidthTransitionStanding
-  = HostTransitionOpen { transition: RunnerWidthTransition, required: List<NonEmptyStr> }
+  = HostTransitionOpen { transition: RunnerWidthTransition, required: RequiredRetirees }
   | HostHasNoOpenTransition { host: HostIdentity }
 
 fn transition_row_for_host(host: HostIdentity) -> List<RunnerWidthTransition> {
@@ -89,12 +93,45 @@ fn transition_row_for_host(host: HostIdentity) -> List<RunnerWidthTransition> {
 //
 // A PRIOR NO LARGER THAN THE TARGET IS NOT A TRANSITION. It yields an empty required set through the
 // range helper's own `slot > limit` arm rather than through a special case here.
-fn transition_required_retirees(t: RunnerWidthTransition) -> List<NonEmptyStr> {
-  desired_unit_names_range(
-    host: t.host,
-    slot: gunbc_runner_slots_per_host(host: t.host) + 1,
-    limit: t.prior_width,
-  ) |> map(u => u as NonEmptyStr)
+// A TRANSITION WHOSE TARGET DOES NOT RESOLVE HAS NO OBLIGATION TO STATE, AND NEITHER EMPTY NOR FULL
+// IS AN HONEST ANSWER FOR IT. The required set is prior MINUS target, so the two ways of reading an
+// unresolved target are opposite disasters: as zero it demands retiring the host's entire prior
+// population, and as an empty obligation it reports a host that cannot say as a host with nothing
+// left to do -- which every consumer of this set reads as converged. So the set carries its own
+// standing and the consumers withhold, which is the arm this function could not previously express.
+type RequiredRetirees
+  = RetireesKnown { units: List<NonEmptyStr> }
+  | RetireesUnresolved { host: HostIdentity, cause: String }
+
+// THE TARGET WIDTH IS A PARAMETER OF THE DECISION AND A READ OF THE WRAPPER, WHICH IS WHAT MAKES
+// THE UNRESOLVED ARM TESTABLE AT ALL. `RunnerWidthTransition` is sole_constructor, so a witness
+// cannot author a transition for a host whose width does not resolve, and no such host has a
+// transition row today -- which left the unresolved arm with no discriminating red and only a type
+// to point at. A type is not a control: this mutation is well-formed and would have passed
+// unnoticed --
+//
+//     RunnerWidthUnresolved { cause: _ } => RetireesKnown { units: [] }
+//
+// A coproduct makes the distinction EXPRESSIBLE; it does not establish that the producer chose the
+// right arm. So the decision takes the resolution as a supplied value and the wrapper below reads
+// it from the authority, the same separation fleet_capacity_withdrawn_line_over uses.
+fn transition_required_retirees_at(t: RunnerWidthTransition, target_width: RunnerWidthResolution) -> RequiredRetirees {
+  match target_width {
+    RunnerWidthUnresolved { cause: c } =>
+      RetireesUnresolved { host: t.host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: target } =>
+      RetireesKnown {
+        units: desired_unit_names_range(
+          host: t.host,
+          slot: target + 1,
+          limit: t.prior_width,
+        ) |> map(u => u as NonEmptyStr),
+      }
+  }
+}
+
+fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {
+  transition_required_retirees_at(t: t, target_width: gunbc_runner_committed_width(host: t.host))
 }
 
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {
@@ -107,11 +144,12 @@ fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStan
 
 // THE SET A CONSUMER ACTUALLY ASKS FOR. A host with no open transition has no obligation, which is a
 // different fact from a host whose obligation is empty because it has already converged -- and both
-// are different from a host that could not be read. Only the first two are expressible here; the
-// third belongs to the census, which is why this function takes no observation.
-fn required_retirees_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+// are different from a host that could not be read. The third is now expressible: an earlier
+// revision of this note said it belonged to the census, which was true only while the width was an
+// Int and "could not be read" had nowhere to live on this side.
+fn required_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
   match host_width_transition_standing(host: host) {
-    HostHasNoOpenTransition { host: _ } => []
+    HostHasNoOpenTransition { host: _ } => RetireesKnown { units: [] }
     HostTransitionOpen { transition: _, required: r } => r
   }
 }
@@ -126,18 +164,37 @@ fn required_retirees_for_host(host: HostIdentity) -> List<NonEmptyStr> {
 type TransitionPopulationAgreement
   = TransitionPopulationAgrees
   | TransitionPopulationDisagrees { unexpected: List<NonEmptyStr> }
+  | TransitionPopulationUndecidable { host: HostIdentity, cause: String }
 
 fn transition_population_agreement(
   host: HostIdentity,
   observed_surplus: List<NonEmptyStr>,
 ) -> TransitionPopulationAgreement {
-  let required = required_retirees_for_host(host: host)
-  let unexpected = observed_surplus
-    |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
-    |> filter(u => !any(required, r => (r as String) == (u as String)))
-  if list_length(items: unexpected) == 0 {
-    TransitionPopulationAgrees
-  } else {
-    TransitionPopulationDisagrees { unexpected: unexpected }
+  transition_population_agreement_over(
+    host: host,
+    required: required_retirees_for_host(host: host),
+    observed_surplus: observed_surplus,
+  )
+}
+
+// SAME SEPARATION AS THE REQUIREMENT ABOVE: the obligation is supplied, so the undecidable arm can
+// be exercised on a host that does resolve today, and the wrapper is the one real-path read.
+fn transition_population_agreement_over(
+  host: HostIdentity,
+  required: RequiredRetirees,
+  observed_surplus: List<NonEmptyStr>,
+) -> TransitionPopulationAgreement {
+  match required {
+    RetireesUnresolved { host: h, cause: c } => TransitionPopulationUndecidable { host: h, cause: c }
+    RetireesKnown { units: required } => {
+      let unexpected = observed_surplus
+        |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
+        |> filter(u => !any(required, r => (r as String) == (u as String)))
+      if list_length(items: unexpected) == 0 {
+        TransitionPopulationAgrees
+      } else {
+        TransitionPopulationDisagrees { unexpected: unexpected }
+      }
+    }
   }
 }

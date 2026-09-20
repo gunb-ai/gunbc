@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, List, Bool, Int, Port }
 import std.string_type { String }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
-import std.hex { hex_word_value }
+import extdeps.numeric.base16 { base16_word_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -65,7 +65,7 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
             match get(xs: parts, index: 1) {
               Absent => none
               Present { value: port_hex } =>
-                match hex_word_value(word: port_hex, max_digits: 4) {
+                match base16_word_value(word: port_hex, max_digits: 4) {
                   Absent => none
                   Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st } }
                 }

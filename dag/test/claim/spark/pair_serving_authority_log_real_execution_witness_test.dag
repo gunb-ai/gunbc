@@ -11,8 +11,8 @@ import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
-import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.host_commitment {
@@ -57,18 +57,18 @@ fn alr_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   dir.success && observed && cleaned.success
 }
 
-fn alr_witness_layout(dir: FilePath) -> FabricDbBinding {
-  FabricDbLocalFiles { root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr) }
+fn alr_witness_layout(dir: FilePath) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
 }
 
 // A ready remote has group A's source row ESTABLISHED on its partition (the durable genesis the
 // fold reads from), at 990, before any scenario event; group B stays unestablished.
 fn alr_witness_remote_ready(dir: FilePath) -> Bool {
-  (match fabric_db_file_root_ensure(root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr)) { FabricDbRootReady => true  _ => false })
+  (match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false })
     && alr_established(store: alr_witness_layout(dir: dir), group: FabricGroupA)
 }
 
-fn alr_established(store: FabricDbBinding, group: FabricGroup) -> Bool {
+fn alr_established(store: FabricStorageBinding, group: FabricGroup) -> Bool {
   match pair_serving_authority_for(group: group) {
     Absent => false
     Present { value: desired } =>
@@ -226,7 +226,7 @@ fn alr_local_leg(argv: List<String>) -> ArgvRun {
   }
 }
 
-fn alr_occupied(store: FabricDbBinding, host: HostIdentity, at: Int) -> Bool {
+fn alr_occupied(store: FabricStorageBinding, host: HostIdentity, at: Int) -> Bool {
   match spark_host_standings_over(store: store, at: at) {
     CurrentStandingsUnread { cause: _ } => false
     CurrentStandingsRead { standings: st } =>
@@ -246,7 +246,7 @@ fn alr_recovery(preparation: EventId) -> ReleaseProvenance {
   RecoveryAuthorized { claim: preparation, claimant: ClaimantTerminated, authorized_by: "operator" as NonEmptyStr, receipt: "the lane's run was cancelled" as NonEmptyStr }
 }
 
-fn alr_release_with_quiet(handle: HostEffectHandle, store: FabricDbBinding, at: Int) -> Bool {
+fn alr_release_with_quiet(handle: HostEffectHandle, store: FabricStorageBinding, at: Int) -> Bool {
   match alr_evidence_for(claim: handle.claim, host: handle.host, spec: handle.residue, at: at) {
     Absent => false
     Present { value: e } => match release_host_effect_over(handle: handle, evidence: e, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: "executor-1" as NonEmptyStr }, store: store, executor: "executor-1" as NonEmptyStr, at: at) { Absent => true  Present { value: _ } => false }

@@ -15,8 +15,8 @@ import gunbc.harness.harness_seat {
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import product.capacity.pool_events { SeatRequest }
-import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.fabric_event_log {
   SeatGranted, fabric_seat_acquire, SeatRoomObserved, fabric_seat_observe,
   PartitionReadOk, event_log_read_partition_with,
@@ -90,14 +90,14 @@ fn d0r_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   dir.success && observed && cleaned.success
 }
 
-fn d0r_witness_layout(dir: FilePath) -> FabricDbBinding {
-  FabricDbLocalFiles { root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr) }
+fn d0r_witness_layout(dir: FilePath) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
 }
 
 // A ready remote has group A's source row ESTABLISHED on its partition (the log's durable
 // genesis) at 990, before any scenario event.
 fn d0r_witness_remote_ready(dir: FilePath) -> Bool {
-  (match fabric_db_file_root_ensure(root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr)) { FabricDbRootReady => true  _ => false })
+  (match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false })
     && (match pair_serving_authority_for(group: FabricGroupA) {
           Absent => false
           Present { value: desired } =>
@@ -107,13 +107,13 @@ fn d0r_witness_remote_ready(dir: FilePath) -> Bool {
 
 // A scenario over a ready remote: the bare repository exists BEFORE the first claim, since the
 // claim is the first thing written to the log now.
-fn d0r_with_remote(scenario: fn(FilePath, FabricDbBinding) -> Bool) -> Bool {
+fn d0r_with_remote(scenario: fn(FilePath, FabricStorageBinding) -> Bool) -> Bool {
   d0r_with_temp_dir(scenario: fn(dir) { d0r_witness_remote_ready(dir: dir) && scenario(dir, d0r_witness_layout(dir: dir)) })
 }
 
 // A second executor's binding to the SAME store: one placed fabric DB, reached by every executor.
-fn d0r_second_executor_layout(dir: FilePath) -> FabricDbBinding {
-  FabricDbLocalFiles { root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr) }
+fn d0r_second_executor_layout(dir: FilePath) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
 }
 
 fn d0r_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
@@ -154,14 +154,14 @@ fn d0r_w_authorization(successor: ContentHash, tx: NonEmptyStr, escalation: NonE
 
 // START: permission decided and the claim TAKEN, on the scenario's event log -- the same log the
 // authority partition lives on, through the store the "executor" resolves.
-fn d0r_w_admit(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
+fn d0r_w_admit(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
   match d0r_w_authorization(successor: successor, tx: tx, escalation: escalation) {
     Absent => D0GrantClaimLost { holder: "witness: the fixture intent could not be digested" as NonEmptyStr }
     Present { value: auth } => admit_d0_grant(store: store, authorization: auth, escalation_id: escalation, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx, executor: executor, at: 1000, now: "2026-09-18T00:00:00Z")
   }
 }
 
-fn d0r_w_admitted(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
+fn d0r_w_admitted(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
   match d0r_w_admit(store: store, successor: successor, tx: tx, escalation: escalation, executor: executor) {
     D0GrantAdmitted { admitted: a } => Present { value: a }
     _ => none
@@ -169,7 +169,7 @@ fn d0r_w_admitted(store: FabricDbBinding, successor: ContentHash, tx: NonEmptySt
 }
 
 // RESUME: the claim found held by this attempt; permission is not re-decided.
-fn d0r_w_resumed(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
+fn d0r_w_resumed(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
   match d0r_w_authorization(successor: successor, tx: tx, escalation: escalation) {
     Absent => none
     Present { value: auth } =>
@@ -181,7 +181,7 @@ fn d0r_w_resumed(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr
 }
 
 // The claim slot as the log holds it: ClaimedBy / CompletedBy the named attempt.
-fn d0r_claim_is(store: FabricDbBinding, escalation: NonEmptyStr, by: String, completed: Bool) -> Bool {
+fn d0r_claim_is(store: FabricStorageBinding, escalation: NonEmptyStr, by: String, completed: Bool) -> Bool {
   match d0_read_claim(store: store, escalation_id: escalation) {
     D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } => !completed && (who as String) == by
     D0ClaimAt { state: CompletedBy { attempt: who, completed_at: _ }, generation: _ } => completed && (who as String) == by
@@ -235,7 +235,7 @@ fn d0r_read_is_suspended_at(c: CurrentAuthority, generation: Int, entry_state: C
 
 // THE RECEIPT IS ON THE LOG: the settling event names a content hash that is the id of an
 // EntryStateRecorded event on the same partition, and that event carries the receipt's bytes.
-fn d0r_entry_state_is_on_the_log(store: FabricDbBinding, entry_state: ContentHash) -> Bool {
+fn d0r_entry_state_is_on_the_log(store: FabricStorageBinding, entry_state: ContentHash) -> Bool {
   match event_log_read_partition_with(store: store, partition: pair_authority_partition(group: FabricGroupA), budget: 64, decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadOk { head: _, walk: ChainWalked { oldest_first: envs } } =>
       any(envs, env => (env.id as String) == (serialize_content_hash(hash: entry_state) as String)
@@ -488,7 +488,7 @@ test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> B
 
 // The join as the dispatcher asks it: the lifecycle is the resumed grant's binding when the claim
 // is held by this transaction, Absent otherwise.
-fn d0r_recovery_of(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, at: Int) -> D0Recovery? {
+fn d0r_recovery_of(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, at: Int) -> D0Recovery? {
   match current_pair_serving_authority(store: store, group: FabricGroupA, at: at) {
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => none
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
@@ -501,7 +501,7 @@ fn d0r_recovery_of(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyS
   }
 }
 
-fn d0r_generation_is(store: FabricDbBinding, generation: Int, at: Int) -> Bool {
+fn d0r_generation_is(store: FabricStorageBinding, generation: Int, at: Int) -> Bool {
   match current_pair_serving_authority(store: store, group: FabricGroupA, at: at) {
     CurrentAuthorityRead { authority: _, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => g == generation
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false

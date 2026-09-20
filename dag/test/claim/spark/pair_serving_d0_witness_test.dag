@@ -31,7 +31,7 @@ import std.scoped_authorization {
 }
 import std.effect_grant { Read, Write, NamespacePosition, CodeNameTree }
 import gunbc.rung_drop { Standing, Retired }
-import gunbc.rung_drop.fabric_db_append_principal_unrefused { fabric_db_append_principal_unrefused }
+import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.spark.pair_serving_d0 {
   d0_store_write_wall_standing, d0_store_operation_wall, StoreOperationWallMissing, StoreOperationWallRestored,
   D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
@@ -591,12 +591,12 @@ test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Boo
 }
 
 // THE WET DOOR CONSUMES THE STORE'S WRITE-WALL DROP: while gunbc.rung_drop
-// fabric_db_append_principal_unrefused stands the door's first gate names it and refuses; when the
+// fabric_storage_append_principal_unrefused stands the door's first gate names it and refuses; when the
 // row is retired the gate is absent. The gate is read from the row, so retiring the row is the
 // only thing that opens it.
-test fn the_wet_door_refuses_while_the_fabric_db_write_wall_drop_stands() -> Bool {
-  match fabric_db_append_principal_unrefused.standing {
-    Standing => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("fabric_db_append_principal_unrefused") && why.contains("does not run")  Absent => false })
+test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -> Bool {
+  match fabric_storage_append_principal_unrefused.standing {
+    Standing => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
         StoreOperationWallMissing { trigger: _ } => (match d0_store_write_wall_standing() { Present { value: why } => why.contains("d0_store_operation_wall") && why.contains("does not run")  Absent => false })

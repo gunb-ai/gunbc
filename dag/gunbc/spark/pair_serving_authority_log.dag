@@ -22,7 +22,7 @@ import gunbc.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition_with,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with, event_log_refusal_wire,
 }
-import gunbc.fabric_db_client { FabricDbBinding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
@@ -1477,7 +1477,7 @@ fn fold_refusal_text(at_event: EventId, reason: String) -> String {
   join(["the chain's fold refused at event ", at_event as String, ": ", reason], "")
 }
 
-fn read_group_partition(store: FabricDbBinding, group: FabricGroup) -> GroupPartitionRead {
+fn read_group_partition(store: FabricStorageBinding, group: FabricGroup) -> GroupPartitionRead {
   match event_log_read_partition_with(store: store, partition: pair_authority_partition(group: group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadRefused { cause: c } => GroupPartitionUnread { step: "store", reason: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: head, walk: walk } =>
@@ -1498,7 +1498,7 @@ fn read_group_partition(store: FabricDbBinding, group: FabricGroup) -> GroupPart
 // or finalized (finalized by THIS event), with a copy equal to the record. A group history that
 // names a preparation the placement chain never saw, or one finalized to another event, is
 // unread -- never an authority.
-fn current_pair_serving_authority(store: FabricDbBinding, group: FabricGroup, at: EpochSecs) -> CurrentAuthority {
+fn current_pair_serving_authority(store: FabricStorageBinding, group: FabricGroup, at: EpochSecs) -> CurrentAuthority {
   current_authority_over(group: group, partition: read_group_partition(store: store, group: group), placement: placement_fold_read(store: store), at: at)
 }
 
@@ -1579,7 +1579,7 @@ type PlacementRead
 // THE JOINED PLACEMENT READ: the placement fold, then every finalized preparation's authority
 // event looked up on its group's chain -- it must exist and carry the record's copy. A
 // finalization naming an event that is not there, or one carrying another copy, is unread.
-fn placement_read(store: FabricDbBinding) -> PlacementRead {
+fn placement_read(store: FabricStorageBinding) -> PlacementRead {
   placement_read_over(placement: placement_fold_read(store: store), groups: map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) }))
 }
 
@@ -1630,7 +1630,7 @@ fn finalization_gaps(group: FabricGroup, partition: GroupPartitionRead, preps: L
   }
 }
 // The placement fold alone (no cross-chain join): what the joined reads start from.
-fn placement_fold_read(store: FabricDbBinding) -> PlacementRead {
+fn placement_fold_read(store: FabricStorageBinding) -> PlacementRead {
   match event_log_read_partition_with(store: store, partition: host_placement_partition, budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadRefused { cause: c } => PlacementUnread { step: "store", reason: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: head, walk: walk } =>
@@ -1646,7 +1646,7 @@ fn placement_fold_read(store: FabricDbBinding) -> PlacementRead {
   }
 }
 
-fn placement_append(store: FabricDbBinding, head: HeadExpectation, payload: PairAuthorityEvent, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
+fn placement_append(store: FabricStorageBinding, head: HeadExpectation, payload: PairAuthorityEvent, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
   let event = ChainEvent {
     partition: host_placement_partition,
     parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
@@ -1682,7 +1682,7 @@ fn committed_population(a: PairServingGroupAuthority) -> List<HostIdentity> {
   if pair_serving_commits_hosts(a: a) { pair_serving_committed_hosts(a: a) } else { [] as List<HostIdentity> }
 }
 
-fn placement_prepare_at(store: FabricDbBinding, read: PlacementRead, group: FabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> PlacementPreparation {
+fn placement_prepare_at(store: FabricStorageBinding, read: PlacementRead, group: FabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> PlacementPreparation {
   match read {
     PlacementUnread { step: st, reason: why } => PlacementPreparationRefused { step: join(["placement/", st], ""), reason: why }
     PlacementReadAt { head: head, effects: effs, preparations: preps } =>
@@ -1698,7 +1698,7 @@ fn placement_prepare_at(store: FabricDbBinding, read: PlacementRead, group: Fabr
   }
 }
 
-fn placement_prepare(store: FabricDbBinding, group: FabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> PlacementPreparation {
+fn placement_prepare(store: FabricStorageBinding, group: FabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> PlacementPreparation {
   placement_prepare_at(store: store, read: placement_read(store: store), group: group, previous_hosts: previous_hosts, next_hosts: next_hosts, operation: operation, actor: actor, at: at)
 }
 
@@ -1716,7 +1716,7 @@ fn intent_previous_population(i: AuthorityWriteIntent) -> List<HostIdentity> {
 
 // THE CLAIM IS ITS INTENT: the claimant is the intent's actor (the event is written by it) and the
 // head it will CAS against is the intent's; the fold keeps them on the record as the intent says.
-fn placement_claim_append(store: FabricDbBinding, preparation: EventId, intent: AuthorityWriteIntent, at: EpochSecs) -> PlacementAppendClaim {
+fn placement_claim_append(store: FabricStorageBinding, preparation: EventId, intent: AuthorityWriteIntent, at: EpochSecs) -> PlacementAppendClaim {
   match placement_read(store: store) {
     PlacementUnread { step: st, reason: why } => PlacementAppendClaimRefused { step: join(["placement/", st], ""), reason: why }
     PlacementReadAt { head: head, effects: _, preparations: preps } =>
@@ -1745,7 +1745,7 @@ type PreparationConsumption
   | PreparationAbsent
   | PreparationConsumptionUnread { step: String, reason: String }
 
-fn preparation_consumption(store: FabricDbBinding, preparation: EventId) -> PreparationConsumption {
+fn preparation_consumption(store: FabricStorageBinding, preparation: EventId) -> PreparationConsumption {
   match placement_fold_read(store: store) {
     PlacementUnread { step: st, reason: why } => PreparationConsumptionUnread { step: join(["placement/", st], ""), reason: why }
     PlacementReadAt { head: _, effects: _, preparations: preps } =>
@@ -1783,7 +1783,7 @@ fn preparation_consumption(store: FabricDbBinding, preparation: EventId) -> Prep
 // read again (bounded: the placement partition sees one write per effect or authority operation,
 // so the retries are a small constant, never a spin), and a finalization that still does not land
 // is STILL FENCING.
-fn placement_finalize(store: FabricDbBinding, consumed: PreparationConsumption, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+fn placement_finalize(store: FabricStorageBinding, consumed: PreparationConsumption, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   match consumed {
     PreparationConsumedBy { preparation: ref, authority_event: ae, state: Finalized { authority_event: fae, finalized_by: fb, intent: _ } } =>
       if (fae as String) == (ae as String) { PlacementFinalizedAt { preparation: ref.id, id: fb } } else { PlacementCleanupStillFencing { preparation: ref.id, cause: join(["the preparation is finalized to authority event ", fae as String, ", not to its consumer ", ae as String], "") } }
@@ -1794,7 +1794,7 @@ fn placement_finalize(store: FabricDbBinding, consumed: PreparationConsumption, 
   }
 }
 
-fn placement_finalize_attempt(store: FabricDbBinding, preparation: PlacementPreparationRef, authority_event: EventId, actor: NonEmptyStr, at: EpochSecs, attempts_left: Int) -> PlacementCleanup {
+fn placement_finalize_attempt(store: FabricStorageBinding, preparation: PlacementPreparationRef, authority_event: EventId, actor: NonEmptyStr, at: EpochSecs, attempts_left: Int) -> PlacementCleanup {
   match placement_read(store: store) {
     PlacementUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation.id, cause: join(["the finalization could not read the placement partition at ", st, ": ", why], "") }
     PlacementReadAt { head: head, effects: _, preparations: preps } =>
@@ -1816,11 +1816,11 @@ fn placement_finalize_attempt(store: FabricDbBinding, preparation: PlacementPrep
 // driven) and only when the join says no authority event consumed the preparation. The provenance
 // is the writer's own (ClaimantTerminal, when its group append did not land) or an operator's
 // recovery naming the preparation; the fold refuses one that does not cover the record's state.
-fn placement_abort_at(store: FabricDbBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+fn placement_abort_at(store: FabricStorageBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   placement_abort_attempt(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: 2)
 }
 
-fn placement_abort_attempt(store: FabricDbBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs, attempts_left: Int) -> PlacementCleanup {
+fn placement_abort_attempt(store: FabricStorageBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs, attempts_left: Int) -> PlacementCleanup {
   match preparation_consumption(store: store, preparation: preparation) {
     PreparationConsumptionUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort could not read the join at ", st, ": ", why], "") }
     PreparationAbsent => PlacementCleanupStillFencing { preparation: preparation, cause: "the preparation is not on the placement chain" }
@@ -1855,7 +1855,7 @@ fn placement_abort_attempt(store: FabricDbBinding, read: PlacementRead, preparat
 // stale means the head moved -- by the claimed append (consumed: finalize, never abort) or by
 // something else (the claimed append can never land: the abort is safe) -- decided by a fresh
 // join. The abort's own append, against the supplied placement read, follows.
-fn placement_abort_append(store: FabricDbBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+fn placement_abort_append(store: FabricStorageBinding, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   match read {
     PlacementUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort could not read the placement partition at ", st, ": ", why], "") }
     PlacementReadAt { head: head, effects: _, preparations: preps } =>
@@ -1883,7 +1883,7 @@ type Cancellation
   | CancellationStale
   | CancellationRefused { cause: String }
 
-fn cancel_claimed_append(store: FabricDbBinding, group: FabricGroup, head: HeadExpectation, preparation: EventId, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> Cancellation {
+fn cancel_claimed_append(store: FabricStorageBinding, group: FabricGroup, head: HeadExpectation, preparation: EventId, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> Cancellation {
   let event = ChainEvent {
     partition: pair_authority_partition(group: group),
     parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
@@ -1898,7 +1898,7 @@ fn cancel_claimed_append(store: FabricDbBinding, group: FabricGroup, head: HeadE
   }
 }
 
-fn placement_abort(store: FabricDbBinding, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+fn placement_abort(store: FabricStorageBinding, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   placement_abort_at(store: store, read: placement_read(store: store), preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
 }
 
@@ -1907,7 +1907,7 @@ fn placement_abort(store: FabricDbBinding, preparation: EventId, reason: String,
 // append); a pending one no authority event consumed is left for the operator's abort -- this
 // caller cannot know the claimant's standing -- and reported as still fencing. A transaction
 // that resumes on a group calls this before its own saga, because one saga is pending at a time.
-fn placement_repair_pending(store: FabricDbBinding, group: FabricGroup, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup? {
+fn placement_repair_pending(store: FabricStorageBinding, group: FabricGroup, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup? {
   match placement_fold_read(store: store) {
     PlacementUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: join(["the placement partition could not be read at ", st, ": ", why], "") } }
     PlacementReadAt { head: _, effects: _, preparations: preps } =>
@@ -1961,7 +1961,7 @@ fn host_placement_abort_wet(preparation: String, reason: String, claimant: Strin
   }
 }
 
-fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricDbBinding, NonEmptyStr, EpochSecs) -> PlacementCleanup) -> ProcessExit
+fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBinding, NonEmptyStr, EpochSecs) -> PlacementCleanup) -> ProcessExit
   uses net: Network
 {
   match observe_executor_reach() {
@@ -1993,7 +1993,7 @@ type AuthorityEstablishment
   = AuthorityEstablishedAt { id: EventId, placement: PlacementCleanup }
   | AuthorityEstablishmentRefused { group: FabricGroup, step: String, reason: String, placement: PlacementCleanup? }
 
-fn pair_serving_authority_establish(store: FabricDbBinding, group: FabricGroup, authority: PairServingGroupAuthority, actor: NonEmptyStr, at: EpochSecs) -> AuthorityEstablishment {
+fn pair_serving_authority_establish(store: FabricStorageBinding, group: FabricGroup, authority: PairServingGroupAuthority, actor: NonEmptyStr, at: EpochSecs) -> AuthorityEstablishment {
   if (fabric_group_wire(g: pair_serving_authority_group(a: authority)) as String) != (fabric_group_wire(g: group) as String) {
     AuthorityEstablishmentRefused { group: group, step: "subject", reason: "the authority names a different group than the partition", placement: none }
   } else {
@@ -2040,7 +2040,7 @@ type SagaEntry
   = SagaClaimed { preparation: PlacementPreparationRef, intent: AuthorityWriteIntent }
   | SagaRefused { step: String, reason: String, placement: PlacementCleanup? }
 
-fn saga_prepare_and_claim(store: FabricDbBinding, group: FabricGroup, group_head: HeadExpectation, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, intent: AuthorityWriteIntent, actor: NonEmptyStr, at: EpochSecs) -> SagaEntry {
+fn saga_prepare_and_claim(store: FabricStorageBinding, group: FabricGroup, group_head: HeadExpectation, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, intent: AuthorityWriteIntent, actor: NonEmptyStr, at: EpochSecs) -> SagaEntry {
   match placement_prepare(store: store, group: group, previous_hosts: previous_hosts, next_hosts: next_hosts, operation: operation, actor: actor, at: at) {
     PlacementPreparationRefused { step: st, reason: why } => SagaRefused { step: st, reason: why, placement: none }
     PlacementPreparationStale => SagaRefused { step: "placement-stale", reason: "the placement partition moved between its read and the preparation; nothing was written -- re-decide from a fresh read", placement: none }
@@ -2054,7 +2054,7 @@ fn saga_prepare_and_claim(store: FabricDbBinding, group: FabricGroup, group_head
 }
 
 // The writer's own abort: claimant-terminal provenance naming its preparation.
-fn saga_abort_own(store: FabricDbBinding, preparation: EventId, reason: String, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+fn saga_abort_own(store: FabricStorageBinding, preparation: EventId, reason: String, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   placement_abort(store: store, preparation: preparation, reason: reason, provenance: ClaimantTerminal { claim: preparation, claimant_executor: actor }, actor: actor, at: at)
 }
 
@@ -2135,7 +2135,7 @@ type AuthorityTransition
   | AuthorityTransitionRefused { group: FabricGroup, step: String, reason: String, placement: PlacementCleanup? }
 
 fn pair_serving_authority_transition(
-  store: FabricDbBinding,
+  store: FabricStorageBinding,
   group: FabricGroup,
   expected: PairServingGroupAuthority,
   next: PairServingGroupAuthority,
@@ -2156,7 +2156,7 @@ fn pair_serving_authority_transition(
 // operator) is the same value at another generation, and a lease epoch minted for the generation
 // read would disagree with the one that lands. `expected_head: none` is the value-only CAS.
 fn pair_serving_authority_transition_at(
-  store: FabricDbBinding,
+  store: FabricStorageBinding,
   group: FabricGroup,
   expected: PairServingGroupAuthority,
   expected_head: HeadExpectation?,
@@ -2216,7 +2216,7 @@ fn pair_serving_authority_transition_at(
 // the group head that was read. pair_serving_authority_transition composes prepare, this, and
 // finalize; the step is its own function so a saga that dies after it is a state a witness can
 // drive (the preparation is consumed but not finalized, and only finalization may follow).
-fn authority_transition_append(store: FabricDbBinding, group: FabricGroup, head: HeadExpectation, current: PairServingGroupAuthority, next: PairServingGroupAuthority, transaction: NonEmptyStr, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?, preparation: PlacementPreparationRef, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
+fn authority_transition_append(store: FabricStorageBinding, group: FabricGroup, head: HeadExpectation, current: PairServingGroupAuthority, next: PairServingGroupAuthority, transaction: NonEmptyStr, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?, preparation: PlacementPreparationRef, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
   let event = ChainEvent {
     partition: pair_authority_partition(group: group),
     parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
@@ -2236,7 +2236,7 @@ type EntryStateRecord
   | EntryStateRecordStale { observed: HeadExpectation }
   | EntryStateRecordRefused { step: String, reason: String }
 
-fn pair_serving_authority_record_entry_state(store: FabricDbBinding, group: FabricGroup, expected_head: HeadExpectation, transaction: NonEmptyStr, body: String, actor: NonEmptyStr, at: EpochSecs) -> EntryStateRecord {
+fn pair_serving_authority_record_entry_state(store: FabricStorageBinding, group: FabricGroup, expected_head: HeadExpectation, transaction: NonEmptyStr, body: String, actor: NonEmptyStr, at: EpochSecs) -> EntryStateRecord {
   let parent = match expected_head {
     HeadAbsent => none
     HeadAt { id: h } => Present { value: h }
@@ -2276,7 +2276,7 @@ type HostEffectClaim
   = HostEffectClaimed { id: EventId, generation: Nat }
   | HostEffectClaimRefused { partition: PartitionId, step: String, reason: String }
 
-fn host_effect_admit_at(store: FabricDbBinding, read: PlacementRead, host: HostIdentity, purpose: NonEmptyStr, executor: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, at: EpochSecs) -> HostEffectClaim {
+fn host_effect_admit_at(store: FabricStorageBinding, read: PlacementRead, host: HostIdentity, purpose: NonEmptyStr, executor: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, at: EpochSecs) -> HostEffectClaim {
   match read {
     PlacementUnread { step: st, reason: why } => HostEffectClaimRefused { partition: host_placement_partition, step: st, reason: why }
     PlacementReadAt { head: head, effects: effs, preparations: preps } =>
@@ -2294,7 +2294,7 @@ fn host_effect_admit_at(store: FabricDbBinding, read: PlacementRead, host: HostI
   }
 }
 
-fn host_effect_admit(store: FabricDbBinding, host: HostIdentity, purpose: NonEmptyStr, executor: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, at: EpochSecs) -> HostEffectClaim {
+fn host_effect_admit(store: FabricStorageBinding, host: HostIdentity, purpose: NonEmptyStr, executor: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, at: EpochSecs) -> HostEffectClaim {
   host_effect_admit_at(store: store, read: placement_read(store: store), host: host, purpose: purpose, executor: executor, term: term, residue: residue, at: at)
 }
 
@@ -2302,7 +2302,7 @@ type HostEffectRelease
   = HostEffectReleasedAt { id: EventId }
   | HostEffectReleaseRefused { partition: PartitionId, step: String, reason: String }
 
-fn host_effect_release(store: FabricDbBinding, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, executor: NonEmptyStr, at: EpochSecs) -> HostEffectRelease {
+fn host_effect_release(store: FabricStorageBinding, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, executor: NonEmptyStr, at: EpochSecs) -> HostEffectRelease {
   match placement_read(store: store) {
     PlacementUnread { step: st, reason: why } => HostEffectReleaseRefused { partition: host_placement_partition, step: st, reason: why }
     PlacementReadAt { head: head, effects: effs, preparations: _ } =>
@@ -2324,7 +2324,7 @@ type LiveClaimLookup
   | LiveClaimAbsent
   | LiveClaimUnread { step: String, reason: String }
 
-fn live_claim_on(store: FabricDbBinding, host: HostIdentity, claim: EventId) -> LiveClaimLookup {
+fn live_claim_on(store: FabricStorageBinding, host: HostIdentity, claim: EventId) -> LiveClaimLookup {
   match placement_read(store: store) {
     PlacementUnread { step: st, reason: why } => LiveClaimUnread { step: st, reason: why }
     PlacementReadAt { head: _, effects: effs, preparations: _ } =>
