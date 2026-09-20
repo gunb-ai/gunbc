@@ -108,24 +108,20 @@ test fn the_either_case_alphabet_admits_both_spellings_and_nothing_else() -> Boo
     && all(non_hex_points, cp => !base16_is_digit_code_point(cp: cp))
 }
 
+// Code point 0 is the last assertion, and it is not decoration: char_at past the end answers "" and
+// code_point("") is 0, so a String-shaped wrapper over this lookup read an empty string as a digit
+// position (review 69058). The lookup itself must refuse it.
 test fn a_digit_value_is_read_from_the_same_rows() -> Bool {
   base16_lower_digit_value_at(cp: 48) == Present { value: 0 }
     && base16_lower_digit_value_at(cp: 97) == Present { value: 10 }
     && base16_lower_digit_value_at(cp: 102) == Present { value: 15 }
     && base16_lower_digit_value_at(cp: 65) == none
-}
-
-// THE DIGIT LOOKUP IS OVER ONE CODE POINT, AND THE DECODER READS EVERY CHARACTER. A String-shaped
-// wrapper over this lookup read its argument with code_point, which returns only the first scalar,
-// so "aa" and "f0" answered as if they were single digits (review 69058). The wrapper is deleted;
-// these pin the surviving operations against exactly those inputs -- the lookup at the code points
-// of 'a' and 'f', and the decoder over two-character text that must be read as TWO digits, not one.
-test fn the_digit_lookup_answers_for_single_code_points() -> Bool {
-  base16_lower_digit_value_at(cp: 97) == Present { value: 10 }
-    && base16_lower_digit_value_at(cp: 102) == Present { value: 15 }
-    && base16_lower_digit_value_at(cp: 90) == none
     && base16_lower_digit_value_at(cp: 0) == none
 }
+
+// THE DECODER READS EVERY CHARACTER. The deleted String wrapper read its argument with code_point,
+// which returns only the first scalar, so "aa" and "f0" answered as if they were single digits
+// (review 69058). This pins the surviving decode route over two-character text.
 
 fn decodes_to(hex: String, expected: List<UInt8>) -> Bool {
   match base16_decode_lower(hex: hex) {
