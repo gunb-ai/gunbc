@@ -4,7 +4,12 @@ import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities, committed_slot_identities }
+import gunbc.runner_slot_allocation {
+  fabric_execution_slot_identities,
+  committed_slot_identities,
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 import std.string_type { string_is_lexicographically_before }
 import gunbc.fabric_cell_converge {
@@ -480,11 +485,17 @@ fn fabric_cell_observe_host(probe: FabricCellHostProbe) -> FabricCellHostReadbac
 // "srv3-99" into a RunnerSlotIdentity mints an identity the slot authority never committed --
 // an uncited authority derived from a string, which the whole family exists to refuse. The third
 // arm keeps the observed name as what it is, an observed name, with the location that produced it.
+// THE FIFTH ARM EXISTS BECAUSE AN UNRESOLVED HOST IS NOT A FOREIGN ARTIFACT. Classification here
+// is a decision against an enumeration of committed slots, so a host that cannot produce that
+// enumeration cannot be decided about -- and the previous shape read its empty population as the
+// positive answer "nothing here is committed", which sends an artifact that may be ours down the
+// foreign-artifact remedy.
 type FabricCellDiscoveredSubject
   = DiscoveredExpectedCell { slot: RunnerSlotIdentity }
   | DiscoveredUnexpectedCommittedSlot { slot: RunnerSlotIdentity }
   | DiscoveredCrossHostNamedArtifact { observed_name: String, named_slot: RunnerSlotIdentity, observed_on: HostIdentity }
   | DiscoveredForeignArtifact { observed_name: String, location: String }
+  | DiscoveredHostWidthUnresolved { observed_name: String, host: HostIdentity, cause: String }
 
 fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String {
   match s {
@@ -493,6 +504,8 @@ fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String
     DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
       join(["cross-host-named:", h as String, ":", n, ":names:", runner_slot_instance_name(slot: sl)], "")
     DiscoveredForeignArtifact { observed_name: n, location: l } => join(["foreign:", l, ":", n], "")
+    DiscoveredHostWidthUnresolved { observed_name: n, host: h, cause: _ } =>
+      join(["host-width-unresolved:", h as String, ":", n], "")
   }
 }
 
@@ -525,28 +538,31 @@ fn fabric_cell_rendering_location(rendering: FabricCellNamespaceRendering) -> St
   }
 }
 
-fn fabric_cell_committed_slot_named_on(
-  host: HostIdentity,
+fn fabric_cell_named_among(
+  members: List<RunnerSlotIdentity>,
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> List<RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    members,
     init: [],
     f: (acc, s) =>
       if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
   )
 }
 
-fn fabric_cell_committed_slot_named_anywhere(
-  name: String,
-  rendering: FabricCellNamespaceRendering,
-) -> List<RunnerSlotIdentity> {
+// THE FLEET SEARCH KEEPS WHAT IT COULD ENUMERATE AND SAYS SO. A host that cannot answer removes
+// nothing from the other hosts' populations, so the members are still worth searching -- what it
+// removes is the right to conclude "nothing anywhere committed this name" from an empty result.
+fn fabric_cell_fleet_committed_members() -> List<RunnerSlotIdentity> {
   fold(
-    fold(fleet_hosts(), init: [], f: (acc, h) => concat(acc, committed_slot_identities(host: h))),
+    fleet_hosts(),
     init: [],
-    f: (acc, s) =>
-      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
+    f: (acc, h) =>
+      match committed_slot_identities(host: h) {
+        CommittedPopulationDerived { members: m } => concat(acc, m)
+        CommittedPopulationWidthUnresolved { host: _, cause: _ } => acc
+      }
   )
 }
 
@@ -572,16 +588,25 @@ fn fabric_cell_classify_discovered_name(
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> FabricCellDiscoveredSubject {
-  fold(
-    fabric_cell_committed_slot_named_on(host: host, name: name, rendering: rendering),
-    init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
-    f: (acc, s) =>
-      if fabric_cell_slot_is_fabric_expected(slot: s) {
-        DiscoveredExpectedCell { slot: s }
-      } else {
-        DiscoveredUnexpectedCommittedSlot { slot: s }
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: h, cause: c } =>
+      DiscoveredHostWidthUnresolved {
+        observed_name: name,
+        host: h,
+        cause: runner_width_unresolved_cause_text(cause: c),
       }
-  )
+    CommittedPopulationDerived { members: members } =>
+      fold(
+        fabric_cell_named_among(members: members, name: name, rendering: rendering),
+        init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
+        f: (acc, s) =>
+          if fabric_cell_slot_is_fabric_expected(slot: s) {
+            DiscoveredExpectedCell { slot: s }
+          } else {
+            DiscoveredUnexpectedCommittedSlot { slot: s }
+          }
+      )
+  }
 }
 
 fn fabric_cell_classify_uncommitted_here(
@@ -590,7 +615,7 @@ fn fabric_cell_classify_uncommitted_here(
   rendering: FabricCellNamespaceRendering,
 ) -> FabricCellDiscoveredSubject {
   fold(
-    fabric_cell_committed_slot_named_anywhere(name: name, rendering: rendering),
+    fabric_cell_named_among(members: fabric_cell_fleet_committed_members(), name: name, rendering: rendering),
     init: DiscoveredForeignArtifact {
       observed_name: name,
       location: fabric_cell_rendering_location(rendering: rendering),
@@ -799,6 +824,11 @@ fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSub
       }]
     DiscoveredForeignArtifact { observed_name: n, location: l } =>
       [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
+    DiscoveredHostWidthUnresolved { observed_name: n, host: h, cause: c } =>
+      [DiscoveryUnavailable {
+        host: h,
+        cause: join(["an artifact named ", n, " was observed on this host and cannot be classified: ", c], ""),
+      }]
   }
 }
 

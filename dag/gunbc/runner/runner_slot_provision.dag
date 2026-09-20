@@ -37,7 +37,12 @@ import extdeps.github.actions_runner {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_slot_allocation { identity_is_fabric_execution_member, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  identity_is_fabric_execution_member,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.command_runner {
   ProcessOutcome,
   ProcessOutputPresent,
@@ -401,7 +406,7 @@ fn runner_slot_member_observed(instance_name: String, provenance: RunnerSlotProv
 // rather than a restatement of the live fleet; routing desired through the global width authority
 // would have emptied them and turned four exact-count fixtures green-by-vacuity.
 //
-// So the width still comes from the deploy row, which derives it from gunbc_runner_slots_per_host,
+// So the width still comes from the deploy row, which derives it from gunbc_runner_committed_width,
 // and this function removes exactly the identities that are spoken for. Two questions, two answers:
 // how many slots does this host carry, and which are Actions runners.
 //
@@ -477,6 +482,9 @@ fn runner_slot_membership_reconcile(
   )
 }
 
+// A MISMATCH IS A COMPARISON AND A COMPARISON NEEDS TWO SIDES. With two arms, a host whose width
+// does not resolve compared its observation against a declared zero, so every unit it actually runs
+// reported as a surplus of that many -- an enumeration defect invented out of a missing denominator.
 type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
@@ -484,21 +492,29 @@ type RunnerSlotEnumerationPostcondition
       declared_count: Int
       observed_count: Int
     }
+  | RunnerSlotEnumerationWidthUnresolved { host: HostIdentity, cause: String }
 
 fn runner_slot_enumeration_postcondition(
   host: HostIdentity,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = gunbc_runner_slots_per_host(host: host)
   let observed_count = length(observed)
-  if observed_count == declared {
-    RunnerSlotEnumerationMatched
-  } else {
-    RunnerSlotEnumerationMismatch {
-      host: host,
-      declared_count: declared,
-      observed_count: observed_count,
-    }
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      RunnerSlotEnumerationWidthUnresolved {
+        host: host,
+        cause: runner_width_unresolved_cause_text(cause: c),
+      }
+    RunnerWidthDerived { slots: declared } =>
+      if observed_count == declared {
+        RunnerSlotEnumerationMatched
+      } else {
+        RunnerSlotEnumerationMismatch {
+          host: host,
+          declared_count: declared,
+          observed_count: observed_count,
+        }
+      }
   }
 }
 

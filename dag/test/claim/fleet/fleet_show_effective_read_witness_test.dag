@@ -63,12 +63,25 @@ test fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
   }
 }
 
+// AN UNRESOLVED WIDTH IS MAPPED TO -1 RATHER THAN TO 0, AND THAT KEEPS TWO OF THESE ROWS HONEST.
+// The srv2 rows below compare a live readback against what this fleet DECLARES for srv2, and srv2's
+// width no longer resolves -- so "declared" is not zero, it is nothing. A zero would make the slice
+// cap comparison a comparison against a zero-byte cap and the width comparison a comparison against
+// zero active runners, both of which can agree with a reading for reasons that have nothing to do
+// with the property. -1 cannot be observed, so those rows stay red-able.
+fn expected_width_for(host: HostIdentity) -> Int {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+    RunnerWidthDerived { slots: n } => n
+  }
+}
+
 test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget_for(host: operator_host_srv1),
+    expected: gunbc_runner_slice_cap_for_width(slots: expected_width_for(host: operator_host_srv1)),
   ) {
     Present { value: Drifted } => true
     _ => false
@@ -105,7 +118,7 @@ test fn witness_srv2_slice_cap_converges_after_the_16_gib_ruling() -> Bool {
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget_for(host: operator_host_srv2),
+    expected: gunbc_runner_slice_cap_for_width(slots: expected_width_for(host: operator_host_srv2)),
   ) {
     Present { value: VerdictConverged } => true
     _ => false
@@ -153,7 +166,7 @@ test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv1)
+        desired: expected_width_for(host: operator_host_srv1)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }
@@ -164,7 +177,7 @@ test fn witness_srv2_width_drifts_from_declared_count() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv2)
+        desired: expected_width_for(host: operator_host_srv2)
       ) == gunbc.host_converge.Drifted
     Absent => false
   }

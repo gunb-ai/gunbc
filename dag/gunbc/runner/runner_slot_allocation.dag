@@ -55,7 +55,7 @@ data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal 
 
 data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERSEDING THE 14GiB/13GiB ROW (operator ruling 2026-08-17). The 2026-08-05 derivation below is not repudiated — it is re-run on a changed input. Its subject is floor-job cgroup peaks, and the floor's peak moved: the claim-scope cut measures 15.6GB (14.53GiB) after taking whole-run peak from 45.4GB to 15.6GB. 14.53GiB does not fit a 14GiB MemoryMax and sits 1.53GiB above a 13GiB MemoryHigh, so the prior row can no longer hold its own consumer.\n\nTHE PIN IS OBSERVED, NOT PREDICTED (srv1, read 2026-08-17, gunbc_srv1_converged_slot_throttle_observation). All five srv1 slots carry the declared 14GiB/13GiB. Two of them — srv1-04 and srv1-05 — report memory.peak of EXACTLY 13.00GiB against 829 and 44803 memory.high events, with memory.max events and oom_kill both zero. A peak equal to the throttle line is the censored lower bound this very note taught for the four 15.0GiB pins in the 2026-08-05 sample; it is the workload being held, not the workload being measured. Survival without OOM is reclaim plus swap, and the host carried 10GiB of swap in use at the same reading.\n\nWHAT IT COSTS, STATED BECAUSE IT IS NOT FREE: two runner slots fleet-wide. At 16GiB the managed hosts admit 6 rather than 7 (7 x 16 = 112GiB against 111.4GiB available) while srv1/srv2 hold 5 (5 x 16 = 80GiB against 81.0GiB, a 1.0GiB margin — the tightest number in this module and the first thing to recheck if the sessions reservation or the legacy overhead is ever corrected upward). Fleet total 24 -> 22. The trade is bought deliberately: a 15GiB/14GiB row would have preserved all 24 slots and cleared MemoryMax, but its throttle line would sit 0.53GiB BELOW the measured peak, making the throttle confound permanent and structural in the instrument now measuring the fold.\n\nTHAT THE NEW TARGET EQUALS srv2-03'S DRIFTED READBACK IS A COINCIDENCE AND MUST NOT BE READ AS A PRECEDENT. gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation still stands unamended: this row moved because a floor-peak measurement moved, which is the same subject the 2026-08-05 ruling used, and it would have moved to 16GiB had every host in the fleet been sitting at 8. srv1 was CONVERGED to 14/13 when this was written, so the fleet was not at 16/15 to be reconciled toward.\n\nDISSOLVE-ON: the 14.53GiB peak is not established as steady. If the fold's remaining 5.6GB comes down, re-derive from the new floor-peak distribution and reclaim the two slots; this row is sized to a measurement under active reduction, not to a settled envelope.\n\nSUPERSEDED DERIVATION, RETAINED AS THE PRIOR INPUT (operator ruling 2026-08-05). 186 floor-job cgroup peaks from 2026-08-05 plus five sampled days back to 2026-07-16, read from the [calibration] floor_peak_post receipts the ci job emits: successful runs peak at p50 10.32GiB and max 10.96GiB, and NOT ONE run in the sample reached the 16GiB MemoryMax. Four of 186 reached 15.0GiB, which is the 15GiB MemoryHigh exactly — those are throttle pins, censored lower bounds rather than demand, and they are why the cap does not fall further.\n\nTHE FLOOR UNDER IT IS ALREADY MEASURED AND IT IS 12GiB: gunbc_floor_minimum_viable_armed_budget in this module, enforced by claim_executor as an arm-time refusal. MemoryHigh is what the run-time governor arms against, so MemoryHigh is the axis that number constrains — 13GiB leaves exactly 1GiB of margin over it, and clears the worst p90 in the three-week sample (12.94GiB on 2026-07-30). Going to 13/12 to buy an eighth slot on the managed hosts would put the throttle line ON the measured refusal floor with zero margin, and the 2026-07-30 distribution says that day would have spent most of its runs in swap.\n\nWHAT MOVING 16 TO 14 IS NOT: it is not oversubscription and does not touch the guaranteed-mode property. Every slot still owns its ceiling outright. The ceilings are simply sized closer to what the workload was measured to want, which is what freed the width."
 
-data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RETAINED AS METHOD. Everything below is the derivation as it stood when memory bound every host in the fleet, and its METHOD is unchanged and still correct: width is the largest count the conservation wall passes, charging each host its own overhead and sessions slice against OS-usable RAM. What changed is an INPUT and an AXIS. The input: the 2026-08-22 DIMM upgrade plus the /proc/meminfo reads that followed took srv1, srv3 and srv4 from about 125 GiB usable to about 502 GiB, so memory admission moved to 27/5/29/29. The axis: CPU is now charged too, at 128 cited cores and 6 cores per slot, admitting 21 everywhere. Committed width is 21/5/21/21.\n\nSO THE QUESTION THIS NOTE ANSWERS NO LONGER HAS THE ANSWER IT GIVES. Reading on for CURRENT widths will mislead; read on for how a width is derived, which is the part worth keeping. The one claim below that has fully inverted is the tightest-number warning: it says srv1/srv2 hold 5 slots with roughly a gibibyte to spare and that any upward correction to the sessions reservation drops them to 4. That is now true of srv2 ALONE. srv1 has roughly 170 GiB of slack at its committed width and is bound by cores, not bytes.\n\nPRIOR TEXT FOLLOWS UNEDITED. WHY srv3/srv4 GET 6 AND srv1/srv2 STAY AT 5, RE-DERIVED AT THE 16GiB SLOT (operator ruling 2026-08-17). The derivation below is unchanged in method and re-run on the new per-slot ceiling: with runner-available RAM of about 111.4GiB on the managed hosts and about 81.0GiB on the legacy pair, a 16GiB slot admits 6 on srv3/srv4 (7 x 16 = 112GiB exceeds 111.4GiB) and still 5 on srv1/srv2 (5 x 16 = 80GiB against 81.0GiB). Fleet total 24 -> 22.\n\nTHE LEGACY MARGIN IS 1.0GiB AND IT IS THE TIGHTEST NUMBER IN THIS MODULE. srv1/srv2 hold 5 slots with roughly one gibibyte to spare, so any upward correction to the 20GiB sessions reservation or to the legacy fixed-overhead allowance drops them to 4. That is the first thing to re-check if either input moves, and it is why the sessions reservation's own dissolve-on (a measured concurrent-peak series) now has a width consequence attached to it rather than only a budget one.\n\nWIDTH IS NOW AHEAD OF THE FLEET, WHICH IS THE OPPOSITE OF THE MEMORY AXIS AND MUST NOT BE READ AS A DESCRIPTION. Observed 2026-08-17 across all four hosts: srv1, srv2, srv3 and srv4 each run FIVE loaded actions-runner instances. So 6 on srv3/srv4 is a PROVISIONING TARGET — two slots that do not exist yet — while 5 on srv1/srv2 matches live. A reader checking this row against systemctl will find srv3/srv4 short by one and that is the model leading, not drifting behind.\n\nSUPERSEDED DERIVATION AT THE 14GiB SLOT, RETAINED AS METHOD (operator ruling 2026-08-05): the width difference is DERIVED from two per-host facts, not granted by preference. First, sessions: gunbc.session_residency host_session_residency places interactive session containers on srv1 and srv2 and on neither managed host, so srv1/srv2 owe a sessions reservation out of the same host RAM and srv3/srv4 do not. Second, fixed overhead: gunbc.ci_floor_measurement carries a measured upper bound for the managed hosts and an operator allowance for the legacy pair, which differ by 10.4GiB per host.\n\nRun the conservation arithmetic with both charged and the MEMORY admissions fall out — srv3/srv4 admit 7 slots at 14GiB and refuse 8 (an eighth would need 112GiB against ~111.6GiB available, over by less than a gibibyte), srv1/srv2 admit 5 and refuse 6. Neither number is authored here as a target; both are the largest width gunbc.ci_runner_placement's wall will pass, and if either per-host fact is corrected the admissible width moves with it.\n\nMEMORY ADMISSION IS NOT THE FULL STORY FOR DISK ON srv4. This note explains the memory axis; gunbc_runner_slots_per_host derives committed width as the minimum over allocation-time axes. srv4's disk row-pin is retired: host_disk_admitted_width returns DiskWidthUnconstrained and srv4 commits 6 like srv3 at allocation (7 before the 2026-08-17 16GiB ruling); insufficient or unobservable disk at apply is refused by gunbc.runner_lifecycle runner_width_disk_preflight rather than lowering allocation to 5.\n\nTHE SESSIONS FACT IS RESIDENCY, AND SAYING SO HERE IS LOAD-BEARING. An earlier revision of this note derived the same widths from gunbc.build_cache_instance instead — whether a host carried an InteractiveSessionCompiles cache instance — which merely CORRELATED with sessions living there. That proxy is the defect this change removes, and gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note records how close it came: the session cache on srv1 and srv2 was found provably dead on 2026-08-06 and deleted, so dropping its now-meaningless roster rows would have stopped charging both hosts their reservation and admitted 7 slots each on a wall returning true. A note still reasoning from the roster would invite exactly that edit, which is why it is corrected rather than left as harmless prose.\n\nTHE FLEET-UNIFORM ROW IS WHY THIS COULD NOT BE EXPRESSED BEFORE. gunbc_committed_host_runner_slot_allocation took a host and then read three globals, so 'this host is different' had nowhere to live and the only way to raise srv3/srv4 was to raise all four — which on srv1/srv2 would have overcommitted by 17GiB against a wall that could not see the sessions it was overcommitting against."
+data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RETAINED AS METHOD. Everything below is the derivation as it stood when memory bound every host in the fleet, and its METHOD is unchanged and still correct: width is the largest count the conservation wall passes, charging each host its own overhead and sessions slice against OS-usable RAM. What changed is an INPUT and an AXIS. The input: the 2026-08-22 DIMM upgrade plus the /proc/meminfo reads that followed took srv1, srv3 and srv4 from about 125 GiB usable to about 502 GiB, so memory admission moved to 27/5/29/29. The axis: CPU is now charged too, at 128 cited cores and 6 cores per slot, admitting 21 everywhere. Committed width is 21/5/21/21.\n\nSO THE QUESTION THIS NOTE ANSWERS NO LONGER HAS THE ANSWER IT GIVES. Reading on for CURRENT widths will mislead; read on for how a width is derived, which is the part worth keeping. The one claim below that has fully inverted is the tightest-number warning: it says srv1/srv2 hold 5 slots with roughly a gibibyte to spare and that any upward correction to the sessions reservation drops them to 4. That is now true of srv2 ALONE. srv1 has roughly 170 GiB of slack at its committed width and is bound by cores, not bytes.\n\nPRIOR TEXT FOLLOWS UNEDITED. WHY srv3/srv4 GET 6 AND srv1/srv2 STAY AT 5, RE-DERIVED AT THE 16GiB SLOT (operator ruling 2026-08-17). The derivation below is unchanged in method and re-run on the new per-slot ceiling: with runner-available RAM of about 111.4GiB on the managed hosts and about 81.0GiB on the legacy pair, a 16GiB slot admits 6 on srv3/srv4 (7 x 16 = 112GiB exceeds 111.4GiB) and still 5 on srv1/srv2 (5 x 16 = 80GiB against 81.0GiB). Fleet total 24 -> 22.\n\nTHE LEGACY MARGIN IS 1.0GiB AND IT IS THE TIGHTEST NUMBER IN THIS MODULE. srv1/srv2 hold 5 slots with roughly one gibibyte to spare, so any upward correction to the 20GiB sessions reservation or to the legacy fixed-overhead allowance drops them to 4. That is the first thing to re-check if either input moves, and it is why the sessions reservation's own dissolve-on (a measured concurrent-peak series) now has a width consequence attached to it rather than only a budget one.\n\nWIDTH IS NOW AHEAD OF THE FLEET, WHICH IS THE OPPOSITE OF THE MEMORY AXIS AND MUST NOT BE READ AS A DESCRIPTION. Observed 2026-08-17 across all four hosts: srv1, srv2, srv3 and srv4 each run FIVE loaded actions-runner instances. So 6 on srv3/srv4 is a PROVISIONING TARGET — two slots that do not exist yet — while 5 on srv1/srv2 matches live. A reader checking this row against systemctl will find srv3/srv4 short by one and that is the model leading, not drifting behind.\n\nSUPERSEDED DERIVATION AT THE 14GiB SLOT, RETAINED AS METHOD (operator ruling 2026-08-05): the width difference is DERIVED from two per-host facts, not granted by preference. First, sessions: gunbc.session_residency host_session_residency places interactive session containers on srv1 and srv2 and on neither managed host, so srv1/srv2 owe a sessions reservation out of the same host RAM and srv3/srv4 do not. Second, fixed overhead: gunbc.ci_floor_measurement carries a measured upper bound for the managed hosts and an operator allowance for the legacy pair, which differ by 10.4GiB per host.\n\nRun the conservation arithmetic with both charged and the MEMORY admissions fall out — srv3/srv4 admit 7 slots at 14GiB and refuse 8 (an eighth would need 112GiB against ~111.6GiB available, over by less than a gibibyte), srv1/srv2 admit 5 and refuse 6. Neither number is authored here as a target; both are the largest width gunbc.ci_runner_placement's wall will pass, and if either per-host fact is corrected the admissible width moves with it.\n\nMEMORY ADMISSION IS NOT THE FULL STORY FOR DISK ON srv4. This note explains the memory axis; gunbc_runner_committed_width derives committed width as the minimum over allocation-time axes. srv4's disk row-pin is retired: host_disk_admitted_width returns DiskWidthUnconstrained and srv4 commits 6 like srv3 at allocation (7 before the 2026-08-17 16GiB ruling); insufficient or unobservable disk at apply is refused by gunbc.runner_lifecycle runner_width_disk_preflight rather than lowering allocation to 5.\n\nTHE SESSIONS FACT IS RESIDENCY, AND SAYING SO HERE IS LOAD-BEARING. An earlier revision of this note derived the same widths from gunbc.build_cache_instance instead — whether a host carried an InteractiveSessionCompiles cache instance — which merely CORRELATED with sessions living there. That proxy is the defect this change removes, and gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note records how close it came: the session cache on srv1 and srv2 was found provably dead on 2026-08-06 and deleted, so dropping its now-meaningless roster rows would have stopped charging both hosts their reservation and admitted 7 slots each on a wall returning true. A note still reasoning from the roster would invite exactly that edit, which is why it is corrected rather than left as harmless prose.\n\nTHE FLEET-UNIFORM ROW IS WHY THIS COULD NOT BE EXPRESSED BEFORE. gunbc_committed_host_runner_slot_allocation took a host and then read three globals, so 'this host is different' had nowhere to live and the only way to raise srv3/srv4 was to raise all four — which on srv1/srv2 would have overcommitted by 17GiB against a wall that could not see the sessions it was overcommitting against."
 
 // 🟡 REGISTERED FOLLOW-UP — task-budget envelope model (operator ruling on PR 8045, 2026-08-09).
 // tasks_max=16384 below is APPROVED as an EMERGENCY PARITY ROLLBACK ONLY: it is not accepted as
@@ -134,9 +134,10 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 // value is a DESCRIPTION of what the host currently runs, and a description does not stop being
 // reported when the declaration moves underneath it. `runner_slot_allocation_wall_holds` and
 // `runner_slot_allocation_oversubscription_boundary_exact` both pass, correctly, because neither
-// can reach a host whose envelope is unestablished. The note beside `host_held_runner_width`
-// already records that a held arm must not outrank a zero-memory refusal; this is the same class
-// one step out, and the arm outranks this one too.
+// can reach a host whose envelope is unestablished. The deleted held arm's note recorded that a
+// held width must not outrank a zero-memory refusal; this is the same class one step out. Both
+// arms are now gone: `gunbc_runner_committed_width` checks the slot shape before the per-host
+// derivation and answers RunnerWidthUnresolved for an unestablished envelope.
 //
 // CONSEQUENCE FOR THE HEADLINE NUMBER: 41 is NOT a safe uniform target. It counts srv2 at five
 // slots it cannot hold at this size. srv2 needs its own derivation -- or exclusion from the raise,
@@ -224,14 +225,14 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // enrolled host, so an unclassified host produces a located PlanUnsound rather than a silent five.
 
 // A HOST'S WIDTH AT ALLOCATION IS THE MINIMUM OVER ALLOCATION-TIME CONSTRAINTS. Until this row
-// existed gunbc_runner_slots_per_host returned the MEMORY verdict under a name that read as the
+// existed the committed width returned the MEMORY verdict under a name that read as the
 // full commitment — the defect that made srv4's roster and prose disagree when a disk row-pin
 // silently lowered allocation to 5 while runner_host_deploy named seven slots.
 //
 // Collapsing 'one constraint admits this width' into 'this host should run this width' is the same
 // conflation gunbc.ci_floor_measurement refuses for overhead: an axis nobody resolved is not an
 // axis that permits everything. Memory admission and disk admission remain separate answers at
-// allocation; gunbc_runner_slots_per_host takes their minimum when disk admits a numeric cap,
+// allocation; gunbc_derived_runner_slots_per_host takes their minimum when disk admits a numeric cap,
 // otherwise memory alone.
 //
 // srv4's historical five-slot disk row-pin is retired (operator 2026-08-06):
@@ -260,7 +261,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 //   srv4  6 -> 29   (bound -> 502.25 GiB measured 2026-08-22)
 //
 // TWENTY-NINE IS NOT A COMMITMENT AND MUST NOT BE READ AS ONE. This function answers what MEMORY
-// admits and nothing else; the committed width is gunbc_runner_slots_per_host, which takes the
+// admits and nothing else; the committed width is gunbc_runner_committed_width, which takes the
 // minimum over memory, CPU and disk. When these literals landed it was 21 for srv1/srv3/srv4,
 // because 128 cores at 6 per slot was the binding axis; as of 2026-09-19 cores_per_slot is the
 // policy of 1, the CPU axis admits 128, and the memory admission IS the commitment on every derived
@@ -287,7 +288,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // derived_width_reproduces_every_authored_literal is the probe that caught it by recomputing the
 // derivation this literal claims to be.
 //
-// NO COMMITTED WIDTH MOVES. gunbc_runner_slots_per_host takes the minimum over the memory, CPU and
+// NO COMMITTED WIDTH MOVES. gunbc_derived_runner_slots_per_host takes the minimum over the memory, CPU and
 // disk axes, and srv1's CPU axis binds at 21; min(27,21) and min(25,21) are both 21. The correction
 // restores agreement between the literal and the arithmetic without changing what any host commits.
 // THE ENVELOPE IS THE INVARIANT; THE WIDTH IS THE QUOTIENT. This module used to author the
@@ -336,8 +337,8 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 }
 
 // EVERY HOST DIVIDES, INCLUDING THE ONE THAT CANNOT. srv2 carried a second special arm here --
-// returning its held 5 -- alongside the one in `host_held_runner_width`, so removing that one alone
-// left the bypass standing on the other foot. Both are gone: a host whose session charge is
+// returning its held 5 -- alongside a second held arm reached by its own path, so removing that one
+// alone left the bypass standing on the other foot. Both are gone: a host whose session charge is
 // unestablished has an envelope of zero, and zero divided by the slot size is a width of zero.
 //
 // THAT IS THE REFUSAL, NOT A CONFIDENT CLAIM OF EMPTINESS, and the distinction lives where it can
@@ -367,7 +368,7 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
   }
 }
 
-// CPU IS AN ADMISSION AXIS AND UNTIL THIS ROW IT WAS NOT ONE AT ALL. gunbc_runner_slots_per_host
+// CPU IS AN ADMISSION AXIS AND UNTIL THIS ROW IT WAS NOT ONE AT ALL. The width derivation
 // took a minimum over memory and disk and never asked how many cores the host had, so
 // cores_per_slot existed only as a field reported in HostRunnerSlotAllocation -- a number carried
 // to consumers and constraining nothing. That field is now DELETED: with CPU a real admission axis
@@ -401,11 +402,11 @@ fn host_cpu_admitted_width(host: HostIdentity) -> Int {
   altra_max_m12830_catalog.cores / hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
 }
 
-data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: gunbc_runner_slots_per_host once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
+data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: the committed width once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
 
 // WHICH AXIS ACTUALLY BOUND THE WIDTH, WHICH THE MINIMUM DISCARDS.
 //
-// gunbc_runner_slots_per_host takes a minimum over three axes and returns a number. That number
+// gunbc_derived_runner_slots_per_host takes a minimum over three axes and returns a number. That number
 // cannot say what would unblock more capacity, and the answer differs per host: where memory binds
 // the remedy is DIMMs, where cores bind it is a different machine, and the two are unrelated
 // purchases. A reader given only the total assumes one binding axis across the fleet and plans
@@ -443,25 +444,38 @@ fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
 // The repair mints nothing. WidthAxisStanding already carries AxisUnmeasured for exactly this, and
 // the disk arm already routes through it -- its own comment says rendering an unmeasured axis as a
 // width "would turn an absence of observation into a positive clearance". Memory now does the same.
-fn host_memory_width_is_established(host: HostIdentity) -> Bool {
+// THE DENOMINATOR IS THE FACT, AND A BOOL WAS THE WRONG SHAPE FOR IT. This answered
+// `host_memory_width_is_established` -- a Bool -- so every consumer that needed to SAY WHY the
+// memory axis could not be derived had to re-read the reservation policy for itself or invent a
+// sentence. One fact, two readings, and the invented sentence is what reached the operator: the
+// deploy seam wrote "resolved to zero" over a host whose reservation policy had a specific cause
+// on file. The standing carries the cause, so a refusal downstream quotes the authority that
+// refused rather than describing the number it saw.
+type MemoryDenominatorStanding
+  = MemoryDenominatorEstablished
+  | MemoryDenominatorUnestablished { cause: NonEmptyStr }
+
+fn host_memory_denominator(host: HostIdentity) -> MemoryDenominatorStanding {
   match session_reservation_bytes(host: host) {
-    ReservationBytes { bytes: _ } => true
-    ReservationBytesNotApplicable => true
-    ReservationBytesUnestablished { cause: _ } => false
+    ReservationBytes { bytes: _ } => MemoryDenominatorEstablished
+    ReservationBytesNotApplicable => MemoryDenominatorEstablished
+    ReservationBytesUnestablished { cause: c } =>
+      MemoryDenominatorUnestablished { cause: c as NonEmptyStr }
   }
 }
 
 fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
-  let memory = if host_memory_width_is_established(host: host) {
-    AxisAdmits {
-      axis: "memory" as NonEmptyStr,
-      slots: host_memory_admitted_width(host: host),
-    }
-  } else {
-    AxisUnmeasured {
-      axis: "memory" as NonEmptyStr,
-      reason: "session reservation unestablished on this host, so the memory subtraction has no denominator and states no width" as NonEmptyStr,
-    }
+  let memory = match host_memory_denominator(host: host) {
+    MemoryDenominatorEstablished =>
+      AxisAdmits {
+        axis: "memory" as NonEmptyStr,
+        slots: host_memory_admitted_width(host: host),
+      }
+    MemoryDenominatorUnestablished { cause: c } =>
+      AxisUnmeasured {
+        axis: "memory" as NonEmptyStr,
+        reason: join(["session reservation unestablished on this host, so the memory subtraction has no denominator and states no width: ", c as String], "") as NonEmptyStr,
+      }
   }
   let cpu = AxisAdmits { axis: "cores" as NonEmptyStr, slots: host_cpu_admitted_width(host: host) }
   let disk = match host_disk_admitted_width(host: host) {
@@ -486,9 +500,15 @@ fn width_axis_binds_at(standing: WidthAxisStanding, committed: Int) -> Bool {
 // two axes at the same number means relieving either one alone buys nothing. An unmeasured axis is
 // never binding -- it cannot be, since it states no width -- which is why the predicate above
 // answers false for it rather than treating absence as a bound.
+// NOTHING BINDS A WIDTH THAT DOES NOT RESOLVE. An unresolved width has no number for an axis to
+// sit at, so the binding set is empty -- and the label below says WHICH of the two empty cases it
+// is rather than rendering one sentence over both.
 fn host_binding_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
-  let committed = gunbc_runner_slots_per_host(host: host)
-  filter(host_width_axes(host: host), a => width_axis_binds_at(standing: a, committed: committed))
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => []
+    RunnerWidthDerived { slots: committed } =>
+      filter(host_width_axes(host: host), a => width_axis_binds_at(standing: a, committed: committed))
+  }
 }
 
 // A HELD WIDTH IS BOUND BY NOTHING, AND THE LABEL MUST NOT SAY "bound by" WITH AN EMPTY TAIL.
@@ -515,9 +535,9 @@ fn width_binding_head(host: HostIdentity) -> String {
         }), "+"),
     ], "")
   } else {
-    match host_held_runner_width(host: host) {
-      Present { value: _ } => "width held, no axis binds"
-      Absent => "no axis binds"
+    match gunbc_runner_committed_width(host: host) {
+      RunnerWidthUnresolved { cause: _ } => "width unresolved, no axis binds"
+      RunnerWidthDerived { slots: _ } => "no axis binds"
     }
   }
 }
@@ -540,47 +560,6 @@ fn host_width_binding_label(host: HostIdentity) -> String {
       ""
     },
   ], "")
-}
-
-// THE HELD WIDTH IS A SEPARATE FACT FROM A DERIVED ONE AND IS REACHED BY ITS OWN PATH. srv2 runs
-// five slots today; that is what it currently holds while its session denominator is re-grounded,
-// not what the conservation wall was shown to pass. With the memory axis now honestly unmeasured
-// there is no memory term to take a minimum over, so deriving srv2's width from
-// host_memory_admitted_width would be reading the held number back out as though it were an
-// admission -- the exact substitution this change exists to stop. The hold is named, and it is the
-// only path by which a host with an unestablished denominator gets a width at all.
-// srv2's HELD ARM IS DELETED (2026-09-12), AND WITH IT THE ONLY BYPASS AROUND THIS MODULE'S OWN
-// CONSERVATION MODEL.
-//
-// WHAT THE HOLD WAS FOR: srv2's session denominator was unestablished, so there was no envelope to
-// divide and no derived width to report. The hold answered with what the host was OBSERVED running
-// -- five -- so that a reader would not mistake an underived host for an empty one.
-//
-// WHY IT IS GONE: a description of what a host runs outranked every wall that decides what it may
-// run. `host_memory_admitted_width` never constrained srv2, so the conservation checks passed by
-// being unable to reach it, and the hold kept reporting five while the arithmetic behind it went
-// stale underneath. Measured 2026-09-12: five slots at the CURRENT 16 GiB row demand 80 GiB and
-// sessions.slice declares 64 GiB, against 125.09 GiB of measured usable RAM -- so the declared
-// ceilings on that host cannot all be honoured at once, and nothing in this module could say so
-// while the hold stood. That is not a hazard the 26 GiB row introduced; it is one the 26 GiB row
-// made visible.
-//
-// WHAT REPLACES IT IS A REFUSAL, NOT A SMALLER NUMBER. srv2's session reservation is
-// `ReservationUnestablished` on evidence rather than on absence (`gunbc.session_reservation_policy`
-// `srv2_session_aggregate_denominator`: the managed slice is clipping its own population at
-// memory.events high=69260300 max=1874245 oom_kill=52, AND three session-image scopes run outside
-// the slice its cap constrains). An unestablished charge yields no envelope, an envelope of zero
-// yields a width of zero, and a zero width is refused by `admit_or_refuse_zero_width` in
-// `gunbc.ci_runner_placement` rather than provisioned. srv2 therefore becomes STRUCTURALLY UNABLE
-// to receive a cap change, which is the property wanted -- as opposed to merely being left
-// unconverged, which is a decision nothing enforces.
-//
-// THE FUNCTION GOES WITH THE ARM rather than remaining as an empty mechanism. Nothing else authors
-// a hold, so a surviving `host_held_runner_width` would have no producer and could only ever answer
-// `none`: a decoration that reads as a capability. If a held width is ever wanted again it returns
-// with the authority that justifies one.
-fn host_held_runner_width(host: HostIdentity) -> Int? {
-  none
 }
 
 // A ZERO-MEMORY SLOT SHAPE ADMITS NO RUNNERS, AND THE HELD ARM MUST NOT OUTRANK THAT.
@@ -614,33 +593,73 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
   }
 }
 
-// UNKNOWN AND ZERO ARE DIFFERENT ANSWERS, AND THIS FUNCTION STILL CONFLATES THEM ON THE MEMORY
-// SIDE. Until 2026-09-19 there were two unresolvable inputs: the CPU axis read a vendor survey that
-// could fail, and this function mapped that failure to 0. THAT PATH IS DELETED with the survey
-// (gunbc_runner_cores_per_slot_policy), so the CPU axis is total. The memory side is unchanged: a
-// host whose session charge is unestablished (srv2) yields a zero envelope, a zero memory
-// admission and a zero minimum, and this Int carries that unestablished condition as a scalar 0
-// that a consumer cannot tell from a grounded zero. gunbc.ci_runner_placement contains the harm at
-// the deploy seam -- admit_or_refuse_zero_width turns it into a named refusal -- but the two
-// consumers that read the Int directly (gunbc.runner_host_deploy's deploy rows,
-// gunbc.host_axis_caps's roster bound) still read an unestablished host as a real zero.
+// UNKNOWN AND ZERO ARE DIFFERENT ANSWERS, AND THE CANONICAL WIDTH ANSWER NOW SAYS WHICH ONE IT IS.
 //
-// DECLARED GAP, NOT AN ACCIDENT, and the trigger is the CAPABILITY rather than an artifact: the
-// conflation dissolves when the canonical width answer is a RunnerWidthResolution -- derived, or
-// unresolved-with-cause -- and every production call site carries or refuses that cause instead of
-// reading an Int. That is a fail-closed cascade including `data` rows whose declared shape has no
-// arm to match on, so it is the whole subject of its own change rather than a rider on this one;
-// landing half of it would mint one silent default per un-migrated site. The population is named
-// by its producer rather than transcribed: every non-comment, non-import occurrence of
-// gunbc_runner_slots_per_host( under dag/gunbc and src/v2, less this declaration (DESIGN 6: name
-// the instrument, never transcribe its output).
-fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
+// WHAT THIS REPLACES. `gunbc_runner_slots_per_host` returned an Int. A host whose session charge is
+// unestablished (srv2) yielded a zero envelope, a zero memory admission and a zero minimum, and that
+// Int carried the unestablished condition as a scalar 0 a consumer could not tell from a grounded
+// zero. The function's own note declared that gap and named this type as its trigger: the canonical
+// width answer becomes a RunnerWidthResolution -- derived, or unresolved-with-cause -- and every
+// production call site carries or refuses that cause instead of reading an Int. That is what this
+// change is; the Int declaration is DELETED rather than left beside this one, because two answers to
+// one question is the fork DESIGN 3 exists to prevent and a surviving Int is the attractor DESIGN 3's
+// replacement-migration rule names -- every nearby question would keep being answered in its
+// vocabulary while it stood.
+//
+// THE UNRESOLVED ARMS ARE THE TWO INPUTS THAT GENUINELY HAVE NO ANSWER, and neither is a host
+// admitting no runners. A slot shape with a zero MemoryMax gives the division no denominator at all
+// -- it is a malformed question, not a host of width zero -- and it is checked before the per-host
+// derivation for the reason the deleted RunnerSlotShapeStanding note gave: a per-host answer must not
+// outrank a slot shape that admits nothing. An unestablished session reservation is the srv2 case,
+// and the cause it carries is the reservation policy's own sentence rather than one invented here.
+//
+// A HOST NOT IN THE FLEET RESOLVES UNRESOLVED, AND THAT IS A CHANGE. It reaches
+// `session_reservation_bytes` with no sizing row, which answers ReservationBytesUnestablished, so an
+// unknown host now yields a cause instead of the scalar 0 the Int answered. That zero was the same
+// conflation wearing a second face: "this host is not modeled" is not "this host admits no runners".
+type RunnerWidthUnresolvedCause
+  = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
+  | WidthSlotShapeInadmissible { reason: NonEmptyStr }
+
+type RunnerWidthResolution
+  = RunnerWidthDerived { slots: Int }
+  | RunnerWidthUnresolved { cause: RunnerWidthUnresolvedCause }
+
+// ONE RENDERING OF THE CAUSE, SO A DOWNSTREAM REFUSAL QUOTES IT RATHER THAN DESCRIBING IT. Each
+// consumer that must produce a String reason reaches this, which is why no consumer needs to know
+// how many arms the cause has or what any of them mean.
+fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> String {
+  match cause {
+    WidthMemoryDenominatorUnestablished { host: h, cause: c } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: its session reservation is unestablished, so the memory envelope has no subtraction to perform and no width is derivable for it. Cause on file at gunbc.session_reservation_policy: ",
+        c as String,
+      ], "")
+    WidthSlotShapeInadmissible { reason: r } =>
+      join([
+        "no committed runner width is derivable on any host because the fleet slot shape is inadmissible: ",
+        r as String,
+      ], "")
+  }
+}
+
+fn gunbc_runner_committed_width(host: HostIdentity) -> RunnerWidthResolution {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
-    RunnerSlotShapeRefusedZeroMemoryMax => 0
+    RunnerSlotShapeRefusedZeroMemoryMax =>
+      RunnerWidthUnresolved {
+        cause: WidthSlotShapeInadmissible {
+          reason: "the declared slot MemoryMax is zero bytes, so the per-host envelope has no divisor and the width question is malformed rather than answered with a count" as NonEmptyStr,
+        },
+      }
     RunnerSlotShapeAdmitted =>
-      match host_held_runner_width(host: host) {
-        Present { value: held } => held
-        Absent => gunbc_derived_runner_slots_per_host(host: host)
+      match host_memory_denominator(host: host) {
+        MemoryDenominatorUnestablished { cause: c } =>
+          RunnerWidthUnresolved {
+            cause: WidthMemoryDenominatorUnestablished { host: host, cause: c },
+          }
+        MemoryDenominatorEstablished =>
+          RunnerWidthDerived { slots: gunbc_derived_runner_slots_per_host(host: host) }
       }
   }
 }
@@ -683,9 +702,20 @@ fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
   gunbc_runner_cores_per_slot_policy
 }
 
-fn gunbc_runner_slice_cap_declared(host: HostIdentity) -> ByteSize {
+// THE CAP IS A FUNCTION OF THE WIDTH, SO IT TAKES THE WIDTH. This took a HOST and re-derived the
+// width inside itself, which made it a second place a host's width was read and gave it no way to
+// report a host whose width does not resolve -- it would have had to answer some ByteSize anyway,
+// and the only available one is a zero cap, which reads as "this host may spend no memory on
+// runners" rather than "no cap is derivable for it". A caller that has already resolved the width
+// passes the number; a caller that has not cannot reach this at all, which is the census.
+//
+// gunbc.fleet_host_budget gunbc_runner_pool_budget_for IS DELETED WITH IT. That function was
+// `gunbc_runner_slice_cap_declared(host: host)` and nothing else -- a second name for one concept
+// (DESIGN 3), which mattered here because it is the name the conservation wall read, so the wall
+// and the deploy row reached the width by two routes that had to be kept agreeing by hand.
+fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
   gunbc_runner_slot_demand_sum_memory_max(
-    slots: gunbc_runner_slots_per_host(host: host),
+    slots: slots,
     per_slot: gunbc_runner_slot_desired().memory_max
   )
 }
@@ -699,26 +729,46 @@ fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: ByteSiz
     byte_size_count(b: slice_cap)
 }
 
-fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunnerSlotAllocation {
-  let per_slot = gunbc_runner_slot_desired()
-  let slots = gunbc_runner_slots_per_host(host: host)
-  HostRunnerSlotAllocation {
-    host: host,
-    slots_per_host: slots,
-    runner_slice_cap: gunbc_runner_slice_cap_declared(host: host),
-    per_slot: per_slot
+// THE ALLOCATION ROW EXISTS ONLY WHERE A WIDTH RESOLVES, AND srv2'S ROW IS NOW THE REFUSAL. This
+// returned a HostRunnerSlotAllocation for every host, so `gunbc_runner_slot_allocation_srv2` was a
+// row asserting BOTH "this host has a committed allocation" and "it is zero slots wide, with a zero
+// slice cap" -- the sentinel encoding gunbc.runner_host_deploy had already removed one layer out,
+// still standing at the authority that feeds it. A `data` row whose declared shape has no arm to
+// match on is exactly the case the declared gap named as why this could not be a rider on a smaller
+// change.
+//
+// THE REFUSED ARM KEEPS THE HOST rather than dropping it from the roster, for the reason
+// RunnerHostDeployAdmission gives: dropping srv2 would convert "refused" into "not modeled", which
+// is a different fact with a different remedy and the one that lets a fleet total look complete.
+type HostRunnerSlotAllocationStanding
+  = HostSlotAllocationAdmitted { allocation: HostRunnerSlotAllocation }
+  | HostSlotAllocationWidthUnresolved { host: HostIdentity, cause: RunnerWidthUnresolvedCause }
+
+fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunnerSlotAllocationStanding {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      HostSlotAllocationWidthUnresolved { host: host, cause: c }
+    RunnerWidthDerived { slots: slots } =>
+      HostSlotAllocationAdmitted {
+        allocation: HostRunnerSlotAllocation {
+          host: host,
+          slots_per_host: slots,
+          runner_slice_cap: gunbc_runner_slice_cap_for_width(slots: slots),
+          per_slot: gunbc_runner_slot_desired(),
+        },
+      }
   }
 }
 
-data gunbc_runner_slot_allocation_srv1: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+data gunbc_runner_slot_allocation_srv1: HostRunnerSlotAllocationStanding = gunbc_committed_host_runner_slot_allocation(
   host: operator_host_srv1
 )
 
-data gunbc_runner_slot_allocation_srv2: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+data gunbc_runner_slot_allocation_srv2: HostRunnerSlotAllocationStanding = gunbc_committed_host_runner_slot_allocation(
   host: operator_host_srv2
 )
 
-data gunbc_runner_slot_allocation_srv3: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+data gunbc_runner_slot_allocation_srv3: HostRunnerSlotAllocationStanding = gunbc_committed_host_runner_slot_allocation(
   host: operator_host_srv3
 )
 
@@ -728,9 +778,9 @@ data gunbc_runner_slot_allocation_srv3: HostRunnerSlotAllocation = gunbc_committ
 // falsified by the CPU axis landing; they are replaced rather than annotated, because two accounts
 // of one width is what this module exists to prevent. Neither number is authored here: memory
 // admission and the committed minimum are both derived, and runner_count on the deploy row derives
-// from gunbc_runner_slots_per_host, so there is one authoring and this note is a reading of it.
+// from gunbc_runner_committed_width, so there is one authoring and this note is a reading of it.
 //
-// DISK BINDING IS STILL NOT FOLDED INTO gunbc_runner_slots_per_host. The historical five-slot row
+// DISK BINDING IS STILL NOT FOLDED INTO the width derivation. The historical five-slot row
 // pin stays retired; host_disk_admitted_width returns DiskWidthUnconstrained and apply-time
 // preflight in gunbc.runner_lifecycle refuses insufficient or unobservable headroom rather than
 // absorbing to a lower width.
@@ -752,17 +802,33 @@ data gunbc_runner_slot_allocation_srv3: HostRunnerSlotAllocation = gunbc_committ
 // series on srv4, at which point either the preflight refusal is real and the committed width must
 // answer for it, or the charge was an artifact and the refusal disappears.
 
-data gunbc_runner_slot_allocation_srv4: HostRunnerSlotAllocation = gunbc_committed_host_runner_slot_allocation(
+data gunbc_runner_slot_allocation_srv4: HostRunnerSlotAllocationStanding = gunbc_committed_host_runner_slot_allocation(
   host: operator_host_srv4
 )
 
-fn gunbc_committed_runner_slot_allocations() -> List<HostRunnerSlotAllocation> {
+fn gunbc_committed_runner_slot_allocation_standings() -> List<HostRunnerSlotAllocationStanding> {
   [
     gunbc_runner_slot_allocation_srv1,
     gunbc_runner_slot_allocation_srv2,
     gunbc_runner_slot_allocation_srv3,
     gunbc_runner_slot_allocation_srv4,
   ]
+}
+
+// THE ADMITTED SUBSET IS NAMED AS A SUBSET. A consumer that sums, folds or renders rows can only do
+// so over rows that exist, and this is the one place the refused hosts are dropped -- under a name
+// that says they were. A fold over `gunbc_committed_runner_slot_allocation_standings` is the way to
+// ask about the whole fleet including its refusals.
+fn gunbc_admitted_runner_slot_allocations() -> List<HostRunnerSlotAllocation> {
+  fold(
+    gunbc_committed_runner_slot_allocation_standings(),
+    init: [],
+    f: (acc, standing) =>
+      match standing {
+        HostSlotAllocationAdmitted { allocation: a } => concat(acc, [a])
+        HostSlotAllocationWidthUnresolved { host: _, cause: _ } => acc
+      }
+  )
 }
 
 fn gunbc_runner_slot_enforcement_expected_cap() -> ByteSize {
@@ -1056,24 +1122,25 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // gunbc_runner_slot_oversubscription_within_slice survives as the general relation for callers
 // holding two independent numbers.
 
-// A ZERO WIDTH IS ACCOUNTED, NOT FILTERED, AND THAT CHOICE IS THE POINT (2026-09-12).
+// THE ZERO-OR-UNESTABLISHED DISJUNCT IS GONE, AND WHAT REPLACED IT IS CONSTRUCTION (2026-09-20).
 //
-// srv2 derives zero now that both of its bypass arms are deleted, and the obvious repair -- drop
-// zero-width hosts from `gunbc_committed_runner_slot_allocations()` before this fold -- is the
-// empty-observation narrow DESIGN names: the host would vanish from the roster and the wall would
-// pass by no longer being able to see it, which is the same failure the held arm produced with
-// better manners. Worse, it would make the `> 0` conjunct permanently green and therefore a
-// decoration.
+// The conjunct read `a.slots_per_host > 0 || !host_memory_width_is_established(host: a.host)`: a
+// row could carry a zero width provided the host's session charge was unestablished. That was the
+// only honest shape available while every host produced a row, and it is validation standing where
+// construction was available (DESIGN 5) -- the disjunct re-stated, as a predicate over a row, the
+// condition under which the row should never have existed.
 //
-// THE CONJUNCT NOW READS "POSITIVE, OR REFUSED FOR A STATED REASON". A zero width is admissible
-// here ONLY where the host's session charge is unestablished -- which is exactly the condition that
-// produced the zero, and which `gunbc.ci_runner_placement` `admit_or_refuse_zero_width` turns into
-// a named refusal rather than a deployment. The red stays authorable and is the case that matters:
-// a host with an ESTABLISHED charge that still derives zero is a defect in the derivation, and it
-// still fails here.
+// A host whose width does not resolve now produces no allocation row at all
+// (HostSlotAllocationWidthUnresolved), so the fold below runs over admitted rows only and the
+// conjunct is just `> 0`. The red it must keep is unchanged and stays authorable: a host with a
+// RESOLVED width that still derives zero is a defect in the derivation, and it fails here.
 //
-// THE FLEET RESULT IS THEREFORE INCOMPLETE AND SAYS SO, rather than being quietly reported as whole
-// over the hosts that happened to survive the filter.
+// THE FLEET RESULT IS STILL INCOMPLETE WHEN A HOST REFUSES, AND THE SUBSET IS NAMED RATHER THAN
+// FILTERED. `gunbc_admitted_runner_slot_allocations` says in its own name that it is the admitted
+// subset, and `gunbc_committed_runner_slot_allocation_standings` remains the way to ask about the
+// whole fleet including its refusals -- which is the difference between this and the repair the
+// previous note rejected, where the host vanished from the roster entirely and the wall passed by
+// no longer being able to see it.
 //
 // THE CORES-TIMES-MEMORY-PER-CORE CONJUNCT IS DELETED (2026-09-19), not rewritten: it asserted
 // cores_per_slot * memory_per_core >= memory_max, which was the derivation of cores_per_slot read
@@ -1095,9 +1162,9 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     && gunbc_floor_measured_peak_is_uncensored()
     && (byte_size_count(b: per_slot.memory_swap_max) > byte_size_count(b: per_slot.memory_max))
     && all(
-      gunbc_committed_runner_slot_allocations(),
+      gunbc_admitted_runner_slot_allocations(),
       a =>
-        (a.slots_per_host > 0 || !host_memory_width_is_established(host: a.host))
+        a.slots_per_host > 0
           && gunbc_runner_slot_oversubscription_within_slice(
                slots: a.slots_per_host,
                per_slot: a.per_slot.memory_max,
@@ -1256,9 +1323,16 @@ type RunnerSlotPurpose
 // ordinary duplicate declaration, found by grepping the tree rather than by reasoning about the
 // resolver. The wrong explanation is kept here because it is the plausible one and the next reader
 // will reach for it too.
+// MEMBERSHIP HAS THREE ANSWERS BECAUSE THE WIDTH HAS TWO STANDINGS. "Outside the committed
+// population" is a claim ABOUT a population, and it carries the width it was measured against --
+// so on a host whose width does not resolve there is no number to carry and no population to be
+// outside of. The third arm is that state, and it is the one the fleet planner needed: with only
+// two arms, every slot on srv2 was reported as lying outside a committed population of zero, which
+// is how a live runner came to read as a registration belonging to no fleet slot at all.
 type RunnerSlotMembership
   = CommittedSlotMember { identity: RunnerSlotIdentity, purpose: RunnerSlotPurpose }
   | SlotOutsideCommittedPopulation { identity: RunnerSlotIdentity, committed_width: Int }
+  | SlotMembershipWidthUnresolved { identity: RunnerSlotIdentity, cause: RunnerWidthUnresolvedCause }
 
 // THE CARVE IS AN EXACT IDENTITY, NOT AN INDEX ARITHMETIC RULE, AND THE FIRST VERSION OF THIS
 // MODULE GOT THAT WRONG IN THE EXACT WAY IT WAS WRITTEN TO PREVENT. It derived purpose by comparing
@@ -1311,22 +1385,44 @@ fn identity_in_list(identity: RunnerSlotIdentity, members: List<RunnerSlotIdenti
 // and the committed width is what decides that. An identity outside the range is refused with the
 // width it was measured against rather than being classified, so "is this a committed member" and
 // "what is its purpose" stay two questions with two answers.
-fn committed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
-  map(
-    nat_range_inclusive(lo: 1, hi: gunbc_runner_slots_per_host(host: host)),
-    i => RunnerSlotIdentity { host: host, slot_index: i }
-  )
+// AN EMPTY POPULATION AND AN UNDERIVABLE ONE ARE DIFFERENT ANSWERS, AND THE LIST COULD ONLY SAY
+// THE FIRST. This returned List<RunnerSlotIdentity>, so a host whose width does not resolve came
+// back as `[]` -- indistinguishable from a host correctly enumerated as holding no slots, and read
+// downstream as the positive claim "this host has no committed members". That claim is what made
+// gunbc.fleet_runner_connectivity decode every live srv2 registration as naming no committed fleet
+// slot, which made gunbc.runner_capacity_plan refuse EVERY host's plan once the roster it folds
+// became a live read. The empty list was true of the derivation and false about the fleet.
+type CommittedSlotPopulation
+  = CommittedPopulationDerived { members: List<RunnerSlotIdentity> }
+  | CommittedPopulationWidthUnresolved { host: HostIdentity, cause: RunnerWidthUnresolvedCause }
+
+fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      CommittedPopulationWidthUnresolved { host: host, cause: c }
+    RunnerWidthDerived { slots: slots } =>
+      CommittedPopulationDerived {
+        members: map(
+          nat_range_inclusive(lo: 1, hi: slots),
+          i => RunnerSlotIdentity { host: host, slot_index: i }
+        ),
+      }
+  }
 }
 
 fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMembership {
   let identity = RunnerSlotIdentity { host: host, slot_index: slot_index }
-  let committed = gunbc_runner_slots_per_host(host: host)
-  if slot_index > committed || slot_index < 1 {
-    SlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
-  } else if identity_is_fabric_execution_member(identity: identity) {
-    CommittedSlotMember { identity: identity, purpose: SlotServesFabricExecution }
-  } else {
-    CommittedSlotMember { identity: identity, purpose: SlotServesGitHubActions }
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      SlotMembershipWidthUnresolved { identity: identity, cause: c }
+    RunnerWidthDerived { slots: committed } =>
+      if slot_index > committed || slot_index < 1 {
+        SlotOutsideCommittedPopulation { identity: identity, committed_width: committed }
+      } else if identity_is_fabric_execution_member(identity: identity) {
+        CommittedSlotMember { identity: identity, purpose: SlotServesFabricExecution }
+      } else {
+        CommittedSlotMember { identity: identity, purpose: SlotServesGitHubActions }
+      }
   }
 }
 
@@ -1341,10 +1437,30 @@ fn count_fabric_members(identities: List<RunnerSlotIdentity>) -> Int {
 // THE COUNTS ARE PROJECTIONS OF THE POPULATION, NEVER THE AUTHORITY FOR IT. That direction is the
 // whole point: a width can say six slots exist, but it cannot say the sixth belongs to the fabric
 // while the first five are GitHub runners. Read the members, then count them.
-fn host_fabric_slot_count(host: HostIdentity) -> Int {
-  count_fabric_members(identities: committed_slot_identities(host: host))
+// THE COUNTS REUSE RunnerWidthResolution RATHER THAN MINTING A SECOND ONE. A count of slots is a
+// width -- derived from the same population under the same standing -- so a parallel
+// SlotCountResolution would be two carriers for one shape, and every consumer would have to learn
+// both (DESIGN 2). What they answer differs; what can be said about their derivability does not.
+fn count_github_members(identities: List<RunnerSlotIdentity>) -> Int {
+  fold(
+    identities,
+    init: 0,
+    f: (n, id) => n + (if identity_is_fabric_execution_member(identity: id) { 0 } else { 1 })
+  )
 }
 
-fn host_github_slot_count(host: HostIdentity) -> Int {
-  gunbc_runner_slots_per_host(host: host) - host_fabric_slot_count(host: host)
+fn host_fabric_slot_count(host: HostIdentity) -> RunnerWidthResolution {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: _, cause: c } => RunnerWidthUnresolved { cause: c }
+    CommittedPopulationDerived { members: m } =>
+      RunnerWidthDerived { slots: count_fabric_members(identities: m) }
+  }
+}
+
+fn host_github_slot_count(host: HostIdentity) -> RunnerWidthResolution {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: _, cause: c } => RunnerWidthUnresolved { cause: c }
+    CommittedPopulationDerived { members: m } =>
+      RunnerWidthDerived { slots: count_github_members(identities: m) }
+  }
 }

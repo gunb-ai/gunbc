@@ -22,7 +22,11 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+}
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
@@ -248,7 +252,7 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
 //
 // WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
-// target by `gunbc_runner_slots_per_host`, so a host whose width is REFUSED gets no units and
+// target by `gunbc_runner_committed_width`, so a host whose width is REFUSED gets no units and
 // therefore no caps. That answers WHETHER a host may be written to.
 //
 // WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
@@ -511,12 +515,18 @@ fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) ->
   }
 }
 
+// A HOST WHOSE WIDTH DOES NOT RESOLVE GETS NO UNITS, WHICH IS WHAT THIS ROSTER ALREADY MEANT TO SAY
+// AND COULD NOT. The note above records the intent -- "a host whose width is REFUSED gets no units"
+// -- and it was reached through a zero limit rather than through a refusal, so the same empty list
+// stood for "this host carries no cap-bearing units" and "this host could not be asked". Both
+// produce no units to converge, so nothing observable changes here; what changes is that the reason
+// is no longer inferred from a count.
 fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
-  runner_slot_service_units_range(
-    host: host,
-    slot: 1,
-    limit: gunbc_runner_slots_per_host(host: host),
-  )
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => []
+    RunnerWidthDerived { slots: slots } =>
+      runner_slot_service_units_range(host: host, slot: 1, limit: slots)
+  }
 }
 
 fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {

@@ -206,8 +206,17 @@ fn runner_slot_index_suffix(index: Nat) -> String {
   if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
 }
 
+// THE HOST PREFIX IS SPLIT OUT SO THE ONE CONSUMER THAT NEEDS IT DOES NOT RE-SPELL THE SEPARATOR.
+// gunbc.fleet_runner_connectivity attributes a registration to a host whose width does not resolve
+// -- there is no enumeration of that host's slots to match against, so the name is all there is --
+// and spelling "<host>-" there would be a second authority for this name's shape, readable in the
+// opposite direction from this one and free to disagree with it.
+fn runner_slot_instance_name_prefix(host: HostIdentity) -> String {
+  join([host as String, "-"], "")
+}
+
 fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
-  join([slot.host as String, "-", runner_slot_index_suffix(index: slot.slot_index)], "")
+  join([runner_slot_instance_name_prefix(host: slot.host), runner_slot_index_suffix(index: slot.slot_index)], "")
 }
 
 fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {

@@ -4,7 +4,10 @@ import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+}
 
 // THE OBLIGATION TO RETIRE IS A PROPERTY OF THE TRANSITION, NOT OF ANYONE'S PERMISSION TO ACT ON IT.
 //
@@ -28,7 +31,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 // SO THE PRIOR POPULATION IS DECLARED, AND THE OBLIGATION IS DERIVED FROM IT.
 //
 // The prior width is the population the host was ADMITTED to run before this change. It cannot be
-// recovered from the model once `gunbc_runner_slots_per_host` answers the new width -- that is the
+// recovered from the model once `gunbc_runner_committed_width` answers the new width -- that is the
 // whole reason it has to be declared rather than computed -- and it must not be re-derived from a
 // later census, because a census that has already lost a member would silently shrink the obligation
 // at exactly the moment the member is least visible. That durability across passes is the property
@@ -89,12 +92,23 @@ fn transition_row_for_host(host: HostIdentity) -> List<RunnerWidthTransition> {
 //
 // A PRIOR NO LARGER THAN THE TARGET IS NOT A TRANSITION. It yields an empty required set through the
 // range helper's own `slot > limit` arm rather than through a special case here.
+// A TRANSITION WHOSE TARGET DOES NOT RESOLVE HAS NO OBLIGATION TO STATE, AND THE EMPTY SET IS THE
+// SAFE DIRECTION HERE RATHER THAN THE DANGEROUS ONE -- but only because of which end is missing.
+// The required set is prior minus target, so an unresolved TARGET read as zero would demand
+// retiring the host's entire prior population; answering an empty obligation instead leaves the
+// transition open and retires nothing. The standing is still the honest carrier: this reports "no
+// required retirees" for a host that cannot say, which host_width_transition_standing renders as an
+// open transition with nothing required.
 fn transition_required_retirees(t: RunnerWidthTransition) -> List<NonEmptyStr> {
-  desired_unit_names_range(
-    host: t.host,
-    slot: gunbc_runner_slots_per_host(host: t.host) + 1,
-    limit: t.prior_width,
-  ) |> map(u => u as NonEmptyStr)
+  match gunbc_runner_committed_width(host: t.host) {
+    RunnerWidthUnresolved { cause: _ } => []
+    RunnerWidthDerived { slots: target } =>
+      desired_unit_names_range(
+        host: t.host,
+        slot: target + 1,
+        limit: t.prior_width,
+      ) |> map(u => u as NonEmptyStr)
+  }
 }
 
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {

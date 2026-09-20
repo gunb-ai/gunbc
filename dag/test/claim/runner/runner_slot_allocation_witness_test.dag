@@ -18,15 +18,21 @@ import gunbc.runner_slot_allocation {
   host_cpu_admitted_width,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible,
+  runner_width_unresolved_cause_text,
   host_memory_admitted_width,
-  host_memory_width_is_established,
-  host_held_runner_width,
+  MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished,
+  host_memory_denominator,
+  HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
+  gunbc_committed_runner_slot_allocation_standings,
+  gunbc_admitted_runner_slot_allocations,
+  SlotMembershipWidthUnresolved,
   host_disk_admitted_width,
   DiskAdmitsWidth,
   DiskWidthUnconstrained,
-  gunbc_runner_slice_cap_declared,
-  gunbc_committed_runner_slot_allocations,
+  gunbc_runner_slice_cap_for_width,
   gunbc_runner_slot_enforcement_expected_cap,
   gunbc_floor_minimum_viable_armed_budget_wall_holds,
   gunbc_floor_minimum_viable_armed_budget_bytes,
@@ -51,33 +57,48 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
   gunbc_runner_slot_allocation_wall_holds()
 }
 
+// THE ROW'S OWN FIELDS ARE THE SUBJECT, AND RE-DERIVING THEM WAS THE DEFECT. This read the width
+// and the slice cap back out of the authority by host, which asks whether the derivation agrees
+// with itself rather than whether the ROW that was built from it is internally sound. The row
+// carries both numbers; the claim is about the row.
 test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
-  let per_slot = gunbc_runner_slot_desired()
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a =>
       gunbc_runner_slot_oversubscription_within_slice(
-        slots: gunbc_runner_slots_per_host(host: a.host),
-        per_slot: per_slot.memory_max,
-        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+        slots: a.slots_per_host,
+        per_slot: a.per_slot.memory_max,
+        slice_cap: a.runner_slice_cap
       )
   )
 }
 
-fn committed_allocation_for(host: HostIdentity) -> Int {
+fn standing_host(standing: HostRunnerSlotAllocationStanding) -> String {
+  match standing {
+    HostSlotAllocationAdmitted { allocation: a } => a.host as String
+    HostSlotAllocationWidthUnresolved { host: h, cause: _ } => h as String
+  }
+}
+
+fn standing_count_for(host: HostIdentity) -> Int {
   fold(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_committed_runner_slot_allocation_standings(),
     init: 0,
-    f: (n, a) => if (a.host as String) == (host as String) { n + 1 } else { n }
+    f: (n, a) => if standing_host(standing: a) == (host as String) { n + 1 } else { n }
   )
 }
 
+// THE ROSTER COVERS EVERY HOST INCLUDING THE REFUSED ONE, WHICH IS THE WHOLE REASON THE REFUSAL IS
+// A STANDING RATHER THAN AN OMISSION. A refused host that vanished from the roster would make the
+// fleet look complete over the hosts that survived -- so srv2 must still be counted exactly once
+// here, and it is counted as a standing, not as an allocation.
 test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() -> Bool {
-  committed_allocation_for(host: operator_host_srv1) == 1
-    && committed_allocation_for(host: operator_host_srv2) == 1
-    && committed_allocation_for(host: operator_host_srv3) == 1
-    && committed_allocation_for(host: operator_host_srv4) == 1
-    && committed_allocation_for(host: "srv-does-not-exist") == 0
+  standing_count_for(host: operator_host_srv1) == 1
+    && standing_count_for(host: operator_host_srv2) == 1
+    && standing_count_for(host: operator_host_srv3) == 1
+    && standing_count_for(host: operator_host_srv4) == 1
+    && standing_count_for(host: "srv-does-not-exist") == 0
+    && (gunbc_admitted_runner_slot_allocations() |> count) == 3
 }
 
 // MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY
@@ -100,37 +121,43 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // session figure was replaced by an evidence-backed 52 GiB allowance, which removes three slots.
 // The second is the larger change -- srv2's session denominator is unestablished, so the memory
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
-// runs is a HELD allocation reached through host_held_runner_width, asserted below on its own terms.
+// runs is not a width this module states at all: its committed width is a typed refusal, asserted
+// below on its own terms by srv2_width_resolves_to_a_typed_refusal_naming_its_denominator.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
   host_memory_admitted_width(host: operator_host_srv1) == 15
     && host_memory_admitted_width(host: operator_host_srv3) == 17
     && host_memory_admitted_width(host: operator_host_srv4) == 17
-    && !host_memory_width_is_established(host: operator_host_srv2)
+    && match host_memory_denominator(host: operator_host_srv2) {
+      MemoryDenominatorEstablished => false
+      MemoryDenominatorUnestablished { cause: _ } => true
+    }
 }
 
-// THE HOLD IS GONE AND THIS ROW NOW ASSERTS ITS ABSENCE, which is the property that matters after
-// 2026-09-12. It previously read `srv2_width_is_held_rather_than_derived` and existed so a reader
-// would not mistake an underived host for an empty one. That reason expired with the arm: srv2 is
-// no longer underived-but-running-five, it is REFUSED, and the refusal is the answer rather than a
-// gap to be papered over.
+// THE HOLD IS GONE, AND SO IS THE ARM THAT COULD HAVE REINSTATED IT. This row read
+// `no_host_bypasses_derivation_with_a_held_width` and matched `host_held_runner_width` -- a
+// function whose only arm answered `none`. Its subject is deleted with the Int width API, so the
+// claim it made has no constructor left to be false about, and keeping it would be a permanently
+// green check cited as coverage (DESIGN 4b: ask whether the RED is authorable).
 //
-// IT ASSERTS NO HOST HOLDS, not merely that srv2 does not. A hold on any host would reinstate the
-// bypass this deletion closed -- a description of what a machine runs outranking the walls that
-// decide what it may run -- so the discriminating red is "someone authored a hold again", not
-// "srv2 specifically".
-test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
-  match host_held_runner_width(host: operator_host_srv2) {
-    Present { value: _ } => false
-    Absent => true
+// WHAT REPLACES IT ASSERTS THE ROUTE RATHER THAN THE ABSENCE. srv2's width must come back as
+// UNRESOLVED, carrying the memory-denominator cause -- not as any number. Reinstating a held width
+// for srv2, by any mechanism, turns this arm into RunnerWidthDerived and reds the claim; so does
+// answering a derived number through a re-grounded denominator, which is the outcome that should
+// require a visible edit here.
+test fn srv2_width_resolves_to_a_typed_refusal_naming_its_denominator() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_srv2) {
+    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthUnresolved { cause: c } =>
+      match c {
+        WidthSlotShapeInadmissible { reason: _ } => false
+        WidthMemoryDenominatorUnestablished { host: h, cause: _ } =>
+          (h as String) == (operator_host_srv2 as String)
+            && string_contains(
+                 s: runner_width_unresolved_cause_text(cause: c),
+                 pattern: "is UNRESOLVED, not zero",
+               )
+      }
   }
-    && match host_held_runner_width(host: operator_host_srv1) {
-      Present { value: _ } => false
-      Absent => true
-    }
-    && match host_held_runner_width(host: operator_host_srv3) {
-      Present { value: _ } => false
-      Absent => true
-    }
 }
 
 // RENAMED 2026-08-23, because the old name asserted the very thing that stopped being true.
@@ -159,14 +186,20 @@ test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
 // cores_per_slot re-derived from memory_max would drop these widths below memory admission and
 // fail the `== host_memory_admitted_width` clauses, and the CPU clause pins the axis at the
 // cited core count so a policy above 1 is a visible edit here rather than a silent narrowing.
+fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => n == expected
+  }
+}
+
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 15
-    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 0
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 17
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 17
-    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == host_memory_admitted_width(host: operator_host_srv4)
+  committed_width_is(host: operator_host_srv1, expected: 15)
+    && committed_width_is(host: operator_host_srv3, expected: 17)
+    && committed_width_is(host: operator_host_srv4, expected: 17)
+    && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
+    && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
+    && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
     && host_cpu_admitted_width(host: operator_host_srv1) == 128
     && host_cpu_admitted_width(host: operator_host_srv3) > host_memory_admitted_width(host: operator_host_srv3)
 }
@@ -179,21 +212,32 @@ test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
-  let per_slot = gunbc_runner_slot_desired()
   all(
-    gunbc_committed_runner_slot_allocations(),
+    gunbc_admitted_runner_slot_allocations(),
     a =>
       !gunbc_runner_slot_oversubscription_within_slice(
-        slots: gunbc_runner_slots_per_host(host: a.host) + 1,
-        per_slot: per_slot.memory_max,
-        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+        slots: a.slots_per_host + 1,
+        per_slot: a.per_slot.memory_max,
+        slice_cap: a.runner_slice_cap
       )
   )
 }
 
+// AN UNKNOWN HOST IS UNRESOLVED, NOT ZERO-WIDTH, AND THAT IS A CHANGE THIS ROW USED TO ASSERT THE
+// OTHER WAY. It read `gunbc_runner_slots_per_host("srv-does-not-exist") == 0` and called that a
+// refusal in its own name -- the conflation itself, written down as the expected answer. A host
+// nobody modelled has no width to state; it reaches the reservation policy with no sizing row and
+// comes back unestablished, which is the same arm srv2 takes and for a legible reason.
 test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
-  gunbc_runner_slots_per_host(host: "srv-does-not-exist") == 0
-    && byte_size_count(b: gunbc_runner_slice_cap_declared(host: "srv-does-not-exist")) == 0
+  match gunbc_runner_committed_width(host: "srv-does-not-exist") {
+    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthUnresolved { cause: c } =>
+      match c {
+        WidthSlotShapeInadmissible { reason: _ } => false
+        WidthMemoryDenominatorUnestablished { host: h, cause: _ } => (h as String) == "srv-does-not-exist"
+      }
+  }
+    && byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 0)) == 0
 }
 
 test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
@@ -309,6 +353,7 @@ test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliati
 
 fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
   match m {
+    SlotMembershipWidthUnresolved { identity: _, cause: _ } => false
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
     CommittedSlotMember { identity: _, purpose: p } =>
       match p {
@@ -318,11 +363,33 @@ fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
   }
 }
 
+// "OUTSIDE" MEANS OUTSIDE A POPULATION THAT EXISTS. An unresolved width is not an outside verdict,
+// and reading it as one here would let this witness go green on a host that answered nothing.
 fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
   match m {
+    SlotMembershipWidthUnresolved { identity: _, cause: _ } => false
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
     CommittedSlotMember { identity: _, purpose: _ } => false
   }
+}
+
+fn membership_is_width_unresolved(m: RunnerSlotMembership) -> Bool {
+  match m {
+    SlotMembershipWidthUnresolved { identity: _, cause: _ } => true
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
+    CommittedSlotMember { identity: _, purpose: _ } => false
+  }
+}
+
+// THE THIRD MEMBERSHIP ARM HAS ITS OWN ROW, BECAUSE IT IS THE ONE THE FLEET GOT WRONG. Every slot
+// index on srv2 -- including the five the host is actually running -- used to answer
+// SlotOutsideCommittedPopulation against a committed_width of 0, which is a positive claim that the
+// running runner is not a member of anything. RED: a membership that resolves srv2 to any numeric
+// population reds both conjuncts.
+test fn a_slot_on_an_unresolved_host_is_neither_member_nor_outside() -> Bool {
+  membership_is_width_unresolved(m: runner_slot_membership(host: operator_host_srv2, slot_index: 1))
+    && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv2, slot_index: 1))
+    && membership_is_width_unresolved(m: runner_slot_membership(host: operator_host_srv2, slot_index: 99))
 }
 
 // THE TWO SLOT POPULATIONS ARE DISJOINT BY CONSTRUCTION, AND THIS WITNESS IS WHAT KEEPS THAT
@@ -335,11 +402,35 @@ fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
 // THE SUMMANDS MUST ADD UP OR THE PARTITION IS NOT ONE. If github + fabric ever drifted from the
 // committed width, some slot would be in neither population or counted twice, and the arithmetic
 // below is the only thing standing between "purpose is a partition" and "purpose is a label."
+fn width_or_negative(r: RunnerWidthResolution) -> Int {
+  match r {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
+}
+
+// THE PARTITION IS ASSERTED WHERE IT CAN BE, AND WHERE IT CANNOT THE CLAIM IS THAT NEITHER SIDE
+// PRETENDS. srv2's line previously read `0 + 0 == 0` and passed -- three unresolved answers agreeing
+// numerically, which is the vacuous form this whole change exists to remove. It now asserts that
+// both counts come back UNRESOLVED on that host, so a projection that quietly started answering a
+// number for an underivable population reds here.
+fn purposes_partition_on(host: HostIdentity) -> Bool {
+  width_or_negative(r: host_github_slot_count(host: host))
+    + width_or_negative(r: host_fabric_slot_count(host: host))
+    == width_or_negative(r: gunbc_runner_committed_width(host: host))
+}
+
+fn both_counts_unresolved_on(host: HostIdentity) -> Bool {
+  width_or_negative(r: host_github_slot_count(host: host)) == 0 - 1
+    && width_or_negative(r: host_fabric_slot_count(host: host)) == 0 - 1
+    && width_or_negative(r: gunbc_runner_committed_width(host: host)) == 0 - 1
+}
+
 test fn slot_purposes_partition_every_host_committed_width() -> Bool {
-  host_github_slot_count(host: operator_host_srv1) + host_fabric_slot_count(host: operator_host_srv1) == gunbc_runner_slots_per_host(host: operator_host_srv1)
-    && host_github_slot_count(host: operator_host_srv2) + host_fabric_slot_count(host: operator_host_srv2) == gunbc_runner_slots_per_host(host: operator_host_srv2)
-    && host_github_slot_count(host: operator_host_srv3) + host_fabric_slot_count(host: operator_host_srv3) == gunbc_runner_slots_per_host(host: operator_host_srv3)
-    && host_github_slot_count(host: operator_host_srv4) + host_fabric_slot_count(host: operator_host_srv4) == gunbc_runner_slots_per_host(host: operator_host_srv4)
+  purposes_partition_on(host: operator_host_srv1)
+    && purposes_partition_on(host: operator_host_srv3)
+    && purposes_partition_on(host: operator_host_srv4)
+    && both_counts_unresolved_on(host: operator_host_srv2)
 }
 
 // THE CANARY SLOT IS srv3-06 AND NOTHING ELSE IS FABRIC (operator, 2026-08-21). srv4-06 is the
@@ -371,8 +462,8 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // the_fabric_member_is_an_authored_identity_not_a_top_index_rule, observed working through a real
 // width change rather than only asserted.
 test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
-  let srv1_past_end = gunbc_runner_slots_per_host(host: operator_host_srv1) + 1
-  let srv3_past_end = gunbc_runner_slots_per_host(host: operator_host_srv3) + 1
+  let srv1_past_end = width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv1)) + 1
+  let srv3_past_end = width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv3)) + 1
   membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
     && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
     && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_past_end))
@@ -427,8 +518,8 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
-    && host_github_slot_count(host: operator_host_srv3)
-         == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+    && width_or_negative(r: host_github_slot_count(host: operator_host_srv3))
+         == width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv3)) - 1
 }
 
 // THE SLOT ROW DECLARES ONE CORE PER SLOT AND NO CPU CEILING, AND THE TWO ARE NOT ONE FACT. Until
