@@ -11,8 +11,8 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
-import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees }
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
@@ -603,26 +603,37 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
 // below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
-fn srv1_width() -> Int {
-  gunbc_runner_slots_per_host(host: "srv1" as HostIdentity)
+//
+// The width is a RunnerWidthResolution since #11762, not an Int: a host whose width does not resolve
+// has no live/retiring boundary to state, so every listing below is EMPTY on that arm rather than cut
+// at a fabricated zero. An empty listing must never read as "nothing to check": every claim that
+// consumes one either carries a positive conjunct that no unit can satisfy when the listing is empty
+// (every_unit_holds, population_holds, an effective population) or, where the claim is a pure
+// refusal, a `length(...) > 0` conjunct on the listing -- so an unresolved srv1 width reds each of
+// them instead of passing over an empty roster.
+fn srv1_width() -> Int? {
+  match gunbc_runner_committed_width(host: "srv1" as HostIdentity) {
+    RunnerWidthUnresolved { cause: _ } => none
+    RunnerWidthDerived { slots: w } => Present { value: w }
+  }
 }
 
 fn srv1_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width())
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w) }
 }
 
 fn srv1_retiring_names(limit: Int) -> List<String> {
-  srv1_unit_names(slot: srv1_width() + 1, limit: limit)
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w + 1, limit: limit) }
 }
 
 // The last declared-live slot: the one the REDs below mask or lose to show that retirement never
 // excuses a live slot.
 fn srv1_last_live_names() -> List<String> {
-  srv1_unit_names(slot: srv1_width(), limit: srv1_width())
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w, limit: w) }
 }
 
 fn srv1_all_but_last_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width() - 1)
+  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w - 1) }
 }
 
 fn every_unit_holds(pop: RunnerSlotPopulation, units: List<String>, wire: String) -> Bool {
@@ -689,7 +700,8 @@ test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
 test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
   let missing = join(map(srv1_last_live_names(), u => show_block_of(unit: u, load: "not-found")), "\n\n")
   let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(), masked: srv1_retiring_names(limit: 21)), missing], "\n\n")
-  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+  length(srv1_last_live_names()) > 0
+    && !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
 }
 
 // RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
@@ -739,7 +751,8 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
 // retiree with NO reading of its own is unread, and refuses.
 test fn an_unread_omitted_retiree_refuses() -> Bool {
   let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
-  population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
+  length(srv1_live_names()) > 0
+    && population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
     && !runner_slot_population_effective(population: unread_pop)
 }
 
@@ -955,13 +968,8 @@ test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool {
   let desired = srv1_desired()
   match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, desired)) {
     TransitionPopulationAgrees => false
+    TransitionPopulationUndecidable { host: _, cause: _ } => false
     TransitionPopulationDisagrees { unexpected: u } =>
       length(desired) > 0 && map(u, x => x as String) == map(desired, x => x as String)
   }
-}
-  }
-  length(retired) > 0
-    && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
-    && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
-    && top_desired_refused
 }
