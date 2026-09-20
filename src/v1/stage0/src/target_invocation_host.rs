@@ -448,7 +448,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         ),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
-            "dag/gunbc/required_lane_resolution_census.dag",
+            "dag/gunbc/required_lane_resolution_census_live.dag",
             "required_lane_resolution_census_exit",
         ),
     }
