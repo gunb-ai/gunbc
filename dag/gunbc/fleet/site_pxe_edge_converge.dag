@@ -34,8 +34,7 @@ import extdeps.systemd.unit_file {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
-import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -321,13 +320,22 @@ fn site_pxe_edge_gate_causes(
     SitePxeEdgeProbeHeld => []
     SitePxeEdgeProbeObservedNegative { reason: r } => [DnsmasqBinaryAbsent { reason: r }]
     SitePxeEdgeProbeUnobservable { reason: r } => [DnsmasqBinaryUnobservable { reason: r }]
+    SitePxeEdgeProbeNotAttempted { reason: r } => [DnsmasqBinaryUnobservable { reason: concat("not attempted: ", r) }]
   }) + (match privilege {
     SitePxeEdgeProbeHeld => []
     SitePxeEdgeProbeObservedNegative { reason: r } => [AdministratorPrivilegeRefused { reason: r }]
     SitePxeEdgeProbeUnobservable { reason: r } => [AdministratorPrivilegeUnobservable { reason: r }]
+    SitePxeEdgeProbeNotAttempted { reason: r } => [AdministratorPrivilegeUnobservable { reason: concat("not attempted: ", r) }]
   })
 }
 
+// A NOT-ATTEMPTED INPUT PROBE CLOSES THE GATE AS UNOBSERVABLE, and carries "not attempted: " on the
+// reason so the finer fact survives in the payload. SitePxeEdgeProbe is one type across the input
+// legs and the activation leg, but only the activation leg is ever minted NotAttempted; the dnsmasq
+// and privilege legs are observed before the gate and are always attempted. The arm exists because
+// the type is shared and the match must be total, not because the producer can reach it. What it may
+// never do is mint an ObservedNegative -- a leg that never ran is not a leg that ran and said no,
+// which is the distinction the gate is here to keep.
 // WHICH GATE CAUSES MEAN THE RUN COULD NOT LOOK, as opposed to what it saw when it did. Only the three
 // Unobservable arms are true: a leg that never executed. A sudo -n that RAN and answered no privilege,
 // like an absent dnsmasq or an unpinned chainloader, is a finding an observe dispatch reports and
