@@ -15,6 +15,10 @@ import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import std.algebra { trim }
+import gunbc.auth.approval_status_wire {
+  FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
+  filed_approval_status_text, submission_filed_text,
+}
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
@@ -53,7 +57,8 @@ import gunbc.auth.approval_decision_store {
 
 // MINTED 2026-09-17 THROUGH gunbc.auth.approval_mac_key_provision under the operator's token: the
 // container was created for attempt approval-mac-keys-2026-09-16, version 1 added from a
-// digested snapshot and read back (payload sha256 prefix 01f19b2e2c7a). Pinned to that version
+// digested snapshot and read back (payload sha256 prefix owned by
+// gunbc.auth.approval_keyring_pins approval_submission_mac_key_payload_sha256_prefix). Pinned to that version
 // for the same reason the capability key is: a keyring following `latest` would let a rotation
 // invalidate filings in flight, and the provisioning run refuses to add a version beside a pin.
 data approval_submission_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
@@ -253,6 +258,23 @@ type SubmissionOutcome
   | SubmissionRefused { refusal: SubmissionRefusal }
   | SubmissionFiledCapabilityKeyUnavailable { escalation_id: NonEmptyStr, cause: ApprovalKeyringRefusal }
 
+fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
+  match o {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => true
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
+    SubmissionAlreadyFiled { escalation_id: _ } => true
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => false
+    SubmissionStoreRefused { detail: _ } => false
+    SubmissionRefused { refusal: _ } => false
+  }
+}
+
+fn submission_outcome_http_body(o: SubmissionOutcome) -> String {
+  submission_filed_text(filed: submission_outcome_admits_poll(o: o), reason: concat("approval submission: ", submission_outcome_reason(o: o)))
+}
+
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
     SubmissionFiledAndNotified { escalation_id: e, message_id: m } => join(["filed ", e as String, " and notified (ntfy message ", m as String, ")"], "")
@@ -382,28 +404,37 @@ fn submit_parsed_submission(
 
 // WHAT A POLLING RUN MAY LEARN OVER HTTP: the slot's standing and, once decided, who decided and
 // when. Not the purpose, not the requester -- the run filed those and does not need them back --
-// and never a link. The grant itself is derived by the run from the decision it already knows it
-// is waiting for, through grant_from_store's join, once part D moves that read behind this route.
+// and never a link. The grant join is grant_from_approved_decision over these fields: the runner
+// never opens the 0600 store.
 // THE STATUS A POLLING RUN READS, with its wire status beside it: an answer about the slot --
 // not filed, pending, decided -- is 200, and a store that could not be read is 503, because the
 // HTTP status is the channel the filer reads first and a failed read on the success channel is
-// a warning where a refusal was owed.
+// a warning where a refusal was owed. The BODY is the kv grammar of approval_status_wire.
 type EscalationStatus {
   status: HttpStatus
   body: String
 }
 
+fn filed_status_of_slot(slot: EscalationSlot) -> FiledApprovalStatus {
+  match slot {
+    EscalationNotFiled => StatusNotFiled
+    EscalationUnreadable { detail: d } => StatusUnreadable { detail: d }
+    EscalationPending { request: r } => StatusPending { expires_at: r.expires_at }
+    EscalationDecided { decision: d } => match d {
+      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
+        StatusApproved { revision: rev, decided_by: by, decided_at: at, execute_by: o.execute_by }
+      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
+        StatusDenied { revision: rev, decided_by: by, decided_at: at, reason: why }
+    }
+  }
+}
+
 fn escalation_status_of(slot: EscalationSlot) -> EscalationStatus {
   match slot {
-    EscalationNotFiled => EscalationStatus { status: 200, body: "standing=not-filed\n" }
-    EscalationUnreadable { detail: d } => EscalationStatus { status: 503, body: join(["standing=unreadable\ndetail=", d as String, "\n"], "") }
-    EscalationPending { request: r } => EscalationStatus { status: 200, body: join(["standing=pending\nexpires_at=", r.expires_at, "\n"], "") }
-    EscalationDecided { decision: d } => EscalationStatus { status: 200, body: match d {
-      BrokerApproved { escalation_id: _, revision: rev, decided_by: by, decided_at: at, obligation: o } =>
-        join(["standing=approved\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nexecute_by=", o.execute_by, "\n"], "")
-      BrokerDenied { escalation_id: _, revision: rev, decided_by: by, decided_at: at, reason: why } =>
-        join(["standing=denied\nrevision=", rev as String, "\ndecided_by=", by as String, "\ndecided_at=", at, "\nreason=", why as String, "\n"], "")
-    } }
+    EscalationUnreadable { detail: _ } => EscalationStatus { status: 503, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationNotFiled => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationPending { request: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationDecided { decision: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
   }
 }
 
@@ -427,11 +458,8 @@ data approval_submission_authority_policy_frontier: DissolutionCondition = unbou
   description: "a requester -> authority policy roster (which enrolled filers may put which brokered authority in front of the operator) consumed by admit_parsed_submission in place of approval_submission_authority_permitted, with a witness whose unrostered requester answers SubmissionAuthorityRefused -- SUFFICIENT FOR the authority half of admission to refuse on the live route; triggered by the first second brokered authority or the first filer class other than the fleet-converge runner",
 )
 
-// THE RUN THAT FILES. This module is the server side; the client -- a fleet-converge mode that
-// materializes the submission key in-run, builds the request from a source-declared
-// AuthorizationRequest<Subject>, signs, POSTs, polls, and gates the boot on the grant -- is part D
-// (eager-owl-205's child lane, 2026-09-16). Until it lands, submit_parsed_submission has the serve
-// route and its witness as consumers and no filer; its first live receipt is D's first run.
+// THE FILING ROUTES ARE NOW ON THE SERVE TABLE (POST /approvals, GET /approvals/\{escalation_id\}).
+// Remaining dissolution is the same path used by every approval-gated fleet action, not one host's boot.
 data approval_submission_client_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge mode that materializes approval-submission-mac-key in-run over WIF, signs stored_request_json of a source-declared request with sign_submission, POSTs the envelope to /approvals, polls /approvals/\{escalation_id\} bounded by the request's expires_at, and gates the actuation on grant_from_store's OperatorGrant -- SUFFICIENT FOR every approval-gated fleet action, not one host's boot; the srv3 source-declared grant dissolves into the same run.",
+  description: "every approval-gated fleet action files through POST /approvals and GET /approvals/ plus the escalation id, then joins the grant with grant_from_approved_decision over those standing fields; SUFFICIENT FOR that HTTP client path (runners never open the 0600 store), not one host's boot and not grant_from_store; the srv3 source-declared grant dissolves into the same run.",
 )

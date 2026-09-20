@@ -17,6 +17,7 @@ import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
   issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
   notify_filed, occupied_slot_standing, OccupiedRenotifiable, OccupiedConflict, OccupiedUnreadable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
+  SubmissionFiledLinksNotIssued, SubmissionStoreRefused, submission_outcome_admits_poll,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -66,7 +67,7 @@ test fn a_signed_envelope_parses_back_to_the_same_request_and_tag() -> Bool {
 }
 
 test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
-  match parse_submission_envelope(text: "{\"tag\":\"00\",\"request\":\"{\\\"kind\\\": \\\"request\\\", \\\"escalation_id\\\": \\\"e\\\", \\\"request_revision\\\": \\\"r\\\", \\\"attempt\\\": \\\"a\\\", \\\"requester\\\": \\\"q\\\", \\\"purpose\\\": \\\"p\\\", \\\"destructive\\\": true, \\\"issued_at\\\": \\\"2026-09-16T20:00:00Z\\\", \\\"expires_at\\\": \\\"2026-09-17T20:00:00Z\\\", \\\"key_id\\\": \\\"k\\\",  \\\"extra\\\": 1}\"}") {
+  match parse_submission_envelope(text: "{\"tag\":\"00\",\"request\":\"{\\\"kind\\\": \\\"request\\\", \\\"escalation_id\\\": \\\"e\\\", \\\"request_revision\\\": \\\"r\\\", \\\"attempt\\\": \\\"a\\\", \\\"requester\\\": \\\"q\\\", \\\"purpose\\\": \\\"p\\\", \\\"destructive\\\": true, \\\"issued_at\\\": \\\"2026-09-16T20:00:00Z\\\", \\\"expires_at\\\": \\\"2026-09-17T20:00:00Z\\\", \\\"key_id\\\": \\\"k\\\", \\\"authority\\\": \\\"gunbc.auth.approval_capability\\\",  \\\"extra\\\": 1}\"}") {
     SubmissionEnvelopeUnreadable { detail: _ } => true
     SubmissionEnvelopeParsed { tag_hex: _, request: _ } => false
   }
@@ -91,6 +92,15 @@ test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolle
     && match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
     && match admit(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
     && match admit(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
+}
+
+test fn a_slot_with_no_minted_capability_does_not_admit_poll() -> Bool {
+  let no_links = SubmissionFiledLinksNotIssued { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, key_id: approval_mac_key_id }
+  let no_key = SubmissionFiledCapabilityKeyUnavailable { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }
+  !submission_outcome_admits_poll(o: no_links)
+    && !submission_outcome_admits_poll(o: no_key)
+    && submission_outcome_admits_poll(o: SubmissionFiledAndNotified { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, message_id: "m1" as NonEmptyStr })
+    && !submission_outcome_admits_poll(o: SubmissionStoreRefused { detail: "disk" as NonEmptyStr })
 }
 
 // THE CAPABILITY KEY MUST NOT FILE: a runner holding only the key that mints consent is exactly
