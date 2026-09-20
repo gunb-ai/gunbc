@@ -31,6 +31,7 @@ import gunbc.compiler_frontend_program_interlock {
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
 import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierEmpty,
   CompilePhaseFrontierValidated,
@@ -47,12 +48,6 @@ import v2.workflow.legacy_baseline_capture {
 }
 import v2.workflow.legacy_baseline_persisted_observation {
   persisted_legacy_baseline_outstanding,
-}
-import gunbc.required_ci_phase_roster {
-  RequiredCiPhase,
-  NamespaceWaveAdmissionPhase,
-  required_ci_phases,
-  required_ci_phase_enrolled,
 }
 import gunbc.namespace_cut_stage {
   NamespaceCutStage,
@@ -373,16 +368,6 @@ fn ratchet_observation_outstanding(cadence: WitnessConsumerCadence) -> List<Stri
   }
 }
 
-// Parameterized on the roster so a witness can author the un-enrolled population; the live call
-// hands it required_ci_phases, the same declaration the workflow emission consumes.
-fn wave_admission_enrolment_outstanding(phases: List<RequiredCiPhase>) -> List<String> {
-  if required_ci_phase_enrolled(p: NamespaceWaveAdmissionPhase, phases: phases) {
-    []
-  } else {
-    ["gunbc.required_ci_phase_roster required_ci_phases does not enrol the namespace-wave-admission phase"]
-  }
-}
-
 // The declared deletion subjects of one stage, at probe-identity grain.
 fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
   subjects_deleted_at(stage: stage)
@@ -390,16 +375,18 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
     |> map(p => probe_render(p: p))
 }
 
-// DEFINITIONAL SINCE F-0, AND THE PREVIOUS ARM WAS THIS CARRIER'S OWN STALE READING: the wall
-// landed as the required namespace-wave-admission phase in #9365 (2026-08-26) and this arm
-// kept reporting it unbuilt -- rung DEFLATION, which is the same defect as inflation because a
-// manager planning against it dispatches work that is already done. The population is
-// membership of the phase in gunbc.required_ci_phase_roster required_ci_phases -- the roster
-// the workflow emission consumes -- and the reading cannot silently outrun the executor,
-// because every --required-ci run joins the host phase enum against that declaration's
-// variant set in both directions and refuses on any divergence. Enrolment truth survives a
-// lane divergence by construction: both lanes run in every required CI, so lane ownership can
-// move a phase between jobs but cannot un-enrol it.
+// THE WAVE-ADMISSION MILESTONE READS ITS DROP ROW, SINCE 2026-09-19. Until the deletion it read
+// phase-roster membership (the wall landed as the required namespace-wave-admission phase in
+// #9365, 2026-08-26, and the derivation could not silently outrun the executor because every
+// required run joined the host enum against the roster in both directions). The 2026-09-19
+// operator ruling deleted the phase outright -- its consumed-row bookkeeping refused every
+// merge_group run on a clean floor (run 35461710214) -- so the roster can no longer answer the
+// milestone's question at all: there is no NamespaceWaveAdmissionPhase to enrol. The population
+// is now the standing of gunbc.rung_drop namespace_wave_admission_wall_removed itself: while the
+// drop stands the wall is unenrolled and the milestone is outstanding at the drop's identity;
+// a replacement wall that satisfies the drop's restoration trigger retires the row and clears
+// it. Same strength as the native-route arm beside it -- a hand-authored standing field, joined
+// to nothing that observes a lane -- and that is stated rather than rounded up.
 // THE BLOCKED ARM IS OUTSTANDING, NOT NOT-DERIVABLE, since F-0: the capability fold IS the
 // milestone's readable population while a capture cannot complete -- each blocked reason is a
 // named, observed piece of outstanding work, and reporting it unanswerable hid real known
@@ -420,13 +407,13 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // against the tree and reports PRESENT/ABSENT/UNOBSERVABLE per identity. Rung: mechanically
 // preventable at best, and only while that instrument executes; a row pruned without its
 // subject dying is invisible to this fold alone.
-// The native-route milestone's population, parameterized on the drop row so both arms are
-// authorable at fixture grain. A standing drop is outstanding at its own identity, and a retired
-// drop is empty. Rung, stated honestly: this reads the drop row's hand-authored standing field and
-// joins nothing that observes the lane. A row flipped to Retired reads Clear whether or not the
-// native route is in gunbc.witness_floor_workflow required_lanes_roster. It is review diligence
-// at best until that join exists.
-fn native_route_required_lane_outstanding(drop: RungDrop) -> List<String> {
+// A standing drop's outstanding population, parameterized on the row so both arms are authorable
+// at fixture grain. A standing drop is outstanding at its own identity, and a retired drop is
+// empty. Rung, stated honestly: this reads the drop row's hand-authored standing field and joins
+// nothing that observes the lane. A row flipped to Retired reads Clear whether or not the
+// capability it tracks is back in the required roster. It is review diligence at best until that
+// join exists.
+fn standing_rung_drop_outstanding(drop: RungDrop) -> List<String> {
   match drop.standing {
     Standing => [drop.identity as String]
     Retired { trigger_fired: _ } => []
@@ -470,8 +457,8 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
     NamespaceWaveAdmissionEnrolled =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "namespace: the wave-admission wall enrolled as a required-ci phase" as NonEmptyStr,
-          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
+          subject: "namespace: the wave-admission wall enrolled as a required-ci phase (the phase was deleted by operator ruling 2026-09-19; the outstanding population is the drop row's standing)" as NonEmptyStr,
+          outstanding: standing_rung_drop_outstanding(drop: namespace_wave_admission_wall_removed)
         )
       )
     NamespaceBaselineObservationComplete =>
@@ -546,7 +533,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
       standing_from_evidence(
         e: observe_outstanding(
           subject: "self-host: the native route as a required lane (retirement of gunbc.rung_drop v2_native_route_off_the_merge_path)" as NonEmptyStr,
-          outstanding: native_route_required_lane_outstanding(drop: v2_native_route_off_the_merge_path)
+          outstanding: standing_rung_drop_outstanding(drop: v2_native_route_off_the_merge_path)
         )
       )
     SelfHostSeedRetirement =>
@@ -814,7 +801,8 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 // DELEGATES to milestone_status rather than spelling the derivation twice (DESIGN section 3).
 //
 // The derivations, stated so a reader knows which population moves each row:
-//   F-0    -- the wave-admission enrolment fold (Clear when the phase roster enrols the wall).
+//   F-0    -- delegation to NamespaceWaveAdmissionEnrolled: the stage IS the wall-enrolment
+//             milestone's own question, and the milestone reads the drop row since 2026-09-19.
 //   XL-0   -- the unrealized-observation-rule population: the denominator stage stays
 //             outstanding while some subject's pulse cannot be taken (today: every host Rust
 //             probe, which awaits a host-item observation authority).
@@ -956,13 +944,7 @@ fn rehearsal_producer_standing() -> RehearsalProducerStanding {
 
 fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
   match s {
-    StageF0 =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "F-0: the control plane's own deliverable -- wall enrolment derived from the phase roster" as NonEmptyStr,
-          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
-        )
-      )
+    StageF0 => milestone_status(m: NamespaceWaveAdmissionEnrolled)
     StageXL0Denominator =>
       NotDerivable {
         why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR: source-declaration carriers whose DECLARING identity is what answered each mention. The producer EXISTS and ANSWERS on the production route -- v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots is total and non-empty over a production-ingested fixture and carries the cross-module mention (gunbc#11582; re-run rather than trust: v2.test.claim.namespace_xl0.cross_module_reference_resolution, v2.test.claim.namespace_xl0.call_argument_mention_survival). THIS ARM READ CLEAR OFF THAT FOR ONE HEAD AND THAT WAS RUNG INFLATION (review 67708): the roster's RepairInputDeclared.declaring is derived from the authored SPELLING (v2.compiler.resolution_provenance resolve_reference_provenance confirms the index hit and rebuilds the declaration from the path; carrier_declaration_ref drops an owner prefix), while the compiler resolver refuses the same reference resolve_reason_qualified_target_identity_unrepresentable because it carries no exact declaring identity. The roster module's own frontier row (repair_input_declared_binding_frontier_dissolve_on) says the spelling-derived identity becomes a second authority the moment the roster produces on the production route, which is now. A denominator whose declaring identities are spelled rather than bound is not the population this stage is defined by (DESIGN section 3, one authority; section 4b(1), the reported rung equals the executed evidence). Derivable when the resolver answers a qualified reference with an exact declaring identity by execution and the roster's `declaring` is derived from that binding; the collector-side capability (the dotted-reference lowering) is landed and is not what is missing. The base-pinned execution remains ACT-0's DenominatorRosterDigest either way." as NonEmptyStr,
