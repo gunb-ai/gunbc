@@ -116,8 +116,7 @@ import gunbc.machine_intake_bmc_fan_observation {
   render_series,
 }
 import gunbc.fleet_acoustic_intent {
-  operator_residence_duty_ceiling_basis,
-  operator_residence_sustained_duty_ceiling,
+  operator_residence_duty_ceiling,
   residence_duty_verdict,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -310,10 +309,16 @@ test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> 
 // facts about the evidence even though both leave the host's thermals unknown.
 test fn witness_unparsed_chassis_and_undecodable_thermal_are_not_off_and_silent() -> Bool {
   match chassis_observation(success: true, stdout: "Chassis Intrusion : inactive\nFront Panel Lockout : inactive\n") {
-    ChassisStatusUndecodable => true
+    ChassisStatusUndecodable { cause: _ } => true
     _ => false
   } && match chassis_observation(success: true, stdout: "System Power         : off\n") {
     ChassisPowerRead { power_on: on } => !on
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         : unknown\n") {
+    ChassisStatusUndecodable { cause: c } => string_contains(c, "unknown")
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         :\n") {
+    ChassisStatusUndecodable { cause: _ } => true
     _ => false
   } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: "garbage\nmore garbage\n")) {
     TemperatureUndecodable => true
@@ -683,10 +688,10 @@ test fn witness_duty_ceiling_refusals_are_each_reachable() -> Bool {
 // and whose sole caller chain ended at this witness. If this ever greens against a measured basis,
 // somebody has replaced a stated tolerance with a reading and not said so.
 test fn witness_residence_ceiling_is_policy_not_measurement() -> Bool {
-  match operator_residence_duty_ceiling_basis {
+  match operator_residence_duty_ceiling.basis {
     OperatorStatedTolerance { statement: st } => (st as String) != ""
     MeasuredAtPosition { instrument: _ } => false
-  } && percent_count(p: operator_residence_sustained_duty_ceiling) == 60
+  } && percent_count(p: operator_residence_duty_ceiling.duty) == 60
 }
 
 // THE ARMS REACHABLE THROUGH THE SITE'S OWN CEILING, INCLUDING THE TACH REFUSAL -- which is not
@@ -713,7 +718,7 @@ test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
   )) {
     FanDutySteadyCurveOverCeiling { duty: d, ceiling: _ } => percent_count(p: d) == 80
     _ => false
-  } && match fan_drive_against_duty_ceiling(drive: FanDriveTachOnly { speed: rpm(8600) }, ceiling: operator_residence_sustained_duty_ceiling) {
+  } && match fan_drive_against_duty_ceiling(drive: FanDriveTachOnly { speed: rpm(8600) }, ceiling: operator_residence_duty_ceiling.duty) {
     FanDutyNotReported { cause: _ } => true
     _ => false
   }

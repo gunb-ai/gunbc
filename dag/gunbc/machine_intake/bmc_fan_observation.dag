@@ -87,7 +87,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // construction rather than by a checking order.
 type ChassisPowerObservation
   = ChassisPowerRead { power_on: Bool }
-  | ChassisStatusUndecodable
+  | ChassisStatusUndecodable { cause: NonEmptyStr }
   | ChassisUnreadable
 
 type ThermalObservation
@@ -159,7 +159,7 @@ type FanObservationRound {
 fn post_state_of_round(round: FanObservationRound) -> HostPostState {
   match round.chassis {
     ChassisUnreadable => HostPostStateUnobserved
-    ChassisStatusUndecodable => HostPostStateUnobserved
+    ChassisStatusUndecodable { cause: _ } => HostPostStateUnobserved
     ChassisPowerRead { power_on: on } => if !on {
       HostPoweredOff
     } else {
@@ -189,11 +189,17 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
 // FailsafeBeforeHostTelemetry, the arm this module's own header calls "the contract working rather
 // than a finding". A read that understood nothing would have been reported as a healthy failsafe.
 //
-// So the parse answers three things, not two: the line said on, the line said off, or the line was
-// never there. Only the third is new and it is the one that was being laundered.
+// So the parse answers FOUR things, not two. Review 69156 caught the first attempt at this fix
+// answering only three: it routed a MISSING line to its own arm and then wrote
+// `if v == "on" { On } else { Off }`, so a present line carrying `unknown`, a truncated
+// `System Power :` (which splits to ["System Power", ""] and passes the length guard), or any other
+// firmware wording still became Off. The header above that fold claimed the three-way split while
+// the fold made a two-way one, which is §4c exactly: an annotation is never evidence that a machine
+// claim holds. Only the literal words are believed now; everything else carries its text out.
 type ChassisPowerLine
   = ChassisPowerLineOn
   | ChassisPowerLineOff
+  | ChassisPowerLineUnrecognised { text: String }
   | ChassisPowerLineAbsent
 
 fn chassis_power_line(stdout: String) -> ChassisPowerLine {
@@ -207,7 +213,13 @@ fn chassis_power_line(stdout: String) -> ChassisPowerLine {
         Present { value: key } => if trim(key) == "System Power" {
           match fields.skip(n: 1).first() {
             Absent => acc
-            Present { value: v } => if trim(v) == "on" { ChassisPowerLineOn } else { ChassisPowerLineOff }
+            Present { value: v } => if trim(v) == "on" {
+              ChassisPowerLineOn
+            } else if trim(v) == "off" {
+              ChassisPowerLineOff
+            } else {
+              ChassisPowerLineUnrecognised { text: v }
+            }
           }
         } else {
           acc
@@ -278,7 +290,7 @@ fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObse
 fn chassis_was_read(chassis: ChassisPowerObservation) -> Bool {
   match chassis {
     ChassisUnreadable => false
-    ChassisStatusUndecodable => false
+    ChassisStatusUndecodable { cause: _ } => false
     ChassisPowerRead { power_on: _ } => true
   }
 }
@@ -288,7 +300,10 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
     match chassis_power_line(stdout: stdout) {
       ChassisPowerLineOn => ChassisPowerRead { power_on: true }
       ChassisPowerLineOff => ChassisPowerRead { power_on: false }
-      ChassisPowerLineAbsent => ChassisStatusUndecodable
+      ChassisPowerLineUnrecognised { text: t } =>
+        ChassisStatusUndecodable { cause: join(["the System Power line carried a value this decoder does not recognise: ", t], "") as NonEmptyStr }
+      ChassisPowerLineAbsent =>
+        ChassisStatusUndecodable { cause: "the chassis status read succeeded and printed no System Power line" as NonEmptyStr }
     }
   } else {
     ChassisUnreadable
@@ -470,7 +485,7 @@ fn render_thermal_detail(thermal: ThermalObservation) -> String {
 fn render_chassis(chassis: ChassisPowerObservation) -> String {
   match chassis {
     ChassisUnreadable => "UNREAD"
-    ChassisStatusUndecodable => "UNDECODABLE"
+    ChassisStatusUndecodable { cause: c } => join(["UNDECODABLE(", c as String, ")"], "")
     ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
   }
 }

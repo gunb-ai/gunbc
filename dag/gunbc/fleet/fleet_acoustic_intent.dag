@@ -4,8 +4,8 @@ import std.types { Bool, NonEmptyStr }
 import std.measure { Percent, percent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.acoustic_ceiling {
-  AcousticCeilingBasis,
   OperatorStatedTolerance,
+  SiteDutyCeiling,
 }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
@@ -62,16 +62,17 @@ import product.fan_policy_standing {
 // unbounded because the host never posted. So a failsafe over this ceiling is still OVER it; it is
 // reported as FanDutyExcursionOverCeiling carrying its window, and only a steady curve over the
 // ceiling is a converge obligation.
-data operator_residence_sustained_duty_ceiling: Percent = percent(60)
-
-data operator_residence_duty_ceiling_basis: AcousticCeilingBasis = OperatorStatedTolerance { statement: "operator statement 2026-09-18: cannot tolerate sustained full-duty fans in the residence during testing; the percentage is this repository's conservative reading of that sentence and not a figure the operator gave" }
+data operator_residence_duty_ceiling: SiteDutyCeiling = SiteDutyCeiling {
+  duty: percent(60),
+  basis: OperatorStatedTolerance { statement: "operator statement 2026-09-18: cannot tolerate sustained full-duty fans in the residence during testing; the percentage is this repository's conservative reading of that sentence and not a figure the operator gave" },
+}
 
 // THE ENFORCEABLE CONSUMER, TODAY. This is what the fan-policy lane actually calls: a standing
 // observed at a host in this residence, bounded by the duty the operator will tolerate. Every arm of
 // the verdict is reachable - within, over, and the tach-only refusal, which is the arm Mt. Collins
 // itself lands on while its controller reports fans in RPM.
 fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict {
-  fan_policy_against_duty_ceiling(standing: standing, ceiling: operator_residence_sustained_duty_ceiling)
+  fan_policy_against_duty_ceiling(standing: standing, ceiling: operator_residence_duty_ceiling.duty)
 }
 
 // THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (DESIGN §3c).

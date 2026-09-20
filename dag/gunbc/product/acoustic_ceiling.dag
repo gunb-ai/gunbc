@@ -47,6 +47,20 @@ type AcousticCeilingBasis
   = OperatorStatedTolerance { statement: NonEmptyStr }
   | MeasuredAtPosition { instrument: NonEmptyStr }
 
+// A DUTY CEILING CARRIES ITS BASIS OR IT IS JUST A NUMBER.
+//
+// The acoustic ceiling above is stated in dB(A) at a position. A SITE may also state its bound in
+// DUTY, which is what an operator can actually say without an instrument -- and the moment it is a
+// bare Percent it is indistinguishable from a datasheet figure to anybody reading it later.
+// gunbc#11623 declared the percent and the basis as two rows side by side and said exactly that in
+// prose; review 69156 found no production route reading the basis, so the claim was unrealized and
+// the number did travel alone. Pairing them in one carrier is the construction that prose was
+// asking for: there is no way to consume the duty without the basis arriving with it.
+type SiteDutyCeiling {
+  duty: Percent
+  basis: AcousticCeilingBasis
+}
+
 type AcousticCeiling {
   site: SiteIdentity
   level: AWeightedSoundPressureLevel

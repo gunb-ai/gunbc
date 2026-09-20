@@ -13,7 +13,7 @@ import product.fan_policy_standing {
   HostPoweredOff,
   HostPoweredOnPrePost,
 }
-import gunbc.fleet_acoustic_intent { operator_residence_sustained_duty_ceiling }
+import gunbc.fleet_acoustic_intent { operator_residence_duty_ceiling }
 import gunbc.machine_intake_mtjade1_fan_standing {
   AwaitingFirstPostWithDimms,
   ChassisHostPowerOff,
@@ -38,8 +38,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // change that would actually make unbounded full duty tolerable at this site, and which the old
 // two-arm version could not see at all.
 test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
-  percent_count(p: mtjade1_residence_acoustic_intent.ceiling) < 100
-    && percent_count(p: mtjade1_residence_acoustic_intent.ceiling) == percent_count(p: operator_residence_sustained_duty_ceiling)
+  percent_count(p: mtjade1_residence_acoustic_intent.ceiling.duty) < 100
+    && percent_count(p: mtjade1_residence_acoustic_intent.ceiling.duty) == percent_count(p: operator_residence_duty_ceiling.duty)
     && match mtjade1_failsafe_window_close {
       ChassisHostPowerOff => true
       FailsafeWindowUnbounded => false
