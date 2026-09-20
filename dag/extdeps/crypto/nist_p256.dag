@@ -12,9 +12,26 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 // The NIST P-256 curve (SP 800-186 §3.2.1.3) and ECDSA verification over it with SHA-256
-// (FIPS 186-5 §6.4.2), computed in the substrate on std.bignat's Montgomery arithmetic. This is the
-// producer behind extdeps.crypto.signature p256_ecdsa_verify; that module keeps the suite, the
-// encodings and the refusal vocabulary.
+// (FIPS 186-5 §6.4.2), computed in the substrate on std.bignat's Montgomery arithmetic.
+//
+// WHO CONSUMES THIS TODAY, STATED AS THE FRONTIER IT IS (DESIGN 3c; review 69091 of gunbc#11645).
+// NOTHING IN PRODUCTION DOES. The only importers of this module are the witness files under
+// dag/test/claim. An earlier version of this header said it was "the producer behind
+// extdeps.crypto.signature p256_ecdsa_verify" in the PRESENT TENSE -- and that module declares no
+// such name. extdeps.crypto.signature is real and owns the suite, the encodings and the refusal
+// vocabulary (SignatureSuite, SignatureVerification, signature_verification_from_implementation),
+// but p256_ecdsa_verify does not exist in it or anywhere else outside this module and its tests.
+//
+// THAT IS THE CLASS THIS REPOSITORY ALREADY ROSTERS AS
+// gunbc.recurring_failure_mode unlanded_citation_indistinguishable_at_the_citing_end, and this
+// PR's own failure-mode receipts flag their unlanded names scrupulously ("UNLANDED NAMES, read as
+// such") while this header -- the one sentence a reader consults to learn who consumes the module
+// -- did not. A citation is not made true by being the plan.
+//
+// DECLARED FRONTIER WITH ITS TRIGGER: extdeps.crypto.signature gains p256_ecdsa_verify, binding
+// p256_ecdsa_verify_octets below through signature_verification_from_implementation with the
+// decoded octet lengths. Until that declaration exists, this module's consumers are its witnesses
+// and nothing else, and no reader should infer otherwise from this comment.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
