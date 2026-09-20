@@ -1,6 +1,6 @@
 module gunbc.review_sheet_tab_locator
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Int, List }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
