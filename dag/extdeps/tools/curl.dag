@@ -1,6 +1,6 @@
 module extdeps.tools.curl
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, HttpStatus, http_status_of }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
@@ -251,4 +251,44 @@ fn curl_sigv4_s3_download_command(
       url,
     ],
   )
+}
+
+// CURL'S EXIT STATUS AS THE UPSTREAM NAMES IT (curl.se/docs/manpage.html, EXIT CODES). Only the
+// codes a caller acts on are named; any other nonzero status is carried as the number it was, never
+// guessed into a named kind. Zero means curl completed the transfer -- with -f absent, an HTTP
+// error status is still a completed transfer, and it is the caller's to read.
+type CurlExitOutcome
+  = CurlTransferCompleted
+  | CurlCouldNotResolveHost
+  | CurlCouldNotConnect
+  | CurlOperationTimedOut
+  | CurlTlsHandshakeFailed
+  | CurlEmptyReply
+  | CurlReceiveFailed
+  | CurlExitUnnamed { code: Int }
+
+fn curl_exit_outcome(code: Int) -> CurlExitOutcome {
+  match code {
+    0 => CurlTransferCompleted
+    6 => CurlCouldNotResolveHost
+    7 => CurlCouldNotConnect
+    28 => CurlOperationTimedOut
+    35 => CurlTlsHandshakeFailed
+    52 => CurlEmptyReply
+    56 => CurlReceiveFailed
+    _ => CurlExitUnnamed { code: code }
+  }
+}
+
+fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
+  match outcome {
+    CurlTransferCompleted => "transfer completed"
+    CurlCouldNotResolveHost => "could not resolve host (curl exit 6)"
+    CurlCouldNotConnect => "could not connect (curl exit 7)"
+    CurlOperationTimedOut => "operation timed out (curl exit 28)"
+    CurlTlsHandshakeFailed => "TLS handshake failed (curl exit 35)"
+    CurlEmptyReply => "server sent an empty reply (curl exit 52)"
+    CurlReceiveFailed => "failure receiving data (curl exit 56)"
+    CurlExitUnnamed { code: c } => join(["curl exit ", to_string(c)], "")
+  }
 }

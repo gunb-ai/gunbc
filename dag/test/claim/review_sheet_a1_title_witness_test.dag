@@ -21,10 +21,14 @@ import gunbc.review_sheet_sheets {
   A1ReadbackAnchored,
   A1ReadbackUnreadable,
   value_range_includes_column_letter,
-  value_ranges_from_write_plan,
+  lower_write_plan,
   TabBoundWritePlan,
-  WritePlanRanges,
-  WritePlanTitleRefused,
+  WritePlanLowered,
+  WritePlanUnlowerable,
+  TabTitleUnquotable,
+  EmptyWritePlan,
+  PatchMalformed,
+  AppendRunMalformed,
 }
 import extdeps.google.sheets { a1_range_encoding_text, A1RangeEncoded, A1TitleApostropheUnsupported }
 
@@ -65,26 +69,34 @@ test fn each_writer_quotes_a_spaced_title_exactly() -> Bool {
     && a1_range_encoding_text(e: sheet_qualified_cell(tab: tab, cell: cell(letter: "B", row: 2))) == "'Buyer Review'!B2"
     && a1_range_encoding_text(e: sheet_qualified_span(tab: tab, span: A1RowSpan { start: cell(letter: "A", row: 1), end: cell(letter: "C", row: 1) }))
       == "'Buyer Review'!A1:C1"
-    && match value_ranges_from_write_plan(bound: one_patch_plan(tab: tab)) {
-      WritePlanRanges { ranges: rs } =>
+    && match lower_write_plan(bound: one_patch_plan(tab: tab)) {
+      WritePlanLowered { ranges: rs } =>
         match rs |> first {
           Present { value: vr } => vr.range == "'Buyer Review'!B2"
           Absent => false
         }
-      WritePlanTitleRefused { encoding: _ } => false
+      WritePlanUnlowerable { refusals: _ } => false
     }
 }
 
-// An apostrophe title reaches no wire: every writer carries the encoder's typed refusal.
+// An apostrophe title reaches no wire: every writer carries the encoder's typed refusal, and the
+// plan lowering carries it as TabTitleUnquotable with the title the encoder refused.
 test fn each_writer_refuses_an_apostrophe_title() -> Bool {
   let tab = "Bob's" as NonEmptyStr
   match sheet_qualified_cell(tab: tab, cell: cell(letter: "A", row: 1)) {
     A1TitleApostropheUnsupported { title: t } => (t as String) == "Bob's"
     A1RangeEncoded { wire: _ } => false
   }
-    && match value_ranges_from_write_plan(bound: one_patch_plan(tab: tab)) {
-      WritePlanTitleRefused { encoding: _ } => true
-      WritePlanRanges { ranges: _ } => false
+    && match lower_write_plan(bound: one_patch_plan(tab: tab)) {
+      WritePlanUnlowerable { refusals: rs } =>
+        match rs |> first {
+          Present { value: TabTitleUnquotable { title: t } } => (t as String) == "Bob's"
+          Present { value: EmptyWritePlan } => false
+          Present { value: PatchMalformed { listing_id: _, a1: _, defect: _ } } => false
+          Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
+          Absent => false
+        }
+      WritePlanLowered { ranges: _ } => false
     }
 }
 
