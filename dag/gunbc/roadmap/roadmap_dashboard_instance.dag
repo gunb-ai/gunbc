@@ -1115,7 +1115,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     local_origin_root: srv2_deploy_repo_root,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv2_deploy_repo_root,
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: "test/main-plus-roadmap-daily" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
