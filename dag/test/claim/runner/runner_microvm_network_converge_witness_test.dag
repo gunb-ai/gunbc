@@ -13,8 +13,9 @@ import gunbc.executor_privileged_operation {
 import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_host_cidr,
   TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
-  AutoAssignmentAbsentFromKernel, AutoAssignmentOn, AutoAssignmentUnread,
+  AutoAssignmentAbsentFromKernel, AutoAssignmentOn, AutoAssignmentUnread, HelperAutoAssignment,
   ConvergedSlotNetwork, ConvergeGeneration, runner_microvm_shared_host_grain,
+  HelperSurfaceReading, HelperSurfaceCounted, HelperSurfaceUnread,
 }
 import gunbc.runner_microvm_network_converge {
   parse_disable_ipv6, ip_forward_is_on, ct_helper_statement_count,
@@ -22,7 +23,7 @@ import gunbc.runner_microvm_network_converge {
   SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,
   ConvergeRefusal, SlotTapIpv6Unread, SlotTapIpv6Enabled, SlotAddressNotHeld, SlotRouteNotHeld,
   IpForwardingOff, RulesetUnread, HelperStandingUnread, HelperAutoAssignmentOn, HelpersAttached,
-  converge_outcome, render_slot_subnet,
+  converge_outcome,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,28 +38,44 @@ data converged_digest: Sha256Digest = Sha256Digest {
 
 // A HOST THAT READ BACK CLEAN. Every field is a reading, so a witness that wants a receipt has to
 // supply every one -- which is the point of the type.
+fn counted(n: Int) -> HelperSurfaceReading {
+  HelperSurfaceCounted { count: n }
+}
+
+fn unread(why: String) -> HelperSurfaceReading {
+  HelperSurfaceUnread { reason: why as NonEmptyStr }
+}
+
 fn clean_host() -> HostReading {
-  HostReading {
-    host: operator_host_srv1,
-    generation: "run-3" as ConvergeGeneration,
-    ip_forward_on: true,
-    ruleset_listed: true,
-    ruleset_digest: converged_digest,
-    auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
-    xtables_ct_helper_targets: 0,
-    userspace_helpers: 0,
-    expectations: 0,
-    helper_probes_read: true,
-  }
+  host_with(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent())
+}
+
+// THE FIXTURE IS SHAPED LIKE `ip -o -4` OUTPUT AND IS AUTHORED, NOT DERIVED. Building it from the
+// same renderer the readback matches with would make producer and oracle share any defect -- which
+// is exactly how the earlier host-address-instead-of-network bug survived seven green claims
+// (side-chat hold on #11751). These strings are what srv1's kernel prints for slot 1.
+fn slot_addr_stdout(i: Nat) -> String {
+  join(["7: gunbc-tap", to_string(i), "    inet 172.30.", to_string(i), ".1/30 scope global gunbc-tap", to_string(i)], "")
+}
+
+fn slot_route_stdout(i: Nat) -> String {
+  join(["172.30.", to_string(i), ".0/30 proto kernel scope link src 172.30.", to_string(i), ".1 "], "")
+}
+
+fn slot_1_addr_stdout() -> String {
+  slot_addr_stdout(i: 1)
+}
+
+fn slot_1_route_stdout() -> String {
+  slot_route_stdout(i: 1)
 }
 
 fn clean_slot(i: Nat) -> SlotReading {
-  let net = runner_slot_network(slot: slot(i: i))
   SlotReading {
     slot: slot(i: i),
     tap_ipv6: TapIpv6Disabled,
-    addr_stdout: join(["7: gunbc-tap", to_string(i), "    inet ", runner_slot_host_cidr(net: net), " scope global gunbc-tap", to_string(i)], ""),
-    route_stdout: join([render_slot_subnet(net: net), " proto kernel scope link src ", runner_slot_host_cidr(net: net)], ""),
+    addr_stdout: slot_addr_stdout(i: i),
+    route_stdout: slot_route_stdout(i: i),
   }
 }
 
@@ -74,7 +91,7 @@ fn outcome_label(o: ConvergeOutcome) -> String {
       RulesetUnread { reason: _ } => "ruleset-unread"
       HelperStandingUnread { reason: _ } => "helpers-unread"
       HelperAutoAssignmentOn => "auto-helpers-on"
-      HelpersAttached { xtables_targets: _, userspace: _, expectations: _ } => "helpers-attached"
+      HelpersAttached { surface: _, count: _ } => "helpers-attached"
     }
   }
 }
@@ -135,20 +152,60 @@ test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool {
 // THE HOST'S OWN FACTS REFUSE THE SAME WAY, INCLUDING EVERY HELPER ARM. Forwarding off, a ruleset
 // that did not list, an unread helper probe, automatic assignment on, and an attached helper are
 // five different remedies and five different refusals.
+// ONE BUILDER, SIX OVERRIDES. Each claim below supplies the whole HostReading through it, so a field
+// added to the reading breaks every fixture at once rather than defaulting silently.
+fn host_reading(
+  fwd: Bool,
+  digest: Sha256Digest?,
+  auto: HelperAutoAssignment,
+  nft: HelperSurfaceReading,
+  xtables: HelperSurfaceReading,
+  userspace: HelperSurfaceReading,
+  expectations: HelperSurfaceReading,
+) -> HostReading {
+  HostReading {
+    host: operator_host_srv1,
+    generation: "run-3" as ConvergeGeneration,
+    ip_forward_on: fwd,
+    ruleset_digest: digest,
+    auto_assignment: auto,
+    nft_ct_helper_statements: nft,
+    xtables_ct_helper_targets: xtables,
+    userspace_helpers: userspace,
+    expectations: expectations,
+  }
+}
+
+fn kernel_absent() -> HelperAutoAssignment {
+  AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr }
+}
+
+fn host_with(fwd: Bool, digest: Sha256Digest?, auto: HelperAutoAssignment) -> HostReading {
+  host_reading(fwd: fwd, digest: digest, auto: auto, nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0))
+}
+
+// THE HOST'S OWN FACTS REFUSE THE SAME WAY. Forwarding off, a ruleset that produced no digestible
+// listing, automatic helper assignment on, an unreadable sysctl, and an attached helper on any
+// surface are five different remedies and five different refusals.
 test fn each_host_fact_refuses_under_its_own_name() -> Bool {
-  let c = clean_host()
-  let no_fwd = HostReading { host: c.host, generation: c.generation, ip_forward_on: false, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: c.xtables_ct_helper_targets, userspace_helpers: c.userspace_helpers, expectations: c.expectations, helper_probes_read: c.helper_probes_read }
-  let unlisted = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: false, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: c.xtables_ct_helper_targets, userspace_helpers: c.userspace_helpers, expectations: c.expectations, helper_probes_read: c.helper_probes_read }
-  let unread_probe = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: false }
-  let auto_on = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: AutoAssignmentOn, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: true }
-  let unread_auto = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 0, helper_probes_read: true }
-  let attached = HostReading { host: c.host, generation: c.generation, ip_forward_on: c.ip_forward_on, ruleset_listed: c.ruleset_listed, ruleset_digest: c.ruleset_digest, auto_assignment: c.auto_assignment, xtables_ct_helper_targets: 0, userspace_helpers: 0, expectations: 2, helper_probes_read: true }
-  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: no_fwd)) == "no-forwarding"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unlisted)) == "ruleset-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unread_probe)) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: auto_on)) == "auto-helpers-on"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: unread_auto)) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: attached)) == "helpers-attached"
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: false, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: none, auto: kernel_absent()))) == "ruleset-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: Present { value: converged_digest }, auto: AutoAssignmentOn))) == "auto-helpers-on"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: Present { value: converged_digest }, auto: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 2), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-attached"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 1), expectations: counted(n: 0)))) == "helpers-attached"
+}
+
+// A SURFACE NOBODY READ IS NOT AN EMPTY ONE. Each of the three helper surfaces and the expectation
+// table, left unread, refuses the receipt. The red is the previous converge, which hard-coded two of
+// them to zero and let helpers_excluded return true off those constants (review 68963): a host with
+// a legacy CT target or a userspace helper converged green.
+test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool {
+  let d = Present { value: converged_digest }
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: unread(why: "nfct missing"), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: unread(why: "conntrack refused")))) == "helpers-unread"
 }
 
 // A HELPER ATTACHED BY ANY TABLE COUNTS, because an expectation is created by whichever helper is
@@ -204,4 +261,19 @@ test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool {
     "/var/lib/gunbc/fleet-converge/microvm-network/forward.conf",
   ]
     && fold(staged, init: true, f: (acc, x) => acc && x.content != "")
+}
+
+// THE ROUTE READBACK MATCHES THE NETWORK THE KERNEL PRINTS, AND REFUSES THE HOST ADDRESS. `ip route
+// show dev tap` prints the destination NETWORK with the host address as `src`; a readback matching
+// 172.30.1.1/30 never hits, so a perfectly configured tap would refuse. The reds: real kernel output
+// judged not-held, and a fixture carrying only the host-address form judged held.
+test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() -> Bool {
+  let host_address_form = SlotReading {
+    slot: slot(i: 1),
+    tap_ipv6: TapIpv6Disabled,
+    addr_stdout: slot_1_addr_stdout(),
+    route_stdout: "172.30.1.1/30 proto kernel scope link ",
+  }
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: clean_host())) == "converged"
+    && outcome_label(o: converge_outcome(slots: [host_address_form], h: clean_host())) == "no-route"
 }

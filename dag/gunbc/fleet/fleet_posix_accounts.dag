@@ -238,6 +238,13 @@ data fleet_nft_binary_path: NonEmptyStr = "/usr/sbin/nft"
 // CAP_NET_ADMIN -- listing the expectation table is as privileged as flushing a flow.
 data fleet_conntrack_binary_path: NonEmptyStr = "/usr/sbin/conntrack"
 
+// THE LEGACY xtables SAVE BINARY AND THE USERSPACE HELPER TOOL, both privileged readers. A ruleset
+// created through iptables-legacy is invisible to `nft list ruleset`, and a userspace helper is
+// registered with the kernel rather than written in any ruleset, so each needs its own probe.
+data fleet_iptables_legacy_save_binary_path: NonEmptyStr = "/usr/sbin/iptables-legacy-save"
+
+data fleet_nfct_binary_path: NonEmptyStr = "/usr/sbin/nfct"
+
 // A CLOSED VOCABULARY OF WHAT THIS PRINCIPAL MAY SUDO, so that emitting an ungranted sudo command
 // has no spelling rather than being a mistake something downstream has to notice.
 //
@@ -270,6 +277,8 @@ type CiRunnerSudoBinary
   | SudoUsermod
   | SudoNft
   | SudoConntrack
+  | SudoIptablesLegacySave
+  | SudoNfct
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -283,6 +292,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoUsermod => fleet_usermod_binary_path
     SudoNft => fleet_nft_binary_path
     SudoConntrack => fleet_conntrack_binary_path
+    SudoIptablesLegacySave => fleet_iptables_legacy_save_binary_path
+    SudoNfct => fleet_nfct_binary_path
   }
 }
 
@@ -298,6 +309,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoUsermod => NopasswdExecuteCheck { check_argv: "--help" }
     SudoNft => NopasswdExecuteCheck { check_argv: "--version" }
     SudoConntrack => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoIptablesLegacySave => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoNfct => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 

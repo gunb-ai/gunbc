@@ -650,6 +650,22 @@ fn runner_slot_network_file_text(net: RunnerSlotNetwork) -> String {
   ], "")
 }
 
+// THE CONNECTED ROUTE IS OVER THE NETWORK ADDRESS, NOT THE HOST'S OWN. `ip -o -4 route show dev tap`
+// prints `172.30.N.0/30 proto kernel scope link src 172.30.N.1`: the destination is the NETWORK and
+// the host address appears only as the source. A readback matching the host address with a prefix
+// would never hit, so a correctly configured tap would read as SlotRouteNotHeld (side-chat hold on
+// #11751). The network address is derived here, beside the addresses it shares its octets with, so
+// the route matcher and the address authority cannot drift.
+fn runner_slot_subnet(net: RunnerSlotNetwork) -> Ipv4Prefix {
+  ipv4_prefix(
+    o1: net.host_address.octet1,
+    o2: net.host_address.octet2,
+    o3: net.host_address.octet3,
+    o4: 0,
+    length: net.prefix_length,
+  )
+}
+
 fn runner_slot_host_cidr(net: RunnerSlotNetwork) -> String {
   join([
     render_ipv4_address(addr: net.host_address) as String,
@@ -908,12 +924,28 @@ type HelperAutoAssignment
   | AutoAssignmentOn
   | AutoAssignmentUnread { reason: NonEmptyStr }
 
+// A SURFACE IS COUNTED OR IT IS UNREAD, AND THERE IS NO THIRD ANSWER. An Int field cannot say "I did
+// not look", so a converge that could not run a probe had only a zero to write -- which is the
+// fabricated reading DESIGN section 5 forbids, and it reads as "no helper is attached" (review
+// 68963). The count now carries its own absence, so an unread surface cannot be spelled as an
+// excluded one.
+type HelperSurfaceReading
+  = HelperSurfaceCounted { count: Int }
+  | HelperSurfaceUnread { reason: NonEmptyStr }
+
 type HelperStanding {
   auto_assignment: HelperAutoAssignment
-  nft_ct_helper_statements: Int
-  xtables_ct_helper_targets: Int
-  userspace_helpers: Int
-  expectations_at_generation: Int
+  nft_ct_helper_statements: HelperSurfaceReading
+  xtables_ct_helper_targets: HelperSurfaceReading
+  userspace_helpers: HelperSurfaceReading
+  expectations_at_generation: HelperSurfaceReading
+}
+
+fn helper_surface_is_empty(r: HelperSurfaceReading) -> Bool {
+  match r {
+    HelperSurfaceCounted { count: n } => n == 0
+    HelperSurfaceUnread { reason: _ } => false
+  }
 }
 
 fn helpers_excluded(h: HelperStanding) -> Bool {
@@ -924,10 +956,10 @@ fn helpers_excluded(h: HelperStanding) -> Bool {
     AutoAssignmentUnread { reason: _ } => false
   }
   auto_off
-    && h.nft_ct_helper_statements == 0
-    && h.xtables_ct_helper_targets == 0
-    && h.userspace_helpers == 0
-    && h.expectations_at_generation == 0
+    && helper_surface_is_empty(r: h.nft_ct_helper_statements)
+    && helper_surface_is_empty(r: h.xtables_ct_helper_targets)
+    && helper_surface_is_empty(r: h.userspace_helpers)
+    && helper_surface_is_empty(r: h.expectations_at_generation)
 }
 
 // THE GENERATION IS AN IDENTITY, NOT A COUNT. What a consumer needs is "which converge established

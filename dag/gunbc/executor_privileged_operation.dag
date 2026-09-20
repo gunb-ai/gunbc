@@ -35,6 +35,8 @@ import gunbc.fleet_posix_accounts {
   SudoSystemctl,
   SudoNft,
   SudoConntrack,
+  SudoIptablesLegacySave,
+  SudoNfct,
 }
 
 // A GRANTED READ IS AN OPERATION TOO. ReadNftTable mutates nothing, and it is here because the
@@ -72,6 +74,8 @@ type ExecutorPrivilegedOperation
   | ReadNftTable { family: NonEmptyStr, table: NonEmptyStr }
   | ReadNftRuleset
   | ReadConntrackExpectations
+  | ReadLegacyXtablesRules
+  | ReadUserspaceConntrackHelpers
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -137,6 +141,14 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       ci_runner_sudo_binary_path(b: SudoConntrack),
       "-L" as NonEmptyStr,
       "expect" as NonEmptyStr
+    ]
+    ReadLegacyXtablesRules => [
+      ci_runner_sudo_binary_path(b: SudoIptablesLegacySave)
+    ]
+    ReadUserspaceConntrackHelpers => [
+      ci_runner_sudo_binary_path(b: SudoNfct),
+      "helper" as NonEmptyStr,
+      "list" as NonEmptyStr
     ]
     ReadNftTable { family: f, table: t } => [
       ci_runner_sudo_binary_path(b: SudoNft),
@@ -344,6 +356,8 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     ReadNftTable { family: _, table: _ } => NoPrecondition
     ReadNftRuleset => NoPrecondition
     ReadConntrackExpectations => NoPrecondition
+    ReadLegacyXtablesRules => NoPrecondition
+    ReadUserspaceConntrackHelpers => NoPrecondition
   }
 }
 

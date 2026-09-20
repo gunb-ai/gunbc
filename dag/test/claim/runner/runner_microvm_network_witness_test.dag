@@ -20,6 +20,7 @@ import gunbc.runner_microvm_network {
   RulesetMatchesConvergedFact,
   SlotNetworkSubject, slot_network_subject, runner_slot_host_cidr,
   ConvergedSlot, ConvergedSlotNetwork, ConvergeGeneration, HelperStanding,
+  HelperSurfaceReading, HelperSurfaceCounted, HelperSurfaceUnread,
   AutoAssignmentAbsentFromKernel, AutoAssignmentSysctlOff, AutoAssignmentOn,
   TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled,
   SanitationSubjectResult, SanitationSubjectAdmitted, SanitationSubjectRefused,
@@ -270,10 +271,10 @@ fn converged_slot(i: Nat) -> ConvergedSlot {
 fn excluded_helpers() -> HelperStanding {
   HelperStanding {
     auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
-    nft_ct_helper_statements: 0,
-    xtables_ct_helper_targets: 0,
-    userspace_helpers: 0,
-    expectations_at_generation: 0,
+    nft_ct_helper_statements: HelperSurfaceCounted { count: 0 },
+    xtables_ct_helper_targets: HelperSurfaceCounted { count: 0 },
+    userspace_helpers: HelperSurfaceCounted { count: 0 },
+    expectations_at_generation: HelperSurfaceCounted { count: 0 },
   }
 }
 
@@ -318,20 +319,20 @@ test fn the_sanitation_subject_is_only_the_slots_own_hosts_established_receipt()
       slot: slot(i: 1),
       receipt: receipt_on(host: operator_host_srv2, slots: [converged_slot(i: 1)], helpers: HelperStanding {
         auto_assignment: AutoAssignmentSysctlOff,
-        nft_ct_helper_statements: 1,
-        xtables_ct_helper_targets: 0,
-        userspace_helpers: 0,
-        expectations_at_generation: 0,
+        nft_ct_helper_statements: HelperSurfaceCounted { count: 1 },
+        xtables_ct_helper_targets: HelperSurfaceCounted { count: 0 },
+        userspace_helpers: HelperSurfaceCounted { count: 0 },
+        expectations_at_generation: HelperSurfaceCounted { count: 0 },
       }),
     )) == "helpers"
     && admission(r: slot_network_sanitation_subject(
       slot: slot(i: 1),
       receipt: receipt_on(host: operator_host_srv2, slots: [converged_slot(i: 1)], helpers: HelperStanding {
         auto_assignment: AutoAssignmentOn,
-        nft_ct_helper_statements: 0,
-        xtables_ct_helper_targets: 0,
-        userspace_helpers: 0,
-        expectations_at_generation: 0,
+        nft_ct_helper_statements: HelperSurfaceCounted { count: 0 },
+        xtables_ct_helper_targets: HelperSurfaceCounted { count: 0 },
+        userspace_helpers: HelperSurfaceCounted { count: 0 },
+        expectations_at_generation: HelperSurfaceCounted { count: 0 },
       }),
     )) == "helpers"
 }
@@ -611,4 +612,26 @@ test fn a_slots_install_set_carries_every_network_file_it_declares() -> Bool {
     runner_slot_ipv6_sysctl_path(net: net),
     "reload systemd-networkd",
   ]
+}
+
+// AN UNREAD SURFACE IS NOT AN EXCLUDED ONE, SO THE SANITATION SUBJECT REFUSES. The sealed subject
+// requires helpers_excluded, and a surface that answered nothing cannot satisfy it -- otherwise a
+// host whose xtables or userspace probe never ran would admit slots as if no helper were attached
+// (review 68963).
+test fn a_subject_refuses_when_a_helper_surface_was_unread() -> Bool {
+  let unread_xtables = HelperStanding {
+    auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
+    nft_ct_helper_statements: HelperSurfaceCounted { count: 0 },
+    xtables_ct_helper_targets: HelperSurfaceUnread { reason: "iptables-legacy-save is not installed" as NonEmptyStr },
+    userspace_helpers: HelperSurfaceCounted { count: 0 },
+    expectations_at_generation: HelperSurfaceCounted { count: 0 },
+  }
+  admission(r: slot_network_sanitation_subject(
+    slot: slot(i: 1),
+    receipt: receipt_on(host: operator_host_srv2, slots: [converged_slot(i: 1)], helpers: unread_xtables),
+  )) == "helpers"
+    && admission(r: slot_network_sanitation_subject(
+      slot: slot(i: 1),
+      receipt: receipt_on(host: operator_host_srv2, slots: [converged_slot(i: 1)], helpers: excluded_helpers()),
+    )) == "admitted"
 }

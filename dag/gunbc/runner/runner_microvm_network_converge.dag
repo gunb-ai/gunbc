@@ -9,18 +9,23 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
-  filesystem_read_outcome,
+  filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
+  FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
-import extdeps.tools.sha256sum { Sha256FileDigest, sha256sum_stdin_digest_via_shell }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.crypto.hash { Digest }
 import extdeps.iproute2.ip_show { ip_addr_show_command, ip_route_show_command }
-import extdeps.linux.nf_conntrack { nf_conntrack_helper_proc_path }
+import extdeps.linux.nf_conntrack {
+  nf_conntrack_helper_proc_path, nf_conntrack_sysctl_dir, nf_conntrack_helper_sysctl_name,
+}
 import extdeps.tools.uname { uname_release_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, LocalExec }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host_effect { LocalShell }
 import gunbc.runner_host_deploy {
@@ -29,10 +34,13 @@ import gunbc.runner_host_deploy {
 }
 import gunbc.executor_privileged_apply { apply_executor_privileged_operations_wet }
 import gunbc.executor_privileged_apply { executor_privileged_operation_command }
-import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
-import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ReadNftRuleset, ReadConntrackExpectations }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, ReadNftRuleset, ReadConntrackExpectations,
+  ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,
+}
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_network, runner_slot_host_cidr,
   runner_slot_netdev_text, runner_slot_network_file_text, runner_slot_ipv6_sysctl_text,
@@ -41,9 +49,10 @@ import gunbc.runner_microvm_network {
   runner_slot_ipv6_disabled_proc_path, runner_microvm_ip_forward_proc_path,
   HostEgressGrain, runner_microvm_shared_host_grain,
   ConvergedSlot, ConvergedSlotNetwork, ConvergeGeneration, HelperStanding, HelperAutoAssignment,
+  HelperSurfaceReading, HelperSurfaceCounted, HelperSurfaceUnread,
   AutoAssignmentAbsentFromKernel, AutoAssignmentSysctlOff, AutoAssignmentOn, AutoAssignmentUnread,
   TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
-  slot_network_subject, runner_microvm_nft_read_operation,
+  slot_network_subject, runner_microvm_nft_read_operation, runner_slot_subnet,
 }
 
 data runner_microvm_network_converge_disposition: Disposition = SingleAuthority
@@ -163,6 +172,8 @@ fn microvm_network_readback_operations() -> List<ExecutorPrivilegedOperation> {
   [
     runner_microvm_nft_read_operation(),
     ReadNftRuleset,
+    ReadLegacyXtablesRules,
+    ReadUserspaceConntrackHelpers,
     ReadConntrackExpectations,
   ]
 }
@@ -207,18 +218,50 @@ fn route_reading_carries(stdout: String, cidr: String) -> Bool {
 // dropped automatic helper assignment entirely, so on a kernel that has no such sysctl there is no
 // setting to get wrong; on an older one the value must read 0. A file that exists and reads 1 is
 // AutoAssignmentOn, and an unreadable probe is neither -- it is unread, and refuses the receipt.
-fn parse_auto_assignment(present: Bool, readable: Bool, text: String, kernel_release: String) -> HelperAutoAssignment {
-  if !present {
-    AutoAssignmentAbsentFromKernel { kernel_release: kernel_release as NonEmptyStr }
-  } else if !readable {
-    AutoAssignmentUnread { reason: "nf_conntrack_helper exists but could not be read" as NonEmptyStr }
-  } else if trim(s: text) == "0" {
+fn parse_auto_assignment(observed: FilesystemFileObservation, kernel_release: String) -> HelperAutoAssignment {
+  match observed {
+    FilesystemFileAbsent(_) => AutoAssignmentAbsentFromKernel { kernel_release: kernel_release as NonEmptyStr }
+    FilesystemFileIndeterminate { cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper could not be observed: ", c], "") as NonEmptyStr }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper moved while it was observed: ", c], "") as NonEmptyStr }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => AutoAssignmentUnread { reason: join(["nf_conntrack_helper path refused: ", c], "") as NonEmptyStr }
+    FilesystemFileRead { path: _, content: text } => parse_auto_assignment_value(text: text)
+  }
+}
+
+// ABSENCE IS ESTABLISHED BY A LISTING, NEVER BY A FAILED READ. A read that fails for permission or
+// I/O is not evidence the sysctl is gone, and reporting it as AbsentFromKernel would make an
+// unreadable probe say "there is no setting left to turn on" -- the widening arm DESIGN section 5
+// forbids, and the inversion of this module's own nf_conntrack note (review 68963).
+fn parse_auto_assignment_value(text: String) -> HelperAutoAssignment {
+  if trim(s: text) == "0" {
     AutoAssignmentSysctlOff
   } else if trim(s: text) == "1" {
     AutoAssignmentOn
   } else {
     AutoAssignmentUnread { reason: join(["nf_conntrack_helper read back as an unexpected value: ", trim(s: text)], "") as NonEmptyStr }
   }
+}
+
+// A SURFACE THAT DID NOT ANSWER IS UNREAD, and the count is only minted from a run that answered.
+fn surface_reading(o: ProcessOutcome, surface: String, count: Int) -> HelperSurfaceReading {
+  match o {
+    ProcessRefused { exit_code: code, stderr: _ } =>
+      HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
+    ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
+    ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+  }
+}
+
+// A LEGACY CT TARGET IS SPELLED `-j CT` IN iptables-save OUTPUT, and `--helper` is the option that
+// attaches one. Counting the target lines counts every legacy rule that could attach a helper.
+fn xtables_ct_target_count(save_output: String) -> Int {
+  length(filter(xs: split(s: save_output, delimiter: "\n"), predicate: fn(l) { string_contains(s: l, pattern: "-j CT") }))
+}
+
+// `nfct helper list` PRINTS ONE BLOCK PER REGISTERED USERSPACE HELPER and nothing when none are
+// registered, so a non-empty listing is the count of lines naming one.
+fn userspace_helper_count(listing: String) -> Int {
+  length(filter(xs: split(s: listing, delimiter: "\n"), predicate: fn(l) { trim(s: l) != "" }))
 }
 
 // EVERY LINE OF THE EFFECTIVE RULESET, NOT OURS. `ct helper` may be attached by any table on the
@@ -237,7 +280,7 @@ type ConvergeRefusal
   | RulesetUnread { reason: NonEmptyStr }
   | HelperStandingUnread { reason: NonEmptyStr }
   | HelperAutoAssignmentOn
-  | HelpersAttached { xtables_targets: Int, userspace: Int, expectations: Int }
+  | HelpersAttached { surface: NonEmptyStr, count: Int }
 
 type ConvergeOutcome
   = ConvergedNetwork { receipt: ConvergedSlotNetwork }
@@ -255,13 +298,12 @@ type HostReading {
   host: HostIdentity
   generation: ConvergeGeneration
   ip_forward_on: Bool
-  ruleset_listed: Bool
-  ruleset_digest: Sha256Digest
+  ruleset_digest: Sha256Digest?
   auto_assignment: HelperAutoAssignment
-  xtables_ct_helper_targets: Int
-  userspace_helpers: Int
-  expectations: Int
-  helper_probes_read: Bool
+  nft_ct_helper_statements: HelperSurfaceReading
+  xtables_ct_helper_targets: HelperSurfaceReading
+  userspace_helpers: HelperSurfaceReading
+  expectations: HelperSurfaceReading
 }
 
 fn converged_slot_of_reading(r: SlotReading) -> ConvergedSlot {
@@ -286,23 +328,14 @@ fn slot_refusal(r: SlotReading) -> List<ConvergeRefusal> {
     TapIpv6Disabled =>
       if !addr_reading_carries(stdout: r.addr_stdout, cidr: cidr) {
         [SlotAddressNotHeld { slot: r.slot, expected: cidr as NonEmptyStr }]
-      } else if !route_reading_carries(stdout: r.route_stdout, cidr: render_slot_subnet(net: net)) {
-        [SlotRouteNotHeld { slot: r.slot, expected: render_slot_subnet(net: net) as NonEmptyStr }]
+      } else if !route_reading_carries(stdout: r.route_stdout, cidr: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String) {
+        [SlotRouteNotHeld { slot: r.slot, expected: render_ipv4_prefix(p: runner_slot_subnet(net: net)) }]
       } else {
         []
       }
   }
 }
 
-// THE ROUTE IS OVER THE SUBNET, NOT THE HOST ADDRESS. `ip route show dev tap` prints the connected
-// route as the network -- 172.30.N.0/30 -- so matching the host's own /30 address would never hit.
-fn render_slot_subnet(net: RunnerSlotNetwork) -> String {
-  join([
-    render_ipv4_address(addr: net.host_address) as String,
-    "/",
-    to_string(net.prefix_length),
-  ], "")
-}
 
 fn first_refusal(rs: List<ConvergeRefusal>) -> ConvergeRefusal? {
   fold(rs, init: none, f: (acc, r) =>
@@ -317,7 +350,10 @@ fn host_refusals(h: HostReading) -> List<ConvergeRefusal> {
   concat(
     concat(
       if h.ip_forward_on { [] } else { [IpForwardingOff] },
-      if h.ruleset_listed { [] } else { [RulesetUnread { reason: "nft list table did not return the installed table" as NonEmptyStr }] },
+      match h.ruleset_digest {
+        Present { value: _ } => []
+        Absent => [RulesetUnread { reason: "nft list table did not return a digestible listing of the installed table" as NonEmptyStr }]
+      },
     ),
     match h.auto_assignment {
       AutoAssignmentUnread { reason: why } => [HelperStandingUnread { reason: why }]
@@ -328,24 +364,35 @@ fn host_refusals(h: HostReading) -> List<ConvergeRefusal> {
   )
 }
 
-fn helper_count_refusals(h: HostReading) -> List<ConvergeRefusal> {
-  if !h.helper_probes_read {
-    [HelperStandingUnread { reason: "a helper probe did not run, so no helper standing was established" as NonEmptyStr }]
-  } else if h.xtables_ct_helper_targets != 0 || h.userspace_helpers != 0 || h.expectations != 0 {
-    [HelpersAttached {
-      xtables_targets: h.xtables_ct_helper_targets,
-      userspace: h.userspace_helpers,
-      expectations: h.expectations,
-    }]
-  } else {
-    []
+// EACH SURFACE REFUSES UNDER ITS OWN NAME. An unread surface is not an empty one: the reason names
+// which probe did not answer, so an operator fixes the probe rather than hunting a helper that was
+// never observed.
+fn surface_refusals(name: String, r: HelperSurfaceReading) -> List<ConvergeRefusal> {
+  match r {
+    HelperSurfaceUnread { reason: why } =>
+      [HelperStandingUnread { reason: join([name, ": ", why as String], "") as NonEmptyStr }]
+    HelperSurfaceCounted { count: n } =>
+      if n == 0 { [] } else { [HelpersAttached { surface: name as NonEmptyStr, count: n }] }
   }
+}
+
+fn helper_count_refusals(h: HostReading) -> List<ConvergeRefusal> {
+  concat(
+    concat(
+      surface_refusals(name: "nft ct helper statements", r: h.nft_ct_helper_statements),
+      surface_refusals(name: "legacy xtables CT targets", r: h.xtables_ct_helper_targets),
+    ),
+    concat(
+      surface_refusals(name: "userspace conntrack helpers", r: h.userspace_helpers),
+      surface_refusals(name: "conntrack expectations", r: h.expectations),
+    ),
+  )
 }
 
 fn helper_standing_of(h: HostReading) -> HelperStanding {
   HelperStanding {
     auto_assignment: h.auto_assignment,
-    nft_ct_helper_statements: 0,
+    nft_ct_helper_statements: h.nft_ct_helper_statements,
     xtables_ct_helper_targets: h.xtables_ct_helper_targets,
     userspace_helpers: h.userspace_helpers,
     expectations_at_generation: h.expectations,
@@ -359,13 +406,16 @@ fn converge_outcome(slots: List<SlotReading>, h: HostReading) -> ConvergeOutcome
   let refusals = concat(flat_map(slots, r => slot_refusal(r: r)), host_refusals(h: h))
   match first_refusal(rs: refusals) {
     Present { value: r } => ConvergeRefused { refusal: r }
-    Absent => ConvergedNetwork {
-      receipt: ConvergedSlotNetwork {
-        host: h.host,
-        generation: h.generation,
-        slots: map(slots, r => converged_slot_of_reading(r: r)),
-        helpers: helper_standing_of(h: h),
-        nft_digest: h.ruleset_digest,
+    Absent => match h.ruleset_digest {
+      Absent => ConvergeRefused { refusal: RulesetUnread { reason: "no digestible listing of the installed table" as NonEmptyStr } }
+      Present { value: d } => ConvergedNetwork {
+        receipt: ConvergedSlotNetwork {
+          host: h.host,
+          generation: h.generation,
+          slots: map(slots, r => converged_slot_of_reading(r: r)),
+          helpers: helper_standing_of(h: h),
+          nft_digest: d,
+        },
       },
     },
   }
@@ -450,53 +500,58 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration) -> HostRead
   let forward = read_proc_value(path: runner_microvm_ip_forward_proc_path as String)
   let table = capture_stdout(c: executor_privileged_operation_command(op: runner_microvm_nft_read_operation()))
   let ruleset = capture_stdout(c: executor_privileged_operation_command(op: ReadNftRuleset))
+  let xtables = capture_stdout(c: executor_privileged_operation_command(op: ReadLegacyXtablesRules))
+  let userspace = capture_stdout(c: executor_privileged_operation_command(op: ReadUserspaceConntrackHelpers))
   let expectations = capture_stdout(c: executor_privileged_operation_command(op: ReadConntrackExpectations))
-  let helper_sysctl = read_proc_value(path: nf_conntrack_helper_proc_path as String)
   let kernel = capture_stdout(c: uname_release_command())
-  let digest = listing_digest(d: host_ruleset_digest_wet(listing: outcome_stdout(o: table)))
+  let digest = if outcome_ran(o: table) { listing_digest(d: host_ruleset_digest_wet(listing: outcome_stdout(o: table))) } else { none }
   HostReading {
     host: host,
     generation: generation,
     ip_forward_on: ip_forward_is_on(readable: proc_readable(o: forward), text: proc_text(o: forward)),
-    ruleset_listed: outcome_ran(o: table) && digest_present(d: digest),
-    ruleset_digest: digest_or_zero(d: digest),
+    ruleset_digest: digest,
     auto_assignment: parse_auto_assignment(
-      present: proc_readable(o: helper_sysctl),
-      readable: proc_readable(o: helper_sysctl),
-      text: proc_text(o: helper_sysctl),
+      observed: observe_helper_sysctl_wet(),
       kernel_release: trim(s: outcome_stdout(o: kernel)),
     ),
-    xtables_ct_helper_targets: ct_helper_statement_count(ruleset_listing: outcome_stdout(o: ruleset)),
-    userspace_helpers: 0,
-    expectations: expectation_line_count(stdout: outcome_stdout(o: expectations)),
-    helper_probes_read: outcome_ran(o: ruleset) && outcome_ran(o: expectations) && outcome_ran(o: kernel),
+    nft_ct_helper_statements: surface_reading(
+      o: ruleset,
+      surface: "nft list ruleset",
+      count: ct_helper_statement_count(ruleset_listing: outcome_stdout(o: ruleset)),
+    ),
+    xtables_ct_helper_targets: surface_reading(
+      o: xtables,
+      surface: "iptables-legacy-save",
+      count: xtables_ct_target_count(save_output: outcome_stdout(o: xtables)),
+    ),
+    userspace_helpers: surface_reading(
+      o: userspace,
+      surface: "nfct helper list",
+      count: userspace_helper_count(listing: outcome_stdout(o: userspace)),
+    ),
+    expectations: surface_reading(
+      o: expectations,
+      surface: "conntrack -L expect",
+      count: expectation_line_count(stdout: outcome_stdout(o: expectations)),
+    ),
   }
+}
+
+// THE SYSCTL'S PRESENCE AND ITS CONTENT ARE TWO OBSERVATIONS, joined by the filesystem carrier that
+// keeps "absent" and "could not look" apart.
+fn observe_helper_sysctl_wet() -> FilesystemFileObservation {
+  let dir = nf_conntrack_sysctl_dir as String
+  let listed = Filesystem.List(path: dir)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error),
+    name: nf_conntrack_helper_sysctl_name as String,
+    path: nf_conntrack_helper_proc_path as String,
+    read: read_proc_value(path: nf_conntrack_helper_proc_path as String),
+  )
 }
 
 // AN EXPECTATION PER LINE, AND AN EMPTY TABLE PRINTS NOTHING. conntrack writes its summary to stderr,
 // so stdout carries only entries.
-// THE ZERO DIGEST IS NEVER READ, BECAUSE ruleset_listed IS FALSE WHENEVER IT IS USED: host_refusals
-// refuses on an unlisted ruleset before converge_outcome reaches the receipt, so this placeholder
-// cannot travel into a ConvergedSlotNetwork. It exists because the field is not optional -- a reading
-// that failed is refused, not carried as an absent digest a consumer might unwrap.
-data unread_ruleset_digest: Sha256Digest = Sha256Digest {
-  hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex,
-}
-
-fn digest_present(d: Sha256Digest?) -> Bool {
-  match d {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn digest_or_zero(d: Sha256Digest?) -> Sha256Digest {
-  match d {
-    Present { value: v } => v
-    Absent => unread_ruleset_digest
-  }
-}
-
 fn expectation_line_count(stdout: String) -> Int {
   length(filter(xs: split(s: stdout, delimiter: "\n"), predicate: fn(l) { trim(s: l) != "" }))
 }
@@ -530,22 +585,72 @@ fn refusal_text(r: ConvergeRefusal) -> String {
     RulesetUnread { reason: why } => join(["the installed ruleset could not be listed: ", why as String], "")
     HelperStandingUnread { reason: why } => join(["helper standing not established: ", why as String], "")
     HelperAutoAssignmentOn => "automatic conntrack helper assignment is ON"
-    HelpersAttached { xtables_targets: x, userspace: u, expectations: e } =>
-      join(["helpers are attached: xtables ", to_string(x), ", userspace ", to_string(u), ", expectations ", to_string(e)], "")
+    HelpersAttached { surface: surface, count: n } =>
+      join([to_string(n), " on the ", surface as String, " surface"], "")
   }
+}
+
+// THE PERSISTED RECEIPT IS THE WHOLE RECORD, NOT A SUMMARY OF IT. This file is what an operator and
+// the lifecycle controller read to learn what the converge established, so a rendering that dropped
+// the per-slot subjects, their addresses, routes and v6 standing, or the helper readings, would make
+// the receipt unable to answer the questions ConvergedSlotNetwork exists to answer (side-chat hold
+// on #11751).
+fn helper_surface_text(name: String, r: HelperSurfaceReading) -> String {
+  match r {
+    HelperSurfaceCounted { count: n } => join(["  ", name, "=", to_string(n), "\n"], "")
+    HelperSurfaceUnread { reason: why } => join(["  ", name, "=UNREAD ", why as String, "\n"], "")
+  }
+}
+
+fn auto_assignment_text(a: HelperAutoAssignment) -> String {
+  match a {
+    AutoAssignmentAbsentFromKernel { kernel_release: k } => join(["  auto_assignment=absent_from_kernel release=", k as String, "\n"], "")
+    AutoAssignmentSysctlOff => "  auto_assignment=sysctl_off\n"
+    AutoAssignmentOn => "  auto_assignment=ON\n"
+    AutoAssignmentUnread { reason: why } => join(["  auto_assignment=UNREAD ", why as String, "\n"], "")
+  }
+}
+
+fn tap_ipv6_text(t: TapIpv6Standing) -> String {
+  match t {
+    TapIpv6Disabled => "disabled"
+    TapIpv6Enabled => "ENABLED"
+    TapIpv6Unread { reason: why } => join(["UNREAD ", why as String], "")
+  }
+}
+
+fn converged_slot_text(c: ConvergedSlot) -> String {
+  join([
+    "slot ", runner_slot_instance_name(slot: c.subject.slot), "\n",
+    "  tap=", c.subject.tap_device as String, "\n",
+    "  guest_address=", render_ipv4_address(addr: c.subject.guest_address) as String, "\n",
+    "  host_address=", c.host_address_cidr as String, "\n",
+    "  route=", c.guest_route as String, "\n",
+    "  tap_ipv6=", tap_ipv6_text(t: c.tap_ipv6), "\n",
+  ], "")
+}
+
+fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
+  join([
+    "microvm-network-converge CONVERGED\n",
+    "host=", c.host as String, "\n",
+    "generation=", c.generation as String, "\n",
+    "nft_digest=", c.nft_digest.hex as String, "\n",
+    "slots=", to_string(length(c.slots)), "\n",
+    join(map(c.slots, x => converged_slot_text(c: x)), ""),
+    "helpers\n",
+    auto_assignment_text(a: c.helpers.auto_assignment),
+    helper_surface_text(name: "nft_ct_helper_statements", r: c.helpers.nft_ct_helper_statements),
+    helper_surface_text(name: "xtables_ct_helper_targets", r: c.helpers.xtables_ct_helper_targets),
+    helper_surface_text(name: "userspace_helpers", r: c.helpers.userspace_helpers),
+    helper_surface_text(name: "expectations_at_generation", r: c.helpers.expectations_at_generation),
+  ], "")
 }
 
 fn receipt_text(o: ConvergeOutcome) -> String {
   match o {
     ConvergeRefused { refusal: r } => join(["microvm-network-converge REFUSED: ", refusal_text(r: r), "\n"], "")
-    ConvergedNetwork { receipt: c } =>
-      join([
-        "microvm-network-converge CONVERGED\n",
-        "host=", c.host as String, "\n",
-        "generation=", c.generation as String, "\n",
-        "slots=", to_string(length(c.slots)), "\n",
-        "nft_digest=", c.nft_digest.hex as String, "\n",
-      ], "")
+    ConvergedNetwork { receipt: c } => converged_receipt_text(c: c)
   }
 }
 
@@ -557,26 +662,77 @@ fn stage_file_wet(f: StagedFile) -> Bool {
   w.success
 }
 
+// THE DISPATCH NAMES A HOST AND THE MACHINE NAMES ITSELF, AND THE RUN REFUSES UNLESS THEY AGREE.
+// This mode mutates host-global state -- the nft table, forwarding, networkd's links -- so applying
+// to "whichever modeled host I turn out to be" means a mislabeled runner dispatched for srv1 can
+// mutate srv3 (side-chat hold on #11751). The comparison happens BEFORE any staging write and before
+// any privileged operation, so a refusal leaves the host untouched.
+type HostBinding
+  = HostBindingHeld { host: HostIdentity }
+  | HostBindingRefused { expected: String, observed: String }
+  | HostBindingUnnamed { detail: String }
+
+fn bind_requested_host(expected: String, observed: String) -> HostBinding {
+  if trim(s: expected) == "" {
+    HostBindingUnnamed { detail: "the dispatch named no expected host" }
+  } else if trim(s: observed) == "" {
+    HostBindingUnnamed { detail: "the machine did not name itself" }
+  } else if trim(s: expected) != trim(s: observed) {
+    HostBindingRefused { expected: trim(s: expected), observed: trim(s: observed) }
+  } else {
+    HostBindingHeld { host: trim(s: observed) as HostIdentity }
+  }
+}
+
+fn expected_host_reading() -> String {
+  let env = shell.Env.Get(name: fleet_converge_expected_host_env_name as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => trim(s: raw)
+    Absent => ""
+  }
+}
+
+fn host_binding_refusal_text(b: HostBinding) -> String {
+  match b {
+    HostBindingUnnamed { detail: d } =>
+      join(["microvm-network-converge: HostBindingUnnamed -- ", d, "; nothing was staged and no privileged operation ran"], "")
+    HostBindingRefused { expected: e, observed: o } =>
+      join(["microvm-network-converge: HostBindingRefused -- expected ", e, ", observed ", o, "; nothing was staged and no privileged operation ran"], "")
+    HostBindingHeld { host: h } => join(["microvm-network-converge: bound to ", h as String], "")
+  }
+}
+
 fn runner_microvm_network_converge_wet() -> ProcessExit {
   let host_reading = hostname_short_read(transport: LocalShell)
   match host_reading {
     HostnameShortCaptureRefused { reason: r } =>
       exit_failure(reason: join(["microvm-network-converge: the host could not name itself: ", r], ""))
-    HostnameShortCaptured { value: name } => {
+    HostnameShortCaptured { value: name } =>
+      match bind_requested_host(expected: expected_host_reading(), observed: name) {
+        HostBindingUnnamed { detail: d } =>
+          exit_failure(reason: host_binding_refusal_text(b: HostBindingUnnamed { detail: d }))
+        HostBindingRefused { expected: e, observed: o } =>
+          exit_failure(reason: host_binding_refusal_text(b: HostBindingRefused { expected: e, observed: o }))
+        HostBindingHeld { host: bound } => converge_bound_host_wet(bound: bound)
+      }
+  }
+}
+
+fn converge_bound_host_wet(bound: HostIdentity) -> ProcessExit {
+  {
       let generation = converge_generation_reading()
       if generation == "" {
         exit_failure(reason: "microvm-network-converge: no run identity in the environment, so the receipt would carry a generation nobody can compare against")
       } else {
-        match runner_host_deploy_for(host: name as HostIdentity) {
+        match runner_host_deploy_for(host: bound) {
           RunnerHostDeployUnmodeled { host: h } =>
             exit_failure(reason: join(["microvm-network-converge: ", h as String, " is not a modeled runner host"], ""))
           RunnerHostDeployRefused { host: h, cause: c } =>
             exit_failure(reason: join(["microvm-network-converge: ", h as String, " refuses its deploy row: ", c], ""))
           RunnerHostDeployFound { deploy: d } =>
-            converge_admitted_host_wet(deploy: d, host: name as HostIdentity, generation: generation as NonEmptyStr)
+            converge_admitted_host_wet(deploy: d, host: bound, generation: generation as NonEmptyStr)
         }
       }
-    }
   }
 }
 
