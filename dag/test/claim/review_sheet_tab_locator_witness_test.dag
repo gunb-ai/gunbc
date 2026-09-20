@@ -17,14 +17,20 @@ import gunbc.review_sheet_tab_locator {
   TabUnreadable,
   ReviewTabCandidate,
   LocatedReviewTab,
-  review_tab_standing_from_read,
+  classify_review_tabs,
+  review_tab_standing_from_classification,
+  ReviewTabClassification,
+  ClassifiedExactlyOne,
+  ClassifiedNone,
+  ClassifiedMany,
+  ClassifiedUnreadable,
   review_tab_standing_of_outcome,
 }
 
 // THE RESPONSES ARE SUPPLIED AT THIS INTERFACE AND THAT IS THE RULE RATHER THAN A SHORTCUT.
 // DESIGN section 3's witness rule: a claim discriminates at ONE interface, and its inputs belong
 // there as supplied values rather than as the output of executing the layers beneath. The subject
-// here is review_tab_standing_from_read -- what standing a spreadsheets.get response yields -- so
+// here is classify_review_tabs -- what a spreadsheets.get response classifies as -- so
 // the response is constructed. Executing Sheets to obtain one would make every claim below a claim
 // about the network.
 //
@@ -68,23 +74,33 @@ data witness_spreadsheet_id: NonEmptyStr = "1ciProspectSheetFileId"
 // ("CI prospect sheet", gunbc.review_sheet_converge_cli ci_prospect_sheet_name). A mutation taking
 // either from anywhere but properties fails this claim on the value, not on the arm.
 test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
+  match classify_review_tabs(
     read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 1836271154, title: "Prospects 2026", index: 0)]),
   ) {
-    TabLocated { tab: t } => (t.sheet_id == 1836271154) && ((t.title as String) == "Prospects 2026")
-    TabAbsent => false
-    TabAmbiguous { candidates: _ } => false
-    TabUnreadable { cause: _ } => false
+    ClassifiedExactlyOne { candidate: c } => (c.sheet_id == 1836271154) && ((c.title as String) == "Prospects 2026")
+    ClassifiedNone => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
 
-test fn the_located_tab_carries_the_spreadsheet_id_the_read_was_performed_against() -> Bool {
-  match review_tab_standing_from_read(
+// THE ONE CLAIM THAT NEEDS THE SEALED CONVERSION, and it is the only witness function admitted to
+// it. Everything above discriminates the CLASSIFICATION, which authorizes nothing and therefore
+// needs no admission -- an earlier cut admitted eight witness functions to the mint to assert the
+// same facts, and every one of those admissions was a route a foreign module could take. This one
+// asserts what the conversion produces: the observed id, the observed title, and the spreadsheet
+// the read was performed against, which is the only place all three appear together.
+test fn the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title_and_the_read_subject() -> Bool {
+  match review_tab_standing_from_classification(
     spreadsheet_id: witness_spreadsheet_id,
-    read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 4, title: "Sheet1", index: 0)]),
+    classified: ClassifiedExactlyOne {
+      candidate: ReviewTabCandidate { sheet_id: 4, title: "Sheet1" as NonEmptyStr, index: 0 }
+    },
   ) {
-    TabLocated { tab: t } => (t.spreadsheet_id as String) == (witness_spreadsheet_id as String)
+    TabLocated { tab: t } =>
+      (t.sheet_id == 4)
+        && ((t.title as String) == "Sheet1")
+        && ((t.spreadsheet_id as String) == (witness_spreadsheet_id as String))
     TabAbsent => false
     TabAmbiguous { candidates: _ } => false
     TabUnreadable { cause: _ } => false
@@ -95,26 +111,20 @@ test fn the_located_tab_carries_the_spreadsheet_id_the_read_was_performed_agains
 // nothing to format, and the remedy is to look at the request that asked -- not to send an
 // operator hunting for an unreadable workbook.
 test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
-    read: spreadsheet_read_of(sheets_read: []),
-  ) {
-    TabAbsent => true
-    TabLocated { tab: _ } => false
-    TabAmbiguous { candidates: _ } => false
-    TabUnreadable { cause: _ } => false
+  match classify_review_tabs(read: spreadsheet_read_of(sheets_read: [])) {
+    ClassifiedNone => true
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
 
 test fn an_absent_sheets_field_is_absent_rather_than_unreadable() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
-    read: SpreadsheetRead { spreadsheetId: none, sheets: none },
-  ) {
-    TabAbsent => true
-    TabLocated { tab: _ } => false
-    TabAmbiguous { candidates: _ } => false
-    TabUnreadable { cause: _ } => false
+  match classify_review_tabs(read: SpreadsheetRead { spreadsheetId: none, sheets: none }) {
+    ClassifiedNone => true
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
 
@@ -131,8 +141,7 @@ fn candidate_titles(cs: List<ReviewTabCandidate>) -> List<String> {
 // and is exactly what the constant did. The candidate list is asserted at its payload so that an
 // arm returning an empty TabAmbiguous -- refusing without saying what it saw -- also fails.
 test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
+  match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read(sheet_id: 0, title: "Sheet1", index: 0),
@@ -140,13 +149,13 @@ test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_ti
       ],
     ),
   ) {
-    TabAmbiguous { candidates: cs } =>
+    ClassifiedMany { candidates: cs } =>
       (count(cs) == 2)
         && (candidate_ids(cs: cs) == [0, 918273645])
         && (candidate_titles(cs: cs) == ["Sheet1", "Prospects 2026"])
-    TabLocated { tab: _ } => false
-    TabAbsent => false
-    TabUnreadable { cause: _ } => false
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedNone => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
 
@@ -155,8 +164,7 @@ test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_ti
 // field was not read. Substituting the Drive file's name there is mutation M2 in reverse and is
 // what this arm forbids.
 test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
+  match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read_from_properties(
@@ -165,10 +173,10 @@ test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_mod
       ],
     ),
   ) {
-    TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "no title")
-    TabLocated { tab: _ } => false
-    TabAbsent => false
-    TabAmbiguous { candidates: _ } => false
+    ClassifiedUnreadable { cause: c } => string_contains(s: c as String, pattern: "no title")
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedNone => false
+    ClassifiedMany { candidates: _ } => false
   }
 }
 
@@ -177,8 +185,7 @@ test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_mod
 // did parse is a confident answer derived from an incomplete reading -- the absorbing fallback
 // DESIGN section 5 refuses, arriving as a skip rather than as a widen.
 test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
+  match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read(sheet_id: 55, title: "Prospects 2026", index: 0),
@@ -186,10 +193,10 @@ test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_
       ],
     ),
   ) {
-    TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "no properties at all")
-    TabLocated { tab: _ } => false
-    TabAbsent => false
-    TabAmbiguous { candidates: _ } => false
+    ClassifiedUnreadable { cause: c } => string_contains(s: c as String, pattern: "no properties at all")
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedNone => false
+    ClassifiedMany { candidates: _ } => false
   }
 }
 
@@ -200,8 +207,7 @@ test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_
 // the colour channels already ran under -- it is not a substituted default, and the claim is here
 // so that a future tightening of the title arm cannot quietly take this one with it.
 test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> Bool {
-  match review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
+  match classify_review_tabs(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read_from_properties(
@@ -210,10 +216,10 @@ test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> B
       ],
     ),
   ) {
-    TabLocated { tab: t } => (t.sheet_id == 0) && ((t.title as String) == "Sheet1")
-    TabAbsent => false
-    TabAmbiguous { candidates: _ } => false
-    TabUnreadable { cause: _ } => false
+    ClassifiedExactlyOne { candidate: c } => (c.sheet_id == 0) && ((c.title as String) == "Sheet1")
+    ClassifiedNone => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
 

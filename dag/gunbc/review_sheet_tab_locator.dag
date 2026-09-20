@@ -209,70 +209,94 @@ fn review_tab_scan_of(sheets_read: List<SheetsSheetRead>) -> ReviewTabScan {
   )
 }
 
-// THE MINT, AND THE ONLY ONE. Sealed to the function that performed the metadata read, plus the
-// witnesses that supply a response at this interface by name -- the admission list is the same
-// shape std.materialization_provider result_content_identity uses, and it is what lets a witness
-// assert the PAYLOAD of a located tab without opening a route a production caller could take.
-fn review_tab_standing_from_read(
-  spreadsheet_id: NonEmptyStr,
-  read: SpreadsheetRead,
-) -> ReviewTabStanding admit_callers: [
-  decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "review_tab_standing_of_outcome"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "no_tabs_is_absent_rather_than_unreadable"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "an_absent_sheets_field_is_absent_rather_than_unreadable"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing"),
-  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "the_located_tab_carries_the_spreadsheet_id_the_read_was_performed_against"),
-  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "located_tab_for_witness")
-] {
+// THE CLASSIFICATION AUTHORIZES NOTHING, AND THAT SPLIT IS THE WHOLE REPAIR.
+// An earlier cut of this module had SIX exported functions returning ReviewTabStanding and sealed
+// two of them, then claimed "both routes to the mint are sealed". That claim enumerated the doors
+// that had been locked rather than the doors: review_tab_located_from built the record literal
+// with no admission at all, so a foreign module could author one ReviewTabCandidate, call it, and
+// hand a LocatedReviewTab to the formatter having performed no Sheets read -- the exact forgery
+// sole_constructor exists to prevent, reached through a wrapper instead of through the record.
+// review_tab_standing_of_scan and review_tab_standing_of_candidates were the same escape one hop
+// further out. The rostered class: AN ADMITTED CALL EDGE DOES NOT CONFINE A VALUE WHEN AN EXPORTED
+// WRAPPER RETURNS THAT VALUE OR A CARRIER CONTAINING IT, and the obligation it carries is to
+// enumerate EVERY exported return path containing the confined type, not every function one
+// happens to have sealed.
+//
+// Sealing the chain link by link would have worked and is the weaker answer, because it leaves the
+// confinement depending on a list staying complete as the module grows -- the same two-lists
+// problem this branch has now hit three times. So the folds no longer return the carrier AT ALL.
+// They answer a ReviewTabClassification, which is freely constructible and freely returned because
+// it authorizes nothing: it says what the response looked like, never that anything was read. The
+// only function in this corpus that turns a classification into a LocatedReviewTab is the sealed
+// conversion below, reachable only from the live-read route.
+//
+// The benefit beyond confinement is that the classification is PURE and needs no admission, so a
+// witness discriminates the exactly-one / none / many / unreadable decision at full payload
+// without being admitted to anything -- the earlier cut had to admit eight witness functions to
+// the mint to assert those same facts, and every one of those admissions was a hole.
+type ReviewTabClassification
+  = ClassifiedExactlyOne { candidate: ReviewTabCandidate }
+  | ClassifiedNone
+  | ClassifiedMany { candidates: List<ReviewTabCandidate> }
+  | ClassifiedUnreadable { cause: NonEmptyStr }
+
+fn classify_review_tabs(read: SpreadsheetRead) -> ReviewTabClassification {
   match read.sheets {
-    Absent => TabAbsent
-    Present { value: ss } => review_tab_standing_of_scan(spreadsheet_id: spreadsheet_id, scan: review_tab_scan_of(sheets_read: ss))
+    Absent => ClassifiedNone
+    Present { value: ss } => classify_review_tab_scan(scan: review_tab_scan_of(sheets_read: ss))
   }
 }
 
 // AN UNREADABLE TAB IS CHECKED BEFORE THE COUNT, deliberately. A workbook whose second sheet came
 // back without properties has an unknown number of tabs, so answering "exactly one" from the one
 // that parsed would be a confident answer derived from an incomplete reading.
-fn review_tab_standing_of_scan(spreadsheet_id: NonEmptyStr, scan: ReviewTabScan) -> ReviewTabStanding {
+fn classify_review_tab_scan(scan: ReviewTabScan) -> ReviewTabClassification {
   match scan.unreadable {
-    Present { value: c } => TabUnreadable { cause: c }
-    Absent => review_tab_standing_of_candidates(spreadsheet_id: spreadsheet_id, candidates: scan.candidates)
-  }
-}
-
-fn review_tab_standing_of_candidates(
-  spreadsheet_id: NonEmptyStr,
-  candidates: List<ReviewTabCandidate>,
-) -> ReviewTabStanding {
-  if count(candidates) == 0 {
-    TabAbsent
-  } else {
-    if count(candidates) == 1 {
-      review_tab_located_from(spreadsheet_id: spreadsheet_id, candidates: candidates)
-    } else {
-      TabAmbiguous { candidates: candidates }
-    }
+    Present { value: c } => ClassifiedUnreadable { cause: c }
+    Absent => classify_review_tab_candidates(candidates: scan.candidates)
   }
 }
 
 // THE ONE-ELEMENT LIST IS RE-OPENED RATHER THAN INDEXED, because there is no total indexing
 // operation to reach for and a fold that cannot find its single element must say so rather than
-// substitute one. The Absent arm is unreachable given count == 1 above and is still a refusal:
-// a fold whose impossible arm invents a tab is the same defect as the constant, arriving later.
-fn review_tab_located_from(
-  spreadsheet_id: NonEmptyStr,
-  candidates: List<ReviewTabCandidate>,
-) -> ReviewTabStanding {
-  match first_review_tab_candidate(items: candidates) {
-    Absent =>
-      TabUnreadable {
-        cause: "the scan counted exactly one candidate tab and then could not read it back out of its own list" as NonEmptyStr
+// substitute one. The Absent arm is unreachable given count == 1 and is still a refusal: a fold
+// whose impossible arm invents a tab is the same defect as the constant, arriving later.
+fn classify_review_tab_candidates(candidates: List<ReviewTabCandidate>) -> ReviewTabClassification {
+  if count(candidates) == 0 {
+    ClassifiedNone
+  } else {
+    if count(candidates) == 1 {
+      match first_review_tab_candidate(items: candidates) {
+        Absent =>
+          ClassifiedUnreadable {
+            cause: "the scan counted exactly one candidate tab and then could not read it back out of its own list" as NonEmptyStr
+          }
+        Present { value: c } => ClassifiedExactlyOne { candidate: c }
       }
-    Present { value: c } =>
+    } else {
+      ClassifiedMany { candidates: candidates }
+    }
+  }
+}
+
+// THE ONE CONVERSION, AND THE ONLY EXPRESSION IN THIS CORPUS THAT BUILDS THE RECORD. Everything
+// above is a reading; this is the step that says a tab was LOCATED, so it is the step that must be
+// unreachable except from a caller that actually performed the read. It is admitted to exactly one
+// production caller -- the live outcome route -- and to the named claims that assert the located
+// payload, which cannot be asserted any other way once the folds stop returning the carrier.
+fn review_tab_standing_from_classification(
+  spreadsheet_id: NonEmptyStr,
+  classified: ReviewTabClassification,
+) -> ReviewTabStanding admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "review_tab_standing_of_outcome"),
+  decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title_and_the_read_subject"),
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "located_tab_for_witness")
+] {
+  match classified {
+    ClassifiedNone => TabAbsent
+    ClassifiedUnreadable { cause: c } => TabUnreadable { cause: c }
+    ClassifiedMany { candidates: cs } => TabAmbiguous { candidates: cs }
+    ClassifiedExactlyOne { candidate: c } =>
       TabLocated {
         tab: LocatedReviewTab { spreadsheet_id: spreadsheet_id, sheet_id: c.sheet_id, title: c.title }
       }
@@ -321,7 +345,11 @@ fn review_tab_standing_of_outcome(
   decl_ref(module_path: "test.claim.review_sheet_tab_locator_witness", decl_name: "a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent")
 ] {
   match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
-    RestExchangeSucceeded => review_tab_standing_from_read(spreadsheet_id: spreadsheet_id, read: read)
+    RestExchangeSucceeded =>
+      review_tab_standing_from_classification(
+        spreadsheet_id: spreadsheet_id,
+        classified: classify_review_tabs(read: read),
+      )
     RestExchangeStatusRefused { status, body } =>
       TabUnreadable {
         cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr

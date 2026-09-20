@@ -66,7 +66,7 @@ test fn a_source_that_only_names_the_locator_forges_no_located_tab() -> Bool {
 test fn a_source_that_only_names_the_locator_is_refused_at_neither_sealed_mint() -> Bool {
   (blocking_count_for_class_and_subject(
     c: census_of(source: harness_control_source),
-    wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_read",
+    wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_classification",
   ) == 0)
     && (blocking_count_for_class_and_subject(
       c: census_of(source: harness_control_source),
@@ -87,10 +87,10 @@ test fn a_forged_located_tab_cannot_be_authored_outside_the_locator() -> Bool {
 // (b) THE MINT REFUSES AN UNADMITTED CALLER. sole_constructor alone would still let any module
 // call the one function that builds the record with a response it authored, so the seal on the
 // mint is what makes the record's seal mean anything.
-test fn an_unadmitted_caller_cannot_mint_a_located_tab_from_a_supplied_response() -> Bool {
+test fn an_unadmitted_caller_cannot_mint_a_located_tab_from_a_supplied_classification() -> Bool {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
-    wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_read",
+    wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_from_classification",
   ) >= 1
 }
 
@@ -101,5 +101,18 @@ test fn an_unadmitted_caller_cannot_reach_the_mint_through_the_outcome_classifie
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "review_tab_standing_of_outcome",
+  ) >= 1
+}
+
+// (d) AND THE WITNESS WRAPPER REFUSES TOO, which is the door the side-chat hold on gunbc#11725
+// found open. test.claim.review_sheet_format_target_witness located_tab_for_witness is ADMITTED to
+// the conversion, and for one revision that was all it was: exported, unrestricted, and therefore
+// a route by which any module could obtain a located tab from values it chose. An admitted call
+// edge does not confine a value when an exported wrapper returns that value or a carrier
+// containing it, so the wrapper carries its own admission list and this asserts it by name.
+test fn an_unadmitted_caller_cannot_reach_a_located_tab_through_the_witness_wrapper() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
+    wanted: "ConstructorCallAdmissionRefused", subject: "located_tab_for_witness",
   ) >= 1
 }

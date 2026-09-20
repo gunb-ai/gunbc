@@ -12,12 +12,17 @@ module test.probe.review_sheet_tab_forged_probe
 // reads "the located tab" while the located tab was a literal. LocatedReviewTab is
 // sole_constructor, so this refuses at the record as SoleConstructorViolation.
 //
-// (b) THE MINT, CALLED WITH AN AUTHORED RESPONSE. review_tab_standing_from_read is the only
-// function that builds the record, and a caller handing it a two-sheet workbook trimmed to one
-// would obtain a TabLocated for a tab it chose rather than one it read. It is admit_callers-sealed
-// to the live read and to the named witnesses, so this refuses as ConstructorCallAdmissionRefused.
+// (b) THE CONVERSION, CALLED WITH AN AUTHORED CLASSIFICATION. review_tab_standing_from_classification
+// is the only expression in the corpus that builds the record, and a caller handing it a
+// ClassifiedExactlyOne it wrote would obtain a TabLocated for a tab it chose rather than one it
+// read. Sealed to the live outcome route and two named claims, so this refuses.
 //
-// (c) THE MINT'S CALLER. review_tab_standing_of_outcome takes the transport outcome beside the
+// (d) THE WITNESS WRAPPER. Being ADMITTED to the conversion did not make this function confined:
+// while it was exported and unrestricted, any module could import it and get a located tab from
+// values it chose, which is the escape the side-chat hold on gunbc#11725 named. It is now sealed
+// to the exact claims that consume it, so this call refuses at its name.
+//
+// (c) THE CONVERSION'S CALLER. review_tab_standing_of_outcome takes the transport outcome beside the
 // response, so leaving it open would be a second door: RestOk beside an authored body reaches the
 // same mint. It is sealed for exactly that reason and refuses at its own name.
 //
@@ -31,9 +36,13 @@ import extdeps.google.sheets { SpreadsheetRead, SheetsSheetRead, SheetsSheetProp
 import gunbc.review_sheet_tab_locator {
   LocatedReviewTab,
   ReviewTabStanding,
-  review_tab_standing_from_read,
+  ReviewTabCandidate,
+  ReviewTabClassification,
+  ClassifiedExactlyOne,
+  review_tab_standing_from_classification,
   review_tab_standing_of_outcome,
 }
+import test.claim.review_sheet_format_target_witness { located_tab_for_witness }
 
 fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
   LocatedReviewTab {
@@ -65,11 +74,17 @@ fn authored_single_tab_response(sheet_id: Int, title: String) -> SpreadsheetRead
   }
 }
 
-fn mint_a_located_tab_from_an_authored_response(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
-  review_tab_standing_from_read(
+fn mint_a_located_tab_from_an_authored_classification(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
+  review_tab_standing_from_classification(
     spreadsheet_id: spreadsheet_id,
-    read: authored_single_tab_response(sheet_id: 0, title: "Sheet1"),
+    classified: ClassifiedExactlyOne {
+      candidate: ReviewTabCandidate { sheet_id: 0, title: "Sheet1" as NonEmptyStr, index: 0 }
+    },
   )
+}
+
+fn mint_a_located_tab_through_the_witness_wrapper() -> ReviewTabStanding {
+  located_tab_for_witness(sheet_id: 0, title: "Sheet1")
 }
 
 fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {

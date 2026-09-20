@@ -1,6 +1,7 @@
 module test.claim.review_sheet_format_target_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.decl_ref { decl_ref }
 import extdeps.google.sheets {
   SpreadsheetRead,
   SheetsSheetRead,
@@ -15,7 +16,9 @@ import gunbc.review_sheet_tab_locator {
   TabAmbiguous,
   TabUnreadable,
   LocatedReviewTab,
-  review_tab_standing_from_read,
+  review_tab_standing_from_classification,
+  ReviewTabCandidate,
+  ClassifiedExactlyOne,
 }
 import gunbc.review_sheet_format_actuator {
   FormatRequestPlan,
@@ -51,32 +54,24 @@ import gunbc.review_sheet_projection {
 // operations in extdeps.google.sheets_mock_corpus, which carries only GetValues and
 // BatchUpdateValues. That is the trigger, stated rather than implied.
 
-// THE ONLY WAY TO A LocatedReviewTab, HERE AS ANYWHERE. The carrier is sole_constructor and the
-// mint is admit_callers-sealed, so this witness cannot write the record it needs -- it supplies a
-// response at the locator's interface and takes what the locator makes of it, which is the same
-// route production takes with a response Sheets supplied. The refusal that this is the only route
-// is test.claim.review_sheet_tab_refusal_probe_witness.
-fn located_tab_for_witness(sheet_id: Int, title: String) -> ReviewTabStanding {
-  review_tab_standing_from_read(
+// THE ONLY WAY TO A LocatedReviewTab, HERE AS ANYWHERE -- AND THIS FUNCTION IS ITSELF SEALED.
+// The carrier is sole_constructor and its one conversion is admit_callers-sealed, so this witness
+// cannot write the record it needs. But being an ADMITTED caller is not the same as being a
+// confined one: an earlier cut left this function exported and unrestricted while it was admitted
+// to the mint, so any module in the corpus could import it and obtain a located tab from values
+// it chose (side-chat hold on gunbc#11725). An admitted call edge does not confine a value when
+// an exported wrapper returns that value or a carrier containing it -- so the wrapper is sealed
+// to the exact claims that consume it, by name, and adding a claim means adding a row here.
+fn located_tab_for_witness(sheet_id: Int, title: String) -> ReviewTabStanding admit_callers: [
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "plan_sheet_ids_with"),
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "the_header_read_range_is_qualified_by_the_located_tab_title"),
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined"),
+  decl_ref(module_path: "test.claim.review_sheet_format_target_witness", decl_name: "a_title_with_an_apostrophe_declines_the_range_rather_than_guessing_an_escape")
+] {
+  review_tab_standing_from_classification(
     spreadsheet_id: "1ciProspectSheetFileId" as NonEmptyStr,
-    read: SpreadsheetRead {
-      spreadsheetId: none,
-      sheets: Present {
-        value: [
-          SheetsSheetRead {
-            properties: Present {
-              value: SheetsSheetPropertiesRead {
-                sheetId: Present { value: sheet_id },
-                title: Present { value: title },
-                index: Present { value: 0 },
-                gridProperties: none,
-              }
-            },
-            data: none,
-            conditionalFormats: none,
-          },
-        ]
-      },
+    classified: ClassifiedExactlyOne {
+      candidate: ReviewTabCandidate { sheet_id: sheet_id, title: title as NonEmptyStr, index: 0 }
     },
   )
 }
