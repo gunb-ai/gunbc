@@ -1,5 +1,6 @@
 module gunbc.auth.approval_decision_store
 
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, HttpMethod, Secret }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.scoped_authorization {
@@ -50,7 +51,6 @@ import gunbc.auth.approval_capability {
   utc_instant_is_canonical,
 }
 import gunbc.auth.approval_broker {
-import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
   BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
   BrokerApproved,
   BrokerDenied,
