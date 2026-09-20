@@ -7,7 +7,13 @@ import gunbc.review_sheet_format_actuator {
   format_converge_text,
   format_converge_is_converged,
 }
-import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_projection {
+  ci_prospect_sheet_schema,
+  validate_header_schema,
+  ValidatedHeaderSchema,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+}
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -370,6 +376,23 @@ type FormatDisposition
   = FormatAttempted { outcome: FormatConvergeOutcome }
   | FormatSkipped { cause: NonEmptyStr }
 
+// TWO FACTS MUST BOTH BE ESTABLISHED BEFORE A SINGLE CELL IS FORMATTED, and they arrived from
+// different directions. gunbc#11705 made the SCHEMA a sealed ValidatedHeaderSchema so the
+// formatter cannot be handed a malformed header row; this branch made the TAB a sealed
+// LocatedReviewTab so it cannot be handed a guess about which tab to write to. They are
+// orthogonal -- a validated schema says what to write, a located tab says where -- and the
+// formatter now requires both, so neither can be supplied by assertion.
+//
+// The composition order is the cheap refusal first: validating the schema costs nothing and
+// reaches no network, while locating the tab is a spreadsheets.get. A run that cannot format
+// anyway should not spend a request discovering that.
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: Network {
+  match validate_header_schema(schema: ci_prospect_sheet_schema()) {
+    HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
+    HeaderSchemaValidated { validated: v } => format_located_tab(file_id: id, validated: v)
+  }
+}
+
 // THE FILE ID IS NOT ENOUGH AND THIS IS WHERE THAT WAS DISCOVERED. The converge above establishes
 // WHICH SPREADSHEET by a marker property on the Drive file; it establishes nothing about which tab
 // inside it the review lives in, and the formatter used to fill that gap with the constant zero.
@@ -379,18 +402,18 @@ type FormatDisposition
 // a silent wrong answer and skipping is a loud one.
 fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
   match o {
-    SpreadsheetAdopted { file_id: id } => format_located_tab(file_id: id)
-    SpreadsheetCreatedAndVerified { file_id: id } => format_located_tab(file_id: id)
+    SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
+    SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
   }
 }
 
-fn format_located_tab(file_id: NonEmptyStr) -> FormatDisposition uses net: Network {
+fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition uses net: Network {
   let standing = locate_review_tab(spreadsheet_id: file_id)
   match standing {
     TabLocated { tab: t } =>
-      FormatAttempted { outcome: converge_review_sheet_format(tab: t, schema: ci_prospect_sheet_schema()) }
+      FormatAttempted { outcome: converge_review_sheet_format(tab: t, validated: validated) }
     TabAbsent => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabAmbiguous { candidates: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabUnreadable { cause: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }

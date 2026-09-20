@@ -29,7 +29,13 @@ import gunbc.review_sheet_format_actuator {
   review_sheet_header_range,
   review_sheet_header_cells,
 }
-import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_projection {
+  ci_prospect_sheet_schema,
+  validate_header_schema,
+  ValidatedHeaderSchema,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+}
 
 // THE SUBJECT IS THE ADDRESSING, NOT THE FORMATTING. gunbc.review_sheet_format_actuator sends
 // three kinds of batchUpdate request and every one of them names a sheetId. Until this change all
@@ -90,10 +96,30 @@ fn plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
   ]
 }
 
+// THE FORMATTER NOW REQUIRES TWO SEALED CARRIERS AND NEITHER CAN BE SUPPLIED BY ASSERTION.
+// gunbc#11705 landed ValidatedHeaderSchema while this change was in review, so the plan takes a
+// validated schema beside the located tab. The witness obtains the first the only way anyone can,
+// by running validate_header_schema over the real production schema -- which also makes this an
+// inhabitance claim for that mint: if ci_prospect_sheet_schema ever stopped validating, every
+// claim below would report the refusal rather than silently testing a shape nothing produces.
+fn validated_for_witness() -> ValidatedHeaderSchema? {
+  match validate_header_schema(schema: ci_prospect_sheet_schema()) {
+    HeaderSchemaValidated { validated: v } => Present { value: v }
+    HeaderSchemaRefused { refusal: _, reason: _ } => none
+  }
+}
+
 fn plan_sheet_ids_for(sheet_id: Int, title: String) -> List<Int> {
+  match validated_for_witness() {
+    Absent => []
+    Present { value: v } => plan_sheet_ids_with(sheet_id: sheet_id, title: title, validated: v)
+  }
+}
+
+fn plan_sheet_ids_with(sheet_id: Int, title: String, validated: ValidatedHeaderSchema) -> List<Int> {
   match located_tab_for_witness(sheet_id: sheet_id, title: title) {
     TabLocated { tab: t } =>
-      plan_sheet_ids(plan: format_request_plan(tab: t, schema: ci_prospect_sheet_schema(), standing_col: 3))
+      plan_sheet_ids(plan: format_request_plan(tab: t, validated: validated, standing_col: 3))
     TabAbsent => []
     TabAmbiguous { candidates: _ } => []
     TabUnreadable { cause: _ } => []
