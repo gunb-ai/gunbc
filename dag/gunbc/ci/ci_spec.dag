@@ -757,6 +757,11 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/organization_runner_roster_read.dag",
+  function: "organization_runner_roster_observe_wet",
+}
+
 // THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
 // gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
 // non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
@@ -1856,6 +1861,19 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_actions_converge_target.entry,
     function: gunbc_ci_org_actions_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
+// minted in-run and held only in this step's environment.
+fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_org_runner_roster_observe_target.entry,
+    function: gunbc_ci_org_runner_roster_observe_target.function,
     claim_run: false,
     receipt_rel: none
   )
