@@ -13,7 +13,7 @@ import extdeps.posix.test_utility { test_exists_command }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
-  cgroup_v2_kill_path, cgroup_v2_kill_trigger_value,
+  cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
 import extdeps.systemd { systemd_unit_property_wire,
@@ -103,7 +103,7 @@ type CgroupWalkNode { path: NonEmptyStr, pids: List<Int> }
 type CgroupWalk { nodes: List<CgroupWalkNode> }
 
 fn cgroup_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: cgroup_path, child: "cgroup.procs" as NonEmptyStr)
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
 }
 
 fn cgroup_procs_pids(cgroup_path: NonEmptyStr) -> List<Int>
@@ -111,14 +111,14 @@ fn cgroup_procs_pids(cgroup_path: NonEmptyStr) -> List<Int>
 {
   let read = linux.CgroupV2.ReadInterfaceFile(file_path: cgroup_procs_path(cgroup_path: cgroup_path))
   if read.success == false {
-    []
+    no_pids()
   } else {
-    fold(split(s: read.value, delimiter: "\n"), init: [], f: (acc, line) =>
-      match parse_int(s: trim(s: line)) {
-        Absent => acc
-        Present { value: pid } => concat(acc, [pid])
-      })
+    decode_cgroup_procs(body: read.value)
   }
+}
+
+fn no_pids() -> List<Int> {
+  [] as List<Int>
 }
 
 fn cgroup_child_names(cgroup_path: NonEmptyStr) -> List<String>
@@ -406,12 +406,34 @@ fn force_stop_outcome(q: StopQuiescence) -> TeardownStop {
   }
 }
 
+// A GRACEFUL STOP IS CLAIMED ONLY WHEN THE GRACEFUL ASK WAS ACCEPTED, and the first cut claimed it
+// whenever the cgroup happened to be quiet afterwards.
+//
+// The TERM result was computed and discarded. `systemctl kill` REFUSES for a unit the manager never
+// heard of, or one already unloaded -- which this lane's own wet log produces routinely ("Unit ...
+// not loaded") -- and if the cell's cgroup then read empty, the controller reported
+// StoppedGracefully. Nothing was asked and nothing complied; the receipt claimed both. That is the
+// same defect as the discarded readback one function later, one function earlier: a field's honesty
+// must not rest on a sibling field, because the first consumer to read the stop alone reads a
+// fabricated claim (review 69001, relayed by sunny-ant-606).
+//
+// THE REPAIR ADDS NO ARM, AND DELIBERATELY. A refused ask over a quiet cell is not a fourth state to
+// model: it is simply not a graceful stop, so the controller goes on to the force step and reports
+// what that step did. StoppedByForce over an already-quiet cell says the force ran and the cell is
+// quiet, which is exactly what happened -- a weaker and true claim in place of a stronger and false
+// one. Both arms defer to the cgroup readback for the sanitation verdict, so the cell's disposition
+// is unchanged either way; what changes is whether the receipt describes the run.
 fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
-  let _termed = systemd.Systemctl.KillUnitTerm(unit: unit)
+  let asked = systemd.Systemctl.KillUnitTerm(unit: unit).success
   match poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_stop_grace)) {
-    CgroupQuiet => StoppedGracefully
+    CgroupQuiet =>
+      if asked {
+        StoppedGracefully
+      } else {
+        force_stop_attempt(unit: unit, slice: slice)
+      }
     CgroupStillHolding { readback: _ } => force_stop_attempt(unit: unit, slice: slice)
   }
 }

@@ -1,6 +1,6 @@
 module extdeps.linux.cgroup_v2
 
-import std.types { Bool, NonEmptyStr, Unit, Int }
+import std.types { Bool, NonEmptyStr, Unit, Int, List }
 import std.string_type { String }
 import std.algebra { trim }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
@@ -294,4 +294,29 @@ data cgroup_v2_kill_trigger_value: String = "1"
 
 fn cgroup_v2_kill_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_kill_interface_file)
+}
+
+// cgroup.procs IS THE KERNEL'S FORMAT AND IS DECODED WHERE THE KERNEL'S FILES ARE OWNED.
+//
+// The admin guide describes it as a "newline-separated list of PIDs" belonging to THIS cgroup and
+// this cgroup only -- an inner node with controllers enabled reads empty, because its processes all
+// sit in leaf cgroups. A consumer that split the body itself would be a second authority for that
+// format, and the corpus has one consumer that reads many of these files while walking a subtree.
+//
+// A LINE THAT IS NOT A PID IS DROPPED AND NOT DEFAULTED, because there is nothing to default it to:
+// the file contains pids or it contains nothing, and a zero would name init. The trailing empty line
+// every such file ends with is exactly that case, which is why this cannot refuse on an unparseable
+// line either.
+//
+// THIS IS THE DETAIL AND NEVER THE VERDICT. Whether anything is alive under a cgroup is answered by
+// cgroup.events `populated`, which covers descendants; this names the pids an operator must go look
+// at once that has already said yes.
+data cgroup_v2_procs_interface_file: NonEmptyStr = "cgroup.procs"
+
+fn decode_cgroup_procs(body: String) -> List<Int> {
+  fold(split(s: body, delimiter: "\n"), init: [] as List<Int>, f: (acc, line) =>
+    match parse_int(s: trim(s: line)) {
+      Absent => acc
+      Present { value: pid } => concat(acc, [pid])
+    })
 }
