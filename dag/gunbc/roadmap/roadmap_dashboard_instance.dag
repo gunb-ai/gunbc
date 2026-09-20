@@ -1341,12 +1341,12 @@ fn dashboard_instance_compute_root(instance: HostDashboardInstance) -> FilePath 
 }
 
 // THE FABRIC DB ROOT: where the fabric DB's files live on the instance that holds its placement
-// (gunbc.fabric_db_placement, gunbc.fabric_db_file_store). Named here for the same reason the compute
-// root is: the deployment (gunbc.live_deploy.spec FabricDbStoreDirectory, an ensured host directory)
+// (gunbc.fabric_storage_placement, gunbc.fabric_storage_file_store). Named here for the same reason the compute
+// root is: the deployment (gunbc.live_deploy.spec FabricStorageStoreDirectory, an ensured host directory)
 // and the placement read one authority. It replaced the per-instance event-log mirror root: no
 // executor keeps a copy of the log any more, so only the placement's host holds a root at all.
-fn dashboard_instance_fabric_db_root(instance: HostDashboardInstance) -> FilePath {
-  dashboard_instance_child(root: instance.instance_root, child: "fabric-db")
+fn dashboard_instance_fabric_storage_root(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage")
 }
 
 fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {

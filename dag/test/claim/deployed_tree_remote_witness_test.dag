@@ -18,8 +18,8 @@ import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   PublicationHelperTimerUnit,
-  FabricDbServeUnit,
-  FabricDbServeMapping,
+  FabricStorageServeUnit,
+  FabricStorageServeMapping,
   GunbcSourceTree,
   ServeBinary,
   DispatchWorktreeRoot,
@@ -228,8 +228,8 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     ServeBinary => "binary"
     DeployedTreeRemoteUnit => "remote"
     PublicationHelperTimerUnit => "publication"
-    FabricDbServeUnit => ""
-    FabricDbServeMapping => ""
+    FabricStorageServeUnit => ""
+    FabricStorageServeMapping => ""
     BeltTimerUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""
