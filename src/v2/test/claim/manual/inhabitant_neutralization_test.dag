@@ -21,7 +21,6 @@ import v2.extdeps.languages.python {
   python_source_text,
   python_target_model
 }
-import v2.test.manual.ingest_bridge { ingest_cross_language_compile_accepts_holds }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization {
@@ -215,15 +214,6 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
   }
 }
 
-// The same-language ingest compile this guard watches flipped from frontier refusal
-// (infer_grounding_not_derived) to clean acceptance on 2026-09-06, under the declared-inhabitant
-// membership derivation (v2.compiler.infer infer_node_declared_in_language_inhabitants, widened to
-// the closed ingest set on 2026-09-07) -- an infer-lane change, not a neutralization one, which is
-// exactly the distinction this guard exists to draw.
-fn inhabitant_neutralization_same_language_cross_language_compile_accepts_holds() -> Bool {
-  ingest_cross_language_compile_accepts_holds()
-}
-
 // FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._same_flavor_python_emit_refuses_underived_holds`,
 // asserting emit refused headed by infer_grounding_not_derived while the python int inhabitant sat
 // on the grounding frontier. The language-general declared-inhabitant membership derivation
@@ -251,8 +241,7 @@ fn inhabitant_neutralization_same_flavor_python_emit_round_trip_holds() -> Bool 
 }
 
 test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
-  inhabitant_neutralization_same_language_cross_language_compile_accepts_holds()
-    && inhabitant_neutralization_same_flavor_python_emit_round_trip_holds()
+  inhabitant_neutralization_same_flavor_python_emit_round_trip_holds()
     && inhabitant_neutralization_raw_emit_still_fails_closed()
 }
 

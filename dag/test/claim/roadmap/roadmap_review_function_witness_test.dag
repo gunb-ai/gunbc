@@ -91,11 +91,6 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
 
 // THE FOLD: findings regroup by file for the worker, identical rows fold once, a file named by two
 // criteria is the counted residual, and an early report says which calls are still incomplete.
-// THE COUNT ASSERTION BELOW IS DERIVED, NOT TRANSCRIBED, and this note sits here rather than
-// beside that conjunct because an annotation is admitted at MODULE-ITEM GRAIN ONLY: inside a
-// declaration body it names no subject and refuses at parse. It was written in-body by #11761,
-// the same change that ENFORCED the rule, so the file has refused since. Same class and same
-// repair as #11780 on floor_naming_hygiene.
 // THE COUNT IS DERIVED, NOT TRANSCRIBED. This asserted the literal "Still reviewing (10 ...)"
 // followed by all ten key names in roster order, both copied from the live criteria roster. That
 // made it a change detector for roster SIZE: adding any reviewer to a design row broke it, and
@@ -104,7 +99,6 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
 // five observations are terminal (the fifth is still running), so the incomplete set is the
 // roster minus those four, and that relation is what the fold actually owes. The rendering is
 // still covered: the phrase must appear and must name a criterion that had no observation.
-
 test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomplete_calls() -> Bool {
   let p = plan()
   let running = ReviewObservation { call_id: "how-to-work", subject_id: review_subject_id(s: p.subject), plan_revision: p.revision, source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
