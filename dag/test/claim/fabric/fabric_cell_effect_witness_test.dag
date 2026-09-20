@@ -20,7 +20,9 @@ import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_slice_name,
 }
-import gunbc.runner_slot_allocation { CpuQuotaRefused }
+import gunbc.runner_slot_allocation { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import std.measure { hardware_thread_count }
+import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.fabric_cell_effect {
   FabricCellRealization,
   CellPlanRealizable,
@@ -34,7 +36,6 @@ import gunbc.fabric_cell_effect {
   CellChangeNotYetRealizable,
   CellTeardownNotYetRealizable,
   CellRosterDuplicateKey,
-  CellCpuQuotaSurveyRefused,
   fabric_cell_realization,
   fabric_cell_realization_refusal_count,
   fabric_cell_plan_effects,
@@ -219,7 +220,6 @@ fn is_teardown_unrealizable(r: FabricCellRealization) -> Bool {
         CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
         CellRosterDuplicateKey { address_wire: _ } => false
         CellChangeNotYetRealizable { address_wire: _ } => false
-        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
   }
@@ -233,7 +233,6 @@ fn is_ownership_refusal(r: FabricCellRealization) -> Bool {
         CellRosterDuplicateKey { address_wire: _ } => false
         CellChangeNotYetRealizable { address_wire: _ } => false
         CellTeardownNotYetRealizable { address_wire: _ } => false
-        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
   }
@@ -247,26 +246,40 @@ fn is_change_unrealizable(r: FabricCellRealization) -> Bool {
         CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
         CellRosterDuplicateKey { address_wire: _ } => false
         CellTeardownNotYetRealizable { address_wire: _ } => false
-        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
   }
 }
 
-test fn witness_a_refused_cpu_quota_survey_refuses_boundary_add_rather_than_emitting_five_directives() -> Bool {
-  match fabric_cell_boundary_add_realization(
-    slot: srv3_fabric_slot(),
-    quota: CpuQuotaRefused { cause: "fixture: cores-per-slot unresolved" },
-  ) {
-    AddressRealizable { effect: _ } => false
-    AddressRefused { refusal: r } =>
-      match r {
-        CellCpuQuotaSurveyRefused { address_wire: _, cause: c } =>
-          c == "fixture: cores-per-slot unresolved"
-        CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
-        CellRosterDuplicateKey { address_wire: _ } => false
-        CellChangeNotYetRealizable { address_wire: _ } => false
-        CellTeardownNotYetRealizable { address_wire: _ } => false
+// THE BOUNDARY ADD RENDERS SIX DIRECTIVES UNDER EITHER QUOTA ARM, AND THE SIXTH IS THE ONE THAT
+// DIFFERS. Under a resolved quota the CPUQuota line carries the thread ceiling; under the unbounded
+// policy it is the empty assignment `CPUQuota=`, an affirmative unset. The RED on the unbounded
+// side is the widen this used to refuse: an implementation that dropped the line and emitted five
+// directives would leave a once-quota'd cell throttled while the desired digest says infinity.
+// Both arms are driven by fixture so neither is permanently green on the production row.
+test fn witness_boundary_add_renders_the_quota_line_under_both_arms() -> Bool {
+  let bounded = boundary_add_directive_lines(quota: CpuQuotaResolved { threads: hardware_thread_count(count: 6) })
+  let unbounded = boundary_add_directive_lines(quota: SlotCpuQuotaUnbounded)
+  list_length(items: bounded) == 6
+    && list_length(items: unbounded) == 6
+    && has_line(lines: bounded, line: "CPUQuota=600%")
+    && has_line(lines: unbounded, line: "CPUQuota=")
+    && !has_line(lines: unbounded, line: "CPUQuota=600%")
+    && !has_line(lines: unbounded, line: "CPUQuota=100%")
+}
+
+fn has_line(lines: List<String>, line: String) -> Bool {
+  fold(lines, init: false, f: (acc, l) => acc || l == line)
+}
+
+fn boundary_add_directive_lines(quota: RunnerSlotCpuQuota) -> List<String> {
+  match fabric_cell_boundary_add_realization(slot: srv3_fabric_slot(), quota: quota) {
+    AddressRefused { refusal: _ } => [] as List<String>
+    AddressRealizable { effect: e } =>
+      match e {
+        FabricCellSliceEnsure { slice_unit: _, directives: ds } =>
+          map(ds, d => systemd_slice_directive_line(directive: d))
+        FabricCellDirectoryEnsure { path: _, owner: _ } => [] as List<String>
       }
   }
 }

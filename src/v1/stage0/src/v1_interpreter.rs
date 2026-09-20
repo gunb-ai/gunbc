@@ -1222,6 +1222,14 @@ pub enum InterpError {
         limit_bytes: usize,
         argv0: String,
     },
+    /// The shell transport could not spawn argv[0] (absent, not executable): no process ran, so
+    /// no exit status exists. Raised only for an operation that declares no
+    /// `extdeps.transports.shell` `ShellOutcome` field; one that declares it receives
+    /// `ShellSpawnRefused` as a value instead and the evaluation continues.
+    ShellSpawnRefused {
+        argv0: String,
+        cause: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1407,6 +1415,11 @@ impl fmt::Display for InterpError {
                 f,
                 "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
+            ),
+            InterpError::ShellSpawnRefused { argv0, cause } => write!(
+                f,
+                "shell spawn refused: '{}' could not be executed: {} (no process ran, so no exit status exists; declare an extdeps.transports.shell ShellOutcome output field to receive this as ShellSpawnRefused)",
+                argv0, cause
             ),
             InterpError::HostToolUnresolved { name, probed } => write!(
                 f,
@@ -11966,8 +11979,43 @@ fn dispatch_service_wet(
     }
 
     if is_shell_transport(transport.clone()) {
-        let result = dispatch_shell(transport, param_env, ctx, intent, expected)?;
-        return map_shell_outputs(&result, op_node, ctx);
+        // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
+        // spawn failure as a value, with every other declared field absent; one declaring none
+        // keeps refusing the evaluation, now with the typed `ShellSpawnRefused` diagnostic.
+        let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
+        return match (
+            dispatch_shell(transport, param_env, ctx, intent, expected),
+            outcome_field,
+        ) {
+            (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
+            (Ok(result), Some(field)) => {
+                let mapped = map_shell_outputs(&result, op_node, ctx)?;
+                Ok(attach_transport_outcome(
+                    Some(mapped),
+                    op_node,
+                    &field,
+                    shell_outcome_variant(ctx, "ShellExited", vec![]),
+                    ctx,
+                ))
+            }
+            (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
+                Ok(attach_transport_outcome(
+                    None,
+                    op_node,
+                    &field,
+                    shell_outcome_variant(
+                        ctx,
+                        "ShellSpawnRefused",
+                        vec![
+                            (ctx.sym("program"), str_value(argv0)),
+                            (ctx.sym("cause"), str_value(cause)),
+                        ],
+                    ),
+                    ctx,
+                ))
+            }
+            (Err(err), _) => Err(err),
+        };
     }
 
     if is_file_transport(transport.clone(), ctx.si()) {
@@ -13653,6 +13701,138 @@ fn resolved_call_edge_census_value(
     }
 }
 
+fn primitive_callee_identity_value(
+    callee: crate::cli_run::PrimitiveCalleeIdentity,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::cli_run::PrimitiveCalleeIdentity;
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("PrimitiveCalleeIdentity"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match callee {
+        PrimitiveCalleeIdentity::RuntimePrimitive {
+            primitive_name,
+            projected_from_module,
+            projected_from_decl,
+        } => variant(
+            "RuntimePrimitiveCallee",
+            vec![
+                (ctx.sym("primitive_name"), str_value(primitive_name)),
+                (
+                    ctx.sym("projected_from_module"),
+                    match projected_from_module {
+                        Some(m) => optional_present(str_value(m), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+                (
+                    ctx.sym("projected_from_decl"),
+                    match projected_from_decl {
+                        Some(d) => optional_present(str_value(d), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+            ],
+        ),
+        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
+            "AlgebraMethodCallee",
+            vec![(ctx.sym("template_name"), str_value(template_name))],
+        ),
+        PrimitiveCalleeIdentity::ServiceOperation {
+            service_name,
+            operation,
+        } => variant(
+            "ServiceOperationCallee",
+            vec![
+                (ctx.sym("service_name"), str_value(service_name)),
+                (ctx.sym("operation"), str_value(operation)),
+            ],
+        ),
+        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
+            "PlainMethodCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
+            "UndeterminedFreeCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+    }
+}
+
+fn primitive_call_edge_census_value(
+    census: crate::cli_run::PrimitiveCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
+            entries_resolved,
+            entries_refused,
+            edges,
+        } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("entries_resolved"),
+                    list_value(
+                        entries_resolved
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("entries_refused"),
+                    list_value(
+                        entries_refused
+                            .into_iter()
+                            .map(|r| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("entry"), str_value(r.entry)),
+                                    (ctx.sym("cause"), str_value(r.cause)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("edges"),
+                    list_value(
+                        edges
+                            .into_iter()
+                            .map(|edge| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEdge"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                    (
+                                        ctx.sym("authored_spelling"),
+                                        str_value(edge.authored_spelling),
+                                    ),
+                                    (
+                                        ctx.sym("callee"),
+                                        primitive_callee_identity_value(edge.callee, ctx),
+                                    ),
+                                    (ctx.sym("span_file"), str_value(edge.span_file)),
+                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+    }
+}
+
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -14868,9 +15048,7 @@ fn dispatch_shell(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
-        let mut child = cmd.spawn().map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
+        let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
 
         let stdin_writer = child
             .stdin
@@ -14908,9 +15086,7 @@ fn dispatch_shell(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
-        let child = cmd.spawn().map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
+        let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
         let capture =
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
         render_shell_completion_trace(
@@ -14936,6 +15112,16 @@ fn dispatch_shell(
         }
     }
     shell_result_from_capture(&capture, &argv[0])
+}
+
+/// The one place a spawn failure becomes a value: both spawn sites above (with and without stdin)
+/// route here, and `dispatch_service_wet` is the one place it is either delivered as
+/// `ShellSpawnRefused` or left to refuse the evaluation.
+fn shell_spawn_refused(argv0: &str, err: &std::io::Error) -> InterpError {
+    InterpError::ShellSpawnRefused {
+        argv0: argv0.to_string(),
+        cause: err.to_string(),
+    }
 }
 
 pub(crate) fn shell_result_from_capture(
@@ -16173,7 +16359,7 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// EARLIER, NARROWER deletion condition than the lane's, which should fire first (SCOPE
 /// paragraph of the `rest_outcome_note` annotation): when the `response` block becomes the single authority
 /// and `output` is DERIVED from its 2xx arm, every operation carries its outcome without
-/// declaring one; the opt-in disappears, `rest_outcome_output_field` deletes outright (no
+/// declaring one; the opt-in disappears, `transport_outcome_output_field` deletes outright (no
 /// field to detect), and the `if status >= 400` raise below it deletes in the same motion
 /// (it serves only operations declaring no outcome). Checkable by execution:
 /// `rest_operation_without_outcome_still_refuses` pins the opt-in's existence, so it must be
@@ -16187,7 +16373,15 @@ fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
 /// response table becomes the universal result authority; see the rest_outcome_note annotation. Inspect the
 /// field's TYPE, not its spelling, so callers may pick a domain-appropriate name without
 /// another transport convention.
-fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+///
+/// ONE DETECTOR FOR BOTH TRANSPORTS: `outcome_type` names the transport's outcome carrier
+/// (`RestOutcome`, `extdeps.transports.shell` `ShellOutcome`), so the shell opt-in is the same
+/// seam read with a different type name, not a second convention beside this one.
+fn transport_outcome_output_field(
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+    outcome_type: &str,
+) -> Option<String> {
     let return_type = match op_node.inferred.as_deref()? {
         InferredNode::Resolved { node } => node,
         _ => return None,
@@ -16198,7 +16392,7 @@ fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<
             _ => return None,
         };
         let type_name = authored_name_at(ctx.si(), field_type.clone());
-        (type_name.rsplit('.').next() == Some("RestOutcome"))
+        (type_name.rsplit('.').next() == Some(outcome_type))
             .then(|| authored_name_at(ctx.si(), field.clone()))
     })
 }
@@ -16211,6 +16405,21 @@ fn rest_outcome_variant(
     fields.sort_unstable_by_key(|(name, _)| name.0);
     Value::Variant {
         type_name: ctx.sym("RestOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// `extdeps.transports.shell` `ShellOutcome`, projected the way `rest_outcome_variant` projects
+/// `RestOutcome`.
+fn shell_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ShellOutcome"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     }
@@ -16591,7 +16800,7 @@ fn decide_rest_exchange(
     let (status, body) = match observation {
         RestExchangeObservationHost::ExchangeRefused(cause) => {
             return match outcome_field {
-                Some(field) => Ok(attach_rest_outcome(
+                Some(field) => Ok(attach_transport_outcome(
                     None,
                     op_node,
                     field,
@@ -16608,7 +16817,7 @@ fn decide_rest_exchange(
             body: RestBodyObservationHost::ReadRefused(cause),
         } => {
             return match outcome_field {
-                Some(field) => Ok(attach_rest_outcome(
+                Some(field) => Ok(attach_transport_outcome(
                     None,
                     op_node,
                     field,
@@ -16627,7 +16836,7 @@ fn decide_rest_exchange(
     };
     if !(200..300).contains(&status) {
         if let Some(field) = outcome_field {
-            return Ok(attach_rest_outcome(
+            return Ok(attach_transport_outcome(
                 None,
                 op_node,
                 field,
@@ -16649,7 +16858,7 @@ fn decide_rest_exchange(
             Err(error) => {
                 let cause = format!("JSON body did not decode: {}", error);
                 return match outcome_field {
-                    Some(field) => Ok(attach_rest_outcome(
+                    Some(field) => Ok(attach_transport_outcome(
                         None,
                         op_node,
                         field,
@@ -16666,7 +16875,7 @@ fn decide_rest_exchange(
             Ok(mapped) => mapped,
             Err(refusal) => {
                 return match outcome_field {
-                    Some(field) => Ok(attach_rest_outcome(
+                    Some(field) => Ok(attach_transport_outcome(
                         None,
                         op_node,
                         field,
@@ -16688,7 +16897,7 @@ fn decide_rest_exchange(
             status, missing
         );
         return match outcome_field {
-            Some(field) => Ok(attach_rest_outcome(
+            Some(field) => Ok(attach_transport_outcome(
                 None,
                 op_node,
                 field,
@@ -16699,7 +16908,7 @@ fn decide_rest_exchange(
         };
     }
     match outcome_field {
-        Some(field) => Ok(attach_rest_outcome(
+        Some(field) => Ok(attach_transport_outcome(
             Some(mapped),
             op_node,
             field,
@@ -16711,10 +16920,10 @@ fn decide_rest_exchange(
 }
 
 /// Project an observation into the operation's declared output record. On a non-success
-/// outcome the body-derived fields are Null: RestOutcome is the only inhabited branch and so
-/// the only consumable fact. On RestOk, keep the decoded body fields and replace just the
-/// outcome field.
-fn attach_rest_outcome(
+/// outcome (RestOutcome or ShellOutcome) the transport-derived fields are Null: the outcome is the
+/// only inhabited branch and so the only consumable fact. On success (RestOk, ShellExited) keep
+/// the mapped fields and replace just the outcome field.
+fn attach_transport_outcome(
     mapped: Option<Value>,
     op_node: &Rc<Node>,
     outcome_field: &str,
@@ -17020,7 +17229,7 @@ fn dispatch_rest(
     )?;
     let selection = rest_exchange_selection(invocation, ctx)?;
     let observation = observe_rest_exchange(selection, request, body_json);
-    let outcome_field = rest_outcome_output_field(op_node, ctx);
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "RestOutcome");
     decide_rest_exchange(
         observation,
         op_node,
@@ -20760,6 +20969,25 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
+                Ok(Some(list_value(
+                    crate::cli_run::builtin_function_registry_keys()
+                        .into_iter()
+                        .map(str_value)
+                        .collect::<Vec<_>>(),
+                )))
+            },
+
+            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
+                Ok(Some(primitive_call_edge_census_value(
+                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
+                    $ctx,
+                )))
+            },
+
             arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
                 let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
                 let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
@@ -24032,6 +24260,64 @@ mod argv_arg_limit_test {
                 panic!("small argv must not trip the arg-size wall")
             }
             Ok(_) | Err(_) => {}
+        }
+    }
+
+    /// `argv[0]` alone, so the program itself is the thing that may fail to spawn.
+    fn single_program_transport(program: &str) -> Rc<Node> {
+        let span = no_span();
+        shell_transport_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(im_vec![make_text_part_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic
+                ),
+                program.to_string(),
+                span.clone()
+            )]),
+            Rc::new(im_vec![]),
+            None,
+            span,
+        )
+    }
+
+    // DISCRIMINATING RED: a program absent from PATH never runs, and the refusal is the typed
+    // ShellSpawnRefused carrying the program -- not the untyped TypeError it replaced, which is
+    // what this test fails on if the spawn sites regress to it.
+    #[test]
+    fn dispatch_shell_missing_binary_is_typed_spawn_refusal() {
+        let ctx = argv_limit_test_context();
+        let program = "gunbc-shell-spawn-probe-absent-binary";
+        match dispatch_shell(
+            &single_program_transport(program),
+            &Env::empty(),
+            &ctx,
+            "test.ShellSpawnProbe.Observed",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
+            Err(InterpError::ShellSpawnRefused { argv0, cause }) => {
+                assert_eq!(argv0, program);
+                assert!(!cause.is_empty(), "the host's reason must be retained");
+            }
+            Err(other) => panic!("expected ShellSpawnRefused, got {other:?}"),
+            Ok(_) => panic!("an absent binary cannot produce an exit status"),
+        }
+    }
+
+    // POSITIVE CONTROL: a present program spawns and yields an exit status, so the refusal above
+    // is caused by the absent binary and not by the transport shape.
+    #[test]
+    fn dispatch_shell_present_binary_yields_exit_status() {
+        let ctx = argv_limit_test_context();
+        match dispatch_shell(
+            &single_program_transport("true"),
+            &Env::empty(),
+            &ctx,
+            "test.ShellSpawnProbe.Observed",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
+            Ok(result) => assert_eq!(result.exit_code, 0),
+            Err(other) => panic!("`true` must spawn and exit 0, got {other:?}"),
         }
     }
 }

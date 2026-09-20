@@ -2,12 +2,14 @@ module gunbc.floor_memory_demand
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.checked_arithmetic { nat_magnitude }
 import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitValue,
   CgroupMemoryLimited,
   CgroupMemoryUnlimited,
   CgroupMemoryLimitUnparseable,
+  parse_cgroup_memory_limit,
 }
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A SECOND HOME FOR A NUMBER.
@@ -173,5 +175,52 @@ fn qualification_is_a_demand(q: FloorMemoryQualification) -> Bool {
     DemandObserved { peak: _, limit_max: _, limit_high: _, events: _, termination: _ } => true
     DemandBounded { peak_lower_bound: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
     DemandUnreadable { cause: _ } => false
+  }
+}
+
+// THE HOST'S ENTRY POINT, TAKING ONLY PRIMITIVES.
+//
+// The supervisor reads bytes off `/sys/fs/cgroup` and knows nothing about what they mean; every
+// interpretation — what "max" denotes, whether a negative body is a magnitude or a malformed
+// read, and which combination makes a peak a lower bound — happens HERE, over the upstream
+// authority's own parsers. A host that constructed `CgroupMemoryLimitValue` itself would be a
+// second parser for a file `extdeps.linux.cgroup_v2_memory` already owns (DESIGN section 3).
+//
+// A NEGATIVE COUNT IS A MALFORMED READ, NOT A MAGNITUDE. `memory.peak` and the `memory.events`
+// fields are documented as non-negative, so a leading minus means the read is wrong, and taking
+// its absolute value would fabricate a plausible number from a broken one.
+fn qualify_floor_memory_from_readings(
+  peak_bytes: Int,
+  limit_max_body: String,
+  limit_high_body: String,
+  high_events: Int,
+  max_events: Int,
+  oom_kills: Int,
+  terminated_by_signal: Bool,
+  exit_code: Int,
+) -> FloorMemoryQualification {
+  if peak_bytes < 0 || high_events < 0 || max_events < 0 || oom_kills < 0 {
+    DemandUnreadable {
+      cause: CgroupValueUnparseable {
+        file: "memory.peak/memory.events" as NonEmptyStr,
+        body: "a negative count: the kernel documents these as non-negative, so this read is malformed rather than small",
+      },
+    }
+  } else {
+    qualify_floor_memory_demand(
+      peak: byte_size(count: nat_magnitude(a: peak_bytes)),
+      limit_max: parse_cgroup_memory_limit(body: limit_max_body),
+      limit_high: parse_cgroup_memory_limit(body: limit_high_body),
+      events: CgroupMemoryEvents {
+        high_events: nat_magnitude(a: high_events),
+        max_events: nat_magnitude(a: max_events),
+        oom_kills: nat_magnitude(a: oom_kills),
+      },
+      termination: if terminated_by_signal {
+        TerminationSignalled { signal: exit_code }
+      } else {
+        TerminationExited { code: exit_code }
+      },
+    )
   }
 }

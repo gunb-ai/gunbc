@@ -185,24 +185,10 @@ test fn w_an_unreadable_artifact_refuses_rather_than_reporting_drift() -> Bool {
     && !string_contains(s: render(sections: [ReadoutSection { title: "S", lines: [l] }]), pattern: "FAIL")
 }
 
-// WHY THERE IS NO WHOLE-JOIN CLAIM HERE, stated because the absence is a design decision rather than
-// an omission. A claim over `readout_sections()` transitively executes THIRTEEN claim functions that
-// live in five other witness modules -- the python-to-typescript compile, three Verilog witnesses,
-// three complexity-gate snippets, five simulation-receipt joins -- plus four board emissions and the
-// full workflow projection. Measured on this PR's floor: 1,212,647 eval steps, 3,743ms, against a
-// 302ms enrolment margin.
-//
-// EVERY ONE OF THOSE THIRTEEN IS ALREADY A CLAIM IN ITS OWN MODULE, with its own subject and its own
-// discriminating red. Re-running them here asserts nothing they do not already assert and pays for
-// all of them again -- DESIGN section 2's duplicated work wearing a test's clothes. It also inverts
-// section 3's standing rule: a witness discriminates at ONE interface, and the interface this module
-// owns is the fold from line VALUES to a report, not the truth of the fifteen producers those values
-// came from.
-//
-// SO THE LINE VALUES ARE SUPPLIED, which is what every claim in this file does, and the single
-// real-path execution the pairing obligation requires is
-// `w_the_observer_route_executes_and_reaches_a_live_verdict` -- one artifact, one listing, one read,
-// one projection. `render_demo` is the executing consumer of the whole join, run by hand.
+// WHY THERE IS NO WHOLE-JOIN CLAIM: the line VALUES are supplied, which is what every claim in this
+// file does, and the single real-path execution the pairing obligation requires is
+// `w_the_observer_route_executes_and_reaches_a_live_verdict`. `render_demo` is the executing
+// consumer of the whole join, run by hand.
 
 // A LINE THAT COULD NOT BE ANSWERED STOPS THE RUN, and it is distinguishable from a line that was
 // answered wrongly. Both fail, so a refusal can never be mistaken for a green readout; they print

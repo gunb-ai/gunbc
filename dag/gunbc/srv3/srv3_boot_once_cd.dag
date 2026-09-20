@@ -31,8 +31,7 @@ import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.auth.netrc_binding {
   NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
 }
-import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set }
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
   boot_override_body,
@@ -50,6 +49,8 @@ data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+data srv3_boot_once_cd_label: String = "boot-once-cd"
 
 data srv3_boot_cd_body_path: String = "/tmp/srv3_boot_cd_body.json"
 data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
@@ -116,7 +117,7 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
     return exit_failure(reason: concat("boot-once-cd: ", refusal))
   }
 
-  match srv3_claim_boot_once_cd_authorization(at: observed_at) {
+  match claim_authorization_slot(escalation_id: srv3_boot_once_cd_authorization_request.escalation_id, attempt: srv3_boot_once_cd_attempt, at: observed_at) {
     ClaimLost { holder: who } =>
       return exit_failure(
         reason: concat("boot-once-cd: operator grant already claimed by another attempt: ", who as String),
@@ -130,92 +131,7 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
           exit_failure(reason: concat("boot-once-cd: credential resolution refused: ", r))
         _ => srv3_boot_once_cd_resolved(resolution: resolution)
       }
-      return srv3_settle_boot_once_cd_claim(outcome: outcome, held_at: held_at, at: observed_at)
-  }
-}
-
-fn srv3_claim_boot_once_cd_authorization(at: Timestamp) -> AuthorizationClaimOutcome
-  uses fs: std.resources.Filesystem
-{
-  let proposed = claim_transition_claimed(attempt: srv3_boot_once_cd_attempt, at: at)
-  match admit_cas_attempt(
-    attempt: claim_authorization(
-      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
-      expected: ExpectSlotAbsent,
-      proposed: proposed,
-    ),
-  ) {
-    CasAttemptAdmitted { verified: v } =>
-      authorization_claim_outcome(
-        proposed: proposed,
-        outcome: file_compare_and_set(root: srv3_authorization_claim_root, publication: OwnerOnlyCreateOnly, verified: v),
-      )
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      ClaimUndecided { reason: "claim digest families are incomparable" as NonEmptyStr }
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
-      ClaimUndecided { reason: "authorization claim key is not slot-addressable" as NonEmptyStr }
-  }
-}
-
-// The terminal transition rides the SAME compare-and-set, expecting the generation we hold. If it
-// does not land, the step's own result still stands -- the mutation already happened, and lying
-// about it to keep the ledger tidy would be the worse failure -- but the exit carries the fact
-// that the claim was left unterminated, because an operator reading a bare success would not know
-// a manual slot inspection is owed.
-fn srv3_settle_boot_once_cd_claim(
-  outcome: ProcessExit,
-  held_at: CasGeneration,
-  at: Timestamp,
-) -> ProcessExit
-  uses fs: std.resources.Filesystem
-{
-  let terminal = match outcome {
-    ExitSuccess => claim_transition_completed(attempt: srv3_boot_once_cd_attempt, at: at)
-    ExitFailure { code: _, reason: r } =>
-      claim_transition_aborted(attempt: srv3_boot_once_cd_attempt, at: at, cause: r as NonEmptyStr)
-  }
-  match admit_cas_attempt(
-    attempt: claim_authorization(
-      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
-      expected: ExpectSlotGeneration { generation: held_at },
-      proposed: terminal,
-    ),
-  ) {
-    CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: srv3_authorization_claim_root, publication: OwnerOnlyCreateOnly, verified: v) {
-        CasCommitted { committed: _ } => outcome
-        CasPreconditionFailed { expected: _, observed: _ } =>
-          srv3_unterminated_claim_exit(outcome: outcome, detail: "claim slot moved under us")
-        CasStoreRefused { cause: _ } =>
-          srv3_unterminated_claim_exit(outcome: outcome, detail: "claim store refused the terminal write")
-      }
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      srv3_unterminated_claim_exit(outcome: outcome, detail: "terminal payload and its digest disagree")
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      srv3_unterminated_claim_exit(outcome: outcome, detail: "terminal digest families are incomparable")
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
-      srv3_unterminated_claim_exit(outcome: outcome, detail: "authorization claim key is not slot-addressable")
-  }
-}
-
-fn srv3_unterminated_claim_exit(outcome: ProcessExit, detail: String) -> ProcessExit {
-  exit_failure(
-    reason: concat(
-      "boot-once-cd: the step finished but its authorization claim was left unterminated (",
-      concat(
-        detail,
-        concat("); step outcome was: ", srv3_process_exit_render(exit: outcome)),
-      ),
-    ),
-  )
-}
-
-fn srv3_process_exit_render(exit: ProcessExit) -> String {
-  match exit {
-    ExitSuccess => "success"
-    ExitFailure { code: _, reason: r } => concat("failure: ", r)
+      return settle_authorization_claim(label: srv3_boot_once_cd_label, outcome: outcome, escalation_id: srv3_boot_once_cd_authorization_request.escalation_id, attempt: srv3_boot_once_cd_attempt, held_at: held_at, at: observed_at)
   }
 }
 

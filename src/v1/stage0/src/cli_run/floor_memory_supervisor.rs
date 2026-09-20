@@ -50,11 +50,32 @@ pub struct CgroupMemoryRead {
 /// `DemandReadRefusalCause`.
 #[derive(Debug, Clone)]
 pub enum QualificationRefusal {
-    NoCgroupWithMemoryPeak { searched_from: String },
-    CgroupFileUnreadable { path: String, detail: String },
-    CgroupValueUnparseable { file: String, body: String },
-    ChildNotSpawned { detail: String },
-    ChildNotWaited { detail: String },
+    NoCgroupWithMemoryPeak {
+        searched_from: String,
+    },
+    CgroupFileUnreadable {
+        path: String,
+        detail: String,
+    },
+    CgroupValueUnparseable {
+        file: String,
+        body: String,
+    },
+    ChildNotSpawned {
+        detail: String,
+    },
+    ChildNotWaited {
+        detail: String,
+    },
+    MeasurementCgroupShared {
+        dir: String,
+        strangers: Vec<i32>,
+    },
+    PeakDominatedByPriorHistory {
+        dir: String,
+        before: u64,
+        after: u64,
+    },
 }
 
 impl QualificationRefusal {
@@ -81,6 +102,22 @@ impl QualificationRefusal {
             QualificationRefusal::ChildNotWaited { detail } => format!(
                 "ChildNotWaited — the measured process started and its termination was not \
                  observed, so no reading may be published: {detail}"
+            ),
+            QualificationRefusal::MeasurementCgroupShared { dir, strangers } => format!(
+                "MeasurementCgroupShared — {dir} already holds {} process(es) that are not this \
+                 supervisor ({strangers:?}). memory.peak is a property of the CGROUP, not of a \
+                 process, so a neighbour's allocation would be reported as the floor's demand. \
+                 Give the measurement a cgroup of its own: systemd-run --user --scope \
+                 -p MemoryMax=<bytes> -p MemoryHigh=infinity -- gunbc test \
+                 //gunbc/instruments:floor-memory-qualification",
+                strangers.len()
+            ),
+            QualificationRefusal::PeakDominatedByPriorHistory { dir, before, after } => format!(
+                "PeakDominatedByPriorHistory — {dir} already stood at memory.peak {before} before \
+                 the measured run and reads {after} after it, and this kernel refused to reset \
+                 the counter. memory.peak is the cgroup's LIFETIME maximum, so that figure \
+                 belongs to something that ran earlier and nothing here can attribute it to this \
+                 run. A fresh scope per measurement makes this unreachable."
             ),
         }
     }
@@ -182,6 +219,38 @@ pub fn resolve_measurement_cgroup() -> Result<PathBuf, QualificationRefusal> {
     nearest_cgroup_with_peak(&leaf).ok_or_else(|| QualificationRefusal::NoCgroupWithMemoryPeak {
         searched_from: leaf.to_string_lossy().to_string(),
     })
+}
+
+/// EVERY PROCESS IN THE CGROUP IS CHARGED TO THE SAME COUNTER, so a cgroup we share with anything
+/// else cannot answer for this run. Measured on srv1: an ordinary login session scope holds five
+/// processes, and an ancestor slice on the same host stood at 249 GiB against a 27 GiB scope.
+/// Checked BEFORE the workload, because after a 35-minute run the contamination is unfixable.
+pub fn strangers_in_cgroup(dir: &Path) -> Result<Vec<i32>, QualificationRefusal> {
+    let me = std::process::id() as i32;
+    let body = read_file(dir, "cgroup.procs")?;
+    Ok(body
+        .lines()
+        .filter_map(|l| l.trim().parse::<i32>().ok())
+        .filter(|pid| *pid != me)
+        .collect())
+}
+
+/// `memory.peak` IS THE CGROUP'S LIFETIME MAXIMUM, not this run's. Kernels from 6.9 allow writing
+/// to reset it; where the write is refused the prior high-water mark survives into our reading, so
+/// the pre-run value is captured and the caller refuses any reading it dominates. Returns the
+/// baseline that remains in force after the reset attempt.
+pub fn reset_or_baseline_peak(dir: &Path) -> Result<u64, QualificationRefusal> {
+    let before = read_count(dir, "memory.peak")?;
+    if std::fs::write(dir.join("memory.peak"), "0").is_ok() {
+        // READ IT BACK rather than trusting the write: a successful-looking write that changed
+        // nothing is exactly the silent precondition failure this instrument exists to refuse.
+        if let Ok(after_reset) = read_count(dir, "memory.peak") {
+            if after_reset < before {
+                return Ok(after_reset);
+            }
+        }
+    }
+    Ok(before)
 }
 
 /// Run the child to completion IN THIS PROCESS'S OWN CGROUP and report how it ended. No cgroup

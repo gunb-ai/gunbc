@@ -1,0 +1,41 @@
+module extdeps.tools.gh
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_gh }
+
+// THE TOOL ROW FOR THE GITHUB CLI, so that the binary every `transport shell` operation in
+// extdeps.github spawns (argv word "gh") is a declared executor prerequisite that
+// gunbc.host_cli_dependency can PROBE for before a read, rather than an exec error discovered
+// mid-read. The argv templates in extdeps.github carry the literal program word because a
+// service transport template cannot reference a data row; this row names that same word.
+//
+// min_version is none: no operation in this corpus depends on a version-gated gh feature.
+// installable_via names the apt package the distribution ships; this row is a hint carried by
+// the refusal, never an instruction any read-only route acts on.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cli.github.com/manual/"
+  }
+}
+
+data gh_cli_tool: CliTool = CliTool {
+  name: "gh",
+  min_version: none,
+  installable_via: [SourceApt { package: package_gh }],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.gh",
+      decl_name: "gh_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.gh.extdeps_external_authority_anchor,
+  further_citations: []
+}
