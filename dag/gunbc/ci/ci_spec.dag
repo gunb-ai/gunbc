@@ -12,7 +12,9 @@ import gunbc.auth.github_apps {
   gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
 }
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
+import extdeps.auth.jws { jws_rs256_protected_header_json }
 import extdeps.github.org_admin_auth {
+  github_app_jwt_claims_json_of,
   github_app_installation_access_token_url,
   github_app_jwt_backdate_seconds,
   github_app_jwt_lifetime_seconds,
@@ -972,6 +974,24 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
   function: "live_deploy_apply_srv1_transaction_wet",
 }
 
+// THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
+// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet
+// binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
+// a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
+// actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
+// so the install reaches srv1 the way every other host mutation does, as a dispatched job on the
+// host-pinned runner, rather than by relaxing the expected principal.
+//
+// IT TARGETS THE WET FOLD AND NOT gunbc.apply apply_dispatch, which is the convention every other
+// row here follows (spark_pair_serving_apply_wet, fleet_converge_apply_wet,
+// observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
+// name and a mode out of strings a human typed, and a CI step that went through it would be
+// re-deciding by string what this row decides by declaration.
+data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "approval_broker_dark_install_srv1_wet",
+}
+
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
   function: "rlm_launch_deployment_receipt_wet",
@@ -1091,6 +1111,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_authorized_key_enroll_target,
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
+    gunbc_ci_approval_broker_dark_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1133,6 +1154,24 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
     function: gunbc_ci_live_deploy_transaction_target.function,
     claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
+  )
+}
+
+// NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
+// install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
+// freeze it must not restart gunbc-roadmap.service -- so it mints no live-deploy transaction
+// receipt to bind to a plan and an apply run. What the stage is proved by is the NEXT one:
+// ProveRelease reads the broker's own /livez back and compares it to the candidate this install
+// named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
+// asserting it installed would be the control-plane fact standing in for the subject observation
+// that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
+fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_broker_dark_install_target.entry,
+    function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -1810,9 +1849,9 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
       app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
       app_mint_step(command: "NOW=$(date +%s)"),
       app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
-      app_mint_step(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)"),
+      app_mint_step(command: join(["JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | b64url)"], "")),
       app_mint_step(command: join([
-        "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
+        "JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((NOW-",
         to_string(github_app_jwt_backdate_seconds),
         "))\" \"$((NOW+",
         to_string(github_app_jwt_lifetime_seconds),
@@ -1953,11 +1992,11 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
     Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
     Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
-    Do { run: ci_retry_body_run(command: "APP_JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | app_b64url)") },
+    Do { run: ci_retry_body_run(command: join(["APP_JWT_HEADER=$(printf '%s' '", jws_rs256_protected_header_json(), "' | app_b64url)"], "")) },
     Do {
       run: ci_retry_body_run(
         command: join([
-          "APP_JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((APP_NOW-",
+          "APP_JWT_PAYLOAD=$(printf '", github_app_jwt_claims_json_of(iat: "%d", exp: "%d", iss: "%s"), "' \"$((APP_NOW-",
           to_string(github_app_jwt_backdate_seconds),
           "))\" \"$((APP_NOW+",
           to_string(github_app_jwt_lifetime_seconds),

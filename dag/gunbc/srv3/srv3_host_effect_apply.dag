@@ -86,8 +86,15 @@ fn srv3_bmcweb_token_extract_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3BmcwebTokenExtract)
 }
 
+// The served bytes are the seeded image this host's derivation record resolves to, re-measured now;
+// an unresolved image refuses the serve rather than serving whatever a path happens to hold.
 fn srv3_nbd_proxy_serve_apply() -> Srv3ApplyDisposition {
-  srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect())
+  match srv3_seeded_install_media_resolve() {
+    SeededImageResolved { built: _, path: p } =>
+      srv3_host_effect_apply(effect: srv3_nbd_proxy_serve_host_effect(iso_path: p))
+    other =>
+      Srv3ApplyRefused { reason: concat("nbd-proxy-serve: seeded image unresolved: ", actuator_image_unresolved_reason(image: other)) }
+  }
 }
 
 fn srv3_boot_once_read_back_sleep_apply() -> Srv3ApplyDisposition {
