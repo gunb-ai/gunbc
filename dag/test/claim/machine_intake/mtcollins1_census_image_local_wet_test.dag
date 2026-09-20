@@ -196,7 +196,12 @@ data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-count
 test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
   let complete = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_complete))
   let complete_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
-  string_contains(s: complete, pattern: "\nworkload-digest-stable=yes\n") && complete_rc == 0
+  // THE TOKEN MUST BE A WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX"
+  // or the token inside an argv echo may not satisfy this. Captured stdout carries no trailing
+  // newline, so the captured text is padded on BOTH sides before the line-delimited match; matching
+  // the raw capture against a trailing "\n" failed on the one case that must pass, which is a control
+  // that fails closed rather than a workload defect.
+  string_contains(s: concat("\n", complete, "\n"), pattern: "\nworkload-digest-stable=yes\n") && complete_rc == 0
 }
 
 // THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both

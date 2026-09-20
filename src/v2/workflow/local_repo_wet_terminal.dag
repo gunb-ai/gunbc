@@ -551,9 +551,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_parses_under_the_reconstructed_grammar" },
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_binds_and_reads_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
-      function: "the_attempt_three_capture_parses_under_the_reconstructed_grammar",
+      function: "the_attempt_three_capture_binds_and_reads_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -566,6 +572,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "a_removed_image_is_absent_not_diverged_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "a_removed_image_is_absent_not_diverged_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
