@@ -215,6 +215,26 @@ fn runner_slot_instance_name_prefix(host: HostIdentity) -> String {
   join([host as String, "-"], "")
 }
 
+// ONE RELATION FOR "COULD THIS OBSERVED NAME BE A SLOT OF THIS HOST", because two consumers ask it
+// and an earlier revision of this change answered it twice: gunbc.fleet_runner_connectivity with
+// `starts_with` over the prefix and gunbc.fabric_cell_observe with `string_contains` over the same
+// prefix. One concept, two implementations, and they disagree observably -- `backup-srv2-01` is a
+// candidate under `contains` and is not under `starts_with`. Minting the PREFIX as a single
+// authority and then forking the RELATION over it is the fork DESIGN 3 names, with the second
+// spelling hidden one level down.
+//
+// THE PREFIX IS A PARAMETER BECAUSE THE NAME'S RENDERING IS THE CALLER'S FACT. A registration is
+// named `srv2-01`; a fabric cell slice is named `fabric-cell-srv2-01.slice`. Each caller renders
+// the host prefix the way ITS names are rendered, through the authority that owns that rendering,
+// and the comparison is this one.
+//
+// IT IS A NECESSARY CONDITION READ IN ONE DIRECTION ONLY. A true answer says the name COULD belong
+// to that host, never that it does: it is used to withhold a negative verdict about an
+// unresolvable host, and it is never evidence of ownership.
+fn slot_name_could_belong_to_host(observed_name: String, host_name_prefix: String) -> Bool {
+  starts_with(s: observed_name, prefix: host_name_prefix)
+}
+
 fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
   join([runner_slot_instance_name_prefix(host: slot.host), runner_slot_index_suffix(index: slot.slot_index)], "")
 }

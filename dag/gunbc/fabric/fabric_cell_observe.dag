@@ -3,7 +3,7 @@ module gunbc.fabric_cell_observe
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   committed_slot_identities,
@@ -16,7 +16,6 @@ import gunbc.fleet_runner_connectivity {
   FleetCommittedSlotPopulation,
   FleetHostWidthUnresolved,
 }
-import gunbc.build_cache_instance { runner_slot_instance_name_prefix }
 import std.string_type { string_is_lexicographically_before }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
@@ -26,6 +25,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_addresses,
   fabric_cell_resource_address_equal,
   fabric_cell_slice_name,
+  fabric_cell_slice_name_prefix,
   fabric_cell_expected_slots,
   ExpectedAddressBlocked,
   UnexpectedCellEvidence,
@@ -572,13 +572,28 @@ fn fabric_cell_fleet_population() -> FleetCommittedSlotPopulation {
   fleet_committed_slot_identities()
 }
 
-// THE SAME NECESSARY CONDITION THE REGISTRATION DECODER USES, AND FOR THE SAME REASON. A name an
+// THE SAME NECESSARY CONDITION THE REGISTRATION DECODER USES, AND NOW THE SAME RELATION. A name an
 // unresolved host's naming authority could NOT have produced is still decidably foreign; only a
 // name it could have produced is undecidable. So srv2-02 observed anywhere is undecidable while
-// srv2 is unresolved, and srv3-99 stays foreign -- the test is the host prefix, read fail-closed in
-// one direction only, never as evidence of ownership.
+// srv2 is unresolved, and srv3-99 stays foreign -- read fail-closed in one direction only, never as
+// evidence of ownership.
+//
+// AN EARLIER REVISION ASKED THAT QUESTION WITH `string_contains` WHILE THE DECODER ASKED IT WITH
+// `starts_with`, over the same prefix authority: one relation, two implementations, disagreeing
+// observably -- `backup-srv2-01` was a candidate here and not there. Both are now
+// gunbc.build_cache_instance slot_name_could_belong_to_host, and the rendering difference that
+// motivated `contains` is handled where it belongs: the PREFIX is rendered the way THIS name was
+// rendered, so a slice named `fabric-cell-srv2-01.slice` is compared against `fabric-cell-srv2-`.
+fn fabric_cell_rendered_host_prefix(rendering: FabricCellNamespaceRendering, host: HostIdentity) -> String {
+  match rendering {
+    CellRootRendering => runner_slot_instance_name_prefix(host: host)
+    SliceRendering => fabric_cell_slice_name_prefix(host: host)
+  }
+}
+
 fn fabric_cell_unresolved_host_could_own(
   name: String,
+  rendering: FabricCellNamespaceRendering,
   unresolved: List<FleetHostWidthUnresolved>,
 ) -> FleetHostWidthUnresolved? {
   fold(
@@ -588,7 +603,10 @@ fn fabric_cell_unresolved_host_could_own(
       match acc {
         Present { value: v } => Present { value: v }
         Absent =>
-          if string_contains(s: name, pattern: runner_slot_instance_name_prefix(host: u.host)) {
+          if slot_name_could_belong_to_host(
+            observed_name: name,
+            host_name_prefix: fabric_cell_rendered_host_prefix(rendering: rendering, host: u.host),
+          ) {
             Present { value: u }
           } else {
             none
@@ -648,7 +666,11 @@ fn fabric_cell_classify_uncommitted_here(
   let population = fabric_cell_fleet_population()
   fold(
     fabric_cell_named_among(members: population.members, name: name, rendering: rendering),
-    init: match fabric_cell_unresolved_host_could_own(name: name, unresolved: population.unresolved_hosts) {
+    init: match fabric_cell_unresolved_host_could_own(
+      name: name,
+      rendering: rendering,
+      unresolved: population.unresolved_hosts,
+    ) {
       Present { value: u } =>
         DiscoveredHostWidthUnresolved {
           observed_name: name,

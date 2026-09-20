@@ -14,7 +14,7 @@ import extdeps.github.ci_runner {
 }
 import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -210,9 +210,9 @@ fn registration_names_unresolved_host(
       match acc {
         Present { value: v } => Present { value: v }
         Absent =>
-          if starts_with(
-            s: reg.name as String,
-            prefix: runner_slot_instance_name_prefix(host: u.host),
+          if slot_name_could_belong_to_host(
+            observed_name: reg.name as String,
+            host_name_prefix: runner_slot_instance_name_prefix(host: u.host),
           ) {
             Present { value: u }
           } else {

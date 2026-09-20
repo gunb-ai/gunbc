@@ -15,7 +15,7 @@ import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_instance_name_prefix, runner_slot_identity_equal }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slot_desired,
@@ -87,8 +87,18 @@ fn fabric_cell_attempt_root_path(slot: RunnerSlotIdentity) -> String {
   join([fabric_cell_root_path(slot: slot), "/attempts"], "")
 }
 
+// THE SLICE LEAD IS SPELLED ONCE AND THE HOST PREFIX IS PROJECTED THROUGH IT. gunbc.fabric_cell_observe
+// must ask whether an observed slice name could belong to a given host, which means rendering that
+// host's prefix the way slice names are rendered -- and spelling "fabric-cell-" there would be a
+// second authority for this name's shape, free to drift from this one.
+data fabric_cell_slice_name_lead: String = "fabric-cell-"
+
+fn fabric_cell_slice_name_prefix(host: HostIdentity) -> String {
+  join([fabric_cell_slice_name_lead, runner_slot_instance_name_prefix(host: host)], "")
+}
+
 fn fabric_cell_slice_name(slot: RunnerSlotIdentity) -> String {
-  join(["fabric-cell-", runner_slot_instance_name(slot: slot), ".slice"], "")
+  join([fabric_cell_slice_name_lead, runner_slot_instance_name(slot: slot), ".slice"], "")
 }
 
 // THREE ADDRESSES, EACH WITH A REAL DESIRED VALUE AND A REAL OBSERVATION TODAY. An address is added
