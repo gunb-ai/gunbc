@@ -423,6 +423,17 @@ test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
   }
 }
 
+// The admission fold refuses on the FIRST out-of-range member and names it, and it has no admitted
+// prefix a caller could pre-load (the accumulator it replaced took one; a supplied `admitted: [256]`
+// minted a sealed value nothing had checked). A fold that scanned from the tail, or that stopped at
+// the first member, answers 400 or 1 here and reds this claim.
+test fn uint8_octets_of_ints_names_the_first_out_of_range_member_holds() -> Bool {
+  match uint8_octets_of_ints(values: [1, 300, 400]) {
+    QualifiedOctetsRefused { observed: v } => v == 300
+    QualifiedOctetsReady { value: _ } => false
+  }
+}
+
 test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
   match base64_octets(values: [255, 0, 255]) {
     QualifiedOctetsRefused { observed: _ } => false

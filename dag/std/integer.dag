@@ -89,14 +89,13 @@ type QualifiedOctetsResult
 // already runs this wall and it refuses at resolve, so this is an existing capability being consumed
 // rather than a mechanism invented here.
 //
-// The roster is deliberately TWO, and each entry is a different reason. uint8_octets_accumulate is
-// the admission fold's recursive step -- the exact line that has just proved the member list, one
-// uint8_of_int at a time -- so an outside caller cannot reach a QualifiedOctets carrying an
-// unadmitted value at all. It is the ACCUMULATOR and not its wrapper uint8_octets_of_ints in this
-// roster, and that is not a detail: the roster names whoever CALLS THE MINT, and the wrapper only
-// calls the accumulator. The wall found that itself -- naming the wrapper refused at resolve with
-// "refuses call from 'std.integer.uint8_octets_accumulate'", which is this mechanism doing exactly
-// the job it is here to do, on its own author.
+// The roster is deliberately TWO, and each entry is a different reason. uint8_octets_of_ints is
+// the admission fold: it runs every member through uint8_of_int and mints ONLY from the list it has
+// just proved in full, so an outside caller cannot reach a QualifiedOctets carrying an unadmitted
+// value at all. It used to be an accumulator with a caller-supplied `admitted` prefix in this slot,
+// and that was a proxy in exactly the sense stated below: `admitted: [256], remaining: []` minted a
+// sealed value nothing had checked (side-chat HOLD on e08f937d). The mint now has no formal a caller
+// can pre-load -- the proved list and the minted list are the same value.
 //
 // word_to_octets is admitted because its members are COMPUTED in range -- they are remainders modulo
 // the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
@@ -128,12 +127,12 @@ type QualifiedOctetsResult
 // WHAT admit_callers DOES AND DOES NOT ESTABLISH, stated here because the distinction decides the
 // rung. It constrains the CALL EDGE, not the egress of the returned value: an admitted producer that
 // accepted a caller's list and handed back the sealed value would be a PROXY, and the seal would be
-// worth nothing. Neither admitted caller is one -- the fold verifies, and word_to_octets takes a Word
-// and a width rather than a member list. That is the property a reviewer should check when the roster
+// worth nothing. Neither admitted caller is one -- the fold mints only the list it has verified in
+// full, and word_to_octets takes a Word and a width rather than a member list. That is the property a reviewer should check when the roster
 // grows, and it is why the roster is two names rather than a convenience.
 fn qualified_octets(members: List<UInt8>) -> QualifiedOctets
   admit_callers: [
-    decl_ref(module_path: "std.integer", decl_name: "uint8_octets_accumulate"),
+    decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
     decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets")
   ]
 {
@@ -143,17 +142,21 @@ fn qualified_octets(members: List<UInt8>) -> QualifiedOctets
 // The admission fold: the ONE route from raw Ints to the carried proof. It refuses on the FIRST
 // out-of-range member and names the observed value, so the refusal is located rather than a count.
 fn uint8_octets_of_ints(values: List<Int>) -> QualifiedOctetsResult {
-  uint8_octets_accumulate(admitted: [], remaining: values)
+  match first_uint8_out_of_range(remaining: values) {
+    Present { value: observed } => QualifiedOctetsRefused { observed: observed }
+    Absent => QualifiedOctetsReady { value: qualified_octets(members: values) }
+  }
 }
 
-fn uint8_octets_accumulate(admitted: List<UInt8>, remaining: List<Int>) -> QualifiedOctetsResult {
+// The scan behind the fold. It carries no admitted prefix on purpose: a prefix formal is a value a
+// caller can supply unproved, and the mint above must have nothing of that shape reachable from it.
+fn first_uint8_out_of_range(remaining: List<Int>) -> Int? {
   match remaining.first() {
-    Absent => QualifiedOctetsReady { value: qualified_octets(members: admitted) }
+    Absent => Absent
     Present { value: head } =>
       match uint8_of_int(value: head) {
-        UInt8OutOfRange { observed: o } => QualifiedOctetsRefused { observed: o }
-        UInt8Ready { value: octet } =>
-          uint8_octets_accumulate(admitted: admitted |> list_push(octet), remaining: remaining.skip(n: 1))
+        UInt8OutOfRange { observed: o } => Present { value: o }
+        UInt8Ready { value: _ } => first_uint8_out_of_range(remaining: remaining.skip(n: 1))
       }
   }
 }
