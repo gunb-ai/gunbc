@@ -89,6 +89,14 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
     && (match review_join(plan: p, observations: [stale]) { ReviewJoinRefused { cause: ReviewObservationForOtherRevision { call_id: _, expected: _, observed } } => observed == "0000000000000000"  _ => false })
 }
 
+// THE COUNT IS DERIVED, NOT TRANSCRIBED. This asserted the literal "Still reviewing (10 ...)"
+// followed by all ten key names in roster order, both copied from the live criteria roster. That
+// made it a change detector for roster SIZE: adding any reviewer to a design row broke it, and
+// the repair was to retype the number -- which DESIGN section 5 names outright, since automating
+// the literal's update collapses the assertion to measure() == measure(). Four of this scenario's
+// five observations are terminal (the fifth is still running), so the incomplete set is the
+// roster minus those four, and that relation is what the fold actually owes. The rendering is
+// still covered: the phrase must appear and must name a criterion that had no observation.
 // THE FOLD: findings regroup by file for the worker, identical rows fold once, a file named by two
 // criteria is the counted residual, and an early report says which calls are still incomplete.
 // THE COUNT IS DERIVED, NOT TRANSCRIBED. This asserted the literal "Still reviewing (10 ...)"

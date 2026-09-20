@@ -117,6 +117,63 @@ data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
   },
 ]
 
+// THE PLAIN 0.6.18 SPELLING, which upstream pinned before the .post1 release existed:
+// requirements/cuda.txt at 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (2026-09-04) states
+// `flashinfer-python==0.6.18` and `flashinfer-cubin==0.6.18`, and docker/Dockerfile at the same
+// revision declares `ARG FLASHINFER_VERSION=0.6.18`. The GLM-5.3-Flash SM121 base image's recorded
+// build arguments carry exactly this spelling; the .post1 row above is a different pin at a later
+// revision, not a correction of this one.
+data flashinfer_0_6_18_version: NonEmptyStr = "0.6.18" as NonEmptyStr
+
+// THE 0.7.0.dev20260910 NIGHTLY, WHICH THE GLM-5.3-FLASH SM121 IMAGE FORCE-REINSTALLS OVER THE
+// BASE'S 0.6.18. The GLM native arm's serving image (the local build whose base is upstream vLLM
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83) carries these three wheels and pip-installs them
+// --no-deps --force-reinstall; the base's 0.6.18 predates the sparse-MLA page-table fix the model
+// needs. A nightly is a published build of a dated snapshot, not a release: the channel is the
+// nightly index, and the row stays honest about what a nightly is -- it may be pruned upstream, in
+// which case the digest-pinned wheel in the image is the surviving artifact and this row's index
+// citation is its provenance, not its availability guarantee.
+data flashinfer_0_7_0_dev20260910_version: NonEmptyStr = "0.7.0.dev20260910" as NonEmptyStr
+
+data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_0_dev20260910_version,
+  channel: FlashInferProjectNightly,
+  index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// THE THREE NIGHTLY WHEELS. The python and jit-cache digests agree across two independent surfaces
+// read 2026-09-17: the `#sha256=` fragment of the nightly index link, and sha256sum of the wheels
+// as installed in the serving image on srv9. The cubin wheel (1.57 GB) was not re-hashed; its
+// digest rests on the index listing alone, the same evidence level this module already carries for
+// the 0.6.18.post1 cubin and jit-cache rows.
+data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a5fa6ee62652b6e02cef8e2be33a5a3fdc1f2ae70ed2a131beface7594c436bd" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "7c45246d658c9818a4179c2ce81729163112aefcb3bcd1ff63eb5004c0df5422" as Sha256DigestHex },
+  },
+]
+
+// WHERE THE NIGHTLY WHEELS ACTUALLY RESOLVE. The nightly index's links are GitHub release assets of
+// flashinfer-ai/whl under the release tag nightly-v0.7.0-20260910 (the `#sha256=` hrefs, read
+// 2026-09-17). The release base is carried once here so a consumer derives a wheel's URL instead of
+// re-spelling it.
+data flashinfer_0_7_0_dev20260910_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/whl/releases/download/nightly-v0.7.0-20260910" as NonEmptyStr
+
+fn flashinfer_0_7_0_dev20260910_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_0_dev20260910_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
 // THE FIELDS OF A COMPLETE WHEEL FILENAME (binary distribution format, PEP 427,
 // packaging.python.org/en/latest/specifications/binary-distribution-format/):
 // `{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl`. The version field keeps its local
