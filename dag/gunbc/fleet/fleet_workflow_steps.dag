@@ -656,7 +656,9 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
 // this job -- one gated run step each plus one shared receipt upload -- and still do not move the
 // bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
-// transfer-tier upload, which is below the spark_grants branch that sets the worst case.
+// transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
+// site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.site_pxe_edge_converge) have the same
+// shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
