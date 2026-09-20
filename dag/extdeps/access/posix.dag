@@ -3,6 +3,7 @@ module extdeps.access.posix
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -128,4 +129,72 @@ fn file_mode_octal(mode: FileMode) -> String {
     to_string(permission_bits_octal_digit(bits: mode.group)),
     to_string(permission_bits_octal_digit(bits: mode.other)),
   ], "")
+}
+
+// THE SAME RELATION READ BACKWARD, which is why it lives here and not at the call site that wanted
+// it. file_mode_octal above renders a FileMode as chmod's numeric spelling; this reads that
+// spelling back. One grammar, two directions (DESIGN section 4) -- a parser authored beside a
+// consumer would be a second, informal authority for the digit layout, and the two would drift the
+// first time a special bit mattered.
+//
+// THREE DIGITS AND FOUR ARE THE SAME NUMBER. stat's %a prints the special digit only when it is
+// non-zero, so "660" and "0660" are one mode spelled two ways; reading the text as an integer and
+// slicing digits positionally from the LEAST significant end handles both without a length branch
+// and without the leading-zero question ever arising.
+//
+// EVERY REFUSAL ARM IS A REFUSAL AND NOT A ZERO. An unparseable field, a negative number, a digit
+// above 7 or a value wider than four digits means the observation did not happen; folding any of
+// them into a FileMode would hand a consumer a permission set nothing observed, and the consumer
+// here is deciding whether a device is delegated to a group.
+fn permission_bits_of_octal_digit(digit: Int) -> PermissionBits? {
+  if digit < 0 || digit > 7 {
+    none
+  } else {
+    Present {
+      value: PermissionBits {
+        read: (digit / 4) % 2 == 1,
+        write: (digit / 2) % 2 == 1,
+        execute: digit % 2 == 1,
+      },
+    }
+  }
+}
+
+fn file_mode_of_octal_text(text: String) -> FileMode? {
+  match parse_int(s: trim(s: text)) {
+    Absent => none
+    Present { value: n } =>
+      if n < 0 || n > 7777 {
+        none
+      } else {
+        match permission_bits_of_octal_digit(digit: (n / 100) % 10) {
+          Absent => none
+          Present { value: owner } =>
+            match permission_bits_of_octal_digit(digit: (n / 10) % 10) {
+              Absent => none
+              Present { value: group } =>
+                match permission_bits_of_octal_digit(digit: n % 10) {
+                  Absent => none
+                  Present { value: other } => {
+                    let special = (n / 1000) % 10
+                    if special < 0 || special > 7 {
+                      none
+                    } else {
+                      Present {
+                        value: FileMode {
+                          owner: owner,
+                          group: group,
+                          other: other,
+                          setuid: (special / 4) % 2 == 1,
+                          setgid: (special / 2) % 2 == 1,
+                          sticky: special % 2 == 1,
+                        },
+                      }
+                    }
+                  }
+                }
+            }
+        }
+      }
+  }
 }
