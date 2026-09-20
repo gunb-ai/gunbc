@@ -36,8 +36,10 @@ import gunbc.runner_microvm_cell_readiness_store {
 // which refuses, but at the wrong grain and with the wrong remedy. A claim that only checked
 // inequality would pass against a decoder that dropped the bad record and returned the rest.
 
+data witness_slot_value: RunnerSlotIdentity = RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 }
+
 fn witness_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 as Nat }
+  witness_slot_value
 }
 
 fn witness_attempt() -> MicroVmAttempt? {
