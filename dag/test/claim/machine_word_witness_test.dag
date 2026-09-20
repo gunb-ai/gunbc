@@ -299,14 +299,28 @@ test fn carry_is_pinned_in_both_directions_holds() -> Bool {
 // THE VECTOR HELPER CONSTRUCTS ITS OCTETS RATHER THAN ASSERTING THEM. An earlier cut was
 // `values |> map(v => v + 0)`, which minted a List<UInt8> out of bare Ints with no construction at
 // all -- the exact bypass this file's own RED claims uint8_of_int exists to refuse, authored into
-// the file that claims it. Every vector below is in range, so the refusal arm is unreachable FOR
-// THESE INPUTS and returning [] there would be a fabricated answer; it is the one arm no vector
-// reaches, and a vector that did reach it would make the claim that consumes this list red rather
+// the file that claims it. It now goes through the ONE admission fold, so the vectors below are
+// admitted by the same route production uses. The refusal arm is unreachable for these vectors,
+// which are all in range; a vector that did reach it makes the consuming claim red on a [] rather
 // than quietly shorter.
-fn octet_words(values: List<Int>) -> List<std.integer.UInt8> {
-  match octets_of_ints(octets: [], remaining: values) {
-    OctetsReady { octets: os } => os
-    OctetsRefused { cause: _ } => []
+fn octet_words(values: List<Int>) -> QualifiedOctets {
+  match uint8_octets_of_ints(values: values) {
+    QualifiedOctetsReady { value: q } => q
+    QualifiedOctetsRefused { observed: _ } => empty_octets()
+  }
+}
+
+fn empty_octets() -> QualifiedOctets {
+  match uint8_octets_of_ints(values: []) {
+    QualifiedOctetsReady { value: q } => q
+    QualifiedOctetsRefused { observed: _ } => empty_octets()
+  }
+}
+
+fn raw_octets_of(result: RawOctetsResult) -> List<Int> {
+  match result {
+    RawOctetsReady { octets: octets } => octets |> map(o => uint8_int_value(v: o))
+    RawOctetsRefused { cause: _ } => []
   }
 }
 
@@ -381,16 +395,16 @@ test fn an_octet_admits_the_byte_range_holds() -> Bool {
 // bound is ignorance about the bound, not an answer about the value. The four-octet case is the
 // same question where the capacity IS representable, so the two arms are both executed.
 test fn length_field_rendering_holds() -> Bool {
-  octets_of(result: int_to_octets(value: 512, count: 8, endianness: BigEndian)) == [0, 0, 0, 0, 0, 0, 2, 0]
-    && octets_of(result: int_to_octets(value: 512, count: 4, endianness: BigEndian)) == [0, 0, 2, 0]
-    && octets_of(result: int_to_octets(value: 512, count: 4, endianness: LittleEndian)) == [0, 2, 0, 0]
+  raw_octets_of(result: int_to_octets(value: 512, count: 8, endianness: BigEndian)) == [0, 0, 0, 0, 0, 0, 2, 0]
+    && raw_octets_of(result: int_to_octets(value: 512, count: 4, endianness: BigEndian)) == [0, 0, 2, 0]
+    && raw_octets_of(result: int_to_octets(value: 512, count: 4, endianness: LittleEndian)) == [0, 2, 0, 0]
 }
 
 test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
   match int_to_octets(value: 256, count: 1, endianness: BigEndian) {
-    OctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 256 && c == 1
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: _ } => false
+    RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 256 && c == 1
+    RawOctetsRefused { cause: _ } => false
+    RawOctetsReady { octets: _ } => false
   }
 }
 
@@ -404,16 +418,15 @@ test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
 // So re-introducing the displaced arithmetic turns this Absent into a Present and reds the claim.
 test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
   match base64_octets(values: [256, 0, 0]) {
-    OctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: _ } => false
+    QualifiedOctetsRefused { observed: v } => v == 256
+    QualifiedOctetsReady { value: _ } => false
   }
 }
 
 test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
   match base64_octets(values: [255, 0, 255]) {
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
+    QualifiedOctetsRefused { observed: _ } => false
+    QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
   }
 }
 
@@ -655,17 +668,16 @@ test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool {
 // through the octet constructor refuses before any packing happens, and that is the state the
 // packing no longer has to re-inspect.
 test fn admitting_an_out_of_range_member_refuses_before_packing_holds() -> Bool {
-  match octets_of_ints(octets: [], remaining: [1, 256]) {
-    OctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: _ } => false
+  match uint8_octets_of_ints(values: [1, 256]) {
+    QualifiedOctetsRefused { observed: v } => v == 256
+    QualifiedOctetsReady { value: _ } => false
   }
 }
 
 test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
-  match octets_of_ints(octets: [], remaining: [1, 255]) {
-    OctetsReady { octets: o } => octet_int_values(octets: o) == [1, 255]
-    OctetsRefused { cause: _ } => false
+  match uint8_octets_of_ints(values: [1, 255]) {
+    QualifiedOctetsReady { value: o } => octet_int_values(octets: o) == [1, 255]
+    QualifiedOctetsRefused { observed: _ } => false
   }
 }
 
@@ -674,24 +686,24 @@ test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
 // from "rendered nothing because nothing fits" from "rendered nothing because nothing was asked".
 test fn negative_octet_count_refuses_holds() -> Bool {
   match int_to_octets(value: 0, count: 0 - 1, endianness: BigEndian) {
-    OctetsRefused { cause: OctetCountOutOfRange { observed: n } } => n == (0 - 1)
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: _ } => false
+    RawOctetsRefused { cause: OctetCountOutOfRange { observed: n } } => n == (0 - 1)
+    RawOctetsRefused { cause: _ } => false
+    RawOctetsReady { octets: _ } => false
   }
 }
 
 test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool {
   match int_to_octets(value: 0, count: 0, endianness: BigEndian) {
-    OctetsReady { octets: o } => list_length(items: o) == 0
-    OctetsRefused { cause: _ } => false
+    RawOctetsReady { octets: o } => list_length(items: o) == 0
+    RawOctetsRefused { cause: _ } => false
   }
 }
 
 test fn zero_octet_count_refuses_a_nonzero_value_holds() -> Bool {
   match int_to_octets(value: 1, count: 0, endianness: BigEndian) {
-    OctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 1 && c == 0
-    OctetsRefused { cause: _ } => false
-    OctetsReady { octets: _ } => false
+    RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 1 && c == 0
+    RawOctetsRefused { cause: _ } => false
+    RawOctetsReady { octets: _ } => false
   }
 }
 
@@ -723,18 +735,52 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
 
 // THE PROJECTION NO LONGER HAS A REFUSAL TO CLAIM, and that is a climb rather than a loss.
 // octet_int_values once read a value off members it had not established, so [Word{Width8,256}]
-// projected to [256] on the base64 decode route. It now takes List<UInt8>, where the width is
-// structural, so the width half of the gap is closed by construction and there is no width
-// inspection left to assert. The RANGE half is not closed there: it is mitigated by uint8_of_int
-// and claimed at that constructor, which is where this file's bypass RED now sits. What remains
-// claimable is that the projection reads what was admitted, which is the claim below.
+// projected to [256] on the base64 decode route. It now takes the SEALED QualifiedOctets, so the
+// members reached it through the one admission fold and there is nothing left for the projection to
+// inspect or refuse. The earlier cut of this annotation said the parameter closed the width half and
+// left the range half to mitigation beside the route; that was the defect, not the design -- a wall
+// beside a route is a wall with a door next to it, and octet_int_values([256]) answered [256] on the
+// head this replaces. What remains claimable is that the projection reads what was admitted.
 test fn octet_projection_reads_what_was_admitted_holds() -> Bool {
-  match octets_of_ints(octets: [], remaining: [0, 1, 255]) {
-    OctetsReady { octets: o } => octet_int_values(octets: o) == [0, 1, 255]
-    OctetsRefused { cause: _ } => false
+  match uint8_octets_of_ints(values: [0, 1, 255]) {
+    QualifiedOctetsReady { value: o } => octet_int_values(octets: o) == [0, 1, 255]
+    QualifiedOctetsRefused { observed: _ } => false
   }
 }
 
 test fn octet_projection_passes_qualified_members_holds() -> Bool {
   octets_of(result: word_to_octets(a: word32_or_zero(value: 255), endianness: BigEndian)) == [0, 0, 0, 255]
+}
+
+// THE RFC VECTOR ACROSS THE SEALED CARRIER, which is the positive control for the whole repair. A
+// wall that also broke the encoder would be a regression wearing a safety argument, so the pinned
+// value is checked on the SAME route production takes: raw Ints in, admission fold, sealed carrier,
+// encoder out. [251, 255, 191] is the RFC 4648 pattern whose 24 bits are the four sextets
+// 62, 63, 62, 63 -- the two alphabet-tail characters in both orders, which is what makes it the
+// vector that separates Standard from UrlSafe.
+test fn base64_standard_tail_vector_survives_the_sealed_carrier_holds() -> Bool {
+  match base64_octets(values: [251, 255, 191]) {
+    QualifiedOctetsRefused { observed: _ } => false
+    QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: Standard) == "+/+/"
+  }
+}
+
+// THE SAME THREE OCTETS ON THE URL-SAFE ALPHABET, because a single-alphabet claim cannot tell a
+// correct variant table from one that ignores its variant argument.
+test fn base64_urlsafe_tail_vector_survives_the_sealed_carrier_holds() -> Bool {
+  match base64_octets(values: [251, 255, 191]) {
+    QualifiedOctetsRefused { observed: _ } => false
+    QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: UrlSafe) == "-_-_"
+  }
+}
+
+// THE ADMISSION REFUSES ON THE PRODUCTION ROUTE, NOT BESIDE IT. This is the bypass discriminator the
+// earlier cut got wrong: it claimed uint8_of_int refused 256 while base64_encode accepted [256, 0, 0]
+// and answered "AAAA". base64_octets is now the ONLY route to a value base64_encode will take, so a
+// red here is a red on the encoder's own input path.
+test fn the_encoder_input_route_refuses_an_out_of_range_octet_holds() -> Bool {
+  match base64_octets(values: [251, 256, 191]) {
+    QualifiedOctetsRefused { observed: v } => v == 256
+    QualifiedOctetsReady { value: _ } => false
+  }
 }

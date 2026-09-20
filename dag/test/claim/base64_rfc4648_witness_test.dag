@@ -13,14 +13,14 @@ fn b64_std_of_utf8(s: String) -> String {
   base64_encode_or_refused(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
 }
 
-fn base64_encode_or_refused(octets: List<std.integer.UInt8>, variant: Base64Variant) -> String {
+fn base64_encode_or_refused(octets: List<Int>, variant: Base64Variant) -> String {
   match base64_octets(values: octets) {
-    OctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: variant)
-    OctetsRefused { cause: _ } => "REFUSED"
+    QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: variant)
+    QualifiedOctetsRefused { observed: _ } => "REFUSED"
   }
 }
 
-data url_witness_octets: List<std.integer.UInt8> = [251, 255, 191]
+data url_witness_octets: List<Int> = [251, 255, 191]
 
 test fn bytes_octets_iso_holds() -> Bool {
   let b = utf8_encode_bytes(s: "foobar")

@@ -2,8 +2,8 @@ module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
-import std.integer { UInt8, UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int }
-import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values, octets_of_ints }
+import std.integer { UInt8, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, uint8_int_value, qualified_octet_members }
+import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
@@ -157,7 +157,7 @@ type Base64EncodeState {
 // and a leading zero Word minted separately. With UInt8 as the member type the packing takes the
 // members directly, so the only refusal left is the one word_from_octets raises about the WIDTH --
 // and the conversions, along with their unreachable arms, are gone rather than handled.
-fn base64_group_word(octets: List<UInt8>) -> WordResult {
+fn base64_group_word(octets: QualifiedOctets) -> WordResult {
   word_from_octets(width: Width32, octets: octets, endianness: BigEndian)
 }
 
@@ -170,12 +170,16 @@ fn base64_group_word(octets: List<UInt8>) -> WordResult {
 // One unhandled arm undid the whole channel.
 //
 // An out-of-range octet is a CONSTRUCTION failure, not an encoding failure, so it belongs here.
-// base64_octets admits a List<UInt8> into the qualified carrier once; past this point an octet
-// cannot be out of range BY TYPE, so base64_encode is total again and every caller stops carrying
-// an arm that cannot occur for it. The octet's own constructor is std.integer uint8_of_int; this
-// applies it at the boundary where raw values enter this module.
-fn base64_octets(values: List<UInt8>) -> OctetsResult {
-  octets_of_ints(octets: [], remaining: values |> map(v => v + 0))
+//
+// THE PREVIOUS CUT OF THIS FUNCTION TOOK List<UInt8> AND THAT MADE IT DECORATIVE. UInt8 is a phantom
+// transparent to Int, so `base64_octets([256, 0, 0])` type-checked, and a caller could skip this
+// function entirely and hand [256, 0, 0] straight to base64_encode -- which answered "AAAA", a
+// fabricated plausible output for input it had never admitted. The admission was beside the route,
+// not on it. It now takes raw List<Int> and returns the SEALED QualifiedOctets, so this is the only
+// way to obtain a value base64_encode will accept, and "past this point an octet cannot be out of
+// range" is carried by the type rather than asserted by this annotation.
+fn base64_octets(values: List<Int>) -> QualifiedOctetsResult {
+  uint8_octets_of_ints(values: values)
 }
 
 fn base64_sextet_mask() -> WordResult {
@@ -213,9 +217,9 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
 }
 
 fn base64_group_of_octets(x: UInt8, y: UInt8, z: UInt8) -> WordResult {
-  match base64_zero_octet() {
-    UInt8OutOfRange { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
-    UInt8Ready { value: zero } => base64_group_word(octets: [zero, x, y, z])
+  match uint8_octets_of_ints(values: [0, uint8_int_value(v: x), uint8_int_value(v: y), uint8_int_value(v: z)]) {
+    QualifiedOctetsRefused { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
+    QualifiedOctetsReady { value: q } => base64_group_word(octets: q)
   }
 }
 
@@ -305,9 +309,9 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
   }
 }
 
-fn base64_encode_optional(octets: List<UInt8>, variant: Base64Variant) -> String? {
+fn base64_encode_optional(octets: QualifiedOctets, variant: Base64Variant) -> String? {
   let alphabet = base64_alphabet(variant: variant)
-  let st = fold(octets,
+  let st = fold(qualified_octet_members(q: octets),
     init: Present { value: Base64EncodeState { out: "", buf: EncEmpty } },
     f: (acc, octet) => base64_encode_step_optional(st: acc, octet: octet, alphabet: alphabet)
   )
@@ -317,35 +321,40 @@ fn base64_encode_optional(octets: List<UInt8>, variant: Base64Variant) -> String
   }
 }
 
-// THE DIVERGENCE IS NAMED, BECAUSE AN ABORT THAT IDENTIFIES NOTHING IS NOT A LOCATED FAILURE.
+// THE FORGED-OCTET DIVERGENCE IS DELETED, AND WHAT REPLACES IT IS NARROWER ON PURPOSE.
 //
-// std.bytes' seam is a bare 1 / 0. Diverging through it directly would abort with a generic
-// divide-by-zero naming neither the carrier that was forged nor the operation that was running --
-// loud, but anonymous. .dag has no throw-with-message, so the only thing that carries identity at
-// an abort is the FUNCTION NAME on the stack. This wrapper exists to put both facts there: the
-// operation (base64 encode) and the cause (a forged qualified octet). It has one caller and no
-// other reason to exist.
-fn base64_encode_forged_qualified_octet_diverges() -> String {
-  pure_dag_seam_unreachable_string()
-}
-
-// TOTAL FOR EVERY OCTET THE SANCTIONED CONSTRUCTOR PRODUCES.
+// The arm that stood here was named for a forged qualified octet, and with QualifiedOctets sealed
+// that cause no longer has an input: the only route to the parameter is std.integer's admission
+// fold, so an unadmitted member cannot reach this function at all. Keeping the old name would have
+// left a function asserting a cause that can no longer occur -- the annotation rot DESIGN section 4c
+// forbids, in the one place a reader would most trust it.
 //
-// Every member produced by base64_octets is an established Width8 octet, so no shift, mask or
-// packing can refuse for any input this module can construct, and the encoder needs no refusal
-// channel. The one way to reach the arm below is to bypass the carrier's constructor; that
-// possibility, its rung and its trigger are stated ONCE at their home -- std.integer UInt8 -- and are
-// not restated here, because a fact with two statements is a fact that can disagree with itself,
-// which is what two earlier cuts of this annotation did: the first claimed the arm unreachable
-// outright, the second claimed forgery was the only route while the carrier in use at the time
-// (QualifiedWord) admitted a SANCTIONED Width16 value that reached it.
+// WHAT REMAINS IS NOT THE SAME FACT AND IS NOT CLAIMED TO BE ZERO. The internal chain still threads
+// Optional because the word operations it uses are total functions returning typed results --
+// shift, mask, and the Width32 packing each have a refusal arm. For members this carrier admits,
+// none of those arms has a reachable input: the values are in [0, 255], the shifts are 18/12/6/0
+// against a Width32 word, and the packing is exactly four members. So the residual is a PACKING
+// INVARIANT of this module, not a statement about the caller's data, and the name says so. Diverging
+// through std.bytes' bare seam directly would abort with a generic divide-by-zero naming neither the
+// operation nor the invariant; .dag has no throw-with-message, so the function name on the stack is
+// the only thing that carries identity at an abort.
 //
 // Returning "" instead would be a fabricated plausible output: "" is the legitimate encoding of the
 // empty input, so it would stand where a failure happened and be indistinguishable from success.
-fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
+fn base64_encode_packing_invariant_diverges() -> String {
+  pure_dag_seam_unreachable_string()
+}
+
+// TOTAL, AND THIS TIME THE SIGNATURE IS WHAT MAKES IT SO.
+//
+// The parameter is the sealed carrier, so every member reached it through std.integer's admission
+// fold and is in [0, 255] BY TYPE. There is no caller-supplied input to this function for which the
+// arm below has a reachable cause; the residual is this module's own packing invariant, named at the
+// divergence rather than restated here.
+fn base64_encode(octets: QualifiedOctets, variant: Base64Variant) -> String {
   match base64_encode_optional(octets: octets, variant: variant) {
     Present { value: encoded } => encoded
-    Absent => base64_encode_forged_qualified_octet_diverges()
+    Absent => base64_encode_packing_invariant_diverges()
   }
 }
 
@@ -445,7 +454,7 @@ fn base64_or_all(a: Word, b: Word, c: Word, d: Word) -> WordResult {
 fn base64_group_octet_values(group: Word) -> List<Int>? {
   match word_to_octets(a: group, endianness: BigEndian) {
     OctetsRefused { cause: _ } => none
-    OctetsReady { octets: octets } => Present { value: octet_int_values(octets: octets.skip(n: 1)) }
+    OctetsReady { octets: octets } => Present { value: octet_int_values(octets: octets).skip(n: 1) }
   }
 }
 

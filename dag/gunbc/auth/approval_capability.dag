@@ -3,7 +3,7 @@ module gunbc.auth.approval_capability
 import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
-import std.machine_word { OctetsReady, OctetsRefused }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
@@ -199,8 +199,8 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
           Present { value: octets } =>
             match base64_octets(values: octets) {
-              OctetsRefused { cause: _ } => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotOctets { key_id: t.key_id } }
-              OctetsReady { octets: qualified } =>
+              QualifiedOctetsRefused { observed: _ } => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotOctets { key_id: t.key_id } }
+              QualifiedOctetsReady { value: qualified } =>
                 CapabilityIssued {
                   capability: ApprovalCapability {
                     claims: claims,
@@ -223,8 +223,8 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
     Absent => none
     Present { value: octets } =>
       match base64_octets(values: octets) {
-        OctetsRefused { cause: _ } => none
-        OctetsReady { octets: qualified } =>
+        QualifiedOctetsRefused { observed: _ } => none
+        QualifiedOctetsReady { value: qualified } =>
           if base64_encode(octets: qualified, variant: UrlSafe) != presented || octets == [] {
             none
           } else {

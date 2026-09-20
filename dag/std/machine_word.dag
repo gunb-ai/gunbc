@@ -5,7 +5,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
-import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, uint8_int_value }
+import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, uint8_int_value, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
@@ -80,9 +80,19 @@ type WordResult
   = WordReady { word: Word }
   | WordRefused { cause: WordRefusal }
 
+// TWO RESULT TYPES, AND THE SPLIT IS THE POINT RATHER THAN AN INCONVENIENCE. OctetsResult is what
+// crosses this module's boundary, so its ready arm carries the SEALED carrier: a caller that gets one
+// holds the proof, not a list it must be trusted to have checked. RawOctetsResult never leaves the
+// module -- it is the accumulator's own type, before the proof exists -- and keeping the two distinct
+// is what makes "the members were admitted" a fact established at exactly one place (word_to_octets
+// mints once, at the end) instead of a property every internal helper must preserve by discipline.
 type OctetsResult
-  = OctetsReady { octets: List<UInt8> }
+  = OctetsReady { octets: QualifiedOctets }
   | OctetsRefused { cause: WordRefusal }
+
+type RawOctetsResult
+  = RawOctetsReady { octets: List<UInt8> }
+  | RawOctetsRefused { cause: WordRefusal }
 
 type CarryingSum {
   sum: Word
@@ -233,7 +243,12 @@ type QualifiedWordResult
   = QualifiedWordReady { qualified: QualifiedWord }
   | QualifiedWordRefused { cause: WordRefusal }
 
-type RealizableWidth {
+// SEALED, AND THE FORGERY THIS CLOSES WAS MEASURED RATHER THAN IMAGINED. As an ordinary record this
+// was a two-field literal anyone could write, so RealizableWidth { width: Width64, modulus: 1 }
+// reached word_from_octets_realizable and walked straight past the one refusal this carrier exists to
+// carry. A record whose fields are public is a proof anyone can assert; sole_constructor makes the
+// assertion unwritable outside this module, and word_realizable_width below is the one route in.
+type RealizableWidth sole_constructor {
   width: WordWidth
   modulus: Int
 }
@@ -587,15 +602,15 @@ fn word_octet_count(w: WordWidth) -> Int {
 // The octet modulus is a constant OF the octet width, so it is read here rather than received, and
 // each member is built through std.integer uint8_of_int, which carries the refusal rather than
 // asserting the range.
-fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<UInt8>) -> OctetsResult {
+fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<UInt8>) -> RawOctetsResult {
   if remaining <= 0 {
-    OctetsReady { octets: acc }
+    RawOctetsReady { octets: acc }
   } else {
     match word_modulus(w: Width8) {
-      Absent => OctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
+      Absent => RawOctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
       Present { value: radix } =>
         match uint8_of_int(value: value % radix) {
-          UInt8OutOfRange { observed: o } => OctetsRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
+          UInt8OutOfRange { observed: o } => RawOctetsRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
           UInt8Ready { value: octet } =>
             octets_little_endian_accumulate(value: value / radix, remaining: remaining - 1, acc: acc |> list_push(octet))
         }
@@ -632,32 +647,40 @@ fn int_exceeds_octet_capacity(value: Int, count: Int, radix: Int) -> Bool {
 // form that prepends each octet onto the front of the accumulator. list_push extends its LEFT
 // operand, so appending clones one element per step while prepending clones the whole accumulated
 // list per step -- the quadratic shape std.nat nat_range_accumulate records at the same grain.
-fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> OctetsResult {
+fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> RawOctetsResult {
   match octet_radix() {
-    Absent => OctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
+    Absent => RawOctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
     Present { value: radix } =>
       if count < 0 {
-        OctetsRefused { cause: OctetCountOutOfRange { observed: count } }
+        RawOctetsRefused { cause: OctetCountOutOfRange { observed: count } }
       } else if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
-        OctetsRefused { cause: IntegerDoesNotFitOctets { value: value, octets: count } }
+        RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: value, octets: count } }
       } else {
         match octets_little_endian_accumulate(value: value, remaining: count, acc: []) {
-          OctetsRefused { cause: c } => OctetsRefused { cause: c }
-          OctetsReady { octets: little } =>
+          RawOctetsRefused { cause: c } => RawOctetsRefused { cause: c }
+          RawOctetsReady { octets: little } =>
             match endianness {
-              LittleEndian => OctetsReady { octets: little }
-              BigEndian => OctetsReady { octets: reverse(little) }
+              LittleEndian => RawOctetsReady { octets: little }
+              BigEndian => RawOctetsReady { octets: reverse(little) }
             }
         }
       }
   }
 }
 
+// THE ONE PLACE THIS MODULE MINTS THE PROOF, and it is admitted at std.integer qualified_octets by
+// name. It is sound to mint here rather than to re-verify: every member came out of
+// octets_little_endian_accumulate as a remainder modulo the octet radix, each one already through
+// uint8_of_int, so routing the list back through the admission fold would add a refusal arm that no
+// input can reach -- the unreachable arm this change deletes elsewhere rather than adds here.
 fn word_to_octets(a: Word, endianness: Endianness) -> OctetsResult {
   match word_qualified(w: a) {
     QualifiedWordRefused { cause: c } => OctetsRefused { cause: c }
     QualifiedWordReady { qualified: x } =>
-      int_to_octets(value: qualified_word_value(q: x), count: word_octet_count(w: qualified_word_width(q: x)), endianness: endianness)
+      match int_to_octets(value: qualified_word_value(q: x), count: word_octet_count(w: qualified_word_width(q: x)), endianness: endianness) {
+        RawOctetsRefused { cause: c } => OctetsRefused { cause: c }
+        RawOctetsReady { octets: raw } => OctetsReady { octets: qualified_octets(members: raw) }
+      }
   }
 }
 
@@ -669,22 +692,11 @@ fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
   }
 }
 
-// ADMITTING A LIST OF RAW VALUES, ONE PLACE, CARRYING THE FIRST REFUSAL. The old form took
-// List<Word> and checked each member's WIDTH and then its value -- two propositions, one of which
-// the carrier was supposed to have settled and did not. UInt8 settles the width structurally --
-// MachineWidth<8> is the composition, not a field -- so this admits plain Ints and the only
-// question left is range.
-fn octets_of_ints(octets: List<UInt8>, remaining: List<Int>) -> OctetsResult {
-  match remaining.first() {
-    Absent => OctetsReady { octets: octets }
-    Present { value: head } =>
-      match uint8_of_int(value: head) {
-        UInt8OutOfRange { observed: o } => OctetsRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
-        UInt8Ready { value: octet } =>
-          octets_of_ints(octets: octets |> list_push(octet), remaining: remaining.skip(n: 1))
-      }
-  }
-}
+// THE ADMISSION FOLD IS NOT HERE ANY MORE. octets_of_ints lived in this module and admitted raw
+// Ints into List<UInt8>; that fold is now std.integer uint8_octets_of_ints, beside the type whose
+// admission it performs, and it returns the sealed QualifiedOctets rather than a bare list. Keeping a
+// second fold here would be the section 3 fork -- two functions answering "were these admitted?" --
+// and the one that stayed is the one at the octet's own home.
 
 // The count check is EXACT, not a lower bound. A packing that accepted more octets than the width
 // holds would silently drop the excess, and one that accepted fewer would silently zero-extend --
@@ -723,9 +735,10 @@ fn octets_of_ints(octets: List<UInt8>, remaining: List<Int>) -> OctetsResult {
 // List<UInt8> half is NOT a wall -- a List<Word> reaches it and typechecks, dying only at runtime
 // -- so the two parameters sit on different rungs and are not claimed together. Member construction
 // is mitigation at std.integer, not this signature.
-fn word_from_octets_realizable(width: RealizableWidth, octets: List<UInt8>, endianness: Endianness) -> WordResult {
+fn word_from_octets_realizable(width: RealizableWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
+  let members = qualified_octet_members(q: octets)
   let expected = word_octet_count(w: width.width)
-  let observed = list_length(items: octets)
+  let observed = list_length(items: members)
   if observed != expected {
     WordRefused { cause: OctetCountMismatch { width: width.width, expected: expected, observed: observed } }
   } else {
@@ -733,8 +746,8 @@ fn word_from_octets_realizable(width: RealizableWidth, octets: List<UInt8>, endi
       Absent => WordRefused { cause: WordWidthUnrealizable { width: Width8 } }
       Present { value: radix } => {
         let ordered = match endianness {
-          BigEndian => octets
-          LittleEndian => reverse(octets)
+          BigEndian => members
+          LittleEndian => reverse(members)
         }
         word_of_int(width: width.width, value: octets_big_endian_value(octets: ordered, radix: radix, acc: 0))
       }
@@ -746,7 +759,7 @@ fn word_from_octets_realizable(width: RealizableWidth, octets: List<UInt8>, endi
 // establishes both proofs ONCE before handing the carriers down. This is the only place the two
 // qualifications happen for this route, which is what makes the helper's signature a wall rather
 // than a second checkpoint.
-fn word_from_octets(width: WordWidth, octets: List<UInt8>, endianness: Endianness) -> WordResult {
+fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
   match word_realizable_width(w: width) {
     RealizableWidthRefused { cause: c } => WordRefused { cause: c }
     RealizableWidthReady { realizable: r } =>
@@ -768,8 +781,8 @@ fn word_from_octets(width: WordWidth, octets: List<UInt8>, endianness: Endiannes
 // buy is that the members are octets at all. Both gaps -- wrong element type, and an unconstructed
 // in-type value like a bare 256 -- are mitigation, stated at their homes rather than re-argued
 // here, and neither is closed by this signature.
-fn octet_int_values(octets: List<UInt8>) -> List<Int> {
-  octets |> map(o => uint8_int_value(v: o))
+fn octet_int_values(octets: QualifiedOctets) -> List<Int> {
+  qualified_octet_members(q: octets) |> map(o => uint8_int_value(v: o))
 }
 
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.

@@ -62,6 +62,108 @@ fn uint8_int_value(v: UInt8) -> Int {
   v + 0
 }
 
+// THE ADMISSION IS CARRIED BY A SEALED CARRIER, BECAUSE A PHANTOM BRAND CANNOT CARRY IT.
+//
+// UInt8 is Compose<UInt, MachineWidth<8>>, and the composition is transparent to Int at a formal --
+// so `List<UInt8>` at a parameter establishes NOTHING about its members, and uint8_of_int beside the
+// route is a wall with a door next to it. That is not reasoning, it is measured on the head this
+// carrier replaces: word_from_octets(Width16, [1, 256], BigEndian) answered WordReady 512,
+// octet_int_values([256]) answered [256], and base64_encode([256, 0, 0], Standard) answered "AAAA"
+// -- a fabricated plausible output, which DESIGN section 5 forbids outright, reached without forging
+// anything. The RED that was supposed to cover this tested uint8_of_int BESIDE the production route
+// rather than on it.
+//
+// So the carried fact gets its own type. QualifiedOctets does not mean "a list of octets"; it means
+// EVERY MEMBER PASSED uint8_of_int ADMISSION. It is not a third spelling of the octet -- the octet is
+// still UInt8 and there is still one of those -- it is the PROOF ABOUT a list of them, which is a
+// different fact and therefore a different carrier.
+type QualifiedOctets sole_constructor {
+  members: List<UInt8>
+}
+
+type QualifiedOctetsResult
+  = QualifiedOctetsReady { value: QualifiedOctets }
+  | QualifiedOctetsRefused { observed: Int }
+
+// THE ONE MINT, CALLER-SEALED BY NAME, modelled on extdeps.exec.command argv_command -- the corpus
+// already runs this wall and it refuses at resolve, so this is an existing capability being consumed
+// rather than a mechanism invented here.
+//
+// The roster is deliberately TWO, and each entry is a different reason. uint8_octets_accumulate is
+// the admission fold's recursive step -- the exact line that has just proved the member list, one
+// uint8_of_int at a time -- so an outside caller cannot reach a QualifiedOctets carrying an
+// unadmitted value at all. It is the ACCUMULATOR and not its wrapper uint8_octets_of_ints in this
+// roster, and that is not a detail: the roster names whoever CALLS THE MINT, and the wrapper only
+// calls the accumulator. The wall found that itself -- naming the wrapper refused at resolve with
+// "refuses call from 'std.integer.uint8_octets_accumulate'", which is this mechanism doing exactly
+// the job it is here to do, on its own author.
+//
+// word_to_octets is admitted because its members are COMPUTED in range -- they are remainders modulo
+// the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
+// refusal arm no input can reach, which is the unreachable-arm trap this change deletes elsewhere.
+//
+// THE RUNG THIS REACHES, MEASURED IN BOTH DIRECTIONS RATHER THAN CLAIMED. Three routes were probed
+// against this carrier as real modules compiled through the real acceptance path:
+//
+// CLOSED AT COMPILE TIME, structurally impossible outside the defining module --
+//   QualifiedOctets { members: [256] }            refuses: "sole_constructor type 'QualifiedOctets'
+//                                                  cannot be constructed outside its defining module"
+//   qualified_octets(members: [256])              refuses: "constructor call admission refused"
+//   RealizableWidth { width: Width64, modulus: 1} refuses, same sole_constructor wall
+//
+// NOT CLOSED AT COMPILE TIME, and this is stated because the alternative is inflation -- handing a
+// raw List where the carrier is declared still type-checks. base64_encode(octets: [256, 0, 0], ...)
+// compiles and dies at RUNTIME with `TypeError: cannot access field 'members' on List`. That is a
+// real climb and not the whole one: on the head this replaces the same call ANSWERED "AAAA", a
+// fabricated plausible output, and now nothing wrong is produced -- but a loud untyped abort is
+// rung 1, not rung 3.
+//
+// The gap is List-against-Product at a formal, and it is not a weakness in this carrier: Product
+// against Product IS decided (qualified_word_value(q: Word { ... }) refuses with "expected
+// Product(QualifiedWord), got Product(Word)"), and a TYPED List<UInt8> crosses just as a literal
+// does, so it is the list position and not the literal. NEXT-RUNG TRIGGER: inhabitance decided for a
+// List argument at a non-List declared type -- a compiler capability, named here so the stall is
+// tracked rather than silent (DESIGN section 4b(2)).
+//
+// WHAT admit_callers DOES AND DOES NOT ESTABLISH, stated here because the distinction decides the
+// rung. It constrains the CALL EDGE, not the egress of the returned value: an admitted producer that
+// accepted a caller's list and handed back the sealed value would be a PROXY, and the seal would be
+// worth nothing. Neither admitted caller is one -- the fold verifies, and word_to_octets takes a Word
+// and a width rather than a member list. That is the property a reviewer should check when the roster
+// grows, and it is why the roster is two names rather than a convenience.
+fn qualified_octets(members: List<UInt8>) -> QualifiedOctets
+  admit_callers: [
+    decl_ref(module_path: "std.integer", decl_name: "uint8_octets_accumulate"),
+    decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets")
+  ]
+{
+  QualifiedOctets { members: members }
+}
+
+// The admission fold: the ONE route from raw Ints to the carried proof. It refuses on the FIRST
+// out-of-range member and names the observed value, so the refusal is located rather than a count.
+fn uint8_octets_of_ints(values: List<Int>) -> QualifiedOctetsResult {
+  uint8_octets_accumulate(admitted: [], remaining: values)
+}
+
+fn uint8_octets_accumulate(admitted: List<UInt8>, remaining: List<Int>) -> QualifiedOctetsResult {
+  match remaining.first() {
+    Absent => QualifiedOctetsReady { value: qualified_octets(members: admitted) }
+    Present { value: head } =>
+      match uint8_of_int(value: head) {
+        UInt8OutOfRange { observed: o } => QualifiedOctetsRefused { observed: o }
+        UInt8Ready { value: octet } =>
+          uint8_octets_accumulate(admitted: admitted |> list_push(octet), remaining: remaining.skip(n: 1))
+      }
+  }
+}
+
+// The reader. It is total and needs no refusal: the carrier IS the proof, so there is nothing left to
+// check, and that is the whole point of having made it a type.
+fn qualified_octet_members(q: QualifiedOctets) -> List<UInt8> {
+  q.members
+}
+
 type Signedness
   = Signed
   | Unsigned
