@@ -111,17 +111,17 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
     && contains_text(haystack: ctl, needle: "deleted without replacement")
 }
 
-// THE RESTORATION SENTENCE IS TERMINATED EXACTLY ONCE, WHICHEVER WAY THE ROW SPELLED IT. Both
-// arms are asserted because they fail differently: unconditional appending (the defect that put
-// 21 double periods into docs/design-rung-drops.md) reds the terminated arm, and unconditional
-// stripping-then-nothing, or never appending, reds the unterminated arm. Each arm checks the
-// single-period ending AND the absence of the double, so a renderer that ends "trigger.." still
-// satisfies `ends_with "trigger."` and is caught by the second clause.
-test fn restoration_trigger_projects_exactly_one_terminator() -> Bool {
+// TWO SPELLINGS, TWO ARMS, ONE TERMINATOR EACH. A trigger with no period gets one appended; a
+// trigger already ending in exactly one period gets nothing appended. Both arms are asserted
+// because they fail differently: unconditional appending (the defect that put 21 double periods
+// into docs/design-rung-drops.md) reds the terminated arm, and never appending reds the
+// unterminated arm. The exact single-period suffix is the whole check -- a rendering ending
+// "trigger.." does not carry the suffix "trigger." -- so no separate double-period clause is
+// needed. This establishes NOTHING about a trigger authored with ".." or "..."; the projector
+// deliberately does not canonicalise malformed prose, since that would conceal a row defect.
+test fn unterminated_trigger_gains_one_period_and_terminated_trigger_gains_none() -> Bool {
   let unterminated = rung_drop_declaration_message(d: control_rung_drop)
   let terminated = rung_drop_declaration_message(d: control_rung_drop_with_terminated_trigger)
   ends_with(s: unterminated, suffix: "control restoration trigger.")
-    && !ends_with(s: unterminated, suffix: "trigger..")
     && ends_with(s: terminated, suffix: "control restoration trigger.")
-    && !ends_with(s: terminated, suffix: "trigger..")
 }
