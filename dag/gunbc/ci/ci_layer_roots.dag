@@ -325,6 +325,10 @@ data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found
 
 data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
 
+data excl_closing_contract_execution_reason: String = "SUBSTANTIATED per-row (authored 2026-09-20 beside the mechanism it covers): every fn in this file drives shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL child claim-run of a PLANTED witness and adjudicate its exit status — the behavioral discrimination controls for the execution arm of gunbc.roadmap_closing_contract_authoring (a witness that resolves and passes → PASS; unresolvable imports → typed resolve refusal; a resolved-but-false arm → typed failure). The hermetic envelope refuses each of those effects by construction ('no mock_response for operation Run'), the refusal is correct, and the file cannot be made hermetic: the subject IS the child process's exit status, which no in-process assertion observes, and mocking the invocation would let the discrimination claims pass against a fabricated status — precisely the defect (a textual oracle greening a witness that cannot resolve) this file exists to detect. The fixtures are planted into a mktemp source root under target/ at run time rather than committed, because a committed witness with unresolvable imports would fail every whole-root resolve it was swept into. Enrolled in bin_witness_wet_entries beside the run_verdict exit-status rows, the same class excl_run_verdict_exit_status_reason substantiates; the file's production inhabitance is the belt verify route, which executes closing_contract_authored itself."
+
+data excl_closing_contract_execution_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner's exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then this file's three claims re-enroll as ordinary hermetic discovery rows, the bin_witness_wet_entries rows and this exclusion row delete together. A mock_response for Run does NOT discharge it: a mocked status is authored data, so the discrimination claims would be re-checked against the mock rather than against a real child claim-run — the vacuous pass the file's header records.")
+
 // bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the
 // file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they are CLASSIFIED
 // as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in
@@ -864,6 +868,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_run_verdict_exit_status_reason,
     dissolution: excl_run_verdict_exit_status_dissolve},
   WitnessExclusionRow {
+    pattern: "roadmap_closing_contract_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_closing_contract_execution_reason,
+    dissolution: excl_closing_contract_execution_dissolve},
+  WitnessExclusionRow {
     pattern: "spark_snapshot_verify_wrapper_local_wet_test.dag",
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe, and RunArgv carries NO mock_response by the 2026-08-23 ruling -- so hermetic discovery REFUSES rather than skipping, and a refusing member fails its batch. The refusal is correct and the file cannot be made hermetic, for the reason that ruling itself gives: the deleted arm answered a FIXED exit status that did not vary with its input, under which a witness asserting `this fails closed` could not be satisfied. This IS that witness; its subject is the exit status of a real process, which no in-process assertion observes and no mock honestly supplies. THE EXECUTION IS PURELY LOCAL -- `sh -c` over the rendered wrapper text, running shell builtins, no network, no remote host, no Cargo, no install-media transfer -- which is why it belongs on the local-repo wet lane rather than the dark bin lane. SUBJECT: the verify wrapper read `cmd && echo OK || echo FAILED`, which exits ZERO in both branches because echo succeeds, so a verification that REFUSED the bytes returned AcquisitionFetched. SIZE IS DERIVED: four invocations, one per arm of the contract -- the failing red, the passing control without which the red is satisfied by a wrapper that always fails, an exact-status probe proving propagation rather than substitution, and an argv-boundary probe for a path containing a space." as String,
@@ -1384,6 +1393,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_failure_verdict_reaches_nonzero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_success_verdict_reaches_zero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_non_process_exit_return_refuses"),
+  bin_wet(entry: "dag/test/claim/roadmap/roadmap_closing_contract_execution_witness_test.dag", f: "a_planted_witness_that_resolves_and_passes_executes_green"),
+  bin_wet(entry: "dag/test/claim/roadmap/roadmap_closing_contract_execution_witness_test.dag", f: "a_planted_witness_with_unresolvable_imports_refuses_as_resolve"),
+  bin_wet(entry: "dag/test/claim/roadmap/roadmap_closing_contract_execution_witness_test.dag", f: "a_planted_witness_whose_arm_fails_refuses_as_failed"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),

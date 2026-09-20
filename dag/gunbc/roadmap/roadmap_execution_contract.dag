@@ -567,6 +567,7 @@ fn validation_operation_command(
                 "--entry", closing_contract_authoring_entry as String,
                 "--function", closing_contract_authoring_function as String,
                 "--arg", join(["target=", target as String], ""),
+                "--arg", join(["runner=", realization.executable as String], ""),
                 "--claim-run",
               ],
             ),
