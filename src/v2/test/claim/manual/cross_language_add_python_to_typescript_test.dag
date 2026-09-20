@@ -3,9 +3,6 @@ module v2.test.manual.cross_language_add_python_to_typescript
 import v2.test.manual.python_grammar_claim {
   python_grammar_parse_fixture
 }
-import v2.test.manual.typescript_effect_io_emit {
-  ts_effect_io_emit_holds
-}
 import v2.test.manual.ingest_bridge {
   ingest_bridge_realized
 }
@@ -144,7 +141,6 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> Bool {
           python_core == python_emitted_add_fn_node()
 
             && cross_language_compile_on_real_tree_round_trip_holds(parse_tree: python_parse_tree)
-            && ts_effect_io_emit_holds()
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

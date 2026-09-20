@@ -2,7 +2,8 @@ module v2.test.claim.normalized_tree_admission
 
 import v2.compiler.body_lowering_fold { body_lower_wrapper_retained_shell }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.normalized_tree { admit_normalized_roots, admit_normalized_tree }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.compiler.normalized_tree { admit_unmarked_normalized_roots, admit_normalized_tree }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -56,6 +57,7 @@ fn is_rejected(o: Outcome<v2.compiler.normalized_tree.NormalizedTree>) -> Bool {
 
 test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
   is_rejected(o: admit_normalized_tree(
+    test_markers: test_marker_channel_empty(),
     root: probe_shell(),
     diagnostics: Some {
       diagnostics: NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
@@ -65,6 +67,7 @@ test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
 
 test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
   is_rejected(o: admit_normalized_tree(
+    test_markers: test_marker_channel_empty(),
     root: probe_shell(),
     diagnostics: Some {
       diagnostics: NonEmptyDiagnostics {
@@ -76,11 +79,12 @@ test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
 }
 
 test fn a_clean_root_is_admitted_positive_control() -> Bool {
-  (is_rejected(o: admit_normalized_tree(root: probe_shell(), diagnostics: None)) == false)
+  (is_rejected(o: admit_normalized_tree(test_markers: test_marker_channel_empty(), root: probe_shell(), diagnostics: None)) == false)
 }
 
 test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
   (is_rejected(o: admit_normalized_tree(
+    test_markers: test_marker_channel_empty(),
     root: probe_shell(),
     diagnostics: Some {
       diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
@@ -90,7 +94,7 @@ test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
 
 test fn the_production_retention_producer_is_refused_by_the_door() -> Bool {
   match body_lower_wrapper_retained_shell(shell: probe_shell()) {
-    Accepted { value: v, diagnostics: d } => is_rejected(o: admit_normalized_tree(root: v, diagnostics: d))
+    Accepted { value: v, diagnostics: d } => is_rejected(o: admit_normalized_tree(test_markers: test_marker_channel_empty(), root: v, diagnostics: d))
     Rejected { diagnostics: _ } => false
   }
 }
@@ -100,7 +104,7 @@ fn two_probe_roots() -> FreeMonoid<Node> {
 }
 
 test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
-  match admit_normalized_roots(
+  match admit_unmarked_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: Some {
       diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
@@ -118,7 +122,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
 }
 
 test fn plural_admission_refuses_a_retained_batch() -> Bool {
-  match admit_normalized_roots(
+  match admit_unmarked_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: Some {
       diagnostics: NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }

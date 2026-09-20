@@ -9,8 +9,8 @@ import product.capacity.event_chain {
   HeadExpectation, HeadAbsent, HeadAt,
 }
 import product.capacity.pool_events { PoolEvent, pool_event_wire_text }
-import gunbc.fabric_db_client { FabricDbBinding, FabricDbServed, FabricDbLocalFiles }
-import gunbc.fabric_db_file_store { fabric_db_file_root }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire,
 }
@@ -66,7 +66,7 @@ type PartitionReadReport
   = PartitionReadReported { text: String }
   | PartitionReadUnreported { detail: String }
 
-fn partition_read_report(store: FabricDbBinding, partition: PartitionId, budget: Nat) -> PartitionReadReport {
+fn partition_read_report(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionReadReport {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => PartitionReadUnreported { detail: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: head, walk: walk } =>
@@ -101,7 +101,7 @@ fn partition_read_budget() -> Nat { 4096 }
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/fabric_partition_read.dag --function fabric_partition_read_served \
-//     --arg endpoint=https://srv1.<tailnet>/fabric-db --arg partition=group-group-a-quality-seat-v1 \
+//     --arg endpoint=https://srv1.<tailnet>/fabric-storage --arg partition=group-group-a-quality-seat-v1 \
 //     --arg receipt=/tmp/group-a.txt
 //
 // An empty partition is `head absent` with no events, which after the cutover is the correct answer
@@ -109,7 +109,7 @@ fn partition_read_budget() -> Nat { 4096 }
 fn fabric_partition_read_served(endpoint: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
   partition_read_exit(
     report: partition_read_report(
-      store: FabricDbServed { endpoint: endpoint },
+      store: FabricStorageServed { endpoint: endpoint },
       partition: (partition as String) as PartitionId,
       budget: partition_read_budget(),
     ),
@@ -122,7 +122,7 @@ fn fabric_partition_read_served(endpoint: NonEmptyStr, partition: NonEmptyStr, r
 fn fabric_partition_read_local(root: NonEmptyStr, partition: NonEmptyStr, receipt: NonEmptyStr) -> ProcessExit {
   partition_read_exit(
     report: partition_read_report(
-      store: FabricDbLocalFiles { root: fabric_db_file_root(root: root) },
+      store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: root) },
       partition: (partition as String) as PartitionId,
       budget: partition_read_budget(),
     ),
