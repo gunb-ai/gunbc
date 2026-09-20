@@ -11,6 +11,11 @@ import gunbc.runner_width_transition {
 }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
+  srv3_fabric_first_slot,
+  srv3_fabric_second_slot,
+  srv4_fabric_first_slot,
+  srv4_fabric_second_slot,
+  RunnerSlotIdentity,
   gunbc_runner_committed_width,
   RunnerWidthDerived,
   RunnerWidthUnresolved,
@@ -367,16 +372,27 @@ type HostInterruptionAuthorizationStanding
 // The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
 // same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
 //
-// SO THE FOUR UNITS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// SO THE FOUR CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
 // ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
 // required retiree that this authorization does not name, so the transition REFUSES until an
 // operator adds it -- which is the refusal doing its job rather than a gap.
-data fabric_purpose_interruption_scope: List<NonEmptyStr> = [
-  "actions-runner@srv3-06.service" as NonEmptyStr,
-  "actions-runner@srv3-07.service" as NonEmptyStr,
-  "actions-runner@srv4-06.service" as NonEmptyStr,
-  "actions-runner@srv4-07.service" as NonEmptyStr,
+//
+// WHAT IS AUTHORED IS THE MEMBERSHIP, NOT THE SPELLING (review 69262). An earlier revision wrote
+// the four systemd unit names out as string literals, which forked runner_unit's name template:
+// interruption_authorization_covers compares permission against obligation as raw strings, and the
+// obligation side maps identities through runner_slot_unit_name, so editing the unit template would
+// have silently stopped the two matching -- a refusal, but one whose cause points nowhere near the
+// cause. Naming the four identities and mapping them through the same fold keeps the property this
+// row exists for (nothing is added without an operator edit here) and removes the second name for
+// one concept that DESIGN 3 calls a correctness concern rather than a style one.
+data fabric_purpose_interruption_cells: List<RunnerSlotIdentity> = [
+  srv3_fabric_first_slot(),
+  srv3_fabric_second_slot(),
+  srv4_fabric_first_slot(),
+  srv4_fabric_second_slot(),
 ]
+
+data fabric_purpose_interruption_scope: List<NonEmptyStr> = map(fabric_purpose_interruption_cells, id => runner_slot_unit_name(slot: id))
 
 data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the four committed slots reassigned from GitHub Actions to fabric execution and enumerated in fabric_purpose_interruption_scope (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it does not extend to a fabric cell added later -- a new member is a required retiree this row does not permit, and the transition refuses until an operator names it here" as NonEmptyStr
 
