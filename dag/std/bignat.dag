@@ -13,7 +13,21 @@ import std.integer { UInt8 }
 //
 // Limbs are least significant first. A BigNat may carry high zero limbs; every operation below is
 // correct for any lengths, and fixed-width users (the Montgomery context) pad to their width.
-type BigNat {
+// SOLE-CONSTRUCTED, BECAUSE EVERY OVERFLOW ARGUMENT IN THIS MODULE RESTS ON THE LIMB INVARIANT
+// (review of gunbc#11645). The limb width of 24 bits is what keeps a limb product below 2^48 and the
+// CIOS accumulator inside the host integer -- but that reasoning holds only if every limb really is
+// in [0, 2^24). As an ordinary record, any caller could write BigNat { limbs: [-5, 99999999] } and
+// the arithmetic below would compute confidently on it. A proof resting on an invariant the
+// constructor does not enforce is validation standing where construction was available (DESIGN 5),
+// and its tell is exactly the one DESIGN names: the guarantee can be satisfied by reading the
+// declaration while the realization lies.
+//
+// WHAT THIS CLOSES AND WHAT IT DOES NOT. sole_constructor restricts WHO may construct: outside
+// std.bignat there is no expression that mints one, so the FABRICATION route is gone by
+// construction. It does not restrict WHAT this module may construct -- the eleven constructions
+// below are trusted to preserve the invariant because each derives its limbs from octets, from a
+// carry-propagating fold, or from another BigNat, never from unchecked caller input.
+type BigNat sole_constructor {
   limbs: List<Int>
 }
 
@@ -160,7 +174,21 @@ fn bignat_bits(a: BigNat) -> List<Int> {
 // Montgomery Multiplication Algorithms", 1996): for each limb a_i, t ← (t + a_i·b + q·m) / 2^24 with
 // q = (t_0 + a_i·b_0)·(−m⁻¹) mod 2^24, which makes the division exact. Every step is one product plus
 // a limb plus a carry, inside the 2^49 bound stated at the top.
-type MontgomeryModulus {
+// SOLE-CONSTRUCTED FOR THE SAME REASON, AND WITH A LARGER REMAINING GAP THAT IS STATED RATHER THAN
+// IMPLIED. The Montgomery routines additionally assume a positive width, an odd nonzero modulus, a
+// modulus fitting the declared width, a neg_inverse and r_squared consistent with that modulus, and
+// operands that are reduced residues. sole_constructor stops an outside caller from ASSEMBLING an
+// inconsistent one, which is the fabrication hole; it does NOT check the fields montgomery_modulus
+// itself computes from its arguments.
+//
+// SO THIS IS A PARTIAL CLOSE AND MUST NOT BE READ AS A FULL ONE. NEXT-RUNG TRIGGER, a capability: a
+// refusing admission on montgomery_modulus that establishes each invariant above and returns a typed
+// refusal naming the one that failed, SUFFICIENT FOR an inconsistent modulus to have no constructor
+// rather than merely no outside constructor. It is deferred to its own change because making this
+// admission refusing turns p256_field and p256_order into refusable data rows, cascading through
+// every consumer of the field arithmetic -- and the P-256 witness suite has never executed, so that
+// restructuring cannot yet be read for breakage.
+type MontgomeryModulus sole_constructor {
   modulus: BigNat
   width: Int
   neg_inverse: Int
