@@ -11,7 +11,7 @@ import extdeps.nvidia.nccl {
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit,
   ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
-  ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4,
+  ServingTopology, SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
   serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count, serving_checkpoint_wire,
 }
 import gunbc.spark.serving_performance_subject {
@@ -475,6 +475,7 @@ test fn w_every_modelled_topology_round_trips_through_its_rank_count() -> Bool {
   topology_round_trips(t: SingleSparkTp1)
     && topology_round_trips(t: SparkPairTp2)
     && topology_round_trips(t: FourSparkTp4)
+    && topology_round_trips(t: EightSparkTp8)
 }
 
 fn topology_round_trips(t: ServingTopology) -> Bool {
@@ -484,8 +485,10 @@ fn topology_round_trips(t: ServingTopology) -> Bool {
   }
 }
 
+// SIXTEEN IS THE UNMODELLED COUNT NOW THAT EIGHT IS A TOPOLOGY: the refusal input moves to a degree the
+// roster still does not carry, so this RED keeps discriminating.
 test fn w_an_unmodelled_rank_count_refuses_rather_than_choosing_the_nearest() -> Bool {
-  match serving_topology_of_rank_count(ranks: 8) {
+  match serving_topology_of_rank_count(ranks: 16) {
     Absent => true
     Present { value: _ } => false
   }

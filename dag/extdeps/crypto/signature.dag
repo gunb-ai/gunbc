@@ -1,7 +1,6 @@
 module extdeps.crypto.signature
 
-import std.types { NonEmptyStr, String, Int, Secret }
-import std.encoding { base64_decode, UrlSafe }
+import std.types { NonEmptyStr, String, Int }
 import std.logic { Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -84,10 +83,13 @@ type SignatureVerification
   | SignatureMalformed { declared: ByteSize, expected: ByteSize }
   | VerifyingKeyMalformed { declared: ByteSize, expected: ByteSize }
   | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
-  | VerifyingKeyUndecodable { suite: SignatureSuite }
-  | SignatureUndecodable { suite: SignatureSuite }
-  | SignatureEncodingRefused { suite: SignatureSuite }
 
+// NO BOUND IMPLEMENTATION YET, and that is declared rather than papered: extdeps.crypto.mac binds
+// RustCrypto's hmac through a host primitive; the ECDSA twin (RustCrypto p256 VerifyingKey::verify)
+// has no host primitive in this tree. The consumer that needs it is the /approve route's device
+// signature check (gunbc.auth.approval_device_redemption); until the primitive lands no route may mint
+// SignatureVerified from anything, so no redemption can claim a device.
+//
 // ── The realization seam ─────────────────────────────────────────────────────────────────────
 // Same boundary as mac_verification_from_implementation, stated the same way: evidence cannot exist
 // without naming its message and key (structural), and whether the bound implementation actually ran
@@ -112,85 +114,5 @@ fn signature_verification_from_implementation(
     SignatureVerified { verified: SignedMessage { key: key, message: message } }
   } else {
     SignatureInvalid { suite: signature.suite }
-  }
-}
-
-// ── The bound implementation ─────────────────────────────────────────────────────────────────
-// `p256_ecdsa_verify_b64url` is a host primitive backed by RustCrypto's p256 VerifyingKey::verify,
-// which SHA-256-hashes the message itself: nothing here hands the implementation a digest. The octet
-// lengths the seam checks are the DECODED lengths, so a 64-octet key or a 71-octet DER signature is
-// named as such rather than collapsed into a mismatch.
-//
-// Absence from the primitive is not a mismatch either. When the seam's own checks pass (so the
-// answer with a false bit would be SignatureInvalid) and the primitive still answers absent, the
-// bytes had the right lengths and are not an admitted encoding -- a point off the curve, a scalar out
-// of range, a prefix other than 0x04, a non-canonical base64url spelling -- and that is
-// SignatureEncodingRefused, never SignatureInvalid: an invalid signature is a statement about a
-// well-formed one.
-fn p256_ecdsa_verify(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
-  match base64_decode(s: key.point_b64url as String, variant: UrlSafe) {
-    Absent => VerifyingKeyUndecodable { suite: key.suite }
-    Present { value: key_octets } =>
-      match base64_decode(s: signature.b64url as String, variant: UrlSafe) {
-        Absent => SignatureUndecodable { suite: signature.suite }
-        Present { value: signature_octets } =>
-          match key.suite {
-            EcdsaP256Sha256 =>
-              match p256_ecdsa_verify_b64url(key.point_b64url as String, signature.b64url as String, message as String) {
-                Present { value: verified } =>
-                  signature_verification_from_implementation(
-                    key: key,
-                    key_size: byte_size(count: count(key_octets)),
-                    signature: signature,
-                    signature_size: byte_size(count: count(signature_octets)),
-                    message: message,
-                    implementation_verified: verified,
-                  )
-                Absent =>
-                  encoding_refusal(v: signature_verification_from_implementation(
-                    key: key,
-                    key_size: byte_size(count: count(key_octets)),
-                    signature: signature,
-                    signature_size: byte_size(count: count(signature_octets)),
-                    message: message,
-                    implementation_verified: false,
-                  ))
-              }
-          }
-      }
-  }
-}
-
-// The seam's structural refusals stand; only the arm that would claim a well-formed invalid
-// signature is re-read as an encoding refusal.
-fn encoding_refusal(v: SignatureVerification) -> SignatureVerification {
-  match v {
-    SignatureInvalid { suite: s } => SignatureEncodingRefused { suite: s }
-    _ => v
-  }
-}
-
-// ── Signing ──────────────────────────────────────────────────────────────────────────────────
-// THE KEY HOLDER'S OPERATION, and the only one this module adds for it. The private key travels as a
-// PKCS #8 PEM Secret (an APNs .p8 is exactly that) and never enters an argv
-// (gunbc.credential_argv_exposure), which is why this is a host primitive and not a shell transport.
-// The signature comes back in the one spelling verification admits -- 64-octet r || s, unpadded
-// base64url -- as SignatureBytes, so whatever carries it (a JWS, a record) needs no re-encoding.
-type SignatureSigning
-  = SignatureSigned { signature: SignatureBytes }
-  | SigningKeyUnreadable { suite: SignatureSuite }
-
-// `p256_ecdsa_sign_b64url` is RustCrypto's p256 SigningKey over SHA-256 with RFC 6979 deterministic
-// nonces: no RNG, one message has one signature. Absent means the key is not a P-256 PKCS #8 PEM.
-// The suite match is total so a second SignatureSuite arm cannot reach this implementation without
-// an authored arm.
-fn p256_ecdsa_sign(suite: SignatureSuite, key_pem: Secret, message: NonEmptyStr) -> SignatureSigning {
-  match suite {
-    EcdsaP256Sha256 =>
-      match p256_ecdsa_sign_b64url(key_pem as String, message as String) {
-        Absent => SigningKeyUnreadable { suite: suite }
-        Present { value: b64url } =>
-          SignatureSigned { signature: SignatureBytes { suite: suite, encoding: P1363FixedWidth, b64url: b64url as NonEmptyStr } }
-      }
   }
 }

@@ -158,6 +158,17 @@ test fn srv4_plan_targets_195_with_srv4_secret() -> Bool {
     && redfish_account_role_wire(role: srv4_onboarding_plan.rotated_account_role) == "Administrator"
 }
 
+// srv1 and srv2 read their BMC endpoints from the fleet intent, so the literals here are the
+// expectation and the plan is the subject: a plan that retyped a wrong address would fail this.
+test fn srv1_and_srv2_plans_take_their_bmc_from_the_fleet_intent() -> Bool {
+  srv1_onboarding_plan.bmc.host == "192.168.1.183"
+    && srv2_onboarding_plan.bmc.host == "192.168.1.184"
+    && srv1_onboarding_plan.secret_name == "bmc-srv1-admin"
+    && srv2_onboarding_plan.secret_name == "bmc-srv2-admin"
+    && phase_tag(p: srv1_onboarding_plan.start_phase) == 0
+    && redfish_account_role_wire(role: srv2_onboarding_plan.rotated_account_role) == "Administrator"
+}
+
 test fn credential_probe_maps_to_correct_phase() -> Bool {
   match bmc_credential_probe_to_phase(probe: FactoryCredentialActive) {
     Present { value: FactoryDefault } => true

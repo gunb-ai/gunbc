@@ -75,12 +75,26 @@ type ComparisonStatus
 // would assert the decode already happened and had succeeded -- and was measured doing exactly
 // that, returning the raw "ahead" where a variant was declared. `parse_comparison_status` below is
 // the single decode, and its `Absent` is a real answer for a value this version does not know.
+// One changed file in a comparison (docs.github.com/en/rest/commits/commits#compare-two-commits,
+// `files[]`). `sha` is the blob at the head side and is absent for a removed file.
+type ComparisonFile {
+  filename: String
+  status: String
+  sha: String?
+}
+
+// `files` is optional because the upstream omits it rather than listing an empty population in some
+// responses, and it is capped: the endpoint lists at most comparison_files_listing_cap files, so a
+// listing at the cap is not known to be the whole changed population.
 type Comparison {
   status: String
   ahead_by: Int
   behind_by: Int
   total_commits: Int
+  files: List<ComparisonFile>?
 }
+
+data comparison_files_listing_cap: Int = 300
 
 // COMPARE TAKES ITS `basehead` AS ONE INPUT. The spelling is the upstream's, `{base}...{head}` with
 // three dots, and it is passed whole rather than assembled from two operands because that is the

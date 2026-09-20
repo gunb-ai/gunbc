@@ -1236,6 +1236,378 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     ResolvedCallEdgeCensus::Observed { edges }
 }
 
+/// THE KEYS OF THE BUILTIN REGISTRY, READ OFF THE AUTHORITY.
+///
+/// `v1.compiler.infer_method` `builtin_function_registry` is a `Map<String, BuiltinSignature>`
+/// whose values carry `Node`s, so the interpreter cannot evaluate the `data` row itself
+/// (`NoSuchField { type_name: "Node", field: "ident" }` when it tries), which is why
+/// `std.primitives` `builtin_registry_surface_names` has been a HAND ROSTER beside it (the census
+/// receipt's `hand_roster_missing_registry_rows` / `hand_roster_rows_absent_from_registry` lines
+/// are the instrument for its drift). This query reads the compiled registry's key set directly so
+/// `gunbc.primitive_egress.census` derives the registry population from the one authority and
+/// reports the roster's drift as a typed finding rather than inheriting it.
+pub fn builtin_function_registry_keys() -> Vec<String> {
+    let registry = crate::v1_compiler_infer_method::builtin_function_registry();
+    let mut keys: Vec<String> = registry.keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
+fn primitive_call_callee_of_target(
+    target: &crate::v1_std_core::CallTargetIdentity,
+    spelling: &str,
+) -> Option<crate::cli_run::PrimitiveCalleeIdentity> {
+    use crate::cli_run::PrimitiveCalleeIdentity;
+    use crate::v1_std_core::CallTargetIdentity;
+    match target {
+        CallTargetIdentity::RuntimePrimitiveCall {
+            primitive_name,
+            projected_from,
+        } => Some(PrimitiveCalleeIdentity::RuntimePrimitive {
+            primitive_name: primitive_name.clone(),
+            projected_from_module: projected_from.as_ref().map(|d| d.owner_module_path.clone()),
+            projected_from_decl: projected_from.as_ref().map(|d| d.decl_name.clone()),
+        }),
+        CallTargetIdentity::CallableTargetUndetermined => {
+            Some(PrimitiveCalleeIdentity::UndeterminedFreeCall {
+                spelling: spelling.to_string(),
+            })
+        }
+        CallTargetIdentity::SourceDeclarationCall { .. }
+        | CallTargetIdentity::LocallyBoundCall { .. } => None,
+    }
+}
+
+/// Record the callee of ONE node when the resolver did NOT establish it as a source declaration
+/// or a local binding -- the only two callee kinds that are not the census subject; everything
+/// else is a primitive identity the resolver minted or a site where it minted nothing, and both
+/// are rows. A local binding reaches this arm in two spellings: as a `LocallyBoundCall` target
+/// and as `FunctionValueCallSemantics`, which the inferer mints when the callee is a body binding
+/// (`let f = ...; f(x)`) and so carries no target at all. Both are one callee kind, the local,
+/// and neither is a row: the census subject is the CALL edge to a primitive, and a primitive can
+/// only be named in call position (there is no value-position primitive reference for a local to
+/// capture), so the value a body binding holds was already walked at its own call sites.
+/// The descent is `collect_primitive_call_edges`.
+fn primitive_call_edge_at(
+    texpr: &Rc<crate::v1_std_core::Node>,
+    caller_module: &str,
+    caller_decl: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
+) {
+    use crate::cli_run::{PrimitiveCallEdgeRow, PrimitiveCalleeIdentity};
+    use crate::v1_std_core::{CallSemantics, ExprData, MethodSemantics};
+    // The authored spelling is read ONCE per node and shared by the callee arm and the row;
+    // reading it twice was a copied producer on the innermost loop of the corpus walk.
+    let (authored_spelling, callee): (String, Option<PrimitiveCalleeIdentity>) =
+        match &*texpr.expr_data {
+            ExprData::ExprCall { call_semantics, .. } => {
+                let spelling =
+                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
+                let callee = match call_semantics.as_deref() {
+                    Some(CallSemantics::PlainCallSemantics { target })
+                    | Some(CallSemantics::ResolvedDirectCallSemantics { target, .. })
+                    | Some(CallSemantics::LookupCallSemantics { target }) => {
+                        primitive_call_callee_of_target(target, &spelling)
+                    }
+                    Some(CallSemantics::FunctionValueCallSemantics) => None,
+                    None => Some(PrimitiveCalleeIdentity::UndeterminedFreeCall {
+                        spelling: spelling.clone(),
+                    }),
+                };
+                (spelling, callee)
+            }
+            ExprData::ExprMethodCall { method_semantics } => {
+                let spelling =
+                    crate::v1_std_core::expr_method_name_at(texpr.clone(), source_indices.clone());
+                let callee = match method_semantics.as_deref() {
+                    Some(MethodSemantics::AlgebraMethodSemantics {
+                        algebra_template, ..
+                    }) => match algebra_template {
+                        Some(t) => Some(PrimitiveCalleeIdentity::AlgebraMethod {
+                            template_name: t.name.clone(),
+                        }),
+                        None => Some(PrimitiveCalleeIdentity::PlainMethod {
+                            spelling: spelling.clone(),
+                        }),
+                    },
+                    Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) => {
+                        Some(PrimitiveCalleeIdentity::ServiceOperation {
+                            service_name: service_name.clone(),
+                            operation: spelling.clone(),
+                        })
+                    }
+                    Some(MethodSemantics::PlainMethodSemantics) | None => {
+                        Some(PrimitiveCalleeIdentity::PlainMethod {
+                            spelling: spelling.clone(),
+                        })
+                    }
+                };
+                (spelling, callee)
+            }
+            _ => (String::new(), None),
+        };
+    if let Some(callee) = callee {
+        out.push(PrimitiveCallEdgeRow {
+            caller_module: caller_module.to_string(),
+            caller_decl: caller_decl.to_string(),
+            authored_spelling,
+            callee,
+            span_file: texpr.span.file.clone(),
+            span_start: texpr.span.start,
+        });
+    }
+}
+
+/// Walk one typed expression tree and push every call site whose callee the resolver did NOT
+/// establish as a source declaration or a local binding. Explicit worklist: a deeply nested
+/// expression overflowed the main thread's stack on the first corpus walk (2026-09-18), so the
+/// descent is iterative; visit order does not matter because the edges are sorted afterwards.
+fn collect_primitive_call_edges(
+    texpr: &Rc<crate::v1_std_core::Node>,
+    caller_module: &str,
+    caller_decl: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
+) {
+    let mut pending: Vec<Rc<crate::v1_std_core::Node>> = vec![texpr.clone()];
+    while let Some(node) = pending.pop() {
+        primitive_call_edge_at(&node, caller_module, caller_decl, source_indices, out);
+        // Every field that can carry an expression node: `children` (arguments, a service's
+        // operations, a type's variants), `body`, `params` (a default argument), `properties`
+        // (a fn's admit props), `transport` (a service transport expression).
+        for child in node.children.iter() {
+            pending.push(child.clone());
+        }
+        if let Some(body) = &node.body {
+            pending.push(body.clone());
+        }
+        for param in node.params.iter() {
+            pending.push(param.clone());
+        }
+        for property in node.properties.iter() {
+            pending.push(property.clone());
+        }
+        if let Some(transport) = &node.transport {
+            pending.push(transport.clone());
+        }
+    }
+}
+
+fn primitive_call_edges_from_module(
+    module: &TypedModule,
+    out: &mut Vec<crate::cli_run::PrimitiveCallEdgeRow>,
+) {
+    let si = module.type_env.source_indices.clone();
+    let module_name = crate::v1_std_core::authored_name_at(si.clone(), module.module.clone());
+    for item in module.items.iter() {
+        let decl_name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+        // The ITEM NODE is the walk root, so every expression-bearing field of a declaration --
+        // body, params (default arguments), children (a service's operations, a type's
+        // variants), properties (admit props), transport -- is inside the denominator.
+        collect_primitive_call_edges(item, &module_name, &decl_name, &si, out);
+    }
+}
+
+/// THE PRIMITIVE-CONSUMER EDGE CENSUS: every call site in every `.dag` module under
+/// `pool_roots` (walked when its path starts with one of `entry_prefixes`, all when none are
+/// given, and never when it matches an `exclude_substrings`) whose resolver-established callee
+/// is a runtime primitive, an algebra method template, a service operation, or NOTHING -- with
+/// the caller's declaration identity and the site's span.
+///
+/// ONE RESOLUTION, NOT ONE PER ENTRY (DESIGN section 6b, the #11401 R1 specimen). The first cut
+/// of this query resolved every entry as its own closure through `resolve_entry_with_index`:
+/// that assembled a graph per entry, re-typed the v2 compiler modules whenever the typed cache's
+/// cap evicted them, and pinned every assembled graph in `resolved_graph_memo` (the
+/// `primitive-call-edges.*` trace marks and the process RSS are the instrument for that cost).
+/// The population is a walk over ONE resolved corpus, so the query now takes the same route
+/// `gunbc compile --source-root` takes for a primary root:
+/// `primary_root_subject_closure` for each pool root, one `compile_to_resolved_with_options`
+/// over the union under the floor's compile-clean admission (modules outside that closure enter
+/// the name census only), and a walk over every module of that single `ResolvedGraph`.
+///
+/// A module carrying an interpreter-blocking diagnostic is carried as a typed refusal ROW keyed
+/// by its module path and its body is not walked, because a partially typed tree can carry a
+/// callee identity the resolver never established. The consumer
+/// (`gunbc.primitive_egress.census`) refuses when any admitted module is refused.
+pub fn compile_dag_primitive_call_edges(
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    entry_prefixes: &[String],
+) -> crate::cli_run::PrimitiveCallEdgeCensus {
+    // ON A THREAD WITH A LARGE STACK. The one-resolution graph over the corpus is dropped when
+    // this query returns, and dropping a deeply nested `Rc<Node>` chain recurses once per level:
+    // on the default main stack that overflowed AFTER the walk had finished (2026-09-19). The
+    // stack is reserved virtual memory, committed only as touched.
+    let outcome = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("primitive-call-edges".to_string())
+            .stack_size(1 << 30)
+            .spawn_scoped(scope, || {
+                compile_dag_primitive_call_edges_on_this_thread(
+                    exclude_substrings,
+                    pool_roots,
+                    entry_prefixes,
+                )
+            })
+            .map(|handle| handle.join())
+    });
+    match outcome {
+        Ok(Ok(census)) => census,
+        Ok(Err(_)) => crate::cli_run::PrimitiveCallEdgeCensus::Refused {
+            cause: "primitive call edges: the walk thread panicked".to_string(),
+        },
+        Err(e) => crate::cli_run::PrimitiveCallEdgeCensus::Refused {
+            cause: format!("primitive call edges: could not spawn the walk thread: {e}"),
+        },
+    }
+}
+
+fn compile_dag_primitive_call_edges_on_this_thread(
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    entry_prefixes: &[String],
+) -> crate::cli_run::PrimitiveCallEdgeCensus {
+    use crate::cli_run::{PrimitiveCallEdgeCensus, PrimitiveCallEntryRefusal};
+    if pool_roots.is_empty() || pool_roots.iter().any(|r| r.trim().is_empty()) {
+        return PrimitiveCallEdgeCensus::Refused {
+            cause: "primitive call edges: every pool root must be nonempty and at least one is required"
+                .to_string(),
+        };
+    }
+    let abs_roots = pool_roots_abs(pool_roots);
+    for (authored, abs) in pool_roots.iter().zip(abs_roots.iter()) {
+        if !Path::new(abs).is_dir() {
+            return PrimitiveCallEdgeCensus::Refused {
+                cause: format!(
+                    "primitive call edges: declared root '{authored}' is not an inspectable directory"
+                ),
+            };
+        }
+    }
+    // Progress goes through the trace-mark seam (`v1_rt::trace_mark`, the one phase printer this
+    // crate admits) so a killed run still shows which phase it died in.
+    v1_rt::trace_mark("primitive-call-edges.close.begin".to_string());
+    let index = crate::cli_run::build_multi_entry_index(&abs_roots);
+    let mut by_path: BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> = BTreeMap::new();
+    for root in pool_roots {
+        match crate::cli_run::primary_root_subject_closure(&index, root) {
+            Ok(closure) => {
+                for source in closure {
+                    by_path.insert(source.path.clone(), source);
+                }
+            }
+            Err(refusal) => {
+                return PrimitiveCallEdgeCensus::Refused {
+                    cause: format!(
+                        "primitive call edges: closure of root '{root}' refused at {}: {}",
+                        refusal.phase, refusal.cause
+                    ),
+                }
+            }
+        }
+    }
+    let closure: Vec<Rc<v1_compiler_compile::SourceFile>> = by_path.into_values().collect();
+    v1_rt::trace_mark(format!(
+        "primitive-call-edges.close ({} sources).done",
+        closure.len()
+    ));
+    v1_rt::trace_mark("primitive-call-edges.resolve.begin".to_string());
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let resolved =
+        v1_compiler_compile::compile_to_resolved_with_options(Rc::new(closure.into()), options);
+    v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
+    v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
+    let Some(graph) = resolved.graph.clone() else {
+        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+            resolved.diagnostics.clone(),
+        );
+        return PrimitiveCallEdgeCensus::Refused {
+            cause: format!(
+                "primitive call edges: the corpus did not resolve to a graph: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    };
+    // Blocking diagnostics, attributed to the module that carries them.
+    let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for d in resolved.diagnostics.iter() {
+        if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                Rc::new(vec![d.clone()].into()),
+            )
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| "blocking diagnostic".to_string());
+            blocked_modules
+                .entry(d.module_name.clone())
+                .or_default()
+                .push(message);
+        }
+    }
+    let admitted = |rel: &str| -> bool {
+        !is_excluded_import_path(rel, exclude_substrings)
+            && (entry_prefixes.is_empty()
+                || entry_prefixes.iter().any(|p| rel.starts_with(p.as_str())))
+    };
+    let mut entries_resolved = Vec::new();
+    let mut entries_refused = Vec::new();
+    let mut edges = Vec::new();
+    let mut walked_modules: HashSet<String> = HashSet::new();
+    for module in graph.modules.iter() {
+        let module_file = rel_path_for_layer_import(Path::new(&module.module.span.file));
+        if !admitted(&module_file) {
+            continue;
+        }
+        let module_name = crate::v1_std_core::authored_name_at(
+            module.type_env.source_indices.clone(),
+            module.module.clone(),
+        );
+        if !walked_modules.insert(module_name.clone()) {
+            // Two modules in one resolved graph carrying one authored name is an ambiguity
+            // the census must SEE: a typed refusal row, never a shortened population.
+            entries_refused.push(PrimitiveCallEntryRefusal {
+                entry: module_file,
+                cause: format!(
+                    "module name `{module_name}` is declared by a second file in the resolved graph"
+                ),
+            });
+            continue;
+        }
+        if let Some(messages) = blocked_modules.get(&module_name) {
+            entries_refused.push(PrimitiveCallEntryRefusal {
+                entry: module_file,
+                cause: messages.join("; "),
+            });
+            continue;
+        }
+        primitive_call_edges_from_module(module, &mut edges);
+        entries_resolved.push(module_file);
+    }
+    v1_rt::trace_mark(format!(
+        "primitive-call-edges.walk ({} modules, {} refused, {} edges).done",
+        entries_resolved.len(),
+        entries_refused.len(),
+        edges.len()
+    ));
+    edges.sort_by(|a, b| {
+        (&a.caller_module, &a.caller_decl, &a.span_file, a.span_start).cmp(&(
+            &b.caller_module,
+            &b.caller_decl,
+            &b.span_file,
+            b.span_start,
+        ))
+    });
+    entries_resolved.sort();
+    entries_refused.sort_by(|a, b| a.entry.cmp(&b.entry));
+    PrimitiveCallEdgeCensus::Observed {
+        entries_resolved,
+        entries_refused,
+        edges,
+    }
+}
+
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.
 /// Occurrence discovery and resolution remain separate products in the returned carrier: callers
 /// anti-join them and must not use the resolver's emissions as their own denominator.

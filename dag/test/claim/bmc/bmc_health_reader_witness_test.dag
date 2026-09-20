@@ -1,0 +1,119 @@
+module test.claim.bmc_health_reader_witness
+
+import std.types { Bool, String }
+import gunbc.bmc_health_reader {
+  CreateReaderAccount,
+  ReaderAccountAbsent,
+  ReaderAccountConverged,
+  ReaderAccountPresent,
+  ReaderAccountRefused,
+  ReaderAccountUnreadable,
+  ReaderListed,
+  ReaderListingUnreadable,
+  ReaderNotListed,
+  bmc_health_reader_secret_id,
+  plan_reader_account,
+  reader_account_create_body,
+  reader_account_from_json,
+  reader_listed_in_accounts,
+}
+import gunbc.tools.bmc_health_reader_converge {
+  BmcLoginNotAttempted,
+  BmcLoginRejected,
+  bmc_health_reader_body_path,
+  reader_login_exit,
+}
+import gunbc.tools.bmc_onboard { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
+import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeSucceeded, RestExchangeUnreached }
+import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import std.process { ExitFailure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Supplied bodies in the shape the DMTF Redfish AccountService schema gives the collection and a
+// ManagerAccount resource. They are this witness's inputs, not observations of any BMC; the live
+// route that reads the real ones is gunbc.tools.bmc_health_reader_converge, which this module also
+// imports so that resolving these claims typechecks it.
+data collection_with_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc_health\"}],\"Members@odata.count\":2}"
+data collection_without_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc_health_old\"}]}"
+
+test fn only_an_exact_member_counts_as_the_reader() -> Bool {
+  let listed = match reader_listed_in_accounts(body: collection_with_reader) { ReaderListed => true _ => false }
+  let near_miss = match reader_listed_in_accounts(body: collection_without_reader) { ReaderNotListed => true _ => false }
+  listed && near_miss
+}
+
+// An unreadable collection is not an empty one: absence would authorize a create. That includes a
+// collection with one member that does not name itself (review 67794), which used to be skipped.
+test fn an_unreadable_collection_never_reads_as_absent() -> Bool {
+  let garbage = match reader_listed_in_accounts(body: "<html>login</html>") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let no_members = match reader_listed_in_accounts(body: "{\"Name\":\"Accounts\"}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let unnamed_member = match reader_listed_in_accounts(body: "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"Name\":\"gunbc_health\"}]}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let duplicated_id = match reader_listed_in_accounts(body: "{\"Members\":[{\"@odata.id\":\"a\",\"@odata.id\":\"b\"}]}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let refused = match plan_reader_account(observation: ReaderAccountUnreadable { cause: "x" }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  garbage && no_members && unnamed_member && duplicated_id && refused
+}
+
+test fn absent_creates_and_an_enabled_read_only_reader_is_converged() -> Bool {
+  let create = match plan_reader_account(observation: ReaderAccountAbsent) { CreateReaderAccount => true _ => false }
+  let converged = match plan_reader_account(observation: reader_account_from_json(body: "{\"UserName\":\"gunbc_health\",\"RoleId\":\"ReadOnly\",\"Enabled\":true}")) {
+    ReaderAccountConverged => true
+    _ => false
+  }
+  create && converged
+}
+
+// An account of that name this flow did not make is refused, never demoted or re-enabled.
+test fn a_wrong_role_or_a_disabled_reader_is_refused_not_corrected() -> Bool {
+  let admin = match plan_reader_account(observation: ReaderAccountPresent { role: "Administrator", enabled: true }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  let disabled = match plan_reader_account(observation: ReaderAccountPresent { role: "ReadOnly", enabled: false }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  let no_role = match reader_account_from_json(body: "{\"UserName\":\"gunbc_health\",\"Enabled\":true}") { ReaderAccountUnreadable { cause: _ } => true _ => false }
+  admin && disabled && no_role
+}
+
+// The body is read back through the same decoder the observation uses, rather than matched as
+// text: the body the flow sends must be one the flow itself would judge converged.
+test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool {
+  let body = reader_account_create_body(password: "p")
+  let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
+  judged
+    && string_contains(s: body, pattern: "gunbc_health")
+    && bmc_health_reader_secret_id(host: operator_host_srv3) == "bmc-srv3-health-reader"
+    && bmc_health_reader_body_path(host: operator_host_srv3) != bmc_health_reader_body_path(host: operator_host_srv4)
+}
+
+// Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
+// that says nothing about existence (reviews 67836, 67848). The administrator probe and the reader
+// flow both read custody through this one classifier.
+test fn only_a_404_reads_as_absent_custody() -> Bool {
+  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { Present { value: CustodyCredentialAbsent } => true _ => false }
+  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
+  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
+  let success_decodes = match custody_read_refusal_cause(performance: RestExchangeSucceeded) { none => true _ => false }
+  absent && denied && unreached && success_decodes
+}
+
+// A login that never reached the BMC keeps its local cause instead of reading as a refused password.
+test fn a_login_that_was_never_attempted_is_not_a_refused_password() -> Bool {
+  let not_attempted = match reader_login_exit(attempt: BmcLoginNotAttempted { reason: "netrc residue remains" }, rejected_prefix: "refused: ") {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "not attempted") && !string_contains(s: r, pattern: "refused: ")
+    _ => false
+  }
+  let rejected = match reader_login_exit(attempt: BmcLoginRejected { body: "401" }, rejected_prefix: "refused: ") {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "refused: 401")
+    _ => false
+  }
+  not_attempted && rejected
+}
+
+// One host carrier: the plan's endpoint, its admin secret and the reader secret all derive from the
+// same fleet host, so no argument can pair one host's secret with another's BMC (review 67867).
+test fn every_name_a_plan_uses_derives_from_its_one_host() -> Bool {
+  srv3_onboarding_plan.host == operator_host_srv3
+    && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
+    && srv3_onboarding_plan.bmc.host == "192.168.1.192"
+    && bmc_health_reader_secret_id(host: srv4_onboarding_plan.host) == "bmc-srv4-health-reader"
+    && srv4_onboarding_plan.bmc.host == "192.168.1.195"
+}

@@ -88,8 +88,14 @@ import gunbc.compiler_frontend_program_status {
   MissingInstrument,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
+  ResolverBoundDeclaringIdentity,
   ExactOccurrenceResidualCensus,
+  RehearsalProducerStanding,
+  RehearsalProducerUnavailable,
+  RehearsalProducerAvailable,
+  xl2_stage_standing,
+  rehearsal_producer_standing,
+  needs,
   all_missing_instruments,
   conditionally_awaited_instruments,
   stages_awaiting,
@@ -573,23 +579,31 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 }
 
 // F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR, AND IT MAY NOT READ CLEAR OFF AN INSTRUMENT
-// THAT IS EMPTY ON THE CORPUS.
+// WHOSE DECLARING IDENTITIES ARE SPELLED RATHER THAN BOUND.
 //
-// THIS PROBE HAS NOW BEEN FALSIFIED TWICE AND BOTH FALSIFICATIONS ARE THE SAME RULE. The original
-// arm read gunbc.namespace_cut_subject_roster's unobservable host probes, so repairing probe
-// observability would have flipped XL-0 while no denominator existed. A later arm -- landed on this
-// branch and withdrawn on it -- read a STAGE DELIVERY RECEIPT, which was earned against hand-built
-// Node trees while the producer returned NO sites over the tree production actually yields. Both
-// made XL-0's standing a function of something that is not the denominator.
+// THIS PROBE HAS BEEN FALSIFIED THREE TIMES AND ALL THREE ARE ONE RULE. The original arm read
+// gunbc.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
+// RECEIPT earned against hand-built Node trees while the producer returned NO sites over the tree
+// production actually yields; and on gunbc#11582 one head read a delivery receipt discriminated on
+// the production route whose RepairInputDeclared arm was derived from the authored SPELLING while
+// the compiler resolver refused the same reference (review 67708). Each made XL-0's standing a
+// function of something that is not the denominator.
 //
-// So the assertion is NOT-DERIVABLE with this exact cause, which is the one statement that survives
-// both: a rewiring onto any other observable population has to abandon the cause to move the
-// standing, and a receipt re-landed before the producer answers non-empty reds this witness.
-test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
+// So the assertion is NOT-DERIVABLE with this exact cause -- the resolver answering a qualified
+// reference with an exact declaring identity, from which the roster's `declaring` is derived --
+// and it names the stage: a rewiring onto any other observable population has to abandon the
+// cause to move the standing, and a receipt landed before the resolver binds reds this witness.
+//
+// THE THIRD CONJUNCT THE PREDECESSOR ROW CARRIED -- that no MILESTONE cites the instrument -- is
+// dropped, and the reason is cost rather than truth: milestones_awaiting derives every milestone's
+// standing (114k eval steps on gunbc#11582 run 35355538762, refused against the 72,300-step line
+// for a witness identity that is new because this row is renamed), while the stage-side join
+// costs ~1k. The stage assertion is the one this row exists for; the milestone side is the
+// instrument roster's own coherence, held by every_declared_instrument_is_distinct_and_awaited beside it.
+test fn xl0_is_not_derivable_and_awaits_resolver_bound_declaring_identity() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
+    && any(stages_awaiting(i: ResolverBoundDeclaringIdentity),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
 // XL-3 stays NotDerivable while the usable class -- qualified cross-module
@@ -622,12 +636,78 @@ test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base
   }
 }
 
+// XL-2 stays NotDerivable while the rehearsal residual has no honest producer on the v2
+// route: calls (callee and arguments) and bare field-position types never reach resolve, and the
+// whole-tree native census resolves nothing, so a failure roster taken after the strip is an
+// undercount by construction rather than the census. The delivery-kind fold below still keys on
+// RehearsalInstrumentDelivered; what this arm pins is that the empty roster is NOT read as
+// ordinary Outstanding work, which is the reading that dispatched a builder against it.
+test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> Bool {
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
+    && any(stages_awaiting(i: ExactOccurrenceResidualCensus),
+         l => l == namespace_cut_stage_label(s: StageXL2RootDeletionRehearsal))
+    && match rehearsal_producer_standing() {
+         RehearsalProducerUnavailable { why: _, cause: _ } => true
+         RehearsalProducerAvailable => false
+       }
+}
+
+// THE RECOVERY CONTROL AT THE HELPER'S BOUNDARY: with the producer supplied Available, delivery
+// evidence decides the stage exactly as it does for XL-4 -- outstanding on the empty roster,
+// outstanding when only XL-4's kind is held, Clear when the rehearsal kind is held. And with the
+// producer supplied Unavailable, a held rehearsal receipt is STILL Clear: the literal classifies
+// the undelivered state and cannot veto delivery. An earlier cut of this test asserted the
+// opposite in its last conjunct and thereby pinned the veto (side-chat review on gunbc#11735).
+test fn xl2_reads_its_delivery_roster_once_a_producer_is_supplied_available() -> Bool {
+  let rehearsal_held = [
+    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+  ]
+  let other_kind_held = [
+    StageDeliveryReceipt { kind: ReferenceGraphInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+  ]
+  standing_agrees_with_population(
+      s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: []),
+      expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: []))
+    && standing_is(want: ClassOutstanding, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: other_kind_held))
+    && standing_is(want: ClassClear, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: rehearsal_held))
+    && standing_is(want: ClassClear,
+         s: xl2_stage_standing(
+              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
+              held: rehearsal_held))
+    && standing_is(want: ClassNotDerivable,
+         s: xl2_stage_standing(
+              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
+              held: other_kind_held))
+}
+
+// THE LIVE CONNECTION: the live standing is the decision over the LIVE roster with the LIVE
+// literal, and that same decision over the live roster plus one honest rehearsal receipt is Clear
+// with the literal untouched. The second conjunct is what fails when the roster is disconnected
+// from the decision (an Unavailable branch that ignores `held`), which is the defect the previous
+// head carried. What execution cannot discriminate on an empty live roster is a constant with
+// the identical why and cause -- stated in the carrier, and the same limit XL-4's arm has.
+test fn xl2_live_standing_is_the_delivery_decision_over_the_live_roster() -> Bool {
+  let live = xl2_stage_standing(producer: rehearsal_producer_standing(), held: held_stage_delivery_receipts)
+  let delivered = concat(held_stage_delivery_receipts, [
+    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+  ])
+  standing_class_label(c: standing_class(s: stage_status(s: StageXL2RootDeletionRehearsal)))
+      == standing_class_label(c: standing_class(s: live))
+    && standing_outstanding_members(s: stage_status(s: StageXL2RootDeletionRehearsal))
+      == standing_outstanding_members(s: live)
+    && standing_is(want: ClassClear,
+         s: xl2_stage_standing(producer: rehearsal_producer_standing(), held: delivered))
+}
+
 // F3 -- XL-2 AND XL-4 CLEAR ON DELIVERY, NOT ON ACTIVATION, AND ACT-0 IS NOT THEIR PREREQUISITE.
 //
 // The circularity this closes was structural: the two stages read ACT-0's receipts, ACT-0 runs
 // after XL-4, so neither could ever clear. The rule that forbids its return is that each stage's
 // population is its OWN delivery kind -- checked here at fixture grain in both directions -- and
-// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either.
+// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either. XL-2's LIVE
+// standing is NotDerivable today (the arm above), so its delivery connection is checked at the
+// supplied boundary the live arm consumes -- xl2_stage_standing with the producer supplied
+// available -- against the live roster; XL-4's standing still follows the roster directly.
 test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> Bool {
   let both_delivered = [
     StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
@@ -637,7 +717,7 @@ test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> B
     && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: both_delivered)) == 0
     && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: [])) == 1
     && standing_agrees_with_population(
-         s: stage_status(s: StageXL2RootDeletionRehearsal),
+         s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: held_stage_delivery_receipts),
          expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts))
     && standing_agrees_with_population(
          s: stage_status(s: StageXL4ReferenceDerivedGraph),
@@ -942,3 +1022,4 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
         && any(blocking, b => b == "the emitter milestone")
   }
 }
+

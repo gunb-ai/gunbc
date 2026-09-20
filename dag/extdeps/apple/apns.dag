@@ -1,13 +1,10 @@
 module extdeps.apple.apns
 
-import std.types { NonEmptyStr, String, Int, Bool, List, Secret, EpochSecs }
+import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.measure { Second, second, ByteSize, byte_size }
-import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256, SignatureSigned, SigningKeyUnreadable, p256_ecdsa_sign }
-import extdeps.auth.jwt { JwtCompactSerialization }
-import extdeps.auth.jws { jws_signing_input, jws_compact }
-import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
+import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // Apple Push Notification service, HTTP/2 provider API with token-based authentication.
@@ -56,39 +53,6 @@ data apns_provider_token_min_refresh: Second = second(count: 1200)
 type ApnsProviderIdentity {
   team_id: AppleTeamId
   key_id: ApnsKeyId
-}
-
-// THE TOKEN, and what it names. The JWT is the bearer credential sent as `authorization: bearer
-// <jwt>`; it carries its identity and issue time beside it so a cache can decide the refresh window
-// (the two bounds above) without decoding its own output.
-type ApnsProviderToken {
-  identity: ApnsProviderIdentity
-  issued_at_epoch: EpochSecs
-  jwt: JwtCompactSerialization
-}
-
-// Minting refuses rather than fabricating. The one malformed input the bound implementation can see
-// is a key that is not a P-256 PKCS #8 PEM (an APNs .p8 is exactly that). An issue time before the
-// epoch is not a refusal here: EpochSecs makes it unwritable.
-type ApnsProviderTokenMint
-  = ApnsProviderTokenSigned { token: ApnsProviderToken }
-  | ApnsAuthKeyUnreadable { key_id: ApnsKeyId }
-
-// THE TOKEN IS A JWS (extdeps.auth.jws) OVER A JWT (extdeps.auth.jwt): protected header
-// {"alg": "ES256", "kid": <key id>}, payload {"iss": <team id>, "iat": <issued>}, both serialized by
-// extdeps.languages.json.emit, and the signature over the JWS signing input is ES256 -- ECDSA P-256
-// SHA-256 as extdeps.crypto.signature p256_ecdsa_sign, whose r || s base64url is exactly RFC 7518
-// §3.4's JWS Signature. The only host kernel is that signature; every wire shape is modeled.
-fn apns_provider_token(identity: ApnsProviderIdentity, auth_key: Secret, issued_at_epoch: EpochSecs) -> ApnsProviderTokenMint {
-  let signing_input = jws_signing_input(
-    protected_header: json_object(members: [json_kv(key: "alg", value: json_string(s: "ES256")), json_kv(key: "kid", value: json_string(s: identity.key_id as String))]),
-    payload: json_object(members: [json_kv(key: "iss", value: json_string(s: identity.team_id as String)), json_kv(key: "iat", value: json_int(n: issued_at_epoch as Int))]),
-  )
-  match p256_ecdsa_sign(suite: apns_provider_token_suite, key_pem: auth_key, message: signing_input) {
-    SigningKeyUnreadable { suite: _ } => ApnsAuthKeyUnreadable { key_id: identity.key_id }
-    SignatureSigned { signature } =>
-      ApnsProviderTokenSigned { token: ApnsProviderToken { identity: identity, issued_at_epoch: issued_at_epoch, jwt: jws_compact(signing_input: signing_input, signature_b64url: signature.b64url) } }
-  }
 }
 
 // ── Request headers ──────────────────────────────────────────────────────────────────────────

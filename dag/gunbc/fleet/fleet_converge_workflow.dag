@@ -4,15 +4,19 @@ import std.measure { minute_count }
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, checkout_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
-  WorkflowPermissions, PermRead, PermWrite,
-  upload_artifact_action, download_artifact_action,
+  WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.action_use_admission {
+  checkout_action, download_artifact_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
+}
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
@@ -71,6 +75,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_control_plane_converge_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
+  gunbc_ci_org_runner_roster_observe_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_runner_microvm_host_converge_invoke,
@@ -97,6 +102,7 @@ import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name, fle
 import gunbc.actions_run_binding { rlm_expected_revision_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.runner_slot_allocation { runner_host_label }
 import gunbc.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -138,8 +144,11 @@ import std.types { NonEmptyStr, List, String, Int, list_length }
 // fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
 // state in which a fork is cheap to remove. It is now the same list its consumers fold as the
 // eligible executor set, so enrolling or retiring an executor host moves this input with it and
-// nobody can dispatch against a host the fleet does not think it has.
-data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => h as String)
+// nobody can dispatch against a host the fleet does not think it has. Each option is the host's
+// runner label (gunbc.runner_slot_allocation runner_host_label), the same projection its runners
+// register under, because fleet_converge_host_runner_expression interpolates the chosen option into
+// runs-on verbatim.
+data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h => runner_host_label(host: h))
 
 // THE TARGET CHOICES ARE THE ROSTERED SPARKS, DERIVED, NOT SPELLED. The literal pair here refused the
 // first bootstrap dispatch against srv7 with an HTTP 422 from GitHub -- the workflow admitted two of
@@ -180,6 +189,7 @@ type FleetConvergeWorkflowMode
   | RunnerPasswordSessionToolConverge
   | R2MintPreflight
   | R2ObjectWriteMint
+  | OrgRunnerRosterObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -205,6 +215,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
+    OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
 
@@ -229,7 +240,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -249,8 +260,8 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 //
 // THIS FUNCTION HAS NO PRODUCTION CALLER TODAY. Production dashboard_deploy reaches
 // live_deploy_apply_srv1_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
-// The request coproduct arm that would carry DesiredDeployment waits on C2. A host-only LiveDeploy
-// request has no spelling.
+// Wet observe still cannot mint LiveDeployConverge from a hostname; that arm is constructed
+// from DesiredDeployment.selected_identity plus LiveDeployMemberBasis.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }
@@ -275,6 +286,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerPasswordSessionToolConverge => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
+    OrgRunnerRosterObserve => none
   }
 }
 
@@ -631,6 +643,7 @@ data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_
 data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
+data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
 
 data fleet_converge_app_control_plane_step_if: String = fleet_converge_mode_step_if(mode: AppControlPlaneObserve)
 
@@ -1054,6 +1067,46 @@ fn fleet_converge_org_actions_step() -> Step {
     if_condition: Present { value: fleet_converge_org_actions_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE ORG RUNNER ROSTER READ RIDES THE SAME IN-RUN TOKEN AS org_actions_observe, and is a separate
+// mode because it answers a different question: which registrations the organization holds, read
+// to exhaustion, rather than whether the runner-group settings match policy. Its receipt uploads on
+// every outcome, because a Partial or an Unavailable roster is exactly the evidence worth keeping.
+fn fleet_converge_org_runner_roster_step() -> Step {
+  RunStep {
+    name: Present { value: "Org runner roster: paginated read of GitHub self-hosted runner registrations" },
+    id: Present { value: "org_runner_roster_observe" },
+    run: gunbc_ci_org_runner_roster_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: runner_id_probes_env_name as String, value: yaml_string(s: "${{ github.event.inputs.runner_ids }}")),
+      kv(key: roster_page_size_env_name as String, value: yaml_string(s: "${{ github.event.inputs.roster_page_size }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_org_runner_roster_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_org_runner_roster_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload org runner roster receipt" },
+    id: Present { value: "org_runner_roster_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "org-runner-roster")),
+      kv(key: "path", value: yaml_string(s: organization_runner_roster_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_org_runner_roster_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -1526,6 +1579,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_apply_receipt_upload_step(),
         fleet_converge_org_actions_step(),
         fleet_converge_org_actions_receipt_upload_step(),
+        fleet_converge_org_runner_roster_step(),
+        fleet_converge_org_runner_roster_receipt_upload_step(),
         fleet_converge_app_control_plane_step(),
         fleet_converge_app_control_plane_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
@@ -1691,7 +1746,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
@@ -1746,6 +1801,20 @@ data fleet_converge_workflow: Workflow = Workflow {
           type: InputString,
         },
         DispatchInput {
+          name: "runner_ids",
+          description: Present { value: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "roster_page_size",
+          description: Present { value: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
           name: "transaction_nonce",
           description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
           required: false,
@@ -1778,10 +1847,15 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+  match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+      }
   }
 }
 

@@ -9,6 +9,7 @@ import std.measure {
   gibibyte_to_byte_size,
   HardwareThreadCount,
   byte_size_count,
+  byte_size,
   mebibyte,
   mebibyte_count,
   mebibyte_to_byte_size,
@@ -25,20 +26,18 @@ import product.fabric.isolation {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
-  gunbc_runner_cores_per_slot,
-  RunnerCoresPerSlotResolution,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
-  lifecycle_intent_cannot_orphan,
-  gunbc_runner_listener_is_main_process,
+  lifecycle_intent_stops_finished_incarnation,
+  gunbc_runner_main_exits_when_incarnation_ends,
 }
-import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
+import extdeps.github.actions_runner {
+  ActionsRunnerRelease, actions_runner_release_2_337_0, actions_runner_jitconfig_env_name,
+}
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig,
   FirecrackerBootSource,
@@ -48,7 +47,10 @@ import extdeps.virtualization.firecracker {
   FirecrackerRelease,
   firecracker_release_aarch64,
   firecracker_config_has_single_root,
+  firecracker_block_sector_size,
+  firecracker_drive_guest_device,
 }
+import std.bytes { utf8_encode_bytes, bytes_octets }
 
 data runner_microvm_disposition: Disposition = SingleAuthority
 
@@ -110,6 +112,86 @@ type JitCredentialTransport
 
 data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDrive {
   drive_id: "jitcfg",
+}
+
+// WHAT THE CREDENTIAL DRIVE CONTAINS, AS THE ONE CONTRACT BOTH ENDS DERIVE FROM. The host writes
+// these bytes and the guest reads them; a format stated on only one side is a fork the other side
+// discovers at boot, inside a VM nobody is watching.
+//
+// THE CONTENT IS ONE systemd ENVIRONMENT-FILE ASSIGNMENT, because that makes the guest's reader a
+// directive rather than a program. The guest agent names the device in `EnvironmentFile=`, systemd
+// parses it, and the listener takes the value from its environment under upstream's own argument
+// convention (extdeps.github.actions_runner actions_runner_jitconfig_env_name) and unsets it once
+// read. No shell, no `cat`, and the secret never appears on a command line where `ps` would show it.
+//
+// THE PADDING IS NEWLINES BECAUSE A BLOCK DEVICE HAS NO LENGTH OF ITS OWN. Firecracker exposes a
+// backing file only in whole sectors (extdeps.virtualization.firecracker
+// firecracker_block_sector_size) and drops a partial tail, so an unpadded 4,076-byte config would
+// reach the guest cut to 3,584 bytes. Padding to the sector boundary with blank lines keeps every
+// byte, and blank lines are what systemd's environment-file parser skips -- a NUL fill would not be.
+// The length is measured in UTF-8 BYTES, the unit the sector is denominated in, not in characters.
+
+// THE GUEST DEVICE IS DERIVED FROM THE DRIVE LIST, NOT WRITTEN BESIDE IT. runner_microvm_drives is
+// the one drive list runner_microvm_vm_config attaches, and extdeps.virtualization.firecracker
+// firecracker_drive_guest_device maps the credential drive's position in it to its guest name. The
+// guest image renders its agent from this resolution, so prepending or reordering a drive moves the
+// name the guest reads with it -- the rootfs can no longer be read as the credential by an edit that
+// left a literal behind. The order does not depend on the backing paths, so the resolution names the
+// attempt layout's own file names; a credential drive that is not attached resolves to a refusal,
+// never to a guessed device.
+type JitDriveDeviceResolution
+  = JitDriveDevice { device: NonEmptyStr }
+  | JitDriveNotAttached { cause: String }
+
+fn jit_drive_guest_device() -> JitDriveDeviceResolution {
+  let drives = runner_microvm_drives(
+    rootfs_path: "rootfs.ext4",
+    jit_config_path: "jit.img",
+    transport: gunbc_runner_jit_transport,
+  )
+  match firecracker_drive_guest_device(drives: drives, drive_id: jit_transport_drive_id(t: gunbc_runner_jit_transport)) {
+    Present { value: d } => JitDriveDevice { device: d as NonEmptyStr }
+    Absent => JitDriveNotAttached {
+      cause: "the credential drive is not among the first 26 drives runner_microvm_drives attaches, so no guest device names it",
+    }
+  }
+}
+
+fn jit_drive_assignment(encoded_jit_config: NonEmptyStr) -> String {
+  join([actions_runner_jitconfig_env_name(), "=", encoded_jit_config as String, "\n"], "")
+}
+
+fn jit_drive_utf8_size(text: String) -> ByteSize {
+  byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: text))))
+}
+
+// ONE SECTOR OF NEWLINES, AS A SOURCE TO CUT PADDING FROM. Built by doubling to 512 and checked
+// against the sector size by the_credential_drive_is_whole_sectors_of_one_assignment: a newline is
+// one UTF-8 byte, so this string's byte size is its length.
+fn jit_drive_newline_sector() -> String {
+  let n2 = "\n\n"
+  let n8 = concat(concat(n2, n2), concat(n2, n2))
+  let n32 = concat(concat(n8, n8), concat(n8, n8))
+  let n128 = concat(concat(n32, n32), concat(n32, n32))
+  concat(concat(n128, n128), concat(n128, n128))
+}
+
+// A DRIVE THAT HONESTLY CARRIES NO CREDENTIAL: one sector of blank lines, which the guest's
+// environment-file read accepts and assigns nothing from. A VM booted with it reaches the listener,
+// which refuses as unconfigured -- the boot-only probe's arm, where no registration may be spent.
+fn jit_drive_without_credential() -> String {
+  jit_drive_newline_sector()
+}
+
+fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
+  let body = jit_drive_assignment(encoded_jit_config: encoded_jit_config)
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
+  if tail == 0 {
+    body
+  } else {
+    concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail))
+  }
 }
 
 // WHAT ONE RUNNER VM IS SIZED AT, IN GROUNDED MAGNITUDES RATHER THAN BARE INTEGERS.
@@ -313,13 +395,15 @@ fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
   }
 }
 
-// THE CPU AXIS IS THE CELL'S SURVEYED QUOTA, READ HERE RATHER THAN RESTATED.
+// THE CPU AXIS IS THE CELL'S DECLARED QUOTA, READ HERE RATHER THAN RESTATED.
 //
-// On memory the quantity may exist and merely be uncited. On CPU the cell now emits CPUQuota= when
-// gunbc_runner_slot_cpu_quota resolves, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
-// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute,
-// Refused is RelativeOnly carrying the survey cause -- never a second invented ceiling, and never
-// the CPUWeight-only story that was true before the slice directive existed.
+// On memory the quantity may exist and merely be uncited. On CPU the cell emits the CPUQuota= line
+// gunbc_runner_slot_cpu_quota declares, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
+// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute;
+// SlotCpuQuotaUnbounded is RelativeOnly, and its cause names the 2026-09-19 policy that put the
+// row there -- never a second invented ceiling. Since that ruling the production path IS
+// RelativeOnly: the slot carries CPUWeight and no ceiling, so the declared guest size below is
+// the answer served rather than a withdrawn one.
 //
 // THE DECLARED PRODUCT SIZE WITHDRAWS THE MOMENT THIS RETURNS ABSOLUTE. That is
 // runner_microvm_size_decision's job: a stale declaration that kept succeeding would hide that
@@ -332,15 +416,18 @@ type CellCpuEntitlement
 fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
   match gunbc_runner_slot_desired().cpu_quota {
     CpuQuotaResolved { threads: t } => CpuEntitlementAbsolute { threads: t }
-    CpuQuotaRefused { cause: c } => CpuEntitlementRelativeOnly { cause: c }
+    SlotCpuQuotaUnbounded =>
+      CpuEntitlementRelativeOnly {
+        cause: "the slot row declares no absolute CPU ceiling (gunbc.runner_slot_allocation gunbc_runner_slot_cpu_quota, operator ruling 2026-09-19), so the cell grants a relative share only"
+      }
   }
 }
 
 // THE GUEST'S TOPOLOGY WAS A DECLARED PRODUCT DECISION WHILE THE CELL GRANTED NO ABSOLUTE
 // ENTITLEMENT. That declaration withdraws the moment gunbc_runner_microvm_cell_cpu_entitlement
-// returns Absolute -- which is now the production path when the slot survey resolves. The numbers
-// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm still
-// serves, not as a sizing anyone may provision against once Absolute is inhabited.
+// returns Absolute -- which it does only if the slot row ever declares a CpuQuotaResolved ceiling
+// again; under the 2026-09-19 no-ceiling policy the production path is RelativeOnly. The numbers
+// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm serves.
 data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
   vcpu_count: hardware_thread_count(count: 4),
   memory: mebibyte(count: 4096),
@@ -425,10 +512,18 @@ type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
 // its guest alive holding the same credential. "Everything inside the VM dies together" is true and
 // does not help when the VM is what survived.
 //
-// gunbc.runner_unit already owns the deciding predicate and the measured input (the listener is a
-// GRANDCHILD of MainPID because GitHub's stock run.sh does not exec), so this consumes that
-// authority rather than re-deriving it. Stating the dependency in prose would have left it
-// satisfiable by an author who never read the paragraph.
+// gunbc.runner_unit already owns the deciding predicate and the measured input (whether the tracked
+// main process exits when the incarnation ends), so this consumes that authority rather than
+// re-deriving it. Stating the dependency in prose would have left it satisfiable by an author who
+// never read the paragraph.
+//
+// THIS IS A NECESSARY GATE, NOT A SUFFICIENT ONE, and the gap is a declared frontier. The predicate
+// is static: it says a finished incarnation makes systemd issue a stop that reaches the cgroup. It
+// cannot say the VMM is gone afterwards -- a task in uninterruptible sleep survives SIGKILL, and a
+// main process that outlives its incarnation issues no stop at all -- nor that the cell is safe to
+// reuse. That is gunbc.product.fabric.sanitation's CellReadiness, established by a terminalizer's
+// readback, which this admission will consume once the terminalizer lands. Until then an Admitted
+// verdict here is not sufficient grounds to run customer work.
 type RunnerMicroVmAdmission
   = RunnerMicroVmAdmitted
   | RunnerMicroVmRefusedOrphanableUnit { reason: String }
@@ -452,7 +547,7 @@ type RunnerMicroVmAdmission
 fn runner_microvm_admission(
   topology: VmmProcessTopology,
   intent: RunnerUnitLifecycleIntent,
-  listener_is_main_process: Bool,
+  main_exits_when_incarnation_ends: Bool,
   transport: JitCredentialTransport,
   config: FirecrackerVmConfig,
   reserve: RealizationReserve,
@@ -461,11 +556,11 @@ fn runner_microvm_admission(
     VmmIsMainProcess =>
       runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
     VmmUnderLifecycleController =>
-      if lifecycle_intent_cannot_orphan(intent: intent, listener_is_main_process: listener_is_main_process) {
+      if lifecycle_intent_stops_finished_incarnation(intent: intent, main_exits_when_incarnation_ends: main_exits_when_incarnation_ends) {
         runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
       } else {
         RunnerMicroVmRefusedOrphanableUnit {
-          reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the cgroup-reaching intent, or exec the VMM directly as MainPID",
+          reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the declared intent (ExitType=main with KillMode=control-group), or exec the VMM directly as MainPID",
         }
       }
   }
@@ -570,26 +665,34 @@ fn runner_microvm_vm_config(
       kernel_image_path: kernel_path,
       boot_args: "keep_bootcon console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw",
     },
-    drives: [
-      FirecrackerDrive {
-        drive_id: "rootfs",
-        path_on_host: rootfs_path,
-        is_root_device: true,
-        is_read_only: false,
-      },
-      FirecrackerDrive {
-        drive_id: jit_transport_drive_id(t: transport),
-        path_on_host: jit_config_path,
-        is_root_device: false,
-        is_read_only: true,
-      },
-    ],
+    drives: runner_microvm_drives(rootfs_path: rootfs_path, jit_config_path: jit_config_path, transport: transport),
     network_interfaces: runner_microvm_network_interfaces(net: net),
     machine_config: FirecrackerMachineConfig {
       vcpu_count: hardware_thread_count_value(t: size.vcpu_count),
       mem_size_mib: mebibyte_count(m: size.memory),
     },
   }
+}
+
+fn runner_microvm_drives(
+  rootfs_path: FilePath,
+  jit_config_path: FilePath,
+  transport: JitCredentialTransport,
+) -> List<FirecrackerDrive> {
+  [
+    FirecrackerDrive {
+      drive_id: "rootfs",
+      path_on_host: rootfs_path,
+      is_root_device: true,
+      is_read_only: false,
+    },
+    FirecrackerDrive {
+      drive_id: jit_transport_drive_id(t: transport),
+      path_on_host: jit_config_path,
+      is_root_device: false,
+      is_read_only: true,
+    },
+  ]
 }
 
 fn jit_transport_drive_id(t: JitCredentialTransport) -> NonEmptyStr {
@@ -631,7 +734,7 @@ fn gunbc_runner_microvm_admission(
   runner_microvm_admission(
     topology: topology,
     intent: gunbc_runner_lifecycle_intent,
-    listener_is_main_process: gunbc_runner_listener_is_main_process,
+    main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
     transport: gunbc_runner_jit_transport,
     config: config,
     reserve: gunbc_runner_microvm_realization_reserve(),

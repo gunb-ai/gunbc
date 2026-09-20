@@ -13653,6 +13653,138 @@ fn resolved_call_edge_census_value(
     }
 }
 
+fn primitive_callee_identity_value(
+    callee: crate::cli_run::PrimitiveCalleeIdentity,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::cli_run::PrimitiveCalleeIdentity;
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("PrimitiveCalleeIdentity"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match callee {
+        PrimitiveCalleeIdentity::RuntimePrimitive {
+            primitive_name,
+            projected_from_module,
+            projected_from_decl,
+        } => variant(
+            "RuntimePrimitiveCallee",
+            vec![
+                (ctx.sym("primitive_name"), str_value(primitive_name)),
+                (
+                    ctx.sym("projected_from_module"),
+                    match projected_from_module {
+                        Some(m) => optional_present(str_value(m), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+                (
+                    ctx.sym("projected_from_decl"),
+                    match projected_from_decl {
+                        Some(d) => optional_present(str_value(d), ctx),
+                        None => optional_absent(ctx),
+                    },
+                ),
+            ],
+        ),
+        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
+            "AlgebraMethodCallee",
+            vec![(ctx.sym("template_name"), str_value(template_name))],
+        ),
+        PrimitiveCalleeIdentity::ServiceOperation {
+            service_name,
+            operation,
+        } => variant(
+            "ServiceOperationCallee",
+            vec![
+                (ctx.sym("service_name"), str_value(service_name)),
+                (ctx.sym("operation"), str_value(operation)),
+            ],
+        ),
+        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
+            "PlainMethodCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
+            "UndeterminedFreeCallee",
+            vec![(ctx.sym("spelling"), str_value(spelling))],
+        ),
+    }
+}
+
+fn primitive_call_edge_census_value(
+    census: crate::cli_run::PrimitiveCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
+            entries_resolved,
+            entries_refused,
+            edges,
+        } => Value::Variant {
+            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
+            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("entries_resolved"),
+                    list_value(
+                        entries_resolved
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("entries_refused"),
+                    list_value(
+                        entries_refused
+                            .into_iter()
+                            .map(|r| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("entry"), str_value(r.entry)),
+                                    (ctx.sym("cause"), str_value(r.cause)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("edges"),
+                    list_value(
+                        edges
+                            .into_iter()
+                            .map(|edge| Value::Record {
+                                type_name: ctx.sym("PrimitiveCallEdge"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                    (
+                                        ctx.sym("authored_spelling"),
+                                        str_value(edge.authored_spelling),
+                                    ),
+                                    (
+                                        ctx.sym("callee"),
+                                        primitive_callee_identity_value(edge.callee, ctx),
+                                    ),
+                                    (ctx.sym("span_file"), str_value(edge.span_file)),
+                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+    }
+}
+
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -19685,45 +19817,6 @@ macro_rules! v1_builtin_arms {
                 }))
             },
 
-            // ECDSA P-256 / SHA-256 VERIFICATION (FIPS 186-5), the asymmetric twin of
-            // hmac_sha256_verify_hex and bound behind extdeps.crypto.signature p256_ecdsa_verify.
-            // One spelling per input, the ones that module declares: the key is the 65-octet SEC 1
-            // uncompressed point, the signature the 64-octet fixed-width r || s, both unpadded
-            // base64url. The MESSAGE is hashed here with SHA-256 -- a caller never hands in a
-            // digest, so a verifier cannot be pointed at a hash of the attacker's choosing.
-            //
-            // Three answers, not two: true (verified), false (well-formed and does not verify),
-            // and ABSENT when an input is not an admitted encoding -- a key off the curve, a
-            // scalar out of range, a wrong length, a non-canonical base64url. The .dag binding
-            // turns absence into its typed refusal; it is never reported as a mismatch.
-            arm "free_call.p256_ecdsa_verify_b64url" { "p256_ecdsa_verify_b64url" } => {
-                Ok(Some(match p256_ecdsa_verify_b64url(
-                    expect_value_str($positional.first().copied(), "p256_ecdsa_verify_b64url key")?.as_str(),
-                    expect_value_str($positional.get(1).copied(), "p256_ecdsa_verify_b64url signature")?.as_str(),
-                    expect_value_str($positional.get(2).copied(), "p256_ecdsa_verify_b64url message")?.as_str(),
-                ) {
-                    Some(verified) => Value::Bool(verified),
-                    None => Value::Null,
-                }))
-            },
-
-            // ECDSA P-256 / SHA-256 SIGNING, the key holder's twin of p256_ecdsa_verify_b64url and
-            // bound behind extdeps.crypto.signature p256_ecdsa_sign. The key is a PKCS #8 PEM (the
-            // shape of an APNs .p8); the message is SHA-256 hashed here; the answer is the 64-octet
-            // r || s as unpadded base64url. Only the signature is a host kernel: every wire shape
-            // around it (a JWS header, claims, segments, compact form) is assembled in the .dag.
-            // RFC 6979 deterministic nonces, so no RNG is consulted and one input has one
-            // signature. A key that is not a P-256 PKCS #8 PEM answers ABSENT -- never a signature.
-            arm "free_call.p256_ecdsa_sign_b64url" { "p256_ecdsa_sign_b64url" } => {
-                Ok(Some(match p256_ecdsa_sign_b64url(
-                    expect_value_str($positional.first().copied(), "p256_ecdsa_sign_b64url key")?.as_str(),
-                    expect_value_str($positional.get(1).copied(), "p256_ecdsa_sign_b64url message")?.as_str(),
-                ) {
-                    Some(signature) => str_value(signature),
-                    None => Value::Null,
-                }))
-            },
-
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -20795,6 +20888,25 @@ macro_rules! v1_builtin_arms {
                         &pool_roots,
                         &target_leaves,
                     ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
+                Ok(Some(list_value(
+                    crate::cli_run::builtin_function_registry_keys()
+                        .into_iter()
+                        .map(str_value)
+                        .collect::<Vec<_>>(),
+                )))
+            },
+
+            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
+                Ok(Some(primitive_call_edge_census_value(
+                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
                     $ctx,
                 )))
             },
@@ -22413,117 +22525,6 @@ mod hmac_sha256_hex_tests {
             None
         );
         assert_eq!(hmac_sha256_hex_tag("0b0", "Hi There"), None);
-    }
-}
-
-/// The `p256_ecdsa_verify_b64url` builtin's computation: `Some(verified)` over well-formed
-/// inputs, `None` when an input is not an admitted encoding (see the arm).
-fn p256_ecdsa_verify_b64url(
-    key_b64url: &str,
-    signature_b64url: &str,
-    message: &str,
-) -> Option<bool> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine;
-    use p256::ecdsa::signature::Verifier;
-    use p256::ecdsa::{Signature, VerifyingKey};
-    let point = URL_SAFE_NO_PAD.decode(key_b64url).ok()?;
-    // SEC 1 §2.3.3 uncompressed only: from_sec1_bytes would also admit the 33-octet compressed
-    // form, a second spelling of the same key.
-    if point.len() != 65 || point[0] != 0x04 {
-        return None;
-    }
-    let key = VerifyingKey::from_sec1_bytes(&point).ok()?;
-    let sig = URL_SAFE_NO_PAD.decode(signature_b64url).ok()?;
-    if sig.len() != 64 {
-        return None;
-    }
-    let sig = Signature::from_slice(&sig).ok()?;
-    Some(key.verify(message.as_bytes(), &sig).is_ok())
-}
-
-/// The `p256_ecdsa_sign_b64url` builtin's computation: the fixed-width r || s of `message` under
-/// the PKCS #8 PEM key, unpadded base64url, or `None` when the key is not a P-256 PKCS #8 PEM.
-fn p256_ecdsa_sign_b64url(p8_pem: &str, message: &str) -> Option<String> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine;
-    use p256::ecdsa::signature::Signer;
-    use p256::ecdsa::{Signature, SigningKey};
-    use p256::pkcs8::DecodePrivateKey;
-    let key = SigningKey::from_pkcs8_pem(p8_pem).ok()?;
-    let signature: Signature = key.sign(message.as_bytes());
-    Some(URL_SAFE_NO_PAD.encode(signature.to_bytes()))
-}
-
-#[cfg(test)]
-mod p256_ecdsa_tests {
-    use super::{p256_ecdsa_sign_b64url, p256_ecdsa_verify_b64url};
-
-    // RFC 7515 Appendix A.3: a published ES256 JWS, verified against a key and signature this
-    // implementation did not produce.
-    const RFC7515_A3_POINT: &str =
-        "BH_Nzidw9sRdQYPL7m_bS3tYBzM1e-nvE7rPbjx70VRFx_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0";
-    const RFC7515_A3_INPUT: &str = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ";
-    const RFC7515_A3_SIG: &str =
-        "DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q";
-    // The same RFC's private scalar d, wrapped as PKCS #8 the way an APNs .p8 is.
-    const RFC7515_A3_P8: &str = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgjpsQnnGQmL+YBIff\nH1136cspYG6+0iY7X1fCE9+E9LKhRANCAAR/zc4ncPbEXUGDy+5v20t7WAczNXvp\n7xO6z248e9FURcfxRM0bvZt+hyzf7bnuufSzaV1uqQskrYpGIyiFiOWt\n-----END PRIVATE KEY-----\n";
-
-    #[test]
-    fn the_published_rfc7515_a3_signature_verifies() {
-        assert_eq!(
-            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, RFC7515_A3_SIG, RFC7515_A3_INPUT),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn a_different_message_does_not_verify() {
-        let tampered =
-            RFC7515_A3_INPUT.replacen("eyJhbGciOiJFUzI1NiJ9", "eyJhbGciOiJFUzI1NiIsIngiOjF9", 1);
-        assert_eq!(
-            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, RFC7515_A3_SIG, &tampered),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn a_non_admitted_encoding_is_absent_not_false() {
-        // 64 octets of key: the 0x04 prefix dropped.
-        assert_eq!(
-            p256_ecdsa_verify_b64url(&RFC7515_A3_POINT[2..], RFC7515_A3_SIG, RFC7515_A3_INPUT),
-            None
-        );
-        // Padded base64url is a second spelling.
-        assert_eq!(
-            p256_ecdsa_verify_b64url(
-                RFC7515_A3_POINT,
-                &format!("{}==", RFC7515_A3_SIG),
-                RFC7515_A3_INPUT
-            ),
-            None
-        );
-    }
-
-    // Signing the RFC's own signing input with the RFC's private key: RFC 6979 makes the value
-    // deterministic, and it must verify under the RFC public key (the published signature does
-    // not match byte-for-byte because the RFC used a random nonce).
-    #[test]
-    fn a_signature_verifies_under_its_public_key() {
-        let sig = p256_ecdsa_sign_b64url(RFC7515_A3_P8, RFC7515_A3_INPUT).unwrap();
-        assert_eq!(
-            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, &sig, RFC7515_A3_INPUT),
-            Some(true)
-        );
-        assert_eq!(
-            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, &sig, "a different message"),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn a_key_that_is_not_pkcs8_pem_yields_no_signature() {
-        assert_eq!(p256_ecdsa_sign_b64url("not a key", RFC7515_A3_INPUT), None);
     }
 }
 

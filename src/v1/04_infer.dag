@@ -207,7 +207,8 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
-  expand_scrut_type_for_variant_lookup
+  expand_scrut_type_for_variant_lookup,
+  pattern_matches_constructor
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -851,16 +852,36 @@ fn variant_value_reference_diagnostics(scope: InferScope, name: String, span: So
   )
 }
 
+// A BARE NAME THAT RESOLVES TO A SERVICE IS A SERVICE, decided from the registry exactly as
+// service_spine_projection decides it for a qualified receiver. A service imported by name --
+// `import extdeps.filesystem.filesystem_io { Filesystem }`, then `Filesystem.Read(...)` -- never
+// takes the field-access path, and it does not arrive as an unbound global either: the scope fold in
+// merge_scope_from_imports registers every service's namespace ROOT as a local binding, and for a
+// service declared with a bare name the root IS the service's own name. So the name reaches the
+// locals arm, and classifying every local as LocalValueBinding hid every call through it from
+// derived service demand. The root binding is recognized by what it structurally is -- a local whose
+// resolved type is exactly the nominal reference the fold inserted for a registered service of that
+// name -- so a parameter or `let` that happens to share the spelling carries its own declared type
+// and stays a local. No spelling shape is read: the refusal the ServiceValueBinding note records came
+// from deciding by case and dots.
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
     Absent =>
       match map_get(scope.locals, name) {
-        Present { value: _ } =>
+        Present { value: binding } =>
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
+          else if local_is_service_root_binding(scope: scope, name: name, binding: binding) { ServiceValueBinding }
           else { LocalValueBinding }
         Absent => FunctionValueBinding
       }
+  }
+}
+
+fn local_is_service_root_binding(scope: InferScope, name: String, binding: TypeBinding) -> Bool {
+  match map_get(scope.service_registry, name) {
+    Present { value: _ } => binding.resolved == nominal_type_ref(name: name)
+    Absent => false
   }
 }
 
@@ -2632,6 +2653,60 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   )
 }
 
+// A LIST LITERAL WITH NO EXPECTED TYPE CLAIMS ITS HEAD ELEMENT'S TYPE FOR EVERY MEMBER. The
+// ExprListLit arm types the literal List<head> and, with no expected element, judged no member
+// against that claim -- so `join(["id-", maybe_s(x: 1)], "")` typed as List<String> while holding a
+// String?, compiled with ZERO diagnostics, and the interpreter stringified the variant (gunbc#11626).
+// The head is not a declaration, so only the one DECIDED verdict is asserted against it: a member
+// that carries optionality where the head established a Required, non-generic type
+// (optional_produced_at_required_declared, the same predicate the declared-type relation consumes).
+// Every other disagreement between members stays unjudged at this seam, because the head's type is
+// an elected representative rather than an authored contract, and refusing on the relation's other
+// arms against it would be a fabricated obligation.
+// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE. `match opt { null => a
+// v => b }` is the corpus idiom for eliminating an optional: the absent case is taken first, so
+// the bare binding in a later arm can only ever hold a present value. Typing that binding at the
+// scrutinee's own CardOptional type would make optional_produced_at_required_declared refuse
+// correct code (std.serialize serialize_value_doc was the measured specimen) -- a fabricated
+// refusal. The narrowing is positive: it requires an earlier UNGUARDED `null` / `Absent` arm, a
+// bare Bind pattern, and a CardOptional scrutinee; anything else keeps the scrutinee's type.
+fn match_unguarded_absent_arm_index(arm_nodes: List<Node>) -> Int {
+  arm_nodes |> enumerate |> fold(init: -1, f: (acc, pair) =>
+    if acc >= 0 { acc }
+    else if arm_guard(n: pair.second) == none && pattern_matches_constructor(p: arm_pattern(n: pair.second), ctor: "Absent") { pair.first }
+    else { acc }
+  )
+}
+
+fn optional_scrutinee_binding_is_present(scrut_type: Node, arm_pattern: MatchPattern, arm_index: Int, absent_arm_index: Int) -> Bool {
+  let is_bind = match arm_pattern {
+    Bind { declaration: _ } => true
+    _ => false
+  }
+  is_bind && absent_arm_index >= 0 && arm_index > absent_arm_index && scrut_type.return_cardinality == CardOptional
+}
+
+fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  match typed_elements |> first {
+    Present { value: head } =>
+      let head_type = resolved_type(n: head)
+      flat_map(typed_elements |> skip(1), te =>
+        if optional_produced_at_required_declared(declared: head_type, produced: resolved_type(n: te), scope: scope) {
+          [make_error_node(
+            diagnostic: DeclaredTypeNotInhabited {
+              position: declared_type_position_label(position: PositionListElement, subject: ""),
+              expected: obligation_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
+              got: obligation_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
+              span: te.span
+            },
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      )
+    Absent => []
+  }
+}
+
 fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope) -> InferResult {
   let result = infer_expr(texpr: element, scope: scope, expected: expected)
   match expected {
@@ -3416,6 +3491,7 @@ type InhabitanceRefusalReason
   | RefusedKernelAtStructured
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
+  | RefusedOptionalAtRequired
 
 
 type InhabitanceVerdict
@@ -3642,7 +3718,9 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
-  if either_optional {
+  if optional_produced_at_required_declared(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedOptionalAtRequired }
+  } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
@@ -3681,6 +3759,41 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
         }
     }
   }
+}
+
+// AN OPTIONAL WHERE A REQUIRED VALUE IS DECLARED IS DECIDED, NOT UNDECIDABLE (DESIGN 4b floor:
+// "values inhabit declared types"). UndecidableOptionalCarrier was written for the lift direction --
+// a T standing in an Optional<T> position is the declared spelling -- and that direction stays
+// undecided below. The converse was swept into the same arm: a produced value that CARRIES
+// optionality (CardOptional, or the nominal Optional coproduct) at a declared position that carries
+// none has no inhabitant relation to settle, because Absent inhabits no Required type. Filing it as
+// undecidable made it an advisory, the program compiled, and the interpreter then rendered the
+// variant into a String context -- receipt gunbc#11626, `join([prefix, base64_encode(..)], "")`
+// producing `id-Present { value: ... }`. Refusal requires the declared side to be ESTABLISHED
+// Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
+// or erased declared identity is not a Required fact, so those stay with their own arms.
+fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_carries_optional = produced.return_cardinality == CardOptional
+    || qualified_last_segment(name: produced_name) == "Optional"
+  let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  let declared_carries_optional = declared.return_cardinality == CardOptional
+    || declared_peeled.return_cardinality == CardOptional
+    || qualified_last_segment(name: declared_name) == "Optional"
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
+  produced_carries_optional
+    && !declared_carries_optional
+    && !declared_is_generic
+    && declared_name != ""
+    && !type_node_is_callable(n: declared)
+    && !type_node_is_callable(n: produced)
+    && !direct_call_formal_has_unbound_type_variable(n: declared)
 }
 
 // Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>,
@@ -4097,6 +4210,18 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
   }
 }
 
+// The refusal names BOTH types as judged, including cardinality: node_type_shape reads the type
+// node alone, so an optional String and a required String render identically and the refusal
+// would print two equal names for two different facts.
+fn obligation_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let shape = node_type_shape(n: n, source_indices: source_indices)
+  if (n.return_cardinality == CardOptional) {
+    concat(concat("Optional<", shape), ">")
+  } else {
+    shape
+  }
+}
+
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   match declared_type_inhabitance(obligation: obligation, scope: scope) {
     Inhabits => []
@@ -4113,8 +4238,8 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
       [make_error_node(
         diagnostic: DeclaredTypeNotInhabited {
           position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
-          expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
-          got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+          expected: obligation_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+          got: obligation_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
           span: obligation.span
         },
         module_name: scope.module_name
@@ -7308,12 +7433,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let scrut_rt = resolved_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_inferred(n: scrut_typed.inferred)
       let scrut_provenance = classify_binding_provenance(val: scrut, scope: scope)
-      let arm_infer_results = arm_nodes |> map(arm_node =>
+      let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_nodes)
+      let arm_infer_results = arm_nodes |> enumerate |> map(arm_pair =>
+        let arm_node = arm_pair.second
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
-        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
+        let arm_subject = if optional_scrutinee_binding_is_present(
+            scrut_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
+          pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
+        } else { scrut_subject }
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm_g != none {
@@ -7575,7 +7706,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               scope: scope
             )
           )
-        Absent => []
+        Absent => list_literal_optional_member_diags(typed_elements: typed_elements, scope: scope)
       }
       let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let elem_type_node = if count(elem_results) > 0 {

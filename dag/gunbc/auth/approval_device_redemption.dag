@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
   approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
-  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, DeviceRedemptionSigningInput,
+  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, EnrolmentReadback, EnrolmentStandingActive, EnrolmentStandingRevoked, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.durable_cas_file_store {
@@ -40,7 +40,7 @@ import gunbc.durable_cas_file_store {
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
-  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -51,9 +51,9 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // The protocol between the roadmap server and the operator's phone for redeeming an approval with
 // a device-bound, biometric-gated signature: one protocol, platform realizations beside it. This
 // module is the MODEL; extdeps.apple.* and extdeps.google/android.* model the upstream interfaces.
-// The ECDSA verifier is realized (extdeps.crypto.signature p256_ecdsa_verify). The iOS client, the
-// server routes, the App Attest verifiers and the APNs publisher are each a frontier below (ios_realization_frontier, approval_device_routes_frontier,
-// app_attest_verification_realization_frontier), and Android is modeled at every platform point and
+// No realization exists yet: the iOS client, the server routes, the verifiers and the APNs publisher
+// are each a frontier below (ios_realization_frontier, approval_device_routes_frontier,
+// ecdsa_verification_realization_frontier), and Android is modeled at every platform point and
 // realized by nothing (android_realization_frontier).
 //
 // WHY A DEVICE SIGNATURE. The loopback deployment cannot attribute Tailscale-User-Login to the proxy
@@ -89,10 +89,6 @@ type EnrolmentChallenge {
   issued_to_login: NonEmptyStr
   issued_at: Timestamp
   expires_at: Timestamp
-}
-
-fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
-  join(["enr-", code as String], "") as NonEmptyStr
 }
 
 // The standing of one code's slot: issued and waiting, consumed into an enrolment, or that
@@ -254,6 +250,39 @@ type DeviceRedemptionOutcome
   | DeviceLostTheRace
   | DeviceCommitRefused { detail: NonEmptyStr }
 
+// THE OUTCOME'S WIRE NAME, one total match over the sum: the app branches on this word, so it is
+// derived from the arm and never typed beside it -- renaming or splitting an arm changes the word
+// here, and the envelope fixture built through redemption_response_of changes with it.
+fn device_redemption_outcome_wire(o: DeviceRedemptionOutcome) -> NonEmptyStr {
+  match o {
+    DeviceRedeemed { decision: _ } => "DeviceRedeemed" as NonEmptyStr
+    DeviceAlreadyDecided { decision: _ } => "DeviceAlreadyDecided" as NonEmptyStr
+    DeviceEnrollmentUnknown => "DeviceEnrollmentUnknown" as NonEmptyStr
+    DeviceEnrollmentRevoked { enrollment_id: _ } => "DeviceEnrollmentRevoked" as NonEmptyStr
+    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => "DeviceEnrollmentForAnotherOperator" as NonEmptyStr
+    DeviceEscalationNotFiled { escalation_id: _ } => "DeviceEscalationNotFiled" as NonEmptyStr
+    DeviceStoreUnreadable { detail: _ } => "DeviceStoreUnreadable" as NonEmptyStr
+    DeviceKeyringUnavailable { cause: _ } => "DeviceKeyringUnavailable" as NonEmptyStr
+    DeviceSignedForAnotherRequest { field: _ } => "DeviceSignedForAnotherRequest" as NonEmptyStr
+    DeviceChallengeExpired { expires_at: _, observed_at: _ } => "DeviceChallengeExpired" as NonEmptyStr
+    DeviceChallengeNotIssuedHere => "DeviceChallengeNotIssuedHere" as NonEmptyStr
+    DeviceCapabilityTagMalformed => "DeviceCapabilityTagMalformed" as NonEmptyStr
+    DeviceCapabilityRefused { cause: _ } => "DeviceCapabilityRefused" as NonEmptyStr
+    DeviceSignatureRefused { verification: _ } => "DeviceSignatureRefused" as NonEmptyStr
+    DevicePlatformProofRefused { cause: _ } => "DevicePlatformProofRefused" as NonEmptyStr
+    DevicePlatformProofForOtherBytes => "DevicePlatformProofForOtherBytes" as NonEmptyStr
+    DevicePlatformProofWrongKey => "DevicePlatformProofWrongKey" as NonEmptyStr
+    DevicePlatformUnrealized => "DevicePlatformUnrealized" as NonEmptyStr
+    DeviceLostTheRace => "DeviceLostTheRace" as NonEmptyStr
+    DeviceCommitRefused { detail: _ } => "DeviceCommitRefused" as NonEmptyStr
+  }
+}
+
+// The redeem route's answer, built from the outcome and nothing else.
+fn redemption_response_of(o: DeviceRedemptionOutcome) -> RedemptionResponse {
+  RedemptionResponse { outcome: device_redemption_outcome_wire(o: o), message: device_redemption_reason(o: o) }
+}
+
 fn device_redemption_reason(o: DeviceRedemptionOutcome) -> NonEmptyStr {
   match o {
     DeviceRedeemed { decision: d } => match d {
@@ -303,14 +332,14 @@ fn signing_field_disagreement(
   enrollment: VerifiedDeviceEnrollment,
   request: StoredApprovalRequest,
   capability_text: NonEmptyStr,
-) -> String {
-  if signed.audience != approval_device_audience { "audience" }
-  else if signed.enrollment_id != enrollment.enrollment_id { "enrollment_id" }
-  else if signed.escalation_id != request.escalation_id { "escalation_id" }
-  else if signed.request_revision != request.request_revision { "request_revision" }
-  else if (signed.stored_request_text as String) != stored_request_json(r: request) { "stored_request_text" }
-  else if signed.capability_text != capability_text { "capability_text" }
-  else { "" }
+) -> NonEmptyStr? {
+  if signed.audience != approval_device_audience { Present { value: "audience" } }
+  else if signed.enrollment_id != enrollment.enrollment_id { Present { value: "enrollment_id" } }
+  else if signed.escalation_id != request.escalation_id { Present { value: "escalation_id" } }
+  else if signed.request_revision != request.request_revision { Present { value: "request_revision" } }
+  else if (signed.stored_request_text as String) != stored_request_json(r: request) { Present { value: "stored_request_text" } }
+  else if signed.capability_text != capability_text { Present { value: "capability_text" } }
+  else { none }
 }
 
 // THE SIGNATURE JOINS only when the verified evidence names the ENROLLED key and EXACTLY the bytes
@@ -362,9 +391,11 @@ fn device_redemption_admission(
   let disagreement = signing_field_disagreement(signed: signed, enrollment: enrollment, request: request, capability_text: capability_text)
   if enrollment.operator_login != approval_operator_login {
     DeviceNotAdmitted { outcome: DeviceEnrollmentForAnotherOperator { enrolled: enrollment.operator_login, expected: approval_operator_login } }
-  } else if disagreement != "" {
-    DeviceNotAdmitted { outcome: DeviceSignedForAnotherRequest { field: disagreement as NonEmptyStr } }
-  } else if !utc_instant_before(a: observed_at, b: signed.challenge.expires_at) {
+  } else {
+    match disagreement {
+      Present { value: f } => DeviceNotAdmitted { outcome: DeviceSignedForAnotherRequest { field: f } }
+      Absent =>
+  if !utc_instant_before(a: observed_at, b: signed.challenge.expires_at) {
     DeviceNotAdmitted { outcome: DeviceChallengeExpired { expires_at: signed.challenge.expires_at, observed_at: observed_at } }
   } else {
     let challenge_message = redemption_challenge_message(escalation_id: request.escalation_id, request_revision: request.request_revision, enrollment_id: enrollment.enrollment_id, expires_at: signed.challenge.expires_at)
@@ -397,6 +428,8 @@ fn device_redemption_admission(
         }
         }
       _ => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+    }
+  }
     }
   }
 }
@@ -483,9 +516,50 @@ fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectat
   }
 }
 
+// ONE ROW PER RECORD KIND, pairing its wire name with the CAS generation it occupies. The writers
+// and the reader both derive from these two functions, so a kind cannot be spelled one way when
+// written and another when read, and the generations come from std.durable_compare_and_set's own
+// successor, never from literals.
+type EnrolmentRecordKind
+  = IssuedCodeRecord
+  | EnrolledRecord
+  | RevokedRecord
+
+fn enrolment_record_kind_wire(k: EnrolmentRecordKind) -> NonEmptyStr {
+  match k {
+    IssuedCodeRecord => "code" as NonEmptyStr
+    EnrolledRecord => "enrolled" as NonEmptyStr
+    RevokedRecord => "revoked" as NonEmptyStr
+  }
+}
+
+fn enrolment_record_kind_generation(k: EnrolmentRecordKind) -> CasGeneration {
+  match k {
+    IssuedCodeRecord => cas_generation_first()
+    EnrolledRecord => cas_generation_next(g: cas_generation_first())
+    RevokedRecord => cas_generation_next(g: cas_generation_next(g: cas_generation_first()))
+  }
+}
+
+// What a writer of this kind expects to find: the generation of the kind before it.
+fn enrolment_record_kind_expectation(k: EnrolmentRecordKind) -> CasExpectation {
+  match k {
+    IssuedCodeRecord => ExpectSlotAbsent
+    EnrolledRecord => ExpectSlotGeneration { generation: enrolment_record_kind_generation(k: IssuedCodeRecord) }
+    RevokedRecord => ExpectSlotGeneration { generation: enrolment_record_kind_generation(k: EnrolledRecord) }
+  }
+}
+
+fn enrolment_record_kind_of_wire(s: String) -> EnrolmentRecordKind? {
+  if s == (enrolment_record_kind_wire(k: IssuedCodeRecord) as String) { Present { value: IssuedCodeRecord } }
+  else if s == (enrolment_record_kind_wire(k: EnrolledRecord) as String) { Present { value: EnrolledRecord } }
+  else if s == (enrolment_record_kind_wire(k: RevokedRecord) as String) { Present { value: RevokedRecord } }
+  else { none }
+}
+
 fn enrolment_code_json(c: EnrolmentChallenge) -> String {
   serialize_json(v: json_object(members: [
-    json_kv(key: "kind", value: json_string(s: "code")),
+    json_kv(key: "kind", value: json_string(s: enrolment_record_kind_wire(k: IssuedCodeRecord) as String)),
     json_kv(key: "code", value: json_string(s: c.code as String)),
     json_kv(key: "issued_to_login", value: json_string(s: c.issued_to_login as String)),
     json_kv(key: "issued_at", value: json_string(s: c.issued_at)),
@@ -493,7 +567,7 @@ fn enrolment_code_json(c: EnrolmentChallenge) -> String {
   ]))
 }
 
-fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyValue> {
+fn enrolment_members(kind: EnrolmentRecordKind, e: VerifiedDeviceEnrollment) -> List<JsonKeyValue> {
   let evidence = match e.evidence {
     IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: r } => [
       json_kv(key: "attest_key_id", value: json_string(s: k as String)),
@@ -503,7 +577,7 @@ fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyV
     AndroidAttestedDecisionKey => []
   }
   concat([
-    json_kv(key: "kind", value: json_string(s: kind)),
+    json_kv(key: "kind", value: json_string(s: enrolment_record_kind_wire(k: kind) as String)),
     json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
     json_kv(key: "operator_login", value: json_string(s: e.operator_login as String)),
     json_kv(key: "platform", value: json_string(s: platform_wire(p: e.platform) as String)),
@@ -513,11 +587,11 @@ fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyV
 }
 
 fn enrolment_json(e: VerifiedDeviceEnrollment) -> String {
-  serialize_json(v: json_object(members: enrolment_members(kind: "enrolled", e: e)))
+  serialize_json(v: json_object(members: enrolment_members(kind: EnrolledRecord, e: e)))
 }
 
 fn revocation_json(e: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr) -> String {
-  serialize_json(v: json_object(members: concat(enrolment_members(kind: "revoked", e: e), [
+  serialize_json(v: json_object(members: concat(enrolment_members(kind: RevokedRecord, e: e), [
     json_kv(key: "revoked_at", value: json_string(s: revoked_at)),
     json_kv(key: "reason", value: json_string(s: reason as String)),
   ])))
@@ -529,14 +603,17 @@ fn field_or_empty(v: JsonValue, key: String) -> String {
   match json_field_string(v: v, key: key) { Present { value: s } => s  Absent => "" }
 }
 
-fn first_missing(v: JsonValue, keys: List<String>) -> String {
-  fold(keys, init: "", f: (acc, k) => if acc != "" { acc } else if field_or_empty(v: v, key: k) == "" { k } else { "" })
+fn first_missing(v: JsonValue, keys: List<String>) -> NonEmptyStr? {
+  fold(keys, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if field_or_empty(v: v, key: k) == "" { Present { value: k as NonEmptyStr } } else { none }
+  })
 }
 
 data enrolment_required_keys: List<String> = ["enrollment_id", "operator_login", "platform", "decision_key_point_b64url", "enrolled_at", "attest_key_id", "attest_public_key_b64url", "receipt_b64"]
 
 fn parse_enrolment_fields(v: JsonValue) -> VerifiedDeviceEnrollment? {
-  if first_missing(v: v, keys: enrolment_required_keys) != "" || field_or_empty(v: v, key: "platform") != "ios" {
+  if first_missing(v: v, keys: enrolment_required_keys) != none || field_or_empty(v: v, key: "platform") != "ios" {
     none
   } else {
     Present { value: VerifiedDeviceEnrollment {
@@ -556,13 +633,26 @@ fn parse_enrolment_fields(v: JsonValue) -> VerifiedDeviceEnrollment? {
 
 // The record kind must agree with the generation it sits at; a disagreement is unreadable, never
 // reinterpreted.
-fn parse_enrolment_record(text: String, generation: Int) -> EnrolmentSlotStanding {
+fn parse_enrolment_record(text: String, generation: CasGeneration) -> EnrolmentSlotStanding {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: _ } => EnrolmentSlotUnreadable { detail: "enrolment record is not a JSON document" }
-    JsonDocumentParsed { value: v } => {
-      let kind = field_or_empty(v: v, key: "kind")
-      if kind == "code" && generation == 1 {
-        if first_missing(v: v, keys: ["code", "issued_to_login", "issued_at", "expires_at"]) != "" {
+    JsonDocumentParsed { value: v } =>
+      match enrolment_record_kind_of_wire(s: field_or_empty(v: v, key: "kind")) {
+        Absent => EnrolmentSlotUnreadable { detail: "enrolment record names no known kind" }
+        Present { value: kind } =>
+          if cas_generation_count(g: enrolment_record_kind_generation(k: kind)) != cas_generation_count(g: generation) {
+            EnrolmentSlotUnreadable { detail: "enrolment record kind disagrees with its generation" }
+          } else {
+            parse_enrolment_record_of_kind(v: v, kind: kind)
+          }
+      }
+  }
+}
+
+fn parse_enrolment_record_of_kind(v: JsonValue, kind: EnrolmentRecordKind) -> EnrolmentSlotStanding {
+  match kind {
+    IssuedCodeRecord =>
+        if first_missing(v: v, keys: ["code", "issued_to_login", "issued_at", "expires_at"]) != none {
           EnrolmentSlotUnreadable { detail: "issued code record lacks a field" }
         } else {
           EnrolmentCodeUnspent { challenge: EnrolmentChallenge {
@@ -572,22 +662,32 @@ fn parse_enrolment_record(text: String, generation: Int) -> EnrolmentSlotStandin
             expires_at: field_or_empty(v: v, key: "expires_at"),
           } }
         }
-      } else if kind == "enrolled" && generation == 2 {
+    EnrolledRecord =>
         match parse_enrolment_fields(v: v) {
           Present { value: e } => EnrolmentCodeConsumed { enrollment: e }
           Absent => EnrolmentSlotUnreadable { detail: "enrolment record lacks a field or names an unrealized platform" }
         }
-      } else if kind == "revoked" && generation == 3 {
+    RevokedRecord =>
         match parse_enrolment_fields(v: v) {
           Absent => EnrolmentSlotUnreadable { detail: "revocation record lacks an enrolment field" }
           Present { value: e } =>
-            if first_missing(v: v, keys: ["revoked_at", "reason"]) != "" { EnrolmentSlotUnreadable { detail: "revocation record lacks revoked_at or reason" } }
+            if first_missing(v: v, keys: ["revoked_at", "reason"]) != none { EnrolmentSlotUnreadable { detail: "revocation record lacks revoked_at or reason" } }
             else { EnrolmentRevoked { enrollment: e, revoked_at: field_or_empty(v: v, key: "revoked_at"), reason: field_or_empty(v: v, key: "reason") as NonEmptyStr } }
         }
-      } else {
-        EnrolmentSlotUnreadable { detail: "enrolment record kind disagrees with its generation" }
-      }
-    }
+  }
+}
+
+// THE READBACK IS A PROJECTION OF THE STORED STANDING, never a second enumeration of it: a live
+// enrolment reads back active, a revoked one revoked, and a slot that holds no enrolment -- unknown,
+// still an unspent code, or unreadable -- has no readback, so the route refuses it rather than
+// inventing a standing.
+fn enrolment_readback_of(standing: EnrolmentSlotStanding) -> EnrolmentReadback? {
+  match standing {
+    EnrolmentCodeConsumed { enrollment: e } => Present { value: EnrolmentReadback { enrollment_id: e.enrollment_id, standing: EnrolmentStandingActive } }
+    EnrolmentRevoked { enrollment: e, revoked_at: _, reason: _ } => Present { value: EnrolmentReadback { enrollment_id: e.enrollment_id, standing: EnrolmentStandingRevoked } }
+    EnrolmentCodeUnspent { challenge: _ } => none
+    EnrolmentCodeUnknown => none
+    EnrolmentSlotUnreadable { detail: _ } => none
   }
 }
 
@@ -596,26 +696,29 @@ fn observe_enrolment_slot(root: NonEmptyStr, code: NonEmptyStr) -> EnrolmentSlot
     CasObservedUnreadable { cause: c } => EnrolmentSlotUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => EnrolmentCodeUnknown
-      CasReadablePresent { version: ver } => parse_enrolment_record(text: ver.value as String, generation: cas_generation_count(g: ver.generation))
+      CasReadablePresent { version: ver } => parse_enrolment_record(text: ver.value as String, generation: ver.generation)
     }
   }
 }
 
 // The enrolment id is "enr-" + code, so the slot a redemption names is recovered from it.
-fn code_of_enrollment_id(enrollment_id: NonEmptyStr) -> String {
-  if starts_with(s: enrollment_id as String, prefix: "enr-") { substring(s: enrollment_id as String, start: 4, end: string_length(s: enrollment_id as String)) } else { "" }
+fn code_of_enrollment_id(enrollment_id: NonEmptyStr) -> NonEmptyStr? {
+  let id = enrollment_id as String
+  if starts_with(s: id, prefix: "enr-") && string_length(s: id) > 4 { Present { value: substring(s: id, start: 4, end: string_length(s: id)) as NonEmptyStr } } else { none }
 }
 
 fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> EnrolmentSlotStanding {
-  let code = code_of_enrollment_id(enrollment_id: enrollment_id)
-  if code == "" { EnrolmentCodeUnknown } else { observe_enrolment_slot(root: root, code: code as NonEmptyStr) }
+  match code_of_enrollment_id(enrollment_id: enrollment_id) {
+    Absent => EnrolmentCodeUnknown
+    Present { value: code } => observe_enrolment_slot(root: root, code: code)
+  }
 }
 
 // THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
 // could name, so the verb that runs this cannot enrol a device for anyone else.
 fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite {
   let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
-  device_store_write(root: root, key: code, expected: ExpectSlotAbsent, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
+  device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: IssuedCodeRecord), payload: enrolment_code_json(c: challenge) as NonEmptyStr)
 }
 
 // THE ONLY ENROLMENT WRITE, and it takes the admitted value: consuming the code and creating the
@@ -624,14 +727,20 @@ fn commit_enrolment(root: NonEmptyStr, admitted: EnrolmentAdmission) -> DeviceSt
   match admitted {
     EnrolmentRefused { cause: _ } => DeviceStoreRefused { detail: "nothing admitted to commit" }
     EnrolmentAdmitted { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_first() }, payload: enrolment_json(e: e) as NonEmptyStr)
+      match code_of_enrollment_id(enrollment_id: e.enrollment_id) {
+        Absent => DeviceStoreRefused { detail: "enrolment id names no code slot" }
+        Present { value: code } => device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: EnrolledRecord), payload: enrolment_json(e: e) as NonEmptyStr)
+      }
   }
 }
 
 fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_at: Timestamp, reason: NonEmptyStr) -> DeviceStoreWrite {
   match standing {
     EnrolmentCodeConsumed { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) }, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
+      match code_of_enrollment_id(enrollment_id: e.enrollment_id) {
+        Absent => DeviceStoreRefused { detail: "enrolment id names no code slot" }
+        Present { value: code } => device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: RevokedRecord), payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
+      }
     _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
@@ -647,11 +756,11 @@ data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator verb run over the fleet SSH administrator edge as the owner of approval_device_store_root that calls issue_enrolment_code and prints the code (never an HTTP issuer); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and approval_device_request_path_prefix authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
+  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator verb run over the fleet SSH administrator edge as the owner of approval_device_store_root that calls issue_enrolment_code and prints the code (never an HTTP issuer); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and at device_request_path(escalation_id) (suffix read back through decode_path_segment) authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; GET device_enrollment_path(enrollment_id), its suffix read back through decode_path_segment, answering enrolment_readback_of(observe_enrollment(...)) and refusing when it is none, authenticated by an assertion over device_read_client_data; PUT approval_device_push_path decoding decode_push_update and storing the PushRegistration against the active enrolment, authenticated by an assertion over device_push_update_client_data; and file_and_notify's APNs publish rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login, for an enrolment whose POST answer was lost to be read back instead of re-created, and for a rotated APNs token to reach the server without a new enrolment",
 )
 
-data app_attest_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint AttestationVerified and AssertionAuthentic from real bytes (SignatureVerified is minted from real bytes by extdeps.crypto.signature p256_ecdsa_verify)",
+data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "host primitives binding RustCrypto p256 ECDSA verification behind extdeps.crypto.signature signature_verification_from_implementation, and an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint SignatureVerified, AttestationVerified and AssertionAuthentic from real bytes",
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(

@@ -26,6 +26,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_terminal,
   FullyApplied,
   PartiallyApplied,
+  AwaitingCapability,
   fleet_converge_scope_wire,
   fleet_converge_desired_caps,
 }
@@ -293,6 +294,7 @@ test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Boo
   match fleet_converge_apply_terminal(request: full_host_srv1(slots: [])) {
     FullyApplied => false
     PartiallyApplied { refused_axis_count: _, detail: d } => string_contains(s: d, pattern: "activation=2")
+    AwaitingCapability { capability: _ } => false
   }
 }
 

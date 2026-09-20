@@ -1,0 +1,61 @@
+module extdeps.github.action.download_artifact
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// actions/download-artifact releases this repository has read. v6.0.0 is kept as the case that
+// proves the declaration must be read from the producer: its release notes announce Node 24
+// support, and its action.yml still declares node20 -- node24 is declared first at v7.0.0.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/download-artifact"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.download_artifact",
+      decl_name: "download_artifact_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data download_artifact_v4_3_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "download-artifact", tag: "v4.3.0", commit: "d3f86a106a0bac45b974a628896c90dbdf5c8093"
+}
+
+data download_artifact_v6_0_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "download-artifact", tag: "v6.0.0", commit: "018cc2cf5baa6db3ef3c5f8a56943fffe632ef53"
+}
+
+data download_artifact_v7_0_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "download-artifact", tag: "v7.0.0", commit: "37930b1c2abaa49bbe596cd826c3c89aef350131"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-09-18.
+data download_artifact_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: download_artifact_v4_3_0,
+    declared: JavaScriptAction { node_major: 20 },
+  },
+  ActionManifestReading {
+    action_release: download_artifact_v6_0_0,
+    declared: JavaScriptAction { node_major: 20 },
+  },
+  ActionManifestReading {
+    action_release: download_artifact_v7_0_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+]

@@ -123,9 +123,12 @@ fn has_inferred(n: Node) -> Bool {
 // CallTargetIdentity: resolution holds the answer, and every mechanism that re-derives it later is
 // answering at a grain where the facts that decided it are gone.
 //
-// service_spine_projection is the only producer. It resolves a whole dotted occurrence against the
-// service registry and stamps this kind on the result, so a consumer asks the resolution rather
-// than the spelling. The emitters need it because they cannot reach the registry: 371 functions
+// Two producers, one authority: both consult the service registry, after every binding that may
+// shadow the name. service_spine_projection resolves a whole dotted occurrence (`shell.Exec`), and
+// v1.compiler.infer infer_var_binding_kind recognizes a bare service name, which arrives as the
+// service's own namespace-root local (a service imported by name, such as `Filesystem`), so a
+// consumer asks the resolution rather than the spelling. Before the bare arm
+// existed, every call through a bare-imported service was invisible to derived service demand. The emitters need it because they cannot reach the registry: 371 functions
 // across the emit files thread `source_indices`, and adding a parallel `services` parameter beside
 // it would duplicate that plumbing rather than remove the guess.
 //
@@ -398,6 +401,10 @@ type CompilerDiagnostic
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
+  | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
+  | TestCodeReferenceAdmitted { referrer: String, target: String, span: SourceSpan }
+  | TestCodeReferenceBudgetMismatch { referrer: String, declared: Int, observed: Int, span: SourceSpan }
+  | TestCodeReferenceRowOrphaned { referrer: String, span: SourceSpan }
   | MissingField       { field: String, type_name: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
@@ -619,6 +626,10 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ReceiverTypeUnestablished { method: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
+    TestCodeReferenced { referrer: _, target: _, span: s } => s
+    TestCodeReferenceAdmitted { referrer: _, target: _, span: s } => s
+    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: s } => s
+    TestCodeReferenceRowOrphaned { referrer: _, span: s } => s
     MissingField       { field: _, type_name: _, span: s }     => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
@@ -695,6 +706,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: _, observed: _, span: _ } =>
       concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
+    TestCodeReferenced { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests")
+    TestCodeReferenceAdmitted { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink")
+    TestCodeReferenceRowOrphaned { referrer: r, span: _ } => concat("the test-reference debt row for '", r, "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist")
+    TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, span: _ } => concat("the test-reference debt row for '", r, "' declares ", to_string(value: d), " reference(s) but ", to_string(value: o), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted")
     MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
@@ -845,6 +860,10 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenceRowOrphaned { referrer: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -1143,11 +1162,9 @@ type ParsedModuleItemKind
 // code from serving code. Every node the parser did not construct from a marked item carries
 // Unmarked; constructions that rebuild a node propagate the marker from the node they rebuild.
 //
-// NO RESOLVER READS THIS YET, and that is a declared frontier rather than a finished consumer.
-// Its consumer is the v1 resolve-stage refusal of any reference to a TestMarked declaration, and
-// of any dependency from serving code on test code, which cannot be written until the parse
-// carries the marker. That refusal retires this frontier. The text scanners that read `test fn`
-// from source today are not its consumer: the v2 one is blocked on v2's grammar, not on v1.
+// ITS CONSUMER IS v1.compiler.compile test_reference_diagnostics, which refuses any reference to
+// a TestMarked declaration and any dependency of serving code on test code. The text scanners that
+// read `test fn` from source are not its consumer: the v2 one is blocked on v2's grammar, not on v1.
 type DeclarationMarker = Unmarked | TestMarked
 
 type Node {

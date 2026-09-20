@@ -5536,7 +5536,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       emitted_source: items_str
     )
   let reference_use_lines = reference_plan.lines
-  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
+  let merged_import_lines = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines))
+  let merged_imports = merged_import_lines |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -5553,8 +5554,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       Absent => []
     }
   )
-  let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
-    else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
+  let uncovered_svc_imports = service_import_lines_not_already_bound(svc_lines: extern_svc_imports, merged_lines: merged_import_lines)
+  let svc_imports_str = if uncovered_svc_imports |> count == 0 { "" }
+    else { concat("\n", uncovered_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
       && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
@@ -7046,6 +7048,26 @@ fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
         }
       }
     }
+  )
+}
+
+// A SERVICE IMPORT IS ONE MORE USE LINE, SO IT ANSWERS TO THE SAME DEDUPE. The per-module service
+// imports -- `use crate::<module>::<Service>;` for each service a function of this module demands --
+// were assembled beside the merged authored/carrier/derived lines and never compared with them. That
+// was harmless only while an authored import of the same service happened not to render: with
+// `std.resources` in the closure, the bare name `Filesystem` had two candidate providers (the
+// `std.resources` resource trait and the `extdeps.filesystem.filesystem_io` service struct), so the
+// authored `import extdeps.filesystem.filesystem_io { Filesystem }` line was declined and the service
+// import stood alone. Once that homonym left the closure, the authored line rendered as
+// `use crate::extdeps_filesystem_filesystem_io::{Filesystem};` beside the service import's
+// `use crate::extdeps_filesystem_filesystem_io::Filesystem;` -- the same item bound twice, rustc
+// E0252. A service import is dropped here exactly when a merged line already binds that item, by the
+// same coverage the merged dedupe applies to itself (an identical line, or a braced line naming it),
+// so every module without that overlap emits the same bytes it did.
+fn service_import_lines_not_already_bound(svc_lines: List<String>, merged_lines: List<String>) -> List<String> {
+  svc_lines |> filter(line =>
+    (merged_lines |> any(m => m == line)) == false
+      && rust_pub_use_singleton_covered(line: line, lines: merged_lines) == false
   )
 }
 
@@ -12771,9 +12793,21 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // is a fabricated realization. The arm now asks the same predicate the signature asks, so the two
 // agree by construction; where it declines, the op is a host seam with no realization in this
 // target and emits the generated refusal body the seam ruling prescribes -- a panic naming the seam,
-// never a call into a binding that does not exist. The realized arm is currently UNINHABITED by
-// the corpus (no `.dag` source in the seed or the closure spells a receiver the predicate accepts),
-// so its positive control is not authorable today; that is recorded, not papered over.
+// never a call into a binding that does not exist. The realized arm is INHABITED by a service
+// reached through its bare name (`Filesystem.Read`), which the predicate accepts since
+// infer_var_binding_kind recognizes the service-root local; its positive control is
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
+// IS STILL REACHABLE, and its discriminating red is enrolled beside that row
+// (w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding).
+// The stamp follows the service's NAME, while ServiceMethodSemantics follows the receiver's TYPE: a
+// `let fs = Filesystem` copies the nominal service type onto a different name, so `fs.Read(...)` is
+// a service op through an ordinary local, derived demand misses it, and this arm emits the refusal.
+// That residual is fail-closed -- loud and located, never an unbound `.await?` -- and it is the
+// remaining gap in derived demand for service calls. Next-rung trigger, as a capability: derived
+// service demand follows a service VALUE through bindings, not only its name, sufficient that an
+// aliased service call makes its fn effectful and this arm has no reachable input; the enrolled
+// red then flips to that construction's positive control rather than retiring (DESIGN 4b(4)).
 fn rust_unrealized_service_op_refusal(service_name: String, method: String, module_name: String) -> String {
   concat("panic!(\"unrealized host seam: service op ", service_name, ".", method, " in ", module_name, ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")")
 }
@@ -17074,6 +17108,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
       "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
+      "    native_census_module_resolution, native_census_modules, native_census_residual_rows,", "\n",
       "    native_lane_controls, native_lane_file_refusal_index, native_lane_identity_row,", "\n",
       "    native_lane_module_inference,", "\n",
       "    native_lane_module_resolution,", "\n",
@@ -17082,6 +17117,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_lane_source_facts, native_lane_universe, native_test_context_absorb,", "\n",
       "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,", "\n",
       "    native_test_front_end_prepare,", "\n",
+      "    NativeCensusModuleOutcome,", "\n",
       "    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,", "\n",
       "    NativeRouteMemberRow,", "\n",
       "\};", "\n",
@@ -17224,6 +17260,131 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
       "    println!(\"{}\", serde_json::json!(\{ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len() \}));", "\n",
+      "\}", "\n",
+      "\n",
+      "// THE THIRD MODE: THE WHOLE TREE, RESOLVED PER MODULE.", "\n",
+      "//", "\n",
+      "// WHY IT IS NOT A FLAG ON `census`. That mode has a live consumer -- the malformed control,", "\n",
+      "// which the host runner spawns over a ONE-FILE scratch root and reads one per-file refusal", "\n",
+      "// from -- and teaching it to resolve would make that control pay a whole-tree resolve to", "\n",
+      "// learn a fact the front end already answered. Two modes because they are two subjects: a", "\n",
+      "// roster of front-end refusals, and a roster of resolve refusals over every ingested module.", "\n",
+      "//", "\n",
+      "// WHY IT IS NOT THE `adjudicate` LOOP WIDENED. That loop walks `universe.modules` -- the", "\n",
+      "// v2.test.* modules discovery enrolled rows for -- over a context folded from the import", "\n",
+      "// CLOSURE of those modules. Both narrowings are correct for what adjudication asks and wrong", "\n",
+      "// for a census: a residual reported over the closure of the test corpus is not a residual over", "\n",
+      "// the tree, and the absence of a refusal in a population that was never resolved establishes", "\n",
+      "// nothing about the dependents outside it.", "\n",
+      "//", "\n",
+      "// THE RESOLVED TREE IS NOT KEPT. NativeCensusModuleOutcome carries the diagnostics of a refusal", "\n",
+      "// and nothing on the accepted arm, so each module's tree dies with the call that made it. The", "\n",
+      "// adjudicating loop drops its tree explicitly because it must hold one to infer from; this loop", "\n",
+      "// never holds one, which is the property that makes the whole-tree grain affordable at all.", "\n",
+      "fn run_census_resolve(source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
+      "    let load_started = Instant::now();", "\n",
+      "    let reads = read_ingest(source_roots);", "\n",
+      "    let corpus_reads = reads.len();", "\n",
+      "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
+      "    let load_nanos = span_nanos(load_started);", "\n",
+      "    let context_started = Instant::now();", "\n",
+      "    let context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
+      "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
+      "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
+      "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
+      "    let context_nanos = span_nanos(context_started);", "\n",
+      "    // The front-end refusals are reported in the same shape `census` reports them, because they", "\n",
+      "    // are the same fact read from the same context: a module whose file the context refused is", "\n",
+      "    // attributed there and is NOT re-reported below as a resolve refusal it never reached.", "\n",
+      "    for refusal in context.file_refusals.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
+      "    \}", "\n",
+      "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
+      "    let roster_started = Instant::now();", "\n",
+      "    let modules = native_census_modules(ingest.clone());", "\n",
+      "    let roster_nanos = span_nanos(roster_started);", "\n",
+      "    let mut resolve_total_nanos: u128 = 0;", "\n",
+      "    let mut resolve_samples: Vec<u128> = Vec::new();", "\n",
+      "    let mut resolved_ok: u64 = 0;", "\n",
+      "    let mut file_refused: u64 = 0;", "\n",
+      "    let mut resolve_refused: u64 = 0;", "\n",
+      "    let mut residual_rows: u64 = 0;", "\n",
+      "    for entry in modules.iter() \{", "\n",
+      "        let resolve_started = Instant::now();", "\n",
+      "        let outcome = native_census_module_resolution(", "\n",
+      "            context.clone(),", "\n",
+      "            refusal_index.clone(),", "\n",
+      "            entry.clone(),", "\n",
+      "        );", "\n",
+      "        let module_resolve_nanos = span_nanos(resolve_started);", "\n",
+      "        let outcome_label = match &*outcome \{", "\n",
+      "            NativeCensusModuleOutcome::NativeCensusModuleFileRefused => \{", "\n",
+      "                file_refused += 1;", "\n",
+      "                \"file_refused\"", "\n",
+      "            \}", "\n",
+      "            NativeCensusModuleOutcome::NativeCensusModuleResolved => \{", "\n",
+      "                resolved_ok += 1;", "\n",
+      "                \"resolved\"", "\n",
+      "            \}", "\n",
+      "            NativeCensusModuleOutcome::NativeCensusModuleResolveRefused \{ diagnostics \} => \{", "\n",
+      "                resolve_refused += 1;", "\n",
+      "                // ONE ROW PER DIAGNOSTIC, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The rows are", "\n",
+      "                // written as they are decided rather than accumulated: the census is over the", "\n",
+      "                // whole tree, and a population held to the end is a second corpus-sized", "\n",
+      "                // allocation beside the context that produced it.", "\n",
+      "                for row in native_census_residual_rows(entry.clone(), diagnostics.clone()).iter() \{", "\n",
+      "                    residual_rows += 1;", "\n",
+      "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
+      "                \}", "\n",
+      "                \"resolve_refused\"", "\n",
+      "            \}", "\n",
+      "        \};", "\n",
+      "        resolve_total_nanos += module_resolve_nanos;", "\n",
+      "        resolve_samples.push(module_resolve_nanos);", "\n",
+      "        eprintln!(", "\n",
+      "            \"[native-census-resolve] {}\",", "\n",
+      "            serde_json::json!(\{", "\n",
+      "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
+      "                \"module\": entry.module.clone(),", "\n",
+      "                \"path\": entry.path.clone(),", "\n",
+      "                \"resolve_nanos\": module_resolve_nanos,", "\n",
+      "                \"outcome\": outcome_label,", "\n",
+      "            \}),", "\n",
+      "        );", "\n",
+      "    \}", "\n",
+      "    resolve_samples.sort_unstable();", "\n",
+      "    // THE TERMINAL LINE CARRIES THE COST AND THE POPULATION TOGETHER, because the reading this", "\n",
+      "    // mode exists to support is whether a whole-tree resolve is affordable at all, and a residual", "\n",
+      "    // count without the wall and the peak beside it cannot answer that.", "\n",
+      "    println!(", "\n",
+      "        \"{}\",", "\n",
+      "        serde_json::json!(\{", "\n",
+      "            \"_terminal\": \"complete\",", "\n",
+      "            \"mode\": \"census-resolve\",", "\n",
+      "            \"corpus_reads\": corpus_reads,", "\n",
+      "            \"modules\": modules.len(),", "\n",
+      "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"resolved\": resolved_ok,", "\n",
+      "            \"file_refused\": file_refused,", "\n",
+      "            \"resolve_refused\": resolve_refused,", "\n",
+      "            \"residual_rows\": residual_rows,", "\n",
+      "            \"load_nanos\": load_nanos,", "\n",
+      "            \"context_nanos\": context_nanos,", "\n",
+      "            \"roster_nanos\": roster_nanos,", "\n",
+      "            \"resolve_total_nanos\": resolve_total_nanos,", "\n",
+      "            \"resolve_p50_nanos\": native_cost_quantile_nanos(&resolve_samples, 1, 2),", "\n",
+      "            \"resolve_p95_nanos\": native_cost_quantile_nanos(&resolve_samples, 19, 20),", "\n",
+      "            \"resolve_max_nanos\": resolve_samples.last().copied().unwrap_or(0),", "\n",
+      "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),", "\n",
+      "        \}),", "\n",
+      "    );", "\n",
       "\}", "\n",
       "\n",
       "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 \{", "\n",
@@ -17806,13 +17967,18 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mode = match args.next() \{", "\n",
       "        Some(mode) => mode,", "\n",
       "        None => \{", "\n",
-      "            eprintln!(\"REFUSED: no mode given -- usage: ", crate_name, " adjudicate <host-facts.tsv> <source-root>... | ", crate_name, " census <source-root>...\");", "\n",
+      "            eprintln!(\"REFUSED: no mode given -- usage: ", crate_name, " adjudicate <host-facts.tsv> <source-root>... | ", crate_name, " census <source-root>... | ", crate_name, " census-resolve <source-root>...\");", "\n",
       "            std::process::exit(2);", "\n",
       "        \}", "\n",
       "    \};", "\n",
       "    if mode == \"census\" \{", "\n",
       "        let source_roots: Vec<String> = args.collect();", "\n",
       "        run_census(&source_roots);", "\n",
+      "        return;", "\n",
+      "    \}", "\n",
+      "    if mode == \"census-resolve\" \{", "\n",
+      "        let source_roots: Vec<String> = args.collect();", "\n",
+      "        run_census_resolve(&source_roots);", "\n",
       "        return;", "\n",
       "    \}", "\n",
       "    if mode == \"adjudicate\" \{", "\n",
@@ -17827,7 +17993,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        run_adjudication(&facts_path, &source_roots);", "\n",
       "        return;", "\n",
       "    \}", "\n",
-      "    eprintln!(\"REFUSED: unknown mode \{mode\} -- expected adjudicate or census\");", "\n",
+      "    eprintln!(\"REFUSED: unknown mode \{mode\} -- expected adjudicate, census or census-resolve\");", "\n",
       "    std::process::exit(2);", "\n",
       "\}", "\n",
       "\n")

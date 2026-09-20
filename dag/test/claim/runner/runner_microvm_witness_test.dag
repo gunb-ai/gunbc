@@ -69,11 +69,9 @@ import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size, gibibyte_to_byte_size }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
   gunbc_runner_slot_desired,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
 
 
@@ -175,6 +173,15 @@ data deployed_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleI
 }
 
 data repaired_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
+  exit_type: ExitTypeMain,
+  kill_mode: KillModeControlGroup,
+}
+
+// THE ExitType=cgroup DROP-IN THE FLEET CARRIES ON 2026-09-18, which an earlier revision of this file
+// called the repaired intent. One survivor holds the unit running with no stop issued (srv2-02, 2.7
+// days; srv1-03 and srv1-07, 16 days), so under a lifecycle controller an orphaned VMM would be held
+// exactly the same way.
+data exittype_cgroup_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
   exit_type: ExitTypeCgroup,
   kill_mode: KillModeControlGroup,
 }
@@ -189,7 +196,7 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -197,14 +204,29 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
   )
 }
 
-// THE POSITIVE CONTROL. Same VM, same transport, cgroup-reaching teardown: admitted. Without this
+// THE INCIDENT FIXTURE AS A RED: the configuration the previous revision admitted must now refuse,
+// with the orphan cause, or a revert to it would read green.
+test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
+  admission_is_orphan_refusal(
+    a: runner_microvm_admission(
+      topology: VmmUnderLifecycleController,
+      intent: exittype_cgroup_lifecycle_intent,
+      main_exits_when_incarnation_ends: true,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: mvp_sized_config(),
+      reserve: witness_reserve,
+    ),
+  )
+}
+
+// THE POSITIVE CONTROL. Same VM, same transport, the declared intent (ExitType=main, KillMode=control-group): admitted. Without this
 // arm the refusal above would be satisfied by an admission that refuses everything.
-test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
+test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -221,7 +243,7 @@ test fn shared_slot_directory_credential_is_refused() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -246,7 +268,7 @@ test fn two_root_devices_is_a_malformed_vm() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: two_root_config(),
       reserve: witness_reserve,
@@ -281,7 +303,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -297,7 +319,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -306,7 +328,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -321,7 +343,7 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -400,7 +422,7 @@ test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_unmodeled_reserve,
@@ -429,7 +451,7 @@ fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
   runner_microvm_admission(
     topology: VmmUnderLifecycleController,
     intent: repaired_lifecycle_intent,
-    listener_is_main_process: false,
+    main_exits_when_incarnation_ends: true,
     transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
     config: config_with_machine(vcpus: vcpus, mib: mib),
     reserve: witness_reserve,
@@ -571,21 +593,25 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 //
 // It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
 // nothing; no Firecracker process is involved at any step.
-// PRODUCTION SIZING WITHDRAWS THE DECLARED CONFIGURATION NOW THAT THE CELL GRANTS AN ABSOLUTE
-// ENTITLEMENT. This previously asserted that the fleet's declared VM reached admission. That wall
-// landed: Absolute is inhabited, so gunbc_runner_microvm_vm_config is Unresolved and names the
-// repair. Per DESIGN 4b(4) the expecting-green probe flips rather than retiring.
-test fn the_production_vm_config_refuses_while_topology_is_still_the_stale_declaration() -> Bool {
+// PRODUCTION SIZING SERVES THE DECLARED CONFIGURATION AGAIN, BECAUSE THE CELL GRANTS NO ABSOLUTE
+// ENTITLEMENT. This row has flipped twice and both flips are recorded: it first asserted that the
+// fleet's declared VM reached admission; then the slot survey resolved, Absolute was inhabited, and
+// the row asserted the withdrawal (Unresolved naming the repair). As of 2026-09-19 the slot row
+// declares no CPU ceiling by operator ruling, the entitlement is RelativeOnly on the production
+// path, and the declaration is the honest answer once more -- so the row asserts that the fleet's
+// config RESOLVES to the declared size. The RED is the coupling coming back: a cpu_quota re-derived
+// from cores_per_slot would inhabit Absolute and withdraw the declaration here.
+test fn the_production_vm_config_resolves_to_the_declared_size_under_no_ceiling() -> Bool {
   match gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
     kernel_path: "/var/lib/gunbc/cell/vmlinux",
     net: GuestNetworkAbsent { cause: "this control judges admission, not the per-slot tap" },
   ) {
-    MicroVmConfigResolved { config: _ } => false
-    MicroVmConfigUnresolved { cause: c } =>
-      cause_mentions(cause: c, needle: "derivable")
-        && cause_mentions(cause: c, needle: "stale")
+    MicroVmConfigUnresolved { cause: _ } => false
+    MicroVmConfigResolved { config: c } =>
+      c.machine_config.vcpu_count
+        == hardware_thread_count_value(t: gunbc_runner_microvm_declared_size.vcpu_count)
   }
 }
 
@@ -601,17 +627,22 @@ test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool
   guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
-// THE CELL GRANTS AN ABSOLUTE CPU ENTITLEMENT WHEN THE SLOT SURVEY RESOLVES, AND THAT IS THE SAME
-// THREAD COUNT AS gunbc_runner_slot_desired().cpu_quota. If this ever falls back to RelativeOnly
-// while the survey is Resolved, the slice quota and the guest-sizing entitlement have forked.
-test fn the_cell_grants_the_surveyed_absolute_cpu_entitlement() -> Bool {
+// THE CELL'S ENTITLEMENT IS THE SLOT ROW'S QUOTA SEEN FROM THE GUEST, ARM FOR ARM. A resolved
+// quota is an Absolute entitlement of the same thread count; the unbounded quota (the 2026-09-19
+// policy, and the production row) is RelativeOnly with a cause that names that policy. If either
+// arm ever maps to the other, the slice quota and the guest-sizing entitlement have forked.
+test fn the_cell_entitlement_is_the_slot_quota_arm_for_arm() -> Bool {
   match gunbc_runner_slot_desired().cpu_quota {
-    CpuQuotaRefused { cause: _ } => false
     CpuQuotaResolved { threads: want } =>
       match gunbc_runner_microvm_cell_cpu_entitlement() {
         CpuEntitlementRelativeOnly { cause: _ } => false
         CpuEntitlementAbsolute { threads: got } =>
           hardware_thread_count_value(t: want) == hardware_thread_count_value(t: got)
+      }
+    SlotCpuQuotaUnbounded =>
+      match gunbc_runner_microvm_cell_cpu_entitlement() {
+        CpuEntitlementAbsolute { threads: _ } => false
+        CpuEntitlementRelativeOnly { cause: c } => cause_mentions(cause: c, needle: "2026-09-19")
       }
   }
 }
@@ -699,11 +730,9 @@ test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> 
     && count(mvp_sized_config().network_interfaces) == 1
 }
 
-// THE CORE COUNT RESOLVES AND THE CELL NOW GRANTS THAT COUNT AS AN ABSOLUTE ENTITLEMENT. This
-// witness keeps the survey fact true so a sizing refusal cannot be misread as "the survey failed".
-test fn the_cell_core_count_still_resolves() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) > 0
-  }
+// THE CORE COUNT IS A POLICY AND IT IS POSITIVE. cores_per_slot no longer resolves or refuses --
+// it is authored (gunbc_runner_cores_per_slot_policy) -- so the only thing left to keep true is
+// that the policy is not zero, which would admit every core against no slot at all.
+test fn the_cell_core_count_is_a_positive_policy() -> Bool {
+  hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) > 0
 }

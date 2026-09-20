@@ -26,7 +26,8 @@ import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, Path
 import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
 import v2.extdeps.languages.bash_proc_self_cgroup { bash_membership_assign_from_source }
 import std.types { FilePathParts }
-import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import v2.std.text { String, string_all_chars_in }
 import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
@@ -50,25 +51,24 @@ fn bash_dirname_ascent_target_ok(target: String) -> Bool {
   posix_name_ok(name: target)
 }
 
-fn bash_path_unquoted_ok_at(path: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    let ch = char_at(s: path, pos: i)
-    if string_length(s: ch) != 1 || !string_contains(s: bash_path_operand_unquoted_alphabet, pattern: ch) {
-      false
-    } else {
-      bash_path_unquoted_ok_at(path: path, i: i + 1, n: n)
-    }
-  }
-}
-
+// THE ALPHABET THIS READS IS STILL A FORK and this change does not close it:
+// bash_path_operand_unquoted_alphabet is byte-identical to
+// v2.compiler.emit_orchestration orch_shell_unquoted_path_alphabet, and both spell OUR conservative
+// choice of characters an emitter will write without quoting, not a set IEEE 1003.1 specifies. That
+// is why it did not move to extdeps.posix.shell_command_language beside the POSIX name rule this
+// module already reads from there -- an emitter policy modelled inside an upstream-specification
+// module is the layer inversion DESIGN section 3 names, so the home is a decision this cut does not
+// take. The residue is derived, not listed:
+//   grep -rn 'unquoted_alphabet' --include=*.dag dag/ src/v2
+// TRIGGER: the next cut in this operation family, which owes that home before it adds a third site.
+//
+// What DOES change is the scan: membership over the carrier's own characters, with the empty word
+// refused by the Empty arm rather than by a computed length.
 fn bash_path_unquoted_ok(path: String) -> Bool {
-  let n = string_length(s: path)
-  if n == 0 {
-    false
-  } else {
-    bash_path_unquoted_ok_at(path: path, i: 0, n: n)
+  match path {
+    Empty => false
+    Cons { head: _, tail: _ } =>
+      string_all_chars_in(s: path, alphabet: bash_path_operand_unquoted_alphabet)
   }
 }
 
