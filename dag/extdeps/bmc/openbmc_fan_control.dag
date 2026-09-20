@@ -1816,30 +1816,15 @@ fn openbmc_fan_controllers(
   }
 }
 
-fn openbmc_fan_controller_collection(
-  values: List<OpenBmcFanController>,
-) -> OpenBmcCollection<OpenBmcFanController> {
-  match values.first() {
-    Absent => OpenBmcCollectionZero
-    Present { value: head } =>
-      if values.length() == 1 {
-        OpenBmcCollectionOne { value: head }
-      } else {
-        OpenBmcCollectionMany { values: values }
-      }
-  }
+type OpenBmcStepwiseScalars {
+  minimum_duty: Percent
+  zone_failsafe_duty: Percent
+  sensor_failsafe_duty: Percent
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
 }
 
-
-type OpenBmcFiveScalars {
-  minimum: Int
-  zone_failsafe: Int
-  sensor_failsafe: Int
-  positive_hysteresis: Int
-  negative_hysteresis: Int
-}
-
-fn openbmc_five_scalars(scalars: List<Int>) -> OpenBmcFiveScalars? {
+fn openbmc_stepwise_scalars(scalars: List<Int>) -> OpenBmcStepwiseScalars? {
   if scalars.length() != 5 {
     Absent
   } else {
@@ -1859,9 +1844,12 @@ fn openbmc_five_scalars(scalars: List<Int>) -> OpenBmcFiveScalars? {
                       Absent => Absent
                       Present { value: e } =>
                         Present {
-                          value: OpenBmcFiveScalars {
-                            minimum: a, zone_failsafe: b, sensor_failsafe: c,
-                            positive_hysteresis: d, negative_hysteresis: e,
+                          value: OpenBmcStepwiseScalars {
+                            minimum_duty: percent(a),
+                            zone_failsafe_duty: percent(b),
+                            sensor_failsafe_duty: percent(c),
+                            positive_hysteresis: celsius_delta(d),
+                            negative_hysteresis: celsius_delta(e),
                           },
                         }
                     }
@@ -1910,7 +1898,7 @@ fn openbmc_fan_config_finish_observation(
       OpenBmcFanConfigObserved {
         observation: OpenBmcFanConfigObservation {
           stepwise: stepwise,
-          fan_controllers: openbmc_fan_controller_collection(values: values),
+          fan_controllers: openbmc_collection_from_values(values: values),
         },
       }
   }
@@ -1952,7 +1940,7 @@ fn openbmc_fan_config_observe_one(
             OpenBmcIntegerListRefused { reason } =>
               OpenBmcFanConfigObservationRefused { reason: reason }
             OpenBmcIntegerListObserved { values: outputs } =>
-              match openbmc_five_scalars(scalars: scalars) {
+              match openbmc_stepwise_scalars(scalars: scalars) {
                 Absent =>
                   OpenBmcFanConfigObservationRefused {
                     reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
@@ -1970,11 +1958,11 @@ fn openbmc_fan_config_observe_one(
                       config_path: config_path,
                       stepwise: OpenBmcSelectionOne {
                         value: OpenBmcStepwiseController {
-                          minimum_duty: percent(five.minimum),
-                          zone_failsafe_duty: percent(five.zone_failsafe),
-                          sensor_failsafe_duty: percent(five.sensor_failsafe),
-                          positive_hysteresis: celsius_delta(five.positive_hysteresis),
-                          negative_hysteresis: celsius_delta(five.negative_hysteresis),
+                          minimum_duty: five.minimum_duty,
+                          zone_failsafe_duty: five.zone_failsafe_duty,
+                          sensor_failsafe_duty: five.sensor_failsafe_duty,
+                          positive_hysteresis: five.positive_hysteresis,
+                          negative_hysteresis: five.negative_hysteresis,
                           readings: readings |> map(value => celsius(value)),
                           outputs: outputs |> map(value => percent(value)),
                         },
