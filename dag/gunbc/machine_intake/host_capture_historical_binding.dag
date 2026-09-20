@@ -235,6 +235,16 @@ fn census_roster_is_fully_bound() -> Bool {
   )
 }
 
+// (Hoisted to module grain from the body of the item below: a source annotation inside a
+// declaration body is not modeled and refuses to parse.)
+// NEWLY INTRODUCED IS THE ONE DISPOSITION THAT REQUIRES THE SECTION TO BE ABSENT, so it is
+// decided before the historical section is demanded. Folded in with the others it was a trap:
+// the capture has no such section, so the Absent arm answered false before this arm was
+// reached, while roster_matches_bindings counted the stage as carried and passed. The first
+// stage anyone added would have gone green on the dry claim and permanently red on the wet one.
+// The row still has to EARN the disposition: if the capture does carry the section, the row is
+// wrong about history and this fails.
+//
 // WHAT THE BOUND ENVELOPE MUST SAY FOR ONE BINDING TO HOLD. Exact means the file's ARGV line IS
 // the roster's command; Normalized and AuthoredFromDescription mean the file's ARGV line is the row's
 // `original` (so an edit to that quote is caught against the bytes); DeliberatelyOmitted means the
@@ -244,13 +254,6 @@ fn binding_holds_against_capture(envelope: BoundHostCaptureEnvelope, stages: Lis
   let historical = host_capture_bound_section_argv(envelope: envelope, name: b.name as String)
   let carried = stage_named(stages: stages, name: b.name as String)
   match b.disposition {
-    // NEWLY INTRODUCED IS THE ONE DISPOSITION THAT REQUIRES THE SECTION TO BE ABSENT, so it is
-    // decided before the historical section is demanded. Folded in with the others it was a trap:
-    // the capture has no such section, so the Absent arm answered false before this arm was
-    // reached, while roster_matches_bindings counted the stage as carried and passed. The first
-    // stage anyone added would have gone green on the dry claim and permanently red on the wet one.
-    // The row still has to EARN the disposition: if the capture does carry the section, the row is
-    // wrong about history and this fails.
     HistoricalStageNewlyIntroduced { reason: _ } =>
       match historical {
         Present { value: _ } => false
