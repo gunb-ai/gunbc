@@ -387,6 +387,68 @@ test fn an_imported_test_fn_is_refused_holds() -> Bool {
   ) == "resolve_reason_test_code_referenced"
 }
 
+// THE SHADOW CASE THE WALL NEVER SEES (review 69014 on gunbc#11580). The review read a defect here:
+// a module that BOTH imports a name and declares it would bind locally while Namespace.imported_origins
+// still held the PEER's path, so root_binding_origin would hand the wall a path the reference never
+// bound to -- refusing an ordinary local shadowed by an imported test fn, and, silently, ACCEPTING a
+// reference to a local test fn shadowed by an ordinary import. The reading of root_binding_origin is
+// right. THE STATE IS UNREACHABLE: admission refuses that module first, in BOTH directions, so the
+// wall is never asked. These three rows are that measurement, and they are why this PR carries no
+// shadow-aware origin lookup -- a lookup guarding a state admission has already made unwritable would
+// be validation restating a constraint the model carries (DESIGN section 5, correctness by
+// construction over validation), and its red would not be authorable.
+
+// RED: a subject that declares `peer_leaf` AND imports a peer exporting `peer_leaf` is refused at
+// ADMISSION as an ambiguous export -- the direction where the local declaration is ordinary and the
+// peer's is a test fn.
+test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admission_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^peer_leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^peer_leaf))
+      ]),
+      marked: []
+    ),
+    peer: peer_test_module()
+  ) == "resolve_ambiguous_export"
+}
+
+// RED, THE OTHER DIRECTION, and the one the review called silent: the subject's own declaration is
+// TEST-MARKED and the peer's is ordinary. Admission refuses this too, so no reference to test code is
+// accepted without a diagnostic -- the arm DESIGN section 5 forbids is closed upstream of the wall.
+test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^shared_fixture))
+      ]),
+      marked: [^shared_fixture]
+    ),
+    peer: peer_test_module()
+  ) == "resolve_ambiguous_export"
+}
+
+// CONTROL for the two above: the refusal is caused by the SHADOW and not by the shape of these
+// fixtures. The same subject and the same import, with a locally declared name the peer does not
+// export, resolves. Without this row the two reds could both be passing on a malformed module.
+test fn a_local_declaration_the_peer_does_not_export_resolves_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^only_local, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^only_local))
+      ]),
+      marked: []
+    ),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}
+
 // CONTROL for the import door: the same import, referencing the peer's ordinary declaration, resolves.
 test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
   wall_resolve_importing_peer(
@@ -395,3 +457,4 @@ test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
     peer: peer_test_module()
   ) == "ACCEPTED"
 }
+
