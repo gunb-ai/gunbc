@@ -17,7 +17,7 @@ import extdeps.nvidia.gpu_direct_rdma {
 import gunbc.spark.serving_rank_observe {
   RankGpuDirectCapabilityReceipt, rank_gpu_direct_capability,
 }
-import gunbc.runner_throughput_qualification { RunnerThroughputAssessment, ThroughputRefusal }
+import gunbc.runner_throughput_qualification { RunnerThroughputAssessment, ThroughputRefusal, assessment_holds }
 
 // A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
 //
@@ -1112,7 +1112,7 @@ fn claimed_delivery_check<P>(claim: OfferDeliveryClaim<P>) -> ClaimedDeliveryChe
     OfferClaimsRunnerDelivery { offer: o, assessment: a } =>
       if !fabric_identity_eq(left: o, right: a.offer) {
         ClaimedDeliveryOfferMismatch { claim_names: o, receipt_names: a.offer }
-      } else if a.refusals.length() == 0 {
+      } else if assessment_holds(a: a) {
         ClaimedDeliveryHolds
       } else {
         ClaimedDeliveryUnqualified { refusals: [RunnerThroughputDidNotHold { refusals: a.refusals }] }

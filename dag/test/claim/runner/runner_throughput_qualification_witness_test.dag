@@ -59,6 +59,7 @@ import gunbc.runner_throughput_qualification {
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
   qualification_run_producer_frontier, leg_is_bound,
+  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings,
 }
 import gunbc.runner_throughput_selection {
   RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
@@ -333,6 +334,29 @@ fn first_join_axis(refusals: List<ThroughputRefusal>) -> String {
   )
 }
 
+// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5; review 68995): the assessed facts
+// must be exactly the named arms, each once.
+fn fact_is(a: AssessedFact, b: AssessedFact) -> Bool {
+  match a {
+    InterpreterRateAgainstPin => match b { InterpreterRateAgainstPin => true _ => false }
+    SlotMemoryEnvelope => match b { SlotMemoryEnvelope => true _ => false }
+    PhaseWallsAgainstSuppliedCeilings => match b { PhaseWallsAgainstSuppliedCeilings => true _ => false }
+  }
+}
+
+fn has_fact_once(facts: List<AssessedFact>, want: AssessedFact) -> Bool {
+  (facts |> filter(f => fact_is(a: f, b: want))).length() == 1
+}
+
+fn covers_rate_and_memory_only(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 2 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+}
+
+fn covers_rate_memory_and_walls(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
+    && has_fact_once(facts: facts, want: SlotMemoryEnvelope) && has_fact_once(facts: facts, want: PhaseWallsAgainstSuppliedCeilings)
+}
+
 fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
   a.refusals |> any(r => match r { SamplingDidNotHold { policy: _, observed_runs: _ } => true _ => false })
 }
@@ -352,7 +376,7 @@ test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
       SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } => n == expected_width() && n >= 1
       SlotWidthUnderivable { cause: _ } => false
     })
-    && a.assessed_facts.length() == 2
+    && covers_rate_and_memory_only(facts: a.assessed_facts)
 }
 
 // ── the subject join REDs (operator hold, item 2) ─────────────────────────────────────────────
@@ -477,7 +501,7 @@ test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
   let al = assess_runner_throughput(selection: loose, runs: [good_run(id: run_a)])
   let at = assess_runner_throughput(selection: tight, runs: [good_run(id: run_a)])
   let an = assess_runner_throughput(selection: selection(), runs: [good_run(id: run_a)])
-  assessment_holds(a: al) && al.assessed_facts.length() == 3
+  assessment_holds(a: al) && covers_rate_memory_and_walls(facts: al.assessed_facts)
     && !assessment_holds(a: at)
     && (match at.phase_walls { PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => true _ => false })
     && (match an.phase_walls { PhaseWallsNotAssessed => true _ => false })
