@@ -765,6 +765,11 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/organization_runner_roster_read.dag",
+  function: "organization_runner_roster_observe_wet",
+}
+
 // THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
 // gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
 // non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
@@ -1619,6 +1624,43 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
 // than the installation token it buys; it is written to a 0600 file, spent once, and removed before
 // the token is read out of the response.
+// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
+//
+// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
+// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
+// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
+// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
+// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
+// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
+// declaration constrains no allocation.
+//
+// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
+// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
+// write a protected branch never lands on runners shared with pull-request workloads. Measured
+// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
+//
+// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
+// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
+// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
+// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
+// not survive; moving the shell leaves the invocation untouched.
+data heal_publisher_cgroup_name: String = "gunbc-publish"
+
+// 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
+data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
+
+fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
+  [
+    app_mint_step(command: "set -euo pipefail"),
+    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
+    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
+    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
+    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
+    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
+    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
+  ]
+}
+
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
   concat(concat(concat(concat(concat(concat(concat(
     [
@@ -1937,6 +1979,19 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_actions_converge_target.entry,
     function: gunbc_ci_org_actions_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
+// minted in-run and held only in this step's environment.
+fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_org_runner_roster_observe_target.entry,
+    function: gunbc_ci_org_runner_roster_observe_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -2363,7 +2418,8 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
 // federates, so a candidate that does not admit never causes a token to be minted.
 fn gunbc_ci_heal_publication_admit_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: heal_publisher_cgroup_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_admit_target.entry,
     function: gunbc_ci_heal_publication_admit_target.function,
@@ -2403,8 +2459,11 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
 // labelled for exactly this purpose -- so no arm of that match was reachable any more.
 fn gunbc_ci_heal_publication_publish_invoke() -> String {
   gunbc_run_step_script_with_prelude(
-    prelude: github_app_installation_token_prelude(
-      spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+    prelude: concat(
+      heal_publisher_cgroup_prelude(),
+      github_app_installation_token_prelude(
+        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+      )
     ),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_publish_target.entry,
