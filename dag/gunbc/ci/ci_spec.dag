@@ -3,6 +3,7 @@ import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
+import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps {
@@ -834,6 +835,20 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+// Where gunbc.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
+// and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
+data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
+
+data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
+  function: "site_pxe_edge_observe_ci_wet",
+}
+
+data gunbc_ci_site_pxe_edge_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/site_pxe_edge_converge.dag",
+  function: "site_pxe_edge_converge_ci_wet",
+}
+
 data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_password_session_tool_converge.dag",
   function: "runner_password_session_tool_converge_ci_wet",
@@ -900,6 +915,11 @@ data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/pair_serving_apply.dag",
   function: "spark_pair_serving_apply_wet",
+}
+
+data gunbc_ci_spark_native_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/native_serving_apply.dag",
+  function: "spark_native_serving_apply_wet",
 }
 
 // THE ROUTE-A PROBE. It asks a published image what it contains, inside that image, on the selected
@@ -1050,6 +1070,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_host_converge_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_runner_host_file_converge_target,
+    gunbc_ci_site_pxe_edge_observe_target,
+    gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
@@ -1983,6 +2005,26 @@ fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_site_pxe_edge_observe_target.entry,
+    function: gunbc_ci_site_pxe_edge_observe_target.function,
+    claim_run: false,
+    receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_site_pxe_edge_converge_target.entry,
+    function: gunbc_ci_site_pxe_edge_converge_target.function,
+    claim_run: false,
+    receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2083,6 +2125,20 @@ fn gunbc_ci_spark_serving_apply_invoke() -> String {
     function: gunbc_ci_spark_serving_apply_target.function,
     claim_run: false,
     receipt_rel: spark_pair_apply_receipt_path
+  )
+}
+
+// The native arm's apply shares the same prelude for the same reason: same fleet-key agent, same
+// per-target administrator credential, so the pair and the native arm cannot drift on how a Spark
+// is reached or authenticated.
+fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_native_serving_apply_target.entry,
+    function: gunbc_ci_spark_native_serving_apply_target.function,
+    claim_run: false,
+    receipt_rel: spark_native_apply_receipt_path
   )
 }
 
