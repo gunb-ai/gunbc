@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.per_element_lambda_cost_unrolls_a_predicate_into_scalar_operations
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data per_element_lambda_cost_unrolls_a_predicate_into_scalar_operations: RecurringFailureMode = RecurringFailureMode {
+  identity: "per_element_lambda_cost_unrolls_a_predicate_into_scalar_operations" as NonEmptyStr,
+
+  receipts: [
+    "**the interpreter's per-element cost makes the modeled form of a predicate the expensive one, so the author unrolls it into scalar operations over a hard-coded alphabet** (INVALID STATE: a predicate whose meaning is `every element satisfies P` is written as a fixed sequence of whole-string operations that happens to have the same truth value, because `all`/`map`/`fold` over the elements costs one interpreter evaluation per element and a budget refuses at that constant factor. HARM: the shared module now states the fact in a form that no longer says what it means, hard-codes the alphabet it was derived from, and silently stops being equivalent if that alphabet changes -- and the language-layer cost that forced it is nowhere recorded, so the next author meets it as a red run.",
+
+    "THE DISTINGUISHING FACT, and it is what separates this from nested_membership_scan_where_a_map_primitive_exists: THE COST SHAPE IS NOT QUADRATIC AND THE REPAIR IS NOT A BETTER DATA STRUCTURE. Both forms are linear in the input. What differs is the CONSTANT: one evaluation per element for the lambda against a handful of builtin calls for the unrolled form. So there is no algorithmic defect to point at, the modeled form is the correct one, and the only thing wrong is that the substrate prices it out.",
+
+    "SPECIMEN (2026-09-20, gunb-ai/gunbc#11730). `std.types` `commit_sha_text_holds` asks whether forty characters are all lowercase hex. The modeled form tests each character and pays forty lambda evaluations for every head on every admission of an action use. It was rewritten as sixteen nested `replace` calls -- removing every hex digit and asking whether nothing remains -- which is equivalent, costs the same whatever the text, and no longer contains the word `hex`. It sits in the most-shared type module in the repository. THE INSTRUMENT that re-derives the pressure is claim_batch over test.claim.action_use_admission_witness's per-file census claims, judged against v2.workflow.required_floor claim_eval_step_budget_for_identity.",
+
+    "SECOND INSTANCE IN THE SAME CHANGE, WHICH IS WHY IT IS FILED AS A CLASS: extdeps.languages.yaml.ingest `yaml_entry_multiline` had five conditions joined by `&&`. Because `&&` evaluates both sides, a chunk whose first line does not end in `:` paid all five tests to learn what the first had already decided, so the conditions were re-authored as nested `if`s. That is the same move -- writing the awkward form to route around the evaluator's cost model rather than the meaning -- against a different operator. The eager-`&&` SEMANTICS belong to realization_arms_diverge_on_whether_the_program_refuses; what this row carries is the authoring pressure the cost creates.",
+
+    "WHY IT IS NOT SIMPLY ADMITTED AS BARE-MINIMUM-COST WORK (DESIGN section 6): the standing rule fixes a proven cost-shape defect regardless of realized n, and that rule is about the PROGRAM's shape. Here the program's shape is already right and the EVALUATOR's is not, so applying the rule spends the modeled form to buy a constant. DESIGN section 5 names the author-time arm of this exactly: noticing you are implementing a workaround is the line-stop signal, and the concealed deficit is usually in the language layer.",
+
+    "Rung: mitigatable -- the unrolled form is equivalent where it stands and its comment names why, but nothing prevents the next instance and nothing detects a later divergence between the unrolled alphabet and the one the predicate means.",
+
+    "Ceiling: structurally guaranteed. A per-element predicate over a closed alphabet is decidable and fully modeled, so an evaluator that does not charge a full evaluation per element -- or a compiler that lowers `all` over a literal alphabet to the scalar form ITSELF -- makes the modeled spelling the cheap one, and the unrolled spelling stops being writable for this reason.",
+
+    "Next-rung trigger: the capability for the evaluator to charge a per-element predicate at its builtin cost rather than one evaluation per element, sufficient for `all(chars(s), c => member(c, alphabet))` over a forty-character string to sit inside the new-witness budget alongside the rest of a claim -- at which point commit_sha_text_holds returns to the form that names what it means.",
+
+    "REVIEW TELL: a predicate stated as a fixed chain of whole-value operations whose comment explains the COST rather than the MEANING; a hard-coded alphabet in a module that does not own that alphabet; a conjunction re-spelled as nested ifs with a note about evaluation order.",
+  ],
+
+  evidence: [],
+}

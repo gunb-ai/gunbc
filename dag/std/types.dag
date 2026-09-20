@@ -169,6 +169,13 @@ type CommitSha    = String
 // Forty lowercase hex digits: removing every hex digit leaves nothing. Removing them by digit costs
 // the same whatever the text, where testing each character cost one lambda per character -- forty of
 // them for every head, on every admission of an action use.
+//
+// THIS SPELLING IS A WORKAROUND AND IS FILED AS ONE. It no longer contains the word `hex` and it
+// hard-codes the alphabet, which is a modeling loss taken to buy a constant factor the evaluator
+// charges. The class, its trigger and the form this returns to are
+// gunbc.recurring_failure_mode.per_element_lambda_cost_unrolls_a_predicate_into_scalar_operations;
+// it is recorded there rather than argued here so the next instance is recognized rather than
+// re-decided (DESIGN section 5: noticing a workaround is the line-stop signal).
 fn commit_sha_text_holds(head: String) -> Bool {
   (head.length() == 40) && (replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(head, "0", ""), "1", ""), "2", ""), "3", ""), "4", ""), "5", ""), "6", ""), "7", ""), "8", ""), "9", ""), "a", ""), "b", ""), "c", ""), "d", ""), "e", ""), "f", "") == "")
 }
