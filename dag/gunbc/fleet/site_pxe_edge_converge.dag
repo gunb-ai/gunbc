@@ -204,6 +204,42 @@ fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
   }
 }
 
+// ONE DERIVATION OF THE DESIRED CONFIG'S INPUTS, read by the file list and answerable beside the gate:
+// the roster and the segment the config renders exist exactly when the pin, the known-client MAC, the
+// TFTP server address and the segment all parsed, which is the same set site_pxe_edge_gate_causes types.
+// Deriving it twice is how an apply could have no causes and still narrow to the unit file alone.
+type SitePxeEdgeDesiredInputs {
+  roster: SiteEdgeRoster
+  network: Ipv4Address
+}
+
+fn site_pxe_edge_desired_inputs(
+  pin: SitePxeEdgeChainloaderPin,
+  roster: MacParseResult,
+  tftp_server: Ipv4ParseResult,
+  segment: Ipv4ParseResult,
+) -> SitePxeEdgeDesiredInputs? {
+  match site_pxe_edge_chainloader_target(pin: pin) {
+    Absent => Absent
+    Present { value: c } =>
+      match roster {
+        MacParseFailed { error: _ } => Absent
+        MacParsed { address: a } =>
+          match tftp_server {
+            Ipv4ParseFailed { error: _ } => Absent
+            Ipv4Parsed { address: server } =>
+              match segment {
+                Ipv4ParseFailed { error: _ } => Absent
+                Ipv4Parsed { address: network } => Present { value: SitePxeEdgeDesiredInputs {
+                  roster: site_pxe_edge_roster(target: c, known_client_macs: [a], tftp_server_address: server),
+                  network: network,
+                } }
+              }
+          }
+      }
+  }
+}
+
 fn site_pxe_edge_desired_files(roster: SiteEdgeRoster, network: Ipv4Address) -> List<SitePxeEdgeFile> {
   [site_pxe_edge_config_file(roster: roster, network: network), site_pxe_edge_unit_file()]
 }
@@ -216,6 +252,7 @@ type SitePxeEdgeProbe
   = SitePxeEdgeProbeHeld
   | SitePxeEdgeProbeObservedNegative { reason: String }
   | SitePxeEdgeProbeUnobservable { reason: String }
+  | SitePxeEdgeProbeNotAttempted { reason: String }
 
 type SitePxeEdgeChainloaderObservation
   = ChainloaderDigestObserved { digest: ContentHash }
@@ -542,10 +579,12 @@ fn activate_site_pxe_edge_unit(target: SshTarget, context: FleetSshExecutionCont
   match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
     SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
     SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
+    SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
     SitePxeEdgeProbeHeld =>
       match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_enable_argv(unit: site_pxe_edge_unit_name)), what: "enable") {
         SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
         SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
+        SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
         SitePxeEdgeProbeHeld =>
           site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_restart_argv(unit: site_pxe_edge_unit_name)), what: "restart")
       }
@@ -592,30 +631,18 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
   let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
-  let files = match site_pxe_edge_chainloader_target(pin: pin) {
+  let files = match site_pxe_edge_desired_inputs(pin: pin, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
     Absent => [site_pxe_edge_unit_file()]
-    Present { value: c } =>
-      match first_onboarding_known_client_mac {
-        MacParsed { address: a } =>
-          match site_pxe_edge_tftp_server_address {
-            Ipv4Parsed { address: server } =>
-              match site_pxe_edge_segment_network {
-                Ipv4Parsed { address: network } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a], tftp_server_address: server), network: network)
-                Ipv4ParseFailed { error: _ } => [site_pxe_edge_unit_file()]
-              }
-            Ipv4ParseFailed { error: _ } => [site_pxe_edge_unit_file()]
-          }
-        MacParseFailed { error: _ } => [site_pxe_edge_unit_file()]
-      }
+    Present { value: inputs } => site_pxe_edge_desired_files(roster: inputs.roster, network: inputs.network)
   }
   let results = site_pxe_edge_file_results(target: target, context: context, mode: mode, gate_open: length(causes) == 0, files: files)
   let activation = match mode {
-    SitePxeEdgeObserveOnly => SitePxeEdgeProbeObservedNegative { reason: "observe-only: not attempted" }
+    SitePxeEdgeObserveOnly => SitePxeEdgeProbeNotAttempted { reason: "observe-only" }
     SitePxeEdgeApply =>
       if length(causes) == 0 && all(results, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome)) {
         activate_site_pxe_edge_unit(target: target, context: context)
       } else {
-        SitePxeEdgeProbeObservedNegative { reason: "not attempted: gate closed or a file did not settle" }
+        SitePxeEdgeProbeNotAttempted { reason: "gate closed or a file did not settle" }
       }
   }
   let unit_active = observe_site_pxe_edge_unit_active(target: target, context: context)
@@ -670,6 +697,7 @@ fn site_pxe_edge_probe_held(probe: SitePxeEdgeProbe) -> Bool {
     SitePxeEdgeProbeHeld => true
     SitePxeEdgeProbeObservedNegative { reason: _ } => false
     SitePxeEdgeProbeUnobservable { reason: _ } => false
+    SitePxeEdgeProbeNotAttempted { reason: _ } => false
   }
 }
 
@@ -678,6 +706,7 @@ fn site_pxe_edge_probe_observable(probe: SitePxeEdgeProbe) -> Bool {
     SitePxeEdgeProbeHeld => true
     SitePxeEdgeProbeObservedNegative { reason: _ } => true
     SitePxeEdgeProbeUnobservable { reason: _ } => false
+    SitePxeEdgeProbeNotAttempted { reason: _ } => false
   }
 }
 
@@ -686,6 +715,7 @@ fn site_pxe_edge_probe_wire(probe: SitePxeEdgeProbe) -> String {
     SitePxeEdgeProbeHeld => "held"
     SitePxeEdgeProbeObservedNegative { reason: r } => concat("no ", r)
     SitePxeEdgeProbeUnobservable { reason: r } => concat("UNOBSERVABLE ", r)
+    SitePxeEdgeProbeNotAttempted { reason: r } => concat("not-attempted ", r)
   }
 }
 

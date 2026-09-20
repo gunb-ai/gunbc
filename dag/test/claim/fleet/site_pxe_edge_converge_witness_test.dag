@@ -20,6 +20,8 @@ import gunbc.site_pxe_edge_converge {
   SitePxeEdgeProbeHeld,
   SitePxeEdgeProbeObservedNegative,
   SitePxeEdgeProbeUnobservable,
+  SitePxeEdgeProbeNotAttempted,
+  site_pxe_edge_desired_inputs,
   SitePxeEdgeApply,
   SitePxeEdgePostActivation,
   PostActivationNotRead,
@@ -288,7 +290,7 @@ fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePx
     mode: SitePxeEdgeObserveOnly,
     gate_causes: causes,
     files: [],
-    activation: SitePxeEdgeProbeObservedNegative { reason: "observe-only: not attempted" },
+    activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: unit_active,
     post_activation: PostActivationNotRead { reason: "observe-only" },
   }
@@ -412,4 +414,26 @@ test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bo
 test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> Bool {
   site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1 sudo: a password is required" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "remote words refused" }]))
+}
+
+// GATE-OPEN IMPLIES THE CONFIG IS DERIVABLE: the desired inputs are derived once and read by the file
+// list, so an apply cannot pass a clean gate and still narrow to the unit file alone. The same four
+// facts that leave the gate empty leave the inputs Present, and a failure in any one leaves both closed.
+test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
+  let open_causes = site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  )
+  let open_inputs = site_pxe_edge_desired_inputs(pin: pinned(digest: digest_a), roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let unpinned_inputs = site_pxe_edge_desired_inputs(pin: site_pxe_edge_chainloader_pin, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let unparsed_inputs = site_pxe_edge_desired_inputs(pin: pinned(digest: digest_a), roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  length(open_causes) == 0
+    && (match open_inputs { Present { value: _ } => true  Absent => false })
+    && (match unpinned_inputs { Present { value: _ } => false  Absent => true })
+    && (match unparsed_inputs { Present { value: _ } => false  Absent => true })
 }

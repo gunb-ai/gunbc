@@ -1,20 +1,29 @@
 module extdeps.ocp.mt_jade.platform
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.integer { Int }
+import std.nat { Nat }
 import std.measure {
+  Bandwidth,
   Hertz,
   MegatransfersPerSecond,
   Microsecond,
   Micrometer,
+  Millimeter,
+  RackUnit,
+  bandwidth,
   hertz,
   megatransfers_per_second,
   microsecond,
   micrometer,
   micrometer_count,
+  millimeter,
+  rack_unit,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.standards.nic_attachment { NamedOnboardPhy, OnboardControllerUnstated, OnboardNetworkController }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, CitedFigureStanding, TranscribedUncited }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.ocp.mt_jade.subject {
   mt_jade_subject_authority_anchor,
   mt_jade_model_scope,
@@ -23,6 +32,10 @@ import extdeps.ocp.mt_jade.subject {
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_subject_authority_anchor
+
+// This module does not widen extdeps.boards.types BaseboardModel. Mt. Jade identity lives here
+// and in extdeps.ocp.mt_jade.subject; Wiwynn SV328R is a separate product. Adding a board must
+// not edit a generic product enum (same standing as extdeps.ocp.mt_mitchell.platform).
 
 data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
 
@@ -306,6 +319,13 @@ type MtJadeReferencePartRow {
 // retyping the part number as the only source of chip identity.
 data mt_jade_bmc_chip_catalog: AspeedAst2500CatalogRow = aspeed_ast2500_catalog
 
+data mt_jade_bmc_ethernet_phy: MtJadeReferencePartRow = MtJadeReferencePartRow {
+  ordering_part_number: "RTL8211E",
+  vendor_label: "Realtek",
+  role: BmcEthernetPhy,
+  authority: mt_jade_subject_authority_anchor,
+}
+
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
     ordering_part_number: "AST2500",
@@ -331,12 +351,7 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
     role: BmcSpiFlash,
     authority: mt_jade_subject_authority_anchor,
   },
-  MtJadeReferencePartRow {
-    ordering_part_number: "RTL8211E",
-    vendor_label: "Realtek",
-    role: BmcEthernetPhy,
-    authority: mt_jade_subject_authority_anchor,
-  },
+  mt_jade_bmc_ethernet_phy,
   MtJadeReferencePartRow {
     ordering_part_number: "9FGV1006B",
     vendor_label: "Renesas (IDT)",
@@ -371,6 +386,91 @@ fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr
 
 fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
   fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
+}
+
+// FEATURE LIST AND SECTION 7.2: FAN CONNECTOR POPULATIONS ARE CHASSIS-HEIGHT SPECIFIC. The
+// motherboard carries both connector sets; a 2U chassis uses six 6056 dual-rotor fans and a 1U
+// chassis uses eight 4056 dual-rotor fans. PWM/TACH in Table 9 restates the same split.
+type MtJadeFanConnectorPopulation {
+  chassis_height: RackUnit
+  connector_count: Nat
+  frame_width: Millimeter
+  frame_thickness: Millimeter
+  dual_rotor: Bool
+}
+
+data mt_jade_fan_connectors_2u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
+  chassis_height: rack_unit(count: 2),
+  connector_count: 6,
+  frame_width: millimeter(count: 60),
+  frame_thickness: millimeter(count: 56),
+  dual_rotor: true,
+}
+
+data mt_jade_fan_connectors_1u: MtJadeFanConnectorPopulation = MtJadeFanConnectorPopulation {
+  chassis_height: rack_unit(count: 1),
+  connector_count: 8,
+  frame_width: millimeter(count: 40),
+  frame_thickness: millimeter(count: 56),
+  dual_rotor: true,
+}
+
+// FEATURE LIST: DUAL CRPS, 1+1, HOT-PLUG. "1+1" is required_count + spare_count, not a label.
+// The specification names the PSU mechanical class and does not name IEC 60320 sheet, AC
+// voltage range, or a wattage rating of any fitted module. Inventing C14 vs C20 from "CRPS"
+// would be a fabricated inlet.
+type MtJadeCrpsPower {
+  psu_count: Nat
+  required_count: Nat
+  spare_count: Nat
+  hot_plug: Bool
+}
+
+data mt_jade_crps_power: MtJadeCrpsPower = MtJadeCrpsPower {
+  psu_count: 2,
+  required_count: 1,
+  spare_count: 1,
+  hot_plug: true,
+}
+
+data mt_jade_crps_ac_inlet: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "OCP Mt. Jade Rev 1.0 names two CRPS connectors and 1+1 hot-plug redundancy. It does not name an IEC 60320 inlet (C14 vs C20), a 120 V vs 200-240 V rating, or the cord the seller ships. Discriminator: a photograph or FRU of the fitted PSU face, or a PSU ordering part whose own datasheet names the inlet and AC range.",
+}
+
+// FEATURE LIST: "MGMT 1x 1GbE from BMC to Rear RJ45 Connector". Section 7.6.1 names BMC ETH at
+// 10/100/1000 and RTL8211E as the PHY (already a reference-part row). Bottom-side I/O is common
+// between 1U and 2U: BMC UART/ETH/VGA sit with the power-supply end of the board.
+type MtJadeBmcManagementNetwork {
+  network: OnboardNetworkController
+  location_label: NonEmptyStr
+}
+
+data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
+  network: OnboardNetworkController {
+    controller: OnboardControllerUnstated {
+      read_obligation: "OCP Mt. Jade Rev 1.0 names RTL8211E as the BMC Ethernet PHY and AST2500 as the BMC. It does not name a MAC/controller OPN for the manageability port. Discriminator: a board silkscreen, FRU, or lspci census of a unit of this class.",
+    },
+    phy: NamedOnboardPhy { part: mt_jade_bmc_ethernet_phy.ordering_part_number },
+    port_count: 1,
+    per_port_bandwidth: bandwidth(count: 1000000000),
+    purpose: "BMC manageability",
+  },
+  location_label: "rear RJ45, power-supply / bottom-side I/O",
+}
+
+// FEATURE LIST "BMC AMI MegaRAC, OpenBMC" IS A DISJUNCTION, NOT A DEFAULT. The specification
+// names both stacks. A unit's family is a workflow observation (gunbc.machine_intake_access),
+// never this row. megaRAC_* folds may run only after AmiMegaRac is observed.
+data mt_jade_cited_bmc_firmware_options: List<BmcFirmwareFamily> = [
+  AmiMegaRac,
+  OpenBmc,
+]
+
+fn mt_jade_cited_bmc_firmware_options_include(
+  options: List<BmcFirmwareFamily>,
+  wanted: BmcFirmwareFamily,
+) -> Bool {
+  fold(options, init: false, f: fn(acc, o) { acc || o == wanted })
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
