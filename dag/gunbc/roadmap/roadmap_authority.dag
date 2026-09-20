@@ -700,15 +700,17 @@ fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract 
 // worker commits, when the file exists; until then an unauthored witness fails verification as
 // oracle-missing, which is the truthful outcome for work not yet done.
 
-// TEMPORARY MACHINERY-SMOKE BINDING (2026-09-20): points at the already-green shell_typed_invocation
-// witness so one dispatch can prove the launch -> worker -> belt -> verify path end to end. This is
-// the coverage-by-illusion tier BY DESIGN for one run — it proves Verify executes, nothing about
-// the node. Restore the real binding (the worker-authored acceptance witness, named below in the
-// comment's table entry) the moment the seeded red witness for this node lands.
+// REAL BINDING RESTORED 2026-09-20: the seeded red acceptance witness for this node has landed
+// (dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag, enrolled red in
+// v2.workflow.floor_expected_red), so the temporary machinery-smoke binding onto the stable
+// shell_typed_invocation witness is retired on exactly the condition it declared. The contract
+// now pins the node's own oracle: authored, resolving, and RED; the dispatched worker is
+// forbidden to edit it — an edit refuses verification as oracle-moved — and greens it by doing
+// M1-M3 of the node row.
 fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/shell/shell_typed_invocation_witness_test.dag" as FilePath,
-    function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
+    entry: "dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag" as FilePath,
+    function: "cron_entry_line_builder_acceptance_holds" as NonEmptyStr,
   )
 }
 
@@ -2371,7 +2373,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Build the cron entry line from typed intent, not string concat",
         boundary: "gunbc.tools.cron_tag build_cron_entry_line routes its fields (schedule, command, tag) through a typed cron-entry intent realized by the bash-grammar rows of v2.workflow.orchestration_bash_emit_support, never by concatenation. Cron stays the foreign executor and the emitted line stays a crontab line — the change is who decides its bytes.",
         displaced_cost: "A crontab line assembled by concat in decision code cannot be checked before cron runs it — a quoting or metacharacter defect detonates inside the scheduler, not at the refusal — and the entry shape cannot be reused by any other scheduler-facing surface.",
-        first_slice: "M0: plant the acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag (red today) with acceptance fn cron_entry_line_builder_acceptance_holds that conjoins the clause witnesses. M1: model the typed entry intent over the existing grammar rows, following v2.workflow.orchestration_bash_emit_support. M2: rebind build_cron_entry_line onto the intent and DELETE the concat — not stubbed to return an empty string. M3: witness green by execution.",
+        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: model the typed entry intent over the existing grammar rows, following v2.workflow.orchestration_bash_emit_support. M2: rebind build_cron_entry_line onto the intent and DELETE the concat — not stubbed to return an empty string. M3: witness green by execution.",
         red_control: "The rendered entry line contains no shell control word (set -e, ||, &&, ;, 2>/dev/null); a typed-form control asserts the entry is built from declared schedule/command/tag fields; a malformed field refuses before any line is produced.",
         out_of_scope: "Cron remains the executor and a crontab line remains genuinely shell-shaped output. A posix_sh_program_command wrapping the old concatenated text is not a described operation; an empty-string stub is not a deletion.",
         handback: "The described builder, the deleted concat, and the witness green by execution on the named test process."

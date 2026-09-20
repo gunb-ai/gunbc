@@ -1,0 +1,116 @@
+module test.claim.shell.shell_dag_cron_entry_line_builder_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.tools.cron_tag { build_cron_entry_line, cron_tag_marker }
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-cron-entry-line-builder, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that build_cron_entry_line (gunbc.tools.cron_tag) routes its declared
+// fields through a typed cron-entry intent realized by the bash-grammar rows of
+// v2.workflow.orchestration_bash_emit_support, never by concatenation. Today the builder
+// interpolates each field raw into the crontab line, so a field carrying a shell control word
+// (`set -e`, `||`, `&&`, `;`, `2>/dev/null`) renders it straight into a line cron will execute.
+// The adversarial arms below plant exactly that input and assert the rendered line carries no
+// control word; they are red on the concat and turn green only when the construction refuses a
+// malformed field before any line is produced or otherwise builds the line safely from the typed
+// intent. This file is enrolled in v2.workflow.floor_expected_red so the required floor holds the
+// red arms as known red rather than as failures; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (build_cron_entry_line with its
+// declared schedule/command/log_path/tag fields, and cron_tag_marker) must survive the rebind,
+// because this witness cannot be re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+fn line_carries_no_shell_control_word(line: String) -> Bool {
+  !any(shell_control_words, w => string_contains(s: line, pattern: w))
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: a benign entry is built from its declared
+// schedule/command/tag fields — the schedule and command render and the tag marker is the one
+// cron_tag_marker derives (the format upsert_tagged_entries keys on, so it survives the rebind).
+// This control establishes that the red arms below measure the CONSTRUCTION of the line, not its
+// inputs.
+test fn benign_entry_renders_its_declared_fields() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  string_contains(s: line, pattern: "*/15 * * * *")
+    && string_contains(s: line, pattern: "systemd-run --user --scope true")
+    && string_contains(s: line, pattern: cron_tag_marker(tag: "review-agent"))
+}
+
+// POSITIVE CONTROL, green today and after: the benign entry itself carries no shell control word,
+// so the adversarial arms discriminate on the hazard they plant and not on the honest rendering.
+test fn benign_entry_carries_no_shell_control_word() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line_carries_no_shell_control_word(line: line)
+}
+
+// RED TODAY: the schedule field is a cron grammar position; one carrying `; shutdown -h now` is
+// malformed and must be refused before any line is produced. Today's concat interpolates it raw.
+test fn adversarial_schedule_field_renders_no_shell_control_word() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "0 3 * * *; shutdown -h now",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line_carries_no_shell_control_word(line: line)
+}
+
+// RED TODAY: a command field carrying `&&` chains a second command inside the scheduler; the
+// typed intent must refuse or safely construct it, never render it bare.
+test fn adversarial_command_field_renders_no_shell_control_word() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "echo done && rm -rf /tmp/review-agent-state",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line_carries_no_shell_control_word(line: line)
+}
+
+// RED TODAY: a log path carrying `2>/dev/null` smuggles a redirection that swallows exactly the
+// diagnostics a failing entry owes; the typed intent must refuse it, not render it.
+test fn adversarial_log_path_field_renders_no_shell_control_word() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log 2>/dev/null",
+    tag: "review-agent"
+  )
+  line_carries_no_shell_control_word(line: line)
+}
+
+// RED TODAY: the tag is rendered into the trailing marker comment, and a tag carrying `||` turns
+// the comment into a fallback arm if the marker framing ever shifts; the typed intent must refuse
+// a malformed tag before any line is produced.
+test fn adversarial_tag_field_renders_no_shell_control_word() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent || reboot"
+  )
+  line_carries_no_shell_control_word(line: line)
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the
+// adversarial arms are red; green only when every clause holds over the typed rebind.
+test fn cron_entry_line_builder_acceptance_holds() -> Bool {
+  benign_entry_renders_its_declared_fields()
+    && benign_entry_carries_no_shell_control_word()
+    && adversarial_schedule_field_renders_no_shell_control_word()
+    && adversarial_command_field_renders_no_shell_control_word()
+    && adversarial_log_path_field_renders_no_shell_control_word()
+    && adversarial_tag_field_renders_no_shell_control_word()
+}
