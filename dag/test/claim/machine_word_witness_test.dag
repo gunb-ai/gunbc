@@ -346,11 +346,16 @@ test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
   }
 }
 
-// A MEMBER OF THE WRONG WIDTH IS NO LONGER EXPRESSIBLE, so the claim that refused one is replaced
-// by the claim that says why. UInt8 composes MachineWidth<8> rather than carrying a width field, so
-// a member cannot disagree about its width -- the state the old control caught has no constructor.
-// What CAN still be written is an out-of-range value, because the composition is transparent to Int
-// at a formal, and std.integer uint8_of_int is what refuses it.
+// A MEMBER OF THE WRONG WIDTH IS STILL EXPRESSIBLE, AND THE CLAIM THAT SAID OTHERWISE IS DELETED
+// RATHER THAN REPHRASED. The old control refused a Width16 member reaching the octet path; the
+// carrier change was supposed to make that state unwritable, and MEASUREMENT SAYS IT DOES NOT --
+// a function taking List<Word> and calling word_from_octets COMPILES against the List<UInt8>
+// parameter, and only dies at runtime with an untyped TypeError. So there is no compile-time wall
+// to claim here and no typed refusal to pin, which is why no claim stands in this place.
+//
+// What IS claimable, and is claimed below, is the range: the composition is transparent to Int at a
+// formal, so a bare 256 crosses a UInt8 parameter, and std.integer uint8_of_int is the mitigation
+// that refuses it. That is this file's bypass RED, and it is red by mutation of uint8_of_int.
 // THE BYPASS RED NOW SITS AT std.integer uint8_of_int, the octet's own constructor, rather than at
 // a carrier this module invented. Re-introducing an unchecked crossing turns this Refused into a
 // Ready. What it does NOT establish is that a caller cannot bypass it: UInt8 is transparent to Int
