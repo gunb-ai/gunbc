@@ -126,7 +126,7 @@ fn demand_engine_program_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "`derived_realization_schedule.rs`"), cell(text: "`derived_realization_schedule.rs`")]),
         row(cells: [cell(text: "`std.realize_pack` advisory width"), cell(text: "`std.realize_pack`")]),
         row(cells: [cell(text: "`std.realization_width` fallback / minimum-one"), cell(text: "`std.realization_width`")]),
-        row(cells: [cell(text: "parse sweep unbounded threads"), cell(text: "`claim_executor`, `declaration_index`, `module_path_index`, `namespace_wave_admission`")]),
+        row(cells: [cell(text: "parse sweep unbounded threads"), cell(text: "`claim_executor`, `declaration_index`, `module_path_index`, `namespace_baseline`")]),
         row(cells: [cell(text: "build parallelism (`ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS`)"), cell(text: "`ci_compile_jobs`, jobserver, `CARGO_BUILD_JOBS`")]),
         row(cells: [cell(text: "results indexed by occurrence identity crossing graphs"), cell(text: "allocator, minted ids, span index")]),
       ],

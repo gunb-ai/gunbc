@@ -1,0 +1,234 @@
+module v2.test.claim.parse.test_marker_channel
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DESIGN SECTION 4c OBLIGATION, READ AT ONE INTERFACE: the `test` marker is captured on a
+// channel disjoint from the semantic tree. So a marked declaration must DIFFER from an unmarked one in
+// v2.compiler.test_marker_capture and be IDENTICAL to it in the semantic projection. The capture half
+// runs tokenize, parse_module and the capture. The projection half runs v2.compiler.normalize
+// normalize_node over the real parse of one marked declaration twice -- on the marked shell and on
+// the declaration inside it -- and compares the two through content_hash (occurrence ids are not
+// hashed). That is the marker's whole contribution to lowering, measured at the lowering interface
+// with ONE parse, because a second parse and normalize put the claim over the floor's new-witness
+// eval-step budget. It uses the `test data` form: `test fn` and `test data` share one production and
+// one lowering arm (v2.compiler.body_lowering_fold body_lower_test_fn_decl_to_member), and the data
+// form is the one that fits the budget.
+//
+// The equality half is vacuous if both sides refuse or both collapse to one constant, so the
+// hash-differs control below must stay red-capable: a different declaration moves the hash.
+
+fn test_marker_parsed(src: String, file: Symbol) -> Outcome<ParseArtifact> {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
+  }
+}
+
+fn test_marker_capture_of(src: String, file: Symbol) -> Outcome<TestMarkerChannel> {
+  match test_marker_parsed(src: src, file: file) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: artifact, diagnostics: _ } => test_marker_capture(artifact: artifact)
+  }
+}
+
+fn test_marker_marks_only(src: String, file: Symbol, name: Symbol) -> Bool {
+  match test_marker_capture_of(src: src, file: file) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: channel, diagnostics: _ } =>
+      (test_marker_channel_count(channel: channel) == 1)
+        && test_marker_channel_marks(channel: channel, name: name)
+  }
+}
+
+fn test_marker_refusal_reason(src: String, file: Symbol) -> String {
+  match test_marker_capture_of(src: src, file: file) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+fn test_marker_find_emitted(n: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: e } =>
+      if e == emitted { optional_present(value: n) } else { test_marker_find_emitted_under(n: n, emitted: emitted) }
+    Absent => test_marker_find_emitted_under(n: n, emitted: emitted)
+  }
+}
+
+fn test_marker_find_emitted_under(n: Node, emitted: Symbol) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => test_marker_find_emitted(n: e.target, emitted: emitted)
+    }
+  })
+}
+
+fn test_marker_lowered_hash(n: Node) -> Optional<Hash> {
+  match normalize_node(n: n) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: lowered, diagnostics: _ } => optional_present(value: content_hash(n: lowered))
+  }
+}
+
+// Both lowered hashes compared, or Absent when either side refused -- so a refusal can never read as
+// a match.
+fn test_marker_lowered_pair_agrees(left: Node, right: Node) -> Optional<Bool> {
+  match test_marker_lowered_hash(n: left) {
+    Absent => optional_absent()
+    Present { value: l } =>
+      match test_marker_lowered_hash(n: right) {
+        Absent => optional_absent()
+        Present { value: r } => optional_present(value: l == r)
+      }
+  }
+}
+
+// The declaration inside the marked shell: the right projection of its `sequence(marker, decl)`.
+fn test_marker_inner_declaration(shell: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match named_child_lookup(root: captured, name: ^grammar_sequence_right_node_projection) {
+        NamedChildFound { target: t } => optional_present(value: t)
+        NamedChildMissing => optional_absent()
+        NamedChildAmbiguous => optional_absent()
+      }
+  }
+}
+
+// The marked shell of `projection_source` against the declaration inside it.
+fn test_marker_shell_agrees_with_its_declaration() -> Optional<Bool> {
+  match test_marker_projection_parsed() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: artifact, diagnostics: _ } =>
+      match test_marker_find_emitted(n: artifact.tree, emitted: ^dag_surface_test_fn_decl) {
+        Absent => optional_absent()
+        Present { value: shell } =>
+          match test_marker_inner_declaration(shell: shell) {
+            Absent => optional_absent()
+            Present { value: inner } => test_marker_lowered_pair_agrees(left: shell, right: inner)
+          }
+      }
+  }
+}
+
+// The first two data declarations in source order, gathered in one walk.
+type TestMarkerDeclarationPair {
+  first: Optional<Node>
+  second: Optional<Node>
+}
+
+fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> TestMarkerDeclarationPair {
+  match acc.second {
+    Present { value: _ } => acc
+    Absent =>
+      match parse_production_emitted_identity_optional(node: n) {
+        Present { value: id } =>
+          if id == ^dag_surface_data_decl {
+            match acc.first {
+              Absent => TestMarkerDeclarationPair { first: optional_present(value: n), second: optional_absent() }
+              Present { value: _ } => TestMarkerDeclarationPair { first: acc.first, second: optional_present(value: n) }
+            }
+          } else {
+            fold(n.children, init: acc, f: fn(a, e) { test_marker_gather_data_decls(n: e.target, acc: a) })
+          }
+        Absent => fold(n.children, init: acc, f: fn(a, e) { test_marker_gather_data_decls(n: e.target, acc: a) })
+      }
+  }
+}
+
+// ONE SOURCE AND ONE PRODUCER FOR BOTH PROJECTION CLAIMS: the real parse of `projection_source`,
+// read by the 4c equality (the marked shell against the declaration inside it) AND by its
+// discrimination control (the two declarations of that same module against each other). WHAT IS
+// SHARED IS THE SOURCE LITERAL, THIS PRODUCER AND THE FIXTURE SHAPE, NOT A MATERIALIZED PARSE: the
+// runner's claim frames are isolated, so each claim recomputes this parse, twice across the pair,
+// until a controlled measurement justifies enrolling it. It carries NO warm-share row: a row's admission is decided by the
+// required floor's shared-fill ledger and claim-cost table, and gunbc#11742 took those lanes off the
+// merge path, so no figure for one could be produced on any head. A row can be added when the lanes
+// return and can measure it.
+fn test_marker_projection_parsed() -> Outcome<ParseArtifact> {
+  test_marker_parsed(src: projection_source, file: ^test_marker_projection_subject)
+}
+
+// The first two declarations of `projection_source` -- the marked module's own `w` and the unmarked
+// `v` beside it -- against each other.
+fn test_marker_distinct_declarations_agree() -> Optional<Bool> {
+  match test_marker_projection_parsed() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: artifact, diagnostics: _ } =>
+      let pair = test_marker_gather_data_decls(
+        n: artifact.tree,
+        acc: TestMarkerDeclarationPair { first: optional_absent(), second: optional_absent() }
+      )
+      match pair.first {
+        Absent => optional_absent()
+        Present { value: first } =>
+          match pair.second {
+            Absent => optional_absent()
+            Present { value: second } => test_marker_lowered_pair_agrees(left: first, right: second)
+          }
+      }
+  }
+}
+
+data projection_source: String = "module m\n\ntest data w: Bool = true\ndata v: Int = 0\n"
+
+data marked_fn_source: String = "module m.t\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
+
+data plain_fn_source: String = "module m.t\n\nfn witness_holds() -> Bool {\n  true\n}\n"
+
+data marked_data_source: String = "module m.t\n\ntest data witness_value: Bool = true\n"
+
+data mixed_source: String = "module m.t\n\nfn serving() -> Bool {\n  true\n}\n\ntest fn witness_holds() -> Bool {\n  true\n}\n"
+
+data non_test_marker_source: String = "module m.t\n\nprobe fn witness_holds() -> Bool {\n  true\n}\n"
+
+// TREATMENT: the marker survives lowering's erasure, keyed by the declared member.
+test fn test_fn_marker_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: marked_fn_source, file: ^test_marker_fn_subject, name: ^witness_holds)
+}
+
+// The second authored form the marker admits.
+test fn test_data_marker_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: marked_data_source, file: ^test_marker_data_subject, name: ^witness_value)
+}
+
+// CONTROL: a module mixing serving and test code marks exactly the test declaration.
+test fn only_the_marked_declaration_is_captured_holds() -> Bool {
+  test_marker_marks_only(src: mixed_source, file: ^test_marker_mixed_subject, name: ^witness_holds)
+}
+
+// CONTROL: an unmarked fn is absent from the channel.
+test fn plain_fn_is_not_captured_holds() -> Bool {
+  match test_marker_capture_of(src: plain_fn_source, file: ^test_marker_plain_subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: channel, diagnostics: _ } => test_marker_channel_count(channel: channel) == 0
+  }
+}
+
+// STANDING RED: an identifier in marker position that is not `test` is refused, never recorded as a
+// marker and never skipped.
+test fn non_test_marker_is_refused_holds() -> Bool {
+  test_marker_refusal_reason(src: non_test_marker_source, file: ^test_marker_non_test_subject)
+    == "test_marker_reason_marker_not_test"
+}
+
+// THE 4c EQUALITY: the marker contributes nothing to lowering. The marked shell lowers to exactly
+// what the declaration inside it lowers to.
+test fn marked_and_plain_declaration_share_one_semantic_projection_holds() -> Bool {
+  match test_marker_shell_agrees_with_its_declaration() {
+    Present { value: agrees } => agrees
+    Absent => false
+  }
+}
+
+// CONTROL for the equality: the projection does discriminate declarations, so its agreement above
+// is a reading and not a constant -- two declarations with different names and values differ.
+test fn a_different_declaration_moves_the_semantic_projection_holds() -> Bool {
+  match test_marker_distinct_declarations_agree() {
+    Present { value: agrees } => !agrees
+    Absent => false
+  }
+}

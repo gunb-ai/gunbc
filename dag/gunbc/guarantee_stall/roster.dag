@@ -20,7 +20,7 @@ import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { p
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
 import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
-import gunbc.guarantee_stall.runner_microvm_guest_size_derivation_stall { runner_microvm_guest_size_derivation_stall }
+import gunbc.guarantee_stall.runner_microvm_floor_fit_stall { runner_microvm_floor_fit_stall }
 import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
 import gunbc.guarantee_stall.heterogeneous_child_list_stall { heterogeneous_child_list_stall }
@@ -50,7 +50,6 @@ import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
 import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
 import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
-import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
@@ -164,8 +163,9 @@ import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { j
 // DESIGN section 4b(3) failure, and this is that failure in its containment-scope form.
 
 // THE FIVE ROWS AT THE END ARRIVED LATE AND WERE FOUND BY THE JOIN, not by a reading of this file.
-// They are declared beside the subject they are about -- two in gunbc.namespace_wave_admission,
-// two in gunbc.runner_service_activation, one in gunbc.declaration_index_seed_growth -- rather
+// They are declared beside the subject they are about -- two in gunbc.namespace_wave_admission
+// (both deleted with that module and the wave-admission wall, operator ruling 2026-09-19), two in
+// gunbc.runner_service_activation, one in gunbc.declaration_index_seed_growth -- rather
 // than as row modules under this directory, so the file-versus-list set difference that made a
 // missing row obvious after the per-row split could never see them. They were declared, typed,
 // valid, and absent from every projection this roster feeds, which is the exact defect
@@ -178,7 +178,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   merge_admission_terminal_verdict_stall,
   generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
-  runner_microvm_guest_size_derivation_stall,
+  runner_microvm_floor_fit_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
   heterogeneous_child_list_stall,
@@ -207,8 +207,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   roster_re_enumerates_its_own_rows_stall,
   self_host_wet_route_receipt_lifetime_stall,
   trigger_capability_referent_free_by_construction_stall,
-  namespace_wave_admission_occurrence_grain_stall,
-  namespace_wave_admission_board_grain_stall,
   runner_activation_reachability_stall,
   runner_activation_safety_stall,
   declaration_index_fixture_exemption_classification_stall,

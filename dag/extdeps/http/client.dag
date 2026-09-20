@@ -1,6 +1,6 @@
 module extdeps.http.client
 
-import std.types { NonEmptyStr, Bool, List, Unit }
+import std.types { NonEmptyStr, Bool, List, Unit, Int }
 import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -57,6 +57,13 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // 5 rules that a bounded "forever" is not an "unknown" error. Measured on this deployment, a wedged
 // backend held one harness POST open for over thirty minutes while the router answered an unrelated
 // probe in 0.15ms -- so the turn was neither progressing nor failing, and no arm existed to say so.
+// PostStdinWithin, A BOUNDED POST WHOSE TRANSPORT OUTCOME IS KEPT, NOT FOLDED INTO SUCCESS. The request body goes
+// on stdin (curl --data-binary @-), so no body byte passes through argv or a shared file. Without
+// -f, an HTTP error status is an ANSWER (exit 0), and the status is appended as the final line by
+// -w, so a caller can tell a server's refusal from curl never reaching it: curl's own exit code
+// carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
+// handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
+// stderr text.
 service http.Client {
   operation Get {
     input { url: NonEmptyStr }
@@ -132,6 +139,27 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation PostStdinWithin {
+    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: request_body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST from stdin did not complete"
+    }
+    mock_response {
+      0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
     }
   }
 

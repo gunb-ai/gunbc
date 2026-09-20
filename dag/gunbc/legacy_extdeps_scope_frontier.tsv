@@ -19,6 +19,7 @@ dag/extdeps/bmc/capability.dag
 dag/extdeps/bmc.dag
 dag/extdeps/bmc/http.dag
 dag/extdeps/bmc/ipmi.dag
+dag/extdeps/bmc/ipmi_boot_selection.dag
 dag/extdeps/bmc/openbmc.dag
 dag/extdeps/bmc/openbmc_fan_control.dag
 dag/extdeps/bmc/openbmc_operation.dag

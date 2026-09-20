@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.fleet_converge_plan_cli_fleet_converge_scoped_plan_wet_fleet_converge_expected_host_env_name
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data fleet_converge_plan_cli_fleet_converge_scoped_plan_wet_fleet_converge_expected_host_env_name: TransitionAdmission = TransitionAdmission {
+  label: "fleet_converge_expected_host_env_name home is actions_run_binding so ci_spec can import the pin without a receipt cycle (gunbc#11484)" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.fleet_converge_plan_cli", "fleet_converge_scoped_plan_wet"),
+    spelling: "fleet_converge_expected_host_env_name" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.actions_run_binding", "fleet_converge_expected_host_env_name")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11484 as UInt32,
+}

@@ -1395,7 +1395,7 @@ pub(crate) enum ArmSetConsumerPlanning {
     Selected {
         base: String,
         head: String,
-        selection: crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     },
 }
 
@@ -1405,7 +1405,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 /// WHICH INDEX, AND WHY IT IS REACHABLE HERE. `v2.std.decl_index` `decl_facts_at` answers
 /// "what does the corpus declare under this name" and has no base side; it is the wrong
 /// question. The relation that answers "who binds this declaration" is the one
-/// `namespace_wave_admission` already computes from `ModuleDeclarationRecord`, and the parse
+/// `namespace_baseline` already computes from `ModuleDeclarationRecord`, and the parse
 /// phase builds that index in THIS lane before the floor runs (`RequiredCiPhase::Parse` and
 /// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
@@ -1413,7 +1413,7 @@ pub(crate) enum ArmSetConsumerPlanning {
 fn arm_set_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
 ) -> Result<ArmSetConsumerPlanning, String> {
-    use crate::cli_run::namespace_wave_admission::{
+    use crate::cli_run::namespace_baseline::{
         arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
@@ -5458,6 +5458,63 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+/// THE LEAF'S memory.stat COUNTERS, RAW, ON EVERY BEAT, BECAUSE memory.peak IS NOT A DEMAND.
+///
+/// `memory.current` and `memory.peak` charge page cache alongside anonymous memory, and a run
+/// that is being reclaimed down to its `memory.high` line finishes clean precisely because the
+/// cache half of that charge is reclaimable. So a peak read at the throttle line is a CEILING
+/// that includes cache, and sizing anything to it -- a cell row, a microVM guest whose kernel
+/// can reclaim its own cache just as well -- treats a bet as a fact (DESIGN 4d). Demand is
+/// therefore derived from `memory.stat`'s counters, and this reader prints those counters AS THE
+/// KERNEL REPORTS THEM: one flat list, no grouping, no sum. `memory.stat` is not a partition --
+/// `file` includes shmem, and `unevictable` is an LRU-list state over pages `anon` and `file`
+/// already count -- so any grouping here would already be a derivation, and the derivation has
+/// one home: `gunbc.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
+/// held-set lower bound. `memory.current` is printed beside the counters so a derivation can be
+/// checked against the charge it is drawn from.
+///
+/// Sampled every beat rather than every tenth, because `memory.stat` has no `.peak` and the
+/// maximum over samples is the only bound available; a ten-minute cadence would undercount a
+/// short anonymous spike by whatever it missed. One file read per beat, leaf only -- the
+/// ancestors' counters cover their whole subtrees and say nothing about this run.
+///
+/// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
+/// reason `floor_resource_sample` gives.
+pub(crate) fn floor_cgroup_stat_beat(when: &str) {
+    let leaf = floor_cgroup_dir();
+    let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
+    let key = |k: &str| -> String {
+        body.as_deref()
+            .and_then(|b| {
+                b.lines().find_map(|l| {
+                    l.strip_prefix(k)
+                        .and_then(|r| r.strip_prefix(' '))
+                        .map(|v| v.trim().to_string())
+                })
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+         memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
+         slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
+        key("anon"),
+        key("file"),
+        key("shmem"),
+        key("unevictable"),
+        key("slab_unreclaimable"),
+        key("slab_reclaimable"),
+        key("kernel_stack"),
+        key("pagetables"),
+        key("percpu"),
+        key("sock"),
+        key("file_dirty"),
+    );
+}
+
 ///
 /// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
@@ -5494,6 +5551,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
+    floor_cgroup_stat_beat("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
@@ -5668,7 +5726,7 @@ pub fn run_required_floor(
                 head,
                 selection,
             } => {
-                use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+                use crate::cli_run::namespace_baseline::ArmConsumerBinding;
                 let floor_roots = floor_source_roots_workspace_relative(source_roots);
                 let mut flat_channel = 0usize;
                 for change in &selection.changes {
@@ -11730,7 +11788,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         base: &[(&str, &str)],
         head: &[(&str, &str)],
     ) -> (
-        crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
         PathBuf,
     ) {
         let base_fx = arm_set_fixture(name, "base", base);
@@ -11744,7 +11802,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "PLANT MALFORMED: a side indexed no modules"
         );
         (
-            crate::cli_run::namespace_wave_admission::arm_set_changed_match_consumers(
+            crate::cli_run::namespace_baseline::arm_set_changed_match_consumers(
                 &base_index,
                 &head_index,
             ),
@@ -11753,7 +11811,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     }
 
     fn consumers_of(
-        selection: &crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        selection: &crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
     ) -> Vec<&str> {
         let mut out: Vec<&str> = selection
             .consumers
@@ -11769,7 +11827,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// -- see the positive control below, which prepares W without Y.
     #[test]
     fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
-        use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+        use crate::cli_run::namespace_baseline::ArmConsumerBinding;
         let (selection, head_fx) = arm_set_selection(
             "red",
             &[

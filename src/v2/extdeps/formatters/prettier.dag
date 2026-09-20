@@ -171,14 +171,12 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
   overrides: [],
 }
 
-type PrettierFormattingOptionsPatch = ConfigPatchRecord<PrettierFormattingOptions>
-
-fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: PrettierFormattingOptionsPatch) -> PrettierFormattingOptions {
+fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: ConfigPatchRecord<PrettierFormattingOptions>) -> PrettierFormattingOptions {
   config_patch_layer(base: base, patch: patch)
 }
 
 type PrettierConfigPatch {
-  options: PrettierFormattingOptionsPatch
+  options: ConfigPatchRecord<PrettierFormattingOptions>
   overrides: FieldPatch<List<PrettierOverrideEntry>>
 }
 
