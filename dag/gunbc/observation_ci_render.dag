@@ -908,6 +908,7 @@ type CiWitnessRuntimeCause
   | WitnessCauseArgvExceedsHostArgMax
   | WitnessCauseHostToolRelativePathAmbiguous
   | WitnessCauseShellOutputLimitExceeded
+  | WitnessCauseShellSpawnRefused
   | WitnessCauseCallContractMismatch
   | WitnessCauseMappedOutcomeEscaped
 
@@ -936,6 +937,7 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseArgvExceedsHostArgMax => "argv-exceeds-host-arg-max"
     WitnessCauseHostToolRelativePathAmbiguous => "host-tool-relative-path-ambiguous"
     WitnessCauseShellOutputLimitExceeded => "shell-output-limit-exceeded"
+    WitnessCauseShellSpawnRefused => "shell-spawn-refused"
     WitnessCauseCallContractMismatch => "call-contract-mismatch"
     WitnessCauseMappedOutcomeEscaped => "mapped-outcome-escaped"
   }

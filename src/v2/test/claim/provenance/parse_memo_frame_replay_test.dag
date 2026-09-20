@@ -273,7 +273,7 @@ fn nested_frame_root() -> GrammarRoot {
         expression: abandoned_terminal(token_class: ^nested_tok_a),
         emitted: grammar_atom(identity: ^nested_frame_w)
       },
-      tail: Empty } }
+      tail: std.algebra.Empty } }
     },
     sync_tokens: grammar_empty_sync_tokens()
   }
@@ -283,7 +283,7 @@ fn nested_frame_tokens() -> List<Token> {
   Cons { head: abandoned_token(token_class: ^nested_tok_a, offset: 0),
   tail: Cons { head: abandoned_token(token_class: ^nested_tok_b, offset: 1),
   tail: Cons { head: abandoned_token(token_class: ^nested_tok_y, offset: 2),
-  tail: Empty } } }
+  tail: std.algebra.Empty } } }
 }
 
 fn nested_frame_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {

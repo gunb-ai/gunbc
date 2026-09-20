@@ -60,6 +60,11 @@ data github_run_id_variable_name: String = "GITHUB_RUN_ID"
 data github_run_attempt_variable_name: String = "GITHUB_RUN_ATTEMPT"
 data github_runner_name_variable_name: String = "RUNNER_NAME"
 
+// RUNNER_TEMP is likewise a runner-supplied directory, not a run coordinate: the cited variables
+// reference defines it as the per-job temporary directory. Consumers that write attempt-owned
+// files during a workflow read this name here rather than re-spelling the variable.
+data github_runner_temp_variable_name: String = "RUNNER_TEMP"
+
 // THE RUN'S REPOSITORY AND WORKFLOW REFERENCE, carried for the same reason the coordinates above
 // are. GITHUB_REPOSITORY is `owner/repo`; GITHUB_WORKFLOW_REF is
 // `owner/repo/.github/workflows/<file>@<ref>`, the one runner-supplied variable that names the

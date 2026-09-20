@@ -391,6 +391,12 @@ fn ci_fleet_wif_auth_step() -> Step {
 }
 
 fn ci_fleet_key_agent_step() -> Step {
+  ci_fleet_key_agent_step_when(if_condition: none)
+}
+
+// A job whose dispatches do not all consume host SSH authority passes the condition under which
+// they do, so a run that never opens a fleet session never holds the key (least access).
+fn ci_fleet_key_agent_step_when(if_condition: String?) -> Step {
   RunStep {
     name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
     id: none,
@@ -400,7 +406,7 @@ fn ci_fleet_key_agent_step() -> Step {
       value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: if_condition,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }

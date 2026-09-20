@@ -2443,37 +2443,75 @@ type NativeLaneModuleResolution
   | NativeLaneModuleContextRowsDecided { rows: List<NativeRouteMemberRow> }
   | NativeLaneModuleResolveRowsDecided { rows: List<NativeRouteMemberRow> }
 
+// THE DECISION "DID THIS MODULE RESOLVE IN THIS CONTEXT" HAS ONE AUTHORITY AND TWO CONSUMERS AT
+// DIFFERENT GRAINS. The lane fans it out to one member row per declaration and keeps the resolved
+// tree to infer from; the whole-tree census keeps the DIAGNOSTICS and drops the tree. Those are two
+// readings of one decision, so the decision is taken once here rather than spelled twice -- a second
+// function reaching native_test_resolve_module behind its own file-refusal precheck would be the
+// fork DESIGN section 3 forbids, in the place it would matter most: the two spellings would then be
+// free to disagree about whether a file the context refused is a module that resolved.
+// THE VERDICT CARRIES THE DIAGNOSTICS UNFOLDED, and that is the whole reason this is a separate
+// declaration rather than an inlined precheck. native_test_fatal_reason collapses NonEmptyDiagnostics
+// to its LAST reason, which is the right summary for a member row whose grain is the declaration and
+// the wrong one for a census whose grain is the occurrence: v2.compiler.03_resolve emits one
+// diagnostic PER REFUSED NODE, each carrying its own locus, so a fold to one reason discards every
+// site but one. Summarizing is the CONSUMER's move; this fold hands both consumers everything the
+// resolver said.
+type NativeModuleResolveVerdict
+  = NativeModuleResolveFileRefused { refusal: NativeTestFileRefusal }
+  | NativeModuleResolveRefused { diagnostics: NonEmptyDiagnostics }
+  | NativeModuleResolveAccepted { resolved: ResolvedTree }
+
+fn native_module_resolve_verdict(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  module: String,
+  path: Symbol
+) -> NativeModuleResolveVerdict {
+  match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
+    Present { value: fr } => NativeModuleResolveFileRefused { refusal: fr }
+    Absent =>
+      match native_test_resolve_module(
+        context: context,
+        module: qualified_name_from_dotted_string(dotted: module)
+      ) {
+        Rejected { diagnostics: d } => NativeModuleResolveRefused { diagnostics: d }
+        Accepted { value: resolved, diagnostics: _ } =>
+          NativeModuleResolveAccepted { resolved: resolved }
+      }
+  }
+}
+
 fn native_lane_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeLaneUniverseModule
 ) -> NativeLaneModuleResolution {
-  match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
-    Present { value: fr } =>
+  match native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  ) {
+    NativeModuleResolveFileRefused { refusal: fr } =>
       NativeLaneModuleContextRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
           verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
         )
       }
-    Absent =>
-      match native_test_resolve_module(
-        context: context,
-        module: qualified_name_from_dotted_string(dotted: entry.module)
-      ) {
-        Rejected { diagnostics: d } =>
-          NativeLaneModuleResolveRowsDecided {
-            rows: native_lane_module_refusal_rows(
-              entry: entry,
-              verdict: NativeTestRefused {
-                stage: NativeTestStagePrepare,
-                reason: native_test_fatal_reason(d: d)
-              }
-            )
+    NativeModuleResolveRefused { diagnostics: d } =>
+      NativeLaneModuleResolveRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused {
+            stage: NativeTestStagePrepare,
+            reason: native_test_fatal_reason(d: d)
           }
-        Accepted { value: resolved, diagnostics: _ } =>
-          NativeLaneModuleResolved { resolved: resolved }
+        )
       }
+    NativeModuleResolveAccepted { resolved: resolved } =>
+      NativeLaneModuleResolved { resolved: resolved }
   }
 }
 
@@ -2515,6 +2553,123 @@ fn native_lane_identity_row(
     module: module,
     declaration: declaration,
     verdict: observation.verdict
+  )
+}
+
+// THE WHOLE-TREE CENSUS ROSTER. The universe roster above answers "which modules carry test
+// identities"; this one answers "which modules the ingest carries at all". They are separate folds
+// rather than one fold with a flag because universe membership is a PREFIX test on the qualified
+// name AND an enrolled discovery row, and a census that inherited either would report a residual
+// over the test corpus while naming one over the tree.
+// THE MODULE NAME IS READ FROM THE SOURCE, NOT FROM THE CONTEXT INDEX. A file the context refused
+// never reached absorb, so it holds no index binding; a roster derived from the index would exclude
+// exactly the files whose refusals a census exists to report, and it would do so silently.
+// IT IS NOT native_lane_source_facts EITHER, and that is a cost decision rather than a taste one:
+// those facts bundle four per-file scans, one of which is the floor's discovery fold, and a census
+// asks for none of them but the module header. Over the whole tree that bundle is paid 6k times to
+// read one line each time. This reuses the same module-name authority the facts record reuses.
+type NativeCensusModule {
+  module: String
+  path: Symbol
+}
+
+// IT PREPENDS AND REVERSES ONCE RATHER THAN APPENDING PER ITEM, and at this grain that is not a
+// refinement. An append onto a cons list walks it, so a fold that appends is quadratic in the
+// corpus -- about 6k walks of an average 3k cells for the tree this census is over, to build a list
+// whose every element was already in hand. DESIGN section 6's bare-minimum-cost rule makes that
+// unconditional, and the ordering the append was there to preserve is preserved by the reverse:
+// read order, which is the path-sorted order the driver walked the roots in.
+fn native_census_modules(ingest: SourceRootIngest) -> List<NativeCensusModule> {
+  list_reverse(
+    xs: fold_list(
+      xs: ingest,
+      empty: Empty,
+      cons: fn(acc, read) {
+        match native_lane_declared_module_name(content: read.source.carried) {
+          Absent => acc
+          Present { value: declared } =>
+            Cons {
+              head: NativeCensusModule {
+                module: declared,
+                path: read.compilation_unit
+              },
+              tail: acc
+            }
+        }
+      }
+    )
+  )
+}
+
+// ONE CENSUS MODULE'S OUTCOME. The file-refused arm carries nothing because the census already
+// reports the file refusals in full from the context, and a second rendering of the same refusal
+// under a module heading would be two counts of one fact.
+// THE RESOLVED ARM CARRIES NOTHING EITHER, AND THAT IS THE MEMORY PROPERTY THE WHOLE-TREE GRAIN
+// NEEDS. The lane's resolution keeps the ResolvedTree because it goes on to infer from it; a census
+// never infers, so the tree dies with the call that made it and the census holds one tree at a time
+// rather than accumulating a tree per module across the corpus.
+type NativeCensusModuleOutcome
+  = NativeCensusModuleFileRefused
+  | NativeCensusModuleResolveRefused { diagnostics: NonEmptyDiagnostics }
+  | NativeCensusModuleResolved
+
+fn native_census_module_resolution(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeCensusModuleOutcome {
+  match native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  ) {
+    NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
+    NativeModuleResolveRefused { diagnostics: d } =>
+      NativeCensusModuleResolveRefused { diagnostics: d }
+    NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+  }
+}
+
+// ONE ROW PER DIAGNOSTIC, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The row carries the resolver's
+// own Diagnostic rather than a reason/locus pair copied out of it: the pair would be a second
+// spelling of a std.diagnostic shape, and the locus is the join key a downstream occurrence rewrite
+// reads, so re-coining it here is where it would silently lose a field.
+// THE LIST IS NOT SUMMARIZED. A module that refuses at forty sites yields forty rows; folding them
+// to a count, or to the last reason, is what makes a residual census an undercount, and this census
+// exists because a roster of front-end refusals was already an undercount by construction.
+type NativeCensusResidualRow {
+  module: String
+  path: Symbol
+  diagnostic: Diagnostic
+}
+
+fn native_census_residual_rows(
+  entry: NativeCensusModule,
+  diagnostics: NonEmptyDiagnostics
+) -> List<NativeCensusResidualRow> {
+  list_reverse(
+    xs: fold_list(
+      xs: diagnostics.tail,
+      empty: Cons {
+        head: NativeCensusResidualRow {
+          module: entry.module,
+          path: entry.path,
+          diagnostic: diagnostics.head
+        },
+        tail: Empty
+      },
+      cons: fn(acc, d) {
+        Cons {
+          head: NativeCensusResidualRow {
+            module: entry.module,
+            path: entry.path,
+            diagnostic: d
+          },
+          tail: acc
+        }
+      }
+    )
   )
 }
 
