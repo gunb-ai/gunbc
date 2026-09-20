@@ -22,6 +22,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
+import gunbc.typed_module_store_seed_growth { typed_module_store_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -261,6 +262,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     shared_fill_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     census_memo_seed_growth_justification,
+    typed_module_store_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
