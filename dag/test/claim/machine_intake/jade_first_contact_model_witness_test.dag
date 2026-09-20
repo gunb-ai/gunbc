@@ -31,6 +31,10 @@ import gunbc.machine_intake_factory_segment_lease {
   host_was_left_as_found,
   lease_time_standing,
 }
+import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
+import std.roster_frontier { DeclSubject, PathSubject, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
+import std.keyed_roster { KeyedRosterBuildDuplicateKey, KeyedRosterBuilt }
+import gunbc.machine_intake_jade_first_contact_frontier { jade_first_contact_frontier_rows }
 import gunbc.machine_intake_mtjade1_factory_network {
   BmcNetworkObservedDhcpLease,
   BmcNetworkUnobserved,
@@ -264,4 +268,34 @@ test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool {
       FactoryNetworkMatchesDocument { expectation: _ } => false
       FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
     }
+}
+
+// THE FRONTIER IS FOLDED, NOT COUNTED. Duplicate subjects fail the keyed build; a subject outside
+// the three modules this roster is about fails the scope conjunct; and a dissolution bound forward
+// to a symbol this closure cannot name fails the last one. No cardinality literal: a count cannot
+// tell a dropped row from a dropped-and-replaced one, which is the failure the roster exists for.
+test fn w_first_contact_frontier_is_keyed_scoped_and_unbound() -> Bool {
+  frontier_rows_well_formed(rows: jade_first_contact_frontier_rows)
+    && match frontier_rows_keyed_roster_build(rows: jade_first_contact_frontier_rows) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && all(
+      jade_first_contact_frontier_rows,
+      row => match row.subject {
+        DeclSubject { ref: r } =>
+          (r.module_path as String) == "gunbc.machine_intake_bmc_firmware_family_discriminator"
+            || (r.module_path as String) == "gunbc.machine_intake_factory_segment_lease"
+            || (r.module_path as String) == "gunbc.machine_intake_mtjade1_factory_network"
+        PathSubject { path: _ } => false
+      },
+    )
+    && all(
+      jade_first_contact_frontier_rows,
+      row => match dissolution_status(condition: row.dissolution, present_decls: []) {
+        DissolutionUnbound => true
+        DissolutionPending => false
+        DissolutionFired => false
+      },
+    )
 }
