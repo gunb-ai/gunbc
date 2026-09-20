@@ -76,6 +76,10 @@ import gunbc.runner_slot_retirement {
   RetirementPropertyRead,
   RetirementPropertyUnreadable,
   transition_interruption_coverage,
+  fabric_purpose_interruption_scope,
+  interruption_authorization_for_host,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
   TransitionFullyPermitted,
   TransitionRetireesNotPermitted,
   RetirementActuationAuthorized,
@@ -995,4 +999,44 @@ test fn a_surplus_inside_the_manifest_agrees() -> Bool {
     TransitionPopulationAgrees => true
     TransitionPopulationDisagrees { unexpected: _ } => false
   }
+}
+
+// A FABRIC CELL THIS AUTHORIZATION DOES NOT NAME IS NOT PERMITTED, AND THAT IS THE WHOLE POINT OF
+// AUTHORING THE SCOPE (review 68854). While the permission was derived from the same authority as
+// the obligation the two were definitionally equal, so this refusal was unreachable: every fabric
+// retiree was permitted by construction and a fifth cell would have minted its own approval. The row
+// below hands coverage a required set containing a slot outside the authored four and requires the
+// refusal, so the arm that a future membership edit must trip is executed rather than asserted.
+test fn a_fabric_slot_outside_the_authored_scope_is_not_permitted() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv3) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_interruption_coverage(
+        auth: auth,
+        required: ["actions-runner@srv3-09.service" as NonEmptyStr],
+      ) {
+        TransitionRetireesNotPermitted { permitted: _, unpermitted: u } => list_length(items: u) == 1
+        TransitionFullyPermitted { units: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL, so the row above is not satisfied by an authorization that permits nothing.
+// The four authored units are exactly the cells this decision names.
+test fn the_four_authored_fabric_units_are_permitted() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv3) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_interruption_coverage(
+        auth: auth,
+        required: ["actions-runner@srv3-06.service" as NonEmptyStr, "actions-runner@srv3-07.service" as NonEmptyStr],
+      ) {
+        TransitionFullyPermitted { units: u } => list_length(items: u) == 2
+        TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
+      }
+  }
+}
+
+test fn the_authored_fabric_scope_names_exactly_four_units() -> Bool {
+  list_length(items: fabric_purpose_interruption_scope) == 4
 }

@@ -347,7 +347,37 @@ type HostInterruptionAuthorizationStanding
 // all inside the committed width, so without this row every one of them is a required retiree that
 // no authorization permits -- which is a refusal, correctly, and not a state this change may leave
 // standing while declaring the cells.
-data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the committed slots reassigned from GitHub Actions to fabric execution (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it is derived from gunbc.runner_slot_allocation fabric_execution_slot_identities so that a cell added later carries the same permission and an identity removed from that authority loses it" as NonEmptyStr
+//
+// THE SCOPE IS AUTHORED AND THE OBLIGATION IS DERIVED, AND AN EARLIER REVISION COLLAPSED THEM
+// (review 68854). It read the scope from fabric_execution_slot_identities -- the same authority
+// fabric_purpose_retirees_for_host derives the obligation from -- so for every fabric slot the
+// permission set was DEFINITIONALLY EQUAL to the obligation set and interruption_authorization_covers
+// could never refuse. That is the substitution the standing rule below forbids in terms: permission
+// is checked OVER the obligation, never substituted for it.
+//
+// THE CONSEQUENCE WAS AN ESCAPE HATCH, NOT AN INCONVENIENCE. A later edit adding a fifth cell to
+// runner_slot_allocation would have MINTED, with no operator row anywhere, permission to mask and
+// stop a live runner on a committed slot -- approval travelling automatically with an unrelated
+// membership edit, which is precisely what DESIGN 5 means by approval being external to the diff.
+// The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
+// same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
+//
+// SO THE FOUR UNITS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
+// required retiree that this authorization does not name, so the transition REFUSES until an
+// operator adds it -- which is the refusal doing its job rather than a gap.
+data fabric_purpose_interruption_scope: List<NonEmptyStr> = [
+  "actions-runner@srv3-06.service" as NonEmptyStr,
+  "actions-runner@srv3-07.service" as NonEmptyStr,
+  "actions-runner@srv4-06.service" as NonEmptyStr,
+  "actions-runner@srv4-07.service" as NonEmptyStr,
+]
+
+data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the four committed slots reassigned from GitHub Actions to fabric execution and enumerated in fabric_purpose_interruption_scope (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it does not extend to a fabric cell added later -- a new member is a required retiree this row does not permit, and the transition refuses until an operator names it here" as NonEmptyStr
+
+fn host_fabric_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
+  fabric_purpose_interruption_scope |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
+}
 
 fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
   if (host as String) == (operator_host_srv1 as String) {
@@ -366,7 +396,7 @@ fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
 // module's sole_constructor exists to prevent from being minted casually.
 fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
   let width = host_width_interruption_scope(host: host)
-  let fabric = fabric_purpose_retirees_for_host(host: host)
+  let fabric = host_fabric_interruption_scope(host: host)
   if list_length(items: width) == 0 {
     fabric_purpose_interruption_reason
   } else if list_length(items: fabric) == 0 {
@@ -385,7 +415,7 @@ fn width_decision_reason(host: HostIdentity) -> NonEmptyStr {
 }
 
 fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
-  let scope = concat(host_width_interruption_scope(host: host), fabric_purpose_retirees_for_host(host: host))
+  let scope = concat(host_width_interruption_scope(host: host), host_fabric_interruption_scope(host: host))
   if list_length(items: scope) == 0 {
     HostInterruptionAuthorizationAbsent {
       host: host,
