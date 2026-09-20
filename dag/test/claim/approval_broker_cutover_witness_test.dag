@@ -47,6 +47,8 @@ import gunbc.auth.approval_broker_cutover {
   approval_broker_cutover_admission,
   approval_broker_cutover_stage_discharged,
   dark_install_release_discharged, dark_install_evidence,
+  BrokerTreeReceiptRead, TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
+  observe_broker_tree_receipt, TreeReceiptNotObserved, TreeIsNotTheCandidate,
   DarkUnitNotStarted,
   approval_broker_cutover_complete,
   ApprovalRouteOwnership,
@@ -611,6 +613,7 @@ fn dark_install_refuses(read: ServeLivenessRead) -> Bool {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: read,
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   ) {
     StageRefused { stage: _, cause: _ } => true
@@ -654,6 +657,7 @@ test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: probe_answered(body: cutover_fixture_liveness_body),
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   ) {
     StageAdmitted { stage: _ } => true
@@ -794,6 +798,7 @@ test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   ) {
     StageRefused { stage: _, cause: c } => match c {
@@ -812,10 +817,72 @@ test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   ) {
     StageAdmitted { stage: _ } => true
     StageRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE RECEIPT FIXTURE IS BUILT BY THE REAL READER, not asserted as a TreeReceiptObserved literal.
+// If it were minted directly, observe_broker_tree_receipt could refuse every real receipt and every
+// claim below would stay green -- which is precisely the shape review 68965 caught: a receipt
+// written, never read, and a witness that only checked the WRITE SITE mentioned its path.
+data cutover_fixture_receipt_body: String = join([
+  "candidate_revision=", cutover_fixture_revision as String, "\n",
+  "installed_digest=3f786850e387550fdab836ed7e6dc881de23001b\n",
+], "")
+
+fn fixture_tree_receipt() -> BrokerTreeReceiptRead {
+  observe_broker_tree_receipt(success: true, body: cutover_fixture_receipt_body, error: "no read error" as NonEmptyStr)
+}
+
+// ── A STALE TREE ANSWERS /livez PERFECTLY ───────────────────────────────────────────────────
+// THE RED THAT REVIEW 68965 SHOWED WAS MISSING, and it is the whole reason the receipt exists. The
+// liveness read here is CORRECT -- it names this deploy's candidate -- because the unit reports the
+// revision it was LAUNCHED with, which this deployment's own emitter wrote into ExecStart. The
+// bytes on disk are from an earlier deploy. Every release-side check passes; only the receipt
+// separates them.
+test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
+  let stale = observe_broker_tree_receipt(
+    success: true,
+    body: join(["candidate_revision=", cutover_other_release as String, "\ninstalled_digest=aaaa\n"], ""),
+    error: "no read error" as NonEmptyStr,
+  )
+  match dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
+    tree_receipt: stale,
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: c } => match c {
+      TreeIsNotTheCandidate { expected: ex, observed: ob } =>
+        ex == cutover_fixture_revision && ob == cutover_other_release
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+// AN ABSENT RECEIPT IS NOT A PASSING ONE. The copy step writes it last, so a missing file means the
+// tree install did not finish -- the unit may be pointed at a directory nothing populated. Folding
+// this into "release not established" would send the operator to the wrong layer.
+test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
+  let absent = observe_broker_tree_receipt(
+    success: false, body: "", error: "no such file" as NonEmptyStr,
+  )
+  match dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
+    tree_receipt: absent,
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: c } => match c {
+      TreeReceiptNotObserved { detail: d } => string_contains(s: d as String, pattern: "no such file")
+      _ => false
+    }
+    StageAdmitted { stage: _ } => false
   }
 }
 
@@ -826,11 +893,13 @@ test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
   let malformed = dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: "main" as NonEmptyStr)),
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   )
   let wrong = dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
+    tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   )
   match malformed {

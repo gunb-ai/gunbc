@@ -65,6 +65,7 @@ import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decis
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
   dark_install_release_discharged, cutover_refusal_reason,
+  BrokerTreeReceiptRead, observe_broker_tree_receipt,
 }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
@@ -78,6 +79,7 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_cadence,
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
+import gunbc.live_deploy.emit { approval_broker_tree_receipt_path }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { Second, second, second_count }
 import gunbc.readiness { Ready, Pending, Refused }
@@ -745,9 +747,16 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
       detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
     },
   )
+  let receipt_read = Filesystem.Read(path: approval_broker_tree_receipt_path)
+  let tree_receipt = observe_broker_tree_receipt(
+    success: receipt_read.success,
+    body: receipt_read.content,
+    error: join(["reading ", approval_broker_tree_receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
+  )
   match dark_install_release_discharged(
     listening_port: port,
     read: read,
+    tree_receipt: tree_receipt,
     expected_release: candidate.revision as String as NonEmptyStr,
   ) {
     StageAdmitted { stage: _ } => ExitSuccess

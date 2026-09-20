@@ -333,6 +333,8 @@ type CutoverRefusal
   | RouteClassAnsweredByNoBroker { route: NonEmptyStr, status: Int }
   | RouteClassAnsweredByWrongFold { route: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | BothWritersWouldBeLive { detail: NonEmptyStr }
+  | TreeReceiptNotObserved { detail: NonEmptyStr }
+  | TreeIsNotTheCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
 
 type CutoverAdmission
   = StageAdmitted { stage: ApprovalBrokerCutoverStage }
@@ -658,6 +660,22 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
         "body to read a marker from and nothing here discriminates which process was reached. The ",
         "prefix-strip question is settled by the marker arms above, on a probe that did answer.",
       ], "") as NonEmptyStr
+    TreeReceiptNotObserved { detail: d } =>
+      join([
+        "the broker's tree receipt was not observed, so nothing establishes which bytes the unit is ",
+        "running: ", d as String,
+        " Until it is read, the only release evidence is the revision the process reports on /livez, ",
+        "and that revision is a launch argument this deployment wrote into ExecStart -- the process ",
+        "echoes it whatever tree it loaded.",
+      ], "") as NonEmptyStr
+    TreeIsNotTheCandidate { expected: ex, observed: ob } =>
+      join([
+        "the broker's tree receipt names candidate ", ob as String,
+        " but this deploy installed ", ex as String,
+        ". The tree at the broker root is from an EARLIER deploy: the copy step did not run, or ran ",
+        "and left the previous receipt in place. A /livez readback cannot see this, because the unit ",
+        "reports the revision it was launched with rather than the revision of the bytes it loaded.",
+      ], "") as NonEmptyStr
     BothWritersWouldBeLive { detail: d } =>
       join(["refusing: this would leave two processes able to write the approval store -- ", d as String], "") as NonEmptyStr
   }
@@ -777,17 +795,104 @@ fn dark_install_evidence(
 // annotations that restate what a declaration says; a row that CONTRADICTS the declaration under it
 // is the worse case, because the next reader either re-implements a wall that exists or files a
 // debt row for a discharged obligation.
+// ── THE TREE RECEIPT, ACTUALLY READ ─────────────────────────────────────────────────────────
+// REVIEW 68965 FOUND THIS WRITTEN AND NEVER READ, and the annotation beside the writer claimed the
+// opposite: that stage 2 consumed it. It did not. The only evidence the stage had was the revision
+// the process reports on /livez, which this deployment's own emitter wrote into ExecStart -- so the
+// stage compared a launch argument against the launch argument, which is exactly the control-plane
+// echo gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
+// A broker whose tree copy silently left stale bytes passed it.
+//
+// WHAT THIS READS AND WHAT IT ESTABLISHES, stated at its real strength rather than the strength the
+// old annotation claimed. The receipt is a FILE ON THE HOST, written by the copy step at the broker
+// root, carrying the candidate revision that copy was for and the digest of the bytes it installed.
+// Reading it establishes that THE COPY FOR THIS CANDIDATE RAN AND RECORDED A DIGEST -- which a
+// stale tree from an earlier deploy fails, and which the /livez echo cannot tell you at all.
+//
+// WHAT IT DOES NOT YET ESTABLISH, named rather than implied: that the installed digest EQUALS a
+// digest computed independently over the deploying checkout. That comparison needs the source-side
+// digest computed at readback time, and this fold does not compute it. So the receipt is a subject
+// side fact about which candidate was copied, not yet a proof that the bytes match. The trigger
+// that closes it: the readback computing the source tree digest in the deploying checkout with the
+// same fold the copy step uses, and refusing on inequality.
+type BrokerTreeReceiptRead
+  = TreeReceiptUnreadable { detail: NonEmptyStr }
+  | TreeReceiptMalformed { detail: NonEmptyStr }
+  | TreeReceiptObserved { revision: NonEmptyStr, installed_digest: NonEmptyStr }
+
+// THE FIRST MATCHING LINE WINS and later ones are ignored, which is the safe direction here: the
+// copy step writes each key once, so a second occurrence means the receipt was appended to rather
+// than replaced -- and reading the FIRST is reading the older value, which fails the revision
+// comparison below rather than silently accepting a newer line over a stale file.
+fn tree_receipt_field(text: String, key: String) -> String {
+  let marker = join([key, "="], "")
+  fold(split(s: text, delimiter: "\n"), init: "", f: (acc, line) =>
+    if acc != "" { acc }
+    else if starts_with(s: line, prefix: marker) {
+      substring(s: line, start: string_length(s: marker), end: string_length(s: line))
+    } else { acc }
+  )
+}
+
+fn observe_broker_tree_receipt(success: Bool, body: String, error: NonEmptyStr) -> BrokerTreeReceiptRead {
+  if !success {
+    TreeReceiptUnreadable { detail: error }
+  } else {
+    let rev = tree_receipt_field(text: body, key: "candidate_revision")
+    let dig = tree_receipt_field(text: body, key: "installed_digest")
+    if rev == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
+    } else if dig == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no installed_digest line, so the copy recorded nothing about the bytes it installed" as NonEmptyStr }
+    } else {
+      TreeReceiptObserved { revision: rev as NonEmptyStr, installed_digest: dig as NonEmptyStr }
+    }
+  }
+}
+
+// THE REFUSAL IS ITS OWN ARM RATHER THAN FOLDED INTO ReleaseUnreadable, because the two answer
+// different questions and a reader needs to know which one failed: the release readback asks WHICH
+// BUILD IS LISTENING, the tree receipt asks WHICH BYTES WERE INSTALLED. A broker can answer /livez
+// correctly from a stale tree, which is the whole case this arm exists for.
+fn tree_receipt_admission(read: BrokerTreeReceiptRead, expected_release: NonEmptyStr) -> CutoverRefusal? {
+  match read {
+    TreeReceiptUnreadable { detail: d } =>
+      Present { value: TreeReceiptNotObserved { detail: join([
+        "the broker tree receipt could not be read at the broker root: ", d as String,
+        ". The copy step writes it at the end of the tree install, so an absent receipt means that step did not complete -- the unit may be pointed at a directory nothing populated.",
+      ], "") as NonEmptyStr } }
+    TreeReceiptMalformed { detail: d } =>
+      Present { value: TreeReceiptNotObserved { detail: d } }
+    TreeReceiptObserved { revision: r, installed_digest: _ } =>
+      match release_revision_match(expected: expected_release, observed: r) {
+        RevisionMatchesCandidate => Absent
+        RevisionDiffersFromCandidate { expected: ex, observed: ob } =>
+          Present { value: TreeIsNotTheCandidate { expected: ex, observed: ob } }
+      }
+  }
+}
+
+// THE TREE RECEIPT IS CHECKED BEFORE THE RELEASE READBACK, and the order is deliberate. A stale
+// tree answers /livez perfectly -- it is a working broker, just not this candidate's -- so checking
+// the release first would report success on the very case the receipt exists to catch. Refusing on
+// the receipt first means the operator is told the bytes are wrong rather than told everything is
+// fine.
 fn dark_install_release_discharged(
   listening_port: Port,
   read: ServeLivenessRead,
+  tree_receipt: BrokerTreeReceiptRead,
   expected_release: NonEmptyStr,
 ) -> CutoverAdmission {
-  approval_broker_cutover_stage_discharged(
-    stage: ProveRelease,
-    e: dark_install_evidence(
-      listening_port: listening_port,
-      read: read,
-      expected_release: expected_release,
-    ),
-  )
+  match tree_receipt_admission(read: tree_receipt, expected_release: expected_release) {
+    Present { value: cause } => StageRefused { stage: ProveRelease, cause: cause }
+    Absent =>
+      approval_broker_cutover_stage_discharged(
+        stage: ProveRelease,
+        e: dark_install_evidence(
+          listening_port: listening_port,
+          read: read,
+          expected_release: expected_release,
+        ),
+      )
+  }
 }

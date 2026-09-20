@@ -1617,8 +1617,18 @@ fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
   ], "")
 }
 
-// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2, which is what makes "the broker runs the
-// candidate" an OBSERVATION rather than an assumption. Without it the only evidence is the revision
+// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2 -- and that second half was FALSE when
+// this note was written (review 68965). The receipt was written and nothing read it, while this
+// paragraph asserted the stage consumed it, so the only release evidence stage 2 actually had was
+// the revision the process reports on /livez: a launch argument this emitter writes into ExecStart,
+// echoed back whatever tree the unit loaded. The reader now exists
+// (gunbc.auth.approval_broker_cutover observe_broker_tree_receipt, consumed by
+// dark_install_release_discharged), which is what makes the sentence true rather than aspirational.
+//
+// WHAT IT ESTABLISHES, at its real strength: the copy for THIS candidate ran and recorded a digest,
+// which a stale tree from an earlier deploy fails. What it does NOT yet establish is that the
+// installed digest equals one computed independently over the deploying checkout -- that needs the
+// source-side digest at readback time and is named as the open half beside the reader. Without it the only evidence is the revision
 // the unit reports on /livez -- and that revision is a LAUNCH ARGUMENT this emitter wrote into
 // ExecStart, so the process echoes whatever it was told regardless of which bytes it loaded. A
 // control-plane fact standing in for the subject observation is the substitution
