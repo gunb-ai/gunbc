@@ -6,7 +6,7 @@ import std.disposition { Disposition, SingleAuthority }
 import extdeps.linux.cgroup_v2 {
   CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
   decode_cgroup_subtree_procs, cgroup_v2_procs_interface_file, cgroup_v2_procs_path,
-  cgroup_v2_slice_path,
+  cgroup_v2_mount_point,
 }
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.exec.command { CommandTransport, LocalExec }
@@ -19,7 +19,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_entry_presence,
 }
 import extdeps.systemd {
-  SystemdUnitProperty, KillSignalProperty, SendSigkillProperty, TimeoutStopSecProperty,
+  SystemdUnitProperty, ControlGroup, KillSignalProperty, SendSigkillProperty, TimeoutStopSecProperty,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.host_effect { HostEffectTransport, LocalShell }
@@ -28,6 +28,10 @@ import gunbc.host_operation_exec {
   CgroupReadInterfaceFile, SystemctlStop, SystemctlKill, host_operation_exec,
 }
 import gunbc.command_runner { run_shell_command_observe }
+import gunbc.systemctl_show_read {
+  SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused, systemctl_show_property_read,
+}
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
@@ -233,20 +237,60 @@ fn read_cgroup_root_procs(root: NonEmptyStr) -> CgroupRootProcsReading
   }
 }
 
-// THE CELL'S CGROUP IS THE SLICE THE ATTEMPT'S VMM WAS PLACED IN, and the slice name comes from
-// gunbc.fabric_cell_converge -- the same authority runner_microvm_attempt's Slice= property reads,
-// so the cgroup read and the placement cannot disagree about which cgroup this cell is.
+// THE CGROUP PATH IS ASKED OF SYSTEMD, NOT DERIVED FROM THE SLICE NAME.
+//
+// A slice unit's name encodes its ANCESTRY: systemd reads `fabric-cell-srv1-01.slice` as a child of
+// `fabric-cell-srv1.slice` under `fabric-cell.slice` under `fabric.slice`, so the cgroup lives four
+// levels down and not at the mount point plus the name. Deriving the path here would be a second
+// implementation of systemd's own naming rule -- including the `\x2d` escaping it applies to
+// components -- and a derivation that drifts from it does not fail loudly: it reads an EMPTY or
+// MISSING directory and answers that the cell is clean. So the manager is asked for ControlGroup,
+// which is the path it actually placed the unit at.
+//
+// A BLANK ControlGroup IS NOT A MISSING ANSWER AND IT IS NOT AN EMPTY CELL EITHER. `systemctl show`
+// exits 0 for a unit it has never heard of, so blank means "this manager holds no cgroup under that
+// name" -- which for a cell whose attempt is being torn down means the slice is not there to read,
+// and the readback is unobservable rather than empty.
+type SliceCgroupPathReading
+  = SliceCgroupPath { path: NonEmptyStr }
+  | SliceCgroupPathUnread { reason: NonEmptyStr }
+
+fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading
+  uses net: Network
+{
+  match systemctl_show_property_read(transport: controller_transport(), unit: slice, property: ControlGroup) {
+    SystemdPropertyCaptureRefused { reason: why } =>
+      SliceCgroupPathUnread {
+        reason: join([slice as String, ": its ControlGroup could not be read: ", why], "") as NonEmptyStr,
+      }
+    SystemdPropertyBlank =>
+      SliceCgroupPathUnread {
+        reason: join([slice as String, ": the manager holds no control group under that name"], "") as NonEmptyStr,
+      }
+    SystemdPropertyCaptured { value: path } =>
+      SliceCgroupPath {
+        path: join([cgroup_v2_mount_point as String, path], "") as NonEmptyStr,
+      }
+  }
+}
+
 fn read_cell_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
   uses net: Network
 {
+  match read_slice_cgroup_path(slice: slice) {
+    SliceCgroupPathUnread { reason: why } => CgroupSubtreeReadFailed { reason: why }
+    SliceCgroupPath { path: root } => read_cgroup_subtree_at(root: root)
+  }
+}
+
+fn read_cgroup_subtree_at(root: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
   cgroup_subtree_readback_of_readings(
-    root: cgroup_v2_slice_path(slice: slice),
-    root_procs: read_cgroup_root_procs(root: cgroup_v2_slice_path(slice: slice)),
+    root: root,
+    root_procs: read_cgroup_root_procs(root: root),
     tree: run_shell_command_observe(
-      command: grep_every_line_in_tree_command(
-        file_name: cgroup_v2_procs_interface_file,
-        root: cgroup_v2_slice_path(slice: slice),
-      ),
+      command: grep_every_line_in_tree_command(file_name: cgroup_v2_procs_interface_file, root: root),
       transport: LocalExec,
     ),
   )

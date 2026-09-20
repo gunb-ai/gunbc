@@ -1,0 +1,522 @@
+module gunbc.test.claim.runner.runner_microvm_lifecycle_realize_wet_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import gunbc.systemd_run_transient {
+  SystemdRunTransientOutcome, SystemdRunTransientStarted, SystemdRunTransientRefused,
+  systemd_run_transient_read,
+}
+import gunbc.host_effect { HostEffectTransport, LocalShell }
+import gunbc.host_operation_exec {
+  HostOperationOutcome, HostOperationObserved, HostOperationRefused,
+  SystemctlFreeze, SystemctlThaw, SystemctlKill, host_operation_exec,
+}
+import gunbc.systemctl_is_active_read {
+  UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused, systemctl_is_active_read,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptAccepted, microvm_attempt, runner_microvm_attempt_unit_name,
+}
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready,
+}
+import gunbc.runner_microvm_network {
+  BoundSlotNetworkReadback, slot_network_readback, slot_network_subject,
+  slot_network_sanitation_subject, SanitationSubjectAdmitted, SanitationSubjectRefused,
+  SlotNetworkReadings, TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
+  TapPresentUnheld, TapIpv6Disabled, ResidueAbsent, RulesetListed,
+  ConvergedSlot, ConvergedSlotNetwork, HelperStanding, AutoAssignmentAbsentFromKernel,
+  runner_slot_network, runner_slot_host_cidr,
+}
+import gunbc.runner_microvm_cell_readiness {
+  InFlightAttempt, CellBoundAttempt, AttemptBoundToCell, AttemptCellMismatch, bind_attempt_to_cell,
+  CellReadinessWrite, WriteReadbackSettled, CellReadinessStoreRead, StoreRead, StoreUnreadable,
+  CellReadinessRecord, CellSettled, CellAttemptInFlight,
+}
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, TerminalTrigger, RunnerExited, StopRequested, DeadlineReached,
+  StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, StopOutcomeUnobserved,
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  TeardownSettlement,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  AttemptTeardownOutcome, TeardownSettled, TeardownObservationForeign,
+  perform_bounded_stop, read_cell_cgroup_subtree, settle_attempt_teardown,
+  runner_microvm_attempt_stop_properties, force_kill_unit,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  CellReadinessWritten, CellReadinessRecordWritten, CellReadinessWriteRefusedByStore,
+  CellReadinessWriteStoreUnreadable, CellReadinessWriteFailed,
+  cell_readiness_store_root, read_cell_readiness_store, write_cell_readiness_record,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SIX REDs, EXECUTED AGAINST REAL PROCESSES ON A REAL HOST.
+//
+// Nothing in the microVM lifecycle lane had run against a process before this file. Every claim
+// below starts a TRANSIENT unit it owns, under a slot index no live slot uses, drives the
+// production controller against it, and ends with the host in the state it started in. None of
+// them touches an actions-runner unit, a live slot, or a converged slot network.
+//
+// WHY A TRANSIENT UNIT IS THE RIGHT ADVERSARY AND NOT A WEAKER ONE. The states these claims need --
+// a child that ignores SIGTERM, a process that escaped its service's cgroup into a sibling scope, a
+// task the kernel will not reap on demand -- are the states the controller's arms exist for, and a
+// supplied reading of them establishes only that the fold reads what it was handed. A transient
+// unit is the smallest real thing that can be put into every one of them and taken out again.
+//
+// WHAT IS SUPPLIED RATHER THAN EXECUTED, SAID PLAINLY (DESIGN section 3, the pairing obligation).
+// The slot NETWORK readback is supplied: gunbc.runner_microvm_network derives it from seven host
+// readings joined against a ConvergedSlotNetwork receipt, and a synthetic slot has no converged
+// network to read -- producing one would mean converging a tap and an nft ruleset for a slot that
+// does not exist, on a host that is serving. That boundary's real execution belongs to that module.
+// EVERYTHING ELSE HERE IS EXECUTED: the units are real, the stops are real, the cgroup reads are
+// real reads of /sys/fs/cgroup, the resource readbacks are real listings, and the store writes are
+// real files under the store root.
+
+// SLOT INDICES 90 AND UP, WHICH NO FLEET HOST ALLOCATES. A live slot is srvN-01 upward and a fleet
+// host carries tens, not ninety; the gap is what keeps every unit, slice and path derived below
+// from colliding with a serving slot even though they are derived by the PRODUCTION functions.
+fn red_slot(index: Int) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: index as Nat }
+}
+
+fn red_attempt(index: Int, attempt_id: String) -> MicroVmAttempt? {
+  match microvm_attempt(slot: red_slot(index: index), attempt_id: attempt_id) {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: a }
+    _ => none
+  }
+}
+
+fn red_slice(index: Int) -> NonEmptyStr {
+  fabric_cell_slice_name(slot: red_slot(index: index)) as NonEmptyStr
+}
+
+fn red_escapee_unit(attempt: MicroVmAttempt) -> NonEmptyStr {
+  join([runner_microvm_attempt_unit_name(attempt: attempt) as String, "-escapee"], "") as NonEmptyStr
+}
+
+// THE PAYLOAD THAT REFUSES TO STOP. `trap '' TERM` installs the ignore disposition, so the unit's
+// KillSignal lands on a process that will not act on it -- and because the production properties
+// carry SendSIGKILL=no, the manager will not escalate either. Whatever ends this process was sent
+// by the controller.
+data red_sigterm_ignoring_payload: String = "trap '' TERM; while true; do sleep 1; done"
+
+// THE PAYLOAD THAT ESCAPES ITS SERVICE'S CGROUP. `systemd-run --scope --slice=` places the child in
+// a NEW scope under the CELL SLICE, which is a SIBLING of the service's cgroup rather than a
+// descendant of it -- so `systemctl stop` on the service, whose KillMode is control-group, does not
+// reach it. That is the double-fork leak in the shape a host actually produces it: the residue is
+// under the cell, accounted to the cell, and invisible to any readback rooted at the unit.
+fn red_escapee_payload(attempt: MicroVmAttempt, slice: NonEmptyStr) -> String {
+  join([
+    "systemd-run --scope --quiet --unit=", red_escapee_unit(attempt: attempt) as String,
+    " --slice=", slice as String,
+    " /bin/sh -c \"trap '' TERM; while true; do sleep 1; done\" & sleep 2; exit 0",
+  ], "")
+}
+
+fn red_shell_argv(payload: String) -> List<String> {
+  ["/bin/sh", "-c", payload]
+}
+
+// THE UNIT IS STARTED WITH THE PRODUCTION STOP PROPERTIES, not a test-shaped copy of them. The
+// whole distinction the controller reports -- graceful versus forced -- rests on SendSIGKILL=no
+// being on the unit, so a claim that started its unit with different properties would be measuring
+// a stop protocol production does not use.
+fn start_red_unit(attempt: MicroVmAttempt, payload: String) -> Bool {
+  match systemd_run_transient_read(
+    transport: LocalShell,
+    unit: runner_microvm_attempt_unit_name(attempt: attempt),
+    properties: runner_microvm_attempt_stop_properties(attempt: attempt),
+    command_argv: red_shell_argv(payload: payload),
+  ) {
+    SystemdRunTransientStarted { stdout: _ } => true
+    SystemdRunTransientRefused { reason: _ } => false
+  }
+}
+
+fn unit_signalled(outcome: HostOperationOutcome) -> Bool {
+  match outcome {
+    HostOperationObserved { stdout: _, success: ok, stderr: _ } => ok
+    HostOperationRefused { operation: _, reason: _ } => false
+  }
+}
+
+fn freeze_unit(unit: NonEmptyStr) -> Bool {
+  unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlFreeze { unit: unit }))
+}
+
+fn thaw_unit(unit: NonEmptyStr) -> Bool {
+  unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlThaw { unit: unit }))
+}
+
+// EVERY CLAIM ENDS BY LEAVING THE SLICE QUIET, and the sweep is part of the claim rather than the
+// script's job: a RED that proved a survivor and then left it running would have converted a
+// receipt into a leak on a host other people are using.
+fn sweep_slice_quiet(attempt: MicroVmAttempt, index: Int) -> Bool {
+  let killed_escapee = force_kill_unit(unit: red_escapee_unit(attempt: attempt))
+  let killed_unit = force_kill_unit(unit: runner_microvm_attempt_unit_name(attempt: attempt))
+  match read_cell_cgroup_subtree(slice: red_slice(index: index)) {
+    CgroupSubtreeEmpty => true
+    CgroupSubtreeReadFailed { reason: _ } => true
+    CgroupSubtreePopulated { pids: _, cgroups: _ } => false
+  }
+}
+
+// ── the supplied slot-network readback ────────────────────────────────────────────────────────
+
+data red_converged_generation: Int = 1
+
+data red_converged_digest: Sha256Digest = Sha256Digest {
+  hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex,
+}
+
+fn red_converged_slot_row(slot: RunnerSlotIdentity) -> ConvergedSlot {
+  let net = runner_slot_network(slot: slot)
+  ConvergedSlot {
+    subject: slot_network_subject(slot: slot),
+    host_address_cidr: runner_slot_host_cidr(net: net) as NonEmptyStr,
+    guest_route: join([runner_slot_host_cidr(net: net), " dev ", net.tap_device as String], "") as NonEmptyStr,
+    tap_ipv6: TapIpv6Disabled,
+  }
+}
+
+fn red_receipt(slot: RunnerSlotIdentity) -> ConvergedSlotNetwork {
+  ConvergedSlotNetwork {
+    host: operator_host_srv1,
+    generation: red_converged_generation,
+    slots: [red_converged_slot_row(slot: slot)],
+    helpers: HelperStanding {
+      auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
+      nft_ct_helper_statements: 0,
+      xtables_ct_helper_targets: 0,
+      userspace_helpers: 0,
+      expectations_at_generation: 0,
+    },
+    nft_digest: red_converged_digest,
+  }
+}
+
+fn red_quiet_readings(slot: RunnerSlotIdentity) -> SlotNetworkReadings {
+  SlotNetworkReadings {
+    tap: TapReading { subject: slot_network_subject(slot: slot), observation: TapPresentUnheld },
+    tap_ipv6: TapIpv6Reading { subject: slot_network_subject(slot: slot), observation: TapIpv6Disabled },
+    guest_originated_conntrack: SlotResidueReading { subject: slot_network_subject(slot: slot), observation: ResidueAbsent },
+    guest_destined_conntrack: SlotResidueReading { subject: slot_network_subject(slot: slot), observation: ResidueAbsent },
+    guest_neighbour: SlotResidueReading { subject: slot_network_subject(slot: slot), observation: ResidueAbsent },
+    expectations: HostResidueReading { host: operator_host_srv1, generation: red_converged_generation, observation: ResidueAbsent },
+    ruleset: RulesetReading { host: operator_host_srv1, generation: red_converged_generation, observation: RulesetListed { digest: red_converged_digest } },
+  }
+}
+
+fn red_network(slot: RunnerSlotIdentity) -> BoundSlotNetworkReadback? {
+  match slot_network_sanitation_subject(slot: slot, receipt: red_receipt(slot: slot)) {
+    SanitationSubjectAdmitted { subject: s } =>
+      Present { value: slot_network_readback(s: s, readings: red_quiet_readings(slot: slot)) }
+    SanitationSubjectRefused { refusal: _ } => none
+  }
+}
+
+fn red_bound_attempt(attempt: MicroVmAttempt, generation: Int) -> CellBoundAttempt? {
+  let cell = runner_slot_instance_name(slot: attempt.slot) as CellId
+  match bind_attempt_to_cell(
+    cell: cell,
+    generation: generation,
+    attempt: InFlightAttempt {
+      attempt: attempt,
+      invocation_id: "red-invocation" as NonEmptyStr,
+      jit_registration_id: "red-registration" as NonEmptyStr,
+    },
+  ) {
+    AttemptBoundToCell { bound: b } => Present { value: b }
+    AttemptCellMismatch { cell: _, attempt_cell: _ } => none
+  }
+}
+
+fn red_settlement(attempt: MicroVmAttempt, generation: Int, trigger: TerminalTrigger) -> TeardownSettlement? {
+  match red_bound_attempt(attempt: attempt, generation: generation) {
+    Absent => none
+    Present { value: bound } =>
+      match red_network(slot: attempt.slot) {
+        Absent => none
+        Present { value: network } =>
+          match settle_attempt_teardown(bound: bound, network: network, trigger: trigger) {
+            TeardownObservationForeign { subject: _, expected: _, observed: _ } => none
+            TeardownSettled { settlement: s } => Present { value: s }
+          }
+      }
+  }
+}
+
+// ── RED 1: a child that ignores SIGTERM ───────────────────────────────────────────────────────
+
+fn red_a_child_that_ignores_sigterm_is_stopped_by_force() -> Bool {
+  match red_attempt(index: 90, attempt_id: "red1") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_sigterm_ignoring_payload) {
+        false
+      } else {
+        let stopped = perform_bounded_stop(
+          unit: runner_microvm_attempt_unit_name(attempt: a),
+          slice: red_slice(index: 90),
+        )
+        let swept = sweep_slice_quiet(attempt: a, index: 90)
+        swept && match stopped {
+          StoppedByForce => true
+          _ => false
+        }
+      }
+  }
+}
+
+// ── RED 2: a double-forked escapee in a sibling scope ─────────────────────────────────────────
+
+// THE DISCRIMINATOR IS THE CGROUP THE PID IS IN, NOT THAT THERE IS A PID. A readback rooted at the
+// unit's own cgroup, or one that read only the slice's own cgroup.procs, answers EMPTY here: the
+// escapee is in a scope beside the service. So the claim requires both that the subtree is
+// populated AND that no populated cgroup is the slice root itself.
+fn red_a_double_forked_escapee_is_found_by_the_subtree_read() -> Bool {
+  match red_attempt(index: 91, attempt_id: "red2") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 91))) {
+        false
+      } else {
+        let seen = read_cell_cgroup_subtree(slice: red_slice(index: 91))
+        let swept = sweep_slice_quiet(attempt: a, index: 91)
+        swept && match seen {
+          CgroupSubtreePopulated { pids: p, cgroups: cgs } =>
+            list_length(items: p) > 0
+              && fold(cgs, init: true, f: (acc, c) => acc && !ends_with(s: c as String, suffix: red_slice(index: 91) as String))
+          _ => false
+        }
+      }
+  }
+}
+
+// ── RED 3: a task the kernel will not reap, and the cell quarantines ──────────────────────────
+
+fn red_a_frozen_task_survives_the_bounded_force_stop() -> Bool {
+  match red_attempt(index: 92, attempt_id: "red3") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
+        false
+      } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
+        false
+      } else {
+        let stopped = perform_bounded_stop(
+          unit: runner_microvm_attempt_unit_name(attempt: a),
+          slice: red_slice(index: 92),
+        )
+        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a))
+        let swept = sweep_slice_quiet(attempt: a, index: 92)
+        thawed && swept && match stopped {
+          ForceStopBoundExceeded { survivors: s } => list_length(items: s) > 0
+          _ => false
+        }
+      }
+  }
+}
+
+// THE SAME ADVERSARY, CARRIED ALL THE WAY TO THE RELEASE AUTHORITY. The claim above proves the stop
+// arm; this one proves what that arm costs the cell, which is the fact the next incarnation depends
+// on.
+fn red_a_surviving_task_quarantines_the_cell() -> Bool {
+  match red_attempt(index: 92, attempt_id: "red3b") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
+        false
+      } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
+        false
+      } else {
+        let settled = red_settlement(attempt: a, generation: 3, trigger: DeadlineReached)
+        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a))
+        let swept = sweep_slice_quiet(attempt: a, index: 92)
+        thawed && swept && match settled {
+          Absent => false
+          Present { value: s } => !cell_is_ready(readiness: s.readiness)
+        }
+      }
+  }
+}
+
+// ── RED 4: a cgroup read that failed quarantines, and the quarantine is never released ────────
+
+// NO UNIT IS STARTED FOR THIS CELL, so the manager holds no control group under its slice name and
+// the subtree read cannot be taken at all. That is the unobservable case, and it must reach the
+// same place a refuted one does: not Ready.
+fn red_a_cgroup_read_that_failed_quarantines_the_cell() -> Bool {
+  match red_attempt(index: 93, attempt_id: "red4") {
+    Absent => false
+    Present { value: a } =>
+      match read_cell_cgroup_subtree(slice: red_slice(index: 93)) {
+        CgroupSubtreeReadFailed { reason: _ } =>
+          match red_settlement(attempt: a, generation: 4, trigger: DeadlineReached) {
+            Absent => false
+            Present { value: s } => !cell_is_ready(readiness: s.readiness)
+          }
+        _ => false
+      }
+  }
+}
+
+// THE QUARANTINE SURVIVES THE STORE, WHICH IS THE HALF THE NEXT INCARNATION READS. The settlement is
+// written, and a Ready settlement at the SAME generation is then refused by the store rather than
+// overwriting it -- so a controller that re-ran its readback and got a clean answer cannot clear a
+// quarantine by repetition. The store is read back afterwards to prove the bytes on disk still say
+// quarantined.
+fn red_a_quarantine_written_to_the_store_is_never_released() -> Bool {
+  match red_attempt(index: 93, attempt_id: "red4") {
+    Absent => false
+    Present { value: a } =>
+      match red_bound_attempt(attempt: a, generation: 4) {
+        Absent => false
+        Present { value: bound } =>
+          match red_settlement(attempt: a, generation: 4, trigger: DeadlineReached) {
+            Absent => false
+            Present { value: s } => red_store_refuses_release(bound: bound, settled: s)
+          }
+      }
+  }
+}
+
+fn red_store_refuses_release(bound: CellBoundAttempt, settled: TeardownSettlement) -> Bool {
+  let wrote = write_cell_readiness_record(
+    root: cell_readiness_store_root,
+    write: WriteReadbackSettled { bound: bound, readiness: settled.readiness },
+  )
+  let loosened = write_cell_readiness_record(
+    root: cell_readiness_store_root,
+    write: WriteReadbackSettled { bound: bound, readiness: CellReady { cell: bound.cell } },
+  )
+  let written_ok = match wrote {
+    CellReadinessRecordWritten { path: _, record: _ } => true
+    _ => false
+  }
+  let refused = match loosened {
+    CellReadinessWriteRefusedByStore { result: _ } => true
+    _ => false
+  }
+  written_ok && refused && red_store_still_quarantined(cell_generation: bound.generation)
+}
+
+fn red_store_still_quarantined(cell_generation: Int) -> Bool {
+  match read_cell_readiness_store(root: cell_readiness_store_root) {
+    StoreUnreadable { reason: _ } => false
+    StoreRead { ownership: _, records: rs } =>
+      match first(filter(rs, r => match r {
+        CellSettled { cell: _, generation: g, readiness: _ } => g == cell_generation
+        CellAttemptInFlight { cell: _, generation: _, attempt: _ } => false
+      })) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            CellSettled { cell: _, generation: _, readiness: readiness } => !cell_is_ready(readiness: readiness)
+            CellAttemptInFlight { cell: _, generation: _, attempt: _ } => false
+          }
+      }
+  }
+}
+
+// ── RED 5: a stop for a stale incarnation is refused and the live unit survives ───────────────
+
+fn red_identity(attempt: MicroVmAttempt, generation: Int) -> AttemptIdentity {
+  AttemptIdentity {
+    attempt: attempt,
+    allocation_generation: generation,
+    invocation_id: "red-invocation" as NonEmptyStr,
+    jit_registration_id: "red-registration" as NonEmptyStr,
+    guest_image: gunbc_runner_guest_image,
+  }
+}
+
+fn red_a_stale_incarnations_stop_is_refused_and_the_live_unit_survives() -> Bool {
+  match red_attempt(index: 94, attempt_id: "red5") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_sigterm_ignoring_payload) {
+        false
+      } else {
+        let refused = match stop_request_admission(
+          live: red_identity(attempt: a, generation: 7),
+          requested: red_identity(attempt: a, generation: 6),
+        ) {
+          StopRefusedStaleIncarnation { live_generation: l, requested_generation: r } => l == 7 && r == 6
+          StopAdmitted { trigger: _ } => false
+        }
+        let still_running = match systemctl_is_active_read(
+          transport: LocalShell,
+          unit: runner_microvm_attempt_unit_name(attempt: a),
+        ) {
+          UnitIsActiveCaptured { state: _, active: active } => active
+          UnitIsActiveCaptureRefused { reason: _ } => false
+        }
+        let swept = sweep_slice_quiet(attempt: a, index: 94)
+        refused && still_running && swept
+      }
+  }
+}
+
+// ── RED 6: a successful job that left a background process ────────────────────────────────────
+
+// THE EXIT CODE IS CARRIED AND IT DECIDES NOTHING. The trigger is RunnerExited with 0 -- the job
+// succeeded -- and the payload left a process behind in a scope beside the service. The claim is a
+// SEQUENCE rather than a verdict, because the verdict alone cannot tell the two controllers apart:
+// one that trusted the exit code would also answer Ready, having released a cell with a live
+// process in it. So the residue is observed alive BEFORE the settlement, the settlement is taken,
+// and the slice is observed empty AFTER it. Ready is admissible here only because the middle step
+// is what emptied the slice.
+fn red_a_successful_job_that_left_a_process_is_released_only_after_it_is_gone() -> Bool {
+  match red_attempt(index: 95, attempt_id: "red6") {
+    Absent => false
+    Present { value: a } =>
+      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 95))) {
+        false
+      } else {
+        let before = read_cell_cgroup_subtree(slice: red_slice(index: 95))
+        let settled = red_settlement(attempt: a, generation: 6, trigger: RunnerExited { exit_code: 0 })
+        let after = read_cell_cgroup_subtree(slice: red_slice(index: 95))
+        let swept = sweep_slice_quiet(attempt: a, index: 95)
+        swept
+          && red_residue_was_alive(before: before)
+          && red_slice_is_empty(after: after)
+          && red_released_on_the_readback(settled: settled)
+      }
+  }
+}
+
+fn red_residue_was_alive(before: CgroupSubtreeReadback) -> Bool {
+  match before {
+    CgroupSubtreePopulated { pids: p, cgroups: _ } => list_length(items: p) > 0
+    _ => false
+  }
+}
+
+fn red_slice_is_empty(after: CgroupSubtreeReadback) -> Bool {
+  match after {
+    CgroupSubtreeEmpty => true
+    _ => false
+  }
+}
+
+fn red_released_on_the_readback(settled: TeardownSettlement?) -> Bool {
+  match settled {
+    Absent => false
+    Present { value: s } =>
+      match s.trigger {
+        RunnerExited { exit_code: code } => code == 0 && cell_is_ready(readiness: s.readiness)
+        _ => false
+      }
+  }
+}

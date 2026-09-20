@@ -112,6 +112,8 @@ type HostOperation =
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlMaskNow { unit: NonEmptyStr }
   | SystemctlKill { unit: NonEmptyStr, signal: NonEmptyStr }
+  | SystemctlFreeze { unit: NonEmptyStr }
+  | SystemctlThaw { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowUserProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowLoadState { unit: NonEmptyStr }
@@ -168,6 +170,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         operation_argv_bind_text(name: "unit", text: u as String),
         operation_argv_bind_text(name: "signal", text: sig as String),
       ],
+    )
+    SystemctlFreeze { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Freeze"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlThaw { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Thaw"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
     )
     SystemctlShowProperty { unit: u, property: p } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "ShowProperty"),
@@ -329,6 +339,14 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     SystemctlKill { unit: u, signal: sig } => {
       let result = systemd.Systemctl.Kill(unit: u, signal: sig)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlFreeze { unit: u } => {
+      let result = systemd.Systemctl.Freeze(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlThaw { unit: u } => {
+      let result = systemd.Systemctl.Thaw(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
     SystemctlShowProperty { unit: u, property: p } => {

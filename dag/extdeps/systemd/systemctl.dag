@@ -336,6 +336,15 @@ type UnitFileState
   | UnitTransient
   | UnitBad
 
+// Freeze and Thaw: THE CGROUP FREEZER, WHICH IS THE ONE STATE A TASK CAN BE PUT INTO AND TAKEN OUT
+// OF IN WHICH SIGKILL DOES NOT TAKE EFFECT. cgroup v2 documents a frozen cgroup's tasks as held
+// outside the scheduler: a signal sent to one is delivered when the cgroup is thawed, and never
+// before. systemctl.1 exposes the two verbs over a unit's cgroup. They are modeled here because a
+// controller whose force-stop is BOUNDED owes evidence that the bound can be exceeded by something
+// real, and a task the kernel will not reap on demand is otherwise unreachable on a host anyone
+// would run this on -- a genuinely wedged task cannot be created safely and cannot be cleaned up
+// afterwards, while a freeze is exactly reversible by its own inverse verb.
+
 // Kill: SIGNALLING A UNIT IS NOT STOPPING IT, AND THE DIFFERENCE IS WHO DECIDES THE ESCALATION.
 // `systemctl stop` runs the unit's own stop protocol -- KillSignal, then SIGKILL after
 // TimeoutStopSec unless SendSIGKILL=no -- so a caller that needs to own the escalation itself
@@ -437,6 +446,40 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Kill"
+    }
+  }
+
+  operation Freeze {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "freeze", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl freeze failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Freeze"
+    }
+  }
+
+  operation Thaw {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "thaw", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl thaw failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Thaw"
     }
   }
 

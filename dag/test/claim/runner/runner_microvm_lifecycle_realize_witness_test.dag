@@ -6,7 +6,7 @@ import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.grep { grep_every_line_in_tree_command }
 import extdeps.linux.cgroup_v2 {
-  cgroup_v2_procs_interface_file, cgroup_v2_slice_path, cgroup_v2_procs_path,
+  cgroup_v2_procs_interface_file, cgroup_v2_mount_point, cgroup_v2_procs_path,
   CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
   decode_cgroup_subtree_procs, CgroupProcsDecoding, CgroupProcsDecoded, CgroupProcsUnparseable,
   decode_cgroup_procs,
@@ -41,7 +41,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }
 
-data witness_root: NonEmptyStr = cgroup_v2_slice_path(slice: fabric_cell_slice_name(slot: witness_slot) as NonEmptyStr)
+// THE ROOT IS SPELLED AS SYSTEMD WOULD ANSWER IT, WHICH IS NOT THE MOUNT POINT PLUS THE SLICE NAME:
+// a dashed slice name is an ancestry, so the cell's cgroup sits under three ancestor slices. The
+// production reader does not derive this -- it asks the manager for ControlGroup -- and this
+// fixture is the shape of that answer rather than a derivation of it.
+data witness_root: NonEmptyStr = join([
+  cgroup_v2_mount_point as String,
+  "/fabric.slice/fabric-cell.slice/fabric-cell-srv2.slice/",
+  fabric_cell_slice_name(slot: witness_slot),
+], "") as NonEmptyStr
 
 fn witness_attempt() -> MicroVmAttempt? {
   match microvm_attempt(slot: witness_slot, attempt_id: "w-1") {
