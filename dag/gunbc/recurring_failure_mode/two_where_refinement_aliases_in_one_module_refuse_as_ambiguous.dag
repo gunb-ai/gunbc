@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.two_where_refinement_aliases_in_one_module_refuse_as_ambiguous
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data two_where_refinement_aliases_in_one_module_refuse_as_ambiguous: RecurringFailureMode = RecurringFailureMode {
+  identity: "two_where_refinement_aliases_in_one_module_refuse_as_ambiguous" as NonEmptyStr,
+
+  receipts: [
+    "two where-refinement aliases in one module refuse as ambiguous: `type A = String where brand(\\\"N\\\")` beside `type B = String where brand(\\\"M\\\")` (and a fn) refuses resolve_reason_ambiguous_symbol on origin/main, measured 2026-09-20 through v2.compiler.program_assembly assemble_program_from_ingest over a one-module ingest with the same claim_batch binary on a clean main snapshot and on the gunbc#11574 head -- independent of that PR. One such alias, or one alias beside any number of fns and coproducts, accepts.",
+
+    "INVALID STATE: two distinguishable declarations -- different names, different refinement arguments -- are reported as one ambiguous symbol. HARM: a module cannot carry more than one refined alias, and the refusal names no declaration and no symbol a reader can act on; the author of gunbc#11574 spent an afternoon locating the constraint while combining fixture sources. The refusal is a located, typed diagnostic, so nothing is silently wrong; the class is an OVER-REFUSAL (DESIGN section 4d, the over-prohibition arm), not a fail-open.",
+
+    "JUDGEMENT: a DEFECT, not a legitimate refusal. The two declarations are distinguishable by name and by content, so `ambiguous` can only be about a symbol the two lowered aliases SHARE -- and body_lower_type_decl rehomes a where-alias as `Conj { Name: host }` whose host carries structural Named edges labelled with emitted identities (dag_surface_type_expr, dag_surface_where_refinement_clause), which every such alias repeats. WHICH symbol resolve reports as ambiguous is UNMEASURED: the discriminator is a probe that reads the ambiguous diagnostic's locus on the two-alias source, or a bisection that renames the refinement predicate in one alias and then the base type; a reading that names the symbol is what turns this row's cause from a hypothesis into a fact.",
+
+    "RUNG FOUND AT: 1, mitigatable -- the refusal is typed and located but over-wide. CEILING: 3, the resolver refusing only a genuinely shared binding; the structural labels a rehome emits are not declarations and must not enter the space bare declaration names are resolved in. NEXT-RUNG TRIGGER: the measured symbol above, then the boundary that owns it (the rehome's structural labels, or the symbol space the resolver folds them into) refusing to conflate them -- with a control that two where-refinement aliases in one module ACCEPT and a boundary that a genuinely duplicated alias name still refuses.",
+
+    "RECOGNITION RULE: a fixture combining two refined aliases in one module that refuses ambiguous_symbol while each alias alone accepts. The cheap check before combining sources in a witness is to assemble the pair alone.",
+  ],
+
+  evidence: [],
+}
