@@ -1584,6 +1584,10 @@ pub fn minute_count(m: Minute) -> Nat {
     measure_count(m.clone())
 }
 
+pub fn minute_to_second(m: Minute) -> Second {
+    second((minute_count(m.clone()) * seconds_per_minute()))
+}
+
 pub fn minute_to_millisecond(m: Minute) -> Millisecond {
     millisecond(((minute_count(m.clone()) * seconds_per_minute()) * milliseconds_per_second()))
 }
