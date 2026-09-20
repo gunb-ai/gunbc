@@ -1,5 +1,37 @@
 module test.claim.mtcollins1_census_image
 
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr }
+import std.string_type { String }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  NoCloudSeedFile,
+  SeededInstallMediaPinnedDates,
+  UbuntuSeededInstallMediaBuildInput,
+  seeded_install_media_build_key,
+  ubuntu_seeded_install_media_built,
+}
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureStage,
+  host_capture_census_stages,
+  host_capture_edac_clean_section,
+  host_capture_envelope_complete,
+  host_capture_nproc_exact,
+  host_capture_section_exit_zero,
+  host_capture_workload_stable,
+}
+import gunbc.machine_intake_mtcollins1_census_image {
+  mtcollins1_census_capture_program,
+  mtcollins1_census_console_device,
+  mtcollins1_census_console_tty,
+  mtcollins1_census_image_input,
+  mtcollins1_census_image_stem,
+  mtcollins1_census_program_file,
+  mtcollins1_census_volume_id,
+  mtcollins1_seeded_image_input,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data census_capture_complete: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 begin 2026-09-19T00:00:00Z=====\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; echo workload-digest-stable=yes\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-before----\n----ARGV edac-before: find\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 end 2026-09-19T00:04:00Z=====\n"
