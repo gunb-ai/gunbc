@@ -25,7 +25,11 @@ import gunbc.systemctl_show_read {
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -274,9 +278,9 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
 // delta.
 fn host_converge_slice1_enumeration_mismatch(
   host: HostIdentity,
+  declared: Int,
   units: List<NonEmptyStr>,
 ) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
   if length(units) == declared {
     none
   } else {
@@ -290,13 +294,30 @@ fn host_converge_slice1_enumeration_mismatch(
   }
 }
 
-fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
-  let observed_count = length(units)
-  if observed_count > declared {
-    host_converge_slice1_enumeration_mismatch(host: host, units: units)
-  } else {
-    none
+// THE THIRD STATE IS "COULD NOT ASK", AND THE Option COULD NOT HOLD IT. The cross-check compares an
+// observation against a declared count, so a host whose width does not resolve compared against
+// zero: every live unit was surplus, the host reported an enumeration mismatch, and the mismatch it
+// reported named a declared_count of 0 that no authority ever declared. The converge still stopped,
+// which is the right direction -- but it stopped citing a fabricated number instead of the missing
+// denominator, and an operator reading it would go looking for units to retire.
+type HostConvergeSlice1EnumerationCrossCheck
+  = CrossCheckWithinDeclared
+  | CrossCheckMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
+  | CrossCheckWidthUnresolved { host: HostIdentity, cause: String }
+
+fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationCrossCheck {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      CrossCheckWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: declared } =>
+      if length(units) > declared {
+        match host_converge_slice1_enumeration_mismatch(host: host, declared: declared, units: units) {
+          Present { value: m } => CrossCheckMismatch { mismatch: m }
+          Absent => CrossCheckWithinDeclared
+        }
+      } else {
+        CrossCheckWithinDeclared
+      }
   }
 }
 
@@ -565,8 +586,12 @@ fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String)
       match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
         Present { value: units } =>
           match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
-            Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
-            _ =>
+            CrossCheckMismatch { mismatch: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
+            CrossCheckWidthUnresolved { host: _, cause: c } =>
+              HostConvergeSlice1HostRefused {
+                reason: concat("host_converge_slice1: refusing to converge caps against an enumeration this host cannot be measured against. ", c)
+              }
+            CrossCheckWithinDeclared =>
               HostConvergeSlice1HostEnumerated {
                 host: host,
                 outcomes: map(units, u => host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob)),
