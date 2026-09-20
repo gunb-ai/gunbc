@@ -124,6 +124,34 @@ test fn a_section_from_another_run_is_not_read() -> Bool {
   }
 }
 
+// THE SAME SPELLING IN TWO DIFFERENT IDENTITY FORMS IS NOT THE SAME RUN. attempt=3 is an ordinal
+// the historical program printed; boot-id=3 would be a kernel boot id. They share a spelling and
+// nothing else, so an envelope begun as one and ended as the other may not close -- comparing the
+// projected text alone let exactly that through, which is the confusion the two forms exist to end.
+test fn the_same_text_under_two_identity_forms_is_not_one_run() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "boot-id=3", word: "end"), "\n",
+  )) == false
+    && census_binds(capture: concat(
+      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "attempt=3", word: "end"), "\n",
+    )) == false
+}
+
+// THE POSITIVE CONTROL for the claim above: the same spelling under the SAME form is one run and
+// must bind, so the refusal above is the form discriminating and not the text failing to compare.
+test fn the_same_text_under_one_identity_form_is_one_run() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "attempt=3", word: "end"), "\n",
+  ))
+    && census_binds(capture: concat(
+      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "boot-id=3", word: "end"), "\n",
+    ))
+}
+
 // A NAME THAT OPENS TWICE REFUSES THE WHOLE CAPTURE rather than picking one: a later passing section
 // must not be able to answer for an earlier failing one.
 test fn a_duplicate_section_refuses_the_capture() -> Bool {

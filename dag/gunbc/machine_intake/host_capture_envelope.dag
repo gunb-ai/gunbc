@@ -336,9 +336,29 @@ type HostCaptureBinding
   = HostCaptureBound { envelope: BoundHostCaptureEnvelope }
   | HostCaptureUnbound { reason: String }
 
+// TWO RUN IDENTITIES ARE THE SAME RUN ONLY IF THEY ARE THE SAME KIND OF IDENTITY. Comparing the
+// projected TEXT alone made attempt=3 and boot-id=3 the same run, so an envelope begun by the
+// historical program and ended by a kernel boot could close as one -- the exact confusion the two
+// forms were introduced to end. A historical attempt ordinal and a kernel boot id are drawn from
+// different spaces and a shared spelling between them means nothing.
+fn host_capture_run_identity_same(a: HostCaptureRunIdentity, b: HostCaptureRunIdentity) -> Bool {
+  match a {
+    HistoricalAttemptOrdinal { ordinal: x } =>
+      match b {
+        HistoricalAttemptOrdinal { ordinal: y } => (x as String) == (y as String)
+        KernelBootId { boot_id: _ } => false
+      }
+    KernelBootId { boot_id: x } =>
+      match b {
+        KernelBootId { boot_id: y } => (x as String) == (y as String)
+        HistoricalAttemptOrdinal { ordinal: _ } => false
+      }
+  }
+}
+
 fn host_capture_marker_matches(a: HostCaptureMarker, machine: NonEmptyStr, run: HostCaptureRunIdentity) -> Bool {
   (a.machine as String) == (machine as String)
-    && host_capture_run_identity_value(run: a.run) == host_capture_run_identity_value(run: run)
+    && host_capture_run_identity_same(a: a.run, b: run)
 }
 
 type HostCaptureScan {
