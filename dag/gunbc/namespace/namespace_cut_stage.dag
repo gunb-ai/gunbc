@@ -265,9 +265,61 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // the status carrier); the producer answers on the production route today, and the base-pinned run
 // of it is ACT-0's DenominatorRosterDigest, a separate later fact.
 //
+// XL-2 IS BLOCKED, AND UNTIL 2026-09-19 THIS BLOCK SAID NOTHING ABOUT IT. It explained XL-4's
+// refused receipt and XL-0's withdrawn one at length and was silent on XL-2, which read as
+// UNSTARTED -- and a lane (wise-pike-696) was dispatched to build the instrument on that reading.
+// Outstanding never meant buildable: it means a named observed outstanding population, and the
+// planner's inference "empty roster, therefore unstarted and otherwise buildable" was the
+// planner's, not the variant's. This block exists to prevent that inference, not to recast every
+// earlier Outstanding reading as false. Startability is the other axis and is unchanged by this:
+// stage_startability reads only the chain, so XL-2 reports chain-startable off XL-1 while its own
+// standing is NotDerivable -- current capability, delivery evidence and chain position are three
+// facts and stay three.
+//
+// WHAT BLOCKS THE PRODUCER IS STATED ONCE, AND NOT HERE. The analysis -- the known necessary
+// prerequisites (calls and arguments at body lowering, field-position types at graft, a census
+// mode that resolves per module), the occurrence-completeness obligation, the residual's mixed
+// occurrence-id key, and why the Step-0 canary is not the instrument -- is the label of
+// gunbc.compiler_frontend_program_status missing_instrument_label ExactOccurrenceResidualCensus,
+// and the XL-2 arm there (xl2_stage_standing over rehearsal_producer_standing) reads NotDerivable
+// on that cause while the delivery roster below is empty, and reads the roster the moment a
+// rehearsal receipt lands. A first revision of this note restated that analysis in three places
+// and the copies disagreed within a day about which entry omits resolve; the label is the home
+// and this note cites it. What this note carries is what belongs to the STAGE and to executing
+// its cut, which the label does not own:
+//
+//   THE STRIP HALF EXISTS AND IS TYPED: std.import strip_import_statements, applied per source by
+//   gunbc.namespace_step0_strip_producer. The census half is the v2 production route over the
+//   stripped tree; the instrument is the strip fold composed with a route that carries the
+//   prerequisites the label names and answers its completeness obligation, and its FIRST
+//   discriminated run on the production route is the receipt this row holds.
+//
+//   THE REHEARSAL TREE'S ROOTS KEEP PRODUCTION'S RELATIVE SPELLINGS -- a precaution whose
+//   discriminator is currently dead, stated at exactly that strength (vivid-lark-741, 2026-09-19,
+//   gunbc#11738). Mechanism, real: v2.compiler.source_authority source_root_for_storage_path
+//   classifies a read's tree by a TEXTUAL prefix on the path as walked (`src/` is V2Tree, else
+//   DagTree), so a stripped copy read at an absolute scratch path classifies every file as
+//   DagTree and v2.std.cross_tree.resolution cross_tree_edge_decision answers
+//   EdgeNormalResolution where the real tree would deny. Outcome, unobserved: that lane's
+//   census-resolve over the whole tree found resolve_cross_tree_import_denied ZERO times (most
+//   modules refuse earlier on unbound symbols), and its three-arm differential (real tree /
+//   path-faithful copy / absolute-path copy) was byte-identical -- a prediction that the denial
+//   would appear was FALSIFIED. Not a demonstrated defect; kept because it costs a worktree
+//   checkout and stops being free when the unbound residual closes: the rehearsal tree is a
+//   worktree whose roots are passed as `dag` and `src/v2` with the process cwd inside it.
+//
+//   COST, since it decides whether the rehearsal can take this at all: the same run measured
+//   census-resolve at the cost census mode already pays, the resolve half a fraction of a percent
+//   of it (figures on gunbc#11738; re-derive, do not copy). The adjudicate baseline that
+//   gunbc.rung_drop v2_native_route_off_the_merge_path records does NOT transfer -- adjudicate
+//   pays infer plus per-declaration eval and a census pays neither; an earlier revision of this
+//   note extrapolated a multi-hour instrument from it, which overstated it.
+//
 // Empty by construction again, and honestly so: no stage delivery instrument is delivered. XL-0's
 // producer exists and answers on the production route (gunbc#11582), but its declared identities
-// are spelling-derived, so it is not a delivery of XL-0's denominator (see above).
+// are spelling-derived, so it is not a delivery of XL-0's denominator (see above). XL-2's
+// instrument is unbuilt because its census half has no honest producer yet (see above; the
+// analysis is on ExactOccurrenceResidualCensus).
 data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {

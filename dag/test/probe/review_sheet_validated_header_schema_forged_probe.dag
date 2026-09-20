@@ -1,0 +1,54 @@
+module test.probe.review_sheet_validated_header_schema_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A ValidatedHeaderSchema is minted by
+// gunbc.review_sheet_projection validate_header_schema and by nothing else: it is
+// sole_constructor, so the record literal below -- a header row authored beside the fold that is
+// supposed to derive it, with a schema whose identity column and whose sole column are both
+// "Listing", and with the header names chosen by the author to render that name twice -- refuses
+// as SoleConstructorViolation.
+//
+// This is the whole point of the carrier rather than a validation function. Every consumer of a
+// header row now takes ValidatedHeaderSchema (classify_review_sheet's missing_schema_header, the
+// format actuator's band extent and standing-column position), so the duplicate header row this
+// module tries to build has no route to a writer that does not pass through the mint. If the
+// literal below ever compiles, the wall is gone and the mint is advice.
+
+import std.types { NonEmptyStr }
+import gunbc.review_sheet_projection {
+  ValidatedHeaderSchema,
+  ReviewSheetSchema,
+  ReviewColumn,
+  DerivedField,
+}
+
+fn forged_header_schema() -> ValidatedHeaderSchema {
+  ValidatedHeaderSchema {
+    schema: ReviewSheetSchema {
+      identity_column: "Listing" as NonEmptyStr,
+      columns: [
+        ReviewColumn { name: "Listing" as NonEmptyStr, kind: DerivedField { source_field: "listing" as NonEmptyStr } },
+      ],
+    },
+    header_names: ["Listing" as NonEmptyStr, "Listing" as NonEmptyStr],
+  }
+}
+
+// THE SECOND FORGERY IS THE ONE A HELPER WOULD HAVE HANDED OUT (review 68430). An earlier revision
+// of gunbc#11705 exported `validated_header_schema(schema, identity_in_columns)`, so a foreign
+// module could pass `identity_in_columns: false` for a schema whose identity IS in the roster and
+// receive this exact carrier -- a header row prepending "Repository" ahead of the roster that
+// already contains it, rendering the name twice. The helper is gone and returns names rather than
+// the carrier now; this arm keeps the state it would have produced enrolled as a RED, so the wall
+// is measured against the route that actually breached it and not only against the obvious literal.
+fn forged_identity_prepended_twice() -> ValidatedHeaderSchema {
+  ValidatedHeaderSchema {
+    schema: ReviewSheetSchema {
+      identity_column: "Repository" as NonEmptyStr,
+      columns: [
+        ReviewColumn { name: "Rank" as NonEmptyStr, kind: DerivedField { source_field: "rank" as NonEmptyStr } },
+        ReviewColumn { name: "Repository" as NonEmptyStr, kind: DerivedField { source_field: "repository" as NonEmptyStr } },
+      ],
+    },
+    header_names: ["Repository" as NonEmptyStr, "Rank" as NonEmptyStr, "Repository" as NonEmptyStr],
+  }
+}

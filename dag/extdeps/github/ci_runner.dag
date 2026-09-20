@@ -1,6 +1,6 @@
 module extdeps.github.ci_runner
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
@@ -20,6 +20,64 @@ data organization_self_hosted_runners_list_citation: ExternalAuthority = Externa
   }
 }
 
+data organization_self_hosted_runner_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#get-a-self-hosted-runner-for-an-organization"
+  }
+}
+
+// THE CLI TRANSPORT, one of N realizations and not a fact about the dependency -- the same gh
+// family as extdeps.github.org_actions github.CliOrgRunnerGroups, authenticated by the GH_TOKEN
+// environment the caller's step holds, never by an argv field. Both operations are readonly.
+//
+// --include IS LOAD-BEARING. The list endpoint is paginated by an RFC 8288 Link header
+// (extdeps.github.pagination), which only the response head carries, and the per-ID read must tell
+// 404 (the registration is gone) from every other failure (nothing is known). gh prints the
+// status line and headers before the body on success AND on an HTTP error, so the head is the
+// discriminator in both operations; extdeps.github.cli_api_include owns reading it.
+//
+// ListOrgRunnersPage takes the WHOLE request target, not a page number: the first request is
+// composed by the caller from org_self_hosted_runners_first_page_target, and every later one is the
+// rel="next" target the authority itself returned. Composing page N client-side would be the
+// offset protocol, which the cited pagination page does not promise to be the one it continues by.
+service github.CliOrgSelfHostedRunners {
+  operation ListOrgRunnersPage {
+    input {
+      target: NonEmptyStr
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["gh", "api", "--include", "{target}"]
+    }
+  }
+
+  operation GetOrgRunner {
+    input {
+      org: NonEmptyStr
+      runner_id: Int
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["gh", "api", "--include", "orgs/{org}/actions/runners/{runner_id}"]
+    }
+  }
+}
+
+fn org_self_hosted_runners_first_page_target(org: NonEmptyStr, per_page: Int) -> NonEmptyStr {
+  join(["orgs/", org as String, "/actions/runners?per_page=", to_string(per_page)], "") as NonEmptyStr
+}
+
 type RunnerLifecycleSignal
   = ShutdownReceived
   | OperationCanceled
@@ -35,18 +93,21 @@ type GitHubRunnerRegistrationStatus
   = GitHubRunnerOnline
   | GitHubRunnerOffline
 
-// THE ORG RUNNERS ENDPOINT RETURNS id, name, status, busy, ephemeral, version, AND labels AS
-// SEPARATE FIELDS. status IS online OR offline; busy IS its own boolean. version IS the runner
-// software version string (the incident corpus pinned Actions Runner v2.334.0). None of these are
-// folded into a single synthetic status enum.
+// THE ORG RUNNERS ENDPOINT RETURNS id, name, os, status, busy AND labels AS REQUIRED FIELDS, and
+// ephemeral and version as OPTIONAL ones (version is `string | null`), per the "Self hosted runners"
+// schema of organization_self_hosted_runners_list_citation, read 2026-09-19. status IS online OR
+// offline; busy IS its own boolean. None of these are folded into a single synthetic status enum.
+// The two optional fields are Optional here because the authority does not promise them: a
+// decoder that required them would refuse a conforming response, and one that defaulted them
+// would fabricate a value the response never carried (DESIGN section 5).
 
 type GitHubSelfHostedRunnerRegistration {
   id: Nat
   name: NonEmptyStr
   status: GitHubRunnerRegistrationStatus
   busy: Bool
-  ephemeral: Bool
-  version: NonEmptyStr
+  ephemeral: Bool?
+  version: NonEmptyStr?
   os: NonEmptyStr
   labels: List<NonEmptyStr>
 }
