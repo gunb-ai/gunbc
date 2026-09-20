@@ -773,8 +773,12 @@ type RefusalClassBoundary {
 // and gunbc#11156's two transition rows; the specimens are not independent corroboration of
 // that author's practice. The adjudication is fierce-lark-661's, not the specimen author's.
 //
-// Re-derive the subject with namespace_wave_admission::adjudicate, binding_disposition and
-// disposition_auto_admitted, reached by run_required_wave_admission. gunbc#11165 replaced
+// Re-derive the subject's HISTORICAL shape with git log over the deleted
+// src/v1/stage0/src/namespace_wave_admission.rs (adjudicate, binding_disposition,
+// disposition_auto_admitted, reached by run_required_wave_admission) -- the instrument was
+// deleted with the wave-admission wall by operator ruling 2026-09-19 (gunbc.rung_drop
+// namespace_wave_admission_wall_removed), so this boundary's vocabulary is now a record of the
+// policy that governed the roster while it stood, with no executing consumer. gunbc#11165 replaced
 // admission lifecycle predictions with admission_satisfied_at over exact candidate sets;
 // it did not auto-admit TargetChanged. gunbc#11214 at the observed head still moves the
 // read_supplied_access_token / SuppliedTokenReady / SuppliedTokenUnavailable bindings from

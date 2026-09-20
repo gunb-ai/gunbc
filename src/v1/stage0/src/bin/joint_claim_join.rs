@@ -25,8 +25,8 @@
 //! merged change is not an open sibling.
 //!
 //! WHAT IT REUSES RATHER THAN RE-DERIVES. Records come from `declaration_index::record_from_module`
-//! through `namespace_wave_admission::base_records`, the same parse the wave wall reconstructs a
-//! baseline from; touched paths come from `diff_sides` over `git diff --name-status -z -M`, which
+//! through `namespace_baseline::base_records`, the same parse the floor's baseline reconstruction
+//! runs; touched paths come from `diff_sides` over `git diff --name-status -z -M`, which
 //! is the LISTING that establishes which side a path exists on, so a `git show` failure here is a
 //! refusal and never evidence of absence.
 //!
@@ -41,7 +41,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::declaration_index::ModuleDeclarationRecord;
-use v1_compiler::cli_run::namespace_wave_admission::{
+use v1_compiler::cli_run::namespace_baseline::{
     base_records, diff_sides, git_stdout, in_sweep_scope,
 };
 

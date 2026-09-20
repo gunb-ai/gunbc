@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.test_claim_runner_slot_allocation_witness_witness_floor_peak_input_is_uncensored_not_a_throttle_pin_gunbc_floor_measured_peak_is_uncensored
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data test_claim_runner_slot_allocation_witness_witness_floor_peak_input_is_uncensored_not_a_throttle_pin_gunbc_floor_measured_peak_is_uncensored: TransitionAdmission = TransitionAdmission {
+  label: "FLOOR-DEMAND HOME gunbc_floor_measured_peak_is_uncensored moves to gunbc.floor_demand (gunbc#11672)" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("test.claim.runner_slot_allocation_witness", "witness_floor_peak_input_is_uncensored_not_a_throttle_pin"),
+    spelling: "gunbc_floor_measured_peak_is_uncensored" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.floor_demand", "gunbc_floor_measured_peak_is_uncensored")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11672 as UInt32,
+}

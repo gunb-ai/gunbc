@@ -93,7 +93,8 @@ data gunbc_invoke_step_root_var: String = "$ROOT"
 // as one Char -- which is what a character map can return, and what a host String is not.
 // Spelling it `FreeMonoid<Char>` rather than `v2.std.text.String` is not a style choice: the alias
 // spelling leaves a `String` reference in this declaration whose binding MOVES off the ambient
-// kernel, and namespace-wave-admission adjudicates that move as TargetChanged. Naming the carrier
+// kernel -- the move the wave-admission wall adjudicated as TargetChanged while it stood (deleted
+// 2026-09-19). Naming the carrier
 // retires the `String` reference here instead of re-pointing it.
 data gunbc_invoke_refused_char_token: FreeMonoid<Char> = "_"
 

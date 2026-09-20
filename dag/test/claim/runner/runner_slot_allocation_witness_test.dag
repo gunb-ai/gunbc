@@ -42,13 +42,19 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation,
   srv2_03_floor_leaf_cgroup_events_at_entry_are_zero,
   gunbc_readback_refusal_stays_witnessed_by_synthetic_drift,
-  gunbc_floor_measured_peak_observation,
-  gunbc_floor_measured_peak_armed_high,
-  gunbc_floor_measured_peak_is_uncensored,
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
+import gunbc.floor_demand {
+  gunbc_floor_measured_peak_observation,
+  gunbc_floor_measured_peak_is_uncensored,
+  gunbc_floor_uncensored_demand_receipt,
+  gunbc_floor_throttle_pin_receipt_2026_09_19,
+  gunbc_floor_cgroup_charge_ceiling,
+  floor_peak_reading_kind,
+  UncensoredPeak, ThrottlePin, PeakUnmeasured,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -313,8 +319,37 @@ test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
   gunbc_floor_measured_peak_is_uncensored()
 }
 
-test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
-  byte_size_count(b: byte_size(16750372454)) > byte_size_count(b: gunbc_floor_measured_peak_armed_high)
+// THE READING KINDS DISCRIMINATE, IN BOTH DIRECTIONS. The row this replaced discriminated the
+// binary and decimal readings of a 2026-08-17 rendered string; that reading retired with its
+// receipt when the wall's input moved to the typed 2026-09-12 scope measurement in
+// gunbc.floor_demand. What the wall now relies on is that a pin cannot be mistaken for a demand:
+// the uncensored receipt classifies as UncensoredPeak, the 2026-09-19 pin classifies as ThrottlePin,
+// and a fold that returned one kind for both would fail here.
+test fn witness_the_uncensored_receipt_and_the_pin_classify_differently() -> Bool {
+  let uncensored = match floor_peak_reading_kind(receipt: gunbc_floor_uncensored_demand_receipt) {
+    UncensoredPeak { peak: _ } => true
+    ThrottlePin { peak: _, armed_line: _ } => false
+    PeakUnmeasured => false
+  }
+  let pinned = match floor_peak_reading_kind(receipt: gunbc_floor_throttle_pin_receipt_2026_09_19) {
+    UncensoredPeak { peak: _ } => false
+    ThrottlePin { peak: _, armed_line: _ } => true
+    PeakUnmeasured => false
+  }
+  uncensored && pinned
+}
+
+// THE DECLARED THROTTLE LINE SITS BELOW THE CHARGE THE FLOOR REACHED, AND THE WITNESS SAYS SO
+// RATHER THAN THE ROW PRETENDING OTHERWISE. gunbc_floor_cgroup_charge_ceiling folds every receipt's
+// peak, pins included, and the 2026-09-19 pin peaked 5.9 MiB OVER this row's memory_high. The
+// charge includes reclaimable cache, so this is NOT a statement that the row is too small -- the
+// run finished clean under reclaim -- and it is deliberately NOT a conjunct of the wall. It is a
+// standing observation with an authorable red -- a row raised above the ceiling, or a demand
+// reduction that retires the pin receipt, flips it -- so the fact that the floor is welded to the
+// line again is executed rather than remembered.
+test fn witness_declared_high_sits_below_the_floor_charge_ceiling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+    < byte_size_count(b: gunbc_floor_cgroup_charge_ceiling())
 }
 
 // RENAMED 2026-09-12, AND THE RENAME IS THE POINT RATHER THAN BOOKKEEPING. The old name --
