@@ -33,7 +33,7 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 | #11678 | C9a.1 | GCP Secret IAM: read the policy back **independently** after the write |
 | #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back — **now DIRTY** |
 | #11689 | C11 | GitHub reads rebound onto the canonical join — **parked, see below** |
-| #11732 | C9b | App private-key rotation: exact-version verifier, contract, `DisableOnly` |
+| #11732 | C9b | App-key rotation: exact-version verifier, contract, `DisableOnly` — **parked green** |
 | #11795 | — | `RungDropAmendment` carrier, so a later ruling on a standing drop has a home |
 | #11828 | — | `mtcollins1_boot` narrowed to `FleetSshKeyNotConsumed` |
 
@@ -42,6 +42,16 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 swept in — no consumer, re-minting a generated workflow path as a literal — was found by review and
 deleted, so the PR no longer carries a defect that would land. It then went DIRTY again within the
 hour on the contended pair. It is left open, not closed.
+
+**#11732 is parked green, and parking it leaves a real gap open.** At `e0c453f961` it had one
+approval, no change requests, and all four checks green by name; its eighth review cleared the
+thing most likely to be wrong in such a cut — that the frontier row names the add-version and
+disable-prior *capability* rather than letting the verifier's own existence retire it. It was
+stopped by queue position on the contended pair, twice. The consequence, stated so it can be
+weighed rather than forgotten: **`ci-github-app-private-key` still has no rotation deadline, no
+restore test and no rehearsed compromise answer on main, and nothing in the corpus can answer
+"does the key in version N actually work."** That key is the root of trust for every org-admin
+action CI takes.
 
 **#11676 was deliberately not rebuilt.** It is approved and green at `c153cfa519`, but main moved
 27 commits and edited five of its seven files, so resolving is content work rather than a
