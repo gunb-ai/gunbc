@@ -18,7 +18,7 @@ import extdeps.github.workflow_run_event {
 }
 import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { committed_generated_artifact_paths, artifact_path, HealWorkflowYamlArtifact }
+import gunbc.generated_artifact { committed_generated_artifact_paths, artifact_path, WitnessFloorYamlArtifact }
 import gunbc.heal_candidate { blob_id_of, BlobIdComputed, BlobIdRefused }
 import gunbc.heal_publication_boundary {
   HealRepairCandidate, candidate_names_no_paths, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
@@ -230,7 +230,7 @@ fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate
         let observations = PublisherObservations {
           repository_full_name: gunbc_repository.full_name as NonEmptyStr,
           default_branch: gunbc_repository.default_branch as NonEmptyStr,
-          heal_workflow_path: artifact_path(a: HealWorkflowYamlArtifact) as NonEmptyStr,
+          candidate_producer_workflow_path: artifact_path(a: WitnessFloorYamlArtifact) as NonEmptyStr,
           run: run,
           pull_request: PullRequestFacts {
             number: pr.pr.number,
