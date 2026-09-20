@@ -2,7 +2,7 @@ module test.claim.docker_image_digest_command_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.languages.json.emit {
-  json_array, json_object, json_kv, json_string, serialize_json,
+  json_array, json_object, json_kv, json_string, json_null, json_bool, serialize_json,
 }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli {
@@ -10,6 +10,7 @@ import extdeps.docker.cli {
   docker_image_digest_command, docker_image_inspect_command,
   docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_names_no_such_image,
+  docker_container_inspect_env_from_stdout, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -80,4 +81,51 @@ test fn inspect_stdout_that_is_not_one_object_is_unreadable() -> Bool {
 test fn inspect_stderr_no_such_image_is_the_absent_classifier() -> Bool {
   docker_image_inspect_names_no_such_image(stderr: "Error: No such image: example.invalid/repo:tag")
     && !docker_image_inspect_names_no_such_image(stderr: "Error: connection refused")
+}
+
+// ── THE Config.Env READER (2026-09-17) ────────────────────────────────────────────────────────
+//
+// The serving route's telemetry standing is discharged by reading the answering container's
+// effective environment off the same inspect document the identity reader parses. These rows pin
+// the reader's three behaviors: a string list reads through, docker's null spelling of an empty
+// environment reads as empty, and a non-string member is unreadable rather than coerced.
+
+data env_fixture_stdout: String = serialize_json(v: json_array(elements: [
+  json_object(members: [
+    json_kv(key: "Id", value: json_string(s: "abc123")),
+    json_kv(key: "Config", value: json_object(members: [
+      json_kv(key: "Env", value: json_array(elements: [
+        json_string(s: "NCCL_DEBUG=INFO"),
+        json_string(s: "VLLM_NO_USAGE_STATS=1"),
+      ])),
+    ])),
+  ]),
+]))
+
+test fn the_env_reader_returns_the_assignments() -> Bool {
+  match docker_container_inspect_env_from_stdout(stdout: env_fixture_stdout) {
+    DockerContainerInspectEnvUnreadable { cause: _ } => false
+    DockerContainerInspectEnv { assignments: env } =>
+      length(env) == 2
+        && any(env, a => a == "VLLM_NO_USAGE_STATS=1")
+        && any(env, a => a == "NCCL_DEBUG=INFO")
+  }
+}
+
+test fn a_null_env_reads_as_empty() -> Bool {
+  match docker_container_inspect_env_from_stdout(stdout: serialize_json(v: json_array(elements: [
+    json_object(members: [json_kv(key: "Config", value: json_object(members: [json_kv(key: "Env", value: json_null())]))]),
+  ]))) {
+    DockerContainerInspectEnvUnreadable { cause: _ } => false
+    DockerContainerInspectEnv { assignments: env } => length(env) == 0
+  }
+}
+
+test fn a_non_string_env_member_is_unreadable() -> Bool {
+  match docker_container_inspect_env_from_stdout(stdout: serialize_json(v: json_array(elements: [
+    json_object(members: [json_kv(key: "Config", value: json_object(members: [json_kv(key: "Env", value: json_array(elements: [json_bool(b: true)]))]))]),
+  ]))) {
+    DockerContainerInspectEnvUnreadable { cause: _ } => true
+    DockerContainerInspectEnv { assignments: _ } => false
+  }
 }

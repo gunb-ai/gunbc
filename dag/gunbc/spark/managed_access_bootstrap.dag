@@ -21,6 +21,7 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -389,21 +390,47 @@ type SparkGrantInstallBasis
 // still owed by the image-configuration reader and by the live inspect classification; an admission
 // on this basis carries that obligation into the receipt rather than retiring it.
 //
+// On 2026-09-16 the operator accepted the same risk arm for InspectServingContainer over the native
+// arm's container (glm-native-tp4), which the group-keyed service-identity chain inspects on srv9.
+// The native container's image is digest-pinned and every Env entry its unit sets is declared, both
+// by the one launch specification (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan, whose
+// ArmNodeLaunch carries image_reference and whose container spec carries the environment), but no
+// classification receipt joins those declarations to the live
+// inspect object, so the disclosure stays unestablished and the obligation outstanding here too.
+//
 // The actor is the operator's fleet login, read from the account model rather than spelled here, so
 // the decision is attributed to the same principal every other operator act in this lane names.
-data spark_managed_grant_install_basis: SparkGrantInstallBasis = OperatorAcceptedUnresolvedDisclosureRisk {
-  actor: fleet_bootstrap_principal_login(),
-  decided_on: "2026-09-14" as NonEmptyStr,
-  accepted_for: InspectServingContainer { container: spark_pair_container_name },
-}
+data spark_managed_grant_install_basis: List<SparkGrantInstallBasis> = [
+  OperatorAcceptedUnresolvedDisclosureRisk {
+    actor: fleet_bootstrap_principal_login(),
+    decided_on: "2026-09-14" as NonEmptyStr,
+    accepted_for: InspectServingContainer { container: spark_pair_container_name },
+  },
+  OperatorAcceptedUnresolvedDisclosureRisk {
+    actor: fleet_bootstrap_principal_login(),
+    decided_on: "2026-09-16" as NonEmptyStr,
+    accepted_for: InspectServingContainer { container: glm_native_container_name },
+  },
+]
 
 // Whether a basis names this grant, joined on the derived sudoers command: two grants authorizing the
 // same words are the same authorization.
-fn spark_install_basis_accepts_risk_for(basis: SparkGrantInstallBasis, grant: SparkManagedGrant) -> Bool {
+fn spark_install_basis_row_accepts_risk_for(basis: SparkGrantInstallBasis, grant: SparkManagedGrant) -> Bool {
   match basis {
     InstallBasisAbsent => false
     OperatorAcceptedUnresolvedDisclosureRisk { actor: _, decided_on: _, accepted_for: g } =>
       spark_managed_grant_sudoers_command(grant: g) as String == spark_managed_grant_sudoers_command(grant: grant) as String
+  }
+}
+
+fn spark_install_basis_accepts_risk_for(basis: List<SparkGrantInstallBasis>, grant: SparkManagedGrant) -> Bool {
+  any(basis, b => spark_install_basis_row_accepts_risk_for(basis: b, grant: grant))
+}
+
+fn spark_install_basis_accepting_risk_for(bases: List<SparkGrantInstallBasis>, grant: SparkManagedGrant) -> SparkGrantInstallBasis? {
+  match list_head(xs: filter(bases, b => spark_install_basis_row_accepts_risk_for(basis: b, grant: grant))) {
+    HeadFound { value: h } => Present { value: h }
+    HeadAbsent => none
   }
 }
 
@@ -446,6 +473,7 @@ data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
   RebootThisHost,
   InspectServingContainer { container: spark_pair_container_name },
+  InspectServingContainer { container: glm_native_container_name },
   ReadFabricModuleEeprom { device: spark_fabric_leg_netdev },
 ]
 

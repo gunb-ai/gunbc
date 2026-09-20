@@ -5,7 +5,11 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name, runner_unit_prefix, runner_unit_suffix }
 import std.algebra { trim }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -64,10 +68,6 @@ fn unit_is_owned_by_host(host: HostIdentity, unit: String) -> Bool {
   starts_with(s: unit, prefix: host_instance_prefix(host: host))
 }
 
-fn desired_unit_names(host: HostIdentity) -> List<String> {
-  desired_unit_names_range(host: host, slot: 1, limit: gunbc_runner_slots_per_host(host: host))
-}
-
 fn desired_unit_names_range(host: HostIdentity, slot: Int, limit: Int) -> List<String> {
   if slot > limit {
     []
@@ -106,8 +106,7 @@ fn missing_rows(desired: List<String>, observed_names: List<String>) -> List<Slo
     |> map(d => MissingSlot { unit: d })
 }
 
-fn census_rows(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> List<SlotCensusRow> {
-  let desired = desired_unit_names(host: host)
+fn census_rows(host: HostIdentity, desired: List<String>, observed: List<ObservedRunnerUnit>) -> List<SlotCensusRow> {
   concat(
     observed |> map(o => classify_observed_unit(host: host, desired: desired, o: o)),
     missing_rows(desired: desired, observed_names: observed_unit_names(observed: observed))
@@ -126,8 +125,34 @@ fn row_is_foreign(r: SlotCensusRow) -> Bool {
 // A FOREIGN OCCUPANT REFUSES THE WHOLE CENSUS rather than being filtered out of it. Filtering would
 // let a shrink proceed around something it could not identify, on a host where it is about to stop
 // units -- the absorbing fallback in its most dangerous position.
+// THE DESIRED SET IS RESOLVED BEFORE ANY UNIT IS CLASSIFIED, AND A HOST THAT CANNOT PRODUCE ONE
+// REFUSES THE CENSUS. This is the most dangerous of the empty-population readings in this change,
+// because of what the census is FOR: with an empty desired set every unit the host is running
+// classifies as RetiringSlot, and the plan derived from that census stops all of them. A host whose
+// width does not resolve would therefore have been converged to zero runners by a fold that never
+// saw anything wrong -- the shrink direction of the defect this module's own notes warn about,
+// arriving through the denominator rather than through the classification.
 fn slot_population_census(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> SlotCensus {
-  let rows = census_rows(host: host, observed: observed)
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      CensusRefused {
+        cause: join(["this host has no derivable desired slot population, so a census cannot say which running units are retained and which are retiring; refusing rather than reading an underivable population as an empty one and retiring everything: ", runner_width_unresolved_cause_text(cause: c)], ""),
+      }
+    RunnerWidthDerived { slots: slots } =>
+      slot_population_census_against_desired(
+        host: host,
+        desired: desired_unit_names_range(host: host, slot: 1, limit: slots),
+        observed: observed,
+      )
+  }
+}
+
+fn slot_population_census_against_desired(
+  host: HostIdentity,
+  desired: List<String>,
+  observed: List<ObservedRunnerUnit>,
+) -> SlotCensus {
+  let rows = census_rows(host: host, desired: desired, observed: observed)
   if rows |> filter(r => row_is_foreign(r: r)) |> length() > 0 {
     CensusRefused {
       cause: "a unit under the runner instance directory is not owned by this host's instance prefix, so this census cannot say whether stopping it is safe; refusing rather than acting around an unidentified occupant",
