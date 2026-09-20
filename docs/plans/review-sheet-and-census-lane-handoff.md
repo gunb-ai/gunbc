@@ -2,23 +2,40 @@
 
 Written 2026-09-20 by zesty-crane-846 on an operator instruction to wind down and record
 remaining items, so the system can prioritise v1 performance and v2 migration. Nothing here is
-in progress. Every item below is either landed, deliberately parked, or blocked on another
-lane's authority.
+in progress.
+
+**Read the census section before acting on any number in this lane's output.** The prospect rows
+that exist are historical prototype output and are NOT authority for runner occupancy, spend, or
+opportunity. That is the single most important thing this page carries.
 
 ## What landed
 
 | PR | what |
 |---|---|
-| #11552 | GitHub App manifest acquisition flow, end to end, with the route that runs it |
+| #11552 | the App-manifest acquisition MODEL and its route — **the flow is not executable end to end**, see below |
 | #11581 | three format-converge defects a live spreadsheet found that no witness could |
 | #11610 | the actuator consumes the plan's custody name instead of re-deriving it |
-| #11564 | GitHub observation record and bounded scan producer — **incomplete**, see #11656 |
+| #11564 | GitHub observation record and bounded scan producer — incomplete; completed by #11656 |
 | #11669 | `gunbc.review_sheet_identity` — the review-sheet identity semantic kernel |
+| #11656 | the three repairs #11564 merged without, plus a sealed scan outcome and an admitted page size |
 
-**#11656 is open, source-approved and frozen** at a head with all checks green. It carries three
-repairs #11564 merged without: a `body_digest` that hashed the query rather than the response, a
-product no caller could obtain, and a pairing obligation asserted in prose. It also seals the
-scan outcome and admits the page size. It needs queueing; it needs no further work.
+**No external prerequisite of this lane is still open.** #11552, #11564, #11656, #11669, #11671,
+#11677 and #11679 are all merged. Earlier revisions of this page described #11656 as open and the
+census token as queued behind #11671 → #11677 → #11679; that is stale and the blockers are gone.
+
+### #11552 acquisition is modeled, not achieved
+
+`gunbc.github_app_acquisition` instructs the operator to "paste the manifest below into the
+form's manifest field, and submit". **That instruction is not executable.** GitHub's ordinary
+App-creation page carries no manifest field; the manifest protocol requires a form POST carrying
+a `manifest` parameter, and a GET renders the blank create page. This was observed live: the
+operator followed the step and reported a form with no such field.
+
+Registration is also a different fact from INSTALLATION, and #11677's JWS/token route consumes an
+App and an installation that have already been admitted — it creates neither. So the remaining
+acquisition work is manifest submission, installation consent, callback capture, and credential
+custody, and no receipt in this corpus establishes that the census App was registered, installed
+and placed in usable custody.
 
 ## The one fact everything else rests on
 
@@ -83,7 +100,8 @@ build — it is a reuse, settled across three lanes.
 - **The live control** should run with the PAT route unavailable, so a successful code-search page
   is attributable only to the token producer rather than proving a token could be rendered.
 
-Blocked on: `#11671 → #11677 → #11679` landing first.
+Not blocked. #11671, #11677 and #11679 are all merged, so the route this describes is available
+to build against today.
 
 ## Remaining: ntfy publisher token onto GCP custody
 
@@ -113,7 +131,7 @@ restoration trigger requires the stronger observation, and its row has since bee
 permission-bits readback among the things that do *not* retire it. The custody work is
 necessary-but-not-sufficient for that trigger.
 
-Blocked on: `#11679` landing.
+Not blocked. #11679 is merged, so the custody authority this consolidates into exists today.
 
 ## Small, unblocked
 
@@ -122,10 +140,43 @@ Seven unused imports across `gunbc.ci_workflow_scan_producer` (`CodeSearchPage`,
 (`CodeSearchPageComplete`, `CodeSearchPageTruncated`, `ObservationCompleteness`). All predate
 #11656 and were deliberately left out of it to avoid widening a head-pinned repair. One small PR.
 
-## Data that exists and is not wired
+## The census rows are historical prototype output, not an authority
 
-`gunbc-private:sheets-census` at `94fa118` holds `strategy.ci_prospect_census` — 57 candidate rows
-from 11,959 runs read, scanned 2026-09-16, with a 17-column set matching the formatted sheet's
-schema. Five carry `CostOpportunity`; the rest are classified out with a stated reason. The module
-declares its own debt: the rows are **transcribed, not derived**, and no producer can re-derive
-them. The scan producer is what dissolves that, which is why #11656 matters beyond its own diff.
+`gunbc-private:sheets-census` at `94fa118` holds `strategy.ci_prospect_census` — 57 rows carrying a
+17-column set matching the formatted sheet's schema, transcribed rather than derived.
+
+**Label them: historical prototype output; NOT current runner-occupancy, spend, or opportunity
+authority.** The economic readings attached to those rows were shown not to have the meanings
+assigned to them, and the specific errors are worth carrying because each is easy to repeat:
+
+- workflow **wall duration is not summed runner occupancy** — a run lasting an hour may occupy one
+  runner for a minute, or twenty runners concurrently;
+- workflow-run **admission delay is not runner queue delay** — they are different waits with
+  different causes;
+- a **provider declaration can outlive actual provider execution**, so a declared runner label does
+  not establish that provider ran the job;
+- **provider adoption does not establish positive spend** — a self-hosted or free-tier runner is
+  adoption with no bill.
+
+So the derived totals that prototype displayed — a runner-minutes-per-day figure and an ARM-tier
+economic projection — do not follow from what was observed, and the "five carry `CostOpportunity`"
+classification must not be quoted as a finding. Treat the 57 rows as a shape demonstration.
+
+**The bounded scan producer is necessary and NOT sufficient.** It yields a declared candidate
+population; it cannot reproduce these rows or establish any economic reading, because the facts
+those readings need are job-level and the scan is workflow-level. The minimal rebuilding route is
+job-level observation:
+
+```
+jobs?filter=all
+  → all pages and attempts
+  → actual runner / provider identity
+  → job occupancy
+  → pre-start observation
+  → cancelled occupancy
+  → provider execution standing
+  → private commercial projection
+  → operator-safe sheet rows
+```
+
+That arc is carried as its own roadmap item rather than left in this prose.
