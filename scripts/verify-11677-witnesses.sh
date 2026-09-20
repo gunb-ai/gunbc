@@ -25,15 +25,19 @@ CB="$ROOT/target/release/claim_batch"
 echo "=== building claim_batch (release)"
 cargo build --release -p v1-compiler --bin claim_batch || { echo "BUILD FAILED"; exit 9; }
 
+OUT="$(mktemp -d)"
 run_file() {
   entry="$1"
+  tag="$(basename "$entry" .dag)"
   fns="$(grep -oP '^test fn \K\w+' "$entry" | paste -sd,)"
   echo
   echo "############ $entry"
   echo "functions: $fns"
   systemd-run --user --scope -p MemoryMax="$MEM_MAX" --quiet \
-    "$CB" --source-root dag --source-root src/v2 --entry "$entry" --functions "$fns" --hermetic 2>&1
-  echo "############ exit=$? for $entry"
+    "$CB" --source-root dag --source-root src/v2 --entry "$entry" --functions "$fns" --hermetic > "$OUT/$tag.log" 2>&1
+  rc=$?
+  cat "$OUT/$tag.log"
+  echo "############ exit=$rc for $entry"
 }
 
 run_file dag/test/claim/runner/runner_attempt_launch_witness_test.dag
@@ -41,4 +45,11 @@ run_file dag/test/claim/github_effect_perform_witness_test.dag
 run_file dag/test/claim/runner/runner_microvm_lifecycle_witness_test.dag
 
 echo
-echo "=== SUMMARY (PASS/FAIL lines only)"
+echo "=== SUMMARY (PASS/FAIL/refusal lines only)"
+grep -hE "^(PASS|FAIL)|error|refused|not found" "$OUT"/*.log | cut -c1-240 || true
+echo
+echo "=== COUNTS"
+echo "PASS: $(grep -hcE '^PASS' "$OUT"/*.log | paste -sd+ | bc 2>/dev/null || echo 0)"
+echo "FAIL: $(grep -hcE '^FAIL' "$OUT"/*.log | paste -sd+ | bc 2>/dev/null || echo 0)"
+echo "(a MemoryStallRefusedPageThrash line is the tool refusing to trust its own"
+echo " measurement under host pressure -- that is no verdict, not a pass.)"
