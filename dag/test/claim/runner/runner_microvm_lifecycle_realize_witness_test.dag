@@ -13,7 +13,7 @@ import gunbc.runner_microvm_lifecycle {
 }
 import gunbc.runner_microvm_lifecycle_realize {
   StopQuiescence, CgroupQuiet, CgroupStillHolding,
-  force_stop_outcome_after_ask, absence_of_existence, parent_directory_of,
+  force_stop_outcome_after_ask, absence_of_containment, parent_directory_of,
 }
 
 // THE REALIZE MODULE'S PURE FOLDS, CLAIMED WITHOUT A HOST.
@@ -76,7 +76,7 @@ test fn an_unreadable_subtree_is_unobservable_however_the_kill_went() -> Bool {
 // --- absence by containment ---
 
 fn absence_label(parent: PathExistenceReading, child: PathExistenceReading) -> String {
-  match absence_of_existence(
+  match absence_of_containment(
     path: "/srv/gunbc/cells/srv1-07/attempts/w-42",
     parent: "/srv/gunbc/cells/srv1-07/attempts",
     contained: contained_existence(
