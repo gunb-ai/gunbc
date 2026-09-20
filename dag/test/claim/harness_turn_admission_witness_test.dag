@@ -19,6 +19,9 @@ import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
 import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
 import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
+import gunbc.spark.serving_usage_stats_observe {
+  SparkUsageStatsEvidence, UsageStatsEnvironmentUnread, UsageStatsLaunchBindingMissing,
+}
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
   bind_spark_serving_offer, spark_serving_incarnation_unobserved_obligation,
@@ -108,7 +111,17 @@ fn t_realization() -> SparkServingRealization {
     endpoint: t_launch(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }
+}
+
+// THE TELEMETRY EVIDENCE IS THE LAUNCH-BINDING REFUSAL, matching the unobserved incarnation: what
+// this file tests is that the admission refusal reaches the harness note, and the unread arm is the
+// refusal both producers agree on for this fixture.
+fn t_telemetry_unread() -> SparkUsageStatsEvidence {
+  UsageStatsEnvironmentUnread { refusal: UsageStatsLaunchBindingMissing {
+    obligation: "fixture: the incarnation is unobserved, so no container environment can be bound to the offered launch" as NonEmptyStr,
+  } }
 }
 
 fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
@@ -130,14 +143,14 @@ test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
   let subject = t_subject(prompt: "p", attempt: "a-1")
   let placed = harness_bind_candidate(
     acc: t_empty(), group: FabricGroupA, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
-    readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
+    readback: t_realization().readback, incarnation: t_realization().incarnation, telemetry: t_realization().telemetry_evidence, route: ServingRouteObserved { route: t_route() }, subject: subject,
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
   )
   match t_bound() {
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
     SparkOfferBound { bound: projection } =>
       match spark_first_party_admission(
-        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
+        realization: harness_serving_realization(group: FabricGroupA, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation, telemetry: t_realization().telemetry_evidence),
         scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
         offer: projection.offer.id,
       ) {

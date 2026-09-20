@@ -37,36 +37,35 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // all three typed, folded and refusable. Lost: the guarantee that a Located path's jurisdiction was
 // established.
 //
-// THE POPULATION IS CURRENTLY EMPTY, AND THAT IS NOT THE SAME AS THE SUBJECT BEING GONE. The
-// distinction is the whole point of this paragraph, because the two are recorded differently and
-// only one of them is true. What this row waives is the JURISDICTION guarantee for a located path
-// whose reporter is established and applicable, and that waiver is untouched: Located remains the
-// right answer for such a reporter, and the operator's 2026-09-11 ruling still governs it. What has
-// changed is that gunbc.spark.first_party_serving no longer ATTRIBUTES a reporter and its path to
-// the launch that answered without evidence bound to that launch, so nothing currently reaches the
-// located arm and the row admits nothing today. The arm is retained and reachable; it is GATED on
-// the attribution evidence named at spark_serving_usage_stats_declared_environment_obligation.
+// THE POPULATION COUNTS AGAIN, BECAUSE THE EVIDENCE-BEARING ADMISSION PATH NOW EXISTS. What this
+// row waives is the JURISDICTION guarantee for a located path whose reporter is established and
+// applicable, and that waiver is untouched: Located remains the right answer for such a reporter,
+// and the operator's 2026-09-11 ruling still governs it. What has changed since the empty-population
+// spelling below is that gunbc.spark.serving_usage_stats_observe now reads the effective telemetry
+// environment of the serving container on every host of the realization, bound to the offered
+// launch through the incarnation standing -- so spark_usage_stats_telemetry_path's located arm is
+// reachable THROUGH EVIDENCE whenever a reading establishes the reporter runs, and by this row's own
+// discipline it therefore starts counting again. The row's single member is that arm over this
+// route's telemetry path. That the fleet's current reading is DISABLED on both serving groups
+// (measured 2026-09-19: VLLM_NO_USAGE_STATS=1 in both containers' Config.Env, so the path is Absent
+// and nothing is admitted) does not empty the population -- the drop's subject is the arm an
+// enabled reading reaches, not the reading today's fleet happens to return.
 //
 // SO THIS ROW IS NOT RETIRED AND IS NOT DISSOLVED. Not retired, because DESIGN 4b(3) retires a drop
 // by its restoration trigger and by nothing else, and that trigger -- a jurisdiction standing on
 // ProviderPathStanding -- does not exist. Not dissolved by subject deletion either, which an earlier
 // draft of this paragraph claimed: the admitting path was not deleted, and recording it as deleted
 // would make the ruling silently unreachable while this record went on claiming otherwise. It stands
-// with an empty population, pending attribution, and it starts counting again the moment an
-// evidence-bearing admission path is built.
+// with a population of one, admitted when the telemetry evidence reads enabled.
 //
-// A FOURTH ITEM WAS CLAIMED HERE AND IS NOW GONE, and the correction belongs in this row rather than
-// only in the module, because this row is what a reader consults to learn what survived the drop. It
-// read "whether the launch could have disabled it -- typed, folded and refusable", which was true
-// while gunbc.spark.first_party_serving concluded from the DECLARED container environment that
-// reporting was off for the deployment that answered, and turned the path Absent on that basis. That
-// conclusion was a claim about a process nobody read, so it was withdrawn -- and then the fold behind
-// it was deleted outright rather than kept behind a population that happens to be empty today, because
-// a deciding standing that still consults the declared environment is only postponing the same
-// attribution. gunbc.spark.first_party_serving no longer imports spark_pair_container_env at all.
-// So this row no longer claims anything about disabling: what the launch is declared to do is not
-// consulted, and what the process does needs the capability named at
-// gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation.
+// A FOURTH ITEM WAS CLAIMED HERE AND IS NOW RESTORED IN ITS HONEST FORM. It read "whether the launch
+// could have disabled it -- typed, folded and refusable", was withdrawn while the fold consulted the
+// DECLARED container environment, and was then deleted with that fold. The question now has an
+// executed answer again, of the kind the sentence always needed: whether the launch disabled the
+// reporter is read from the RUNNING container's environment (gunbc.spark.serving_usage_stats_observe
+// spark_usage_stats_evidence_standing), not from the declaration, and a disabled reading turns the
+// telemetry path ProviderPathAbsent rather than Located -- so the fourth item holds without this
+// drop admitting anything for it.
 //
 // THE HARM THE DROP ADMITS, unchanged by that correction: a consumer asking "which legal systems does
 // this route touch" gets a confident answer from two paths and a citation standing where a
@@ -111,38 +110,21 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 //
 // DECLARED 2026-09-11 with the Spark first-party serving route, under review 63995.
 
-// THE POPULATION IS EMPTY AND THAT IS A COUNTED ZERO, NOT AN UNCOUNTED ONE. Nothing reaches
-// gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm, because
-// spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, so this row
-// admits nothing today. A previous spelling put that sentence INSIDE the list as its sole
-// member, which made gunbc.rung_drop rung_drop_declaration_message publish a one-member
-// population whose one member denied being a member -- and any consumer counting members got 1.
-// A fabricated plausible value is worse than an uninformative one, which is why this is [].
+// THE POPULATION IS ONE MEMBER, AND IT IS THE PATH, NOT A SENTENCE ABOUT ONE. Until the observer
+// existed this list was [], with the reason recorded in prose because a member denying its own
+// membership would have published a fabricated count. The condition that emptiness was pending on
+// has arrived: gunbc.spark.serving_usage_stats_observe produces the launch-bound evidence, so
+// gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm is reachable
+// through it, and this row admits exactly that arm over exactly this route's telemetry path. The
+// member NAMES the path and its evidence declaration rather than the undocumented-jurisdiction
+// sentinel, for the keying reason stated above: keyed to the sentinel, the exception would exempt
+// every route that cites it.
 //
-// WHAT THE EMPTY LIST COSTS, DECLARED RATHER THAN DISCOVERED: the projection renders
-// "Population: " and stops, and DESIGN 4c means this annotation is unreadable to any consumer,
-// so the REASON the population is zero does not reach docs/design-rung-drops.md. That is
-// uninformative rather than wrong -- nothing plausible is asserted. It is not the
-// bottom-as-answer conflation gunbc.guarantee_stall warns about either: that warning is about
-// rows whose exposure is UNBOUNDED, where [] would falsely read as "nothing is affected". Here
-// nothing IS affected, so in that carrier's vocabulary this row is BoundedPopulation with no
-// members and the empty list is the correct value rather than a compromise.
-// WHAT THE MERGE WITH #11194 DECIDED HERE, AND WHY THE POPULATION IS STILL EMPTY. That change
-// enrolled this drop as an EXECUTED exception: gunbc.spark.first_party_serving
-// spark_first_party_posture now carries a JurisdictionDropEnrollment naming this row, with
-// path_evidence spark_serving_usage_stats_standing and the undocumented-jurisdiction field. Its
-// population member says that path "returns ProviderPathLocated". After this branch's repair it
-// does not: spark_serving_usage_stats_standing answers UsageStatsLaunchUnread on every arm, so
-// spark_usage_stats_telemetry_path returns ProviderPathUnread for every input and no located path
-// with an undocumented jurisdiction is produced. Keeping that member would have reinstated, in the
-// projected ledger, the exact claim this branch removed from the code.
-//
-// SO THE ENROLLMENT IS CURRENTLY UNREACHABLE, WHICH IS #11194'S SUBJECT AND NOT THIS ROW'S TO
-// SETTLE. The enrollment is well-formed and its matching rule is keyed to this path rather than to
-// a sentinel, which is the stronger design; what it now lacks is an occurrence, because the arm it
-// excepts cannot be reached while the telemetry path refuses. It becomes live again by the same
-// trigger that repopulates this row -- evidence identifying the deployment that answered -- so the
-// two are discharged together rather than separately.
+// THE COUNT IS ABOUT THE ARM, NOT ABOUT TODAY'S READING. Both serving groups currently read
+// disabled (measured 2026-09-19), so no admission produces the located path at this moment; the
+// member stays because a drop's population records what the code admits, and an enabled reading
+// tomorrow reaches the admitted arm without any edit here. In the vocabulary of the exposure
+// discipline this is a bounded population of one, and the bound is the enrollment key.
 data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
   identity: "provider_path_jurisdiction_unread_admits" as NonEmptyStr,
 
@@ -156,7 +138,7 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: [],
+    population: ["gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm over this route's vLLM usage-stats telemetry path, reachable through evidence from gunbc.spark.serving_usage_stats_observe (path_evidence spark_serving_usage_stats_standing), admitted with its jurisdiction citing ServiceJurisdictionUndocumentedUpstream whenever a launch-bound reading establishes the reporter runs"],
     restoration_trigger: "product.fabric.provider_route ProviderPathStanding carries a jurisdiction standing SUFFICIENT FOR a located path to declare its jurisdiction unread without the whole path becoming unread -- so that a consumer matching the located arm can see which of its three components were established -- and gunbc.spark.first_party_serving's telemetry path states the fact in its arm. Reading who operates the usage-stats service does NOT discharge this row: it fills one slot on one route and leaves every other located path with an undocumented counterparty in the same unexpressible position",
   }
 }

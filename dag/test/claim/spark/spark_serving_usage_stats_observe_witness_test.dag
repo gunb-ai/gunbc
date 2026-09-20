@@ -1,0 +1,326 @@
+module test.claim.spark.spark_serving_usage_stats_observe_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import v2.std.optional { Present, Absent }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route { ProviderPathStanding, ProviderPathLocated, ProviderPathUnread, ProviderPathAbsent }
+import product.fabric.provider_admission {
+  ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied, refusal_reason,
+}
+import product.placement_supply { HostIdentity }
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
+  UsageStatsLaunchUnread,
+}
+import extdeps.docker.cli {
+  DockerContainerInspectEnvRead, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
+  docker_container_inspect_env_from_stdout,
+}
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
+import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
+import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_container_name }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding, ModelsRouteRead, vllm_models_route_readback }
+import std.measure { token_count }
+import gunbc.spark.first_party_serving {
+  SparkServingRealization, spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
+  spark_first_party_use_scope, spark_first_party_admission,
+}
+import gunbc.spark.serving_usage_stats_observe {
+  SparkUsageStatsEvidence, UsageStatsEnvironmentRead, UsageStatsEnvironmentUnread,
+  ServingHostEnvReading, UsageStatsInspectRefused, UsageStatsContainerAbsent, UsageStatsEnvUnreadable,
+  spark_usage_stats_evidence_standing,
+}
+
+// ── WHAT THESE ROWS ESTABLISH ──────────────────────────────────────────────────────────────────
+//
+// The telemetry wall stood because no producer read the effective environment of the serving
+// container. gunbc.spark.serving_usage_stats_observe is that producer, and these rows drive it with
+// PLANTED inspect outputs -- the bytes a granted `docker container inspect` leg writes to stdout --
+// so the classification is tested at the seam where the daemon's document becomes a standing, not
+// on text an author wrote to match it. Every red has a discriminating control differing in exactly
+// one input, so a classifier that answered every input the same way satisfies nothing here.
+
+fn t_host() -> HostIdentity { operator_host_srv6 }
+
+fn t_container() -> NonEmptyStr { spark_pair_container_name }
+
+// THE INSPECT DOCUMENT IS MINIMAL ON PURPOSE: the narrow reader takes Config.Env and nothing else,
+// so the fixture plants exactly the member the reader consumes, which keeps the row a statement
+// about the environment rather than about an unrelated decode.
+fn t_inspect_stdout(env: List<String>) -> String {
+  join(["[{\"Config\":{\"Env\":[", join(map(env, e => join(["\"", e, "\""], "")), ","), "]}}]"], "")
+}
+
+// FROM PLANTED BYTES TO EVIDENCE, through the same reader the wet leg uses, so a parse defect and a
+// classification defect are both in scope of these rows.
+fn t_evidence(env: List<String>) -> SparkUsageStatsEvidence {
+  match docker_container_inspect_env_from_stdout(stdout: t_inspect_stdout(env: env)) {
+    DockerContainerInspectEnvUnreadable { cause: c } =>
+      UsageStatsEnvironmentUnread { refusal: UsageStatsEnvUnreadable { host: t_host(), container: t_container(), cause: c } }
+    DockerContainerInspectEnv { env: read } =>
+      UsageStatsEnvironmentRead { readings: [ServingHostEnvReading { host: t_host(), env: read }] }
+  }
+}
+
+fn t_two_host_evidence(env_a: List<String>, env_b: List<String>) -> SparkUsageStatsEvidence {
+  UsageStatsEnvironmentRead { readings: [
+    ServingHostEnvReading { host: operator_host_srv5, env: env_a },
+    ServingHostEnvReading { host: operator_host_srv6, env: env_b },
+  ] }
+}
+
+// ── DISABLED BY LAUNCH ─────────────────────────────────────────────────────────────────────────
+
+// POSITIVE -- VLLM_NO_USAGE_STATS=1 READ FROM THE RUNNING CONTAINER DISABLES THE REPORTER, and the
+// mechanism names the assignment read, because that is the fact the admission rests on.
+test fn a_container_env_carrying_vllm_no_usage_stats_reads_disabled() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["PATH=/usr/bin", "VLLM_NO_USAGE_STATS=1", "HF_HOME=/cache"])) {
+    UsageStatsDisabledByLaunch { mechanism: m } => string_contains(s: m as String, pattern: "VLLM_NO_USAGE_STATS=1")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// CONTROL -- UPSTREAM'S READING IS EXACT EQUALITY, NOT TRUTHINESS. VLLM_NO_USAGE_STATS=0 leaves the
+// reporter ON (envs.py compares == "1"), so this fixture differs from the row above in one
+// character and must take the other arm.
+test fn a_container_env_carrying_vllm_no_usage_stats_zero_reads_enabled() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["VLLM_NO_USAGE_STATS=0"])) {
+    UsageStatsEnabledByDefault { basis: _ } => true
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// POSITIVE -- DO_NOT_TRACK=1 IS UPSTREAM'S SECOND DISABLE TERM and disables the reporter the same
+// way, with the mechanism naming that assignment rather than the first term's.
+test fn a_container_env_carrying_do_not_track_reads_disabled() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["DO_NOT_TRACK=1", "PATH=/usr/bin"])) {
+    UsageStatsDisabledByLaunch { mechanism: m } => string_contains(s: m as String, pattern: "DO_NOT_TRACK=1")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// CONTROL -- DO_NOT_TRACK=true DOES NOT DISABLE, same exact-equality discipline: upstream compares
+// against "1", so a spelling a person would read as off leaves the reporter on.
+test fn a_container_env_carrying_do_not_track_true_reads_enabled() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["DO_NOT_TRACK=true"])) {
+    UsageStatsEnabledByDefault { basis: _ } => true
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// ── ENABLED BY DEFAULT, AND THE DESTINATION ────────────────────────────────────────────────────
+
+// POSITIVE -- NO DISABLE TERM MEANS THE REPORTER RUNS, and the basis names the DEFAULT server,
+// because that is where upstream sends when no override is set.
+test fn a_container_env_with_no_disable_term_reads_enabled_to_the_default_server() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["PATH=/usr/bin", "HF_HOME=/cache"])) {
+    UsageStatsEnabledByDefault { basis: b } =>
+      string_contains(s: b as String, pattern: "https://stats.vllm.ai")
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// POSITIVE, AND THE ROW THE WHOLE DESTINATION CLAUSE EXISTS FOR -- AN OVERRIDE RECIPIENT MUST NOT
+// READ AS DISABLED-BY-DEFAULT. The environment disables nothing and redirects the destination; a
+// classifier that answered "disabled" here would be fabricating the safe direction on a launch that
+// is still sending, to a recipient nobody named. The basis must name the override instead.
+test fn an_override_server_reads_enabled_and_names_the_override() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["VLLM_USAGE_STATS_SERVER=https://stats.example.internal", "PATH=/usr/bin"])) {
+    UsageStatsEnabledByDefault { basis: b } =>
+      string_contains(s: b as String, pattern: "VLLM_USAGE_STATS_SERVER")
+        && string_contains(s: b as String, pattern: "https://stats.example.internal")
+        && !string_contains(s: b as String, pattern: "no VLLM_USAGE_STATS_SERVER override")
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// CONTROL -- AN EMPTY OVERRIDE IS NOT A RECIPIENT, so the destination reported is the default, and
+// the basis must not name an override that sends nowhere.
+test fn an_empty_override_server_reads_as_the_default_destination() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_evidence(env: ["VLLM_USAGE_STATS_SERVER="])) {
+    UsageStatsEnabledByDefault { basis: b } =>
+      string_contains(s: b as String, pattern: "https://stats.vllm.ai")
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// ── THE FOLD TAKES THE WORST CASE, AND ONLY A FULL READ ANSWERS ────────────────────────────────
+
+// ONE ENABLED HOST MEANS THE DEPLOYMENT REPORTS. The reporter runs per host unless disabled there,
+// so a mixed fold is enabled with the enabled host named -- never disabled on the strength of the
+// sibling that did disable.
+test fn a_mixed_fold_reads_enabled_naming_the_enabled_host() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_two_host_evidence(env_a: ["VLLM_NO_USAGE_STATS=1"], env_b: ["PATH=/usr/bin"])) {
+    UsageStatsEnabledByDefault { basis: b } => string_contains(s: b as String, pattern: operator_host_srv6 as String)
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// CONTROL -- EVERY HOST DISABLED IS THE ONLY DISABLED ANSWER, and the mechanism carries both
+// assignments.
+test fn a_fold_where_every_host_disables_reads_disabled() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: t_two_host_evidence(env_a: ["VLLM_NO_USAGE_STATS=1"], env_b: ["DO_NOT_TRACK=1"])) {
+    UsageStatsDisabledByLaunch { mechanism: m } =>
+      string_contains(s: m as String, pattern: "VLLM_NO_USAGE_STATS=1")
+        && string_contains(s: m as String, pattern: "DO_NOT_TRACK=1")
+    UsageStatsEnabledByDefault { basis: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+  }
+}
+
+// AN ENTRY THAT IS NOT AN ASSIGNMENT REFUSES THE WHOLE READING rather than being folded past: the
+// environment was not understood, and answering enabled from the parseable half would be a partial
+// reading presented as a whole one.
+test fn a_malformed_env_entry_refuses_the_reading() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: UsageStatsEnvironmentRead { readings: [
+    ServingHostEnvReading { host: t_host(), env: ["PATH=/usr/bin", "BAREWORD"] },
+  ] }) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "BAREWORD")
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _ } => false
+  }
+}
+
+// ── THE REFUSAL LEGS, AND WHERE THEY SURFACE ──────────────────────────────────────────────────
+
+// GRANT-DENIED IS A TYPED REFUSAL, NOT A READING. The wet leg surfaces a sudo denial as
+// UsageStatsInspectRefused carrying the exit and stderr; planted here, the standing it derives must
+// be unread with the obligation located at the container and host -- never enabled or disabled,
+// which would be a standing nobody observed.
+test fn a_grant_denied_inspect_reads_unread_naming_the_container() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: UsageStatsEnvironmentUnread { refusal: UsageStatsInspectRefused {
+    host: t_host(), container: t_container(), exit_code: 1, detail: "sudo: a password is required",
+  } }) {
+    UsageStatsLaunchUnread { obligation: o } =>
+      string_contains(s: o as String, pattern: t_container() as String)
+        && string_contains(s: o as String, pattern: operator_host_srv6 as String)
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _ } => false
+  }
+}
+
+// CONTAINER-ABSENT IS ITS OWN ARM, distinguished from a denial: the daemon answered "No such
+// container", so there is no environment to read, and the obligation says that rather than implying
+// a grant is missing.
+test fn an_absent_container_reads_unread_naming_the_absence() -> Bool {
+  match spark_usage_stats_evidence_standing(evidence: UsageStatsEnvironmentUnread { refusal: UsageStatsContainerAbsent {
+    host: t_host(), container: t_container(),
+  } }) {
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "names no container")
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _ } => false
+  }
+}
+
+// ── THROUGH THE STANDING AND THE PATH, AT THE SEAM ADMISSION CONSULTS ──────────────────────────
+
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+fn t_readback() -> VllmModelsRouteReadbackStanding {
+  ModelsRouteRead {
+    readback: vllm_models_route_readback(
+      served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+      configured_model_path: t_declared_path() as NonEmptyStr,
+      max_model_len: token_count(count: 1048576)),
+  }
+}
+
+fn t_endpoint() -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
+}
+
+// A REALIZATION WHOSE OWN GATES PASS, differing between rows only in the telemetry evidence, so the
+// standing each row observes is decided by the evidence and nothing upstream of it.
+fn t_realization(evidence: SparkUsageStatsEvidence) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(),
+    endpoint: t_endpoint(),
+    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: evidence,
+  }
+}
+
+// THE DISABLED READING MAKES THE TELEMETRY PATH ABSENT, NOT UNREAD AND NOT LOCATED: a reporter that
+// does not run is a path that does not exist, and the closure records it with the standing as its
+// evidence.
+test fn a_disabled_reading_turns_the_telemetry_path_absent() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_realization(evidence: t_evidence(env: ["VLLM_NO_USAGE_STATS=1"]))) {
+    ProviderPathAbsent { evidence: _ } => true
+    ProviderPathUnread { obligation: _ } => false
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
+// CONTROL -- THE SAME REALIZATION WITH REFUSED EVIDENCE KEEPS THE PATH UNREAD, so the absent answer
+// above is the evidence's doing and not a fold that turns every input absent.
+test fn a_refused_reading_keeps_the_telemetry_path_unread() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_realization(evidence: UsageStatsEnvironmentUnread { refusal: UsageStatsInspectRefused {
+    host: t_host(), container: t_container(), exit_code: 1, detail: "sudo: a password is required",
+  } })) {
+    ProviderPathUnread { obligation: _ } => true
+    ProviderPathAbsent { evidence: _ } => false
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
+// POSITIVE CONTROL AT THE GATE THE WHOLE CHANGE EXISTS FOR -- WITH THE DISABLED READING, PROVIDER-USE
+// ADMISSION ADMITS. This is the launch-bound positive control the first-party witness file records
+// as absent until evidence bound to the offered launch exists; the evidence here is planted, which
+// is stated plainly, and production reaches the same arm through the observer over the granted
+// inspect argv.
+fn t_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-demand-1" as DemandKey }
+}
+
+fn t_work() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-work-1" as WorkKey }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "group-a@http://192.168.1.225:30000@1" as OfferKey }
+}
+
+test fn a_disabled_reading_admits_provider_use() -> Bool {
+  match spark_first_party_admission(
+    realization: t_realization(evidence: t_two_host_evidence(env_a: ["VLLM_NO_USAGE_STATS=1"], env_b: ["VLLM_NO_USAGE_STATS=1"])),
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => true
+    ProviderUseDenied { decision: _, cause: _ } => false
+  }
+}
+
+// CONTROL -- AND THE GRANT-DENIED READING STILL REFUSES THERE, as "route facts incomplete": the
+// admission is the evidence's answer either way, not a gate that learned to admit.
+test fn a_grant_denied_reading_refuses_provider_use_admission() -> Bool {
+  match spark_first_party_admission(
+    realization: t_realization(evidence: UsageStatsEnvironmentUnread { refusal: UsageStatsInspectRefused {
+      host: t_host(), container: t_container(), exit_code: 1, detail: "sudo: a password is required",
+    } }),
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "route facts incomplete"
+  }
+}

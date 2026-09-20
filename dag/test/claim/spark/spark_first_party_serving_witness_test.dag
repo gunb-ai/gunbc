@@ -43,6 +43,9 @@ import gunbc.spark.first_party_serving {
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
 }
+import gunbc.spark.serving_usage_stats_observe {
+  SparkUsageStatsEvidence, UsageStatsEnvironmentUnread, UsageStatsLaunchBindingMissing,
+}
 
 // WHAT THESE ROWS ARE FOR. gunbc.spark.first_party_serving admits exactly one use of the Spark
 // serving route -- gunbc serving gunbc, on our own material, on operator-owned hardware -- and the
@@ -117,6 +120,17 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
+// THE TELEMETRY EVIDENCE THESE FIXTURES CARRY IS A REFUSAL, matching their incarnation: with the
+// incarnation unobserved there is no launch to bind a container reading to, so the honest evidence
+// is the launch-binding-missing refusal the observer itself would return. The observed-evidence arms
+// are driven by planted readings in
+// test.claim.spark.spark_serving_usage_stats_observe_witness_test.
+fn t_telemetry_unread() -> SparkUsageStatsEvidence {
+  UsageStatsEnvironmentUnread { refusal: UsageStatsLaunchBindingMissing {
+    obligation: "fixture: the incarnation is unobserved, so no container environment can be bound to the offered launch" as NonEmptyStr,
+  } }
+}
+
 fn t_pair_realization() -> SparkServingRealization {
   SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv6],
@@ -124,6 +138,7 @@ fn t_pair_realization() -> SparkServingRealization {
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }
 }
 
@@ -137,6 +152,7 @@ fn t_foreign_realization() -> SparkServingRealization {
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }
 }
 
@@ -148,18 +164,19 @@ fn t_foreign_realization() -> SparkServingRealization {
 // this producer now refuses instead. SCOPED HONESTLY, that is a statement about THIS PRODUCER and not
 // about the run: the harness takes SparkOfferBound directly to its missing-Work refusal and does not
 // call spark_first_party_admission at all, so the dev run does not reach this refusal and its
-// terminal is unchanged by it. The route refuses, for a reason nothing here can retire -- the only
-// environment the corpus holds for a serving container is the one it declares the container is
-// CREATED with, and no producer reads a running one. The refusal is therefore unconditional rather
-// than situational, and it stands until the capability named at
-// spark_serving_usage_stats_declared_environment_obligation exists.
+// terminal is unchanged by it. The route refuses here because THIS FIXTURE'S evidence is the
+// launch-binding-missing refusal -- the capability named at
+// spark_serving_usage_stats_declared_environment_obligation now exists
+// (gunbc.spark.serving_usage_stats_observe), and the arms it unlocks are driven by planted readings
+// in test.claim.spark.spark_serving_usage_stats_observe_witness_test; what this row still pins is
+// that an UNREAD standing refuses rather than resolving.
 //
 // IT ASSERTS THE CAUSE AND NOT MERELY THE ARM. A denial is easy to keep green by denying for the
 // wrong reason -- an expired posture, an uncovered site -- so this pins the refusal to the route
 // facts being incomplete. Everything else about the scope is still right and is still asserted by
 // its own witnesses: the posture is current, the site allocation covers these hosts, and every use
-// program is NotEngaged. The one thing missing is a reading of the environment of the process that
-// answered.
+// program is NotEngaged. The one thing missing in this fixture is a reading of the environment of
+// the process that answered, bound to the launch.
 test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool {
   match spark_first_party_admission(
     realization: t_pair_realization(),
@@ -417,6 +434,7 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -440,6 +458,7 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }) {
     TelemetryReadbackUnresolved => false
     TelemetryDeclaredPathUnpinned => false
@@ -462,6 +481,7 @@ test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
     endpoint: t_endpoint(),
     incarnation: t_incarnation_unobserved(),
     declared_model_path: Present { value: t_declared_path() },
+    telemetry_evidence: t_telemetry_unread(),
   }) {
     TelemetryReadbackUnresolved => true
     TelemetryDeclaredPathUnpinned => false

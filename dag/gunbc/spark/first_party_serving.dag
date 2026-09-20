@@ -9,7 +9,7 @@ import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
-  ProviderPathUnread,
+  ProviderPathUnread, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
   PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
 }
@@ -30,6 +30,7 @@ import extdeps.vllm.usage_stats {
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding }
+import gunbc.spark.serving_usage_stats_observe { SparkUsageStatsEvidence, spark_usage_stats_evidence_standing }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
@@ -201,7 +202,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
     basis: "The operator asserts that the Spark serving groups serve gunbc itself and nobody else as of this date. Attributable assertion, not a measurement: who the served turns are for is a fact about our intent, which no probe can read off a running engine.",
   },
   serves: "gunbc itself. Every turn placed on this route originates inside this repository's own harness and control plane; no turn is served to any party outside gunbc and none crosses an organisational or national boundary.",
-  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats). WHETHER THAT PATH IS ACTIVE FOR THIS FLEET'S LAUNCH IS UNESTABLISHED and this row does not assert it: gunbc.spark.first_party_serving spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, so nothing here establishes that the reporter runs, or that it does not. AND THE REMEDY IS NOT A DECLARATION EDIT. An earlier spelling said zero egress was one environment variable away -- VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch. This module no longer reads the declared launch environment at all, so setting either changes what the launch is DECLARED to do and changes nothing this decision consults; a reader following that advice would observe no change and have no way to learn why. What resolves the route is the evidence named at spark_serving_usage_stats_declared_environment_obligation.",
+  data_subject: "our own material. The prompts and responses on this route are gunbc's, held on operator-owned hardware at the operator's own site; no customer data and no third-party data is processed on it. ROUTE MATERIAL STAYS ON SITE AND EXACTLY ONE PATH LEAVES IT: vLLM reports host, build and engine-configuration metadata to https://stats.vllm.ai by upstream default, carrying no request content (extdeps.vllm.usage_stats). WHETHER THAT PATH IS ACTIVE FOR THIS FLEET'S LAUNCH IS NOW READ, NOT DECLARED: gunbc.spark.serving_usage_stats_observe reads the serving container's Config.Env on every host of the realization through the granted inspect argv, and as measured on 2026-09-19 both serving groups carry VLLM_NO_USAGE_STATS=1, so the standing is UsageStatsDisabledByLaunch and the telemetry path is Absent. This row still does not assert the reading itself -- the standing is derived per admission from the evidence, and a refused reading is unread, not disabled. AND THE REMEDY IS NOT A DECLARATION EDIT. An earlier spelling said zero egress was one environment variable away -- VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 on the serving launch. This module no longer reads the declared launch environment at all, so setting either changes what the launch is DECLARED to do and changes nothing this decision consults; a reader following that advice would observe no change and have no way to learn why. What resolves the route is the evidence named at spark_serving_usage_stats_declared_environment_obligation.",
   hardware_custody: "operator-owned and operator-held. There is no third-party agreement governing this route because there is no third party: no hosting contract, no processor, and no service terms stand between us and the hardware.",
 }
 
@@ -317,13 +318,13 @@ data spark_prohibited_use_not_engaged: UseProgramStanding = UseProgramStanding {
 data spark_sanctions_not_engaged: UseProgramStanding = UseProgramStanding {
   program: "sanctions",
   engagement: "NOT ENGAGED under first-party self-use. This is NOT a sanctions determination and no screening was performed against any list.",
-  basis: "NO GOOD, SERVICE OR ROUTE MATERIAL IS SUPPLIED TO ANY PARTY OUTSIDE gunbc ON THIS ROUTE: the turn is served on operator-owned hardware at the operator's own site to gunbc itself, so there is no counterparty to a supply and therefore no party to screen. THE ONE THING THAT REACHES A THIRD PARTY IS NAMED RATHER THAN GLOSSED: vLLM's usage-stats reporter is DOCUMENTED to send host, build and engine-configuration metadata to a service upstream publishes the address of and nothing else about (extdeps.vllm.usage_stats). WHETHER IT DOES SO FOR THIS LAUNCH IS NOT ESTABLISHED and this row does not claim it is: gunbc.spark.first_party_serving spark_usage_stats_telemetry_path returns ProviderPathUnread for every input, because attributing a reporter to the deployment that answered needs evidence bound to that launch and none exists. An earlier spelling said that path was CARRIED as this route's telemetry path; that was true of the fold this change deleted and is false now. THE SANCTIONS CONCLUSION IS UNAFFECTED EITHER WAY, which is why it stands: an emission of machine metadata to a recipient is not a supply of a good, service or route material to a counterparty whether or not it is occurring, it carries no request content, and no screening was performed against any list -- this row records that the program has no subject under first-party self-use, not that anybody was cleared. It acquires a subject the moment a turn is served to anyone else."
+  basis: "NO GOOD, SERVICE OR ROUTE MATERIAL IS SUPPLIED TO ANY PARTY OUTSIDE gunbc ON THIS ROUTE: the turn is served on operator-owned hardware at the operator's own site to gunbc itself, so there is no counterparty to a supply and therefore no party to screen. THE ONE THING THAT REACHES A THIRD PARTY IS NAMED RATHER THAN GLOSSED: vLLM's usage-stats reporter is DOCUMENTED to send host, build and engine-configuration metadata to a service upstream publishes the address of and nothing else about (extdeps.vllm.usage_stats). WHETHER IT DOES SO FOR THIS LAUNCH IS NOW READ, NOT DECLARED: gunbc.spark.serving_usage_stats_observe binds a Config.Env reading to the offered launch, and the current reading disables the reporter on both groups (2026-09-19), so the telemetry path is Absent rather than carried; a refused reading is ProviderPathUnread. An earlier spelling said that path was CARRIED as this route's telemetry path; that was true of the fold this change deleted and is false now. THE SANCTIONS CONCLUSION IS UNAFFECTED EITHER WAY, which is why it stands: an emission of machine metadata to a recipient is not a supply of a good, service or route material to a counterparty whether or not it is occurring, it carries no request content, and no screening was performed against any list -- this row records that the program has no subject under first-party self-use, not that anybody was cleared. It acquires a subject the moment a turn is served to anyone else."
 }
 
 data spark_export_not_engaged: UseProgramStanding = UseProgramStanding {
   program: "export control",
   engagement: "NOT ENGAGED under first-party self-use. This is NOT an export determination, classification or licence finding.",
-  basis: "NO ROUTE MATERIAL LEAVES gunbc AND NONE CROSSES A NATIONAL BOUNDARY, and the scope of that sentence is the point of it. The turns -- the prompts, the responses, the weights they run against -- begin and end inside gunbc on units at one site, which the operator states is his NYC home (gunbc.spark.first_party_serving spark_fleet_site_allocation). With no transfer of route material and no recipient of it, there is no export of it to classify. WHAT DOES LEAVE, STATED HERE RATHER THAN OMITTED because a basis that ignored it would be contradicted by this module's own route facts: vLLM's usage-stats reporter sends host, build and engine-configuration metadata to a third-party service whose jurisdiction upstream does not document (extdeps.vllm.usage_stats documents that reporter and its payload). WHETHER IT RUNS FOR THIS LAUNCH IS NOT ESTABLISHED, and this basis does not claim it is: gunbc.spark.first_party_serving spark_usage_stats_telemetry_path returns ProviderPathUnread for every input, because attributing a reporter to the deployment that answered needs evidence bound to that launch and none exists, so provider-use admission refuses rather than resolving the route. An earlier spelling of this sentence said that path was carried as Located with an unread jurisdiction; that was true of the fold this change deleted and is false now. THE EXPORT CONCLUSION IS UNAFFECTED EITHER WAY, which is why it stands: the documented payload is host, build and engine configuration, it carries no route material, and an unestablished metadata path is still not an export of route material -- there is no transfer of the thing this program is about, whether or not the reporter is running"
+  basis: "NO ROUTE MATERIAL LEAVES gunbc AND NONE CROSSES A NATIONAL BOUNDARY, and the scope of that sentence is the point of it. The turns -- the prompts, the responses, the weights they run against -- begin and end inside gunbc on units at one site, which the operator states is his NYC home (gunbc.spark.first_party_serving spark_fleet_site_allocation). With no transfer of route material and no recipient of it, there is no export of it to classify. WHAT DOES LEAVE, STATED HERE RATHER THAN OMITTED because a basis that ignored it would be contradicted by this module's own route facts: vLLM's usage-stats reporter sends host, build and engine-configuration metadata to a third-party service whose jurisdiction upstream does not document (extdeps.vllm.usage_stats documents that reporter and its payload). WHETHER IT RUNS FOR THIS LAUNCH IS NOW READ, NOT DECLARED: gunbc.spark.serving_usage_stats_observe binds a Config.Env reading to the offered launch, and the current reading disables the reporter on both groups (2026-09-19), so the telemetry path is Absent; a refused reading is ProviderPathUnread and provider-use admission refuses rather than resolving the route. An earlier spelling of this sentence said that path was carried as Located with an unread jurisdiction; that was true of the fold this change deleted and is false now. THE EXPORT CONCLUSION IS UNAFFECTED EITHER WAY, which is why it stands: the documented payload is host, build and engine configuration, it carries no route material, and an unestablished metadata path is still not an export of route material -- there is no transfer of the thing this program is about, whether or not the reporter is running"
 }
 
 fn spark_prohibited_use_disposition() -> DispositionStanding {
@@ -425,8 +426,9 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // to disable it before the disabled arm was reached, and that the standing therefore took the worst
 // case and assessed reporting as on. None of that is performed any more. spark_lane_disables_usage_stats
 // is deleted, this module no longer imports spark_pair_container_env, and
-// spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm -- so there is no
-// disabled arm to reach and nothing is assessed either way.
+// spark_serving_usage_stats_standing now answers from the reading
+// gunbc.spark.serving_usage_stats_observe produces: disabled and enabled arms answer from the
+// running container's Config.Env, and only a genuinely unproducible reading is unread.
 //
 // THEY WERE ALSO WRONG IN THE DIRECTION THAT MATTERS, which is why this note stays instead of the
 // text simply vanishing. Each one told a reader that setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1
@@ -478,14 +480,22 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // answering endpoint to an engine launch over the fleet key session -- so it carries
 // EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
 // specific cause) on one that did not. Only
-// gunbc.spark.serving_offer spark_serving_route_standing reads them. The telemetry standing does not,
-// and should not: knowing which incarnation answered is not a reading of its effective environment.
+// gunbc.spark.serving_offer spark_serving_route_standing reads them.
+//
+// THE TELEMETRY EVIDENCE IS THE READING, NOT A STANDING. telemetry_evidence is what
+// gunbc.spark.serving_usage_stats_observe returned over the fleet key session: Config.Env of the
+// serving container on every host of the realization, read through the granted inspect argv and
+// bound to the offered launch by the incarnation standing -- or a typed refusal saying which leg
+// failed. The standing function below derives the launch standing FROM it; the realization carries
+// the evidence so the derivation stays this module's and the reading stays attributable. Production
+// takes it from harness_seat harness_usage_stats_evidence at candidate time, beside the incarnation.
 type SparkServingRealization {
   hosts: List<HostIdentity>
   readback: VllmModelsRouteReadbackStanding
   endpoint: VllmEndpointProcessLaunch
   incarnation: EndpointIncarnationStanding
   declared_model_path: String?
+  telemetry_evidence: SparkUsageStatsEvidence
 }
 
 
@@ -579,30 +589,45 @@ data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.fir
 // rests on.
 data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedy is NOT to edit the declared launch environment: this module no longer reads gunbc.spark.pair_serving_realization spark_pair_container_env at all, so setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 there changes what the launch is declared to do and changes nothing this decision consults. What resolves the route is evidence of the effective telemetry configuration of the process that answered (spark_serving_usage_stats_declared_environment_obligation); the alternative is to re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only. Neither remedy makes the telemetry path Absent while the environment is declared rather than read: see spark_serving_usage_stats_declared_environment_obligation."
 
-// WHY NO ARM OF THIS STANDING MAY LOCATE A PROVIDER PATH, WHICH IS A REPAIR OF THIS PR'S OWN
-// DEFECT RATHER THAN OF INHERITED CODE. Until this change the metadata-only arm produced
-// ProviderPathLocated, and product.fabric.provider_route first_unresolved_obligation counts a
-// Located path as RESOLVED -- so a route whose reported model path matched the declared one, on a
-// fully lane-covered host population, ADMITTED. The environment that answer rested on is
-// gunbc.spark.pair_serving_realization spark_pair_container_env, which is the environment a
-// container is CREATED WITH: a construction, not a reading of a running process. So admission was
-// resting on an environment nobody observed THIS deployment to have, which is the fabricated
-// evidence this module exists to refuse.
+// WHY NO ARM OF THIS STANDING MAY LOCATE A PROVIDER PATH WITHOUT EVIDENCE BOUND TO THE LAUNCH.
+// Until the observer existed, the metadata-only arm produced ProviderPathLocated from facts about
+// what we DECLARED, and product.fabric.provider_route first_unresolved_obligation counts a Located
+// path as RESOLVED -- so a route whose reported model path matched the declared one, on a fully
+// lane-covered host population, ADMITTED on an environment nobody observed this deployment to have.
+// That is the fabricated evidence this module exists to refuse, and it is why the standing derives
+// from a reading, never from the declared launch environment.
 //
-// THE TWO HALVES INTERLOCK AND THAT IS WHY NARROWING THE IDENTITY JOIN WOULD NOT HAVE DISCHARGED
-// IT. A declared environment is legitimate evidence about a process only once it is established
-// that this process was created by that launch; that is exactly the question spark_realization_identity
-// leaves open, since matching a configuration is not being the launch that configuration describes.
-// Adding comparisons to the join makes the match narrower without making the attribution licensed,
-// so every arm refuses while the environment is declared rather than read.
-data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the only environment this repository holds for a serving container is the one gunbc.spark.pair_serving_realization spark_pair_container_env declares it is CREATED with, and no producer anywhere in the corpus reads the environment of a container that is already running. So whether this deployment's reporter is disabled is unknown for THIS deployment, however well its declared configuration matches. THE CAPABILITY THAT DISCHARGES THIS, and nothing smaller does: a reading of the EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED, bound to the offered launch, covering BOTH whether the reporter runs AND WHERE IT SENDS. The destination is not a detail: extdeps.vllm.usage_stats vllm_usage_stats_reporting carries server_override_env VLLM_USAGE_STATS_SERVER beside its default_server, so a launch matching our declared model path, served name and context length can still be reporting to a DIFFERENT RECIPIENT, and a payload that stays metadata-only says nothing about who receives it. A second construction function, a wider configuration comparison, or a restatement of the declared environment does NOT discharge it, because none of them observes the process; what is missing is a reading, not a better declaration. THE READING NEEDS ACCESS NOBODY HOLDS: the serving container gunbc.spark.pair_serving_realization spark_pair_container_name is readable only through the docker socket, and the one principal that reaches the Sparks holds no grant to it, so the reader cannot run until gunbc.spark.managed_access_bootstrap InspectServingContainer is installed through gunbc.spark.managed_grant_install. That grant yields Config.Env of the container, which is the environment docker exec hands vllm serve because the pair realization execs it with no added environment; it is still a reading of the container rather than of the process, so the destination half of this obligation stays a claim about the container until a process-grain read exists. Note also that the content class it would be read against is itself bound to a revision by that module's established_against, so it is a fact about the vLLM source that was read and not a timeless property of anything presenting a vLLM-compatible response."
+// WHAT DISCHARGES THIS NOW EXISTS. gunbc.spark.serving_usage_stats_observe reads Config.Env of the
+// serving container on every host of the realization through the granted pinned
+// `docker container inspect` argv (gunbc.spark.managed_access_bootstrap InspectServingContainer,
+// operator-accepted for the pair container 2026-09-14 and for glm-native-tp4 2026-09-16 via
+// spark_managed_grant_install_basis, and measured INSTALLED on srv6 and srv9 2026-09-19), binds the
+// reading to the offered launch through the incarnation standing, and classifies it against
+// upstream's own disable terms. Config.Env is the environment both arms start the engine with --
+// the pair realization execs vllm with no added environment, and the native arm's docker run -e
+// list is rendered into the container environment -- so the reading is the effective telemetry
+// configuration of the process that answered, at container grain.
+//
+// WHAT REMAINS OUTSTANDING. The reading is of the CONTAINER, not of the process: nothing re-reads
+// /proc/<pid>/environ, so an engine launched inside the container with an altered environment would
+// not be seen. The marker-file disable term (vllm_usage_stats_reporting disable_marker_path) is not
+// covered by an environment reading, so a launch disabled only by marker file reads as ENABLED here
+// -- the conservative direction. And the destination half is bounded by what the environment can
+// say: an override recipient named by VLLM_USAGE_STATS_SERVER is reported in the basis, but who
+// operates ANY recipient, default or override, stays ServiceJurisdictionUndocumentedUpstream, which
+// is the rung drop's subject rather than this one's. Note also that the content class the reading
+// is assessed against is itself bound to a revision by that module's established_against, so it is
+// a fact about the vLLM source that was read and not a timeless property of anything presenting a
+// vLLM-compatible response.
+data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: this obligation named a capability that did not exist -- a reading of the EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED, bound to the offered launch, covering both whether the reporter runs and where it sends. THAT CAPABILITY NOW EXISTS: gunbc.spark.serving_usage_stats_observe reads Config.Env of the serving container on every host of the realization through the granted pinned docker container inspect argv (gunbc.spark.managed_access_bootstrap InspectServingContainer, operator-accepted 2026-09-14 for the pair container and 2026-09-16 for glm-native-tp4, measured installed on srv6 and srv9 2026-09-19), bound to the offered launch through the incarnation standing, and classifies it against upstream's own disable terms (extdeps.vllm.usage_stats vllm_usage_stats_assignment_disables). Config.Env is the environment both serving arms start the engine with, so this is the process's effective telemetry configuration at container grain. WHAT REMAINS OUTSTANDING: the reading is of the container, not of the process (no /proc/<pid>/environ re-read); the marker-file disable term is not covered by an environment reading, so a marker-only disable reads as enabled (the conservative direction); and who operates the recipient -- default or VLLM_USAGE_STATS_SERVER override -- stays undocumented upstream, which is the subject of gunbc.rung_drop.provider_path_jurisdiction_unread_admits rather than of this obligation. The declared launch environment is still consulted by NOTHING in this decision, and editing it still changes nothing here." as NonEmptyStr
 
 data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: one or more hosts of the realization that answered has no observed fabric lane, so the telemetry answer would rest on its siblings. Partial evidence is missing evidence, and this arm refuses rather than answering from the observed half. READING THOSE LANES IS NECESSARY AND IS NOT SUFFICIENT: an earlier spelling ended by asking for them as though the path would then resolve. A fully lane-covered realization still refuses, because a lane's DECLARED container environment is not a reading of the process that answered -- see spark_serving_usage_stats_declared_environment_obligation."
 
-// WHY THE CAUSE IS A VALUE AND THE SENTENCE IS DERIVED FROM IT. Every arm of this standing refuses,
-// and extdeps.vllm.usage_stats gives the refusal one shape -- UsageStatsLaunchUnread carrying a
-// String -- because that is upstream's vocabulary for "we did not read it" and is not ours to
-// reshape. Six materially different situations were therefore collapsing into one arm distinguished
+// WHY THE CAUSE IS A VALUE AND THE SENTENCE IS DERIVED FROM IT. Every unread arm of this standing
+// refuses, and extdeps.vllm.usage_stats gives the refusal one shape -- UsageStatsLaunchUnread
+// carrying a String -- because that is upstream's vocabulary for "we did not read it" and is not
+// ours to reshape. Six materially different situations were therefore collapsing into one arm
+// distinguished
 // only by the prose inside it, and the consequence showed up in this change's own witnesses: they
 // separated the causes with string_contains, which is validation standing exactly where
 // construction was available. A case mismatch in that pattern cost a floor run on this branch.
@@ -661,29 +686,48 @@ fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmp
   }
 }
 
+// THE STANDING ANSWERS FROM THE READING WHEN ONE EXISTS. The unread causes upstream of the reading
+// still refuse first -- an unidentified deployment, an unpinned declaration, missing membership,
+// unobserved lanes -- because evidence about a container is attributable to this route only once the
+// realization's own gates pass. Past them, the standing is derived from the realization's
+// telemetry_evidence by gunbc.spark.serving_usage_stats_observe spark_usage_stats_evidence_standing:
+// a read environment classifies against upstream's own disable terms, and a refused observation is
+// the unread arm with the obligation located at the refusal. The unread arm is therefore reachable
+// exactly when the reading genuinely cannot be produced, and only then.
 fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
-  UsageStatsLaunchUnread {
-    obligation: spark_telemetry_unread_obligation(
-      cause: spark_serving_usage_stats_unread_cause(realization: realization),
-    ),
+  let cause = spark_serving_usage_stats_unread_cause(realization: realization)
+  match cause {
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } =>
+      spark_usage_stats_evidence_standing(evidence: realization.telemetry_evidence)
+    _ => UsageStatsLaunchUnread {
+      obligation: spark_telemetry_unread_obligation(cause: cause),
+    }
   }
 }
 
-// THE LOCATED ARM IS RETAINED AND IS CURRENTLY UNREACHABLE, DELIBERATELY AND ON THE RECORD. It is
-// the right answer for an ESTABLISHED applicable reporter, and the operator's 2026-09-11 ruling
-// governs exactly that case: a metadata-only reporter may be admitted despite its undocumented
-// jurisdiction. That ruling is not withdrawn here and this change does not overturn it. What the
-// ruling never established is the different claim this module was making -- that because ONE upstream
-// reporter is documented metadata-only, the telemetry path OF THE LAUNCH THAT ANSWERED is therefore
-// established. Attribution is the defect; the located answer is not.
+// THE LOCATED ARM IS REACHABLE AGAIN, AND THE GATE THAT REOPENS IT IS THE EVIDENCE. Until
+// gunbc.spark.serving_usage_stats_observe existed, no producer read the effective telemetry
+// configuration of the process that answered, every arm of the standing was unread, and nothing
+// reached this arm -- that empty population was recorded at
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits as EMPTY PENDING evidence. The observer
+// now provides that evidence, so this arm is reached exactly when a reading bound to the offered
+// launch establishes that the reporter runs, and the operator's 2026-09-11 ruling governs that case:
+// a metadata-only reporter may be admitted despite its undocumented jurisdiction. The drop row
+// counts again accordingly.
 //
-// SO NOTHING REACHES THIS ARM TODAY, because spark_serving_usage_stats_standing no longer claims a
-// launch is reporting or not reporting from facts about what we declared. It becomes reachable again
-// when an admission path carries evidence of the effective telemetry configuration bound to the
-// offered launch. The empty population this leaves is recorded where a reader looks for it, at
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits, as EMPTY PENDING that evidence rather
-// than as a deleted subject -- the distinction matters, because a drop recorded as deleted would make
-// the ruling silently unreachable while its own record went on claiming otherwise.
+// THE DISABLED ARM IS ABSENT, NOT LOCATED AND NOT UNREAD. A reading that establishes the reporter
+// does not run means there is NO telemetry path for this launch, so the closure records the path as
+// absent with the standing as its evidence -- the same shape the other paths would take if anybody
+// had established they do not exist. An earlier spelling mapped disabled to ProviderPathUnread
+// citing the declared-environment obligation, which was correct only while no reading existed: it
+// refused a path the evidence says is not there.
+//
+// THE OVERRIDE DESTINATION IS NAMED IN THE BASIS, and the located arm's citations do not follow it.
+// When the enabled standing's basis reports VLLM_USAGE_STATS_SERVER, the recipient is the override,
+// not the default server this module cites; the operator and jurisdiction references below describe
+// the default recipient. Today's fleet carries no override (measured 2026-09-19 on both serving
+// groups), and a launch that sets one must re-derive these citations before the located arm can
+// honestly describe it -- stated here because the arm cannot say it.
 fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> ProviderPathStanding {
   match spark_serving_usage_stats_standing(realization: realization) {
     UsageStatsLaunchUnread { obligation: _ } =>
@@ -692,9 +736,8 @@ fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> Pro
         consulted: [],
       }
     UsageStatsDisabledByLaunch { mechanism: _ } =>
-      ProviderPathUnread {
-        obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_declared_environment_obligation"),
-        consulted: [],
+      ProviderPathAbsent {
+        evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
       }
     UsageStatsEnabledByDefault { basis: _ } =>
       match vllm_usage_stats_reporting.content_class {

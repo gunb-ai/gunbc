@@ -1,0 +1,404 @@
+module gunbc.spark.serving_usage_stats_observe
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
+  UsageStatsLaunchUnread, VllmUsageStatsDisableTerm,
+  vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
+}
+import extdeps.docker.cli {
+  DockerContainerInspectEnvRead, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
+  docker_container_inspect_env_from_stdout,
+  DockerContainerInspectIdentityRead, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
+  docker_container_inspect_identity_from_stdout, docker_container_inspect_names_no_such_container,
+}
+import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+}
+
+// ── READING THE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED ──────────────────────────
+//
+// THIS MODULE IS THE PRODUCER gunbc.spark.first_party_serving
+// spark_serving_usage_stats_declared_environment_obligation NAMES. That obligation asks for a
+// reading of the effective telemetry configuration of the process that answered, bound to the
+// offered launch, covering both whether vLLM's usage-stats reporter runs and where it sends. The
+// reading taken here is Config.Env of the serving container on EVERY host of the realization,
+// executed over the fleet key session through the one privileged argv the operator-approved grant
+// authorizes: gunbc.spark.managed_access_bootstrap InspectServingContainer, whose pinned
+// `docker container inspect <name>` is installed for both serving containers (pair 2026-09-14,
+// glm-native-tp4 2026-09-16; measured installed on srv6 and srv9 2026-09-19).
+//
+// WHY Config.Env IS THE PROCESS ENVIRONMENT HERE, stated once and not per consumer: the pair
+// realization execs `vllm serve` with no added environment beyond the container's, and the native
+// arm's docker run -e list (gunbc.spark.native_serving_realization glm_native_container_argv) is
+// rendered into the container's environment the same way, so what inspect reports as Config.Env is
+// what the engine process was started with on both arms. It is still a reading of the CONTAINER
+// rather than of the process -- nothing here re-reads /proc/<pid>/environ -- and that limit is
+// carried in the standing's basis rather than waved past.
+//
+// THE BINDING TO THE OFFERED LAUNCH IS THE INCARNATION, and it is REQUIRED rather than threaded
+// around: an observation is produced only when the caller supplies EndpointIncarnationObserved,
+// and on the incarnation's head host the inspected container's .Id must equal the incarnation's
+// container_id -- the same name-reassignment guard gunbc.spark.serving_incarnation_observe states,
+// because the grant inspects BY NAME and a name can move to a different container. On the
+// realization's OTHER hosts (a group's worker or rank units run the same container name) there is
+// no answering process to bind to, so those readings are bound to the launch only through the
+// group, and that narrower binding is a stated limit, not a silent one.
+//
+// EVERY FAILURE IS A TYPED REFUSAL, NEVER A GUESS. A host the ssh leg cannot reach, a grant sudo
+// denies, a container that is absent, a document whose Config.Env does not decode, an env entry
+// that is not KEY=VALUE -- each is its own arm, and the standing derived from a refused observation
+// is UsageStatsLaunchUnread with the obligation located at that arm. Nothing here answers disabled
+// or enabled from a partial read.
+
+type ServingHostEnvReading {
+  host: HostIdentity
+  env: List<String>
+}
+
+type SparkUsageStatsEnvRefusal
+  = UsageStatsLaunchBindingMissing { obligation: NonEmptyStr }
+  | UsageStatsInspectLegDidNotRun { host: HostIdentity, container: NonEmptyStr, cause: String }
+  | UsageStatsInspectRefused { host: HostIdentity, container: NonEmptyStr, exit_code: Int, detail: String }
+  | UsageStatsContainerAbsent { host: HostIdentity, container: NonEmptyStr }
+  | UsageStatsEnvUnreadable { host: HostIdentity, container: NonEmptyStr, cause: String }
+  | UsageStatsInspectedContainerIsNotTheAnsweringOne { host: HostIdentity, by_name: NonEmptyStr, answering: NonEmptyStr }
+
+type SparkUsageStatsEvidence
+  = UsageStatsEnvironmentRead { readings: List<ServingHostEnvReading> }
+  | UsageStatsEnvironmentUnread { refusal: SparkUsageStatsEnvRefusal }
+
+fn spark_usage_stats_env_refusal_text(r: SparkUsageStatsEnvRefusal) -> String {
+  match r {
+    UsageStatsLaunchBindingMissing { obligation: o } => o as String
+    UsageStatsInspectLegDidNotRun { host: h, container: c, cause: why } =>
+      join(["the inspect leg for ", c as String, " on ", h as String, " did not run, so the serving container's environment is unread there: ", why], "")
+    UsageStatsInspectRefused { host: h, container: c, exit_code: code, detail: d } =>
+      join(["the inspect command for ", c as String, " on ", h as String, " exited ", to_string(code), ", so the serving container's environment is unread there -- this is where a not-held InspectServingContainer grant (sudo denies) surfaces, and the exit and stderr are carried rather than a cause asserted: ", d], "")
+    UsageStatsContainerAbsent { host: h, container: c } =>
+      join(["the daemon on ", h as String, " names no container ", c as String, ", so there is no running serving environment to read there"], "")
+    UsageStatsEnvUnreadable { host: h, container: c, cause: why } =>
+      join(["the inspect object of ", c as String, " on ", h as String, " did not yield Config.Env: ", why], "")
+    UsageStatsInspectedContainerIsNotTheAnsweringOne { host: h, by_name: n, answering: a } =>
+      join(["on ", h as String, " the container holding the name is ", n as String, " but the answering process runs in ", a as String, ", so the environment read is not bound to the offered launch"], "")
+  }
+}
+
+// THE LOCATED OBLIGATION every unread standing derived here carries: the refusal text is prefixed
+// with the module so an auditor lands on the producer, and the refusal's own text says which host,
+// container and leg failed.
+fn spark_usage_stats_unread_obligation_for(refusal: SparkUsageStatsEnvRefusal) -> NonEmptyStr {
+  join(["gunbc.spark.serving_usage_stats_observe refused: ", spark_usage_stats_env_refusal_text(r: refusal)], "") as NonEmptyStr
+}
+
+// ── ONE HOST, ONE INSPECT LEG ─────────────────────────────────────────────────────────────────
+
+type HostEnvRead
+  = HostEnvObserved { reading: ServingHostEnvReading }
+  | HostEnvRefused { refusal: SparkUsageStatsEnvRefusal }
+
+// THE EXPECTED CONTAINER ID IS SUPPLIED ONLY FOR THE ANSWERING HEAD. Present on the incarnation's
+// head host, where the inspected object must be the container the answering process runs in;
+// Absent on every other host of the realization, where no such binding exists.
+fn observe_host_serving_env(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  container: NonEmptyStr,
+  expected_container_id: NonEmptyStr?,
+) -> HostEnvRead {
+  let grant = InspectServingContainer { container: container }
+  match typed_argv_exec_over_fleet_ssh(target: fleet_locus_ssh_target(host: host), context: context, argv: spark_managed_grant_argv(grant: grant)) {
+    TypedArgvExecRefused { reason: why } =>
+      HostEnvRefused { refusal: UsageStatsInspectLegDidNotRun { host: host, container: container, cause: why } }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        if docker_container_inspect_names_no_such_container(stderr: r.stderr) {
+          HostEnvRefused { refusal: UsageStatsContainerAbsent { host: host, container: container } }
+        } else {
+          HostEnvRefused { refusal: UsageStatsInspectRefused { host: host, container: container, exit_code: r.exit_code, detail: trim(s: r.stderr) } }
+        }
+      } else {
+        match docker_container_inspect_env_from_stdout(stdout: r.stdout) {
+          DockerContainerInspectEnvUnreadable { cause: c } =>
+            HostEnvRefused { refusal: UsageStatsEnvUnreadable { host: host, container: container, cause: c } }
+          DockerContainerInspectEnv { env: env } =>
+            match expected_container_id {
+              Absent => HostEnvObserved { reading: ServingHostEnvReading { host: host, env: env } }
+              Present { value: expected } =>
+                match docker_container_inspect_identity_from_stdout(stdout: r.stdout) {
+                  DockerContainerInspectIdentityUnreadable { cause: c } =>
+                    HostEnvRefused { refusal: UsageStatsEnvUnreadable { host: host, container: container, cause: join(["the inspected container's id did not read, so the environment cannot be bound to the answering launch: ", c], "") } }
+                  DockerContainerInspectIdentity { id: by_name, image: _ } =>
+                    if (by_name as String) != (expected as String) {
+                      HostEnvRefused { refusal: UsageStatsInspectedContainerIsNotTheAnsweringOne { host: host, by_name: by_name, answering: expected } }
+                    } else {
+                      HostEnvObserved { reading: ServingHostEnvReading { host: host, env: env } }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ── EVERY HOST OF THE REALIZATION, OR A REFUSAL ───────────────────────────────────────────────
+//
+// THE FOLD IS ALL-OR-NOTHING, for the reason the deleted lane fold stated: partial evidence is
+// missing evidence. A standing derived from the hosts that answered while one sibling went unread
+// would attribute the observed half's environment to the whole deployment, so the first refusal
+// ends the fold and IS the answer.
+
+type EnvObserveAcc {
+  readings: List<ServingHostEnvReading>
+  refusal: SparkUsageStatsEnvRefusal?
+}
+
+fn observe_env_step(acc: EnvObserveAcc, context: FleetSshExecutionContext, container: NonEmptyStr, answering_head: HostIdentity, answering_container_id: NonEmptyStr, host: HostIdentity) -> EnvObserveAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match observe_host_serving_env(
+        context: context,
+        host: host,
+        container: container,
+        expected_container_id: if host_identity_eq(a: host, b: answering_head) { Present { value: answering_container_id } } else { none },
+      ) {
+        HostEnvRefused { refusal: r } => EnvObserveAcc { readings: acc.readings, refusal: Present { value: r } }
+        HostEnvObserved { reading: reading } => EnvObserveAcc { readings: append(acc.readings, reading), refusal: none }
+      }
+  }
+}
+
+// THE ENTRY. The hosts of the realization, the container name of the group's launch
+// (gunbc.spark.serving_group_launch keys it by group: pair for A, native for B), the sealed fleet
+// context the harness prepares once per bind, and the incarnation standing that binds the reading
+// to the offered launch. With the incarnation unobserved there is no launch to bind to, and the
+// evidence refuses on THAT rather than reading a container nobody attributed.
+fn observe_serving_usage_stats_env(
+  context: FleetSshExecutionContext,
+  hosts: List<HostIdentity>,
+  container: NonEmptyStr,
+  incarnation: EndpointIncarnationStanding,
+) -> SparkUsageStatsEvidence {
+  match incarnation {
+    EndpointIncarnationUnobserved { obligation: o } =>
+      UsageStatsEnvironmentUnread { refusal: UsageStatsLaunchBindingMissing {
+        obligation: join(["the incarnation of the endpoint that answered is unobserved (", o as String, "), so no container environment can be bound to the offered launch"], "") as NonEmptyStr,
+      } }
+    EndpointIncarnationObserved { observation: o } => {
+      let acc = fold(hosts, init: EnvObserveAcc { readings: [], refusal: none }, f: (a, h) =>
+        observe_env_step(acc: a, context: context, container: container, answering_head: o.launch.head, answering_container_id: o.launch.container_id, host: h))
+      match acc.refusal {
+        Present { value: r } => UsageStatsEnvironmentUnread { refusal: r }
+        Absent => UsageStatsEnvironmentRead { readings: acc.readings }
+      }
+    }
+  }
+}
+
+// ── FROM A READ ENVIRONMENT TO A LAUNCH STANDING ──────────────────────────────────────────────
+//
+// THE DISABLE TEST IS UPSTREAM'S OWN, not a consumer's reading of it: each entry is compared
+// against extdeps.vllm.usage_stats vllm_usage_stats_reporting's disable_terms through
+// vllm_usage_stats_assignment_disables, which is exact equality on name AND disabling value --
+// VLLM_NO_USAGE_STATS=0, =false, =no all leave the reporter ON, because os.environ.get(...) == "1"
+// is what upstream evaluates. THE MARKER-FILE TERM IS DELIBERATELY NOT TESTED HERE, as that module
+// states: Config.Env cannot answer whether ~/.config/vllm/do_not_track exists, so a launch disabled
+// only by marker file reads as ENABLED here, which over-declares the egress rather than hiding it.
+//
+// THE DESTINATION IS READ, NOT ASSUMED. A host whose environment carries server_override_env
+// (VLLM_USAGE_STATS_SERVER) with a non-empty value is sending to THAT recipient, not to the
+// default server, and the basis names the variable and its value -- an override must never read
+// as disabled-by-default, and a quiet override would make the located arm's operator citation a
+// claim about a recipient nobody named.
+type EnvAssignment {
+  name: String
+  value: String
+}
+
+// AN ENTRY THAT IS NOT KEY=VALUE IS NOT AN ASSIGNMENT, and it is not skipped either: docker
+// renders Config.Env entries with '=', so an entry without one is a document this reader does not
+// understand, and folding past it would be answering from a partial environment. An empty name
+// ("=1") is refused on the same grounds rather than cast to NonEmptyStr downstream.
+fn env_entry_assignment(entry: String) -> EnvAssignment? {
+  let parts = split(s: entry, delimiter: "=")
+  match list_head(xs: parts) {
+    HeadAbsent => none
+    HeadFound { value: name } =>
+      match list_tail(xs: parts) {
+        TailAbsent => none
+        TailFound { tail: rest } =>
+          if count(rest) == 0 || name == "" {
+            none
+          } else {
+            Present { value: EnvAssignment { name: name, value: join(rest, "=") } }
+          }
+      }
+  }
+}
+
+
+fn env_entry_is_assignment(entry: String) -> Bool {
+  match env_entry_assignment(entry: entry) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE DISABLE TEST IS UPSTREAM'S OWN, not a consumer's reading of it: the entry is compared against
+// extdeps.vllm.usage_stats vllm_usage_stats_reporting's disable_terms through
+// vllm_usage_stats_assignment_disables, which is exact equality on name AND disabling value --
+// VLLM_NO_USAGE_STATS=0, =false, =no all leave the reporter ON, because os.environ.get(...) == "1"
+// is what upstream evaluates. THE MARKER-FILE TERM IS DELIBERATELY NOT TESTED HERE, as that module
+// states: Config.Env cannot answer whether ~/.config/vllm/do_not_track exists, so a launch disabled
+// only by marker file reads as ENABLED here, which over-declares the egress rather than hiding it.
+fn env_disabling_assignment(env: List<String>) -> NonEmptyStr? {
+  fold(env, init: none, f: (acc, entry) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match env_entry_assignment(entry: entry) {
+        Absent => none
+        Present { value: a } =>
+          if any(vllm_usage_stats_reporting.disable_terms, t => vllm_usage_stats_assignment_disables(term: t, name: a.name as NonEmptyStr, value: a.value)) {
+            Present { value: entry as NonEmptyStr }
+          } else {
+            none
+          }
+      }
+  })
+}
+
+// THE OVERRIDE DESTINATION, named if the variable is present with a non-empty value. An empty
+// override is not a recipient -- upstream reads the value, and an empty string sends nowhere --
+// so it is reported as the default rather than as a named override.
+fn env_reporting_destination(env: List<String>, host: HostIdentity) -> NonEmptyStr {
+  let override = fold(env, init: none, f: (acc, entry) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match env_entry_assignment(entry: entry) {
+        Absent => none
+        Present { value: a } =>
+          if a.name == (vllm_usage_stats_reporting.server_override_env as String) && a.value != "" {
+            Present { value: a.value }
+          } else {
+            none
+          }
+      }
+  })
+  match override {
+    Present { value: server } =>
+      join(["the override server named by ", vllm_usage_stats_reporting.server_override_env as String, "=", server, " in the Config.Env read from the running container on ", host as String], "") as NonEmptyStr
+    Absent =>
+      join(["the upstream default server ", vllm_usage_stats_reporting.default_server as String, ", no ", vllm_usage_stats_reporting.server_override_env as String, " override being set in the Config.Env read from the running container on ", host as String], "") as NonEmptyStr
+  }
+}
+
+type HostTelemetryClassification
+  = HostTelemetryDisabled { host: HostIdentity, mechanism: NonEmptyStr }
+  | HostTelemetryEnabled { host: HostIdentity, destination: NonEmptyStr }
+
+// THE FOLD CARRIES THE FIRST UNPARSEABLE ENTRY AS THE ANSWER. A host whose environment does not
+// parse into assignments is not classified enabled, disabled or skipped -- the whole observation
+// is unread with that entry named, because answering from the entries that did parse would be a
+// partial reading presented as a whole one.
+type EnvClassifyAcc {
+  classes: List<HostTelemetryClassification>
+  malformed: String?
+}
+
+fn classify_reading_step(acc: EnvClassifyAcc, reading: ServingHostEnvReading) -> EnvClassifyAcc {
+  match acc.malformed {
+    Present { value: _ } => acc
+    Absent =>
+      match fold(reading.env, init: none, f: (a, e) => match a {
+        Present { value: _ } => a
+        Absent => if env_entry_is_assignment(entry: e) { none } else { Present { value: e } }
+      }) {
+        Present { value: bad } =>
+          EnvClassifyAcc { classes: acc.classes, malformed: Present { value: join(["the Config.Env read from the running container on ", reading.host as String, " carries `", bad, "`, which is not a KEY=VALUE assignment, so the environment was not understood rather than partially read"], "") } }
+        Absent =>
+          match env_disabling_assignment(env: reading.env) {
+            Present { value: mechanism } =>
+              EnvClassifyAcc { classes: append(acc.classes, HostTelemetryDisabled { host: reading.host, mechanism: mechanism }), malformed: none }
+            Absent =>
+              EnvClassifyAcc { classes: append(acc.classes, HostTelemetryEnabled { host: reading.host, destination: env_reporting_destination(env: reading.env, host: reading.host) }), malformed: none }
+          }
+      }
+  }
+}
+
+fn classification_disabled_text(c: HostTelemetryClassification) -> String {
+  match c {
+    HostTelemetryDisabled { host: h, mechanism: m } => join([m as String, " on ", h as String], "")
+    HostTelemetryEnabled { host: _, destination: _ } => ""
+  }
+}
+
+fn classification_enabled_host(c: HostTelemetryClassification) -> String {
+  match c {
+    HostTelemetryEnabled { host: h, destination: _ } => h as String
+    HostTelemetryDisabled { host: _, mechanism: _ } => ""
+  }
+}
+
+fn classification_enabled_destination(c: HostTelemetryClassification) -> String {
+  match c {
+    HostTelemetryEnabled { host: _, destination: d } => d as String
+    HostTelemetryDisabled { host: _, mechanism: _ } => ""
+  }
+}
+
+fn classification_is_disabled(c: HostTelemetryClassification) -> Bool {
+  match c {
+    HostTelemetryDisabled { host: _, mechanism: _ } => true
+    HostTelemetryEnabled { host: _, destination: _ } => false
+  }
+}
+
+// THE AGGREGATION TAKES THE WORST CASE AND SAYS SO. The reporter runs on a host unless a disabling
+// assignment was read there, so ONE enabled host means the deployment reports, and the standing is
+// enabled with a basis naming every enabled host and its destination. Disabled is claimed only
+// when every host of the realization read a disabling assignment, with the mechanism naming the
+// assignments read. An empty reading set is not "all disabled" -- it is no reading at all, and it
+// is refused rather than vacuously answered.
+fn spark_usage_stats_evidence_standing(evidence: SparkUsageStatsEvidence) -> VllmUsageStatsLaunchStanding {
+  match evidence {
+    UsageStatsEnvironmentUnread { refusal: r } =>
+      UsageStatsLaunchUnread { obligation: spark_usage_stats_unread_obligation_for(refusal: r) }
+    UsageStatsEnvironmentRead { readings: readings } => {
+      let acc = fold(readings, init: EnvClassifyAcc { classes: [], malformed: none }, f: (a, r) => classify_reading_step(acc: a, reading: r))
+      match acc.malformed {
+        Present { value: m } => UsageStatsLaunchUnread { obligation: join(["gunbc.spark.serving_usage_stats_observe: ", m], "") as NonEmptyStr }
+        Absent =>
+          if count(acc.classes) == 0 {
+            UsageStatsLaunchUnread { obligation: "gunbc.spark.serving_usage_stats_observe: the observation covered no hosts, so there is no environment to classify" as NonEmptyStr }
+          } else {
+            let disabled = filter(acc.classes, c => classification_is_disabled(c: c))
+            if count(disabled) == count(acc.classes) {
+              UsageStatsDisabledByLaunch {
+                mechanism: join([
+                  join(map(disabled, d => classification_disabled_text(c: d)), "; "),
+                  " -- read from the running container's Config.Env on every host of the realization via the granted docker container inspect (gunbc.spark.managed_access_bootstrap InspectServingContainer); Config.Env is the environment the engine was started with on both arms, and the marker-file term (", vllm_usage_stats_reporting.disable_marker_path as String, ") is NOT covered by this reading",
+                ], "") as NonEmptyStr,
+              }
+            } else {
+              let enabled = filter(acc.classes, c => !classification_is_disabled(c: c))
+              UsageStatsEnabledByDefault {
+                basis: join([
+                  "no disabling assignment (", join(map(vllm_usage_stats_reporting.disable_terms, t => join([t.variable as String, "=", t.disabling_value as String], "")), " or "), ") was read in the running container's Config.Env on ", join(map(enabled, e => classification_enabled_host(c: e)), ", "), ", so the reporter is on by upstream default there and sends to ", join(map(enabled, e => classification_enabled_destination(c: e)), "; "), ". The reading is of the container's Config.Env, which both serving arms start the engine with unchanged; the marker-file term is not covered by it",
+                ], "") as NonEmptyStr,
+              }
+            }
+          }
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   json_string_value_or_empty,
+  json_field, json_field_string_list, JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -416,6 +417,45 @@ fn docker_image_id_sha256_hex(image_id: NonEmptyStr) -> String? {
     Present { value: substring(s: text, start: head, end: string_length(text)) }
   } else {
     none
+  }
+}
+
+// THE CONTAINER'S Config.Env, AND NOTHING ELSE OFF THE INSPECT OBJECT. This is the same narrow-reader
+// discipline as docker_container_inspect_identity_from_stdout above: the inspect object is the whole
+// container record, and a reader that needs one field takes that field and leaves the rest in the
+// parsed value. The consumer is the serving telemetry reader
+// (gunbc.spark.serving_usage_stats_observe), which needs the environment the daemon handed the
+// container because that is the environment `docker exec` and the engine's entrypoint inherit.
+//
+// A MISSING OR NULL Env IS UNREAD, NOT EMPTY. json_field_string_list returns FieldAbsent for both a
+// member the document does not mention and a member set to JSON null, and neither is a reading of
+// "no assignments": the daemon emits Env for a container created with no -e flags as an array of
+// the image's baked entries, so a document without it is a shape this reader has not seen. The
+// empty ARRAY, by contrast, is a real reading -- a container whose environment is empty -- and is
+// returned as such.
+type DockerContainerInspectEnvRead
+  = DockerContainerInspectEnv { env: List<String> }
+  | DockerContainerInspectEnvUnreadable { cause: String }
+
+fn docker_container_inspect_env_from_stdout(stdout: String) -> DockerContainerInspectEnvRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerContainerInspectEnvUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_field(obj: obj, key: "Config") {
+            FieldAbsent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON names no Config member" }
+            FieldMalformed { cause: c } => DockerContainerInspectEnvUnreadable { cause: c }
+            FieldRead { value: cfg } =>
+              match json_field_string_list(obj: cfg, key: "Env") {
+                FieldAbsent => DockerContainerInspectEnvUnreadable { cause: "Config names no Env member (or it is null), so the container's environment was not read" }
+                FieldMalformed { cause: c } => DockerContainerInspectEnvUnreadable { cause: c }
+                FieldRead { value: env } => DockerContainerInspectEnv { env: env }
+              }
+          }
+      }
   }
 }
 
