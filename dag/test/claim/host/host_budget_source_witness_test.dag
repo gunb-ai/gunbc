@@ -16,6 +16,8 @@ import extdeps.linux.procfs {
   kernel_provides_procfs,
   procfs_availability,
   procfs_availability_is_available,
+  procfs_path_provision, ProvidedByEveryLinuxKernel, ProvidedWhenConfigured,
+  ProcfsConditionalOnKernelConfig, ProcNetPnp,
   procfs_paths_read_by_this_repository,
   procfs_path_literal,
 }
@@ -96,13 +98,36 @@ test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
     && !kernel_provides_procfs(kernel: WindowsNt)
 }
 
+// ON LINUX, AVAILABILITY FOLLOWS THE PATH'S PROVISION, NOT THE FAMILY. An unconditional path is
+// available; a config-conditional one answers ProcfsConditionalOnKernelConfig and is NOT available
+// until read. The red is the previous fold, which answered available for every rostered path on
+// Linux and so asserted /proc/net/pnp on a kernel nobody had booted (review 68937 on #11760).
 test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
   all(
     procfs_paths_read_by_this_repository,
     p =>
       !procfs_availability_is_available(a: procfs_availability(kernel: Darwin, path: p))
-        && procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+        && (match procfs_path_provision(p: p) {
+          ProvidedByEveryLinuxKernel => procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+          ProvidedWhenConfigured { option: o } =>
+            match procfs_availability(kernel: Linux, path: p) {
+              ProcfsConditionalOnKernelConfig { path: _, option: o2 } => (o as String) == (o2 as String) && !procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+              ProcfsAvailable => false
+              ProcfsAbsentOnKernel { kernel: _, path: _ } => false
+            }
+        })
   )
+}
+
+// THE ONE CONDITIONAL PATH IS PINNED BY NAME, so the fold above cannot go green by every path
+// happening to be unconditional: /proc/net/pnp on Linux is a CONFIG_IP_PNP obligation and never
+// ProcfsAvailable.
+test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability() -> Bool {
+  match procfs_availability(kernel: Linux, path: ProcNetPnp) {
+    ProcfsConditionalOnKernelConfig { path: _, option: o } => (o as String) == "CONFIG_IP_PNP"
+    ProcfsAvailable => false
+    ProcfsAbsentOnKernel { kernel: _, path: _ } => false
+  }
 }
 
 test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {

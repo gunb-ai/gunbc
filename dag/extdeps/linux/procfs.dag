@@ -57,10 +57,15 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // form DNS resolvers recognise, and states that /etc/resolv.conf is linked to it on such systems.
 // gunbc.runner_guest_image installs exactly that link, so every resolver library in a booted guest
 // reads this path. The file is synthesised by the kernel's ipconfig, not by proc.5's process table,
-// and exists only on a kernel built with IP_PNP. Supplying ip= on the command line does not
+// and exists only on a kernel built with CONFIG_IP_PNP. Supplying ip= on the command line does not
 // establish that its parser was compiled in, so whether the guest kernel this fleet boots provides
 // /proc/net/pnp is a fact the first NETWORKED boot must establish, and the resolver frontier
-// (gunbc.runner_microvm_network guest_resolver_configuration_frontier) waits on exactly that.
+// (gunbc.runner_microvm_network guest_resolver_configuration_frontier) waits on exactly that. That
+// bet is carried IN THE TYPE, not in this sentence: procfs_path_provision names the option, and
+// procfs_availability answers ProcfsConditionalOnKernelConfig for it rather than ProcfsAvailable
+// (review 68937 on #11760: rostering the path with no such arm made an executing witness assert
+// availability on Linux that this repository has not observed -- DESIGN 4d, a bet promoted to a
+// deduction by omission).
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStat,
@@ -144,13 +149,45 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
   }
 }
 
+// WHICH PATHS A LINUX KERNEL SYNTHESISES UNCONDITIONALLY, AND WHICH ONLY WHEN BUILT WITH AN
+// OPTION. proc.5's process and memory files exist on every Linux kernel that mounts procfs; a path
+// owned by an optional subsystem exists only when that subsystem was compiled in, and no reading
+// this repository has taken decides that for a kernel it has not booted. The option is spelled as
+// the kernel spells it (the same NonEmptyStr convention gunbc.runner.runner_host_filtered_egress
+// KernelFeatureRequirement uses), so a host kernel-config readback can join on it.
+type ProcfsPathProvision
+  = ProvidedByEveryLinuxKernel
+  | ProvidedWhenConfigured { option: NonEmptyStr }
+
+fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
+  match p {
+    ProcMeminfo => ProvidedByEveryLinuxKernel
+    ProcSelfStat => ProvidedByEveryLinuxKernel
+    ProcSelfStatus => ProvidedByEveryLinuxKernel
+    ProcSelfCgroup => ProvidedByEveryLinuxKernel
+    ProcNetUnix => ProvidedByEveryLinuxKernel
+    ProcSwaps => ProvidedByEveryLinuxKernel
+    ProcSysKernelHostname => ProvidedByEveryLinuxKernel
+    ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
+  }
+}
+
+// ProcfsConditionalOnKernelConfig IS AN OBSERVATION OBLIGATION, NOT A THIRD KIND OF AVAILABILITY.
+// The kernel family can serve the path; whether THIS kernel does is decided by a config option the
+// repository has to read (or a boot that has to show the file). It answers false to
+// procfs_availability_is_available for that reason: a consumer that needs the path proceeds on a
+// reading, never on the family.
 type ProcfsAvailability
   = ProcfsAvailable
+  | ProcfsConditionalOnKernelConfig { path: ProcfsPath, option: NonEmptyStr }
   | ProcfsAbsentOnKernel { kernel: KernelFamily, path: ProcfsPath }
 
 fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailability {
   if kernel_provides_procfs(kernel: kernel) {
-    ProcfsAvailable
+    match procfs_path_provision(p: path) {
+      ProvidedByEveryLinuxKernel => ProcfsAvailable
+      ProvidedWhenConfigured { option: o } => ProcfsConditionalOnKernelConfig { path: path, option: o }
+    }
   } else {
     ProcfsAbsentOnKernel { kernel: kernel, path: path }
   }
@@ -181,6 +218,7 @@ fn procfs_absence_reason(kernel: KernelFamily, path: ProcfsPath) -> NonEmptyStr 
 fn procfs_availability_is_available(a: ProcfsAvailability) -> Bool {
   match a {
     ProcfsAvailable => true
+    ProcfsConditionalOnKernelConfig { path: _, option: _ } => false
     ProcfsAbsentOnKernel { kernel: _, path: _ } => false
   }
 }
