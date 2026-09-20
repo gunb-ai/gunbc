@@ -6,6 +6,7 @@ import std.measure { Mebibyte, mebibyte }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.crypto.hash { Digest, sha256_digest }
@@ -23,6 +24,8 @@ import extdeps.github.actions_runner {
   ActionsRunnerRelease, ActionsRunnerBinaryArtifact,
   actions_runner_base_dir, actions_runner_binary_artifact_for_arch,
   actions_runner_download_url, actions_runner_tarball_filename,
+  actions_runner_listener_relative_path, actions_runner_listener_run_verb,
+  actions_runner_listening_line_suffix,
 }
 import extdeps.virtualization.firecracker {
   firecracker_ci_smoke_kernel_url, firecracker_ci_smoke_rootfs_url,
@@ -30,12 +33,17 @@ import extdeps.virtualization.firecracker {
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
-  Description, After, Wants,
-  ServiceType, ExecStartPre, ExecStart, ExecStopPost, WorkingDirectory,
+  Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
+  systemd_environment_reference, systemd_exit_code_variable, systemd_exit_status_variable,
+  ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
+  Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
 }
-import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
+import gunbc.runner_microvm {
+  RunnerGuestImage, gunbc_runner_guest_image,
+  JitDriveDeviceResolution, JitDriveDevice, JitDriveNotAttached, jit_drive_guest_device,
+}
 import gunbc.command_runner {
   run_shell_commands, LocalExec,
 }
@@ -215,15 +223,10 @@ fn runner_guest_image_dir(root: String) -> String {
 }
 
 // THE GUEST AGENT IS A UNIT FILE, NOT A SCRIPT, and that is the difference between a modeled guest
-// and a hand-authored one. Everything the agent has to do -- run one command, print to a console
-// somebody can read, and power the machine off afterwards -- is a systemd directive, so it is rows
-// through extdeps.systemd.unit_file rather than shell this repository would then own forever.
-//
-// THE POWER-OFF IS ExecStopPost= RATHER THAN A SECOND ExecStart= LINE, and the placement is the
-// property. systemd runs ExecStopPost on BOTH arms -- the main command succeeding and the main
-// command failing -- so a guest whose job died still stops existing. A poweroff appended after the
-// main command would run only on success, and the one VM that most needs to disappear, the one that
-// failed holding a credential, is exactly the one that would stay up.
+// and a hand-authored one. Everything the agent has to do -- read one credential, run one process,
+// report four events on a surface the host reads, and power the machine off afterwards -- is a
+// systemd directive, so it is rows through extdeps.systemd.unit_file rather than shell this
+// repository would then own forever.
 //
 // StandardOutput IS journal+console FOR A REASON THAT IS STRUCTURAL RATHER THAN VERBOSE: a guest
 // that powers off takes its journal with it, so anything written only to the journal was never
@@ -242,50 +245,215 @@ data runner_guest_agent_target: NonEmptyStr = "multi-user.target" as NonEmptyStr
 // `10-gunbc-runner-agent.service`, which systemd skips because it does not end in `.conf`. Two
 // different mechanisms, the same outcome: an activation file that is written, looks right, and is
 // never read.
-//
-// THE WITNESS ALREADY DEMANDED THIS AND WAS NEVER RUN. the_agent_is_pulled_in_by_a_drop_in_systemd_
-// will_actually_read asserts `.conf` in the path; it would have gone red on the first repair. It was
-// compiled and not executed, which is precisely the specification-without-execution DESIGN section 5
-// names -- a typecheck is not a consumer.
 data runner_guest_agent_drop_in_suffix: String = ".conf"
 
-data runner_guest_agent_poweroff_command: NonEmptyStr = "/usr/sbin/poweroff -f" as NonEmptyStr
+// --- the host channel ---
 
-fn runner_guest_agent_unit() -> SystemdUnitFile {
+// THE CHANNEL IS THE SERIAL CONSOLE, NOT vsock, AND THE CHOICE IS WHAT THE HOST ALREADY READS.
+// extdeps.virtualization.firecracker delivers ttyS0 on the VMM's stdout, and
+// gunbc.runner_microvm_boot_probe already judges a boot from exactly that stream. vsock would need
+// a second device in the VM configuration, a listener on the host side and a writer in the guest --
+// three new mechanisms to carry four lines -- and it would still not replace the console, which is
+// where the kernel and systemd report a failure that happens before any agent runs.
+//
+// WHAT THE CHANNEL CANNOT CARRY IS STATED BECAUSE IT DECIDES WHO OWNS THE IDENTITY. A console line is
+// written by the guest, so it is a claim by the workload about itself. The guest therefore asserts
+// only what it can know -- which event, and which image it is. Joining a line to the attempt tuple
+// (host, slot, generation, attempt, InvocationID, VMM identity, registration) is the host-side
+// lifecycle controller's job, by the fact that the line arrived on THAT VMM's stdout; that
+// controller is not built yet, and today's only reader is the boot probe, which has no attempt. A guest that printed a slot or attempt id would be
+// forging a key the host must hold independently. And per the program rule, any of these events may
+// TRIGGER the host's teardown; none of them may ESTABLISH that the cell is clean.
+//
+// THE GUEST EMITS THREE OF THE FOUR, AND THE TYPE SAYS WHICH. RunnerListening is known only to the
+// listener, which prints its own readiness line; a guest-emitted marker for it would be a second line
+// claiming the same fact. So the emitter takes a GuestEmittedEvent, which has no RunnerListening
+// constructor, and only the reader's GuestObservationKind can name it.
+type GuestEmittedEvent
+  = GuestBooted
+  | RunnerStarted
+  | RunnerExited
+
+type GuestObservationKind
+  = GuestEmitted { event: GuestEmittedEvent }
+  | RunnerListening
+
+// THE MARKER IS A FIXED TOKEN RATHER THAN A PHRASE, because the console interleaves kernel and systemd
+// output into any line and a reader matching prose has already been fooled once on this lane (the
+// Mt. Collins boot-marker grep, gunbc.runner.runner_first_job_receipt defects_found).
+data guest_observation_marker: String = "gunbc-guest-observation"
+
+fn guest_emitted_event_wire(event: GuestEmittedEvent) -> String {
+  match event {
+    GuestBooted => "guest-booted"
+    RunnerStarted => "runner-started"
+    RunnerExited => "runner-exited"
+  }
+}
+
+// A LABEL FOR RECEIPTS AND WITNESSES, NOT A WIRE: RunnerListening's label is never printed by the
+// guest, it names what the reader recognised in upstream's line.
+fn guest_observation_kind_label(kind: GuestObservationKind) -> String {
+  match kind {
+    GuestEmitted { event: e } => guest_emitted_event_wire(event: e)
+    RunnerListening => "runner-listening"
+  }
+}
+
+fn guest_observation_line(event: GuestEmittedEvent, image: RunnerGuestImage) -> String {
+  join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " image=", runner_guest_image_name(image: image)], "")
+}
+
+// PID 1 GIVES A SERVICE NO PATH WORTH TRUSTING, SO EVERY PROGRAM IS NAMED ABSOLUTELY. The Mt. Collins
+// run accepted and executed a job that then died on "sh: command not found", because the process
+// that launched it inherited no PATH (runner_first_job_receipt defects_found). systemd does hand
+// services a default PATH, but the job's steps inherit the LISTENER's environment, so the PATH the job
+// sees is declared here rather than left to whichever init started the guest.
+data runner_guest_echo_program: String = "/usr/bin/echo"
+data runner_guest_job_path: NonEmptyStr = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
+data runner_guest_job_home: NonEmptyStr = "HOME=/root" as NonEmptyStr
+
+fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestImage) -> NonEmptyStr {
+  join([runner_guest_echo_program, " ", guest_observation_line(event: event, image: image)], "") as NonEmptyStr
+}
+
+// RunnerExited CARRIES THE EXIT THE MANAGER RECORDED, via systemd's own ExecStopPost environment
+// ($EXIT_CODE, $EXIT_STATUS: systemd.exec(5), "Environment Variables in Spawned Processes"). It is
+// placed as ExecStopPostIgnoringFailure -- systemd's `-` prefix, modeled in extdeps as its own
+// variant like EnvironmentFileIfPresent -- so a failed echo can never be what fails the unit.
+fn guest_runner_exited_emit_command(image: RunnerGuestImage) -> NonEmptyStr {
+  join([
+    runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
+    " exit_code=", systemd_environment_reference(name: systemd_exit_code_variable),
+    " exit_status=", systemd_environment_reference(name: systemd_exit_status_variable),
+  ], "") as NonEmptyStr
+}
+
+// RunnerListening IS THE ONE EVENT THE GUEST AGENT DOES NOT PRINT, because only the listener knows
+// it. Its own readiness line (extdeps.github.actions_runner actions_runner_listening_line_suffix)
+// reaches the same console through the same StandardOutput, so the host reads upstream's line rather
+// than a second line of ours claiming the same thing.
+type GuestObservationRead
+  = GuestObservationSeen { kind: GuestObservationKind, line: String }
+  | NotAGuestObservation
+
+fn guest_emitted_event_in_line(line: String, event: GuestEmittedEvent) -> Bool {
+  string_contains(s: line, pattern: join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " "], ""))
+}
+
+fn guest_observation_of_console_line(line: String) -> GuestObservationRead {
+  if guest_emitted_event_in_line(line: line, event: GuestBooted) {
+    GuestObservationSeen { kind: GuestEmitted { event: GuestBooted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerStarted) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerStarted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerExited) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerExited }, line: line }
+  } else if string_contains(s: line, pattern: actions_runner_listening_line_suffix) {
+    GuestObservationSeen { kind: RunnerListening, line: line }
+  } else {
+    NotAGuestObservation
+  }
+}
+
+// THE WHOLE CONSOLE, READ LINE BY LINE, AS THE HOST'S ONE READER. gunbc.runner_microvm_boot_probe
+// consumes it today to require GuestBooted; the lifecycle controller consumes the same fold for the
+// rest.
+fn guest_console_observations(console: String) -> List<GuestObservationKind> {
+  fold(split(s: console, delimiter: "\n"), init: [] as List<GuestObservationKind>, f: fn(acc, line) {
+    match guest_observation_of_console_line(line: line) {
+      GuestObservationSeen { kind: k, line: _ } => append(acc, items: [k])
+      NotAGuestObservation => acc
+    }
+  })
+}
+
+fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
+  any(xs: guest_console_observations(console: console), predicate: fn(k) {
+    guest_observation_kind_label(kind: k) == guest_observation_kind_label(kind: kind)
+  })
+}
+
+// DECLARED FRONTIER: THE AGENT HAS NOT YET RUN A JOB. Everything above is exercised by witnesses over
+// the rendered unit and the console reader, and the boot probe exercises the no-credential arm on a
+// real VM. The credential arm -- a minted JIT config on the drive, the listener registering, a job
+// dispatched under a test label (never the floor label), RunnerExited and the VM gone -- needs the
+// host to mint and stage that credential, and no modeled host path does yet. A hand-staged
+// credential would be the out-of-band actuation DESIGN section 6 names, so the run waits for the
+// real path.
+data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: gunbc.runner_attempt_launch jit_mint_http_realization_frontier AND jail_jit_device_staging_frontier both dissolve, so a modeled host path mints a JIT config and writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive. SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
+)
+
+// --- the agent ---
+
+// THE PRINCIPAL WORKLOAD IS THE LISTENER ITSELF, NOT run.sh, AND THAT IS HOW THE RELAUNCH LOOP IS
+// ACCOUNTED FOR. run.sh re-executes the listener whenever it returns 2 (RetryableError); inside a
+// one-job guest that loop would keep a VM alive past its job, holding a spent registration.
+// Invoking `Runner.Listener run` directly means there is no loop to reach: the listener's exit IS the
+// service's exit, whatever the code. `Restart=no` is written rather than defaulted so a later author
+// adding a restart policy has to delete a declaration to do it.
+//
+// THE CREDENTIAL IS READ BY systemd FROM THE READ-ONLY DEVICE (gunbc.runner_microvm
+// jit_drive_guest_device, passed in as credential_device) as an environment file whose single assignment is the listener's own
+// argument variable. No `--jitconfig <blob>` appears on any command line.
+fn runner_guest_version_readback_command() -> NonEmptyStr {
+  join([actions_runner_base_dir, actions_runner_listener_relative_path, " --version"], "") as NonEmptyStr
+}
+
+fn runner_guest_listener_command() -> NonEmptyStr {
+  join([actions_runner_base_dir, actions_runner_listener_relative_path, " ", actions_runner_listener_run_verb], "") as NonEmptyStr
+}
+
+// THE POWER-OFF IS THE MANAGER'S, NOT A COMMAND'S. SuccessAction= and FailureAction= are both
+// `poweroff-force`, so every way the unit can end powers the VM off -- the listener exiting 0, it
+// exiting nonzero, it being killed, AND the start failing before any command ran. The earlier
+// `ExecStopPost=/usr/sbin/poweroff -f` covered only the arms on which systemd could still spawn a
+// command.
+//
+// THE CREDENTIAL FILE IS `EnvironmentFile=-` (IF PRESENT), AND THAT DOES NOT MAKE A MISSING ONE
+// SILENT. systemd loads an environment file for EVERY command it spawns, so a hard `EnvironmentFile=`
+// on an absent device would fail GuestBooted, the version readback and RunnerExited alike -- the host
+// would see a VM that printed nothing. With the prefix, the listener starts without a credential,
+// upstream refuses it ("Runner is not configured.", TerminatedError = 1), and the console carries
+// GuestBooted, the version, no RunnerListening and RunnerExited exit_status=1: a located refusal
+// instead of an empty console.
+//
+// THE VERSION READBACK STAYS, AND IT IS THE runner_first_job_receipt LESSON. The Mt. Collins canary
+// ran 2.337.0 while the model said 2.336.0 and nothing here caught it. `Runner.Listener --version`
+// prints the release actually baked into the image on the console the host reads, where
+// gunbc.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
+// `poweroff-force` skips the orderly stop of other units but still kills every process and unmounts
+// before powering off -- a one-job VM has nothing else whose orderly stop matters.
+data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
+
+fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyStr) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc ephemeral Actions runner guest agent" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
+      SuccessAction { action: runner_guest_agent_end_action },
+      FailureAction { action: runner_guest_agent_end_action },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceType { mode: "exec" as NonEmptyStr },
+      Restart { policy: "no" as NonEmptyStr },
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
+      Environment { assignment: runner_guest_job_path },
+      Environment { assignment: runner_guest_job_home },
+      EnvironmentFileIfPresent { path: credential_device },
       ServiceStandardOutput { stream: OutputJournalAndConsole },
       ServiceStandardError { stream: OutputJournalAndConsole },
-      ExecStartPre { command: runner_guest_agent_version_command() },
-      ExecStart { command: runner_guest_agent_version_command() },
-      ExecStopPost { command: runner_guest_agent_poweroff_command },
+      ExecStartPre { command: guest_observation_emit_command(event: GuestBooted, image: image) },
+      ExecStartPre { command: runner_guest_version_readback_command() },
+      ExecStart { command: runner_guest_listener_command() },
+      ExecStartPost { command: guest_observation_emit_command(event: RunnerStarted, image: image) },
+      ExecStopPostIgnoringFailure { command: guest_runner_exited_emit_command(image: image) },
     ],
     install: Installable {
       directives: [WantedBy { target: runner_guest_agent_target }],
     },
   }
-}
-
-// THE AGENT'S MAIN COMMAND IS THE RUNNER'S OWN VERSION READBACK, AND IT IS THE WHOLE AGENT TODAY.
-//
-// This is the slice-1 acceptance and nothing beyond it: a VM that boots this image prints the
-// version of the runner that was actually baked into it, on a console outside the VM, and powers
-// off. It is a READBACK rather than a greeting -- it can only print if the tarball extracted, if
-// the interpreter it needs is present, and if the guest reached multi-user -- so it discriminates
-// on the facts the build is supposed to have established.
-//
-// THE JIT REGISTRATION IS DELIBERATELY ABSENT and its absence is a refusal rather than a gap left
-// open: no credential is modeled to reach this guest yet, and an ExecStart that tried to register
-// without one would fail in the guest, where nothing is watching, instead of failing here.
-fn runner_guest_agent_version_command() -> NonEmptyStr {
-  join([actions_runner_base_dir, "/bin/Runner.Listener --version"], "") as NonEmptyStr
 }
 
 fn runner_guest_agent_unit_path(root: String, image: RunnerGuestImage) -> String {
@@ -547,7 +715,15 @@ fn measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArtif
 }
 
 fn write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> ProcessExit {
-  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit())
+  match jit_drive_guest_device() {
+    JitDriveNotAttached { cause: c } =>
+      exit_failure(reason: join(["runner_guest_image: no guest device names the credential drive, so no agent was rendered: ", c], ""))
+    JitDriveDevice { device: d } => write_guest_agent_unit_for_device_wet(root: root, image: image, credential_device: d)
+  }
+}
+
+fn write_guest_agent_unit_for_device_wet(root: String, image: RunnerGuestImage, credential_device: NonEmptyStr) -> ProcessExit {
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: image, credential_device: credential_device))
   let a = Filesystem.Write(path: runner_guest_agent_unit_path(root: root, image: image), content: text)
   if !a.success {
     exit_failure(reason: join(["runner_guest_image: guest agent unit write refused: ", a.error], ""))
