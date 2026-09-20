@@ -21,7 +21,10 @@ import gunbc.runner_microvm_network {
   TapPresentUnheld, TapHeld, TapIpv6Disabled, ResidueAbsent, RulesetListed,
   ConvergedSlot, ConvergedSlotNetwork, HelperStanding, AutoAssignmentAbsentFromKernel,
   runner_slot_network, runner_slot_host_cidr,
+  host_residue_readback, ruleset_readback, ExpectationTableEmptyFact, different_generation,
+  SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted, SlotNetworkUnobservable,
 }
+import gunbc.runner_microvm_lifecycle_realize { unreadable_slot_network_readings }
 import gunbc.runner_attempt_launch { GroundClear, GroundOccupied }
 import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
@@ -956,5 +959,55 @@ test fn a_slot_network_readback_for_another_slot_cannot_settle_this_attempt() ->
               }
           }
       }
+  }
+}
+
+// A LITERAL GENERATION IN A READING IS NOT INERT: IT REROUTES THE FACT TO THE WRONG CAUSE.
+//
+// `unreadable_slot_network_readings` reports the honest state of a host that cannot read its slot
+// network at all. Two of its seven facts are HOST-grain and carry a host and a generation, and
+// `host_residue_readback` / `ruleset_readback` gate on `at_receipt`, which compares them against the
+// subject's receipt. A literal `0` there does not merely lose a number: for every subject whose
+// converged generation is not zero -- this witness's is 7 -- both facts answer `different_generation`,
+// whose sealed reason says the reading was taken against a different converge generation, and the
+// built reason naming the real cause is discarded. The verdict stays `SlotNetworkUnobservable` and
+// the cell is quarantined either way, so the loss is invisible at the verdict and the operator is
+// sent to reconcile a generation instead of to a host that has no conntrack binary.
+//
+// THE CLAIM DISCRIMINATES PER FACT AND DELIBERATELY NOT THROUGH `slot_network_verdict`: that fold
+// returns the FIRST unobservable fact and `tap` precedes both of these, so a verdict-level assertion
+// would report the tap's reason and stay green with both host-grain facts misrouted.
+test fn the_host_grain_readings_carry_the_receipts_generation_not_a_literal() -> Bool {
+  match slot_network_sanitation_subject(slot: witness_slot, receipt: witness_receipt()) {
+    SanitationSubjectAdmitted { subject: s } =>
+      let r = unreadable_slot_network_readings(s: s, after: StoppedGracefully)
+      r.expectations.generation == converged_generation
+        && r.ruleset.generation == converged_generation
+        && cause_of(readback: host_residue_readback(s: s, fact: ExpectationTableEmptyFact, r: r.expectations)) == "host-cannot-read"
+        && cause_of(readback: ruleset_readback(s: s, r: r.ruleset)) == "host-cannot-read"
+    SanitationSubjectRefused { refusal: _ } => false
+  }
+}
+
+// "host-cannot-read" names the reason THIS module built; "stale-generation" is the sealed string
+// `different_generation` substitutes. Reading the cause rather than the arm is what makes the red
+// discriminating: both answers are `SlotNetworkUnobservable`, so an arm-level check cannot see it.
+fn cause_of(readback: SlotNetworkReadback) -> String {
+  match readback {
+    SlotNetworkConfirmed => "confirmed"
+    SlotNetworkRefuted { fact: _, detail: _ } => "refuted"
+    SlotNetworkUnobservable { fact: _, reason: why } =>
+      if (why as String) == stale_generation_reason() { "stale-generation" } else { "host-cannot-read" }
+  }
+}
+
+// THE SEALED REASON IS DERIVED FROM ITS OWN AUTHORITY, never transcribed. `different_generation` owns
+// that sentence; copying it here would be a second copy that keeps agreeing with a string this
+// witness no longer reads (DESIGN section 3), and the comparison would go quietly true if the
+// authority reworded it.
+fn stale_generation_reason() -> String {
+  match different_generation(fact: ExpectationTableEmptyFact) {
+    SlotNetworkUnobservable { fact: _, reason: why } => why as String
+    _ => ""
   }
 }

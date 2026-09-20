@@ -738,6 +738,17 @@ data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dis
 // THE READINGS TAKE THE STOP'S OUTCOME AS AN ARGUMENT so they cannot be hoisted above it. Order in
 // this substrate is data dependence and nothing else, and a network reading taken before the stop is
 // the very staleness this restructuring removed.
+//
+// THE TWO HOST-GRAIN FACTS CARRY THE RECEIPT'S OWN COORDINATES, and that is load-bearing rather than
+// decorative. `gunbc.runner_microvm_network` `host_residue_readback` and `ruleset_readback` gate on
+// `at_receipt`, which compares the reading's host AND generation against `s.converged`; a reading
+// that does not match is answered `different_generation`, whose sealed reason says the reading was
+// taken against a different converge generation. A literal generation here would therefore DISCARD
+// the reason built above -- the host cannot read the network at all -- and hand the operator a
+// stale-reading diagnosis for a host that simply cannot answer. Both fields are read from
+// `s.converged` because that is the carrier `at_receipt` compares; the subject's slot host is equal
+// to it by the sole_constructor's `ReceiptForDifferentHost` refusal, but reading it from there would
+// make this depend on a distant invariant instead of naming the compared authority.
 fn unreadable_slot_network_readings(s: SlotNetworkSanitationSubject, after: TeardownStop) -> SlotNetworkReadings {
   let why = join([
     "the slot network cannot be read on this host: no conntrack binary and no converged gunbc-microvm ruleset (stop outcome: ",
@@ -750,8 +761,8 @@ fn unreadable_slot_network_readings(s: SlotNetworkSanitationSubject, after: Tear
     guest_originated_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
     guest_destined_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
     guest_neighbour: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
-    expectations: HostResidueReading { host: s.subject.slot.host, generation: 0, observation: ResidueUnreadable { reason: why } },
-    ruleset: RulesetReading { host: s.subject.slot.host, generation: 0, observation: RulesetUnreadable { reason: why } },
+    expectations: HostResidueReading { host: s.converged.host, generation: s.converged.generation, observation: ResidueUnreadable { reason: why } },
+    ruleset: RulesetReading { host: s.converged.host, generation: s.converged.generation, observation: RulesetUnreadable { reason: why } },
   }
 }
 
