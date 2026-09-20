@@ -17,7 +17,7 @@ import extdeps.linux.cgroup_v2 {
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
 import extdeps.systemd { systemd_unit_property_wire,
-  SystemdUnitProperty, InvocationIDProperty, ExecMainStatus,
+  SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
 import gunbc.command_runner { run_shell_command_capture }
@@ -48,7 +48,7 @@ import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
 }
-import extdeps.systemd.systemd_run { systemd_run_property_argv }
+import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
@@ -162,7 +162,34 @@ fn walk_populated_cgroups(walk: CgroupWalk) -> List<NonEmptyStr> {
 // fact in its own representation; systemd removes an empty slice, so refusing here would quarantine
 // every cell whose teardown worked. The opposite arm is the one that must never be taken by
 // default: a directory that IS there and cannot be read is CgroupSubtreeReadFailed below.
+// THE HIERARCHY IS CONFIRMED BEFORE AN ABSENCE IS READ AS EMPTINESS, and this is what makes the
+// "no directory means no tasks" arm below sound rather than convenient. That arm is correct only
+// while we are looking at a live cgroup v2 hierarchy: if the mount is gone, or something is mounted
+// OVER it, every cell's path is absent and every cell reads clean. `cgroup.controllers` exists on
+// every cgroup v2 node including the root, so a mount point that cannot produce it is not a cgroup
+// hierarchy, and the honest answer for the whole reading is that it could not be taken
+// (zesty-pike-444's review named the masked-mount case).
+fn cgroup_hierarchy_is_live() -> Bool
+  uses net: Network
+{
+  linux.CgroupV2.ReadInterfaceFile(
+    file_path: cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: "cgroup.controllers" as NonEmptyStr),
+  ).success
+}
+
 fn observe_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
+  if !cgroup_hierarchy_is_live() {
+    CgroupSubtreeReadFailed {
+      reason: join([cgroup_v2_mount_point as String, " does not answer as a cgroup v2 hierarchy, so an absent cell cgroup says nothing about the cell"], "") as NonEmptyStr,
+    }
+  } else {
+    observe_slice_subtree(slice: slice)
+  }
+}
+
+fn observe_slice_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
   uses net: Network
 {
   match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
@@ -416,25 +443,57 @@ fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
 
 // --- the teardown observation, assembled for one bound attempt ---
 
-// THE UNIT'S InvocationID IS READ BACK FROM systemd, AND IT IS THE ONE SUBJECT IN THE TEARDOWN
-// READBACK THAT IS AN OBSERVATION RATHER THAN A DERIVATION.
+// THE ATTEMPT'S INVOCATION ID IS CARRIED INTO THE UNIT AND READ BACK OUT OF IT, AND THE FIRST CUT
+// READ THE WRONG IDENTIFIER ENTIRELY.
 //
-// This matters for whether attempt_teardown_readback's join is a wall or a decoration. The host,
-// the generation, the cgroup root and the three paths are all DERIVED from the bound attempt, so
-// comparing them against the bound attempt can only agree -- on the live path they are the same
-// value twice, and the join earns its keep only on a recovery where an observation arrives from
-// elsewhere. The invocation id is different: systemd mints a fresh one every time a unit starts, so
-// reading it off the unit and comparing it against the id the STORE recorded is what distinguishes
-// the incarnation the controller believes it is tearing down from a later one that reused the name.
-// That is the stale-incarnation case the warm pool actually produces.
-fn observe_unit_invocation_id(unit: NonEmptyStr) -> String
+// gunbc.runner_microvm_lifecycle's teardown join compares the OBSERVED stop's invocation id against
+// the one the STORE recorded for this attempt, and that recorded value is the ATTEMPT's invocation
+// id -- written at WriteAttemptStarted, BEFORE anything is staged, so it cannot be systemd's
+// InvocationID, which does not exist until the unit starts. This module used to fill the observed
+// side with systemd's InvocationID: two different identifiers compared for equality, so the join
+// would have refused EVERY teardown and the controller could never have settled a cell. Nothing
+// here would have caught it -- the hermetic witness supplies both sides, and the wet receipt stops
+// short of assembling a teardown (zesty-pike-444's review, relayed by sunny-ant-606).
+//
+// SO THE UNIT CARRIES THE ATTEMPT'S OWN ID AND THE CONTROLLER READS IT BACK FROM THE UNIT. The launch
+// sets it as an Environment property; teardown reads the unit's Environment before signalling. That
+// keeps the observed side an OBSERVATION rather than a second copy of the request: a value read off
+// the unit says which attempt THAT unit was started for, so a unit left over from a previous
+// incarnation answers with the previous attempt's id and the join refuses -- which is exactly the
+// stale-incarnation case a warm pool produces.
+//
+// IT DEPENDS ON THE UNIT STILL BEING LOADED, which is why the launch uses systemd-run's RETAINED
+// form: --collect unloads the unit the moment it exits and takes its Environment, its Result and its
+// ExecMainStatus with it.
+data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
+
+fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
+  SystemdRunProperty {
+    property: EnvironmentProperty,
+    value: join([attempt_invocation_env_key, "=", invocation_id as String], "") as NonEmptyStr,
+  }
+}
+
+// THE UNIT'S Environment IS A LIST OF ASSIGNMENTS AND ONLY ONE OF THEM IS OURS. systemd renders the
+// property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
+// assignment whose key is ours. An absent key reads as the empty string, which no attempt's
+// invocation id can equal, so the join refuses rather than matching.
+fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> String
   uses net: Network
 {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
+  let shown = systemd.Systemctl.ShowProperty(
+    unit: unit,
+    property: systemd_unit_property_wire(property: EnvironmentProperty),
+  )
   if shown.success == false {
     ""
   } else {
-    trim(s: shown.value)
+    fold(split(s: trim(s: shown.value), delimiter: " "), init: "", f: (acc, word) =>
+      if starts_with(s: word, prefix: join([attempt_invocation_env_key, "="], "")) {
+        substring(s: word, start: string_length(s: attempt_invocation_env_key) + 1, end: string_length(s: word))
+      } else {
+        acc
+      })
   }
 }
 
@@ -456,7 +515,7 @@ fn perform_teardown_and_observe(
   let attempt = bound.attempt.attempt
   let unit = in_flight_attempt_unit(attempt: bound.attempt)
   let slice = fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr
-  let invocation = observe_unit_invocation_id(unit: unit)
+  let invocation = observe_unit_attempt_invocation(unit: unit)
   let outcome = stop_attempt(unit: unit, slice: slice)
   let jail = runner_microvm_attempt_jail_base(attempt: attempt)
   let dir = runner_microvm_attempt_dir(attempt: attempt)
@@ -471,6 +530,18 @@ fn perform_teardown_and_observe(
     credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
     network: network,
   }
+}
+
+// THE RETAINED UNIT IS RELEASED ONLY AFTER EVERY READING HAS BEEN TAKEN, and it takes the readings
+// as its argument so it cannot be hoisted above them. The launch keeps the unit loaded on purpose --
+// its Environment, Result and ExecMainStatus are the evidence -- so something has to unload it, and
+// the only moment at which that is safe is when nothing will read it again. The reset is not
+// conditional on the teardown's verdict: a quarantined cell keeps its RECORD, which is where the
+// evidence lives durably, and leaving a failed unit loaded as well would accumulate one per attempt.
+fn release_retained_unit(after: ObservedTeardown) -> Bool
+  uses net: Network
+{
+  systemd.Systemctl.ResetFailedUnit(unit: after.stop.unit).success
 }
 
 // THE TERMINAL PATH, WHOLE: stop, read back, join against the attempt, settle, record.
@@ -493,6 +564,7 @@ fn run_teardown(
   uses net: Network, fs: Filesystem
 {
   let observed = perform_teardown_and_observe(bound: bound, network: network)
+  let _released = release_retained_unit(after: observed)
   match attempt_teardown_readback(bound: bound, observed: observed) {
     TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
       TeardownSubjectRefused {
@@ -620,26 +692,29 @@ type AttemptLaunch
   | VmmNotPlanned { plan: AttemptLaunchPlan }
   | VmmStartFailed { unit: NonEmptyStr, detail: String }
 
-fn launch_attempt(attempt: MicroVmAttempt, plan: AttemptLaunchPlan) -> AttemptLaunch
+fn launch_attempt(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, plan: AttemptLaunchPlan) -> AttemptLaunch
   uses net: Network, fs: Filesystem
 {
   match stage_attempt(plan: plan) {
     AttemptStagingNotPlanned { plan: p } => VmmNotPlanned { plan: p }
     AttemptStaged { verdict: v } =>
       match v {
-        StagingAdmitsJailer { receipt: r } => run_jailer_in_cell(attempt: attempt, receipt: r)
+        StagingAdmitsJailer { receipt: r } => run_jailer_in_cell(attempt: attempt, invocation_id: invocation_id, receipt: r)
         refused => VmmRefusedStaging { verdict: refused }
       }
   }
 }
 
-fn run_jailer_in_cell(attempt: MicroVmAttempt, receipt: AttemptStagingReceipt) -> AttemptLaunch
+fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, receipt: AttemptStagingReceipt) -> AttemptLaunch
   uses net: Network
 {
   let unit = runner_microvm_attempt_unit_name(attempt: attempt)
-  let started = systemd.SystemdRun.RunTransient(
+  let started = systemd.SystemdRun.RunTransientRetained(
     unit: unit,
-    property_argv: systemd_run_property_argv(properties: [runner_microvm_attempt_slice_property(attempt: attempt)]),
+    property_argv: systemd_run_property_argv(properties: [
+      runner_microvm_attempt_slice_property(attempt: attempt),
+      attempt_invocation_env_setting(invocation_id: invocation_id),
+    ]),
     command_argv: concat([receipt.jailer.program as String], receipt.jailer.arguments),
   )
   if started.success {
@@ -775,7 +850,11 @@ fn run_launched_attempt(
 ) -> ControllerOutcome
   uses net: Network, fs: Filesystem
 {
-  let launch = launch_attempt(attempt: bound.attempt.attempt.attempt, plan: plan)
+  let launch = launch_attempt(
+    attempt: bound.attempt.attempt.attempt,
+    invocation_id: bound.attempt.invocation_id,
+    plan: plan,
+  )
   let trigger = terminal_trigger_of_launch(launch: launch)
   ControllerRanAttempt {
     launch: launch,

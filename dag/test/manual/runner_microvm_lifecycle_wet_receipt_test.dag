@@ -16,7 +16,8 @@ import gunbc.runner_microvm_lifecycle {
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
 import gunbc.runner_microvm_lifecycle_realize {
-  observe_cgroup_subtree, stop_attempt, observe_unit_invocation_id, observe_resource_absence,
+  observe_cgroup_subtree, stop_attempt, observe_resource_absence,
+  observe_unit_attempt_invocation, attempt_invocation_env_setting,
 }
 
 // THE SIX REDs, EXECUTED AGAINST REAL PROCESSES. This is the file the whole microVM lifecycle lane
@@ -302,17 +303,18 @@ test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
 // systemd.Systemctl.ShowProperty takes a SystemdUnitProperty and interpolates it into
 // `--property={property}`. extdeps.systemd carries systemd_unit_property_wire precisely because a
 // variant's NAME and its wire spelling are not the same string -- ActiveState happens to be both,
-// InvocationIDProperty is spelled `InvocationID` on the wire -- so if the transport renders the
+// EnvironmentProperty is spelled `Environment` on the wire -- so if the transport renders the
 // VARIANT name, every property whose two spellings differ reads EMPTY with exit 0. systemctl does
 // not refuse an unknown property; it prints nothing and succeeds, which makes this a silent empty
 // reading rather than a failure. Measured at the shell on srv1:
-// `systemctl show <unit> --property=InvocationID --value` prints the id and
+// `systemctl show <unit> --property=InvocationID --value` prints a value and
 // `--property=InvocationIDProperty --value` prints nothing, exit 0.
 //
 // THE TWO CLAIMS TOGETHER SAY WHICH IT IS. If both pass, the operation renders the wire spelling and
-// gunbc.runner_microvm_lifecycle_realize observe_unit_invocation_id is sound. If the ActiveState one
-// passes and the InvocationID one fails, the operation renders the variant name and every consumer
-// that names a property whose spellings differ is reading an empty string as a fact.
+// gunbc.runner_microvm_lifecycle_realize observe_unit_attempt_invocation is sound -- Environment is
+// spelled EnvironmentProperty as a variant. If the ActiveState one passes and the Environment one
+// fails, the operation renders the variant name and every consumer that names a property whose two
+// spellings differ is reading an empty string as a fact.
 test fn show_property_reads_a_units_active_state() -> Bool
   uses net: Network
 {
@@ -325,15 +327,15 @@ test fn show_property_reads_a_units_active_state() -> Bool
   }
 }
 
-test fn show_property_reads_a_units_invocation_id() -> Bool
+test fn show_property_reads_a_units_environment() -> Bool
   uses net: Network
 {
   if !clear_slice() {
     false
-  } else if !start_payload(unit: "gunbc-wet-show-inv.service" as NonEmptyStr, argv: ["/bin/sleep", "301"]) {
+  } else if !start_with_invocation(unit: "gunbc-wet-show-inv.service" as NonEmptyStr, invocation: "probe-inv", sleep_for: "301") {
     false
   } else {
-    string_length(s: observe_unit_invocation_id(unit: "gunbc-wet-show-inv.service" as NonEmptyStr)) == 32
+    observe_unit_attempt_invocation(unit: "gunbc-wet-show-inv.service" as NonEmptyStr) == "probe-inv"
   }
 }
 
@@ -344,39 +346,43 @@ fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> Strin
   if shown.success == false { "" } else { trim(s: shown.value) }
 }
 
-// RED 5 -- TWO INCARNATIONS OF ONE UNIT NAME CARRY DIFFERENT INVOCATION IDS, READ OFF systemd.
+// RED 5 -- THE INVOCATION ID THE TEARDOWN COMPARES IS READ OFF THE UNIT, AND IT TRACKS THE
+// INCARNATION.
 //
-// THE IDS ARE OBSERVED RATHER THAN INVENTED, and that is what makes this a wet claim rather than a
-// second copy of the hermetic one. systemd mints a fresh InvocationID on every start, so starting one
-// unit NAME twice is exactly the warm-pool case gunbc.runner_microvm_lifecycle
-// stop_request_admission exists for: one name, two incarnations, and a stop that names the first must
-// not tear down the second. If the two ids did not differ, that refusal would be vacuous, so this is
-// the fact the refusal rests on.
+// THIS CLAIM REPLACED ONE THAT WAS ABOUT THE WRONG IDENTIFIER. It used to assert that systemd mints
+// a fresh InvocationID per start -- true, and irrelevant: the teardown join compares the ATTEMPT's
+// invocation id, which the store records before the unit exists. A review (zesty-pike-444, relayed
+// by sunny-ant-606) found that the controller was filling the observed side with systemd's id, so
+// the join would have refused every teardown. The controller now carries the attempt's id into the
+// unit's Environment and reads it back out, and this is the claim that says the readback is an
+// OBSERVATION OF THE UNIT rather than a copy of the request.
 //
-// THE TWO STARTS CARRY DIFFERENT ARGV, AND THAT IS A SUBSTRATE OBLIGATION RATHER THAN A CHOICE. This
-// is a pure dependency graph: two calls with identical arguments are ONE node, so a claim that asked
-// for the same start twice would get one start and then compare an id against itself. The first cut
-// of this claim did exactly that and FAILED for that reason, not because the ids agreed. The unit
-// NAME -- the thing under test -- is held constant; only the sleep duration differs, which nothing
-// here reads.
-test fn two_starts_of_one_unit_name_carry_different_invocation_ids() -> Bool
+// WHAT IT DISCRIMINATES: one unit NAME, two incarnations carrying different attempt ids, and the
+// readback returns each unit's OWN id. A controller that echoed the request would return whatever it
+// was asked about and pass a weaker claim; a controller reading systemd's InvocationID would return
+// a 32-hex string matching neither.
+//
+// THE TWO STARTS DIFFER IN THEIR ARGUMENTS, AND THAT IS A SUBSTRATE OBLIGATION. This is a pure
+// dependency graph: two calls with identical arguments are ONE node, so a claim that asked for the
+// same start twice would get one start and compare a value against itself. Here the ids differ,
+// which is also what the claim is about.
+test fn the_unit_reports_the_attempt_invocation_id_it_was_started_with() -> Bool
   uses net: Network
 {
   if !clear_slice() {
     false
-  } else if !start_payload(unit: incarnation_unit(), argv: ["/bin/sleep", "600"]) {
+  } else if !start_with_invocation(unit: incarnation_unit(), invocation: "attempt-inv-one", sleep_for: "600") {
     false
   } else {
-    let first = observe_unit_invocation_id(unit: incarnation_unit())
-    if first == "" {
+    let first = observe_unit_attempt_invocation(unit: incarnation_unit())
+    if first != "attempt-inv-one" {
       false
     } else if !stop_incarnation_unit(after: first) {
       false
-    } else if !start_payload(unit: incarnation_unit(), argv: ["/bin/sleep", "601"]) {
+    } else if !start_with_invocation(unit: incarnation_unit(), invocation: "attempt-inv-two", sleep_for: "601") {
       false
     } else {
-      let second = observe_unit_invocation_id(unit: incarnation_unit())
-      second != "" && second != first
+      observe_unit_attempt_invocation(unit: incarnation_unit()) == "attempt-inv-two"
     }
   }
 }
@@ -385,13 +391,29 @@ fn incarnation_unit() -> NonEmptyStr {
   "gunbc-wet-incarnation.service" as NonEmptyStr
 }
 
-// THE STOP TAKES THE FIRST ID AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE THE READ THAT PRODUCED IT.
-// Order in this substrate is data dependence and nothing else; a stop that took no argument would be
-// a node the evaluator may run before, after or instead of the read.
+// THE UNIT IS STARTED THE WAY THE CONTROLLER STARTS ONE: retained, with the attempt's invocation id
+// as an Environment property. A claim that started it with --collect would read an empty Environment
+// back for a unit that had exited, which is the case the retained form exists for.
+fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: String) -> Bool
+  uses net: Network
+{
+  systemd.SystemdRun.RunTransientRetained(
+    unit: unit,
+    property_argv: systemd_run_property_argv(properties: [
+      wet_slice_property(),
+      attempt_invocation_env_setting(invocation_id: invocation as NonEmptyStr),
+    ]),
+    command_argv: ["/bin/sleep", sleep_for],
+  ).success
+}
+
+// THE STOP TAKES THE FIRST READING AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this
+// substrate is data dependence and nothing else.
 fn stop_incarnation_unit(after: String) -> Bool
   uses net: Network
 {
   after != "" && systemd.Systemctl.Stop(unit: incarnation_unit()).success
+    && systemd.Systemctl.ResetFailedUnit(unit: incarnation_unit()).success
 }
 
 // RED 6 -- A JOB THAT EXITS ZERO CAN LEAVE THE CELL'S SUBTREE POPULATED.

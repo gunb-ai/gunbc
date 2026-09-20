@@ -422,6 +422,22 @@ service systemd.Systemctl {
     }
   }
 
+  operation ResetFailedUnit {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUnit"
+    }
+  }
+
   operation KillUnitTerm {
     input { unit: NonEmptyStr }
     output {
