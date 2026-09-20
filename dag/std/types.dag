@@ -166,16 +166,24 @@ type CommitSha    = String
 // constructor; callers reach the constructor, the invalid state stops being writable, and this
 // predicate deletes.
 
-// Forty lowercase hex digits: removing every hex digit leaves nothing. Removing them by digit costs
-// the same whatever the text, where testing each character cost one lambda per character -- forty of
-// them for every head, on every admission of an action use.
+// WHAT THIS COMPUTES: forty characters, each a lowercase hex digit. It is spelled as "remove every
+// hex digit and ask whether nothing is left" because removal is sixteen whole-string operations
+// whatever the text, where testing the characters one at a time is a recursion whose length is the
+// input's. That is a bare-minimum-cost defect in the sense DESIGN section 6 makes standing -- a
+// per-character recursion in a hot, widely-shared predicate is fixed regardless of the realized n,
+// because n is not a time-stable fact: this predicate is what every caller admitting a pinned ref
+// runs, and nothing bounds how many refs a caller will hold tomorrow.
 //
-// THIS SPELLING IS A WORKAROUND AND IS FILED AS ONE. It no longer contains the word `hex` and it
-// hard-codes the alphabet, which is a modeling loss taken to buy a constant factor the evaluator
-// charges. The class, its trigger and the form this returns to are
-// gunbc.recurring_failure_mode.per_element_lambda_cost_unrolls_a_predicate_into_scalar_operations;
-// it is recorded there rather than argued here so the next instance is recognized rather than
-// re-decided (DESIGN section 5: noticing a workaround is the line-stop signal).
+// THE RESPELLING IS ADMITTED ON THAT COST SHAPE AND ON NOTHING DOWNSTREAM OF IT (operator ruling,
+// stern-carp-604, 2026-09-20, on gunb-ai/gunbc#11730). A claim budget elsewhere in the tree fitting
+// afterwards is a consequence and was never the reason; anyone reading this as buying margin for a
+// census should read that ruling, which admits a fix to a shared predicate and refuses only an
+// author admitting their own.
+//
+// THE EQUALITY IS THE CONTRACT, not the shape: test.claim.std_commit_sha_text_witness keeps the
+// per-character spelling as an oracle and claims the two answer the same on every input either can
+// be given, with a red per refusal cause -- the lengths either side of forty, uppercase, the
+// characters adjacent to both ranges, and the empty string.
 fn commit_sha_text_holds(head: String) -> Bool {
   (head.length() == 40) && (replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(head, "0", ""), "1", ""), "2", ""), "3", ""), "4", ""), "5", ""), "6", ""), "7", ""), "8", ""), "9", ""), "a", ""), "b", ""), "c", ""), "d", ""), "e", ""), "f", "") == "")
 }

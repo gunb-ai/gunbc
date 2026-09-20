@@ -419,6 +419,14 @@ fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: Y
 // low single-digit percentage under v2.workflow.required_floor's new-witness budget, so the next
 // growth of its authority reds a REQUIRED claim.
 //
+// THE MARGIN IS THIN AND THE SUBJECT IS NOT THIS LANE'S (operator ruling, stern-carp-604,
+// 2026-09-20). The claim over the largest workflow sits close under the budget, and that workflow is
+// a projection of authorities other lanes edit, so the next growth of one reds a REQUIRED claim
+// without anyone touching this module. THE REMEDY IS THE STRUCTURAL READER CUT, AND IT IS ITS OWN
+// CHANGE: each sequence item re-enters the whole block setup -- the indent string, the containment
+// scans, the marking and merge analysis -- for what is often a two-line compact mapping, and
+// removing that is a restructuring of extdeps.languages.yaml.ingest with its own review.
+//
 // THE REMEDY IS NAMED HERE SO IT IS NOT RE-DECIDED UNDER PRESSURE: cut the reader's per-entry cost.
 // WHICH per-entry path to cut IS NOT STATED HERE, because it is a measurement and a measurement
 // belongs to the instrument that re-derives it (DESIGN section 6). That instrument is
@@ -450,6 +458,7 @@ data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusC
     "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
     "a declared cost drop or debt row for the claim" as NonEmptyStr,
     "dropping a workflow file from the census, or splitting one file's parse across claims" as NonEmptyStr,
+    "respelling a shared predicate a second time to buy margin: the one respelling that happened, std.types commit_sha_text_holds, was admitted on ITS OWN cost shape by an operator ruling and not on this budget, and it is not a precedent this row extends" as NonEmptyStr,
   ],
 }
 
