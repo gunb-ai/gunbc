@@ -38,8 +38,6 @@ import gunbc.fabric_cell_effect {
   CellSubstrateRootOwned,
   CellAttemptWriterOwned,
   fabric_cell_slice_desired_directives,
-  SliceDirectivesComplete,
-  SliceDirectivesQuotaSurveyRefused,
 }
 import gunbc.fabric_allocation_store_substrate {
   AllocationStoreEffect,
@@ -148,19 +146,14 @@ fn fabric_cell_slice_property_operations(
   )
 }
 
-// A REFUSED SURVEY EMITS NO SLICE PROPERTY GRANTS. Applying MemoryMax without CPUQuota is the
-// unbounded-CPU slice this module must not authorize. When the survey resolves, the operations
-// are `fabric_cell_slice_desired_directives`'s complete list, including `slice_cpu_quota`.
+// THE SLICE PROPERTY GRANTS ARE `fabric_cell_slice_desired_directives`'S COMPLETE LIST, six lines
+// including the CPUQuota line -- a ceiling or the affirmative unset, never omitted. The fold has no
+// refusing arm since the quota's only refusing producer (a vendor survey) was deleted.
 fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
-  match fabric_cell_slice_desired_directives() {
-    SliceDirectivesComplete { directives: ds } =>
-      fabric_cell_slice_property_operations(
-        unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-        directives: ds,
-      )
-    SliceDirectivesQuotaSurveyRefused { cause: _ } =>
-      [] as List<ExecutorPrivilegedOperation>
-  }
+  fabric_cell_slice_property_operations(
+    unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives(),
+  )
 }
 
 // THE EFFECT-TO-OPERATION PROJECTION THE APPLY SHELL CONSUMES. gunbc.fleet_converge_plan renders

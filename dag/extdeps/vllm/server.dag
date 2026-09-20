@@ -90,11 +90,17 @@ fn vllm_route(path: NonEmptyStr, population: VllmRoutePopulation) -> VllmRoute {
   VllmRoute { path: path, population: population, established_against: vllm_source_revision_read }
 }
 
+fn vllm_route_path(r: VllmRoute) -> NonEmptyStr {
+  r.path
+}
+
 data vllm_route_models: VllmRoute = vllm_route(path: "/v1/models" as NonEmptyStr, population: OrdinarilyRegistered)
 data vllm_route_version: VllmRoute = vllm_route(path: "/version" as NonEmptyStr, population: OrdinarilyRegistered)
 data vllm_route_health: VllmRoute = vllm_route(path: "/health" as NonEmptyStr, population: OrdinarilyRegistered)
 data vllm_route_ping: VllmRoute = vllm_route(path: "/ping" as NonEmptyStr, population: OrdinarilyRegistered)
 data vllm_route_metrics: VllmRoute = vllm_route(path: "/metrics" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_completions: VllmRoute = vllm_route(path: "/v1/completions" as NonEmptyStr, population: OrdinarilyRegistered)
+data vllm_route_chat_completions: VllmRoute = vllm_route(path: "/v1/chat/completions" as NonEmptyStr, population: OrdinarilyRegistered)
 
 data vllm_route_server_info: VllmRoute = vllm_route(path: "/server_info" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
 data vllm_route_get_world_size: VllmRoute = vllm_route(path: "/get_world_size" as NonEmptyStr, population: RegisteredOnlyUnderDevelopmentMode)
@@ -189,6 +195,7 @@ data vllm_http_parallel_evidence_routes: List<VllmParallelEvidenceRoute> = [
 
 data vllm_routes: List<VllmRoute> = [
   vllm_route_models, vllm_route_version, vllm_route_health, vllm_route_ping, vllm_route_metrics,
+  vllm_route_completions, vllm_route_chat_completions,
   vllm_route_server_info, vllm_route_get_world_size, vllm_route_collective_rpc,
 ]
 
