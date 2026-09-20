@@ -19,6 +19,9 @@ import gunbc.systemctl_is_active_read {
   UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused, systemctl_is_active_read,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_slot_allocation {
+  RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership,
+}
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
@@ -89,11 +92,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // real reads of /sys/fs/cgroup, the resource readbacks are real listings, and the store writes are
 // real files under the store root.
 
-// SLOT INDICES 90 AND UP, WHICH NO FLEET HOST ALLOCATES. A live slot is srvN-01 upward and a fleet
-// host carries tens, not ninety; the gap is what keeps every unit, slice and path derived below
-// from colliding with a serving slot even though they are derived by the PRODUCTION functions.
+// THE INDICES ARE OUTSIDE THE HOST'S COMMITTED POPULATION, AND THE AUTHORITY SAYS SO RATHER THAN
+// THIS FILE ASSERTING IT. gunbc.runner_slot_allocation runner_slot_membership answers
+// SlotOutsideCommittedPopulation for any index above the width the host actually commits, which is
+// a minimum over its CPU, memory and disk axes -- so "90 is safe" is not a claim about the fleet
+// that a reader has to trust, it is a question the model answers for whatever the width is today.
+// Every unit, slice and path below is derived by the PRODUCTION functions from these identities,
+// so the disjointness has to hold at the identity and nowhere else.
 fn red_slot(index: Int) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: index as Nat }
+}
+
+fn red_slot_names_no_committed_slot(slot: RunnerSlotIdentity) -> Bool {
+  match runner_slot_membership(host: slot.host, slot_index: slot.slot_index) {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
+    CommittedSlotMember { identity: _, purpose: _ } => false
+  }
 }
 
 fn red_attempt(index: Int, attempt_id: String) -> MicroVmAttempt? {
@@ -138,7 +152,19 @@ fn red_shell_argv(payload: String) -> List<String> {
 // whole distinction the controller reports -- graceful versus forced -- rests on SendSIGKILL=no
 // being on the unit, so a claim that started its unit with different properties would be measuring
 // a stop protocol production does not use.
+// THE GUARD IS ON THE START, WHICH IS THE ONLY STEP THAT CREATES ANYTHING. A claim that merely
+// asserted the indices are disjoint would be a check beside the thing it protects; refusing here
+// means no unit can be started on an identity the allocation authority calls a committed member,
+// whatever this file's indices are edited to.
 fn start_red_unit(attempt: MicroVmAttempt, payload: String) -> Bool {
+  if !red_slot_names_no_committed_slot(slot: attempt.slot) {
+    false
+  } else {
+    start_red_unit_on_disjoint_slot(attempt: attempt, payload: payload)
+  }
+}
+
+fn start_red_unit_on_disjoint_slot(attempt: MicroVmAttempt, payload: String) -> Bool {
   match systemd_run_transient_read(
     transport: LocalShell,
     unit: runner_microvm_attempt_unit_name(attempt: attempt),

@@ -1,6 +1,7 @@
 module gunbc.test.claim.runner.runner_microvm_lifecycle_realize_witness_test
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.exec.command { argv_words }
@@ -15,6 +16,10 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, filesystem_entry_presence,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation {
+  RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership,
+}
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm_attempt {
@@ -265,4 +270,29 @@ test fn a_graceful_stop_over_an_empty_cgroup_confirms_no_survivors() -> Bool {
     FactConfirmed { fact: _ } => true
     _ => false
   }
+}
+
+// ── the premise the wet REDs rest on, checked per PR rather than asserted in prose ────────────
+
+// THE WET CLAIMS START TRANSIENT UNITS ON A FLEET HOST, and their whole safety argument is that the
+// slot identities they derive everything from name nothing the fleet allocates. That is a question
+// gunbc.runner_slot_allocation answers -- the committed width is a minimum over the host's CPU,
+// memory and disk axes -- so it is asked here, per PR, where a width that grew past ninety would go
+// red BEFORE anyone ran the wet file. The control is the other direction: index 1 must be a
+// committed member, or this predicate would answer "disjoint" for everything and establish nothing.
+data red_slot_indices: List<Int> = [90, 91, 92, 93, 94, 95]
+
+fn names_no_committed_slot(index: Int) -> Bool {
+  match runner_slot_membership(host: operator_host_srv1, slot_index: index as Nat) {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
+    CommittedSlotMember { identity: _, purpose: _ } => false
+  }
+}
+
+test fn every_wet_red_slot_index_is_outside_the_hosts_committed_population() -> Bool {
+  fold(red_slot_indices, init: true, f: (acc, i) => acc && names_no_committed_slot(index: i))
+}
+
+test fn the_first_slot_index_is_a_committed_member_so_the_premise_discriminates() -> Bool {
+  !names_no_committed_slot(index: 1)
 }
