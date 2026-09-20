@@ -3,10 +3,24 @@ module test.claim.live_deploy_unit_emission_oracle_witness
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
 import std.measure { ByteSize, byte_size_count }
 import std.layout { render }
-import gunbc.live_deploy.emit {
-  emit_slice_unit_doc,
+import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   live_deploy_slice_memory_high,
+  live_deploy_slice_memory_swap_max,
+  approval_broker_slice_memory_max,
+  approval_broker_slice_memory_high,
+}
+// THE FIXTURE IS IMPORTED, NOT MERELY NAMED. the_convergence_oneshot_does_not_join_the_broker_slice
+// used deploy_witness_release_revision with no import of its module, and the name RESOLVED anyway --
+// a .dag import list does not bind, so the file typechecked and read as correct. What it did not do
+// is RESOLVE: the effect-summary join found a callee whose identity was established but which names
+// no registry row, refused, and took the WHOLE ENTRY with it -- so every byte oracle in this file
+// was unrunnable, including the broker unit's. The brief asks for byte oracles as evidence; an
+// oracle in a file that cannot resolve is evidence of nothing, and it failed silently because the
+// only thing that would have caught it is the resolve this import makes possible.
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import gunbc.live_deploy.emit {
+  emit_slice_unit_doc,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
   emit_belt_timer_unit_doc,
@@ -19,14 +33,23 @@ import gunbc.live_deploy.emit {
   RevisionBoundAtEmission,
   user_manager_environment_directives,
   belt_tick_cadence,
+  eval_budget_flag_text,
+  emit_approval_broker_slice_unit_doc,
+  emit_approval_broker_unit_doc,
+  approval_broker_slice_unit_file,
+  live_deploy_approval_broker_unit_file,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentServiceConfig,
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
+  gunbc_approval_broker_slice_unit_name,
+  gunbc_approval_broker_unit_name,
 }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax }
 import extdeps.http.server { HttpServerListenConfig }
@@ -44,7 +67,7 @@ import extdeps.systemd.unit_file {
   After,
   Wants,
   SystemdServiceDirective,
-  ServiceType,
+  ServiceType, OneshotMode, SimpleMode,
   ExecStart,
   Restart,
   Environment,
@@ -226,6 +249,112 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 }
 
 
+// ── THE APPROVAL BROKER'S SLICE AND UNIT, BYTE FOR BYTE ─────────────────────────────────────
+// TWO SLICES IS THE WHOLE REPAIR, so the first thing worth pinning is that they are two. Boot 15
+// refused on an approval status poll because the approval routes shared a heap with the roadmap's
+// renders (side-chat ruling 2026-09-19); the construction that removes that is a second cgroup with
+// its own allowance, which the bytes below either carry or do not.
+//
+// MemorySwapMax=0 IS PINNED because it is the receipt's own lesson. The roadmap process was SWAPPED
+// and then killed, and a swapped process is one whose latency is unbounded while it still looks
+// alive -- an approval poll answered after a swap-in has already timed out. Denying swap converts
+// that into an immediate kill at a declared bound.
+test fn the_approval_broker_slice_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=6442450944\nMemoryHigh=5368709120\nMemorySwapMax=0\n"
+}
+
+// THE BROKER UNIT. Every difference from the roadmap unit above is the split: a different
+// Description, a different Slice=, a different --entry and --function, a different --port, and NO
+// user-manager Environment= lines -- the broker starts no user unit and observes none, so handing
+// it the manager's address would be a capability its four routes have no use for.
+//
+// THE TWO EVALUATION-BUDGET FLAGS ARE PROJECTED, NOT TRANSCRIBED, and the rest of the line is
+// pinned. They are a separately owned policy (gunbc.live_deploy.spec dashboard_serve_cpu_limit /
+// dashboard_serve_wall_limit) with its own declared basis, so transcribing them here would red this
+// oracle for a budget change that has nothing to do with the broker -- and DESIGN section 6 is
+// explicit that a measurement is cited by naming its producer rather than by copying its number.
+// What this oracle exists to pin is the broker's IDENTITY in the unit: which description, which
+// slice, which entry, which function, which port, which principal, and the ABSENCE of the two
+// Environment lines. Those are all still exact.
+//
+// THE BUDGETS BEING THE ROADMAP'S IS ITS OWN CLAIM below, so projecting them here does not lose the
+// fact that the broker currently inherits them.
+// THE NAME SAYS "WOULD INSTALL", NOT "DEPLOYED", AND THE DISTINCTION IS NOT PEDANTIC. Every other
+// oracle in this file was transcribed from a unit read off srv1; this one never was, because the
+// broker unit has never run there -- stage A installed it and systemd restart-looped it. Calling it
+// "the deployed bytes" would make this the one row in the file whose title asserts an observation
+// nobody made, and the neighbouring rows would lend it their credibility.
+//
+// WHAT IT THEREFORE IS: a pin on the bytes this emitter WOULD install, which is still worth having
+// -- it is what makes a silent change to the broker's identity, slice, entry, port or principal
+// fail here rather than on the host. What it is not is evidence that a process ever started from
+// them. That evidence is the stage-A readback, and until it exists this row should not be cited as
+// though it had been taken.
+//
+// THE RELEASE LOCUS IS IN THESE BYTES NOW (operator ruling 2026-09-20): WorkingDirectory and
+// ExecStart both name /opt/gunbc/approval-broker/releases/<candidate sha>, so the unit starts a
+// binary copied from this deploy's verified artifact against sources copied from this deploy's
+// checkout. The previous bytes pinned here named the roadmap's root and the roadmap's frozen
+// binary, which is the pair of defects the ruling resolved.
+test fn the_approval_broker_unit_would_install_these_bytes() -> Bool {
+  let emitted = render(doc: emit_approval_broker_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
+  let budgets = join([
+    eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: live_spec().approval_broker.serve_cpu_limit),
+    eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: live_spec().approval_broker.serve_wall_limit),
+  ], "")
+  emitted == join([
+    "[Unit]\nDescription=gunbc approval broker HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/auth/approval_broker_serve.dag --function approval_broker_handle --host 127.0.0.1 --port 8085 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    budgets,
+    "\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n",
+  ], "")
+}
+
+// THE BROKER INHERITS THE ROADMAP'S EVALUATION CAPS, and that is a stated divergence rather than a
+// derivation (gunbc.live_deploy.spec approval_broker_service_config says so): the broker's own
+// per-request cost has never been measured, and a cap invented for an unmeasured workload fails as
+// a refused approval while a known-safe ceiling fails as a slow one. This claim is what keeps the
+// inheritance visible now that the oracle above projects the flags instead of pinning them.
+//
+// THE RED: give the broker its own caps without saying so, and this fails while the byte oracle
+// still passes -- which is exactly the drift projecting the flags would otherwise have hidden.
+test fn the_broker_inherits_the_roadmap_evaluation_caps() -> Bool {
+  live_spec().approval_broker.serve_cpu_limit == live_spec().service.serve_cpu_limit
+    && live_spec().approval_broker.serve_wall_limit == live_spec().service.serve_wall_limit
+}
+
+// ── THE DIRECTIVE CLAIMS THE BYTE ORACLES CANNOT MAKE ────────────────────────────────────────
+// A byte oracle goes red when anything moves and says nothing about WHY the thing it pinned
+// matters. These three relate one directive each to the property the split exists to establish, so
+// a future edit that keeps the bytes plausible still has to answer them.
+
+// THE TWO SERVED UNITS DO NOT SHARE A CGROUP. If they did, every byte above could still be right
+// and the availability dependency would be back: one process's resident set would count against the
+// other's allowance, which is the mechanism, not a side effect.
+test fn the_broker_and_the_roadmap_join_different_slices() -> Bool {
+  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
+  let roadmap = live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  service_has(file: broker, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
+    && !service_has(file: roadmap, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
+    && !service_has(file: broker, target: ServiceSlice { name: deployment_slice_unit_name(names: live_spec().names) })
+}
+
+// THE TWO SERVED UNITS DO NOT SHARE A PORT. Two units with two MainPIDs on one socket would be a
+// lie the first `ss` exposes, and the front door needs a distinct backend to mount the approval
+// paths onto.
+test fn the_broker_and_the_roadmap_bind_different_ports() -> Bool {
+  !(live_spec().approval_broker.listen.port == live_spec().service.listen.port)
+    && live_spec().approval_broker.listen.port == approval_broker_listen_port
+}
+
+// THE BROKER'S ALLOWANCE IS ITS OWN AND IS SMALLER. The roadmap's 16 GiB is sized for renders the
+// broker never performs; inheriting it would have made the second slice a second name for the first
+// bound rather than a bound derived for this process.
+test fn the_broker_slice_bound_is_not_the_roadmap_deployment_bound() -> Bool {
+  byte_size_count(b: approval_broker_slice_memory_max) < byte_size_count(b: live_deploy_slice_memory_max)
+    && slice_has_bytes(file: approval_broker_slice_unit_file(), target: approval_broker_slice_memory_max, as_max: true)
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // DIRECTIVE-LEVEL CLAIMS — each relates one directive to the SPEC FIELD it should derive from
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -365,7 +494,7 @@ test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
 
 // DECISION: the belt unit is Type=oneshot (it runs once per tick and exits).
 test fn belt_service_type_is_oneshot() -> Bool {
-  service_has(file: belt_service_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+  service_has(file: belt_service_file(), target: ServiceType { mode: OneshotMode })
 }
 
 // DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
@@ -474,7 +603,7 @@ test fn serve_unit_carries_user_manager_environment() -> Bool {
 
 // DECISION: the serve unit is Type=simple (long-running process).
 test fn serve_unit_type_is_simple() -> Bool {
-  service_has(file: serve_file(), target: ServiceType { mode: "simple" as NonEmptyStr })
+  service_has(file: serve_file(), target: ServiceType { mode: SimpleMode })
 }
 
 // DECISION: the serve unit restarts on failure.
@@ -605,15 +734,15 @@ test fn slice_unit_is_not_installable() -> Bool {
 fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
   let base = live_spec()
   match base {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, repo_root: rr, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: rr,
               service_user: wrong_user,
               service_uid: uid, listen: l,
@@ -642,15 +771,15 @@ fn divergent_repo_root() -> NonEmptyStr {
 
 fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: wrong_root,
               service_user: su, service_uid: uid, listen: l,
               serve_cpu_limit: cpu, serve_wall_limit: wall,
@@ -688,15 +817,15 @@ test fn serve_unit_user_goes_red_under_different_user() -> Bool {
 
 fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
       match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab,
             service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: b, serve_function: f,
+              unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               instance_root: ir, repo_root: rr,
               service_user: su, service_uid: uid,
               listen: HttpServerListenConfig { host: l.host, port: wrong_port },
@@ -770,4 +899,64 @@ fn has_slice_directive_val(dirs: List<SystemdSliceDirective>, target: ByteSize, 
       _ => false
     }
   })
+}
+
+// ── THE TREE-CONVERGENCE ONESHOT MUST NOT SHARE THE BROKER SLICE ────────────────────────────
+// THE BRIEF NAMED THIS AND main SUPPLIED THE NUMBER THAT MAKES IT LOAD-BEARING. The split was
+// ordered with "the tree-convergence oneshot must not share the broker slice", which read as an
+// ordinary separation requirement until the 2026-09-18 receipt in gunbc.live_deploy.slice_bounds
+// recorded that oneshot at a 5.2 GB peak beside the serve unit's OOM kill. The broker slice is
+// 6 GiB. A convergence run inside it would consume nearly the whole allowance and leave the broker
+// to be killed by a process that has nothing to do with approvals -- which is the co-tenancy this
+// entire change exists to remove, reintroduced one cgroup down.
+//
+// IT HOLDS BY CONSTRUCTION TODAY, and the claim exists because construction is not self-asserting:
+// the convergence unit names deployment_slice_unit_name and the broker unit names its own, so the
+// property is true until someone edits either Slice= line. THE RED IS EXACTLY THAT EDIT.
+test fn the_convergence_oneshot_does_not_join_the_broker_slice() -> Bool {
+  let convergence = convergence_unit_doc(
+    spec: live_spec(),
+    candidate: deploy_witness_release_revision as String,
+    receipt_path: "/opt/gunbc/receipts/repository-convergence.json",
+    working_directory: "/opt/gunbc/gunbc",
+  )
+  string_contains(
+    s: convergence,
+    pattern: join(["Slice=", deployment_slice_unit_name(names: live_spec().names) as String], ""),
+  )
+    && !string_contains(
+      s: convergence,
+      pattern: join(["Slice=", gunbc_approval_broker_slice_unit_name as String], ""),
+    )
+}
+
+// AND THE BROKER IS THE ONLY UNIT IN ITS SLICE. The claim above says one particular neighbour stays
+// out; this says the slice has exactly one member among the units this deployment emits, so a unit
+// added later cannot join it by default and inherit the approval loop's allowance.
+test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
+  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
+  let roadmap = live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  let belt = live_deploy_belt_service_unit_file(spec: live_spec())
+  let broker_slice = ServiceSlice { name: gunbc_approval_broker_slice_unit_name }
+  service_has(file: broker, target: broker_slice)
+    && !service_has(file: roadmap, target: broker_slice)
+    && !service_has(file: belt, target: broker_slice)
+}
+
+// ── THE SWAP DENIAL IS ONE ROW, READ BY BOTH SLICES ─────────────────────────────────────────
+// The broker slice used to inline byte_size(0) while the roadmap slice consumed the declared row,
+// so one policy fact had two sources that could drift in either direction invisibly (review 68287).
+// The byte oracles above each pin their own slice's rendered text; what neither can see is whether
+// the two zeros came from the same place.
+//
+// THE RED IS THE EDIT THAT WOULD REOPEN IT: admit any swap on live_deploy_slice_memory_swap_max and
+// BOTH conjuncts fail together, which is the joint a pair of independent literals would not have.
+// Inlining a zero at either site fails it too, because the expected text is derived from the row
+// rather than transcribed.
+test fn both_served_slices_deny_swap_from_the_same_row() -> Bool {
+  let roadmap = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+  let broker = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
+  let expected = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+  string_contains(s: roadmap, pattern: expected)
+    && string_contains(s: broker, pattern: expected)
 }

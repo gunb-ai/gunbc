@@ -3,9 +3,17 @@ module gunbc.fabric_cell_observe
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities, committed_slot_identities }
-import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
+import gunbc.runner_slot_allocation {
+  fabric_execution_slot_identities,
+  committed_slot_identities,
+  CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
+import gunbc.fleet_runner_connectivity {
+  fleet_committed_slot_identities,
+  FleetHostWidthUnresolved,
+}
 import std.string_type { string_is_lexicographically_before }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
@@ -15,6 +23,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_addresses,
   fabric_cell_resource_address_equal,
   fabric_cell_slice_name,
+  fabric_cell_slice_name_prefix,
   fabric_cell_expected_slots,
   ExpectedAddressBlocked,
   UnexpectedCellEvidence,
@@ -480,11 +489,17 @@ fn fabric_cell_observe_host(probe: FabricCellHostProbe) -> FabricCellHostReadbac
 // "srv3-99" into a RunnerSlotIdentity mints an identity the slot authority never committed --
 // an uncited authority derived from a string, which the whole family exists to refuse. The third
 // arm keeps the observed name as what it is, an observed name, with the location that produced it.
+// THE FIFTH ARM EXISTS BECAUSE AN UNRESOLVED HOST IS NOT A FOREIGN ARTIFACT. Classification here
+// is a decision against an enumeration of committed slots, so a host that cannot produce that
+// enumeration cannot be decided about -- and the previous shape read its empty population as the
+// positive answer "nothing here is committed", which sends an artifact that may be ours down the
+// foreign-artifact remedy.
 type FabricCellDiscoveredSubject
   = DiscoveredExpectedCell { slot: RunnerSlotIdentity }
   | DiscoveredUnexpectedCommittedSlot { slot: RunnerSlotIdentity }
   | DiscoveredCrossHostNamedArtifact { observed_name: String, named_slot: RunnerSlotIdentity, observed_on: HostIdentity }
   | DiscoveredForeignArtifact { observed_name: String, location: String }
+  | DiscoveredHostWidthUnresolved { observed_name: String, host: HostIdentity, cause: String }
 
 fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String {
   match s {
@@ -493,6 +508,8 @@ fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String
     DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
       join(["cross-host-named:", h as String, ":", n, ":names:", runner_slot_instance_name(slot: sl)], "")
     DiscoveredForeignArtifact { observed_name: n, location: l } => join(["foreign:", l, ":", n], "")
+    DiscoveredHostWidthUnresolved { observed_name: n, host: h, cause: _ } =>
+      join(["host-width-unresolved:", h as String, ":", n], "")
   }
 }
 
@@ -525,28 +542,59 @@ fn fabric_cell_rendering_location(rendering: FabricCellNamespaceRendering) -> St
   }
 }
 
-fn fabric_cell_committed_slot_named_on(
-  host: HostIdentity,
+fn fabric_cell_named_among(
+  members: List<RunnerSlotIdentity>,
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> List<RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    members,
     init: [],
     f: (acc, s) =>
       if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
   )
 }
 
-fn fabric_cell_committed_slot_named_anywhere(
+// THE SAME NECESSARY CONDITION THE REGISTRATION DECODER USES, AND NOW THE SAME RELATION. A name an
+// unresolved host's naming authority could NOT have produced is still decidably foreign; only a
+// name it could have produced is undecidable. So srv2-02 observed anywhere is undecidable while
+// srv2 is unresolved, and srv3-99 stays foreign -- read fail-closed in one direction only, never as
+// evidence of ownership.
+//
+// AN EARLIER REVISION ASKED THAT QUESTION WITH `string_contains` WHILE THE DECODER ASKED IT WITH
+// `starts_with`, over the same prefix authority: one relation, two implementations, disagreeing
+// observably -- `backup-srv2-01` was a candidate here and not there. Both are now
+// gunbc.build_cache_instance slot_name_could_belong_to_host, and the rendering difference that
+// motivated `contains` is handled where it belongs: the PREFIX is rendered the way THIS name was
+// rendered, so a slice named `fabric-cell-srv2-01.slice` is compared against `fabric-cell-srv2-`.
+fn fabric_cell_rendered_host_prefix(rendering: FabricCellNamespaceRendering, host: HostIdentity) -> String {
+  match rendering {
+    CellRootRendering => runner_slot_instance_name_prefix(host: host)
+    SliceRendering => fabric_cell_slice_name_prefix(host: host)
+  }
+}
+
+fn fabric_cell_unresolved_host_could_own(
   name: String,
   rendering: FabricCellNamespaceRendering,
-) -> List<RunnerSlotIdentity> {
+  unresolved: List<FleetHostWidthUnresolved>,
+) -> FleetHostWidthUnresolved? {
   fold(
-    fold(fleet_hosts(), init: [], f: (acc, h) => concat(acc, committed_slot_identities(host: h))),
-    init: [],
-    f: (acc, s) =>
-      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
+    unresolved,
+    init: none,
+    f: (acc, u) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if slot_name_could_belong_to_host(
+            observed_name: name,
+            host_name_prefix: fabric_cell_rendered_host_prefix(rendering: rendering, host: u.host),
+          ) {
+            Present { value: u }
+          } else {
+            none
+          }
+      }
   )
 }
 
@@ -572,28 +620,64 @@ fn fabric_cell_classify_discovered_name(
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> FabricCellDiscoveredSubject {
-  fold(
-    fabric_cell_committed_slot_named_on(host: host, name: name, rendering: rendering),
-    init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
-    f: (acc, s) =>
-      if fabric_cell_slot_is_fabric_expected(slot: s) {
-        DiscoveredExpectedCell { slot: s }
-      } else {
-        DiscoveredUnexpectedCommittedSlot { slot: s }
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: h, cause: c } =>
+      DiscoveredHostWidthUnresolved {
+        observed_name: name,
+        host: h,
+        cause: runner_width_unresolved_cause_text(cause: c),
       }
-  )
+    CommittedPopulationDerived { members: members } =>
+      fold(
+        fabric_cell_named_among(members: members, name: name, rendering: rendering),
+        init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
+        f: (acc, s) =>
+          if fabric_cell_slot_is_fabric_expected(slot: s) {
+            DiscoveredExpectedCell { slot: s }
+          } else {
+            DiscoveredUnexpectedCommittedSlot { slot: s }
+          }
+      )
+  }
 }
 
+// THE FLEET SEARCH READS THE FLEET POPULATION STANDING RATHER THAN REBUILDING IT WITHOUT ITS
+// UNRESOLVED HALF. An earlier revision of this change folded the per-host populations here and
+// dropped every unresolved host, then searched the shortened list and initialized the answer to
+// DiscoveredForeignArtifact -- which is the ORIGINAL MISLABEL REPRODUCED ACROSS A HOST BOUNDARY: an
+// artifact named srv2-02 observed on srv4 bypasses the local unresolved arm (srv4 resolves),
+// matches no srv4 member, misses the shortened fleet list, and comes out foreign. The annotation
+// beside that fold said an incomplete enumeration removes the right to conclude that no host
+// committed the name; the fold then made exactly that conclusion.
+//
+// gunbc.fleet_runner_connectivity already carries the standing, so this reads it directly instead
+// of maintaining a second fold that strips its unresolved half. A one-line wrapper around that
+// read would have been the other half of the same rule: a second name for one concept is what this
+// change deleted gunbc_runner_pool_budget_for for (DESIGN 3).
 fn fabric_cell_classify_uncommitted_here(
   host: HostIdentity,
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> FabricCellDiscoveredSubject {
+  let population = fleet_committed_slot_identities()
   fold(
-    fabric_cell_committed_slot_named_anywhere(name: name, rendering: rendering),
-    init: DiscoveredForeignArtifact {
-      observed_name: name,
-      location: fabric_cell_rendering_location(rendering: rendering),
+    fabric_cell_named_among(members: population.members, name: name, rendering: rendering),
+    init: match fabric_cell_unresolved_host_could_own(
+      name: name,
+      rendering: rendering,
+      unresolved: population.unresolved_hosts,
+    ) {
+      Present { value: u } =>
+        DiscoveredHostWidthUnresolved {
+          observed_name: name,
+          host: u.host,
+          cause: runner_width_unresolved_cause_text(cause: u.cause),
+        }
+      Absent =>
+        DiscoveredForeignArtifact {
+          observed_name: name,
+          location: fabric_cell_rendering_location(rendering: rendering),
+        }
     },
     f: (acc, s) =>
       DiscoveredCrossHostNamedArtifact { observed_name: name, named_slot: s, observed_on: host }
@@ -785,6 +869,10 @@ fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<Fabric
   }
 }
 
+// THE UNRESOLVED REFUSAL NAMES BOTH HOSTS, because they are usually different: the artifact was
+// observed on the host being enumerated, and the host whose committed width cannot be derived --
+// the reason it cannot be classified -- is reached by the naming authority rather than by where the
+// artifact was found.
 fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSubject) -> List<FabricCellObservationRefusal> {
   match s {
     DiscoveredExpectedCell { slot: _ } => []
@@ -799,6 +887,15 @@ fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSub
       }]
     DiscoveredForeignArtifact { observed_name: n, location: l } =>
       [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
+    DiscoveredHostWidthUnresolved { observed_name: n, host: h, cause: c } =>
+      [DiscoveryUnavailable {
+        host: host,
+        cause: join([
+          "an artifact named ", n, " observed on ", host as String,
+          " cannot be classified: its name could belong to ", h as String,
+          ", whose committed runner width does not resolve, so it is neither this host's committed slot nor established as foreign. ", c,
+        ], ""),
+      }]
   }
 }
 

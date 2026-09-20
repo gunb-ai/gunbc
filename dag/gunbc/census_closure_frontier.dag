@@ -30,8 +30,11 @@ import gunbc.public_workload_census {
   public_workload_census_declared_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
+import gunbc.action_use_admission { realized_workflow_projection_frontier_rows }
 import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
 import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
+import gunbc.review_sheet_formula_observation { review_sheet_formula_observation_consumer_frontier_rows }
+import gunbc.review_sheet_header_init { review_sheet_header_init_consumer_frontier_rows }
 import gunbc.review_sheet_batch_actuator { review_sheet_batch_write_consumer_frontier_rows }
 import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
 import extdeps.pricing.github_actions { actions_allowance_consumer_frontier_rows }
@@ -61,6 +64,7 @@ import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontie
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier_rows }
+import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
@@ -76,6 +80,8 @@ import gunbc.instruments.github_app_acquire {
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     review_sheet_whole_estate_consumer_frontier_rows,
+    review_sheet_formula_observation_consumer_frontier_rows,
+    review_sheet_header_init_consumer_frontier_rows,
     review_sheet_batch_write_consumer_frontier_rows,
     review_sheet_identity_consumer_frontier_rows,
     sheets_bootstrap_project_consumer_frontier_rows,
@@ -106,6 +112,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     public_workload_census_run_attempt_consumer_frontier_rows,
     public_workload_census_declared_runner_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
+    realized_workflow_projection_frontier_rows,
     attempt_admission_subject_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
     cpu_description_string_leaf_frontier_rows,
@@ -133,6 +140,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_manifest_broker_frontier_rows,
+    machine_word_consumer_frontier_rows,
   ]
 }
 

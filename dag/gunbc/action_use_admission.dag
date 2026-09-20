@@ -3,6 +3,9 @@ module gunbc.action_use_admission
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.yaml.ingest { yaml_indent_of }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
 import extdeps.github.actions { Workflow, Job, Step, UsesStep, RunStep }
 import extdeps.github.action_release {
   ActionRelease, ActionExecutionMechanism, ActionManifestReading,
@@ -284,10 +287,30 @@ type RealizedWorkflowReading
   = RealizedWorkflowUses { workflow_path: String, uses: List<RealizedActionUse> }
   | RealizedWorkflowUnreadable { workflow_path: String, reason: String }
 
-// THE REALIZED-FILE PROJECTION EXAMINES ONLY THE LINES THAT CAN CARRY A USE. The census must cover
-// every file GitHub executes, generated ones included, and neither a full YAML parse nor a scan
-// that interprets every line fits one claim's eval-step budget (claim_batch re-derives the cost on
-// test.claim.action_use_admission_witness). Admission needs two things per use, and neither needs
+// SCAFFOLD, OPERATOR-APPROVED -- THE MARK LIVES HERE, ON THE CARRIER. realized_workflow_action_uses
+// below is a second reader of YAML beside extdeps.languages.yaml.ingest ingest_yaml_source. The
+// operator approved landing it (gunb-ai/gunbc#11663, 2026-09-19: "you can fix it in a followup")
+// because the census must cover every executed workflow and the modeled reader did not fit one
+// claim's eval-step budget on the largest committed workflow. The follow-up cut the modeled
+// reader's per-line cost 2-3x at its owning links (a line table read once, a digit test and an
+// unescape that were quadratic per value, literals collected as a slice); what remains is the
+// recursive parse's per-line constant, re-derived by claim_batch eval_steps over
+// ingest_yaml_source on .github/workflows/fleet-converge.yml.
+data realized_workflow_projection_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.action_use_admission", decl_name: "realized_workflow_action_uses"),
+    reason: "a line projection of workflow YAML standing beside the modeled reader, operator-approved on gunb-ai/gunbc#11663 because the modeled reader exceeded the new-witness eval-step budget on the largest committed workflow; it reads a use only as `uses: <value>` at the head of a line, classifies the site by the value's shape, and refuses every other spelling of a `uses` key",
+    dissolution: unbound_dissolution(description: "TRIGGER: extdeps.languages.yaml.ingest ingest_yaml_source parses the largest file under .github/workflows within v2.workflow.required_floor's new-witness eval-step budget, with that file's uses admitted in the same claim. SUFFICIENT FOR: the census reading every realized workflow through ingest_yaml_source, one claim per file with a listing-population join, and the deletion of realized_workflow_action_uses, uses_line_reading, uses_value_text and uses_site_of together with this row. NOT satisfied by the modeled reader fitting on the smaller workflows only: the census closes over every executed file or it is not the census"),
+  )
+]
+
+// THE REALIZED-FILE PROJECTION DOES STRUCTURAL WORK ONLY ON THE LINES THAT CAN CARRY A USE. The
+// census must cover every file GitHub executes, generated ones included, and neither a full YAML
+// parse nor a scan that interprets every line's structure fits one claim's eval-step budget
+// (claim_batch re-derives the cost on test.claim.action_use_admission_witness). Every line pays one
+// cheap test -- whether it opens with a double-quoted key carrying an escape -- because that is the
+// one spelling of a `uses` key that need not contain the token `uses`, so it cannot sit behind the
+// token filter; every other test runs only on lines that contain `uses`. Admission needs two things per use, and neither needs
 // the surrounding structure:
 //   - the value, from the line's own `uses:` key; and
 //   - the SITE, from the value's own shape: GitHub resolves a job-level `uses:` only as a reusable
@@ -295,7 +318,7 @@ type RealizedWorkflowReading
 //     `./.github/workflows/<file>`, and a step-level one never names a workflow file. A job-level
 //     `uses:` naming a plain action is a workflow GitHub itself rejects, so no substituted runtime
 //     can run from it.
-// Every line that names `uses` is examined, including lines inside script bodies: a script line
+// Every line that names `uses` is examined structurally, including lines inside script bodies: a script line
 // spelled exactly as a `uses:` key is treated as a use and must be admitted, which fails closed.
 // Unmodeled spellings refuse rather than pass: a quoted or flow-mapping `uses` key, an anchor or
 // alias value, and an empty value. Whole-file facts are read once: exactly one top-level `jobs`, and
@@ -352,8 +375,49 @@ fn uses_line_is_comment(line: String) -> Bool {
   starts_with(s: substring(s: line, start: yaml_indent_of(line: line), end: line.length()), prefix: "#")
 }
 
+// WHITESPACE BETWEEN THE KEY AND ITS COLON IS NOT SIGNIFICANT, so it is removed before the test
+// rather than enumerated: `uses:`, `uses :`, `uses  :` and `uses\t:` are one spelling here.
 fn uses_line_spells_a_uses_key(line: String) -> Bool {
-  string_contains(s: line, pattern: "uses:") || string_contains(s: line, pattern: "uses :") || string_contains(s: line, pattern: "uses\t")
+  string_contains(s: replace(replace(line, " ", ""), "\t", ""), pattern: "uses:")
+}
+
+// A QUOTED KEY WITH AN ESCAPE CAN SPELL `uses` WITHOUT CONTAINING IT (`"us\u0065s":`), and this
+// projection does not decode escapes, so it cannot know what such a key names. It refuses a line on
+// whose body OPENS with a double-quoted key whose closing `":` is preceded by a backslash, rather
+// than guessing what the key is. Quoted text with no `":` (a script argument), and a value carrying
+// escaped quotes, are not keys and pass; see the boundary note on the function below.
+fn uses_line_has_escaped_quoted_key(line: String) -> Bool {
+  if !string_contains(s: line, pattern: "\":") {
+    false
+  } else if !string_contains(s: line, pattern: "\\") {
+    false
+  } else {
+    uses_line_quoted_key_has_escape(line: line)
+  }
+}
+
+// The branches above are what every line pays -- written as branches, not `&&`, because the
+// interpreter evaluates both operands of `&&` (gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses), which would run this split on every
+// line. Only a line carrying both a `":` and a backslash is split.
+// ONLY A KEY AT THE HEAD OF THE LINE, AND THE BOUNDARY IS MEASURED RATHER THAN ASSUMED. A wider
+// rule was tried -- refuse wherever a backslash precedes a `":` on the line, so a flow-style
+// `[{"us\u0065s": ...}]` would be caught too -- and it refused two committed workflow lines that
+// are VALUES, not keys: fleet-converge's `group: "...{\"srv1\": ...}"`, and a witnesses.yml `run:`
+// line whose shell script prints literal JSON (`{"version": 1, "receipt": {...}}`). Restricting the
+// opening quote to a key position (`{"` / `,"`) does not separate them either: that JSON is
+// spelled exactly so. A line projection cannot tell a YAML key from JSON inside a script string
+// without the structure it declines to parse, so the refusal stays at the head of the line, and the
+// flow-style escaped key is declared UNSEEN on the failure-mode row rather than claimed.
+fn uses_line_quoted_key_has_escape(line: String) -> Bool {
+  let text = substring(s: line, start: yaml_indent_of(line: line), end: line.length())
+  let body = if starts_with(s: text, prefix: "- ") { substring(s: text, start: 2, end: text.length()) } else { text }
+  if !starts_with(s: body, prefix: "\"") {
+    false
+  } else {
+    let parts = split(s: body, delimiter: "\":")
+    string_contains(s: join(parts.take(n: parts.length() - 1), "\":"), pattern: "\\")
+  }
 }
 
 type UsesScan {
@@ -370,7 +434,11 @@ fn realized_workflow_action_uses(path: String, source: String) -> RealizedWorkfl
     RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow does not carry exactly one top-level `jobs` key" }
   } else {
     let scan = fold(split(s: source, delimiter: "\n"), init: UsesScan { uses: [], refusal: "" }, f: fn(acc, line) {
-      if (acc.refusal != "") || !string_contains(s: line, pattern: "uses") {
+      if acc.refusal != "" {
+        acc
+      } else if uses_line_has_escaped_quoted_key(line: line) {
+        UsesScan { uses: acc.uses, refusal: join(["a quoted key with an escape, which this projection cannot decode -- at `", line, "`"], "") }
+      } else if !string_contains(s: line, pattern: "uses") {
         acc
       } else {
         match uses_line_reading(path: path, line: line) {

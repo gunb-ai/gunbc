@@ -23,7 +23,7 @@ import gunbc.tools.bmc_health_reader_converge {
   bmc_health_reader_body_path,
   reader_login_exit,
 }
-import gunbc.tools.bmc_onboard { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
+import gunbc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
 import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeSucceeded, RestExchangeUnreached }
 import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }

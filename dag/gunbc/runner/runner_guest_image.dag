@@ -36,7 +36,7 @@ import extdeps.systemd.unit_file {
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
   systemd_environment_reference, systemd_exit_code_variable, systemd_exit_status_variable,
-  ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
+  ServiceType, ExecMode, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in, ServiceTasksMax,
@@ -382,7 +382,7 @@ fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
 // credential would be the out-of-band actuation DESIGN section 6 names, so the run waits for the
 // real path.
 data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: gunbc.runner_attempt_launch jit_mint_http_realization_frontier AND jail_jit_device_staging_frontier both dissolve, so a modeled host path mints a JIT config and writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive. SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_jit_device, which writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
 )
 
 // --- the agent ---
@@ -446,7 +446,7 @@ fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyS
       FailureAction { action: runner_guest_agent_end_action },
     ],
     service: [
-      ServiceType { mode: "exec" as NonEmptyStr },
+      ServiceType { mode: ExecMode },
       Restart { policy: "no" as NonEmptyStr },
       ServiceTasksMax { count: gunbc_runner_microvm_task_ceiling() },
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },

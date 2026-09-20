@@ -67,7 +67,11 @@ import gunbc.build_cache_endpoint_path {
   ObservationStale,
   ObservationCurrencyUnknown,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import product.placement_supply { HostIdentity }
 
 data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
@@ -478,7 +482,7 @@ fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
 // gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly
 // when it does not appear in the fleet's desired slots now, not when someone remembers it being
 // decommissioned -- so the index parsed out of the cgroup is compared against
-// gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct
+// gunbc_runner_committed_width for the host the instance names. That comparison is why the coproduct
 // can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding
 // its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but
 // whose index does not parse is OwnerContextUndecided, never a fabricated index.
@@ -495,11 +499,31 @@ fn runner_slot_index_text(unit_name: String) -> String {
   }
 }
 
-fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycle {
-  if slot_index >= 1 && slot_index <= gunbc_runner_slots_per_host(host: host) {
-    DesiredRunnerSlot
-  } else {
-    RetiredRunnerSlot
+// A HOST THAT CANNOT SAY HOW WIDE IT IS CANNOT CALL ANY OF ITS SLOTS RETIRED, AND THE OLD SHAPE
+// CALLED ALL OF THEM RETIRED. The comparison read an underivable width as zero, so every index fell
+// through to RetiredRunnerSlot -- a positive lifecycle claim about slots that may be running, made
+// out of a missing denominator. There is no third arm to add here because RunnerSlotLifecycle is
+// gunbc.build_cache_instance's two-state fact; the honest answer is Absent, and the caller that
+// receives it already has an undecided arm for exactly this (OwnerContextUndecided).
+// THE CAUSE IS CARRIED, NOT DISCARDED AND RE-DESCRIBED. An Option here was already safe -- the
+// caller cannot call a live slot retired through an Absent -- but it threw away the reservation
+// policy's own sentence and left the caller to invent a generic one, which is the provenance half
+// of the same defect: a reader of the undecided context could not tell WHY the slot could not be
+// placed, and the one authority that knows had already said so.
+type RunnerSlotLifecycleResolution
+  = LifecycleDerived { lifecycle: RunnerSlotLifecycle }
+  | LifecycleWidthUnresolved { host: HostIdentity, cause: String }
+
+fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycleResolution {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      LifecycleWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: committed } =>
+      if slot_index >= 1 && slot_index <= committed {
+        LifecycleDerived { lifecycle: DesiredRunnerSlot }
+      } else {
+        LifecycleDerived { lifecycle: RetiredRunnerSlot }
+      }
   }
 }
 
@@ -529,10 +553,21 @@ fn runner_owner_context(
           observed_cgroup: cgroup_path,
         }
       CheckedNatReady { value: idx } =>
-        OwnerInRunnerSlot {
-          slot: RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
-          lifecycle: runner_slot_lifecycle_for(host: instance.identity.host, slot_index: idx),
-          observed_cgroup: cgroup_path,
+        match runner_slot_lifecycle_for(host: instance.identity.host, slot_index: idx) {
+          LifecycleWidthUnresolved { host: _, cause: wc } =>
+            OwnerContextUndecided {
+              detail: concat(
+                concat("the endpoint owner's cgroup names the runner slot ", unit_name),
+                concat(", whose host cannot say whether that slot is desired or retired: ", wc),
+              ) as NonEmptyStr,
+              observed_cgroup: cgroup_path,
+            }
+          LifecycleDerived { lifecycle: lifecycle } =>
+            OwnerInRunnerSlot {
+              slot: RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
+              lifecycle: lifecycle,
+              observed_cgroup: cgroup_path,
+            }
         }
     }
   }

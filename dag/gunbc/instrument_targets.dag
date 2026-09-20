@@ -7,6 +7,7 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
+  FloorMemoryQualificationProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   CompileCleanDiagnosticCensusStanding,
@@ -74,6 +75,17 @@ fn heads_reading_differential_label() -> Label {
   Label {
     package: instruments_package()
     target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE FLOOR'S MEMORY DEMAND, QUALIFIED. The subject is the required-floor PROCESS -- not any
+// function inside it -- which is why the reading is taken by a supervisor from outside rather than
+// by anything the floor itself emits. See `gunbc.floor_memory_demand` for why an in-process
+// observer cannot report the two terminations that matter most.
+fn floor_memory_qualification_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "floor-memory-qualification" }
   }
 }
 
@@ -189,6 +201,18 @@ fn heads_reading_differential_target() -> BuildTarget {
   }
 }
 
+// A `*_target()` HERE IS NOT NECESSARILY CONSUMED, AND ADDING ONE BY REFLEX IS THE TRAP. The two
+// folds below are the live consumers: `instrument_targets()` folds LABELS and
+// `instrument_bindings()` folds BINDINGS. NEITHER READS A `BuildTarget`, so a `*_target()` earns
+// its place only if some other module reads it -- `self_host_target` does, and several siblings do
+// not. That residue is a DESIGN section 3c dangling set, recorded rather than resolved because
+// resolving it is a separate change.
+//
+// The population is deliberately NOT enumerated here: a hand-written list of which ones dangle
+// goes stale the moment someone adds an instrument, which is the same positional-citation decay
+// section 3 forbids. Check it instead -- a `*_target()` whose only occurrence in `dag/` is its own
+// definition line has no consumer. The floor-memory row adds no `*_target()` for exactly this
+// reason.
 fn instrument_test_target(label: Label) -> BuildTarget {
   BuildTarget { label: label kind: TestRule {} dependencies: [] }
 }
@@ -284,6 +308,13 @@ fn primitive_egress_census_dag_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
 }
 
+fn floor_memory_qualification_binding() -> TargetBinding {
+  TargetBinding {
+    target: floor_memory_qualification_label()
+    producer: FloorMemoryQualificationProducer {}
+  }
+}
+
 fn primitive_egress_census_seed_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
 }
@@ -350,7 +381,8 @@ fn instrument_targets() -> List<Label> {
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
-    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(), primitive_egress_census_seed_label()
+    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
+    primitive_egress_census_seed_label(), floor_memory_qualification_label()
   ]
 }
 
@@ -360,7 +392,8 @@ fn instrument_bindings() -> List<TargetBinding> {
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
-    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(), primitive_egress_census_seed_binding()
+    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
+    primitive_egress_census_seed_binding(), floor_memory_qualification_binding()
   ]
 }
 

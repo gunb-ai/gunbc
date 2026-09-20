@@ -1,0 +1,22 @@
+module gunbc.interpreter_error_location_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the located field-access TypeError and its bounded unwind route
+// (gunbc#11565). A field-access TypeError in the seed interpreter named no location, which made a
+// production-path defect (harness_probe_cli, 2026-09-18) unattributable without a bisect scaffold.
+// The honest residue: "is this error located" is recovered from the message text (" [at ") and the
+// unwind route is capped at twelve frames, because InterpError::TypeError carries only a String.
+data interpreter_error_location_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "locate_field_access_error", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "call_function", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_field_access", field: WholeDeclaration },
+  ],
+  reason: "The subject is the seed interpreter's own error value, which no .dag program can construct or observe: the located message exists only on the host path that evaluates a failing field access. The diagnostic had to improve where the defect surfaced, in the seed, or production-path field-access failures stay unlocatable. The location and unwind route are appended to the TypeError message because the variant has no span or frame field to carry them.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete locate_field_access_error and the call_function unwind arm when interpreter diagnostics carry location and call route as TYPED fields -- a TypeError (or its successor) with a source span and a frame list that consumers read structurally -- at which point both the ' [at ' substring test and the twelve-frame cap disappear with them. Equivalently, when field-access evaluation is realized by the self-emitted interpreter, whose refusal type already carries spans. Rewording the message or moving the cap does not dissolve this row.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs call_function, eval_field_access, locate_field_access_error; dag/gunbc/interpreter_error_location_seed_growth.dag",
+}

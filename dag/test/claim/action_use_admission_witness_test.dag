@@ -340,6 +340,8 @@ test fn red_unmodeled_uses_spellings_refuse() -> Bool {
     && unreadable_scan(source: "jobs:\n  b:\n    steps: [{ uses: actions/checkout@v4 }]\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\tactions/checkout@v4\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses : actions/checkout@v4\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses  : actions/checkout@v4\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \"us\\u0065s\": actions/checkout@v4\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - name: x\n        with: { uses: y }\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo uses: not-a-key\n")
 }
@@ -366,4 +368,23 @@ test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -
     s: action_use_admission_reason(a: admit_action_release(action_release: upload_artifact_v4_6_2)),
     pattern: "github.com/actions/upload-artifact/blob/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml",
   )
+}
+
+// THE ESCAPED-KEY REFUSAL IS ABOUT KEYS: a quoted script argument carrying a backslash, with no `":`
+// key delimiter, is not a key, so the workflow reads normally.
+test fn quoted_script_text_with_a_backslash_is_not_an_escaped_key() -> Bool {
+  quoted_value_with_escaped_quotes_is_not_an_escaped_key() &&
+  match realized_workflow_action_uses(path: "fixture.yml", source: "jobs:\n  b:\n    steps:\n      - run: |\n          \"$HOME/bin/tool\" --re '\\d+'\n      - uses: actions/checkout@v4\n") {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
+    RealizedWorkflowUses { workflow_path: _, uses: us } => (us |> count) == 1
+  }
+}
+
+// A VALUE carrying escaped quotes is not a key: the committed fleet-converge workflow has
+// `group: "...${{ fromJSON('{\\"srv1\\": ...}') }}"`, whose `{` is followed by an ESCAPED quote.
+fn quoted_value_with_escaped_quotes_is_not_an_escaped_key() -> Bool {
+  match realized_workflow_action_uses(path: "fixture.yml", source: "jobs:\n  b:\n    group: \"g-${{ fromJSON('{\\\"srv1\\\": \\\"a\\\"}')[x] }}\"\n    steps:\n      - uses: actions/checkout@v4\n") {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
+    RealizedWorkflowUses { workflow_path: _, uses: us } => (us |> count) == 1
+  }
 }
