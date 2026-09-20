@@ -11,8 +11,9 @@ import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
 }
 import extdeps.zhipu.glm_5_3_flash {
-  glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit,
+  glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
+import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
 import extdeps.zhipu.glm_5_3 { glm_5_3_architecture_class }
 import extdeps.radixark.glm_5_3_nvfp4 {
   glm_5_3_nvfp4_hub_repo, glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization,
@@ -857,6 +858,25 @@ type GlmNativeKvCacheDtypeAdmission
   = GlmNativeKvCacheDtypeAdmitted { dtype: VllmKvCacheDtypeRequest }
   | GlmNativeKvCacheDtypeRefused { dtype: VllmKvCacheDtypeRequest, cause: NonEmptyStr }
 
+// THE STOCK BUILD'S FP8 FAMILY IS DECIDED BY THE KERNEL LAW, NOT BY PROSE REPEATING IT. Every one of
+// these spellings reaches fp8_ds_mla, whose pe_dim requirement extdeps.vllm.kv_cache models and whose
+// subject's pe_dim extdeps.zhipu.glm_5_3_flash derives; restating either number here would be a
+// second editable source for facts those rows already own.
+fn stock_fp8_ds_mla_admission(dtype: VllmKvCacheDtypeRequest, because: NonEmptyStr) -> GlmNativeKvCacheDtypeAdmission {
+  if vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: glm_5_3_flash_mla_pe_dim()) {
+    GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+  } else {
+    GlmNativeKvCacheDtypeRefused {
+      dtype: dtype,
+      cause: join([
+        because as String,
+        ", whose kernel admits pe_dim == ", to_string(vllm_fp8_ds_mla_required_pe_dim),
+        " while this checkpoint's pe_dim is ", to_string(glm_5_3_flash_mla_pe_dim()),
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
 fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
   match build {
     GlmNativeEngineDerived8d09804 =>
@@ -883,18 +903,9 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
           dtype: dtype,
           cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
         }
-        KvAuto => GlmNativeKvCacheDtypeRefused {
-          dtype: dtype,
-          cause: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed crash under auto 2026-09-17)" as NonEmptyStr,
-        }
-        KvFp8 => GlmNativeKvCacheDtypeRefused {
-          dtype: dtype,
-          cause: "resolves to fp8_ds_mla on this MLA checkpoint, whose kernel requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
-        }
-        KvFp8DsMla => GlmNativeKvCacheDtypeRefused {
-          dtype: dtype,
-          cause: "names the fp8_ds_mla kernel directly, which requires pe_dim == 64 on this build; GLM-5.3-Flash's pe_dim is 0 (cache_kernels.cu:928, observed 2026-09-17)" as NonEmptyStr,
-        }
+        KvAuto => stock_fp8_ds_mla_admission(dtype: dtype, because: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla" as NonEmptyStr)
+        KvFp8 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
+        KvFp8DsMla => stock_fp8_ds_mla_admission(dtype: dtype, because: "this names the fp8_ds_mla kernel directly" as NonEmptyStr)
       }
   }
 }
