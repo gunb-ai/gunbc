@@ -105,7 +105,6 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
-  runner_slot_service_units_for_host,
 }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }

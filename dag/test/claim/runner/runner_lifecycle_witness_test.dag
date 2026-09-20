@@ -10,6 +10,7 @@ import gunbc.runner_lifecycle {
   GitHubRunnerAddSequence,
   FabricSlotHasNoGitHubAddSequence,
   SlotIsNotACommittedMember,
+  SlotMembershipUndecided,
   runner_slot_add_steps_ordered,
   runner_slot_caps_precede_start,
   runner_slot_add_step_index,
@@ -36,6 +37,8 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_srv3,
   gunbc_runner_slot_allocation_srv4,
   gunbc_runner_slots_per_host,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  HostRunnerSlotAllocationStanding, HostRunnerSlotAllocated, HostRunnerSlotAllocationUnresolved,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
@@ -92,11 +95,26 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
 // gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
 // per-host allocation rows and the function that derives width have not drifted apart. Naming the
 // number in the test's own identity meant the name went stale the moment the fleet's memory did.
+//
+// AND THE NUMBER WENT STALE IN THE BODY TOO (re-derived 2026-09-20): the literal 21 described the
+// six-core policy at the 16 GiB slot. The property is the AGREEMENT, so the row now asserts the
+// allocation row's slots_per_host equals the derived width and that the two hosts agree, with no
+// literal to rot. Both are resolutions: an unresolved arm on either managed host is red here.
+fn allocation_row_agrees_with_derivation(standing: HostRunnerSlotAllocationStanding, host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
+  match standing {
+    HostRunnerSlotAllocationUnresolved { host: _, cause: _ } => false
+    HostRunnerSlotAllocated { allocation: a } =>
+      match gunbc_runner_slots_per_host(host: host) {
+        RunnerWidthUnresolved { host: _, cause: _ } => false
+        RunnerWidthDerived { slots: w } => a.slots_per_host == w && k(w)
+      }
+  }
+}
+
 test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+  allocation_row_agrees_with_derivation(standing: gunbc_runner_slot_allocation_srv3, host: operator_host_srv3, k: w3 =>
+    allocation_row_agrees_with_derivation(standing: gunbc_runner_slot_allocation_srv4, host: operator_host_srv4, k: w4 =>
+      w3 == w4 && w3 > 0))
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
@@ -146,6 +164,7 @@ fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
     GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
     FabricSlotHasNoGitHubAddSequence { reason: _ } => false
     SlotIsNotACommittedMember { reason: _ } => false
+    SlotMembershipUndecided { reason: _ } => false
   }
 }
 

@@ -2,7 +2,7 @@ module test.claim.runner.runner_slot_retirement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import gunbc.systemctl_show_read {
   systemctl_show_property_value_from_stdout,
   SystemdPropertyCaptured,
@@ -20,14 +20,18 @@ import gunbc.host_axis_caps {
 }
 import gunbc.runner_width_transition {
   required_retirees_for_host,
+  RequiredRetirees, RequiredRetireesKnown, RequiredRetireesUnresolved,
   host_width_transition_standing,
   HostHasNoOpenTransition,
   HostTransitionOpen,
+  HostTransitionTargetUnresolved,
   transition_population_agreement,
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
+  TransitionPopulationUndecidable,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
 import gunbc.host_operation_exec {
   SystemctlMaskNow,
   CgroupReadEvents,
@@ -894,10 +898,20 @@ test fn the_events_read_operation_targets_cgroup_events() -> Bool {
 // scope gave unauthorized hosts an empty obligation, and unioning scope with the census left an
 // identity required only while the census could still see it.
 
+// THE OBLIGATION IS A RESOLUTION. These rows are about hosts whose transition target resolves
+// (srv1, srv4); they reach the required set through this match and are FALSE if that target ever
+// stops resolving, rather than reading an empty obligation from a substituted zero.
+fn with_known_retirees(host: HostIdentity, k: fn(List<NonEmptyStr>) -> Bool) -> Bool {
+  match required_retirees_for_host(host: host) {
+    RequiredRetireesKnown { units: u } => k(u)
+    RequiredRetireesUnresolved { host: _, cause: _ } => false
+  }
+}
+
 // srv4'S AUTHORIZATION DOES NOT COVER srv1'S OBLIGATION. Permission is host-scoped; borrowing
 // srv4's row must refuse rather than silently shrinking srv1's required set.
 test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv1)
+  with_known_retirees(host: operator_host_srv1, k: required =>
   list_length(items: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
@@ -906,13 +920,13 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
       TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
         list_length(items: u) == list_length(items: required) && list_length(items: p) == 0
       TransitionFullyPermitted { units: _ } => false
-    }
+    })
 }
 
 // srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION, including the 22..50 remainder a 21-wide prior
 // would have left outside every standing. Without this row the production observer stays absent.
 test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv1)
+  with_known_retirees(host: operator_host_srv1, k: required =>
   list_length(items: required) > 0
     && match interruption_authorization_for_host(host: operator_host_srv1) {
       HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
@@ -929,13 +943,13 @@ test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
     && !interruption_authorization_covers(
       auth: srv1_transition_interruption_authorization,
       unit: "actions-runner@srv1-01.service",
-    )
+    ))
 }
 
 // srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for
 // coverage; without it every refusal above is satisfied by a check that never admits.
 test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv4)
+  with_known_retirees(host: operator_host_srv4, k: required =>
   list_length(items: required) > 0
     && match transition_interruption_coverage(
       auth: srv4_transition_interruption_authorization,
@@ -943,14 +957,14 @@ test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
     ) {
       TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
       TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
-    }
+    })
 }
 
 // THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
 // for. A host whose surplus has entirely delisted still owes exactly the same identities -- that is
 // what closes the orphan escape, where required=[] and census=[] and standings=[] once admitted.
 test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
-  let required = required_retirees_for_host(host: operator_host_srv4)
+  with_known_retirees(host: operator_host_srv4, k: required =>
   match cap_raise_standing(
     required_retiring: required,
     observation: surplus_observation_from_census_and_retirement(
@@ -962,15 +976,23 @@ test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
     CapRaiseAdmitted => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => false
     CapRaiseBlockedUnobserved { cause: _ } => false
-  }
+  })
 }
 
 // A HOST WITH NO OPEN TRANSITION OWES NOTHING, and that is a different fact from a host that has
 // converged. srv2's admission refused rather than narrowed, so it has no transition row at all.
+//
+// AND "OWES NOTHING" IS THE KNOWN-EMPTY ARM, NOT THE UNRESOLVED ONE: srv2's WIDTH is unresolved, but
+// with no transition row that width is never consulted, so its obligation is a computed empty set.
 test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
   match host_width_transition_standing(host: operator_host_srv2) {
-    HostHasNoOpenTransition { host: _ } => list_length(items: required_retirees_for_host(host: operator_host_srv2)) == 0
+    HostHasNoOpenTransition { host: _ } =>
+      match required_retirees_for_host(host: operator_host_srv2) {
+        RequiredRetireesKnown { units: u } => list_length(items: u) == 0
+        RequiredRetireesUnresolved { host: _, cause: _ } => false
+      }
     HostTransitionOpen { transition: _, required: _ } => false
+    HostTransitionTargetUnresolved { transition: _, cause: _ } => false
   }
 }
 
@@ -983,6 +1005,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
   ) {
     TransitionPopulationDisagrees { unexpected: u } => list_length(items: u) == 1
     TransitionPopulationAgrees => false
+    TransitionPopulationUndecidable { cause: _ } => false
   }
 }
 
@@ -994,5 +1017,6 @@ test fn a_surplus_inside_the_manifest_agrees() -> Bool {
   ) {
     TransitionPopulationAgrees => true
     TransitionPopulationDisagrees { unexpected: _ } => false
+    TransitionPopulationUndecidable { cause: _ } => false
   }
 }

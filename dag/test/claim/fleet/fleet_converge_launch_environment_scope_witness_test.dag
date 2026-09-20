@@ -47,7 +47,7 @@ import gunbc.fleet_converge_plan {
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation { committed_slot_identities, CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved }
 import gunbc.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
 import gunbc.live_deploy.spec { deployment_owned_steps_retract_order }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
@@ -571,12 +571,17 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
 // ---------------------------------------------------------------------------
 test fn the_launch_environment_owns_no_runner_unit_and_no_runner_unit_owns_it() -> Bool {
   let owned = map(deployment_owned_steps_retract_order(spec: deployment_spec_srv1()), s => s.path as String)
-  let runner_units = concat(
-    [runner_unit_template_name as String],
-    map(committed_slot_identities(host: witness_host_srv1 as HostIdentity), i => runner_slot_unit_name(slot: i) as String),
-  )
-  list_length(items: owned) > 0
-    && list_length(items: runner_units) > 0
-    && !any(owned, p => any(runner_units, u => string_contains(s: p, pattern: u)))
-    && !any(owned, p => string_contains(s: p, pattern: runner_unit_prefix))
+  match committed_slot_identities(host: witness_host_srv1 as HostIdentity) {
+    CommittedSlotsUnresolved { host: _, cause: _ } => false
+    CommittedSlotsEnumerated { identities: slots } => {
+      let runner_units = concat(
+        [runner_unit_template_name as String],
+        map(slots, i => runner_slot_unit_name(slot: i) as String),
+      )
+      list_length(items: owned) > 0
+        && list_length(items: runner_units) > 1
+        && !any(owned, p => any(runner_units, u => string_contains(s: p, pattern: u)))
+        && !any(owned, p => string_contains(s: p, pattern: runner_unit_prefix))
+    }
+  }
 }

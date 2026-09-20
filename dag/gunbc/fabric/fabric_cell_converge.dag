@@ -23,6 +23,7 @@ import gunbc.runner_slot_allocation {
   runner_slot_membership,
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
+  SlotMembershipUnresolved,
   SlotServesFabricExecution,
   SlotServesGitHubActions,
 }
@@ -317,6 +318,7 @@ type FabricCellFamilyMembership
   = FabricCellIsAFamilyMember { cell: CellId }
   | SlotIsNotAFabricExecutionMember { reason: String }
   | SlotIsNotACommittedMemberOfItsHost { reason: String }
+  | SlotMembershipUndecidedOnItsHost { reason: String }
 
 // MEMBERSHIP PRECEDES PURPOSE, for the same reason it does in runner_slot_membership: asking what a
 // cell's resources are only means something once the slot exists on the host at all. The two
@@ -325,6 +327,10 @@ type FabricCellFamilyMembership
 // lifecycle lives in gunbc.runner_lifecycle".
 fn fabric_cell_family_membership(host: HostIdentity, slot_index: Nat) -> FabricCellFamilyMembership {
   match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotMembershipUnresolved { identity: _, cause: c } =>
+      SlotMembershipUndecidedOnItsHost {
+        reason: concat("the host's committed runner width is unresolved, so whether this slot is a committed member of its host cannot be decided and no cell may be provisioned onto it: ", c)
+      }
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMemberOfItsHost {
         reason: "slot index is outside the host committed population derived by gunbc.runner_slot_allocation: a cell cannot be provisioned onto a slot the host was never admitted to carry"
@@ -1052,6 +1058,13 @@ type FabricCellObservationRefusal
       matched_committed_slot: RunnerSlotIdentity
       location: String
     }
+  | ArtifactNamesHostWithUnresolvedCommitment {
+      observed_on: HostIdentity
+      observed_name: String
+      location: String
+      unresolved_host: HostIdentity
+      cause: String
+    }
 
 // THE TYPED SUBJECT OF A REFUSAL, WHICH IS WHAT DECIDES SAMENESS -- NEVER THE WORDING. Two refusals
 // are the same refusal when they are about the same thing, and what "the same thing" means is the
@@ -1105,6 +1118,8 @@ fn fabric_cell_observation_refusal_identity(refusal: FabricCellObservationRefusa
         "cross-host-named-artifact|", oh as String, "|", l, "|", n,
         "|", runner_slot_instance_name(slot: ms),
       ], "")
+    ArtifactNamesHostWithUnresolvedCommitment { observed_on: oh, observed_name: n, location: l, unresolved_host: uh, cause: _ } =>
+      join(["artifact-names-unresolved-host|", oh as String, "|", l, "|", n, "|", uh as String], "")
   }
 }
 

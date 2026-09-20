@@ -51,6 +51,7 @@ import gunbc.fabric_cell_converge {
   FabricCellIsAFamilyMember,
   SlotIsNotAFabricExecutionMember,
   SlotIsNotACommittedMemberOfItsHost,
+  SlotMembershipUndecidedOnItsHost,
   FabricCellReadback,
   FabricCellAddressObservation,
   AddressObserved,
@@ -153,6 +154,7 @@ fn membership_is_family_member(m: FabricCellFamilyMembership) -> Bool {
     FabricCellIsAFamilyMember { cell: _ } => true
     SlotIsNotAFabricExecutionMember { reason: _ } => false
     SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
+    SlotMembershipUndecidedOnItsHost { reason: _ } => false
   }
 }
 
@@ -161,6 +163,7 @@ fn membership_refuses_wrong_family(m: FabricCellFamilyMembership) -> Bool {
     SlotIsNotAFabricExecutionMember { reason: _ } => true
     FabricCellIsAFamilyMember { cell: _ } => false
     SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
+    SlotMembershipUndecidedOnItsHost { reason: _ } => false
   }
 }
 
@@ -169,6 +172,7 @@ fn membership_refuses_uncommitted(m: FabricCellFamilyMembership) -> Bool {
     SlotIsNotACommittedMemberOfItsHost { reason: _ } => true
     FabricCellIsAFamilyMember { cell: _ } => false
     SlotIsNotAFabricExecutionMember { reason: _ } => false
+    SlotMembershipUndecidedOnItsHost { reason: _ } => false
   }
 }
 

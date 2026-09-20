@@ -30,7 +30,7 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation { committed_slot_identities, CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved }
 import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
 
 data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
@@ -231,17 +231,28 @@ fn observe_slot_realization(
   }
 }
 
+// A HOST WHOSE COMMITTED POPULATION IS UNRESOLVED IS UNOBSERVED, NOT OBSERVED-EMPTY. The
+// enumeration used to come back empty for such a host, and a join over zero reads is whatever the
+// join's identity is -- a verdict minted from nothing.
 fn observe_host_compile_cancellation(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> HostCompileCancellationStanding {
-  join_host_slot_realizations(
-    host: host,
-    reads: map(
-      committed_slot_identities(host: host),
-      slot => observe_slot_realization(transport: transport, unit: runner_slot_unit_name(slot: slot)),
-    ),
-  )
+  match committed_slot_identities(host: host) {
+    CommittedSlotsUnresolved { host: h, cause: c } =>
+      HostCancellationUnobserved {
+        host: h,
+        cause: concat("the host's committed runner width is unresolved, so its slot units cannot be enumerated for observation: ", c) as NonEmptyStr,
+      }
+    CommittedSlotsEnumerated { identities: slots } =>
+      join_host_slot_realizations(
+        host: host,
+        reads: map(
+          slots,
+          slot => observe_slot_realization(transport: transport, unit: runner_slot_unit_name(slot: slot)),
+        ),
+      )
+  }
 }
 
 fn observe_host_compile_cancellation_for_fleet_host(host: HostIdentity) -> HostCompileCancellationStanding {

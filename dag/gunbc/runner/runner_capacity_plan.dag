@@ -20,6 +20,7 @@ import gunbc.fleet_runner_connectivity {
   RegistrationSlotDecoding,
   RegistrationNamesCommittedSlot,
   RegistrationNamesNoCommittedSlot,
+  RegistrationSlotUndecidableWhileCommitmentUnresolved,
   decode_registration_slot,
   SlotConnectivityDetached,
   SlotConnectivityLabelsDiverge,
@@ -29,15 +30,15 @@ import gunbc.fleet_runner_connectivity {
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host,
   identity_in_list,
-  host_github_slot_count,
-  host_fabric_slot_count,
+  identity_is_fabric_execution_member,
   runner_slot_membership,
   committed_slot_identities,
+  CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved,
   RunnerSlotMembership,
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
+  SlotMembershipUnresolved,
   RunnerSlotPurpose,
   SlotServesGitHubActions,
   SlotServesFabricExecution,
@@ -136,10 +137,20 @@ data slot_enumeration_narrow_class_note: String = "ERROR CLASS: A PLANNER'S ENUM
 // GitHub already holds. So a name the fleet cannot account for stops the line with its own name in
 // the diagnostic. If the org legitimately carries non-fleet registrations, that is a modeling gap to
 // surface loudly rather than a case to absorb, and this refusal is how it surfaces.
+//
+// AND A NAME AN UNRESOLVED HOST COULD OWN IS NOT FOREIGN -- IT IS UNDECIDED. Until 2026-09-20 srv2's
+// unestablished commitment enumerated as an EMPTY population, so srv2-01 fell through the decoder
+// to the foreign arm and the production planner refused with "resolves to no committed fleet slot":
+// a sentence saying the slot does not exist, when the truth is that srv2's commitment is unknown.
+// Unknown and zero are different facts (DESIGN section 5), and the cause a human reads on a refusal
+// is the whole point of typing it. The decoder now carries the undecidable case with the host and
+// the upstream cause, and this population carries it through as its own arm, refused separately
+// below with a reason that names the unresolved commitment.
 type ObservedGitHubSlotPopulation
   = GitHubSlotPopulationObserved { identities: List<RunnerSlotIdentity> }
   | GitHubSlotPopulationUnreadable { reason: String }
   | GitHubSlotPopulationForeignRegistration { registration_name: NonEmptyStr }
+  | GitHubSlotPopulationUnresolvedCommitment { registration_name: NonEmptyStr, host: HostIdentity, cause: String }
   | GitHubSlotPopulationDuplicateRegistration { slot: RunnerSlotIdentity }
 
 // A POPULATION IS A SET, AND A FOLD OVER A LIST IS NOT ONE UNLESS IT SAYS SO. Two registrations
@@ -159,10 +170,14 @@ fn accumulate_decoded_registration(
       GitHubSlotPopulationDuplicateRegistration { slot: d }
     GitHubSlotPopulationForeignRegistration { registration_name: n } =>
       GitHubSlotPopulationForeignRegistration { registration_name: n }
+    GitHubSlotPopulationUnresolvedCommitment { registration_name: n, host: h, cause: c } =>
+      GitHubSlotPopulationUnresolvedCommitment { registration_name: n, host: h, cause: c }
     GitHubSlotPopulationObserved { identities: ids } =>
       match decode_registration_slot(reg: reg) {
         RegistrationNamesNoCommittedSlot { registration_name: n } =>
           GitHubSlotPopulationForeignRegistration { registration_name: n }
+        RegistrationSlotUndecidableWhileCommitmentUnresolved { registration_name: n, host: h, cause: c } =>
+          GitHubSlotPopulationUnresolvedCommitment { registration_name: n, host: h, cause: c }
         RegistrationNamesCommittedSlot { slot: slot } =>
           if (slot.host as String) == (host as String) {
             if identity_in_list(identity: slot, members: ids) {
@@ -345,22 +360,21 @@ fn connectivity_actions_for_observed(
 // synthesizes a dense local prefix from materialized_width_for_host instead. So this closes the
 // desired half of the assumption and leaves the observed half open, named here rather than implied
 // by the word "set".
-fn desired_github_identities(host: HostIdentity, requested_width: Int) -> List<RunnerSlotIdentity> {
+//
+// IT TAKES THE ENUMERATED COMMITTED POPULATION, NOT A HOST. The committed population is a
+// resolution (CommittedSlotPopulation), and the caller that admitted the width has already matched
+// it; taking the host here would force this function to re-resolve and then invent an answer for
+// the unresolved arm it cannot reach. The purpose filter is the same predicate runner_slot_membership
+// decides purpose by, applied to identities already known to be committed members.
+fn desired_github_identities(committed: List<RunnerSlotIdentity>, requested_width: Int) -> List<RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    committed,
     init: [],
     f: (acc, id) =>
-      if id.slot_index > requested_width {
+      if id.slot_index > requested_width || identity_is_fabric_execution_member(identity: id) {
         acc
       } else {
-        match runner_slot_membership(host: host, slot_index: id.slot_index) {
-          SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => acc
-          CommittedSlotMember { identity: _, purpose: p } =>
-            match p {
-              SlotServesFabricExecution => acc
-              SlotServesGitHubActions => concat(acc, [id])
-            }
-        }
+        concat(acc, [id])
       }
   )
 }
@@ -383,12 +397,12 @@ fn desired_github_identities(host: HostIdentity, requested_width: Int) -> List<R
 // have passed both the broken and the repaired planner without flickering, which is why the rows for
 // this assert which slots are added rather than how many.
 fn addition_actions(
-  host: HostIdentity,
+  committed: List<RunnerSlotIdentity>,
   requested_width: Int,
   observed: List<RunnerSlotIdentity>,
 ) -> List<RunnerCapacityAction> {
   fold(
-    desired_github_identities(host: host, requested_width: requested_width),
+    desired_github_identities(committed: committed, requested_width: requested_width),
     init: [],
     f: (acc, id) =>
       if identity_in_list(identity: id, members: observed) {
@@ -399,8 +413,11 @@ fn addition_actions(
   )
 }
 
-fn admit_runner_capacity_width(host: HostIdentity, requested: Int) -> WidthAdmission {
-  let committed = gunbc_runner_slots_per_host(host: host)
+// THE CEILING ARRIVES RESOLVED. This read the Int width itself, so for an unresolved host the
+// ceiling was 0 and every positive request was refused as "exceeds the host committed width" -- a
+// cause naming a ceiling that does not exist. The resolution is matched once, in
+// plan_runner_capacity_host, and only a derived width reaches this comparison.
+fn admit_runner_capacity_width(committed: Int, requested: Int) -> WidthAdmission {
   if requested <= 0 {
     WidthRefused { requested: requested, cause: "requested width must be positive" }
   } else if requested > committed {
@@ -447,6 +464,10 @@ type SlotPopulationVerdict
 // function is where that observation is adjudicated when it arrives.
 fn reconcile_observed_slot_identity(identity: RunnerSlotIdentity) -> SlotPopulationVerdict {
   match runner_slot_membership(host: identity.host, slot_index: identity.slot_index) {
+    SlotMembershipUnresolved { identity: _, cause: c } =>
+      SlotPopulationRefused {
+        reason: join(["an observed runner slot names a host whose committed width is unresolved, so whether it is a committed member cannot be decided: ", c], "")
+      }
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotPopulationRefused {
         reason: "an observed runner slot lies outside the host committed population: the fleet is over-provisioned against its own memory admission, refusing rather than planning against a width this host was never admitted to carry"
@@ -512,12 +533,37 @@ type HostCapacityPlanOutcome
 // have had to fabricate a reason it did not have. That is the state-space conflation DESIGN warns
 // about, and the population refusal above is exactly the second cause that would have been
 // swallowed by it.
+// THE HOST'S OWN COMMITMENT IS RESOLVED FIRST, AND AN UNRESOLVED ONE REFUSES THE PLAN BY NAME. A
+// planner cannot admit a width against a ceiling it does not have, and it cannot enumerate the
+// desired population of a host whose committed population is unknown; both were previously read
+// through the Int as zero, which produced a plan whose admission said "exceeds the committed width".
 fn plan_runner_capacity_host(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
 ) -> HostCapacityPlanOutcome {
-  let admission = admit_runner_capacity_width(host: host, requested: requested_width)
+  match committed_slot_identities(host: host) {
+    CommittedSlotsUnresolved { host: h, cause: c } =>
+      HostCapacityPlanRefused {
+        reason: join(["the committed runner width of ", h as String, " is unresolved, so no ceiling exists to admit a requested width against and no desired population exists to plan toward: ", c], "")
+      }
+    CommittedSlotsEnumerated { identities: committed } =>
+      plan_runner_capacity_host_with_commitment(
+        host: host,
+        committed: committed,
+        requested_width: requested_width,
+        roster: roster,
+      )
+  }
+}
+
+fn plan_runner_capacity_host_with_commitment(
+  host: HostIdentity,
+  committed: List<RunnerSlotIdentity>,
+  requested_width: Int,
+  roster: OrganizationRunnerRosterEvidence,
+) -> HostCapacityPlanOutcome {
+  let admission = admit_runner_capacity_width(committed: length(committed), requested: requested_width)
   match observed_github_slot_identities(host: host, roster: roster) {
     GitHubSlotPopulationUnreadable { reason: r } =>
       HostCapacityPlanRefused {
@@ -531,9 +577,14 @@ fn plan_runner_capacity_host(
       HostCapacityPlanRefused {
         reason: join(["the organization holds a self-hosted runner registration that resolves to no committed fleet slot, so the observed population cannot be accounted for and planning would either add a slot GitHub already holds or silently under-count: ", n as String], "")
       }
+    GitHubSlotPopulationUnresolvedCommitment { registration_name: n, host: uh, cause: c } =>
+      HostCapacityPlanRefused {
+        reason: join(["the organization holds a self-hosted runner registration ", n as String, " that ", uh as String, " could own, and ", uh as String, "'s committed runner width is unresolved, so whether that registration names a committed slot cannot be decided and the observed population cannot be accounted for; this is not a slot that does not exist, it is a commitment that is not established: ", c], "")
+      }
     GitHubSlotPopulationObserved { identities: observed } =>
       plan_runner_capacity_host_against_observation(
         host: host,
+        committed: committed,
         requested_width: requested_width,
         roster: roster,
         admission: admission,
@@ -544,6 +595,7 @@ fn plan_runner_capacity_host(
 
 fn plan_runner_capacity_host_against_observation(
   host: HostIdentity,
+  committed: List<RunnerSlotIdentity>,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
   admission: WidthAdmission,
@@ -584,7 +636,7 @@ fn plan_runner_capacity_host_against_observation(
                   observed_width: observed_width,
                   actions: concat(
                     repairs,
-                    addition_actions(host: host, requested_width: admitted, observed: observed)
+                    addition_actions(committed: committed, requested_width: admitted, observed: observed)
                   ),
                 }
               }

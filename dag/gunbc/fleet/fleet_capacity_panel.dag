@@ -8,7 +8,8 @@ import extdeps.languages.css.values { css_ch, css_length_wire }
 import product.placement_supply { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, provider_kind_label }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host, gunbc_runner_slot_desired, host_width_binding_label,
+  gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  gunbc_runner_slot_desired, host_width_binding_label,
 }
 import gunbc.fleet_capacity_control {
   capacity_controlled_hosts, capacity_controlled_providers,
@@ -101,11 +102,30 @@ fn provider_standing_class(provider: ProviderKind) -> String {
   }
 }
 
-fn fleet_committed_slot_total() -> Int {
-  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
+// THE TOTAL IS OVER THE HOSTS WHOSE WIDTH RESOLVED, AND THE HOSTS WHOSE WIDTH DID NOT ARE NAMED
+// BESIDE IT. A fleet sum that reads an unresolved host as 0 is a number that looks complete and is
+// not; a fleet sum that refuses entirely because one host is unresolved erases the three that did
+// resolve (the LOCAL REFUSAL, GLOBAL INCOMPLETENESS rule gunbc.ci_runner_placement states). So the
+// total carries both: the slots the resolved hosts commit, and the list of hosts it could not count.
+type FleetCommittedSlotTotal {
+  committed: Int
+  unresolved_hosts: List<HostIdentity>
+}
+
+fn add_host_width_to_total(acc: FleetCommittedSlotTotal, h: HostIdentity) -> FleetCommittedSlotTotal {
+  match gunbc_runner_slots_per_host(host: h) {
+    RunnerWidthDerived { slots: n } =>
+      FleetCommittedSlotTotal { committed: acc.committed + n, unresolved_hosts: acc.unresolved_hosts }
+    RunnerWidthUnresolved { host: uh, cause: _ } =>
+      FleetCommittedSlotTotal { committed: acc.committed, unresolved_hosts: concat(acc.unresolved_hosts, [uh]) }
+  }
+}
+
+fn fleet_committed_slot_total() -> FleetCommittedSlotTotal {
+  fold(capacity_controlled_hosts(), init: FleetCommittedSlotTotal { committed: 0, unresolved_hosts: [] }, f: (acc, h) => {
     match host_withdrawal_for(host: h) {
       Present { value: _ } => acc
-      Absent => acc + gunbc_runner_slots_per_host(host: h)
+      Absent => add_host_width_to_total(acc: acc, h: h)
     }
   })
 }
@@ -113,18 +133,38 @@ fn fleet_committed_slot_total() -> Int {
 // A WITHDRAWN HOST CONTRIBUTES ZERO TO THE ACTIVE TOTAL, WHICH IS THE POINT OF THE TOTAL.
 // Summing every host's committed width regardless of standing would report capacity the operator
 // has explicitly taken out of service, which is the number they turned the control to change.
-fn fleet_committed_slot_total_ignoring_withdrawals() -> Int {
-  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
-    acc + gunbc_runner_slots_per_host(host: h)
+fn fleet_committed_slot_total_ignoring_withdrawals() -> FleetCommittedSlotTotal {
+  fold(capacity_controlled_hosts(), init: FleetCommittedSlotTotal { committed: 0, unresolved_hosts: [] }, f: (acc, h) => {
+    add_host_width_to_total(acc: acc, h: h)
   })
+}
+
+fn committed_slot_total_label(total: FleetCommittedSlotTotal) -> String {
+  join([
+    to_string(total.committed), " slots committed",
+    if (total.unresolved_hosts |> count) > 0 {
+      join([" (", join(map(total.unresolved_hosts, h => h as String), "+"), " width unresolved)"], "")
+    } else {
+      ""
+    },
+  ], "")
+}
+
+// A HOST WHOSE WIDTH IS UNRESOLVED RENDERS THAT, NOT "0 slots committed". The zero was the sentence
+// the operator read for srv2 while its commitment was unknown, and a reader planning against the
+// panel would have taken it as a host committed to nothing.
+fn host_committed_width_label(host: HostIdentity) -> String {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: n } => join([to_string(n), " slots committed"], "")
+    RunnerWidthUnresolved { host: _, cause: _ } => "width unresolved"
+  }
 }
 
 fn host_capacity_row(host: HostIdentity) -> Fragment {
   el_class("div", host_standing_class(host: host), [
     el_class("span", "capacity-subject", [txt(host as String)]),
     el_class("span", "capacity-metric", [
-      txt(join([to_string(gunbc_runner_slots_per_host(host: host)),
-                " slots committed"], "")),
+      txt(host_committed_width_label(host: host)),
     ]),
     el_class("span", "capacity-metric", [
       txt(join([gib_label(bytes: gunbc_runner_slot_desired().memory_max), "/slot"], "")),
@@ -148,7 +188,7 @@ fn fleet_capacity_summary_line() -> String {
     to_string(capacity_controlled_hosts() |> count), " hosts · ",
     to_string(active_provider_count()), " of ",
     to_string(capacity_controlled_providers() |> count), " runtimes · ",
-    to_string(fleet_committed_slot_total()), " slots committed",
+    committed_slot_total_label(total: fleet_committed_slot_total()),
   ], "")
 }
 
@@ -158,7 +198,7 @@ fn fleet_capacity_summary_line() -> String {
 // row where the number finally matters. Absent means nothing is withdrawn, which is the same thing
 // the per-host rows already say -- this line exists to make a NON-ZERO state impossible to miss.
 fn fleet_capacity_withdrawn_line() -> String? {
-  let withdrawn = fleet_committed_slot_total_ignoring_withdrawals() - fleet_committed_slot_total()
+  let withdrawn = fleet_committed_slot_total_ignoring_withdrawals().committed - fleet_committed_slot_total().committed
   if withdrawn > 0 {
     Present {
       value: join([to_string(withdrawn), " slots withdrawn by operator control"], ""),
@@ -198,8 +238,7 @@ fn capacity_subject_labels() -> List<String> {
 
 fn capacity_metric_labels() -> List<String> {
   concat(
-    map(capacity_controlled_hosts(), h =>
-      join([to_string(gunbc_runner_slots_per_host(host: h)), " slots committed"], "")),
+    map(capacity_controlled_hosts(), h => host_committed_width_label(host: h)),
     map(capacity_controlled_hosts(), h => host_width_binding_label(host: h)),
   )
 }

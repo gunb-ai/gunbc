@@ -21,8 +21,11 @@ import gunbc.runner_capacity_realize {
   HostApplyRefused,
   HostApplySucceeded,
 }
-import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_slot_allocation { committed_slot_identities, CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { List }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -160,24 +163,39 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
 // The claim is that re-applying a CONVERGED population plans nothing, and convergence is set
 // equality rather than a count reaching a number -- a host holding {01,02,04,05} has count four and
 // is not converged at width five. The fixture now hands whole populations.
+//
+// THE COMMITTED POPULATION IS A RESOLUTION; a fixture for a host this module knows resolves reaches
+// the identities through this match and the row is FALSE if that host ever stops resolving. The
+// alternative -- an empty list for an unresolved host -- would hand the planner a converged-looking
+// EMPTY observation, which is the under-count this module's own notes name as the dangerous side.
+fn with_committed_identities(host: HostIdentity, k: fn(List<RunnerSlotIdentity>) -> Bool) -> Bool {
+  match committed_slot_identities(host: host) {
+    CommittedSlotsEnumerated { identities: ids } => k(ids)
+    CommittedSlotsUnresolved { host: _, cause: _ } => false
+  }
+}
+
 test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
-  runner_capacity_reapply_plans_zero_additions(
-    srv3_width: 5,
-    srv4_width: 5,
-    observed_srv3: committed_slot_identities(host: operator_host_srv3),
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
-  )
+  with_committed_identities(host: operator_host_srv3, k: srv3 =>
+    with_committed_identities(host: operator_host_srv4, k: srv4 =>
+      runner_capacity_reapply_plans_zero_additions(
+        srv3_width: 5,
+        srv4_width: 5,
+        observed_srv3: srv3,
+        observed_srv4: srv4,
+      )))
 }
 
 // THE NON-VACUITY CONTROL, without which the row above is satisfied by a planner that never plans
 // anything. One member removed from srv3's population must produce work.
 test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
-  !runner_capacity_reapply_plans_zero_additions(
-    srv3_width: 5,
-    srv4_width: 5,
-    observed_srv3: [],
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
-  )
+  with_committed_identities(host: operator_host_srv4, k: srv4 =>
+    !runner_capacity_reapply_plans_zero_additions(
+      srv3_width: 5,
+      srv4_width: 5,
+      observed_srv3: [],
+      observed_srv4: srv4,
+    ))
 }
 
 // MOVED OFF THE SEVEN-WIDE FIXTURE, AND WHERE IT LANDED TOOK TWO TRIES WORTH RECORDING. Seven is not

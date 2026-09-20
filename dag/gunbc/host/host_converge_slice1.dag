@@ -25,7 +25,7 @@ import gunbc.systemctl_show_read {
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -272,31 +272,31 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
 // Count equality is a postcondition after RunnerSlotProvision, not a pre-refuse on under-count.
 // Observed < declared means slots are missing — converge existing units' caps; provision adds the
 // delta.
-fn host_converge_slice1_enumeration_mismatch(
-  host: HostIdentity,
-  units: List<NonEmptyStr>,
-) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
-  if length(units) == declared {
-    none
-  } else {
-    Present {
-      value: HostConvergeSlice1EnumerationMismatch {
-        host: host,
-        declared_count: declared,
-        observed_units: units,
-      }
-    }
-  }
-}
+//
+// THE CROSS-CHECK IS A THREE-WAY OUTCOME. It returned an Option, where Absent meant "observed does
+// not exceed declared" -- and for a host whose width was unresolved the declared count read 0, so
+// any observed unit was an over-count against a ceiling that was never established. An unresolved
+// declaration is its own arm; the converge refuses on it rather than reading it as zero.
+type HostConvergeSlice1EnumerationCheck
+  = HostConvergeSlice1EnumerationWithinDeclared
+  | HostConvergeSlice1EnumerationExceedsDeclared { mismatch: HostConvergeSlice1EnumerationMismatch }
+  | HostConvergeSlice1DeclaredWidthUnresolved { host: HostIdentity, cause: String }
 
-fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationMismatch? {
-  let declared = gunbc_runner_slots_per_host(host: host)
-  let observed_count = length(units)
-  if observed_count > declared {
-    host_converge_slice1_enumeration_mismatch(host: host, units: units)
-  } else {
-    none
+fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<NonEmptyStr>) -> HostConvergeSlice1EnumerationCheck {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthUnresolved { host: h, cause: c } => HostConvergeSlice1DeclaredWidthUnresolved { host: h, cause: c }
+    RunnerWidthDerived { slots: declared } =>
+      if length(units) > declared {
+        HostConvergeSlice1EnumerationExceedsDeclared {
+          mismatch: HostConvergeSlice1EnumerationMismatch {
+            host: host,
+            declared_count: declared,
+            observed_units: units,
+          }
+        }
+      } else {
+        HostConvergeSlice1EnumerationWithinDeclared
+      }
   }
 }
 
@@ -565,8 +565,10 @@ fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String)
       match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
         Present { value: units } =>
           match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
-            Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
-            _ =>
+            HostConvergeSlice1EnumerationExceedsDeclared { mismatch: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
+            HostConvergeSlice1DeclaredWidthUnresolved { host: _, cause: c } =>
+              HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: the host's committed runner width is unresolved, so the live enumeration cannot be checked against a declared count; fail-closed: ", c) }
+            HostConvergeSlice1EnumerationWithinDeclared =>
               HostConvergeSlice1HostEnumerated {
                 host: host,
                 outcomes: map(units, u => host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob)),

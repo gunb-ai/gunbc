@@ -8,11 +8,15 @@ import gunbc.fleet_capacity_panel {
   fleet_committed_slot_total,
   fleet_committed_slot_total_ignoring_withdrawals,
   fleet_capacity_withdrawn_line,
+  FleetCommittedSlotTotal,
+  host_committed_width_label,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
+  gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
+import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -111,13 +115,26 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 // per-host widths) while carrying no assumption about which hosts resemble each other. It also
 // stays a genuine oracle rather than measure() == measure(): the right side reads
 // gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
+//
+// AND THE TOTAL NAMES THE HOST IT COULD NOT COUNT (2026-09-20). srv2's width is RunnerWidthUnresolved,
+// so the total is the sum over the three resolved hosts and srv2 is carried in unresolved_hosts --
+// not added as a zero, which is what the Int form did and what made "N slots committed" a number
+// that looked complete over a fleet it had not finished counting.
+fn with_derived_width(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: w } => k(w)
+    RunnerWidthUnresolved { host: _, cause: _ } => false
+  }
+}
+
 test fn the_slot_total_sums_the_allocation_authority() -> Bool {
-  fleet_committed_slot_total_ignoring_withdrawals()
-    == gunbc_runner_slots_per_host(host: operator_host_srv1)
-       + gunbc_runner_slots_per_host(host: operator_host_srv2)
-       + gunbc_runner_slots_per_host(host: operator_host_srv3)
-       + gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && fleet_committed_slot_total() > 0
+  let total = fleet_committed_slot_total_ignoring_withdrawals()
+  with_derived_width(host: operator_host_srv1, k: w1 =>
+    with_derived_width(host: operator_host_srv3, k: w3 =>
+      with_derived_width(host: operator_host_srv4, k: w4 =>
+        total.committed == w1 + w3 + w4)))
+    && total.unresolved_hosts == [operator_host_srv2]
+    && fleet_committed_slot_total().committed > 0
 }
 
 // WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
@@ -129,7 +146,7 @@ test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
-  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
+  fleet_committed_slot_total().committed == fleet_committed_slot_total_ignoring_withdrawals().committed
     && line_absent
 }
 
@@ -187,8 +204,8 @@ test fn srv1_is_axis_bound_while_srv2_is_held() -> Bool {
 // using a cause that did not produce it.
 test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
   all([operator_host_srv1, operator_host_srv3], h =>
-    all(host_binding_width_axes(host: h), a =>
-      width_axis_binds_at(standing: a, committed: gunbc_runner_slots_per_host(host: h))))
+    with_derived_width(host: h, k: w =>
+      all(host_binding_width_axes(host: h), a => width_axis_binds_at(standing: a, committed: w))))
 }
 
 // THE PANEL RENDERS A WIDTH PROVENANCE FOR EVERY HOST, AND "bound by memory" IS NO LONGER ONE OF
@@ -197,15 +214,26 @@ test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
 // lands, and that is measured to have happened. So once srv2's memory axis became honestly
 // unmeasured, no host renders that phrase at all.
 //
-// The conjunct is replaced by the held phrase rather than deleted, because dropping it would leave
-// the assertion satisfiable by a panel rendering one story for the whole fleet -- the defect this
-// witness exists to catch. The final negative is the dangling-prefix signature: "bound by" with
-// two trailing spaces can only be produced by joining an EMPTY binding set onto the old constant
-// prefix, so it goes red exactly on the regression this change repairs and on nothing else.
+// RE-DERIVED TWICE SINCE (2026-09-20). The 2026-09-19 one-core ruling stopped the CPU axis binding,
+// so the three derived hosts are memory-bound again and "bound by cores" is what NO host renders;
+// and the held width is deleted, so srv2 renders "width unresolved, no axis binds" and, in its
+// committed-width column, "width unresolved" rather than "0 slots committed" -- the zero was the
+// sentence an operator read while srv2's commitment was unknown, and this row is what refuses it.
+//
+// The conjuncts are replaced rather than deleted, because dropping them would leave the assertion
+// satisfiable by a panel rendering one story for the whole fleet -- the defect this witness exists
+// to catch. The final negative is the dangling-prefix signature: "bound by" with two trailing
+// spaces can only be produced by joining an EMPTY binding set onto the old constant prefix, so it
+// goes red exactly on the regression this change repairs and on nothing else.
 test fn the_panel_renders_a_width_provenance_for_every_host() -> Bool {
   let h = empty_workspace_html()
-  string_contains(s: h, pattern: "bound by cores")
-    && string_contains(s: h, pattern: "width held, no axis binds")
+  string_contains(s: h, pattern: "bound by memory")
+    && string_contains(s: h, pattern: "width unresolved, no axis binds")
+    && string_contains(s: h, pattern: "(srv2 width unresolved)")
+    && host_committed_width_label(host: operator_host_srv2) == "width unresolved"
+    && with_derived_width(host: operator_host_srv1, k: w1 =>
+         host_committed_width_label(host: operator_host_srv1) == join([to_string(w1), " slots committed"], ""))
     && string_contains(s: h, pattern: "unmeasured")
+    && !string_contains(s: h, pattern: "bound by cores")
     && !string_contains(s: h, pattern: "bound by  ")
 }

@@ -2,7 +2,7 @@ module test.claim.runner.runner_slot_population_census_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import gunbc.host_axis_caps {
   CapRaiseBlockedIncompleteEvidence,
   CapRaiseAdmitted,
@@ -95,6 +95,25 @@ test fn a_foreign_occupant_refuses_the_census() -> Bool {
     ],
   ) {
     CensusRefused { cause: _ } => true
+    CensusDerived { rows: _ } => false
+  }
+}
+
+// AN UNRESOLVED WIDTH REFUSES THE CENSUS TOO, AND NAMES WHY. Until 2026-09-20 the census read srv2's
+// width as 0, desired nothing, and classified every one of its owned running units as RetiringSlot
+// -- the exact population a shrink would then have stopped. The refusal carries the width's cause;
+// the row asserts the cause is about the unresolved width, not the foreign-occupant sentence.
+test fn an_unresolved_width_refuses_the_census_rather_than_retiring_every_unit() -> Bool {
+  match slot_population_census(
+    host: operator_host_srv2,
+    observed: [
+      ObservedRunnerUnit { unit: "actions-runner@srv2-01.service", active: true },
+      ObservedRunnerUnit { unit: "actions-runner@srv2-02.service", active: true },
+    ],
+  ) {
+    CensusRefused { cause: c } =>
+      string_contains(s: c, pattern: "committed runner width is unresolved")
+        && !string_contains(s: c, pattern: "not owned by this host")
     CensusDerived { rows: _ } => false
   }
 }

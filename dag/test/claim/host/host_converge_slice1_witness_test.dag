@@ -33,6 +33,10 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_memory_cap_verdict,
   host_converge_slice1_fixture_receipt,
   host_converge_slice1_cross_check_enumeration,
+  HostConvergeSlice1EnumerationCheck,
+  HostConvergeSlice1EnumerationWithinDeclared,
+  HostConvergeSlice1EnumerationExceedsDeclared,
+  HostConvergeSlice1DeclaredWidthUnresolved,
   HostConvergeSlice1EnumerationMismatch,
   HostConvergeSlice1Refused,
   host_converge_slice1_unit_outcome_to_legacy_result,
@@ -46,7 +50,8 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1TasksConverged,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.fleet_intent_network { operator_host_srv2 }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -153,23 +158,41 @@ test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
 test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
   let empty_units: List<NonEmptyStr> = []
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
-    Present { value: _ } => false
-    Absent => true
+    HostConvergeSlice1EnumerationWithinDeclared => true
+    HostConvergeSlice1EnumerationExceedsDeclared { mismatch: _ } => false
+    HostConvergeSlice1DeclaredWidthUnresolved { host: _, cause: _ } => false
   }
 }
 
 test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
-  let declared = gunbc_runner_slots_per_host(host: operator_host_srv3)
-  let excess_units: List<NonEmptyStr> = map(
-    runner_index_seq(n: declared + 1),
-    i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as NonEmptyStr,
-  )
-  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: excess_units) {
-    Present { value: mismatch } =>
-      mismatch.host == operator_host_srv3
-        && mismatch.declared_count == declared
-        && length(mismatch.observed_units) == declared + 1
-    Absent => false
+  match gunbc_runner_slots_per_host(host: operator_host_srv3) {
+    RunnerWidthUnresolved { host: _, cause: _ } => false
+    RunnerWidthDerived { slots: declared } => {
+      let excess_units: List<NonEmptyStr> = map(
+        runner_index_seq(n: declared + 1),
+        i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as NonEmptyStr,
+      )
+      match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: excess_units) {
+        HostConvergeSlice1EnumerationExceedsDeclared { mismatch: mismatch } =>
+          mismatch.host == operator_host_srv3
+            && mismatch.declared_count == declared
+            && length(mismatch.observed_units) == declared + 1
+        HostConvergeSlice1EnumerationWithinDeclared => false
+        HostConvergeSlice1DeclaredWidthUnresolved { host: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// AN UNRESOLVED DECLARATION IS ITS OWN OUTCOME, NOT A ZERO EVERY OBSERVATION EXCEEDS. Before this
+// arm the Int width read 0 for srv2, so ONE observed unit on it was an over-count against a ceiling
+// nobody derived; the converge would have reported a mismatch whose declared_count was a fabrication.
+test fn witness_cross_check_on_an_unresolved_host_is_undecided_not_a_mismatch() -> Bool {
+  let one_unit: List<NonEmptyStr> = ["actions-runner@srv2-01.service" as NonEmptyStr]
+  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv2, units: one_unit) {
+    HostConvergeSlice1DeclaredWidthUnresolved { host: h, cause: _ } => (h as String) == (operator_host_srv2 as String)
+    HostConvergeSlice1EnumerationWithinDeclared => false
+    HostConvergeSlice1EnumerationExceedsDeclared { mismatch: _ } => false
   }
 }
 

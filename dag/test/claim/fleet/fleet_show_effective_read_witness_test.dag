@@ -63,16 +63,27 @@ test fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
   }
 }
 
+// THE WIDTH IS A RESOLUTION; a row about a host this module knows resolves reaches the number
+// through this match and is FALSE if that host ever stops resolving, rather than computing a pool
+// budget or a desired count from a substituted zero.
+fn with_derived_width(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: w } => k(w)
+    RunnerWidthUnresolved { host: _, cause: _ } => false
+  }
+}
+
 test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
-  match slice_property_memory_max_verdict(
-    read: read,
-    property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget_for(host: operator_host_srv1),
-  ) {
-    Present { value: Drifted } => true
-    _ => false
-  }
+  with_derived_width(host: operator_host_srv1, k: w1 =>
+    match slice_property_memory_max_verdict(
+      read: read,
+      property: systemd_memory_max_property,
+      expected: gunbc_runner_pool_budget_for(slots: w1),
+    ) {
+      Present { value: Drifted } => true
+      _ => false
+    })
 }
 
 // THIS WITNESS HAS FLIPPED TWICE AND BOTH FLIPS ARE FACTS RATHER THAN BROKEN TESTS. The srv2
@@ -100,15 +111,20 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
 // 2026-07-03 row, at which point this witness asserts against an observation contemporary with the
 // declaration rather than one fourteen months older.
 
-test fn witness_srv2_slice_cap_converges_after_the_16_gib_ruling() -> Bool {
-  let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
-  match slice_property_memory_max_verdict(
-    read: read,
-    property: systemd_memory_max_property,
-    expected: gunbc_runner_pool_budget_for(host: operator_host_srv2),
-  ) {
-    Present { value: VerdictConverged } => true
-    _ => false
+//
+// FLIP THREE (2026-09-13, re-derived here 2026-09-20): srv2's held width was deleted and its
+// commitment is UNRESOLVED -- there is no declared pool budget for the 80 GiB fixture to converge
+// to or drift from, because a pool budget is slots x MemoryMax and srv2 has no slots figure. The
+// row asserted Converged against an expected of ZERO bytes while the width read 0, which was the
+// Int conflation reading through: an 80 GiB slice does not converge to a 0 byte declaration, and
+// the row was red for a reason that had nothing to do with srv2's slice. It now asserts what is
+// true: srv2's width is unresolved, so no slice-cap verdict is derivable for it, and the fixture is
+// still untouched. Dissolve-on: srv2's session denominator is re-grounded, its width resolves, and
+// this row is re-derived against whichever verdict the untouched fixture then earns.
+test fn witness_srv2_slice_cap_has_no_declared_budget_while_its_width_is_unresolved() -> Bool {
+  match gunbc_runner_slots_per_host(host: operator_host_srv2) {
+    RunnerWidthUnresolved { host: h, cause: _ } => (h as String) == (operator_host_srv2 as String)
+    RunnerWidthDerived { slots: _ } => false
   }
 }
 
@@ -151,21 +167,24 @@ test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
 test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {
     Present { value: read } =>
-      runner_width_converge_verdict(
-        observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv1)
-      ) == gunbc.host_converge.Drifted
+      with_derived_width(host: operator_host_srv1, k: w1 =>
+        runner_width_converge_verdict(observed: read.active_count, desired: w1) == gunbc.host_converge.Drifted)
     Absent => false
   }
 }
 
-test fn witness_srv2_width_drifts_from_declared_count() -> Bool {
+// srv2 HAS NO DECLARED COUNT TO DRIFT FROM. This row compared the fixture's active count to the Int
+// width, which read 0 for srv2, so "five active runners drift from a declaration of zero" was
+// green for the wrong reason -- the declaration was never zero, it was unresolved. A converge
+// verdict needs a desired count, and none is derivable; the row asserts that instead.
+test fn witness_srv2_width_has_no_declared_count_while_unresolved() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv2_runner_width_fixture_row) {
     Present { value: read } =>
-      runner_width_converge_verdict(
-        observed: read.active_count,
-        desired: gunbc_runner_slots_per_host(host: operator_host_srv2)
-      ) == gunbc.host_converge.Drifted
+      read.active_count > 0
+        && match gunbc_runner_slots_per_host(host: operator_host_srv2) {
+          RunnerWidthUnresolved { host: _, cause: _ } => true
+          RunnerWidthDerived { slots: _ } => false
+        }
     Absent => false
   }
 }

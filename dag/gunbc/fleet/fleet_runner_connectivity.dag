@@ -19,7 +19,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host, committed_slot_identities,
+  committed_slot_identities, CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved,
   runner_label_sets_equal,
 }
 import gunbc.runner_registration_labels {
@@ -97,9 +97,21 @@ type FleetAchievedRunnerWidths
     }
   | AchievedWidthsUnobserved { reason: String }
 
+// THE NEGATIVE ANSWER IS DECIDABLE ONLY OVER HOSTS WHOSE COMMITMENT RESOLVED. "This name is no
+// committed slot" is a statement about EVERY fleet host's population; when one host's width is
+// RunnerWidthUnresolved its population cannot be enumerated, and the name might be one of its
+// slots. The positive answer is unaffected -- a name that equals a resolved host's committed
+// identity IS that slot -- so only a name that matched nothing, and that an unresolved host could
+// have produced, is undecidable. That arm carries the host and its cause, so the planner's refusal
+// names the unresolved commitment rather than asserting a slot does not exist.
 type RegistrationSlotDecoding
   = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
   | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+  | RegistrationSlotUndecidableWhileCommitmentUnresolved {
+      registration_name: NonEmptyStr
+      host: HostIdentity
+      cause: String
+    }
 
 // THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
 // naming authority read in the opposite direction from the first, and the two could disagree
@@ -128,17 +140,72 @@ type RegistrationSlotDecoding
 // builds its own expected name inline. Not a missed site: a witness that computes its expectation
 // by calling the production function proves only that the function equals itself. Its pad is an
 // independent oracle and consolidating it would convert a check into a tautology.
-fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+// THE FLEET POPULATION SPLITS INTO THE ENUMERATED IDENTITIES AND THE HOSTS THAT COULD NOT BE
+// ENUMERATED, and both halves are carried, because the second is what makes a negative decode
+// honest. Dropping the unresolved hosts and folding only the identities is how srv2's three
+// registrations came to read "no committed fleet slot".
+type FleetCommittedSlotPopulation {
+  identities: List<RunnerSlotIdentity>
+  unresolved: List<CommittedSlotPopulation>
+}
+
+fn fleet_committed_slot_population() -> FleetCommittedSlotPopulation {
   fold(
     fleet_hosts(),
-    init: [],
-    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+    init: FleetCommittedSlotPopulation { identities: [], unresolved: [] },
+    f: (acc, h) =>
+      match committed_slot_identities(host: h) {
+        CommittedSlotsEnumerated { identities: ids } =>
+          FleetCommittedSlotPopulation { identities: concat(acc.identities, ids), unresolved: acc.unresolved }
+        CommittedSlotsUnresolved { host: uh, cause: c } =>
+          FleetCommittedSlotPopulation {
+            identities: acc.identities,
+            unresolved: concat(acc.unresolved, [CommittedSlotsUnresolved { host: uh, cause: c }]),
+          }
+      }
+  )
+}
+
+// COULD THIS HOST'S NAMING AUTHORITY HAVE PRODUCED THIS NAME. runner_slot_instance_name spells a slot
+// as its host followed by "-" and the slot's index suffix, so a name that does not begin with the
+// host and a hyphen is one no slot of that host is ever spelled as. This is the NECESSARY condition
+// only, and it is used in the fail-closed direction alone: a matching prefix on an unresolved host
+// makes the negative answer undecidable; it never mints a positive match. The same "ours by name"
+// rule stands at unit-name grain in gunbc.runner_slot_population_census unit_is_owned_by_host.
+fn registration_name_could_belong_to_host(host: HostIdentity, name: NonEmptyStr) -> Bool {
+  starts_with(s: name as String, prefix: join([host as String, "-"], ""))
+}
+
+fn decode_registration_against_unresolved(
+  reg: GitHubSelfHostedRunnerRegistration,
+  unresolved: List<CommittedSlotPopulation>,
+) -> RegistrationSlotDecoding {
+  fold(
+    unresolved,
+    init: RegistrationNamesNoCommittedSlot { registration_name: reg.name },
+    f: (acc, u) =>
+      match acc {
+        RegistrationSlotUndecidableWhileCommitmentUnresolved { registration_name: n, host: h, cause: c } =>
+          RegistrationSlotUndecidableWhileCommitmentUnresolved { registration_name: n, host: h, cause: c }
+        RegistrationNamesCommittedSlot { slot: sl } => RegistrationNamesCommittedSlot { slot: sl }
+        RegistrationNamesNoCommittedSlot { registration_name: n } =>
+          match u {
+            CommittedSlotsEnumerated { identities: _ } => RegistrationNamesNoCommittedSlot { registration_name: n }
+            CommittedSlotsUnresolved { host: uh, cause: c } =>
+              if registration_name_could_belong_to_host(host: uh, name: n) {
+                RegistrationSlotUndecidableWhileCommitmentUnresolved { registration_name: n, host: uh, cause: c }
+              } else {
+                RegistrationNamesNoCommittedSlot { registration_name: n }
+              }
+          }
+      }
   )
 }
 
 fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+  let population = fleet_committed_slot_population()
   match fold(
-    fleet_committed_slot_identities(),
+    population.identities,
     init: none,
     f: (acc, id) =>
       match acc {
@@ -152,7 +219,7 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
       }
   ) {
     Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
-    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+    Absent => decode_registration_against_unresolved(reg: reg, unresolved: population.unresolved)
   }
 }
 
@@ -193,10 +260,10 @@ type FleetRunnerCapacityWidthSnapshot {
 // registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with
 // 03 absent. desired_width stays 22 while connected is 1 — derived at
 // incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on
-// 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it
-// tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since
-// the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 is a
-// DIFFERENT QUANTITY that happens to share the number — it is what the roster desired on 2026-08-06
+// 2026-08-06. A live fleet total, fleet_desired_width_total, used to be derived beside it from the
+// per-host Int widths; it had no consumer and is deleted with the Int, since a fleet sum over a host
+// whose width is RunnerWidthUnresolved has no honest number to be. The incident figure of 22 is a
+// DIFFERENT QUANTITY from the live commitment — it is what the roster desired on 2026-08-06
 // (5+5+7+5, srv4 row-pinned), and it comes from the pinned per-host rows in
 // incident_pinned_widths_note, never from the live allocation.)
 
@@ -244,11 +311,14 @@ fn incident_registration(
 
 // THE CORPUS IS AUTHORED PER HOST AND CONCATENATED, SO A HOST SLICE IS A PROJECTION AND NOT A
 // SECOND SPELLING. The 2026-09-13 26/25 GiB transition (gunbc.runner_slot_allocation) deleted
-// srv2's held width: its commitment is unestablished, gunbc_runner_slots_per_host answers 0 and
-// committed_slot_identities(srv2) is empty, so srv2-01/02/05 below now decode
-// RegistrationNamesNoCommittedSlot and gunbc.runner_capacity_plan REFUSES any plan handed the
-// whole-org corpus. That refusal is correct -- three owned registrations on a host with no
-// established commitment are exactly the surplus convergence must account for -- and the rows are
+// srv2's held width: its commitment is unestablished, gunbc_runner_slots_per_host resolves it to
+// RunnerWidthUnresolved and committed_slot_identities(srv2) is CommittedSlotsUnresolved, so
+// srv2-01/02/05 below decode RegistrationSlotUndecidableWhileCommitmentUnresolved and
+// gunbc.runner_capacity_plan REFUSES any plan handed the whole-org corpus, naming srv2's unresolved
+// commitment. (Until 2026-09-20 the width read 0, the population read empty, and the same rows
+// decoded "no committed slot" -- a refusal with the wrong cause.) That refusal is correct -- three
+// owned registrations on a host with no established commitment are exactly the surplus convergence
+// must account for -- and the rows are
 // NOT deleted from the corpus, because the corpus is what the org held on 2026-08-06. Witnesses
 // whose subject is the managed pair supply the srv3/srv4 slice instead of the whole org, and the
 // slice is the same rows under one authority rather than a copy that could drift from them.
@@ -641,14 +711,6 @@ fn incident_fleet_desired_width_at_outage() -> Int {
     fleet_hosts(),
     init: 0,
     f: (n, h) => n + incident_committed_width_at_outage_for(host: h),
-  )
-}
-
-fn fleet_desired_width_total() -> Int {
-  fold(
-    fleet_hosts(),
-    init: 0,
-    f: (n, h) => n + gunbc_runner_slots_per_host(host: h)
   )
 }
 

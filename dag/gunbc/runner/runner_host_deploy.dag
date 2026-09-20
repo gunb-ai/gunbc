@@ -21,7 +21,7 @@ import gunbc.fleet_intent { fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { runner_slot_index_suffix }
 import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -189,7 +189,7 @@ data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // ZERO MAY NOT INHABIT `RunnerHostDeploy`, AND srv2 IS WHY.
 //
 // This row was an ordinary deploy whose `runner_count` came from the scalar
-// `gunbc_runner_slots_per_host`, which maps an unresolved derivation to 0. srv2's session denominator
+// `gunbc_runner_slots_per_host`, which then mapped an unresolved derivation to 0. srv2's session denominator
 // is unestablished, so the row asserted BOTH "this is an operational deploy" and "it desires zero
 // runners" -- while every consumer was expected to remember that the zero means REFUSED. That is
 // sentinel encoding: construct the misleading value, then require each reader to reinterpret it.
@@ -217,26 +217,39 @@ type RunnerHostDeployAdmission
 // with an unchecked count -- srv1, srv3 and srv4 are not hand-written rows that happen to be positive,
 // they are specs admitted by the same test srv2 fails. `runner_count` is written exactly once, from
 // the resolved width, and only where that width is positive.
+//
+// THE WIDTH NOW ARRIVES AS A RESOLUTION AND THE TWO REFUSALS ARE TOLD APART. An unresolved
+// commitment (srv2) carries the session reservation's own cause; a derived zero is a slot shape that
+// admits nothing. This function used to receive both as the Int 0 and describe them with one
+// sentence that said "resolved to zero" of a host whose width had not resolved at all.
 fn runner_host_deploy_of(host: HostIdentity, spec: RunnerHostSpec) -> RunnerHostDeployAdmission {
-  let width = gunbc_runner_slots_per_host(host: host)
-  if width > 0 {
-    RunnerHostDeployAdmitted {
-      deploy: RunnerHostDeploy {
-        host_label: spec.host_label,
-        ssh_target: spec.ssh_target,
-        runner_user: spec.runner_user,
-        unit_user: spec.unit_user,
-        job_user: spec.job_user,
-        app: spec.app,
-        runner_count: width,
-      },
-    }
-  } else {
-    RunnerHostDeployWidthRefused {
-      spec: spec,
-      host: host,
-      cause: "this host's admitted runner width resolved to zero, which is a REFUSAL to derive a population rather than a request for no slots; no operational deploy row is constructed for it",
-    }
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthUnresolved { host: _, cause: c } =>
+      RunnerHostDeployWidthRefused {
+        spec: spec,
+        host: host,
+        cause: join(["this host's committed runner width is unresolved, so no runner population can be derived for it and no operational deploy row is constructed: ", c], ""),
+      }
+    RunnerWidthDerived { slots: width } =>
+      if width > 0 {
+        RunnerHostDeployAdmitted {
+          deploy: RunnerHostDeploy {
+            host_label: spec.host_label,
+            ssh_target: spec.ssh_target,
+            runner_user: spec.runner_user,
+            unit_user: spec.unit_user,
+            job_user: spec.job_user,
+            app: spec.app,
+            runner_count: width,
+          },
+        }
+      } else {
+        RunnerHostDeployWidthRefused {
+          spec: spec,
+          host: host,
+          cause: "this host's admitted runner width derived to zero -- the slot shape admits no runner -- which is a refusal to provision rather than a request for no slots; no operational deploy row is constructed for it",
+        }
+      }
   }
 }
 

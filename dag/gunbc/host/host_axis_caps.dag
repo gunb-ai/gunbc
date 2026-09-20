@@ -22,7 +22,7 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
@@ -355,11 +355,18 @@ fn cap_converge_decision(
 ) -> CapConvergeDecision {
   match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
     CapRaiseAdmitted =>
-      CapConvergeAuthorized {
-        host: host,
-        authorized_retiring: required_retiring,
-        target_units: runner_slot_service_units_for_host(host: host),
-        desired: derived_runner_memory_cap_members(),
+      match runner_slot_service_units_for_host(host: host) {
+        RunnerSlotServiceUnitsUnresolved { host: _, cause: c } =>
+          CapConvergeWithheld {
+            cause: join(["this host's committed runner width is unresolved, so the unit population to converge caps onto cannot be enumerated (", c, "); existing caps are left exactly as observed"], ""),
+          }
+        RunnerSlotServiceUnitsDerived { units: target_units } =>
+          CapConvergeAuthorized {
+            host: host,
+            authorized_retiring: required_retiring,
+            target_units: target_units,
+            desired: derived_runner_memory_cap_members(),
+          }
       }
     CapRaiseBlockedPendingRetirement { still_present: sp } =>
       CapConvergeWithheld {
@@ -511,12 +518,21 @@ fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) ->
   }
 }
 
-fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
-  runner_slot_service_units_range(
-    host: host,
-    slot: 1,
-    limit: gunbc_runner_slots_per_host(host: host),
-  )
+// THE UNIT POPULATION IS A RESOLUTION. It read the Int width, so a host whose width was unresolved
+// enumerated NO units -- an empty target set for the cap converge, indistinguishable from a host
+// committed to zero slots. The unresolved arm carries the cause; cap_converge_decision withholds on it.
+type RunnerSlotServiceUnits
+  = RunnerSlotServiceUnitsDerived { units: List<NonEmptyStr> }
+  | RunnerSlotServiceUnitsUnresolved { host: HostIdentity, cause: String }
+
+fn runner_slot_service_units_for_host(host: HostIdentity) -> RunnerSlotServiceUnits {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthUnresolved { host: h, cause: c } => RunnerSlotServiceUnitsUnresolved { host: h, cause: c }
+    RunnerWidthDerived { slots: width } =>
+      RunnerSlotServiceUnitsDerived {
+        units: runner_slot_service_units_range(host: host, slot: 1, limit: width),
+      }
+  }
 }
 
 fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {
@@ -585,10 +601,11 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
   shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
-// Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
-fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
-  deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
-}
+// deploy_memory_cap_apply_script_for_host IS DELETED. It built the apply script from a host by
+// reading the width for itself, had no production caller (live_deploy apply builds the script from
+// the members and units the CapConvergeAuthorized decision carries, via
+// deploy_memory_cap_apply_script_from_authorization), and with the width now a resolution it would
+// have needed an arm that fabricates a script for an unresolved host or refuses in a String.
 
 // THE SCRIPT IS BUILT FROM THE MEMBERS THE AUTHORIZATION CARRIES, not re-derived beside it. The
 // earlier route checked a Boolean and then called `deploy_memory_cap_apply_script_for_host`, so the
@@ -681,10 +698,10 @@ fn deploy_memory_cap_script_author_precedes_shadow_revert(
     && script == deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
 }
 
-// Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
-// deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit
-// apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then
-// systemctl revert per runner_slot_service_units_for_host.
+// Enrolled: live_deploy apply emits the cap block after the sudoers preamble, built by
+// deploy_memory_cap_apply_script_from_authorization from the members and target_units a
+// CapConvergeAuthorized decision carries (gunbc.live_deploy.emit deploy_memory_cap_apply_steps) —
+// author derived drop-ins then systemctl revert per target unit.
 
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,

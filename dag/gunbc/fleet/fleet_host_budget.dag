@@ -64,7 +64,7 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
-  gunbc_runner_slice_cap_declared
+  gunbc_runner_slice_cap_for_width
 }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, session_admission_oomd_ceiling,
@@ -212,8 +212,12 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
   }
 }
 
-fn gunbc_runner_pool_budget_for(host: HostIdentity) -> ByteSize {
-  gunbc_runner_slice_cap_declared(host: host)
+// THE POOL BUDGET IS A FUNCTION OF A RESOLVED WIDTH. It took a host and, for a host whose width was
+// unresolved, answered zero bytes -- a runner pool charging nothing against the conservation wall.
+// The caller resolves the width (gunbc.runner_slot_allocation RunnerWidthResolution) and passes the
+// derived count; there is no arm here for an unresolved host because no byte count is honest for one.
+fn gunbc_runner_pool_budget_for(slots: Int) -> ByteSize {
+  gunbc_runner_slice_cap_for_width(slots: slots)
 }
 
 data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
@@ -346,7 +350,7 @@ fn host_allocation_verdict_charged(
 // This still divides the declared pool by the declared per-slot cap rather than reading
 // gunbc_runner_slots_per_host directly, and the redundancy is now GONE rather than merely
 // tolerated. The pool is derived as slots × MemoryMax (gunbc.runner_slot_allocation
-// gunbc_runner_slice_cap_declared), so floor(pool ÷ MemoryMax) returns that same slot count by
+// gunbc_runner_slice_cap_for_width), so floor(pool ÷ MemoryMax) returns that same slot count by
 // construction — the two agree because one is the other's inverse, not because an author kept them
 // coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with
 // slots_per_host by construction at these values', which is a coincidence with a caveat attached,

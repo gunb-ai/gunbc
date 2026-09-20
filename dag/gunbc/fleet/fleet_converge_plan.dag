@@ -57,6 +57,7 @@ import gunbc.fabric_cell_converge {
   ExpectedRosterHostMismatch,
   ObserverUnavailable,
   CrossHostNamedArtifactObserved,
+  ArtifactNamesHostWithUnresolvedCommitment,
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
@@ -864,8 +865,9 @@ fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) 
 
 // A REFUSED HOST IS NOT A HOST THAT WANTS ZERO SLOTS, AND THE DIFFERENCE IS A REMOVE-ALL PLAN.
 //
-// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_slots_per_host`, which answers 0 for a host
-// whose admission REFUSED -- srv2, whose session denominator is unestablished, is the live instance.
+// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_slots_per_host`, which ANSWERED 0 for a host
+// whose admission REFUSED -- srv2, whose session denominator is unestablished, is the live instance
+// (since 2026-09-20 it answers RunnerWidthUnresolved with the cause, and no deploy row is built).
 // This family previously treated any found deploy row as an ordinary desired roster, so that refusal
 // arrived at `desired_runner_slot_members` as the empty list. Reconcile reads an empty desired set
 // against a populated host as "every one of these should go": syntactically a full teardown proposal
@@ -1820,6 +1822,13 @@ fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -
         " matches-committed=", runner_slot_instance_name(slot: ms),
         "; the name matches a slot committed on ANOTHER host, so it is evidence about neither this host's cells nor an artifact nobody committed -- the match is recorded, and it does not assert the artifact IS that slot",
       )
+    ArtifactNamesHostWithUnresolvedCommitment { observed_on: oh, observed_name: n, location: l, unresolved_host: uh, cause: c } =>
+      concat(
+        "artifact-names-unresolved-host ", n, " in ", l, " on ", oh as String,
+        " could-be-a-slot-of=", uh as String,
+        "; the name matches no slot any host with a resolved commitment holds, and ", uh as String,
+        "'s committed width is unresolved, so whether the artifact is foreign or one of that host's slots cannot be decided: ", c,
+      )
     DiscoveryUnavailable { host: h, cause: _ } =>
       concat(
         "discovery-unavailable on ", h as String,
@@ -1855,6 +1864,8 @@ fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> St
       location: l
     } =>
       concat("cross-host-named-artifact:", oh as String, ":", l, ":", n, ":", runner_slot_instance_name(slot: ms))
+    ArtifactNamesHostWithUnresolvedCommitment { observed_on: oh, observed_name: n, location: l, unresolved_host: uh, cause: _ } =>
+      concat("artifact-names-unresolved-host:", oh as String, ":", l, ":", n, ":", uh as String)
   }
 }
 

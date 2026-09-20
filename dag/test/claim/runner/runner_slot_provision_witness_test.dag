@@ -1,7 +1,7 @@
 module test.claim.runner_slot_provision
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr, List, String }
+import std.types { list_length, NonEmptyStr, List, String, Int, Bool }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   actions_runner_registration_decode,
@@ -38,6 +38,7 @@ import gunbc.runner_slot_provision {
   runner_slot_enumeration_postcondition,
   RunnerSlotEnumerationMatched,
   RunnerSlotEnumerationMismatch,
+  RunnerSlotEnumerationDeclaredWidthUnresolved,
   RunnerSlotMember,
   runner_slot_provision_has_width_increase,
   RunnerSlotObservation,
@@ -61,7 +62,11 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Owned }
 import product.placement_supply { HostIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  committed_slot_identities, CommittedSlotPopulation, CommittedSlotsEnumerated, CommittedSlotsUnresolved,
+  count_fabric_members, host_memory_admitted_width,
+}
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
 import gunbc.runner_slot_retirement {
@@ -195,10 +200,20 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
     RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
       h == operator_host_srv3
-        && d == gunbc_runner_slots_per_host(host: operator_host_srv3)
+        && with_derived_width(host: operator_host_srv3, k: w3 => d == w3)
         && o == 1
         && d > o
     RunnerSlotEnumerationMatched => false
+    RunnerSlotEnumerationDeclaredWidthUnresolved { host: _, cause: _ } => false
+  }
+}
+
+// THE WIDTH IS A RESOLUTION; a row about a host this module knows resolves reaches the number
+// through this match and is FALSE if that host ever stops resolving, never a substituted zero.
+fn with_derived_width(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: w } => k(w)
+    RunnerWidthUnresolved { host: _, cause: _ } => false
   }
 }
 
@@ -413,13 +428,16 @@ test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
 // that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
 // no fabric member and loses nothing.
 test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
-  list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
-    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv1)
+  with_derived_width(host: operator_host_srv3, k: w3 =>
+    list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy())) == w3 - 1)
+    && match committed_slot_identities(host: operator_host_srv3) {
+      CommittedSlotsEnumerated { identities: ids } => count_fabric_members(identities: ids) == 1
+      CommittedSlotsUnresolved { host: _, cause: _ } => false
+    }
+    && with_derived_width(host: operator_host_srv4, k: w4 =>
+         list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy())) == w4)
+    && with_derived_width(host: operator_host_srv1, k: w1 =>
+         list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy())) == w1)
 }
 
 

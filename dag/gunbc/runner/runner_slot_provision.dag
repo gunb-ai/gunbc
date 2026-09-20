@@ -37,7 +37,7 @@ import extdeps.github.actions_runner {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_slot_allocation { identity_is_fabric_execution_member, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { identity_is_fabric_execution_member, gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.command_runner {
   ProcessOutcome,
   ProcessOutputPresent,
@@ -70,6 +70,7 @@ import gunbc.runner_slot_retirement {
   transition_required_retiring,
   retirement_unit,
 }
+import gunbc.runner_width_transition { RequiredRetirees, RequiredRetireesKnown, RequiredRetireesUnresolved }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
@@ -253,7 +254,29 @@ fn obligation_withheld_scripts(
   evidence: SlotRetirementEvidence,
 ) -> List<String> {
   let removed = membership_removed_unit_names(membership: membership)
-  transition_required_retiring(host: deploy.host_label as HostIdentity)
+  match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RequiredRetireesUnresolved { host: _, cause: c } =>
+      [join(
+        [
+          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=",
+          deploy.host_label as String,
+          " cause=the required retiree set is unresolved, so no retirement may be planned from it; ",
+          c,
+          "' >&2",
+        ],
+        "",
+      )]
+    RequiredRetireesKnown { units: required } =>
+      obligation_withheld_scripts_for(required: required, removed: removed, evidence: evidence)
+  }
+}
+
+fn obligation_withheld_scripts_for(
+  required: List<NonEmptyStr>,
+  removed: List<String>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  required
     |> map(u => u as String)
     |> filter(u => membership_does_not_name(removed: removed, unit: u))
     |> flat_map(u =>
@@ -277,6 +300,9 @@ fn obligation_withheld_scripts(
     )
 }
 
+// AN UNRESOLVED OBLIGATION ACTUATES NOTHING FROM THE OBLIGATION SIDE, and is not silent about it:
+// obligation_withheld_scripts prints the withheld line for the same case, so the deploy script
+// carries the refusal where an operator reads it.
 fn retirement_actuation_units(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
@@ -284,12 +310,16 @@ fn retirement_actuation_units(
 ) -> List<String> {
   let from_membership = membership_removed_unit_names(membership: membership)
     |> filter(u => realization_requires_actuation(evidence: evidence, unit: u))
-  let from_obligation = transition_required_retiring(host: deploy.host_label as HostIdentity)
-    |> map(u => u as String)
-    |> filter(u =>
-      evidence_has_standing_for(evidence: evidence, unit: u)
-        && realization_requires_actuation(evidence: evidence, unit: u)
-    )
+  let from_obligation = match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RequiredRetireesUnresolved { host: _, cause: _ } => []
+    RequiredRetireesKnown { units: required } =>
+      required
+        |> map(u => u as String)
+        |> filter(u =>
+          evidence_has_standing_for(evidence: evidence, unit: u)
+            && realization_requires_actuation(evidence: evidence, unit: u)
+        )
+  }
   first_occurrences(items: concat(from_membership, from_obligation))
 }
 
@@ -484,20 +514,28 @@ type RunnerSlotEnumerationPostcondition
       declared_count: Int
       observed_count: Int
     }
+  | RunnerSlotEnumerationDeclaredWidthUnresolved { host: HostIdentity, cause: String }
 
+// A POSTCONDITION AGAINST AN UNRESOLVED DECLARATION IS NEITHER MATCHED NOR MISMATCHED. The Int read
+// made an unresolved host declare 0, so any observed member was a mismatch against a count nobody
+// established; the unresolved arm carries the cause instead.
 fn runner_slot_enumeration_postcondition(
   host: HostIdentity,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = gunbc_runner_slots_per_host(host: host)
-  let observed_count = length(observed)
-  if observed_count == declared {
-    RunnerSlotEnumerationMatched
-  } else {
-    RunnerSlotEnumerationMismatch {
-      host: host,
-      declared_count: declared,
-      observed_count: observed_count,
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthUnresolved { host: h, cause: c } => RunnerSlotEnumerationDeclaredWidthUnresolved { host: h, cause: c }
+    RunnerWidthDerived { slots: declared } => {
+      let observed_count = length(observed)
+      if observed_count == declared {
+        RunnerSlotEnumerationMatched
+      } else {
+        RunnerSlotEnumerationMismatch {
+          host: host,
+          declared_count: declared,
+          observed_count: observed_count,
+        }
+      }
     }
   }
 }

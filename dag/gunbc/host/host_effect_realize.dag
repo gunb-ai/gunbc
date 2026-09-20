@@ -173,6 +173,7 @@ import gunbc.runner_slot_retirement {
   observe_retirement_standings,
   surplus_observation_from_census_and_retirement,
 }
+import gunbc.runner_width_transition { RequiredRetirees, RequiredRetireesKnown, RequiredRetireesUnresolved }
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import gunbc.live_deploy.emit {
@@ -3931,14 +3932,21 @@ fn realize_live_deploy_apply_on_host(
                 cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
               }
             RunnerHostDeployFound { deploy: _ } =>
-              cap_converge_decision(
-                host: host,
-                required_retiring: required,
-                observation: surplus_observation_from_census_and_retirement(
-                  census: census,
-                  standings: observe_retirement_standings(transport: transport, units: required),
-                ),
-              )
+              match required {
+                RequiredRetireesUnresolved { host: _, cause: rc } =>
+                  CapConvergeWithheld {
+                    cause: join(["the required retiree set for ", host as String, " is unresolved, so no cap population may be converged against it: ", rc], ""),
+                  }
+                RequiredRetireesKnown { units: required_units } =>
+                  cap_converge_decision(
+                    host: host,
+                    required_retiring: required_units,
+                    observation: surplus_observation_from_census_and_retirement(
+                      census: census,
+                      standings: observe_retirement_standings(transport: transport, units: required_units),
+                    ),
+                  )
+              }
           },
         ),
         reason: "live_deploy apply (unit install + start)",

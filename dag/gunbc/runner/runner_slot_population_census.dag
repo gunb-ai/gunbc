@@ -1,11 +1,11 @@
 module gunbc.runner_slot_population_census
 
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name, runner_unit_prefix, runner_unit_suffix }
 import std.algebra { trim }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -64,8 +64,12 @@ fn unit_is_owned_by_host(host: HostIdentity, unit: String) -> Bool {
   starts_with(s: unit, prefix: host_instance_prefix(host: host))
 }
 
-fn desired_unit_names(host: HostIdentity) -> List<String> {
-  desired_unit_names_range(host: host, slot: 1, limit: gunbc_runner_slots_per_host(host: host))
+// THE DESIRED SET TAKES A RESOLVED WIDTH. It read the Int for itself, so a host whose width was
+// unresolved desired NOTHING, and every owned unit the host was running classified as RetiringSlot --
+// the census that gates a shrink would have named all five of srv2's live runners as surplus. The
+// resolution is matched in slot_population_census, which is the function that owns the refusal arm.
+fn desired_unit_names(host: HostIdentity, width: Int) -> List<String> {
+  desired_unit_names_range(host: host, slot: 1, limit: width)
 }
 
 fn desired_unit_names_range(host: HostIdentity, slot: Int, limit: Int) -> List<String> {
@@ -106,8 +110,8 @@ fn missing_rows(desired: List<String>, observed_names: List<String>) -> List<Slo
     |> map(d => MissingSlot { unit: d })
 }
 
-fn census_rows(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> List<SlotCensusRow> {
-  let desired = desired_unit_names(host: host)
+fn census_rows(host: HostIdentity, width: Int, observed: List<ObservedRunnerUnit>) -> List<SlotCensusRow> {
+  let desired = desired_unit_names(host: host, width: width)
   concat(
     observed |> map(o => classify_observed_unit(host: host, desired: desired, o: o)),
     missing_rows(desired: desired, observed_names: observed_unit_names(observed: observed))
@@ -126,8 +130,22 @@ fn row_is_foreign(r: SlotCensusRow) -> Bool {
 // A FOREIGN OCCUPANT REFUSES THE WHOLE CENSUS rather than being filtered out of it. Filtering would
 // let a shrink proceed around something it could not identify, on a host where it is about to stop
 // units -- the absorbing fallback in its most dangerous position.
+//
+// AN UNRESOLVED WIDTH REFUSES THE WHOLE CENSUS TOO, for the same reason: a census whose desired set
+// is unknown cannot classify anything as retiring, and a shrink acting on it would stop units the
+// host may well be committed to.
 fn slot_population_census(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> SlotCensus {
-  let rows = census_rows(host: host, observed: observed)
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthUnresolved { host: _, cause: c } =>
+      CensusRefused {
+        cause: join(["this host's committed runner width is unresolved, so no desired slot set exists to classify its units against and no unit can be named retiring: ", c], ""),
+      }
+    RunnerWidthDerived { slots: width } => slot_population_census_at_width(host: host, width: width, observed: observed)
+  }
+}
+
+fn slot_population_census_at_width(host: HostIdentity, width: Int, observed: List<ObservedRunnerUnit>) -> SlotCensus {
+  let rows = census_rows(host: host, width: width, observed: observed)
   if rows |> filter(r => row_is_foreign(r: r)) |> length() > 0 {
     CensusRefused {
       cause: "a unit under the runner instance directory is not owned by this host's instance prefix, so this census cannot say whether stopping it is safe; refusing rather than acting around an unidentified occupant",

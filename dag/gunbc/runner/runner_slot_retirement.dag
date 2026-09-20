@@ -5,7 +5,7 @@ import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_width_transition { required_retirees_for_host, RequiredRetirees, RequiredRetireesKnown, RequiredRetireesUnresolved }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
@@ -363,7 +363,11 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
-fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
+//
+// THE OBLIGATION IS A RESOLUTION. For a host whose target width is unresolved there is no required
+// set -- not an empty one -- and each consumer below takes the refusing side of that: evidence is
+// Absent with the cause, the baseline row says so, the withheld line names it.
+fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
   required_retirees_for_host(host: host)
 }
 
@@ -870,12 +874,13 @@ fn observe_transition_retirement_evidence(
 ) -> SlotRetirementEvidence
   uses net: Network
 {
-  SlotRetirementEvidencePresent {
-    authorization: auth,
-    standings: observe_retirement_standings(
-      transport: transport,
-      units: transition_required_retiring(host: host),
-    ),
+  match transition_required_retiring(host: host) {
+    RequiredRetireesUnresolved { host: _, cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+    RequiredRetireesKnown { units: required } =>
+      SlotRetirementEvidencePresent {
+        authorization: auth,
+        standings: observe_retirement_standings(transport: transport, units: required),
+      }
   }
 }
 
@@ -887,20 +892,24 @@ fn transition_retirement_admission(
   host: HostIdentity,
   auth: InterruptionAuthorization,
 ) -> SlotRetirementEvidence {
-  match transition_interruption_coverage(auth: auth, required: transition_required_retiring(host: host)) {
-    TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join(
-          [
-            "this transition requires retiring units the operator has not authorized interrupting: ",
-            join(map(u, x => x as String), " "),
-            "; retiring only the covered subset would release ceilings against a population still running",
-          ],
-          "",
-        ),
+  match transition_required_retiring(host: host) {
+    RequiredRetireesUnresolved { host: _, cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+    RequiredRetireesKnown { units: required } =>
+      match transition_interruption_coverage(auth: auth, required: required) {
+        TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
+          SlotRetirementEvidenceAbsent {
+            cause: join(
+              [
+                "this transition requires retiring units the operator has not authorized interrupting: ",
+                join(map(u, x => x as String), " "),
+                "; retiring only the covered subset would release ceilings against a population still running",
+              ],
+              "",
+            ),
+          }
+        TransitionFullyPermitted { units: _ } =>
+          SlotRetirementEvidencePresent { authorization: auth, standings: [] }
       }
-    TransitionFullyPermitted { units: _ } =>
-      SlotRetirementEvidencePresent { authorization: auth, standings: [] }
   }
 }
 
@@ -945,6 +954,12 @@ fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
 // reobservation of a different one whose standings happen to look similar. The required set is the
 // transition's observable content: a changed prior width or target changes these rows even when every
 // disposition is unchanged.
+//
+// AN UNRESOLVED OBLIGATION IS ITS OWN ROW, so a plan built while the target was unresolved cannot
+// admit against a reobservation in which it resolved -- the required set is different content.
 fn transition_baseline_rows(host: HostIdentity) -> List<String> {
-  transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
+  match transition_required_retiring(host: host) {
+    RequiredRetireesUnresolved { host: _, cause: _ } => ["required:unresolved"]
+    RequiredRetireesKnown { units: required } => required |> map(u => join(["required:", u as String], ""))
+  }
 }

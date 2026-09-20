@@ -21,7 +21,7 @@ import gunbc.runner_host_grants {
   runner_host_wide_privileged_operations,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host,
+  gunbc_runner_slots_per_host, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   gunbc_runner_slot_cpu_quota,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
@@ -200,13 +200,31 @@ test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool
 // THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each
 // host's committed width so a width change cannot outgrow its own teardown; and it is exact paths
 // only -- the highest grammar dir is named and the one past the bound is not.
+//
+// A HOST WHOSE WIDTH IS UNRESOLVED HAS NO WIDTH FOR THE BOUND TO COVER, and the row says which host
+// that is rather than reading it as a zero the bound trivially exceeds. srv2 is named: if a second
+// host goes unresolved, or srv2 resolves, this row is red and is re-derived.
+fn bound_covers_derived_width(host: HostIdentity, bound: Int) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: w } => bound >= w
+    RunnerWidthUnresolved { host: _, cause: _ } => false
+  }
+}
+
+fn width_is_unresolved(host: HostIdentity) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthUnresolved { host: _, cause: _ } => true
+  }
+}
+
 test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool {
   let bound = runner_slot_teardown_grant_index_bound
   let dirs = runner_slot_grammar_dirs_to_bound(host: operator_host_srv2, bound: bound)
-  bound >= gunbc_runner_slots_per_host(host: operator_host_srv1)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv2)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv3)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv4)
+  bound_covers_derived_width(host: operator_host_srv1, bound: bound)
+    && width_is_unresolved(host: operator_host_srv2)
+    && bound_covers_derived_width(host: operator_host_srv3, bound: bound)
+    && bound_covers_derived_width(host: operator_host_srv4, bound: bound)
     && bound >= 12
     && dirs.length() == bound
     && any(dirs, d => (d as String) == "/opt/actions-runner/srv2-12")

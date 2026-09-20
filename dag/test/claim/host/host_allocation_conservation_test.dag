@@ -40,8 +40,10 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_demand_sum_memory_max,
   gunbc_runner_slot_desired,
   gunbc_committed_runner_slot_allocations,
+  HostRunnerSlotAllocationStanding, HostRunnerSlotAllocated, HostRunnerSlotAllocationUnresolved,
   host_memory_admitted_width,
   gunbc_runner_slots_per_host,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_slot_shape_standing,
   RunnerSlotShapeAdmitted,
   RunnerSlotShapeRefusedZeroMemoryMax,
@@ -99,15 +101,16 @@ fn witness_allocation_conserves(
 // pool did, and the row went red for that mismatch rather than for anything about conservation.
 // Mixing a fixture host with a live pool is the defect -- it passed by coincidence, not by design.
 test fn allocation_conserves_when_pools_fit() -> Bool {
-  witness_allocation_conserves(
-    host: usable_ram_of(host: operator_host_srv1),
-    overhead: byte_size(17179869184),
-    headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
-    session_pool: byte_size(0),
-    compile_pool: byte_size(0),
-    control_plane: ControlPlaneNotPlaced
-  )
+  with_derived_width(host: operator_host_srv1, k: w1 =>
+    witness_allocation_conserves(
+      host: usable_ram_of(host: operator_host_srv1),
+      overhead: byte_size(17179869184),
+      headroom: byte_size(8589934592),
+      runner_pool: gunbc_runner_pool_budget_for(slots: w1),
+      session_pool: byte_size(0),
+      compile_pool: byte_size(0),
+      control_plane: ControlPlaneNotPlaced
+    ))
 }
 
 // THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a
@@ -225,6 +228,15 @@ fn session_charge_is_established(host: HostIdentity) -> Bool {
   }
 }
 
+// THE WIDTH IS A RESOLUTION; a row about a resolved host reaches the number through this match and
+// is FALSE if that host ever stops resolving, rather than computing against a substituted zero.
+fn with_derived_width(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
+  match gunbc_runner_slots_per_host(host: host) {
+    RunnerWidthDerived { slots: w } => k(w)
+    RunnerWidthUnresolved { host: _, cause: _ } => false
+  }
+}
+
 fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   live_conservation_holds(
     s: live_conservation_at_width(
@@ -235,14 +247,19 @@ fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   )
 }
 
+// THE SKIP IS THE ROW'S OWN TYPE NOW. This read `if session_charge_is_established(a.host)`, deriving
+// from a second predicate the condition under which the row's slots_per_host was a refusal rather
+// than a width. The allocation rows are HostRunnerSlotAllocationStanding: the unresolved arm IS the
+// unestablished charge, and every allocated row is held to the wall unconditionally.
 test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool {
   all(
     gunbc_committed_runner_slot_allocations(),
-    a => if session_charge_is_established(host: a.host) {
-      conserves_at_width(host: a.host, slots: a.slots_per_host)
-    } else {
-      true
-    }
+    standing =>
+      match standing {
+        HostRunnerSlotAllocationUnresolved { host: h, cause: _ } => !session_charge_is_established(host: h)
+        HostRunnerSlotAllocated { allocation: a } =>
+          session_charge_is_established(host: a.host) && conserves_at_width(host: a.host, slots: a.slots_per_host)
+      }
   )
 }
 
@@ -280,7 +297,12 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   all(
     gunbc_committed_runner_slot_allocations(),
-    a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
+    standing =>
+      match standing {
+        HostRunnerSlotAllocationUnresolved { host: h, cause: _ } => !conserves_at_width(host: h, slots: 1)
+        HostRunnerSlotAllocated { allocation: a } =>
+          !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
+      }
   )
 }
 
@@ -292,7 +314,11 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
 test fn committed_width_never_exceeds_memory_admission() -> Bool {
   all(
     gunbc_committed_runner_slot_allocations(),
-    a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
+    standing =>
+      match standing {
+        HostRunnerSlotAllocationUnresolved { host: h, cause: _ } => (h as String) == (operator_host_srv2 as String)
+        HostRunnerSlotAllocated { allocation: a } => a.slots_per_host <= host_memory_admitted_width(host: a.host)
+      }
   )
 }
 
@@ -309,10 +335,13 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // passing while the other moved -- which is exactly how the srv4 roster-versus-prose disagreement
 // this test exists to prevent got started.
 
+//
+// RE-STATED AS THE RELATION (2026-09-20): the literals 29 and 21 described the 16 GiB slot under the
+// six-core policy and were stale under both the 26 GiB slot and the one-core ruling; the property
+// -- srv4 commits what memory admits, like srv3, with disk gated at apply -- survives any width.
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) == 29
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+  with_derived_width(host: operator_host_srv4, k: w4 => w4 == host_memory_admitted_width(host: operator_host_srv4))
+    && with_derived_width(host: operator_host_srv3, k: w3 => w3 == host_memory_admitted_width(host: operator_host_srv3))
     && match host_disk_admitted_width(host: operator_host_srv4) {
       DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
       DiskAdmitsWidth { slots: _, provenance: _ } => false
@@ -1001,6 +1030,6 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
 test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
   hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
     && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
-    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
+    && with_derived_width(host: operator_host_srv1, k: w1 => w1 == host_memory_admitted_width(host: operator_host_srv1))
+    && with_derived_width(host: operator_host_srv3, k: w3 => w3 == host_memory_admitted_width(host: operator_host_srv3))
 }

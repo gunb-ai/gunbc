@@ -16,6 +16,7 @@ import gunbc.runner_slot_allocation {
   SlotCpuQuotaUnbounded,
   gunbc_runner_slot_desired,
   gunbc_runner_slots_per_host,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
@@ -227,6 +228,7 @@ type HostRunnerDeploymentRefusal
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
   | ZeroRunnerWidth
+  | CommittedWidthUnresolved { cause: String }
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
@@ -334,11 +336,17 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 // derivation is the one that survives, because it is the one that charges memory: a purely
 // core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
 // own header records as the reason the memory bound exists.
-fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
+// THE WIDTH ARRIVES RESOLVED. This read the Int width from the allocation authority for itself, so
+// the row could be constructed with runner_count 0 for a host whose width had not resolved, and the
+// distinction between "admits nothing" and "not established" was gone before admit_or_refuse_zero_width
+// ever saw the row. host_standing_with_session_slice now matches RunnerWidthResolution once and passes
+// the derived count in; an unresolved host refuses there as CommittedWidthUnresolved and never
+// reaches this constructor.
+fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
-    runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
+    runner_count: slots,
+    runner_slice_cap: gunbc_runner_pool_budget_for(slots: slots),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
@@ -522,6 +530,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
     ZeroRunnerWidth => "zero_runner_width"
+    CommittedWidthUnresolved { cause: t } => concat("committed_width_unresolved ", t)
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
@@ -577,6 +586,29 @@ fn host_standing_with_session_slice(
   session_pool: ByteSize,
   control_plane_placement: FabricControlPlanePlacement
 ) -> HostRunnerDeploymentStanding {
+  match gunbc_runner_slots_per_host(host: host_id) {
+    RunnerWidthUnresolved { host: _, cause: wc } =>
+      refuse_host(host: host_id, cause: CommittedWidthUnresolved { cause: wc })
+    RunnerWidthDerived { slots: slots } =>
+      host_standing_with_width(offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool, slots: slots, control_plane_placement: control_plane_placement)
+  }
+}
+
+// THE COMMITTED WIDTH IS RESOLVED BEFORE THE CONSERVATION WALL IS RUN, because the wall's runner_pool
+// term is slots x MemoryMax and there is no honest byte count for an unresolved width. In practice an
+// unresolved host (srv2) already refused one step earlier at SessionSliceUnsized, since the same
+// unestablished reservation is what makes the width unresolvable; this arm is what makes the refusal
+// hold by construction rather than by that coincidence of causes.
+fn host_standing_with_width(
+  offer: ComputeOffer,
+  cpu: CpuFacts,
+  host_id: HostIdentity,
+  host_ram: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize,
+  slots: Int,
+  control_plane_placement: FabricControlPlanePlacement
+) -> HostRunnerDeploymentStanding {
   match host_overhead_or_refusal(host: host_id, o: gunbc_ci_host_fixed_overhead_for(host: host_id)) {
     HostOverheadUnresolved { reason: orr } =>
       refuse_host(host: host_id, cause: FixedOverheadUnavailable { cause: orr })
@@ -594,7 +626,7 @@ fn host_standing_with_session_slice(
             host: host_ram,
             overhead: overhead,
             headroom: headroom,
-            runner_pool: gunbc_runner_pool_budget_for(host: host_id),
+            runner_pool: gunbc_runner_pool_budget_for(slots: slots),
             session_pool: session_pool,
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
@@ -624,6 +656,7 @@ fn host_standing_with_session_slice(
                       admit_or_refuse_zero_width(
                         dep: conservation_host_deployment(
                           offer: offer,
+                          slots: slots,
                           build_tokens: derive_jobserver_tokens(
                             nproc: cpu_facts_threads(cpu: cpu),
                             mem_total: host_ram,
