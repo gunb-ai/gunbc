@@ -340,10 +340,6 @@ pub fn persist_default_cap_bytes() -> u64 {
     PERSIST_DEFAULT_CAP_BYTES
 }
 
-pub fn persist_format_version() -> u32 {
-    PERSIST_FORMAT_VERSION
-}
-
 /// Host-local, content-addressed backing for typed-module snapshots.
 ///
 /// Every failure arm is a COUNTED miss or a COUNTED refusal and never a
@@ -646,11 +642,6 @@ pub fn persistent_typed_store_if_open() -> Option<&'static PersistentTypedStore>
         .and_then(|s| s.as_ref())
 }
 
-#[doc(hidden)]
-pub fn persistent_typed_store_is_armed_for_test() -> bool {
-    persistent_typed_store_if_open().is_some()
-}
-
 /// One line naming what the persistent store did this run, for the floor's
 /// measurement receipt. Live occupancy is reported beside throughput so the
 /// ladder's residency obligation is discharged by a residency number.
@@ -887,16 +878,43 @@ mod persistent_typed_store_tests {
         );
     }
 
-    /// The realization's default ceiling is the modeled one. A literal here
-    /// disagreeing with `gunbc.floor_materialization`
-    /// `floor_typecheck_store_persist_cap_bytes` is two authorities for one
-    /// number (DESIGN section 3), so the test is the lockstep.
+    /// LOCKSTEP AGAINST THE MODELLED ROW, READ FROM THE ROW.
+    ///
+    /// The first version of this test asserted the Rust constant against a Rust
+    /// literal spelling the same number, which is `measure() == measure()` --
+    /// the change detector DESIGN section 5 names outright, and it would have
+    /// stayed green through any edit to the authority it claimed to track. The
+    /// authority is `gunbc.floor_materialization`
+    /// `floor_typecheck_store_persist_cap_bytes`, so this reads THAT FILE and
+    /// fails if the two disagree. Its discriminating red is real: change either
+    /// side alone and this goes red.
     #[test]
     fn persist_cap_matches_modeled_authority() {
+        let authority = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dag/gunbc/floor/floor_materialization.dag");
+        let text = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
+            panic!("cannot read the modelled cap authority at {authority:?}: {e}")
+        });
+        let decl = "data floor_typecheck_store_persist_cap_bytes: ByteSize = byte_size(count: ";
+        let start = text.find(decl).unwrap_or_else(|| {
+            panic!(
+                "floor_typecheck_store_persist_cap_bytes is not declared in the shape this \
+                 lockstep reads; the realization and its authority can no longer be compared"
+            )
+        }) + decl.len();
+        let rest = &text[start..];
+        let end = rest
+            .find(')')
+            .expect("the modelled cap declaration is unterminated");
+        let modeled: u64 = rest[..end]
+            .trim()
+            .parse()
+            .expect("the modelled cap is not an integer");
         assert_eq!(
             persist_default_cap_bytes(),
-            8_589_934_592,
-            "floor_typecheck_store_persist_cap_bytes in dag/gunbc/floor/floor_materialization.dag"
+            modeled,
+            "the realization's default ceiling and gunbc.floor_materialization \
+             floor_typecheck_store_persist_cap_bytes disagree"
         );
     }
 }

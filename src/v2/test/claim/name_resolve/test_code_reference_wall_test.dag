@@ -159,8 +159,7 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
   wall_tree(
     root: wall_module_root(leaf_segment: ^peer, members: [
       wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
-      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture)),
-      wall_member(name: ^qualified_user, body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf]))
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
     ]),
     marked: [^peer_leaf]
   )
@@ -169,7 +168,7 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
 // The smallest module that carries every producer shape the supplied roots rely on, one member per
 // fixture builder: wall_member with a `true` body (`shared_fixture`), wall_member_returning_its_param
 // (`helper`, the one-parameter domain), and wall_member with a name-reference body carrying the test
-// marker (`peer_leaf`). Three members because the builders have three distinct bodies; the front
+// marker (`peer_leaf`), and wall_qualified (`qualified_user`). Four members because the builders have four distinct bodies; the front
 // end's cost grows with the source and this claim pays for one real tokenize, parse and normalize.
 // SINCE gunbc#11683 THERE IS NO SUPPLIED NODE HERE THAT NO SOURCE PRODUCES. A bare dotted body chain
 // now lowers to the qualified-name spine, so wall_qualified became producible the day that landed --
@@ -181,7 +180,8 @@ fn inhabitance_module() -> Outcome<NormalizedTree> {
     root: wall_module_root(leaf_segment: ^peer, members: [
       wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
       wall_member_returning_its_param(name: ^helper, param: ^leaf),
-      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture)),
+      wall_member(name: ^qualified_user, body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf]))
     ]),
     marked: [^peer_leaf]
   )
@@ -331,8 +331,9 @@ fn wall_qualified(segments: List<Symbol>) -> Node {
 
 // RED: a QUALIFIED path to another module's test fn is refused at the qualified-path door
 // (v2.compiler.resolve try_resolve_qualified_name_node), which binds by the whole path rather than a
-// bare name. v2 lowering does not yet carry a qualified path in a fn BODY (`= wall.peer.peer_leaf`
-// lowers to the atom `wall`; tracked as its own defect), so this supplies the node the door reads.
+// bare name. The node is SUPPLIED here because this claim's subject is the door, not the lowering
+// that produces the path -- and since gunbc#11683 that lowering is real, so the shape is joined to
+// its producer by `inhabitance_module`'s `qualified_user` member rather than standing alone.
 test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
   wall_resolve(
     subject_segment: ^serving,

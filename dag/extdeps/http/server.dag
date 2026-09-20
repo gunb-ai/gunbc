@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
   PathTemplateMatch, PathMatched, PathNotMatched,
   match_path_template,
+  ParsedPathTemplate, MalformedPathTemplate, parse_path_template,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -117,10 +118,40 @@ data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplicati
 data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
 data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
 
-// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
+// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set http_method_label below reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
   = KnownMethod { method: HttpMethod }
   | UnknownMethod { label: String }
+
+// THE BACKWARD READING OF THE SAME CLOSED SET, beside the forward one, because they are one grammar
+// read in two directions rather than two mappings that happen to agree (DESIGN section 4: emit
+// selects from the SAME rows backward -- the structural inverse, not a second emitter).
+//
+// IT WAS SPELLED THREE TIMES BEFORE THIS (review 68357): gunbc.node_http_server_emit
+// emit_http_method_label, gunbc.roadmap_serve http_method_label_join, and -- copied out of the
+// roadmap during the approval-broker extraction -- gunbc.auth.approval_broker_serve
+// broker_http_method_label_join. All three inlined the same seven arms while the forward reading
+// was already consumed from here, in the same files. The broker's copy was the sharpest: that
+// module's own annotation says the adapter "MOVED here; it was not copied", and this helper was
+// copied.
+fn http_method_label(method: HttpMethod) -> String {
+  match method {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    PATCH => "PATCH"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+  }
+}
+
+// THE 405 ALLOW SET, rendered once. Every serving adapter answers MethodNotAllowed by listing the
+// methods a path does admit, so the join is part of that answer rather than each adapter's own
+// formatting choice.
+fn http_method_label_join(methods: List<HttpMethod>) -> String {
+  join(map(methods, m => http_method_label(method: m)), ", ")
+}
 
 fn parse_http_method_label(label: String) -> HttpMethodParse {
   if label == "GET" { KnownMethod { method: GET } }
@@ -325,5 +356,78 @@ fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: S
     SelectedStatic { route: _ } => hit
     SelectedDynamic { handler: _, params: _ } => hit
     MethodNotAllowed { allowed: _ } => hit
+  }
+}
+
+// ── Building a table from authored route literals, fail-closed ───────────────────────────────
+// THIS FOLD USED TO HAVE ONE INSTANTIATION AND WAS SPELLED AT IT. It lived in
+// gunbc.roadmap_serve, monomorphic over that module's handler vocabulary, and the moment a second
+// serving process needed the same fail-closed construction the choice was to copy it or to lift
+// it. Copying would have been DESIGN section 2's duplicated work at the exact seam where a divergence
+// is invisible: two builds agree about malformed literals until one of them is edited.
+//
+// It belongs HERE rather than beside either consumer because it is the same layer as
+// serve_select_route -- it manipulates the route SHAPE and the path-template grammar and names no
+// handler. H stays the consumer's vocabulary, so this module still cannot see a concrete route.
+//
+// WHY IT REFUSES THE WHOLE TABLE ON THE FIRST BAD LITERAL (review 40286, the section 5 catch that
+// produced it): mapping a malformed template to an EMPTY template silently makes it a second
+// matcher for '/', so a typo in any literal becomes a wrong route rather than a loud one. The build
+// therefore folds to a typed, located refusal carrying the raw literal, the offending segment and
+// the reason, and a serving entry answers every request with that refusal until the literal is
+// fixed -- a loudly broken server, never a silently miswired one.
+type ServedRouteSpec<H> {
+  method: HttpMethod
+  raw: String
+  handler: H
+}
+
+type ServedRouteTableBuild<H>
+  = ServedRouteTableBuilt { table: ServedRouteTable<H> }
+  | ServedRouteTableBuildRefused { raw: String, segment: String, reason: String }
+
+type ServedRouteBuildRow<H>
+  = ServedRouteRowBuilt { route: ServedRoute<H> }
+  | ServedRouteRowRefused { raw: String, segment: String, reason: String }
+
+fn served_route_build_row<H>(spec: ServedRouteSpec<H>) -> ServedRouteBuildRow<H> {
+  match parse_path_template(raw: spec.raw) {
+    MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+      ServedRouteRowRefused { raw: r, segment: s, reason: why }
+    ParsedPathTemplate { template: tpl } =>
+      ServedRouteRowBuilt { route: DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
+  }
+}
+
+// Cost-shape per DESIGN section 6 bare-minimum-cost (review 40297 note on the fold this lifts: the
+// first cut grew the route list by concat inside a fold -- the copied-accumulator class that is
+// always fixed regardless of realized n): map (per-spec row) + a scalar first-refusal fold (no list
+// accumulation) + flat_map projection, linear by construction. The projection's refused arm
+// contributes nothing and is reached only in the refusal-free branch, so it is a projection, never
+// a fabricated value.
+fn serve_build_route_table<H>(specs: List<ServedRouteSpec<H>>) -> ServedRouteTableBuild<H> {
+  let rows = map(specs, spec => served_route_build_row(spec: spec))
+  let first_refusal = fold(rows, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => acc
+      Absent =>
+        match r {
+          ServedRouteRowRefused { raw: rr, segment: s, reason: why } =>
+            Present { value: ServedRouteTableBuildRefused { raw: rr, segment: s, reason: why } }
+          ServedRouteRowBuilt { route: _ } => Absent
+        }
+    }
+  )
+  match first_refusal {
+    Present { value: refusal } => refusal
+    Absent =>
+      ServedRouteTableBuilt {
+        table: ServedRouteTable {
+          routes: rows |> flat_map(r => match r {
+            ServedRouteRowBuilt { route: rt } => [rt]
+            ServedRouteRowRefused { raw: _, segment: _, reason: _ } => []
+          })
+        }
+      }
   }
 }
