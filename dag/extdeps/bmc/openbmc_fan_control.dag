@@ -180,12 +180,14 @@ type OpenBmcCollection<T>
 fn openbmc_collection_from_values<T>(
   values: List<T>,
 ) -> OpenBmcCollection<T> {
-  if values.length() == 0 {
-    OpenBmcCollectionZero
-  } else if values.length() == 1 {
-    OpenBmcCollectionOne { value: values.first() }
-  } else {
-    OpenBmcCollectionMany { values: values }
+  match values.first() {
+    Absent => OpenBmcCollectionZero
+    Present { value: head } =>
+      if values.length() == 1 {
+        OpenBmcCollectionOne { value: head }
+      } else {
+        OpenBmcCollectionMany { values: values }
+      }
   }
 }
 
@@ -299,19 +301,31 @@ fn openbmc_zone_failsafe_result(
   } else {
     let tokens = split(s: trim(remote.stdout), delimiter: " ")
       |> filter(token => trim(token) != "")
-    if tokens.length() != 2 || trim(tokens.first()) != "b" {
-      OpenBmcBoolRefused {
+    match tokens.first() {
+      Absent => OpenBmcBoolRefused {
         reason: "zone failsafe response does not have one typed boolean payload",
       }
-    } else {
-      let payload = trim(tokens.skip(n: 1).first())
-      if payload == "true" {
-        OpenBmcBoolObserved { value: true }
-      } else if payload == "false" {
-        OpenBmcBoolObserved { value: false }
-      } else {
-        OpenBmcBoolRefused { reason: "zone failsafe payload is not boolean" }
-      }
+      Present { value: tag } =>
+        match tokens.skip(n: 1).first() {
+          Absent => OpenBmcBoolRefused {
+            reason: "zone failsafe response does not have one typed boolean payload",
+          }
+          Present { value: raw_payload } =>
+            if tokens.length() != 2 || trim(tag) != "b" {
+              OpenBmcBoolRefused {
+                reason: "zone failsafe response does not have one typed boolean payload",
+              }
+            } else {
+              let payload = trim(raw_payload)
+              if payload == "true" {
+                OpenBmcBoolObserved { value: true }
+              } else if payload == "false" {
+                OpenBmcBoolObserved { value: false }
+              } else {
+                OpenBmcBoolRefused { reason: "zone failsafe payload is not boolean" }
+              }
+            }
+        }
     }
   }
 }
@@ -377,19 +391,19 @@ fn openbmc_disk_usage_result(
     OpenBmcByteSizeRefused { reason: reason }
   } else {
     let lines = split(s: trim(remote.stdout), delimiter: "\n")
-    if lines.length() < 2 {
-      OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
-    } else {
+    match lines.skip(n: 1).first() {
+      Absent => OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
+      Present { value: data_row } => {
       let fields = split(
-        s: trim(lines.skip(n: 1).first()),
+        s: trim(data_row),
         delimiter: " ",
       ) |> filter(field => trim(field) != "")
-      if fields.length() < 4 {
-        OpenBmcByteSizeRefused {
+      match fields.skip(n: 3).first() {
+        Absent => OpenBmcByteSizeRefused {
           reason: "disk usage data row has no available-kibibyte field",
         }
-      } else {
-        match parse_int(s: trim(fields.skip(n: 3).first())) {
+        Present { value: kib_field } =>
+        match parse_int(s: trim(kib_field)) {
           Absent =>
             OpenBmcByteSizeRefused {
               reason: "available-kibibyte field is not an integer",
@@ -403,6 +417,7 @@ fn openbmc_disk_usage_result(
               OpenBmcByteSizeObserved { value: byte_size(kibibytes * 1024) }
             }
         }
+      }
       }
     }
   }
@@ -1804,12 +1819,56 @@ fn openbmc_fan_controllers(
 fn openbmc_fan_controller_collection(
   values: List<OpenBmcFanController>,
 ) -> OpenBmcCollection<OpenBmcFanController> {
-  if values.length() == 0 {
-    OpenBmcCollectionZero
-  } else if values.length() == 1 {
-    OpenBmcCollectionOne { value: values.first() }
+  match values.first() {
+    Absent => OpenBmcCollectionZero
+    Present { value: head } =>
+      if values.length() == 1 {
+        OpenBmcCollectionOne { value: head }
+      } else {
+        OpenBmcCollectionMany { values: values }
+      }
+  }
+}
+
+
+type OpenBmcFiveScalars {
+  minimum: Int
+  zone_failsafe: Int
+  sensor_failsafe: Int
+  positive_hysteresis: Int
+  negative_hysteresis: Int
+}
+
+fn openbmc_five_scalars(scalars: List<Int>) -> OpenBmcFiveScalars? {
+  if scalars.length() != 5 {
+    Absent
   } else {
-    OpenBmcCollectionMany { values: values }
+    match scalars.first() {
+      Absent => Absent
+      Present { value: a } =>
+        match scalars.skip(n: 1).first() {
+          Absent => Absent
+          Present { value: b } =>
+            match scalars.skip(n: 2).first() {
+              Absent => Absent
+              Present { value: c } =>
+                match scalars.skip(n: 3).first() {
+                  Absent => Absent
+                  Present { value: d } =>
+                    match scalars.skip(n: 4).first() {
+                      Absent => Absent
+                      Present { value: e } =>
+                        Present {
+                          value: OpenBmcFiveScalars {
+                            minimum: a, zone_failsafe: b, sensor_failsafe: c,
+                            positive_hysteresis: d, negative_hysteresis: e,
+                          },
+                        }
+                    }
+                }
+            }
+        }
+    }
   }
 }
 
@@ -1819,23 +1878,23 @@ fn openbmc_fan_config_queries_rec(
   queries: List<OpenBmcFanConfigQuery>,
   built: List<Int>,
 ) -> OpenBmcIntegerListResult {
-  if queries.length() == 0 {
-    OpenBmcIntegerListObserved { values: built }
-  } else {
-    match openbmc_fan_config_integer(
-      session: session,
-      config_path: config_path,
-      query: queries.first(),
-    ) {
-      OpenBmcIntegerRefused { reason } => OpenBmcIntegerListRefused { reason: reason }
-      OpenBmcIntegerObserved { value } =>
-        openbmc_fan_config_queries_rec(
-          session: session,
-          config_path: config_path,
-          queries: queries.skip(n: 1),
-          built: append(built, items: [value]),
-        )
-    }
+  match queries.first() {
+    Absent => OpenBmcIntegerListObserved { values: built }
+    Present { value: query } =>
+      match openbmc_fan_config_integer(
+        session: session,
+        config_path: config_path,
+        query: query,
+      ) {
+        OpenBmcIntegerRefused { reason } => OpenBmcIntegerListRefused { reason: reason }
+        OpenBmcIntegerObserved { value } =>
+          openbmc_fan_config_queries_rec(
+            session: session,
+            config_path: config_path,
+            queries: queries.skip(n: 1),
+            built: append(built, items: [value]),
+          )
+      }
   }
 }
 
@@ -1893,28 +1952,35 @@ fn openbmc_fan_config_observe_one(
             OpenBmcIntegerListRefused { reason } =>
               OpenBmcFanConfigObservationRefused { reason: reason }
             OpenBmcIntegerListObserved { values: outputs } =>
-              if scalars.length() != 5 || readings.length() != outputs.length()
-                || scalars |> any(value => value < 0)
-                || outputs |> any(value => value < 0) {
-                OpenBmcFanConfigObservationRefused {
-                  reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
-                }
-              } else {
-                openbmc_fan_config_finish_observation(
-                  session: session,
-                  config_path: config_path,
-                  stepwise: OpenBmcSelectionOne {
-                    value: OpenBmcStepwiseController {
-                      minimum_duty: percent(scalars.first()),
-                      zone_failsafe_duty: percent(scalars.skip(n: 1).first()),
-                      sensor_failsafe_duty: percent(scalars.skip(n: 2).first()),
-                      positive_hysteresis: celsius_delta(scalars.skip(n: 3).first()),
-                      negative_hysteresis: celsius_delta(scalars.skip(n: 4).first()),
-                      readings: readings |> map(value => celsius(value)),
-                      outputs: outputs |> map(value => percent(value)),
-                    },
-                  },
-                )
+              match openbmc_five_scalars(scalars: scalars) {
+                Absent =>
+                  OpenBmcFanConfigObservationRefused {
+                    reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
+                  }
+                Present { value: five } =>
+                  if readings.length() != outputs.length()
+                    || scalars |> any(value => value < 0)
+                    || outputs |> any(value => value < 0) {
+                    OpenBmcFanConfigObservationRefused {
+                      reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
+                    }
+                  } else {
+                    openbmc_fan_config_finish_observation(
+                      session: session,
+                      config_path: config_path,
+                      stepwise: OpenBmcSelectionOne {
+                        value: OpenBmcStepwiseController {
+                          minimum_duty: percent(five.minimum),
+                          zone_failsafe_duty: percent(five.zone_failsafe),
+                          sensor_failsafe_duty: percent(five.sensor_failsafe),
+                          positive_hysteresis: celsius_delta(five.positive_hysteresis),
+                          negative_hysteresis: celsius_delta(five.negative_hysteresis),
+                          readings: readings |> map(value => celsius(value)),
+                          outputs: outputs |> map(value => percent(value)),
+                        },
+                      },
+                    )
+                  }
               }
           }
       }
