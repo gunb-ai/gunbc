@@ -74,7 +74,17 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
   }
 }
 
-// `module wall.<leaf_segment>` with `members`, grafted as normalize grafts a two-segment module.
+// `module wall.<leaf_segment>` with `members`, grafted as normalize grafts a two-segment module. The
+// leaf body is the graft's body conj: its identity projection first, the producer marker
+// namespace_graft_module_body_marker_node (v2.compiler.namespace_graft namespace_graft_build_body_conj,
+// gunbc#11694), then the members.
+fn wall_module_body(members: List<Edge>) -> Node {
+  wall_conj(children: concat(
+    [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    members
+  ))
+}
+
 fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
   wall_conj(children: [
     Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
@@ -83,7 +93,7 @@ fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
       target: wall_conj(children: [
         Edge {
           label: Named { name: ^wall },
-          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_conj(children: members) }])
+          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_module_body(members: members) }])
         }
       ])
     }
@@ -457,4 +467,3 @@ test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
     peer: peer_test_module()
   ) == "ACCEPTED"
 }
-
