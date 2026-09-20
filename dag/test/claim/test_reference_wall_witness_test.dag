@@ -1,0 +1,112 @@
+module test.claim.test_reference_wall_witness
+
+import gunbc.compile_census_probe { blocking_subject_count_for, any_class_count_for }
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTING EVIDENCE for the v1 test-reference wall (v1.compiler.compile
+// test_reference_diagnostics). Its first evidence was placed in compiler_tests, a #[cfg(test)]
+// module no CI step runs (review 67224): the admitted arm was exercised by the real corpus, and the
+// two BLOCKING arms -- the wall's whole claim -- executed nowhere. These rows ask the compiler
+// through the source-string census the floor discovers, so the refusals run on every required run.
+//
+// The subject of a blocking test-reference diagnostic is the referrer, `module.declaration`, so
+// each red names the exact declaration that must refuse rather than counting the class anywhere.
+
+data rollup_source: String = "module wall.fixture.rollup\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\ntest fn rollup() -> Bool { leaf() }\nfn helper() -> Bool { leaf() }\n"
+
+data function_value_source: String = "module wall.fixture.value\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn pick() -> fn() -> Bool { leaf }\n"
+
+data clean_source: String = "module wall.fixture.clean\nimport std.types { Bool }\nfn helper() -> Bool { true }\ntest fn uses_helper() -> Bool { helper() }\n"
+
+// THE PAID-DOWN ARM's fixture. It names `wall.fixture.paid_down`, a module that exists only here and
+// in the wall's own control row (v1.compiler.compile test_reference_debt): a fixture that reproduced
+// a real corpus module would collide with the loaded corpus on the floor and the census would refuse
+// rather than answer, which is how the first spelling of this row failed in CI while passing locally.
+// The row declares one reference; this source has none, so the equality budget refuses in the
+// paid-down direction.
+data paid_down_source: String = "module wall.fixture.paid_down\nimport std.types { Bool }\nfn reader() -> Bool { true }\n"
+
+// DISCRIMINATING RED: a test that calls a test refuses, at the calling test.
+test fn a_test_calling_a_test_is_refused() -> Bool {
+  blocking_subject_count_for(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.rollup") == 1
+}
+
+// DISCRIMINATING RED: serving code calling a test refuses too.
+test fn serving_code_calling_a_test_is_refused() -> Bool {
+  blocking_subject_count_for(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.helper") == 1
+}
+
+// DISCRIMINATING RED: a test taken as a function value is a reference.
+test fn a_test_used_as_a_value_is_refused() -> Bool {
+  blocking_subject_count_for(source: function_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.value.pick") == 1
+}
+
+// ACCEPTED POSITIVE CONTROL: a test calling an ordinary fn draws no test-reference diagnostic at
+// any severity, so the reds above mean "a test was referenced" and not "a test was compiled".
+test fn a_test_calling_an_ordinary_fn_is_admitted() -> Bool {
+  any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenced") == 0
+    && any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenceAdmitted") == 0
+    && any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenceRowOrphaned") == 0
+}
+
+// THE RATCHET: a ledger row whose references are gone refuses until the row is deleted.
+test fn a_paid_down_ledger_row_is_refused() -> Bool {
+  any_class_count_for(source: paid_down_source, wanted_class: "TestCodeReferenceBudgetMismatch") == 1
+}
+
+// A test taken as a PARAMETER DEFAULT is a reference. The body walk alone never visits a default, so
+// this row is the red for the traversal that covers params and type children (review of #11505).
+data default_value_source: String = "module wall.fixture.default\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(cb: fn() -> Bool = leaf) -> Bool { cb() }\n"
+
+// DISCRIMINATING RED: a parameter default that names a test refuses, at the declaration holding it.
+test fn a_test_as_a_parameter_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: default_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default.helper") == 1
+}
+
+// A test taken as a QUALIFIED value is a reference. Inference turns `module.leaf` into an ExprVar
+// whose name is already the declaration key, which the bare-name lookup missed (review 67685).
+data qualified_value_source: String = "module wall.fixture.qualified\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn pick() -> fn() -> Bool { wall.fixture.qualified.leaf }\n"
+
+// The same reference written as a PARAMETER DEFAULT, where v1 retains an uninferred field-access chain.
+data qualified_default_source: String = "module wall.fixture.qualified_default\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(cb: fn() -> Bool = wall.fixture.qualified_default.leaf) -> Bool { cb() }\n"
+
+// DISCRIMINATING RED: a qualified test value refuses, at the declaration that takes it.
+test fn a_qualified_test_value_is_refused() -> Bool {
+  blocking_subject_count_for(source: qualified_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified.pick") == 1
+}
+
+// DISCRIMINATING RED: a qualified test named as a parameter default refuses.
+test fn a_qualified_test_as_a_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: qualified_default_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default.helper") == 1
+}
+
+// A test CALLED in a default is a reference. A default is not inferred, so its call carries no
+// resolved target and the callee lives on the call node's name, not in its children (review 67713).
+data default_call_source: String = "module wall.fixture.default_call\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(x: Bool = leaf()) -> Bool { x }\n"
+
+// The QUALIFIED call in a default, which parses as a method call on the module path.
+data qualified_default_call_source: String = "module wall.fixture.qualified_default_call\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(x: Bool = wall.fixture.qualified_default_call.leaf()) -> Bool { x }\n"
+
+// DISCRIMINATING RED: a test called in a parameter default refuses.
+test fn a_test_called_in_a_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default_call.helper") == 1
+}
+
+// DISCRIMINATING RED: a qualified test called in a parameter default refuses.
+test fn a_qualified_test_called_in_a_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: qualified_default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default_call.helper") == 1
+}
+
+// The CONTROL row's identity admits nothing: a source that inhabits it exactly -- the same module,
+// referrer and target, with the declared count -- still refuses at the referrer (side-chat review
+// of 504596b). Without this the synthetic fixture row would be a standing admission any author
+// could reach by naming a module after it.
+data control_identity_source: String = "module wall.fixture.paid_down\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn reader() -> Bool { leaf() }\n"
+
+// DISCRIMINATING RED: a reference on the control row's exact identity is refused, not admitted.
+test fn a_reference_on_the_control_identity_is_refused() -> Bool {
+  blocking_subject_count_for(source: control_identity_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.paid_down.reader") == 1
+}
