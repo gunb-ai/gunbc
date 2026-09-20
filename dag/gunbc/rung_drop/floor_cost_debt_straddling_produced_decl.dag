@@ -25,6 +25,8 @@ data floor_cost_debt_straddling_produced_decl: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,

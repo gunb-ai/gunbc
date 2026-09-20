@@ -53,6 +53,8 @@ data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

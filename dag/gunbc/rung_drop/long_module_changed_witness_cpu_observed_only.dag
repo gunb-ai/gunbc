@@ -63,6 +63,8 @@ data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

@@ -67,6 +67,8 @@ data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

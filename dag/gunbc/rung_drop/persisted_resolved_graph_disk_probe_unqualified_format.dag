@@ -39,6 +39,8 @@ data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

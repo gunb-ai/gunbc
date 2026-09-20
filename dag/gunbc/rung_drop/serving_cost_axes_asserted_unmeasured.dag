@@ -56,6 +56,8 @@ data serving_cost_axes_asserted_unmeasured: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,

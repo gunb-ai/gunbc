@@ -37,6 +37,8 @@ data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

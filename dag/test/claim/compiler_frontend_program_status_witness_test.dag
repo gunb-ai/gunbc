@@ -337,6 +337,8 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     subject: "fixture",
     declared: "2026-09-12",
     standing: Retired { trigger_fired: "fixture" as NonEmptyStr },
+    amendments: [],
+
     declaration: TypedDeclaration {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
@@ -350,6 +352,8 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     subject: retired.subject,
     declared: retired.declared,
     standing: Standing,
+    amendments: [],
+
     declaration: retired.declaration,
   }
   let open = standing_rung_drop_outstanding(drop: standing)

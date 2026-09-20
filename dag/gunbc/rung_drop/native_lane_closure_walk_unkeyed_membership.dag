@@ -46,6 +46,8 @@ data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
   standing: Retired {
     trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr
   },
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

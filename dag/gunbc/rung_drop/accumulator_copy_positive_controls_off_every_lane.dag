@@ -57,6 +57,8 @@ data accumulator_copy_positive_controls_off_every_lane: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

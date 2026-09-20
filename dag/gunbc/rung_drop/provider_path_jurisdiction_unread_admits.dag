@@ -152,6 +152,8 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,

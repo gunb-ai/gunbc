@@ -33,6 +33,8 @@ data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

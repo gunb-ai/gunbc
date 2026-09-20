@@ -8,6 +8,10 @@ import gunbc.rung_drop {
   RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
   rung_drop_declaration_message, rung_drop_off_ladder_judgment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
+  RungDropAmendment, TriggerSuperseded,
+}
+import gunbc.rung_drop.namespace_wave_admission_wall_removed {
+  namespace_wave_admission_wall_removed,
 }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
@@ -20,6 +24,8 @@ data control_rung_drop: RungDrop = RungDrop {
   subject: "control.subject",
   declared: "2026-01-01",
   standing: Standing,
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
@@ -92,4 +98,62 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// AN AMENDMENT-FREE ROW RENDERS THE BYTES IT RENDERED BEFORE THE FIELD EXISTED. The control carries
+// no amendment, so nothing may be appended to it -- this is the assertion that would red if the
+// amendment renderer emitted a separator, a header or an empty-list placeholder for every row in
+// the roster.
+test fn an_unamended_row_renders_no_amendment_text() -> Bool {
+  let m = rung_drop_declaration_message(d: control_rung_drop)
+  !contains_text(haystack: m, needle: " AMENDED ")
+    && !contains_text(haystack: m, needle: "restoration trigger stands whole")
+}
+
+// THE LIVE AMENDMENT REACHES THE ONE RENDERING, WHICH IS WHAT THE PROJECTION READS. This is the
+// class the field was added for: the same sentence was hand-written into the generated roster and
+// deleted by the next regeneration, twice. If it stops being derived, this reds rather than a lane
+// discovering it as an unexplained deletion in a diff.
+test fn the_namespace_wave_amendment_is_rendered_from_the_row() -> Bool {
+  let m = rung_drop_declaration_message(d: namespace_wave_admission_wall_removed)
+  contains_text(haystack: m, needle: " AMENDED 2026-09-20: ")
+    && contains_text(haystack: m, needle: "gunbc#11704")
+    && contains_text(haystack: m, needle: "prices the gate ITSELF")
+    && contains_text(haystack: m, needle: "The restoration trigger stands whole.")
+}
+
+// THE TRIGGER'S STANDING IS READ FROM THE ARM AND NOT ASSUMED. A renderer that printed "stands
+// whole" for every amendment would satisfy the assertion above; this control supersedes the trigger
+// and must render the other sentence, so the constant-answer renderer is caught. DESIGN §4b(3)
+// retires a drop by its trigger and by nothing else, which is why this is the arm an amendment
+// cannot decline to answer.
+data superseding_amendment: RungDropAmendment = RungDropAmendment {
+  amended: "2026-01-02" as NonEmptyStr,
+  occasion: "control.amendment.occasion",
+  ruling: "control.amendment.ruling",
+  trigger: TriggerSuperseded { superseding_trigger: "control.amendment.superseding" },
+}
+
+data amended_control_rung_drop: RungDrop = RungDrop {
+  identity: "control.amended.identity" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+
+  amendments: [superseding_amendment],
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: ["control.population.one"],
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+test fn a_superseding_amendment_does_not_render_as_standing_whole() -> Bool {
+  let m = rung_drop_declaration_message(d: amended_control_rung_drop)
+  contains_text(haystack: m, needle: "The restoration trigger is superseded by: control.amendment.superseding.")
+    && !contains_text(haystack: m, needle: "stands whole")
+    && contains_text(haystack: m, needle: "control.amendment.occasion")
 }

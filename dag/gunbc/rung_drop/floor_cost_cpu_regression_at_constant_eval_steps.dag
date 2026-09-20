@@ -44,6 +44,8 @@ data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

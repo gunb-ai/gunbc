@@ -17,6 +17,8 @@ data deleted_cadence_reference_drop: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,

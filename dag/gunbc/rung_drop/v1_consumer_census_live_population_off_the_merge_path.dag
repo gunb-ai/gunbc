@@ -41,6 +41,8 @@ fn v1_consumer_census_live_population_off_the_merge_path() -> RungDrop {
     subject: "the v1 consumer census's live population -- v1_consumer_population(), v1_blocking_consumer_count() and the bankruptcy admission gate over them -- executed on the merge path",
     declared: "2026-09-11",
     standing: Standing,
+    amendments: [],
+
     declaration: TypedDeclaration {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,

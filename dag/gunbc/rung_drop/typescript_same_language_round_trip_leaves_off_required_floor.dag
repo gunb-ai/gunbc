@@ -21,6 +21,8 @@ data typescript_same_language_round_trip_leaves_off_required_floor: RungDrop = R
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

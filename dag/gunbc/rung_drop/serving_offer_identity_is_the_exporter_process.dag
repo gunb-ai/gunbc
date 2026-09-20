@@ -46,6 +46,8 @@ data serving_offer_identity_is_the_exporter_process: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,

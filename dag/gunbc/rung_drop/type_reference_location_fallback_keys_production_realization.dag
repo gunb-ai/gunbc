@@ -46,6 +46,8 @@ data type_reference_location_fallback_keys_production_realization: RungDrop = Ru
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,

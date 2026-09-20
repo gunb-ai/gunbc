@@ -61,6 +61,8 @@ data self_host_emit_derisk_claim_unobserved: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

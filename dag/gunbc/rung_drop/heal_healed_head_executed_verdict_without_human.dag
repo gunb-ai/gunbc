@@ -18,6 +18,8 @@ data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

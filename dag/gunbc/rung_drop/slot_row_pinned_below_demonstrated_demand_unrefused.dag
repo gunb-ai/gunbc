@@ -57,6 +57,8 @@ data slot_row_pinned_below_demonstrated_demand_unrefused: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

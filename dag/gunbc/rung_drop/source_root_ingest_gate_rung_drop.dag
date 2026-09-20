@@ -46,6 +46,8 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,

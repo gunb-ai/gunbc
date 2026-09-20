@@ -37,6 +37,8 @@ data live_deploy_apply_render_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   standing: Standing,
 
+  amendments: [],
+
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

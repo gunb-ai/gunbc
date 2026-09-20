@@ -301,12 +301,46 @@ type RungDropDeclaration
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
 
+// A LATER RULING THAT AMENDS A STANDING DROP ROW. THE ROW IS A RECORD OF AN EVENT AT A DATE, AND
+// THE WORLD MOVES UNDER IT. This row's occasion is the one that made the gap visible: the
+// namespace-wave-admission wall was deleted on 2026-09-19, and the carrier redesign that IS
+// restoration half (1) had landed hours earlier -- so a reader arriving at the trigger without
+// that fact concludes half (1) has fired and the row is half-retired. The operator's ruling that
+// it has not was written into `docs/design-rung-drops.md` BY HAND, because this carrier had no
+// field for it; the next regeneration deleted it, twice costing a lane the diff (gunbc#11732
+// reverted it, gunbc#11786 was left holding only the deletion). That is DESIGN section 6's manual
+// application committed as source, and the authority-side repair is this field.
+//
+// WHY IT IS NOT A COMMENTARY FIELD, which is the shape this would collapse into if left untyped.
+// The dangerous amendment is the one that moves the trigger, because DESIGN section 4b(3) says a
+// drop is retired BY ITS TRIGGER AND BY NOTHING ELSE -- so an amendment that quietly narrowed a
+// trigger would retire a drop through prose. `AmendedTriggerStanding` therefore makes that the one
+// question an amendment cannot decline to answer: it either leaves the trigger whole or states the
+// trigger that supersedes it, in the same field a reader of the roster already reads.
+//
+// AN ANNOTATION IS NOT THIS. `gunbc.rung_drop.namespace_wave_admission_wall_removed` carries the
+// same event as a `//` note, and DESIGN section 4c is explicit that a ruling, receipt or citation
+// belongs in a typed carrier rather than in commentary: no Accepted program can read an
+// annotation, so the projection cannot render one and the roster cannot count one. The note stays
+// as the reasoning about the row's shape; the ruling moves here.
+type AmendedTriggerStanding
+  = TriggerStandsWhole
+  | TriggerSuperseded { superseding_trigger: String }
+
+type RungDropAmendment {
+  amended: NonEmptyStr
+  occasion: String
+  ruling: String
+  trigger: AmendedTriggerStanding
+}
+
 type RungDrop {
   identity: NonEmptyStr
   subject: String
   declared: String
   standing: RungDropStanding
   declaration: RungDropDeclaration
+  amendments: List<RungDropAmendment>
 }
 
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
@@ -314,7 +348,7 @@ type RungDrop {
 // drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
 // something that stopped being true. The prose arm renders as its own paragraph, which IS its
 // declaration text -- not a fabricated reconstruction of fields it does not have.
-fn rung_drop_declaration_message(d: RungDrop) -> String {
+fn rung_drop_declaration_body(d: RungDrop) -> String {
   match d.declaration {
     TypedDeclaration {
       previous: p, temporary: t, reason: rs, population: pop, restoration_trigger: rt
@@ -338,6 +372,31 @@ fn rung_drop_reason_label(r: RungDropReason) -> String {
     DeletedWithoutReplacement => "deleted without replacement"
     ReplacementStaged { replacement: r2 } => concat("replacement staged: ", r2)
   }
+}
+
+// ONE AMENDMENT, RENDERED. It opens with its date because the row's own `declared` date is what a
+// reader is holding when they reach it, and it closes with the trigger's standing because that is
+// the only part of an amendment that can change what retires the row.
+fn rung_drop_amendment_message(a: RungDropAmendment) -> String {
+  concat(
+    concat(concat(" AMENDED ", (a.amended as String)), concat(": ", a.occasion)),
+    concat(concat(" ", a.ruling), match a.trigger {
+      TriggerStandsWhole => " The restoration trigger stands whole."
+      TriggerSuperseded { superseding_trigger: t } =>
+        concat(" The restoration trigger is superseded by: ", concat(t, "."))
+    })
+  )
+}
+
+// THE DECLARATION AND ITS AMENDMENTS ARE ONE PARAGRAPH, so every consumer of the one rendering --
+// the projected roster and the ledger-row coherence join both -- carries them without a second
+// fold. Each amendment renders with its own leading space and the join adds none, so a row with no
+// amendments renders exactly the bytes it did before this field existed.
+fn rung_drop_declaration_message(d: RungDrop) -> String {
+  concat(
+    rung_drop_declaration_body(d: d),
+    join(map(d.amendments, a => rung_drop_amendment_message(a: a)), "")
+  )
 }
 
 // WHETHER THE ROW SITS OFF THE LADDER, AS A THREE-WAY JUDGMENT RATHER THAN A Bool. A prose row does
