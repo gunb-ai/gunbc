@@ -20,7 +20,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  witnesses:
+  compiler:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     permissions:
@@ -126,3 +126,19 @@ jobs:
           if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
+  witnesses:
+    runs-on: ubuntu-24.04-arm
+    needs: [compiler, clippy]
+    timeout-minutes: 5
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Every required lane must have succeeded
+        run: |
+          echo "required lanes: compiler=$COMPILER clippy=$CLIPPY"
+          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log" >&2; exit 1; fi
+          if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)" >&2; exit 1; fi
+        env:
+          COMPILER: ${{ needs.compiler.result }}
+          CLIPPY: ${{ needs.clippy.result }}
