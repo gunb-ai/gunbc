@@ -793,12 +793,33 @@ fn runner_host_file_standing_of_report(report: RemoteFileComparisonReport) -> Ru
   }
 }
 
-// THE PARENT LISTING IS READ ON EVERY OBSERVATION, not only when the metadata read fails, because
-// the classifier below is total over both inputs and a lazily-supplied arm would leave one of its
-// outcomes uninhabited by production (DESIGN section 3c). The cost is one `ls` per desired file --
-// two per host -- against a converge that already makes several round trips per file, and the read
-// is what makes absence establishable at all.
-//
+// THE PARENT IS ENUMERATED ONLY WHEN THE READ FAILED, because that is the only outcome whose
+// meaning the parent decides. `entry_presence` is a remote leg -- `ls -1 -A --` of the parent over
+// the same transport, recursing up the ancestor chain when a listing refuses -- so asking it beside
+// a read that already answered buys a standing the classifier discards (DESIGN section 2, and
+// section 6's bare minimum cost). Both of the classifier's parent-dependent outcomes stay inhabited
+// by production, because this arm is the only route that can reach them (DESIGN section 3c).
+fn observe_runner_host_file_path(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  path: String,
+  reading: RunnerHostFileMetadataReading,
+) -> RunnerHostFilePathStanding
+  uses net: Network
+{
+  match reading {
+    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
+    HostFileMetadataUnread { cause: _ } =>
+      classify_host_file_path(
+        reading: reading,
+        parent: entry_presence(
+          arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } },
+          path: path,
+        ),
+      )
+  }
+}
+
 // THE PLAN'S "IDENTICAL" AND THE APPLY'S "CONVERGED" ARE ONE JUDGMENT OVER ONE LEG. The comparison is
 // typed_remote_file_write's own far-side `cmp -s -` with the declared bytes on stdin, classified by
 // its own exit vocabulary, so an observation cannot call a file converged that the write's read-back
@@ -813,12 +834,11 @@ fn observe_runner_host_file_content(
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_file_metadata_probe_argv(path: file.path as String)) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
     TypedArgvExecConverged { result: metadata } =>
-      match runner_host_file_settled_standing(st: classify_host_file_path(
+      match runner_host_file_settled_standing(st: observe_runner_host_file_path(
+        subject: subject,
+        context: context,
+        path: file.path as String,
         reading: classify_host_file_metadata(exit_code: metadata.exit_code, stdout: metadata.stdout, stderr: metadata.stderr),
-        parent: entry_presence(
-          arm: OverTransport { transport: FleetSsh { target: subject.target, context: context } },
-          path: file.path as String,
-        ),
       )) {
         Present { value: settled } => settled
         Absent =>
