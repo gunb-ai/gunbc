@@ -21,7 +21,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // and every callee and constructor spelling in every reached body is collected.
 //
 // WHAT IT ESTABLISHES: no reached body spells a mutating bare call -- the credential mint, store and
-// rotate helpers, the host-OS execution legs, the SSH transports.
+// rotate helpers, the host-OS execution legs, the SSH transports. The pool spans the route's own
+// modules AND the two credential modules it calls into (gunbc.auth.netrc_binding,
+// gunbc.auth.access_token_source), because the walk cannot follow a callee whose module is absent
+// from the pool: enumerating fewer modules than the route reaches narrows the claim silently, which
+// is what review 69184 found in this witness's first version.
 //
 // WHAT IT DOES NOT: a mutation written as a SERVICE call is invisible here, and that gap is pinned
 // by a_service_call_mutation_is_invisible_to_this_instrument below rather than left to prose.
@@ -37,6 +41,8 @@ data health_closure_modules: List<String> = [
   "gunbc.bmc_health_reader",
   "extdeps.bmc.redfish_telemetry",
   "extdeps.bmc.openbmc_message_registry",
+  "gunbc.auth.netrc_binding",
+  "gunbc.auth.access_token_source",
 ]
 
 data health_pool_files: List<String> = [
@@ -49,6 +55,8 @@ data health_pool_files: List<String> = [
   "dag/gunbc/bmc/bmc_health_reader.dag",
   "dag/extdeps/bmc/redfish_telemetry.dag",
   "dag/extdeps/bmc/openbmc_message_registry.dag",
+  "dag/gunbc/auth/netrc_binding.dag",
+  "dag/gunbc/auth/access_token_source.dag",
 ]
 
 data health_fixture_module: String = "test.fixture.health_read_only.mutation_probe"
@@ -121,12 +129,23 @@ test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool {
     && any(found, f => f == "SshShell")
 }
 
-// THE POSITIVE CONTROL. observe_host_health is the collector's own entry, three call levels below
-// fleet_health_check, and health_redfish_read is the one function that performs a Redfish read, so a
-// walk that stopped at the entry body fails here.
-test fn the_walk_reaches_the_collector() -> Bool {
+// THE POSITIVE CONTROL, AND IT NAMES THE MODULES THE WALK MUST ENTER RATHER THAN ONLY THE ONES IT
+// OBVIOUSLY WOULD (review 69184). The pool bounds the walk, so a callee in an unlisted module is
+// never followed and its spellings are never collected -- which is how the first version of this
+// witness reported the closure clean while the two modules that actually touch the filesystem,
+// gunbc.auth.netrc_binding (mktemp, owner-only write, remove) and gunbc.auth.access_token_source
+// (token file read, gcloud token print), sat outside its pool. Both are in the pool now, and this
+// control asserts the walk reaches a declaration in each: place_netrc_binding_privately is where the
+// reader credential is written, shred_netrc_binding is where it is removed, and ensure_access_token
+// is where the run obtains its Secret Manager token. A pool that loses one of them fails here
+// instead of silently narrowing the claim above.
+test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool {
   let names = map(reached_decls(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files), d => d.name)
-  any(names, n => n == "observe_host_health") && any(names, n => n == "health_redfish_read")
+  any(names, n => n == "observe_host_health")
+    && any(names, n => n == "health_redfish_read")
+    && any(names, n => n == "place_netrc_binding_privately")
+    && any(names, n => n == "shred_netrc_binding")
+    && any(names, n => n == "ensure_access_token")
 }
 
 // THE BLIND SPOT, EXECUTED RATHER THAN PROMISED (DESIGN section 4b: ask whether the check's RED is
