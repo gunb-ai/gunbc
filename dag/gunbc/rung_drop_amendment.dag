@@ -25,6 +25,25 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired }
 // explicit that a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE. The sentence is therefore
 // DERIVED from the row's own standing at render time and is authored nowhere. An amendment states
 // what happened in the world and what it bears on; it does not get a vote on the declaration.
+//
+// THE BOUNDARY THAT LEAVES, STATED BECAUSE THE TYPE CANNOT STATE IT. The derivation above is honest
+// for one class of amendment and one only: a later ruling that bears on a standing drop WITHOUT
+// MOVING ITS RESTORATION TRIGGER. A ruling that SUPERSEDES the trigger -- replacing the condition
+// that retires the row -- has no representation here, and standing cannot stand in for it: such a
+// row is still `Standing`, so `standing_sentence` would close it with "the restoration trigger above
+// stands whole", which would be FALSE. That is the one thing this carrier can say wrongly.
+//
+// It is left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDES A TRIGGER TODAY,
+// and an arm with no instance is a constructor that constructs nothing -- the decoration DESIGN
+// section 4b names at the top rung, permanently green and worse than absent because it would be
+// cited as coverage. What arrives with the first real superseding ruling is an authored arm carrying
+// THE SUPERSEDING TRIGGER ITSELF (nobody can derive a new trigger from a row's standing), the
+// closing sentence branching on its presence, and a witness whose red is a superseded row rendered
+// as though its trigger stood. The asymmetry is the design: supersession is authored because it
+// carries content; "unchanged" is the ABSENCE of that claim and stays derived. Until then, an
+// amendment that would move a trigger does not belong in this roster -- it belongs in the
+// declaration, edited by the change that rules it, and this paragraph is what says so to the next
+// lane rather than leaving them to splice prose into the projection again.
 
 // WHY IT IS A SEPARATE CARRIER RATHER THAN A FIELD ON `RungDrop`. The precedent is inside
 // gunbc.rung_drop itself: gunbc.deleted_cadence_reference_census carried `lost_with` BESIDE a drop
