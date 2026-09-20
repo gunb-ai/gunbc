@@ -7,8 +7,33 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
   continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
 }
+import gunbc.roadmap.roadmap_submission {
+  WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+  SubmissionCapture, submission_digest,
+  CaptureForHead, CaptureAbsent, CaptureUnreadable,
+}
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+}
+
+fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
+  CaptureForHead {
+    capture: SubmissionCapture {
+      head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
+      scm_commit_ordinal: 3,
+      digest: submission_digest(submission: submission),
+      submission: submission,
+    },
+  }
+}
+
+fn ready_capture() -> CaptureForHead {
+  capture_for(submission: WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "implemented the change and ran the acceptance route",
+    limitations: "no soak",
+  })
 }
 
 fn failed_prior() -> PriorAttemptFacts {
@@ -16,6 +41,7 @@ fn failed_prior() -> PriorAttemptFacts {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     worker_terminal: true,
+    capture: ready_capture(),
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag" } },
     review: none,
     goal_audit: none,
@@ -48,6 +74,7 @@ test fn a_green_verdict_starts_fresh() -> Bool {
     attempt_key: p.attempt_key,
     branch: p.branch,
     worker_terminal: true,
+    capture: ready_capture(),
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } },
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
@@ -63,9 +90,9 @@ test fn a_green_verdict_starts_fresh() -> Bool {
 test fn a_green_verification_with_changes_requested_continues_and_a_pending_review_holds() -> Bool {
   let p = failed_prior()
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
-  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified,
+  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified,
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none }
-  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified,
+  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified,
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none }
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
@@ -106,9 +133,9 @@ test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_hold
   let p = failed_prior()
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
   let approved = Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "all approved" } }
-  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified, review: approved,
+  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified, review: approved,
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the check could pass with the goal unmet" } } }
-  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified, review: approved,
+  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified, review: approved,
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } } }
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
@@ -119,4 +146,134 @@ test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_hold
     _ => false
   }
   a && b
+}
+
+// A PRIOR WHOSE CAPTURE DECLARES NON-READY, with the verification segment still pending -- the
+// production shape of attempt cd172fe81b806160: the worker ended truthfully blocked, the belt
+// bound the capture, and a segment-only reading answered Fresh, discarding the implementation.
+fn declared_prior(readiness_explanation: WorkerSubmission) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worker_terminal: true,
+    capture: capture_for(submission: readiness_explanation),
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
+    review: none,
+    goal_audit: none,
+  }
+}
+
+fn blocked_prior() -> PriorAttemptFacts {
+  declared_prior(readiness_explanation: WorkerSubmission {
+    readiness: SubmissionBlocked,
+    explanation: "the acceptance run was still in flight when the budget died",
+    limitations: "acceptance unconfirmed",
+  })
+}
+
+// DISCRIMINATING: a terminal prior whose capture declares blocked continues on the prior branch at
+// the next turn with the worker's explanation leading the brief -- never a fresh start from base.
+test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool {
+  match continuation_decision(prior: Present { value: blocked_prior() }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationContinue { origin } =>
+      attempt_origin_turn(origin: origin) == 2
+        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared blocked: the acceptance run was still in flight when the budget died")
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "turn 2 of 3")
+    _ => false
+  }
+}
+
+// DISCRIMINATING: needs-context is the same unfinished shape with the worker's own account, and
+// continues the same way.
+test fn a_needs_context_submission_continues_with_its_explanation_carried() -> Bool {
+  let p = declared_prior(readiness_explanation: WorkerSubmission {
+    readiness: SubmissionNeedsContext,
+    explanation: "the contract does not say which artifact the lane renders",
+    limitations: "",
+  })
+  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnKnown { turn: 1 }) {
+    ContinuationContinue { origin } =>
+      attempt_origin_turn(origin: origin) == 2
+        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "declared needs-context: the contract does not say which artifact the lane renders")
+    _ => false
+  }
+}
+
+// DISCRIMINATING: a terminal prior with no capture at its head yielded -- the belt's commit was
+// preservation only -- and the next turn continues from the prior branch to finish and submit.
+test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
+  let p = PriorAttemptFacts {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worker_terminal: true,
+    capture: CaptureAbsent,
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
+    review: none,
+    goal_audit: none,
+  }
+  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationContinue { origin } =>
+      attempt_origin_turn(origin: origin) == 2
+        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "preservation only")
+    _ => false
+  }
+}
+
+// RED CONTROL: a ready capture is a candidate, and a candidate is verification's to judge -- the
+// decision starts fresh with the standing reason and NEVER continues past an unjudged candidate,
+// so a fabricated ready submission cannot route a lineage around the verify gate.
+test fn a_ready_candidate_starts_fresh_and_never_continues() -> Bool {
+  let p = declared_prior(readiness_explanation: WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "implemented the change and ran the acceptance route",
+    limitations: "",
+  })
+  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationFresh { reason } => string_contains(s: reason, pattern: "has not been verified yet")
+    _ => false
+  }
+}
+
+// DISCRIMINATING: the capture arm pays the same two refusals as a failed verdict -- an unreadable
+// turn file is never guessed as turn 1, and a lineage at the cap refuses with the cap named.
+test fn a_blocked_submission_at_the_cap_or_with_an_unreadable_turn_refuses() -> Bool {
+  let at_cap = continuation_decision(
+    prior: Present { value: blocked_prior() },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  )
+  let unreadable = continuation_decision(
+    prior: Present { value: blocked_prior() },
+    prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
+  )
+  match at_cap {
+    ContinuationRefused { reason } =>
+      string_contains(s: reason, pattern: join([" of ", to_string(value: continuation_turn_cap), " turns"], ""))
+        && string_contains(s: reason, pattern: "blocked")
+        && match unreadable {
+          ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// DISCRIMINATING: a capture that cannot be established is refused, never read as a yield and
+// never as a candidate -- the decision does not guess over possibly-committed work.
+test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
+  let p = PriorAttemptFacts {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worker_terminal: true,
+    capture: CaptureUnreadable { reason: "the capture record does not decode" },
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
+    review: none,
+    goal_audit: none,
+  }
+  match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
+    _ => false
+  }
 }

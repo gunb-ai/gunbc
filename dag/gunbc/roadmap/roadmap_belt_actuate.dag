@@ -1901,6 +1901,10 @@ fn belt_actuate_spawn_exec_modeled(
 // ledger the commit and verify passes read, so the decision sees exactly the provider state and
 // verification segment the dashboard shows; an unobservable ledger refuses here as it does there,
 // because a spawn that cannot tell whether committed work exists must not start over on top of it.
+// The capture observation is the same head-grain read the verify gate makes: a terminal worker
+// whose submission declared blocked or needs-context, or whose commit was preservation only, is
+// unfinished work the next turn continues from the prior branch -- not a candidate, and not a
+// reason to start over from base.
 fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
@@ -1915,6 +1919,7 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
               attempt_key: p.attempt_key,
               branch: p.branch,
               worker_terminal: belt_provider_is_terminal(provider: p.provider),
+              capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
               verification: belt_verification_segment(progress: p),
               review: belt_review_segment(progress: p),
               goal_audit: belt_goal_audit_segment(progress: p),
@@ -1923,6 +1928,27 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
           )
       }
     }
+  }
+}
+
+// THE PRIOR ATTEMPT'S CAPTURE, AT ITS OWN HEAD. The continuation decision binds the same fact the
+// verify gate binds -- the capture record at the worktree's current head -- through the same
+// reader, so the two passes can never disagree about what the terminal worker declared. A head
+// that cannot be observed is not a yield: it is unknown, and the decision refuses on it.
+fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SubmissionCaptureObservation {
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } =>
+      CaptureUnreadable {
+        reason: join(["the prior attempt's worktree head cannot be observed: ", reason], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      belt_submission_capture_for_head(
+        instance: instance,
+        worktree: worktree,
+        dir: belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        head_sha: revision as String,
+      )
   }
 }
 

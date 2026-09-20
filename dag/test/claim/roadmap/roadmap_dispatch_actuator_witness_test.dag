@@ -78,6 +78,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_codex_exec_spec,
   dispatch_spawn_commands_for_instance,
   dispatch_spawn_commands_for_inventory,
+  dispatch_spawn_commands_for_resolved_instance,
   DispatchSpawnCommands,
   HostExecArgv,
   SystemdUnitContainer,
@@ -152,6 +153,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_executable,
 }
+import gunbc.roadmap.roadmap_attempt_continuation { ContinueFromAttempt }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1133,4 +1135,34 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
 
 test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
   !path_segment_is_safe(raw: join(["reviewer:", "/state/node-1/att/review/abc123.c.json"], ""))
+}
+
+// THE ORIGIN REACHES THE WORKTREE ARGV, not just the decision value: a ContinueFromAttempt origin
+// must put the PRIOR ATTEMPT'S branch in the worktree-add ref position, so the next turn's tree
+// already holds the committed work. This is the fold the belt's spawn consumes through
+// belt_resolved_spawn_plan; a regression that fell back to the instance base ref here would
+// silently discard the lineage the decision just chose to continue.
+test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt_branch() -> Bool {
+  match dispatch_spawn_commands_for_resolved_instance(
+    instance: srv1_lab_dashboard_instance(),
+    node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
+    session_uuid: "00000000-0000-4000-8000-000000000002",
+    attempt_key: "feedfacefeedface",
+    provider: CodexDispatchProvider,
+    effort: ReasoningMedium,
+    model: dispatch_codex_default_model,
+    origin: ContinueFromAttempt {
+      parent_attempt_key: "deadbeefdeadbeef",
+      branch: "roadmap/ts-continuation-origin/deadbeefdeadbeef",
+      turn: 2,
+      verdict_detail: "the prior turn's submission declared blocked: the acceptance run was still in flight",
+    },
+  ) {
+    DispatchSpawnRefused { step: _, detail: _ } => false
+    DispatchSpawnReady { commands: cmds } => {
+      let git_wire = join(cmds.worktree_add.args, separator: "\0")
+      string_contains(s: git_wire, pattern: "\0roadmap/ts-continuation-origin/deadbeefdeadbeef")
+        && !string_contains(s: git_wire, pattern: "\0origin/main")
+    }
+  }
 }

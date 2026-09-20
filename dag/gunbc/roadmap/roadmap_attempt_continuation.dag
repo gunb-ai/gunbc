@@ -1,6 +1,10 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+}
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, VerificationWorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -28,12 +32,17 @@ type AttemptOrigin
 
 // THE FACTS THE DECISION READS, and nothing else. The belt's progress carrier holds far more
 // (reconciliation, the round ledger, the admission receipt); the decision needs the prior attempt's
-// key and branch, whether its worker has ended, and what verification said, so it takes exactly
-// those and a witness can author them without building a whole progress row.
+// key and branch, whether its worker has ended, what its submission capture says the terminal state
+// meant, and what verification said, so it takes exactly those and a witness can author them without
+// building a whole progress row. The capture is the same head-grain observation the verify gate
+// reads: a terminal worker whose capture declares blocked or needs-context, or whose commit was
+// preservation only, has UNFINISHED work on its branch -- not a candidate -- and the next turn
+// continues from that branch rather than starting over from base.
 type PriorAttemptFacts {
   attempt_key: String
   branch: String
   worker_terminal: Bool
+  capture: SubmissionCaptureObservation
   verification: WorkflowSegment?
   review: WorkflowSegment?
   goal_audit: WorkflowSegment?
@@ -98,18 +107,91 @@ fn continuation_decision(prior: PriorAttemptFacts?, prior_turn: ContinuationTurn
       if !p.worker_terminal {
         ContinuationFresh { reason: "the prior attempt's worker has not ended" }
       } else {
-        match p.verification {
-          Absent => ContinuationFresh { reason: "the prior attempt carries no verification segment" }
-          Present { value: v } =>
-            match v.state {
-              WorkflowSegmentFailed => continuation_from_failed(prior: p, verdict_detail: join(["verification failed: ", v.detail], ""), prior_turn: prior_turn)
-              WorkflowSegmentComplete => continuation_after_green_verification(prior: p, prior_turn: prior_turn)
-              WorkflowSegmentStopped => ContinuationFresh { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit" }
-              WorkflowSegmentPending => ContinuationFresh { reason: "the prior attempt has not been verified yet" }
-              WorkflowSegmentActive => ContinuationFresh { reason: "the prior attempt's verification is running" }
-              WorkflowSegmentRefused => ContinuationFresh { reason: "the prior attempt's verification was refused, which is an environment fact and not a verdict on the work" }
-            }
-        }
+        continuation_from_capture(prior: p, prior_turn: prior_turn)
+      }
+  }
+}
+
+// THE CAPTURE IS READ BEFORE THE SEGMENTS. A terminal worker's capture is the binding record of
+// what its end meant, and it decides three cases the workflow segments cannot: a submission that
+// declares blocked or needs-context is unfinished work with the worker's own explanation attached
+// (production receipt: attempt cd172fe81b806160 spent its budget with the acceptance run still in
+// flight, declared blocked truthfully, and the segment-only reading answered Fresh -- discarding a
+// finished implementation); a terminal state with no capture at the head is a yield, the same
+// unfinished shape without the explanation; and a capture that cannot be established is refused,
+// never read as either, because starting fresh over possibly-committed work discards it silently.
+// Only a READY capture falls through to the segment arms: that head is a candidate, and judging it
+// is verification's job, exactly as the Fresh reasons below already say.
+fn continuation_from_capture(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+  match prior.capture {
+    CaptureUnreadable { reason } =>
+      ContinuationRefused {
+        reason: join([
+          "the submission capture for the prior attempt ", prior.attempt_key,
+          " cannot be established: ", reason,
+          ", so whether its branch holds a declared candidate is unknown and the decision does not guess",
+        ], ""),
+      }
+    CaptureAbsent =>
+      continuation_continue_next_turn(
+        prior: prior,
+        verdict_detail: "the prior turn reached a terminal state without a captured submission (yielded, not ready): the belt's commit over its worktree was preservation only, and no candidate advanced to verification. Establish why no submission was written, complete the work, and submit.",
+        stall: "it still yields without a captured submission",
+        prior_turn: prior_turn,
+      )
+    CaptureForHead { capture: c } =>
+      match c.submission.readiness {
+        SubmissionReady => continuation_from_segments(prior: prior, prior_turn: prior_turn)
+        SubmissionBlocked =>
+          continuation_continue_next_turn(
+            prior: prior,
+            verdict_detail: join([
+              "the prior turn's submission declared blocked: ",
+              continuation_bounded_detail(detail: c.submission.explanation),
+              " Confirm the blocker still stands or repair its cause, then resubmit.",
+            ], ""),
+            stall: "its submission still declares blocked",
+            prior_turn: prior_turn,
+          )
+        SubmissionNeedsContext =>
+          continuation_continue_next_turn(
+            prior: prior,
+            verdict_detail: join([
+              "the prior turn's submission declared needs-context: ",
+              continuation_bounded_detail(detail: c.submission.explanation),
+              " Supply the missing context if it is now available or repair the cause, then resubmit.",
+            ], ""),
+            stall: "its submission still declares needs-context",
+            prior_turn: prior_turn,
+          )
+      }
+  }
+}
+
+// A WORKER-AUTHORED EXPLANATION IS UNBOUNDED TEXT, and it lands at the head of the next turn's
+// brief; the continuation carries at most this much of it. The truncation is marked so a cut
+// explanation is never mistaken for a whole one.
+data continuation_verdict_detail_bound: Int = 400
+
+fn continuation_bounded_detail(detail: String) -> String {
+  if string_length(s: detail) <= continuation_verdict_detail_bound {
+    detail
+  } else {
+    concat(substring(s: detail, start: 0, end: continuation_verdict_detail_bound), " ...")
+  }
+}
+
+fn continuation_from_segments(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+  match prior.verification {
+    Absent => ContinuationFresh { reason: "the prior attempt carries no verification segment" }
+    Present { value: v } =>
+      match v.state {
+        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["verification failed: ", v.detail], ""), prior_turn: prior_turn)
+        WorkflowSegmentComplete => continuation_after_green_verification(prior: prior, prior_turn: prior_turn)
+        WorkflowSegmentStopped => ContinuationFresh { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit" }
+        WorkflowSegmentPending => ContinuationFresh { reason: "the prior attempt has not been verified yet" }
+        WorkflowSegmentActive => ContinuationFresh { reason: "the prior attempt's verification is running" }
+        WorkflowSegmentRefused => ContinuationFresh { reason: "the prior attempt's verification was refused, which is an environment fact and not a verdict on the work" }
       }
   }
 }
@@ -151,6 +233,15 @@ fn continuation_after_approved_review(prior: PriorAttemptFacts, prior_turn: Cont
 }
 
 fn continuation_from_failed(prior: PriorAttemptFacts, verdict_detail: String, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+  continuation_continue_next_turn(prior: prior, verdict_detail: verdict_detail, stall: "its verification still fails", prior_turn: prior_turn)
+}
+
+// THE ONE PLACE A LINEAGE ADVANCES. Every route that continues -- a failed verdict, a blocked or
+// needs-context declaration, a yield -- pays the same two refusals before it mints the next turn:
+// an unreadable turn file refuses (never guessed as 1, or a lineage would run past its cap one
+// unreadable file at a time), and a lineage at the cap refuses with the cap named. `stall` is the
+// caller's one-clause account of why the prior turn did not converge, projected into the refusal.
+fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: String, stall: String, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
   match continuation_prior_turn(read: prior_turn) {
     Absent =>
       match prior_turn {
@@ -164,7 +255,7 @@ fn continuation_from_failed(prior: PriorAttemptFacts, verdict_detail: String, pr
           reason: join([
             "the lineage ending at attempt ", prior.attempt_key, " has spent ", to_string(value: t),
             " of ", to_string(value: continuation_turn_cap),
-            " turns and its verification still fails; a fourth worker is not the remedy -- the operator decides",
+            " turns and ", stall, "; a fourth worker is not the remedy -- the operator decides",
           ], ""),
         }
       } else {
