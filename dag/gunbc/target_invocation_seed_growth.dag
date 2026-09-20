@@ -286,6 +286,36 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "leaf_cgroup_dir",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "nearest_cgroup_with_peak",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "read_file",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "read_count",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "events_field",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      decl_name: "children_of_cgroup",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
       decl_name: "QualificationRefusal",
       field: WholeDeclaration
     },

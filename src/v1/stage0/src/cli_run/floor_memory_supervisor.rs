@@ -46,8 +46,15 @@ pub struct CgroupMemoryRead {
 }
 
 /// WHY A READ CANNOT SILENTLY RETURN ZERO. Each arm names a distinct thing that went wrong, and
-/// none of them may render as "it fit". Mirrors `gunbc.floor_memory_demand`
-/// `DemandReadRefusalCause`.
+/// none of them may render as "it fit".
+///
+/// THIS IS NOT A MIRROR OF `gunbc.floor_memory_demand` `DemandReadRefusalCause`, and an earlier
+/// revision of this comment said it was. The two vocabularies have DIFFERENT SUBJECTS. Everything
+/// here happens BEFORE there is anything to judge -- no cgroup, no child, no attributable counter
+/// -- so these refusals terminate the invocation with NO observation and never reach the fold.
+/// What the model's arm covers is the one way a COMPLETE set of readings can still be
+/// uninterpretable. Claiming a mirror forked the vocabulary in both directions at once: the model
+/// carried arms nothing could construct while every refusal this file actually emits was unmodeled.
 #[derive(Debug, Clone)]
 pub enum QualificationRefusal {
     NoCgroupWithMemoryPeak {
@@ -70,6 +77,10 @@ pub enum QualificationRefusal {
     MeasurementCgroupShared {
         dir: String,
         strangers: Vec<i32>,
+    },
+    MeasurementCgroupHasChildren {
+        dir: String,
+        children: Vec<String>,
     },
     PeakDominatedByPriorHistory {
         dir: String,
@@ -111,6 +122,16 @@ impl QualificationRefusal {
                  -p MemoryMax=<bytes> -p MemoryHigh=infinity -- gunbc test \
                  //gunbc/instruments:floor-memory-qualification",
                 strangers.len()
+            ),
+            QualificationRefusal::MeasurementCgroupHasChildren { dir, children } => format!(
+                "MeasurementCgroupHasChildren — {dir} has {} child cgroup(s) ({}). memory.peak \
+                 aggregates the WHOLE SUBTREE, so a descendant's allocation would be reported as \
+                 the floor's demand even when this cgroup's own cgroup.procs is empty — and a new \
+                 descendant can appear after the check. Measured on srv1: user-1000.slice carried \
+                 0 direct processes, 242 child cgroups and a memory.peak of 392042180608. The \
+                 measurement cgroup must be a LEAF that holds only this supervisor.",
+                children.len(),
+                children.join(", ")
             ),
             QualificationRefusal::PeakDominatedByPriorHistory { dir, before, after } => format!(
                 "PeakDominatedByPriorHistory — {dir} already stood at memory.peak {before} before \
@@ -222,17 +243,60 @@ pub fn resolve_measurement_cgroup() -> Result<PathBuf, QualificationRefusal> {
 }
 
 /// EVERY PROCESS IN THE CGROUP IS CHARGED TO THE SAME COUNTER, so a cgroup we share with anything
-/// else cannot answer for this run. Measured on srv1: an ordinary login session scope holds five
-/// processes, and an ancestor slice on the same host stood at 249 GiB against a 27 GiB scope.
-/// Checked BEFORE the workload, because after a 35-minute run the contamination is unfixable.
+/// else cannot answer for this run. Checked BEFORE the workload, because after a long run the
+/// contamination is unfixable.
+///
+/// `cgroup.procs` LISTS DIRECT MEMBERS ONLY, AND `memory.peak` AGGREGATES THE WHOLE SUBTREE. That
+/// asymmetry is a fail-open in the obvious implementation, and the case it lets through is exactly
+/// the one this guard exists for. Measured on srv1: `user-1000.slice` has ZERO direct processes —
+/// so a direct-membership check finds no strangers — while carrying 242 child cgroups, 336
+/// processes beneath it, and a `memory.peak` of 392042180608. A supervisor resolving to that
+/// ancestor would have reported a third of a terabyte of co-tenant allocation as the floor's
+/// demand, and reported it as `DemandObserved`.
+///
+/// So the check is over the SUBTREE, and a cgroup with any child at all is refused separately by
+/// `children_of_cgroup`: descendants can be created after this check, and only a leaf is stable.
 pub fn strangers_in_cgroup(dir: &Path) -> Result<Vec<i32>, QualificationRefusal> {
     let me = std::process::id() as i32;
-    let body = read_file(dir, "cgroup.procs")?;
-    Ok(body
-        .lines()
-        .filter_map(|l| l.trim().parse::<i32>().ok())
-        .filter(|pid| *pid != me)
-        .collect())
+    let mut strangers = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(next) = stack.pop() {
+        let body = read_file(&next, "cgroup.procs")?;
+        strangers.extend(
+            body.lines()
+                .filter_map(|l| l.trim().parse::<i32>().ok())
+                .filter(|pid| *pid != me),
+        );
+        let entries =
+            std::fs::read_dir(&next).map_err(|e| QualificationRefusal::CgroupFileUnreadable {
+                path: next.to_string_lossy().to_string(),
+                detail: e.to_string(),
+            })?;
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+    Ok(strangers)
+}
+
+/// A MEASUREMENT CGROUP MUST BE A LEAF. Any child cgroup is a place a co-tenant can be charged
+/// from — before this check or after it — and `memory.peak` will include it without anything in
+/// `cgroup.procs` ever naming it.
+pub fn children_of_cgroup(dir: &Path) -> Result<Vec<String>, QualificationRefusal> {
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| QualificationRefusal::CgroupFileUnreadable {
+            path: dir.to_string_lossy().to_string(),
+            detail: e.to_string(),
+        })?;
+    let mut children: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    children.sort();
+    Ok(children)
 }
 
 /// `memory.peak` IS THE CGROUP'S LIFETIME MAXIMUM, not this run's. Kernels from 6.9 allow writing

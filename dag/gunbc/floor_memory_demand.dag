@@ -41,6 +41,14 @@ import extdeps.linux.cgroup_v2_memory {
 // censored: a run can terminate cleanly and still have been throttled the whole way, and a run
 // can be killed without ever having been throttled. Folding them into one enum would lose
 // exactly the pair of facts the operator needs to tell "it fits" from "it was held".
+// THE THIRD ARM IS REACHED BY THE WITNESS AND NOT BY TODAY'S PRODUCER, WHICH IS STATED RATHER THAN
+// hidden: the supervisor waits on its own child, so a lost termination currently refuses the whole
+// invocation before any qualification is built. The arm is kept because the fail-closed reading it
+// encodes -- not knowing how a process ended is NOT evidence that it ended well -- is a property of
+// the judgment rather than of one producer, and a supervisor that ever reports a termination it
+// could not observe (an adopted child, a detached run, a receipt read from elsewhere) must land
+// here rather than be silently read as a clean exit. Its discriminating red is
+// `an_unobserved_termination_is_not_a_demand_holds`.
 type SupervisedTermination
   = TerminationExited { code: Int }
   | TerminationSignalled { signal: Int }
@@ -55,15 +63,29 @@ type CgroupMemoryEvents {
   oom_kills: Nat,
 }
 
-// WHY A READ CAN REFUSE, each arm naming a distinct thing that went wrong. None of these may be
-// rendered as a zero or as "it fit": a supervisor that cannot distinguish "could not read" from
-// "the workload was within its limit" reproduces one layer out the very conflation this module
-// exists to remove.
+// THIS IS THE JUDGMENT'S OWN REFUSAL VOCABULARY, AND ITS SCOPE IS DELIBERATELY NARROW.
+//
+// An earlier revision of this type listed four arms -- an absent directory, an unreadable file, an
+// unparseable value, and a supervisor that did not own the cgroup -- as though it were the roster
+// of every way a qualification can fail. It is not, and pretending otherwise forked the vocabulary
+// in both directions at once: three of those arms had no constructor anywhere (a check whose
+// forbidden state cannot be expressed is a decoration, DESIGN section 4b), while the producer
+// carried five real causes -- no cgroup with a readable peak, child not spawned, child not waited,
+// measurement cgroup shared, peak dominated by prior history -- that this type had never heard of.
+// Every refusal the instrument actually emits came from the set this module did not model.
+//
+// THE TWO POPULATIONS ARE DIFFERENT SUBJECTS AND NOW SAY SO. A supervisor's refusals happen BEFORE
+// there is anything to judge: no cgroup, no child, no attributable counter. They never produce a
+// qualification at all -- they terminate the invocation with no observation. What reaches THIS
+// fold is a complete set of readings, so the only way it can refuse is that a reading it was
+// handed cannot be interpreted. One arm, because there is exactly one such way.
+//
+// The consequence worth stating: a caller may NOT read `DemandUnreadable` as "every possible
+// failure is covered here". It covers the judgment's own domain, and the supervisor's refusals are
+// a separate, earlier population that this module deliberately does not enumerate -- modelling
+// them here would put the producer's vocabulary in a second home (DESIGN section 3).
 type DemandReadRefusalCause
-  = CgroupDirectoryAbsent { path: String }
-  | CgroupFileUnreadable { path: String, detail: String }
-  | CgroupValueUnparseable { file: NonEmptyStr, body: String }
-  | SupervisorDidNotOwnTheCgroup { detail: String }
+  = CgroupValueUnparseable { file: NonEmptyStr, body: String }
 
 // THE THREE ARMS AN OPERATOR READS, and they are three because two of the pairings are the ones
 // that have actually caused harm here.
@@ -189,6 +211,26 @@ fn qualification_is_a_demand(q: FloorMemoryQualification) -> Bool {
 // A NEGATIVE COUNT IS A MALFORMED READ, NOT A MAGNITUDE. `memory.peak` and the `memory.events`
 // fields are documented as non-negative, so a leading minus means the read is wrong, and taking
 // its absolute value would fabricate a plausible number from a broken one.
+// 🟡 DISSOLVE-ON, AND THE ROW IS ANSWERED RATHER THAN WAVED THROUGH. The mechanical unit scan
+// flags `peak_bytes: Int` below as a flat-scalar unit field, and two reviewers have now split on
+// it -- review 68906 refuted it as a correct host-to-substrate primitive boundary, review 68936
+// echoed it as unrefuted-by-the-diff. Both readings are fair, so the row gets a gate rather than
+// an argument.
+//
+// WHY THE PARAMETER IS A PRIMITIVE TODAY: this is the seam where the seed hands bytes it read off
+// /sys/fs/cgroup to the substrate, and the interpreter passes them as `Value::Int`. There is no
+// `ByteSize` on the Rust side to pass -- constructing one would mean the HOST minting a
+// `std.measure` carrier, which is the measure vocabulary living in a second home. The scalar does
+// not propagate: it is lifted on the very next hop (`byte_size(count: nat_magnitude(...))`) and
+// every field it reaches -- `DemandObserved.peak`, `DemandBounded.peak_lower_bound` -- is
+// `ByteSize`. Nothing downstream of this function sees an `Int` byte count.
+//
+// DISSOLVES WHEN the host can hand a `std.measure` value across the boundary directly -- that is,
+// when the interpreter's argument surface admits a constructed `ByteSize` rather than only
+// primitives, so the lift happens at the reader that already knows the unit instead of one hop
+// inside. At that point this signature takes `ByteSize`, `nat_magnitude` disappears from it, and
+// the negative-count arm below moves to the reader. It is NOT dissolved by wrapping the literal at
+// the call site in Rust, which would relocate the same primitive one frame outward.
 fn qualify_floor_memory_from_readings(
   peak_bytes: Int,
   limit_max_body: String,

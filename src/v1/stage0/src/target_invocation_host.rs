@@ -959,6 +959,29 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
 
     // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
     // unattributable is a wasted run, and worse, a tempting one to publish anyway.
+    match sup::children_of_cgroup(&cgroup) {
+        Ok(children) if !children.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        children,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
     match sup::strangers_in_cgroup(&cgroup) {
         Ok(strangers) if !strangers.is_empty() => {
             return InvocationOutcome {

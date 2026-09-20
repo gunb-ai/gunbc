@@ -6,13 +6,17 @@ import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimited,
   CgroupMemoryUnlimited,
 }
+import std.types { NonEmptyStr }
 import gunbc.floor_memory_demand {
   CgroupMemoryEvents,
+  DemandObserved,
+  DemandBounded,
+  qualify_floor_memory_from_readings,
   TerminationExited,
   TerminationSignalled,
   TerminationUnobserved,
   DemandUnreadable,
-  CgroupDirectoryAbsent,
+  CgroupValueUnparseable,
   qualify_floor_memory_demand,
   qualification_is_a_demand,
 }
@@ -127,7 +131,29 @@ test fn an_unobserved_termination_is_not_a_demand_holds() -> Bool {
 test fn an_unreadable_cgroup_is_not_a_demand_holds() -> Bool {
   qualification_is_a_demand(
     q: DemandUnreadable {
-      cause: CgroupDirectoryAbsent { path: "/sys/fs/cgroup/nonexistent" },
+      cause: CgroupValueUnparseable { file: "memory.peak" as NonEmptyStr, body: "-1" },
     },
   ) == false
+}
+
+// THE ARM IS REACHABLE FROM THE REAL ENTRY POINT, not only by hand-constructing the variant. A
+// negative count is the one way a complete set of readings can still be uninterpretable, and this
+// drives it through `qualify_floor_memory_from_readings` exactly as the host does -- so the
+// refusal is evidence about the production route rather than about this witness's ability to
+// spell a constructor.
+test fn a_negative_count_refuses_through_the_host_entry_point_holds() -> Bool {
+  match qualify_floor_memory_from_readings(
+    peak_bytes: 0 - 1,
+    limit_max_body: "max",
+    limit_high_body: "max",
+    high_events: 0,
+    max_events: 0,
+    oom_kills: 0,
+    terminated_by_signal: false,
+    exit_code: 0,
+  ) {
+    DemandUnreadable { cause: _ } => true
+    DemandObserved { peak: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
+    DemandBounded { peak_lower_bound: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
+  }
 }
