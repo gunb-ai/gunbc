@@ -421,9 +421,10 @@ fn red_a_frozen_task_survives_the_bounded_force_stop() -> Bool {
   match red_attempt(index: 92, attempt_id: "red3") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
-        false
-      } else if !freeze_unit(unit: red_escapee_unit(attempt: a), after: true) {
+      {
+      let started = start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92)))
+      let frozen = freeze_unit(unit: red_escapee_unit(attempt: a), after: started)
+      if !frozen {
         false
       } else {
         let stopped = perform_bounded_stop(
@@ -437,6 +438,7 @@ fn red_a_frozen_task_survives_the_bounded_force_stop() -> Bool {
         let thawed = thaw_unit(unit: red_escapee_unit(attempt: a), after: survived)
         survived && thawed && sweep_slice_quiet(attempt: a, index: 92, after: thawed)
       }
+      }
   }
 }
 
@@ -447,17 +449,19 @@ fn red_a_surviving_task_quarantines_the_cell() -> Bool {
   match red_attempt(index: 92, attempt_id: "red3b") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
-        false
-      } else if !freeze_unit(unit: red_escapee_unit(attempt: a), after: true) {
+      {
+      let started = start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92)))
+      let frozen = freeze_unit(unit: red_escapee_unit(attempt: a), after: started)
+      if !frozen {
         false
       } else {
-        let quarantined = match red_settlement(attempt: a, generation: 3, trigger: DeadlineReached, after: true) {
+        let quarantined = match red_settlement(attempt: a, generation: 3, trigger: DeadlineReached, after: frozen) {
           Absent => false
           Present { value: s } => !cell_is_ready(readiness: s.readiness)
         }
         let thawed = thaw_unit(unit: red_escapee_unit(attempt: a), after: quarantined)
         quarantined && thawed && sweep_slice_quiet(attempt: a, index: 92, after: thawed)
+      }
       }
   }
 }
