@@ -13,7 +13,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, mtcollins1_boot]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -227,7 +227,7 @@ jobs:
           echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'rlm_launch_deployment_receipt' || github.event.inputs.mode == 'host_reset_return' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
@@ -789,6 +789,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 10
+      - name: "Site PXE edge: observe the chainloader digest, dnsmasq, the edge config and unit (no writes)"
+        id: site_pxe_edge_observe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_converge.dag --function site_pxe_edge_observe_ci_wet
+          cat "$ROOT/target/site-pxe-edge-converge-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'site_pxe_edge_observe'
+        timeout-minutes: 15
+      - name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back"
+        id: site_pxe_edge_converge
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/site_pxe_edge_converge.dag --function site_pxe_edge_converge_ci_wet
+          cat "$ROOT/target/site-pxe-edge-converge-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'site_pxe_edge_converge'
+        timeout-minutes: 15
+      - name: Upload site PXE edge converge receipt
+        id: site_pxe_edge_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: site-pxe-edge-converge-receipt
+          path: target/site-pxe-edge-converge-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge')
         timeout-minutes: 10
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
