@@ -1,4 +1,4 @@
-module std.fabric_db
+module std.fabric_storage
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_from_structural_digest }
@@ -27,7 +27,7 @@ import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObse
 //
 // Transport is not a fact of this module (DESIGN 3): a file store, an ssh-reached verb and a later
 // R2 tier are handlers bound to these shapes. Replication and chunking are not modeled here; the
-// program is docs/plans/fabric-db.md.
+// program is docs/plans/fabric-storage.md.
 
 // AN OBJECT REF IS MINTED FROM THE BYTES IT NAMES, and from nothing else a caller supplies. The
 // unverified content/digest pairing std.durable_compare_and_set declares as a boundary obligation
@@ -50,7 +50,7 @@ type FabricObject {
 // no two distinct objects share a preimage.
 fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
   let link_words = fold(object.links, init: "", f: (acc, l) => join([acc, "L", fabric_object_ref_wire(object: l) as String, ";"], ""))
-  join(["fabric_db.object;", link_words, "B", to_string(length(object.body as String)), ":", object.body as String], "") as NonEmptyStr
+  join(["fabric_storage.object;", link_words, "B", to_string(length(object.body as String)), ":", object.body as String], "") as NonEmptyStr
 }
 
 fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef {
@@ -113,7 +113,7 @@ fn fabric_head_admits(expected: FabricHeadExpectation, observed: FabricHeadReadi
 //
 // A lost race is NOT a fault and has no arm here: it is FabricHeadMoved, an outcome carrying both
 // sides. The git realization answered both "lost race" and "unreachable" with exit 128.
-type FabricDbFault
+type FabricStorageFault
   = FabricStoreUnreachable { detail: NonEmptyStr }
   | FabricStoreRefused { cause: CasStoreFailure }
   | FabricObjectMissing { object: FabricObjectRef }
@@ -123,22 +123,22 @@ type FabricDbFault
 
 type FabricPut
   = FabricObjectStored { object: FabricObjectRef }
-  | FabricPutRefused { fault: FabricDbFault }
+  | FabricPutRefused { fault: FabricStorageFault }
 
 type FabricObjectGet
   = FabricObjectFetched { stored: FabricStoredObject }
-  | FabricObjectGetRefused { fault: FabricDbFault }
+  | FabricObjectGetRefused { fault: FabricStorageFault }
 
 type FabricHeadRead
   = FabricHeadObserved { reading: FabricHeadReading }
-  | FabricHeadReadRefused { fault: FabricDbFault }
+  | FabricHeadReadRefused { fault: FabricStorageFault }
 
 // ADVANCING A HEAD. The store refuses to point a head at an object it does not hold
 // (FabricObjectMissing), so a head is never published over a hole.
 type FabricHeadAdvance
   = FabricHeadAdvanced { object: FabricObjectRef, generation: CasGeneration }
   | FabricHeadMoved { expected: FabricHeadExpectation, observed: FabricHeadReading }
-  | FabricHeadAdvanceRefused { fault: FabricDbFault }
+  | FabricHeadAdvanceRefused { fault: FabricStorageFault }
 
 // READING THE CLOSURE OF A HEAD: the head and every object reachable from it along links, newest
 // first, bounded. Exhausting the bound refuses rather than truncating.
@@ -150,13 +150,13 @@ type FabricStoredObject {
 type FabricClosureRead
   = FabricClosureRead { reading: FabricHeadReading, newest_first: List<FabricStoredObject> }
   | FabricClosureBudgetExhausted { at: FabricObjectRef, bound: Int }
-  | FabricClosureRefused { fault: FabricDbFault }
+  | FabricClosureRefused { fault: FabricStorageFault }
 
 // VERIFYING FETCHED BYTES AGAINST THE REF THEY WERE ASKED FOR. The single authority every handler
 // routes a fetched object through: a store that answered with other bytes is corrupt, never trusted.
 type FabricObjectVerification
   = FabricObjectVerified { stored: FabricStoredObject }
-  | FabricObjectVerificationFailed { fault: FabricDbFault }
+  | FabricObjectVerificationFailed { fault: FabricStorageFault }
 
 fn fabric_object_verified(asked: FabricObjectRef, content: FabricObject) -> FabricObjectVerification {
   let actual = fabric_object_ref_of(object: content)
@@ -172,7 +172,7 @@ fn fabric_object_verified(asked: FabricObjectRef, content: FabricObject) -> Fabr
   }
 }
 
-fn fabric_db_fault_wire(fault: FabricDbFault) -> String {
+fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
   match fault {
     FabricStoreUnreachable { detail: d } => join(["store unreachable: ", d as String], "")
     FabricStoreRefused { cause: c } => match c {
@@ -216,7 +216,7 @@ fn fabric_objects_decode_stream(text: String, acc: List<FabricObject>) -> List<F
 }
 
 fn fabric_object_decode_next(text: String) -> FabricObjectDecoded? {
-  let prefix = "fabric_db.object;"
+  let prefix = "fabric_storage.object;"
   if !starts_with(s: text, prefix: prefix) {
     none
   } else {

@@ -63,7 +63,7 @@ import gunbc.typed_remote_file_write {
 import gunbc.runner_host_grants { executor_bootstrap_principal }
 import gunbc.ci_spec { site_pxe_edge_converge_receipt_path }
 import gunbc.runner_host_file_converge { elevated_argv }
-import gunbc.machine_intake_subject { content_hash_equal }
+import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import gunbc.network_boot_delivery {
   first_slice_admitted_architectures,

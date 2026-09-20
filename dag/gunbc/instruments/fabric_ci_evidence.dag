@@ -3,7 +3,7 @@ module tools.fabric_ci_evidence
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
-import std.hex { hex_word_value }
+import extdeps.numeric.base16 { base16_word_value }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import tools.fabric_ci_evidence_projection_fixture {
@@ -78,7 +78,7 @@ fn fabric_ci_shell_crossing_coordinates_hash(values: List<NonEmptyStr>) -> Conte
 }
 
 fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
-  hex_word_value(word: substring(s: wire, start: at, end: at + 6), max_digits: 6)
+  base16_word_value(word: substring(s: wire, start: at, end: at + 6), max_digits: 6)
 }
 
 type FabricCiDecodeState

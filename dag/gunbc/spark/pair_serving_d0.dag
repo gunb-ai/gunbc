@@ -22,7 +22,7 @@ import std.durable_compare_and_set {
 import gunbc.durable_cas_file_store {
   CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt,
 }
-import gunbc.durable_cas_fabric_db { fabric_db_compare_and_set, fabric_db_observe_cas_slot }
+import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.crypto.hash { sha256_digest_content_hash }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
@@ -32,11 +32,11 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
-import gunbc.fabric_db_client { FabricDbBinding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.rung_drop { Standing, Retired, TypedDeclaration }
-import gunbc.rung_drop.fabric_db_append_principal_unrefused { fabric_db_append_principal_unrefused }
+import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group, fabric_group_hosts }
@@ -267,7 +267,7 @@ fn d0_request(escalation_id: NonEmptyStr, subject: D0Subject, transaction: NonEm
 // std.scoped_authorization decides whether a grant PERMITS an operation; it models single use as
 // a compare-and-set TRANSITION of the grant's claim slot, never as a check at the reader, because
 // two readers can both see "unclaimed". THE SLOT IS ON THE FABRIC EVENT LOG
-// (gunbc.durable_cas_fabric_db), not on a host-local file store: D0 may run from any executor
+// (gunbc.durable_cas_fabric_storage), not on a host-local file store: D0 may run from any executor
 // that resolves a store, and two executors' local roots exclude nothing from each other -- each
 // would see the grant unclaimed and both would consume the same consent. The log's one placed
 // remote is the linearization point the authority already relies on, so the claim shares it, and
@@ -284,11 +284,11 @@ type D0ClaimStanding
   | D0ClaimLost { holder: NonEmptyStr }
   | D0ClaimUndecided { reason: NonEmptyStr }
 
-fn d0_claim_grant(store: FabricDbBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr, now: String) -> D0ClaimStanding {
+fn d0_claim_grant(store: FabricStorageBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr, now: String) -> D0ClaimStanding {
   let proposed = claim_transition_claimed(attempt: (transaction as String) as AttemptIdentity, at: now)
   match admit_cas_attempt(attempt: claim_authorization(escalation_id: escalation_id, expected: ExpectSlotAbsent, proposed: proposed)) {
     CasAttemptAdmitted { verified: v } =>
-      match authorization_claim_outcome(proposed: proposed, outcome: fabric_db_compare_and_set(store: store, verified: v)) {
+      match authorization_claim_outcome(proposed: proposed, outcome: fabric_storage_compare_and_set(store: store, verified: v)) {
         ClaimHeld { state: _, generation: g } => D0ClaimHeld { generation: g }
         ClaimLost { holder: h } => D0ClaimLost { holder: h }
         ClaimUndecided { reason: r } => D0ClaimUndecided { reason: r }
@@ -308,8 +308,8 @@ type D0ClaimReading
   | D0ClaimAt { state: AuthorizationClaimState, generation: CasGeneration }
   | D0ClaimUnreadable { reason: NonEmptyStr }
 
-fn d0_read_claim(store: FabricDbBinding, escalation_id: NonEmptyStr) -> D0ClaimReading {
-  match fabric_db_observe_cas_slot(store: store, key: authorization_claim_key(escalation_id: escalation_id)) {
+fn d0_read_claim(store: FabricStorageBinding, escalation_id: NonEmptyStr) -> D0ClaimReading {
+  match fabric_storage_observe_cas_slot(store: store, key: authorization_claim_key(escalation_id: escalation_id)) {
     CasObservedUnreadable { cause: c } => D0ClaimUnreadable { reason: join(["authorization claim slot unreadable: ", cas_unreadable_slot_detail(cause: c)], "") as NonEmptyStr }
     CasObservedReadable { readable: CasReadableAbsent } => D0ClaimAbsent
     CasObservedReadable { readable: CasReadablePresent { version: v } } =>
@@ -322,7 +322,7 @@ fn d0_read_claim(store: FabricDbBinding, escalation_id: NonEmptyStr) -> D0ClaimR
 
 // The slot as this attempt must find it on resume: held by this transaction. Any other holder,
 // a spent grant, an absent slot, or an unreadable store refuses.
-fn d0_resume_claim(store: FabricDbBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0ClaimStanding {
+fn d0_resume_claim(store: FabricStorageBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0ClaimStanding {
   match d0_read_claim(store: store, escalation_id: escalation_id) {
     D0ClaimUnreadable { reason: r } => D0ClaimUndecided { reason: r }
     D0ClaimAbsent => D0ClaimLost { holder: "no attempt holds the grant, so there is no claimed transaction to resume" as NonEmptyStr }
@@ -346,12 +346,12 @@ type D0ClaimTerminal
   | D0ClaimNotAttempted { still_held_by: NonEmptyStr }
   | D0ClaimUnterminated { detail: String }
 
-fn d0_terminate_claim(store: FabricDbBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr, held: CasGeneration, completed: Bool, cause: String, now: String) -> D0ClaimTerminal {
+fn d0_terminate_claim(store: FabricStorageBinding, escalation_id: NonEmptyStr, transaction: NonEmptyStr, held: CasGeneration, completed: Bool, cause: String, now: String) -> D0ClaimTerminal {
   let attempt = (transaction as String) as AttemptIdentity
   let terminal = if completed { claim_transition_completed(attempt: attempt, at: now) } else { claim_transition_aborted(attempt: attempt, at: now, cause: cause as NonEmptyStr) }
   match admit_cas_attempt(attempt: claim_authorization(escalation_id: escalation_id, expected: ExpectSlotGeneration { generation: held }, proposed: terminal)) {
     CasAttemptAdmitted { verified: v } =>
-      match fabric_db_compare_and_set(store: store, verified: v) {
+      match fabric_storage_compare_and_set(store: store, verified: v) {
         CasCommitted { committed: _ } => D0ClaimTerminated
         CasPreconditionFailed { expected: _, observed: _ } => D0ClaimUnterminated { detail: "claim slot moved under us" }
         CasStoreRefused { cause: _ } => D0ClaimUnterminated { detail: "claim store refused the terminal write" }
@@ -447,7 +447,7 @@ fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: Fab
 
 // START: the subject checks, the intent, the permission decision, then the claim; a binding that
 // cannot be digested AFTER the claim landed aborts the claim rather than stranding it.
-fn admit_d0_grant(store: FabricDbBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String) -> D0GrantAdmission {
+fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationAgainst { current: current_hosts }) {
     D0SubjectNotGranted => D0GrantRefused { cause: d0_not_granted_cause(authorization: authorization, escalation_id: escalation_id, group: group) }
     D0SubjectDisagrees { admission: a } => a
@@ -486,7 +486,7 @@ fn d0_not_granted_cause(authorization: ScopedAuthorization<D0Subject>, escalatio
 // RESUME: the subject checks, then the claim must already be this attempt's; permission is not
 // re-decided, so an expired grant can still finish what it started. The binding is recomputed and
 // compared to the pending state's by the transaction.
-fn resume_d0_grant(store: FabricDbBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
+fn resume_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationNotChecked) {
     D0SubjectNotGranted => D0GrantClaimLost { holder: "the authorization is not granted, so no claim of it can be resumed" as NonEmptyStr }
     D0SubjectDisagrees { admission: a } => a
@@ -1025,7 +1025,7 @@ fn transition_text(t: AuthorityTransition) -> String {
 // and the log refuses a grant carried into a state with none -- so those two terminals write the
 // transition without one, and only the suspension carries the term minted from the admitting
 // write. An earlier shape carried it on every arm and could reach neither.
-fn d0_settle(store: FabricDbBinding, pending: PairServingGroupAuthority, head: HeadExpectation, active: PairServingGroupAuthority, lease: HeldLease, admitted: AdmittedD0Grant, admitting: EventId, pending_generation: Nat, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, declared: DeclaredPairRealizationStanding, observation: D0Observation) -> D0Outcome {
+fn d0_settle(store: FabricStorageBinding, pending: PairServingGroupAuthority, head: HeadExpectation, active: PairServingGroupAuthority, lease: HeldLease, admitted: AdmittedD0Grant, admitting: EventId, pending_generation: Nat, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, declared: DeclaredPairRealizationStanding, observation: D0Observation) -> D0Outcome {
   let group = observation.group
   let decision = d0_decide(declared: declared, observation: observation, active: active, lease: lease, grant: admitted.grant)
   let receipt = EntryStateReceipt { group: group, transaction: transaction, at: now, observation: observation, decision: decision }
@@ -1074,7 +1074,7 @@ fn d0_settle(store: FabricDbBinding, pending: PairServingGroupAuthority, head: H
 // that left and came back is the same value at another generation, and a value-only compare-and-set
 // would land a pending state whose lease epoch is not the generation that landed -- a grant fence
 // the genealogy then refuses, stranding the group. Head-exact, the landed generation is gen + 1.
-fn d0_transaction(store: FabricDbBinding, group: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
+fn d0_transaction(store: FabricStorageBinding, group: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
   match current_pair_serving_authority(store: store, group: group, at: at) {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => D0Refused { cause: join(["authority unread at ", st, ": ", why], "") }
     CurrentAuthorityRead { authority: cur, head: head, generation: gen, grant: _, entry_state: _, previous: previous, admitted_by: admitted_by, transitions: _ } =>
@@ -1265,7 +1265,7 @@ fn d0_drift_observation(group: FabricGroup, granted: List<HostIdentity>, current
   }
 }
 
-fn d0_run_admitted(store: FabricDbBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, claimed_here: Bool) -> ProcessExit {
+fn d0_run_admitted(store: FabricStorageBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, claimed_here: Bool) -> ProcessExit {
   match d0_population(subject: admitted.grant.subject, current: current_hosts) {
     D0PopulationDiffers { granted: gr, current: cu } =>
       d0_settle_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: fn(og) { d0_drift_observation(group: og, granted: gr, current: cu) })
@@ -1281,7 +1281,7 @@ fn d0_run_admitted(store: FabricDbBinding, g: FabricGroup, current_hosts: List<H
   }
 }
 
-fn d0_settle_admitted(store: FabricDbBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
+fn d0_settle_admitted(store: FabricStorageBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
   match placement_repair_pending(store: store, group: g, actor: executor, at: at) {
     Present { value: PlacementAbortedAt { preparation: pr, id: _ } } => exit_failure(reason: join(["the group's pending placement preparation ", pr as String, " was aborted by the repair, which no run of this transaction does: an operator's disposition, so this run does not proceed on it"], ""))
     Present { value: PlacementCleanupStillFencing { preparation: pr, cause: c } } => exit_failure(reason: join(["the group's pending placement preparation ", pr as String, " cannot be repaired by this run: ", c, "\n  the authorization claim stays held"], ""))
@@ -1294,7 +1294,7 @@ fn d0_settle_admitted(store: FabricDbBinding, g: FabricGroup, current_hosts: Lis
 // transaction that died after its group append left a consumed, unfinalized preparation, which
 // the join finalizes here; one no authority event consumed is the operator's, and the run refuses
 // rather than sitting on it.
-fn d0_settle_admitted_over(store: FabricDbBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
+fn d0_settle_admitted_over(store: FabricStorageBinding, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
   let outcome = d0_transaction(store: store, group: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, at: at, now: now, observe: observe)
   match outcome {
     D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => {
@@ -1335,7 +1335,7 @@ fn claim_terminal_text(t: D0ClaimTerminal) -> String {
 //                 carried into the readings and fences rather than stranding the group
 //   Complete    → the claim's terminal only; the authority is not touched
 //   Abort       → the claim's terminal only
-fn d0_dispatch(store: FabricDbBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, current: CurrentAuthority) -> ProcessExit {
+fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, current: CurrentAuthority) -> ProcessExit {
   match current {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => refuse(reason: join(["authority unread at ", st, ": ", why], ""))
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
@@ -1411,7 +1411,7 @@ fn d0_dispatch(store: FabricDbBinding, g: FabricGroup, group: String, current_ho
 
 // THE STORE'S WRITE WALL IS AN INPUT TO THIS DOOR. Every fact D0 writes -- the group's authority,
 // host placement, the operator-consent slot -- lives behind the fabric DB's write door, and while
-// gunbc.rung_drop fabric_db_append_principal_unrefused stands that door admits any tailnet member,
+// gunbc.rung_drop fabric_storage_append_principal_unrefused stands that door admits any tailnet member,
 // so a writer that never passed this door could move the same facts. The door therefore reads the
 // drop's standing and refuses while it stands: Cut 0 and the escalation -> authorization producer
 // cannot make D0 executable before the wall is restored, by construction rather than by sequence.
@@ -1432,8 +1432,8 @@ data d0_store_operation_wall: StoreOperationWall = StoreOperationWallMissing {
 }
 
 fn d0_store_write_wall_standing() -> String? {
-  match fabric_db_append_principal_unrefused.standing {
-    Standing => Present { value: join(["the fabric DB's write door admits any tailnet member (gunbc.rung_drop fabric_db_append_principal_unrefused stands; its trigger: ", fabric_db_append_principal_unrefused_trigger(), "), so a writer that never passed this door could move the facts this transaction writes; D0 does not run until that drop is retired"], "") }
+  match fabric_storage_append_principal_unrefused.standing {
+    Standing => Present { value: join(["the fabric DB's write door admits any tailnet member (gunbc.rung_drop fabric_storage_append_principal_unrefused stands; its trigger: ", fabric_storage_append_principal_unrefused_trigger(), "), so a writer that never passed this door could move the facts this transaction writes; D0 does not run until that drop is retired"], "") }
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
         StoreOperationWallRestored { by: _ } => none
@@ -1442,8 +1442,8 @@ fn d0_store_write_wall_standing() -> String? {
   }
 }
 
-fn fabric_db_append_principal_unrefused_trigger() -> String {
-  match fabric_db_append_principal_unrefused.declaration {
+fn fabric_storage_append_principal_unrefused_trigger() -> String {
+  match fabric_storage_append_principal_unrefused.declaration {
     TypedDeclaration { previous: _, temporary: _, reason: _, population: _, restoration_trigger: t } => t
     _ => "(see the drop's declaration)"
   }

@@ -11,8 +11,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 
-import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
@@ -225,14 +225,14 @@ fn d0fd_vacated_port(dir: FilePath) -> Int? {
 
 // ── THROUGH THE TRANSACTION TO THE LOG ─────────────────────────────────────────────────────────
 
-fn d0fd_witness_layout(dir: FilePath) -> FabricDbBinding {
-  FabricDbLocalFiles { root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr) }
+fn d0fd_witness_layout(dir: FilePath) -> FabricStorageBinding {
+  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
 }
 
 // A ready remote has group A's source row ESTABLISHED on its partition (the log's durable
 // genesis) at 990, before any scenario event.
 fn d0fd_witness_remote_ready(dir: FilePath) -> Bool {
-  (match fabric_db_file_root_ensure(root: fabric_db_file_root(root: join([dir as String, "/fabric-db"], "") as NonEmptyStr)) { FabricDbRootReady => true  _ => false })
+  (match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false })
     && (match pair_serving_authority_for(group: FabricGroupA) {
           Absent => false
           Present { value: desired } =>
@@ -247,11 +247,11 @@ fn d0fd_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
   }
 }
 
-fn d0fd_w_admitted(store: FabricDbBinding, successor: ContentHash) -> AdmittedD0Grant? {
+fn d0fd_w_admitted(store: FabricStorageBinding, successor: ContentHash) -> AdmittedD0Grant? {
   d0fd_w_admitted_as(store: store, successor: successor, tx: "tx-front-door" as NonEmptyStr, esc: "esc-front-door" as NonEmptyStr)
 }
 
-fn d0fd_w_admitted_as(store: FabricDbBinding, successor: ContentHash, tx: NonEmptyStr, esc: NonEmptyStr) -> AdmittedD0Grant? {
+fn d0fd_w_admitted_as(store: FabricStorageBinding, successor: ContentHash, tx: NonEmptyStr, esc: NonEmptyStr) -> AdmittedD0Grant? {
   let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
   match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
     Absent => none

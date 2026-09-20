@@ -34,7 +34,7 @@ import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextR
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 
-import gunbc.fabric_db_client { FabricDbBinding }
+import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import product.capacity.event_chain { EventId, PartitionId }
 import std.measure { Second, second_count }
@@ -634,7 +634,7 @@ fn group_standing_over(group: FabricGroup, partition: GroupPartitionRead, placem
 // ONE READ PER PARTITION: the placement fold and each group's partition are read once, and every
 // standing and the joined placement are decided over that one snapshot -- never over independent
 // re-reads of a live store that could disagree with each other.
-fn spark_host_standings_over(store: FabricDbBinding, at: EpochSecs) -> CurrentStandings {
+fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> CurrentStandings {
   let placement = placement_fold_read(store: store)
   let groups = map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
   let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
@@ -885,7 +885,7 @@ fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<Spa
 // with the observation that the host is quiet. `term` is the effect's own stated bound: past it
 // the claim reads OVERDUE, and it still holds until released. `residue` is what the release must
 // find absent -- the effect declares it here because only the effect knows what it leaves.
-fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, store: FabricDbBinding, executor: NonEmptyStr, at: EpochSecs) -> SparkHostAdmission {
+fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> SparkHostAdmission {
   match spark_host_standings_over(store: store, at: at) {
     CurrentStandingsUnread { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c as String], "") as NonEmptyStr }
     CurrentStandingsRead { standings: st } =>
@@ -920,7 +920,7 @@ fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second, res
 // THE RELEASE IS THE EVIDENCE LANDING: given a quiescence reading of the claim's host, append the
 // release. A release that did not land is returned as its cause, never hidden -- the host stays
 // held until one lands.
-fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, store: FabricDbBinding, executor: NonEmptyStr, at: EpochSecs) -> String? {
+fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> String? {
   match host_effect_release(store: store, claim: handle.claim, evidence: evidence, provenance: provenance, executor: executor, at: at) {
     HostEffectReleasedAt { id: _ } => none
     HostEffectReleaseRefused { partition: pt, step: st, reason: why } => Present { value: join(["the host-effect claim ", handle.claim as String, " was not released on ", pt as String, " at ", st, ": ", why, "; the host stays held until a release with quiescence evidence lands"], "") }
@@ -946,7 +946,7 @@ type HostEffectSettlement
   = HostEffectSettled
   | HostEffectStillHeld { cause: String }
 
-fn settle_host_effect_over(handle: HostEffectHandle, provenance: ReleaseProvenance, run: fn(List<String>) -> ArgvRun, store: FabricDbBinding, executor: NonEmptyStr, at: EpochSecs) -> HostEffectSettlement {
+fn settle_host_effect_over(handle: HostEffectHandle, provenance: ReleaseProvenance, run: fn(List<String>) -> ArgvRun, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> HostEffectSettlement {
   match observe_host_effect_quiescence(run: run, claim: handle.claim, host: handle.host, spec: handle.residue, observer: executor, at: at) {
     HostQuiescenceUnread { host: h, cause: c } => HostEffectStillHeld { cause: join([h as String, " could not be read for quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
     HostResidue { host: h, detail: d } => HostEffectStillHeld { cause: join([h as String, " still carries the effect, so the host-effect claim ", handle.claim as String, " stays live: ", d], "") }

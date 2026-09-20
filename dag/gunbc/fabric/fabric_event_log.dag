@@ -5,17 +5,17 @@ import std.nat { Nat, nat_range_inclusive }
 import std.measure { Count, One }
 import product.placement_supply { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.fabric_db {
+import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, FabricHeadExpectation,
-  FabricDbFault, fabric_db_fault_wire,
+  FabricStorageFault, fabric_storage_fault_wire,
   FabricObjectStored, FabricPutRefused, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStoredObject,
 }
-import gunbc.fabric_db_placement { fabric_db_placement, FabricDbPlaced, FabricDbUnplaced }
-import gunbc.fabric_db_client { FabricDbBinding, fabric_db_binding_for, fabric_db_head, fabric_db_put, fabric_db_advance, fabric_db_closure }
-import gunbc.fabric_db_file_store { fabric_db_file_root, fabric_db_file_root_ensure, FabricDbRootReady, FabricDbRootRefused }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
+import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
@@ -30,8 +30,8 @@ import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release
 
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE FABRIC DB.
 // One immutable object per event, addressed by its content; one named head per partition, advanced
-// by a compare-and-set on the expected head; no chain-wide head. The store is std.fabric_db, reached
-// through the binding gunbc.fabric_db_client derives for the executing host -- in process on the
+// by a compare-and-set on the expected head; no chain-wide head. The store is std.fabric_storage, reached
+// through the binding gunbc.fabric_storage_client derives for the executing host -- in process on the
 // placed host, over its served endpoint everywhere else. Nothing here names a host or a transport.
 //
 // THE PARENT IS A LINK THE STORE HOLDS. An event object links to its parent's object, derived from
@@ -43,14 +43,14 @@ import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release
 //
 // CUTOVER (2026-09-19): partitions start empty in the fabric DB. Nothing is imported from the git log
 // -- this realization never derives state from the one it replaced -- and termed leases make the
-// drain sufficient: see docs/plans/fabric-db.md. The git repository is left read-only on its host as
+// drain sufficient: see docs/plans/fabric-storage.md. The git repository is left read-only on its host as
 // history and is consulted by nothing.
 
-// WHY A LOG OPERATION REFUSED, TYPED. A store fault carries std.fabric_db's arm unchanged, so an
+// WHY A LOG OPERATION REFUSED, TYPED. A store fault carries std.fabric_storage's arm unchanged, so an
 // unreachable store, a missing object, a corrupt object and a store refusal stay distinct all the way
 // to the consumer. A lost race is not here: it is EventAppendStale, an outcome with both heads.
 type EventLogRefusal
-  = EventLogStoreFault { fault: FabricDbFault }
+  = EventLogStoreFault { fault: FabricStorageFault }
   | EventLogParentMismatch
   | EventLogEventUndecodable { id: EventId, reason: String }
   | EventLogIdUnreadable { id: EventId }
@@ -58,7 +58,7 @@ type EventLogRefusal
 
 fn event_log_refusal_wire(cause: EventLogRefusal) -> String {
   match cause {
-    EventLogStoreFault { fault: f } => fabric_db_fault_wire(fault: f)
+    EventLogStoreFault { fault: f } => fabric_storage_fault_wire(fault: f)
     EventLogParentMismatch => "the event's parent is not the head the append expects"
     EventLogEventUndecodable { id: i, reason: why } => join(["event ", i as String, " undecodable: ", why], "")
     EventLogIdUnreadable { id: i } => join(["event id ", i as String, " is not an object ref"], "")
@@ -67,8 +67,8 @@ fn event_log_refusal_wire(cause: EventLogRefusal) -> String {
 }
 
 // WHERE THE LOG IS FROM THE EXECUTING HOST: the fabric DB binding for this executor.
-fn event_log_binding_for(executor: HostIdentity) -> FabricDbBinding {
-  fabric_db_binding_for(placement: fabric_db_placement(), executor: executor)
+fn event_log_binding_for(executor: HostIdentity) -> FabricStorageBinding {
+  fabric_storage_binding_for(placement: fabric_storage_placement(), executor: executor)
 }
 
 fn event_id_of(object: FabricObjectRef) -> EventId {
@@ -102,7 +102,7 @@ fn store_expectation(expected: HeadExpectation) -> FabricHeadExpectation? {
   }
 }
 
-fn log_head(reading: std.fabric_db.FabricHeadReading) -> HeadExpectation {
+fn log_head(reading: std.fabric_storage.FabricHeadReading) -> HeadExpectation {
   match reading {
     FabricHeadAbsent => HeadAbsent
     FabricHeadAt { object: o, generation: _ } => HeadAt { id: event_id_of(object: o) }
@@ -114,8 +114,8 @@ type HeadObservation
   = HeadObserved { head: HeadExpectation }
   | HeadObservationRefused { cause: EventLogRefusal }
 
-fn event_log_observe_head(store: FabricDbBinding, partition: PartitionId) -> HeadObservation {
-  match fabric_db_head(binding: store, name: partition as String as NonEmptyStr) {
+fn event_log_observe_head(store: FabricStorageBinding, partition: PartitionId) -> HeadObservation {
+  match fabric_storage_head(binding: store, name: partition as String as NonEmptyStr) {
     FabricHeadReadRefused { fault: f } => HeadObservationRefused { cause: EventLogStoreFault { fault: f } }
     FabricHeadObserved { reading: r } => HeadObserved { head: log_head(reading: r) }
   }
@@ -148,8 +148,8 @@ fn decode_envelopes<P>(objects: List<FabricStoredObject>, decode: fn(String) -> 
     })
 }
 
-fn event_log_read_partition_with<P>(store: FabricDbBinding, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
-  match fabric_db_closure(binding: store, name: partition as String as NonEmptyStr, bound: budget) {
+fn event_log_read_partition_with<P>(store: FabricStorageBinding, partition: PartitionId, budget: Nat, decode: fn(String) -> EventDecode<P>) -> PartitionRead<P> {
+  match fabric_storage_closure(binding: store, name: partition as String as NonEmptyStr, bound: budget) {
     FabricClosureRefused { fault: f } => PartitionReadRefused { cause: EventLogStoreFault { fault: f } }
     FabricClosureBudgetExhausted { at: a, bound: _ } => PartitionReadOk { head: HeadAt { id: event_id_of(object: a) }, walk: ChainBudgetExhausted { at: event_id_of(object: a) } }
     FabricClosureRead { reading: r, newest_first: xs } => {
@@ -162,7 +162,7 @@ fn event_log_read_partition_with<P>(store: FabricDbBinding, partition: Partition
   }
 }
 
-fn event_log_read_partition(store: FabricDbBinding, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
+fn event_log_read_partition(store: FabricStorageBinding, partition: PartitionId, budget: Nat) -> PartitionRead<PoolEvent> {
   event_log_read_partition_with(store: store, partition: partition, budget: budget, decode: fn(t) { pool_event_decode(text: t) })
 }
 
@@ -176,7 +176,7 @@ type EventAppend
   | EventAppendStale { expected: HeadExpectation, observed: HeadExpectation }
   | EventAppendRefused { cause: EventLogRefusal }
 
-fn event_log_append_with<P>(store: FabricDbBinding, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
+fn event_log_append_with<P>(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<P>, expected: HeadExpectation, encode: fn(ChainEvent<P>) -> String) -> EventAppend {
   if !head_expectation_eq(a: event_parent_expectation(e: event), b: expected) {
     EventAppendRefused { cause: EventLogParentMismatch }
   } else {
@@ -186,10 +186,10 @@ fn event_log_append_with<P>(store: FabricDbBinding, partition: PartitionId, even
         match store_expectation(expected: expected) {
           Absent => EventAppendRefused { cause: match expected { HeadAt { id: i } => EventLogIdUnreadable { id: i }  HeadAbsent => EventLogParentMismatch } }
           Present { value: x } =>
-            match fabric_db_put(binding: store, object: object) {
+            match fabric_storage_put(binding: store, object: object) {
               FabricPutRefused { fault: f } => EventAppendRefused { cause: EventLogStoreFault { fault: f } }
               FabricObjectStored { object: r } =>
-                match fabric_db_advance(binding: store, name: partition as String as NonEmptyStr, expected: x, target: r) {
+                match fabric_storage_advance(binding: store, name: partition as String as NonEmptyStr, expected: x, target: r) {
                   FabricHeadAdvanced { object: o, generation: _ } => EventAppended { id: event_id_of(object: o) }
                   FabricHeadMoved { expected: _, observed: now } => EventAppendStale { expected: expected, observed: log_head(reading: now) }
                   FabricHeadAdvanceRefused { fault: f } => EventAppendRefused { cause: EventLogStoreFault { fault: f } }
@@ -200,7 +200,7 @@ fn event_log_append_with<P>(store: FabricDbBinding, partition: PartitionId, even
   }
 }
 
-fn event_log_append(store: FabricDbBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
+fn event_log_append(store: FabricStorageBinding, partition: PartitionId, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> EventAppend {
   event_log_append_with(store: store, partition: partition, event: event, expected: expected, encode: fn(e) { pool_event_wire_text(event: e) })
 }
 
@@ -242,7 +242,7 @@ type SeatStandingObservation
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
+fn fabric_seat_observe(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, at: EpochSecs, budget: Nat) -> SeatStandingObservation {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
@@ -268,7 +268,7 @@ fn fabric_seat_observe(store: FabricDbBinding, partition: PartitionId, root: Poo
   }
 }
 
-fn seat_attempt(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
+fn seat_attempt(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, budget: Nat, attempt: Nat) -> SeatAcquisition? {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
     PartitionReadRefused { cause: c } => Present { value: SeatStoreRefused { cause: c, attempts_used: attempt } }
     PartitionReadOk { head: head, walk: walk } =>
@@ -306,7 +306,7 @@ fn seat_attempt(store: FabricDbBinding, partition: PartitionId, root: Pool<Count
 // and the drift is invisible because each side is internally consistent. A mismatch is refused before
 // anything is appended rather than resolved in favour of either side: neither is authoritative over
 // the other, and picking one silently would be the same fail-open in a different costume.
-fn fabric_seat_acquire(store: FabricDbBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+fn fabric_seat_acquire(store: FabricStorageBinding, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
   if !release_law_eq(left: root.release_law, right: policy.release_law) {
     SeatAcquireRefused {
       step: "release-law",
@@ -343,13 +343,13 @@ fn seat_acquisition_wire(a: SeatAcquisition) -> String {
 // THE STORE ENSURE, run ON the placed host: the fabric DB's two areas under its placement root.
 // The root's parent, ownership and mode are the substrate's obligation; a missing or unwritable
 // parent refuses.
-fn fabric_db_placement_ensure_wet() -> ProcessExit {
-  match fabric_db_placement() {
-    FabricDbUnplaced => exit_failure(reason: "fabric DB placement ensure refused: the fabric DB is unplaced")
-    FabricDbPlaced { host: _, store_root: r, endpoint: _ } =>
-      match fabric_db_file_root_ensure(root: fabric_db_file_root(root: r)) {
-        FabricDbRootReady => ExitSuccess
-        FabricDbRootRefused { area: a, detail: why } => exit_failure(reason: join(["fabric DB placement ensure refused at ", a, ": ", why], ""))
+fn fabric_storage_placement_ensure_wet() -> ProcessExit {
+  match fabric_storage_placement() {
+    FabricStorageUnplaced => exit_failure(reason: "fabric DB placement ensure refused: the fabric DB is unplaced")
+    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
+      match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: r)) {
+        FabricStorageRootReady => ExitSuccess
+        FabricStorageRootRefused { area: a, detail: why } => exit_failure(reason: join(["fabric DB placement ensure refused at ", a, ": ", why], ""))
       }
   }
 }

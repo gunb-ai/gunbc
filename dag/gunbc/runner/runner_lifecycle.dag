@@ -24,6 +24,8 @@ import gunbc.runner_slot_allocation {
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
   runner_slot_membership,
+  SlotMembershipWidthUnresolved,
+  runner_width_unresolved_cause_text,
 }
 import gunbc.host_disk_observation {
   HostDiskObservation,
@@ -158,6 +160,10 @@ type RunnerSlotAddSequence
 // only thing executing it, and a witness is not a consumer.
 fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
   match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotMembershipWidthUnresolved { identity: _, cause: c } =>
+      SlotIsNotACommittedMember {
+        reason: join(["this host's committed width does not resolve, so there is no committed population and no membership answer -- which is a REFUSAL to classify rather than a finding that the slot is outside a population: ", runner_width_unresolved_cause_text(cause: c)], "")
+      }
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMember {
         reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"
