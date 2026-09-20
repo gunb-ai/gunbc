@@ -13,7 +13,7 @@ import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, Propos
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
@@ -189,17 +189,18 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 
 // ── the links and the notification ─────────────────────────────────────────────────────────────
 
-// THE LINK BASE IS THE ROADMAP SERVER'S TAILNET NAME, the same composition the ntfy address uses
-// (gunbc.auth.approval_ntfy_deployment srv1_tailnet_base_url_from) at the default TLS port, where
-// tailscale serve proxies / to the roadmap server; the approve route is served there by
-// gunbc.roadmap.roadmap_serve. The undeclared-domain arm and its `.invalid` reasoning live with
-// that function and are not restated here.
-fn approval_link_base_url() -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
-}
+// THE LINK BASE IS THE APPROVAL BROKER'S FRONT DOOR, and this module no longer derives it. It used
+// to, grounded on a sentence naming the roadmap server -- "tailscale serve proxies / to the roadmap
+// server; the approve route is served there by gunbc.roadmap.roadmap_serve". The broker split makes
+// that sentence false while leaving the STRING it produced byte-identical, because the front door
+// keeps the public host and port. A grounding that has gone false while its output stayed right is
+// exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
+// endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
+// here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
+// srv1_tailnet_base_url_from and is not restated at either site.
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
-  join([base as String, "/approve/", capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
+  join([base as String, approval_broker_confirm_path_prefix as String, capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
 }
 
 type LinkIssuance
@@ -308,7 +309,7 @@ fn notify_filed(
 ) -> SubmissionOutcome {
   match capability_keyring {
     ApprovalKeyringRefused { cause: c } => SubmissionFiledCapabilityKeyUnavailable { escalation_id: request.escalation_id, cause: c }
-    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_link_base_url(), request: request) {
+    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_broker_base_url(), request: request) {
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }

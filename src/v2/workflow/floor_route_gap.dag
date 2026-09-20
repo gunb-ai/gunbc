@@ -1428,8 +1428,51 @@ fn floor_route_gap_expectation_chunk_19() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// ALL SIX test.claim.mtcollins1_census_image_local_wet identities: the census envelope grammar read
+// against the one capture a census host actually wrote, the historical stage map checked against those
+// same committed bytes, the renderer's program executed under a real shell and parsed back, the image
+// resolver driven against a real directory, and the two workload claims that execute the UNMODIFIED
+// rendered workload body under stubbed tools -- the pair that makes workload-digest-stable=yes
+// discriminating. Their first effects are Filesystem.Read, shell.Exec.RunArgv and shell.Mktemp.Dir,
+// none mocked by the hermetic envelope. THE ROSTER IS THE WHOLE FILE: a claim omitted here runs on no
+// lane at all, which is how three of these were previously unexecuted while the file looked enrolled.
+// Enrolled as the triple chunk_06's header requires: this expectation, the WetScheduledClaim rows in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier row classifying the file LocalRepoWetLane.
+fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_attempt_three_capture_binds_and_reads_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_historical_binding_holds_against_the_committed_capture_by_real_execution", operation: "Read", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_committed_capture_matches_its_recorded_identity_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_rendered_program_runs_and_its_output_parses_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.a_removed_image_is_absent_not_diverged_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:
+  Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

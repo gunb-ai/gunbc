@@ -1,0 +1,376 @@
+module test.claim.mtcollins1_census_image
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr }
+import std.string_type { String }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  NoCloudSeedFile,
+  SeededInstallMediaPinnedDates,
+  UbuntuSeededInstallMediaBuildInput,
+  seeded_install_media_build_key,
+  ubuntu_seeded_install_media_built,
+}
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureStage,
+  BoundHostCaptureEnvelope,
+  HostCaptureBound,
+  HostCaptureUnbound,
+  HistoricalAttemptOrdinal,
+  KernelBootId,
+  host_capture_bind,
+  host_capture_bound_edac_clean,
+  host_capture_bound_nproc_exact,
+  host_capture_bound_workload_stable,
+  host_capture_census_stages,
+  host_capture_line_close,
+  host_capture_run_identity_value,
+  host_capture_run_token,
+  host_capture_section_open,
+  host_capture_workload_chunk_count,
+  host_capture_workload_chunk_paths,
+  host_capture_workload_command,
+}
+import gunbc.machine_intake_host_capture_historical_binding {
+  census_historical_stage_bindings,
+  census_roster_is_fully_bound,
+  census_roster_matches_bindings,
+  census_stages_with_mutated_command,
+  roster_matches_bindings,
+}
+import gunbc.machine_intake_mtcollins1_census_image {
+  mtcollins1_census_capture_program,
+  mtcollins1_census_console_device,
+  mtcollins1_census_console_tty,
+  mtcollins1_census_image_input,
+  mtcollins1_census_machine,
+  mtcollins1_census_image_stem,
+  mtcollins1_census_program_file,
+  mtcollins1_census_volume_id,
+  mtcollins1_seeded_image_input,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data census_run_a: String = "boot-id=aaaa-1111"
+
+data census_run_b: String = "boot-id=bbbb-2222"
+
+fn census_marker(run: String, word: String) -> String {
+  concat("=====GUNBC-HOST-CAPTURE mtcollins1 ", run, " ", word, " 2026-09-19T00:00:00Z=====")
+}
+
+data census_sections_body: String = "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; [ \"$ok\" = 1 ] && echo workload-digest-stable=yes\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-before----\n----ARGV edac-before: find\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0"
+
+fn census_capture_one_run() -> String {
+  concat(census_marker(run: census_run_a, word: "begin"), "\n", census_sections_body, "\n", census_marker(run: census_run_a, word: "end"), "\n")
+}
+
+fn census_binds(capture: String) -> Bool {
+  match host_capture_bind(capture: capture, machine: mtcollins1_census_machine) {
+    HostCaptureBound { envelope: _ } => true
+    HostCaptureUnbound { reason: _ } => false
+  }
+}
+
+test fn one_run_binds_and_answers_every_verdict_axis() -> Bool {
+  match host_capture_bind(capture: census_capture_one_run(), machine: mtcollins1_census_machine) {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } =>
+      host_capture_run_identity_value(run: e.run) == "aaaa-1111"
+        && host_capture_bound_nproc_exact(envelope: e, threads: "160")
+        && host_capture_bound_workload_stable(envelope: e)
+        && host_capture_bound_edac_clean(envelope: e, name: "edac-before")
+  }
+}
+
+// THE CROSS-RUN JOIN, REFUSED. A begin from one run and an end from another is the failure the
+// binding exists to prevent: each line is real, the sections between them are real, and the verdict
+// they would compose never happened.
+test fn a_begin_from_one_run_and_an_end_from_another_does_not_bind() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: census_run_a, word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: census_run_b, word: "end"), "\n",
+  )) == false
+}
+
+test fn an_end_before_a_begin_does_not_bind() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: census_run_a, word: "end"), "\n", census_sections_body, "\n",
+    census_marker(run: census_run_a, word: "begin"), "\n",
+  )) == false
+}
+
+test fn an_unclosed_envelope_does_not_bind() -> Bool {
+  census_binds(capture: concat(census_marker(run: census_run_a, word: "begin"), "\n", census_sections_body, "\n")) == false
+}
+
+// A SECTION OUTSIDE THE ENVELOPE IS NOT READ. The bound run's nproc says 160 and a later run's says
+// 8; a verdict that searched the stream would find whichever it wanted.
+test fn a_section_from_another_run_is_not_read() -> Bool {
+  let stream = concat(
+    census_marker(run: census_run_a, word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: census_run_a, word: "end"), "\n",
+    census_marker(run: census_run_b, word: "begin"), "\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n8\n----EXIT nproc: 0\n",
+    census_marker(run: census_run_b, word: "end"), "\n",
+  )
+  match host_capture_bind(capture: stream, machine: mtcollins1_census_machine) {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } =>
+      host_capture_bound_nproc_exact(envelope: e, threads: "160")
+        && host_capture_bound_nproc_exact(envelope: e, threads: "8") == false
+  }
+}
+
+// THE SAME SPELLING IN TWO DIFFERENT IDENTITY FORMS IS NOT THE SAME RUN. attempt=3 is an ordinal
+// the historical program printed; boot-id=3 would be a kernel boot id. They share a spelling and
+// nothing else, so an envelope begun as one and ended as the other may not close -- comparing the
+// projected text alone let exactly that through, which is the confusion the two forms exist to end.
+test fn the_same_text_under_two_identity_forms_is_not_one_run() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "boot-id=3", word: "end"), "\n",
+  )) == false
+    && census_binds(capture: concat(
+      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "attempt=3", word: "end"), "\n",
+    )) == false
+}
+
+// THE POSITIVE CONTROL for the claim above: the same spelling under the SAME form is one run and
+// must bind, so the refusal above is the form discriminating and not the text failing to compare.
+test fn the_same_text_under_one_identity_form_is_one_run() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: "attempt=3", word: "begin"), "\n", census_sections_body, "\n",
+    census_marker(run: "attempt=3", word: "end"), "\n",
+  ))
+    && census_binds(capture: concat(
+      census_marker(run: "boot-id=3", word: "begin"), "\n", census_sections_body, "\n",
+      census_marker(run: "boot-id=3", word: "end"), "\n",
+    ))
+}
+
+// A NAME THAT OPENS TWICE REFUSES THE WHOLE CAPTURE rather than picking one: a later passing section
+// must not be able to answer for an earlier failing one.
+test fn a_duplicate_section_refuses_the_capture() -> Bool {
+  census_binds(capture: concat(
+    census_marker(run: census_run_a, word: "begin"), "\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n8\n----EXIT nproc: 1\n",
+    "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+    census_marker(run: census_run_a, word: "end"), "\n",
+  )) == false
+}
+
+test fn a_marker_without_a_run_identity_does_not_bind() -> Bool {
+  census_binds(capture: concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 begin 2026-09-19T00:00:00Z=====\n", census_sections_body, "\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 end 2026-09-19T00:04:00Z=====\n",
+  )) == false
+}
+
+test fn the_envelope_is_bound_to_its_own_machine() -> Bool {
+  match host_capture_bind(capture: census_capture_one_run(), machine: "mtcollins2") {
+    HostCaptureUnbound { reason: _ } => true
+    HostCaptureBound { envelope: _ } => false
+  }
+}
+
+// THE FALSE GREEN THE PROGRAM'S OWN ARGV LINE WOULD OPEN, ISOLATED TO ONE CONJUNCT. The section exits
+// zero and carries `workload-write-rc=0` as a line, so every other conjunct holds; the passes
+// DISAGREED, so the stable marker appears only inside the ARGV echo. Measured: relax the parser to
+// substring matching and this claim FAILS.
+test fn a_workload_token_in_the_argv_line_is_not_a_result() -> Bool {
+  let capture = concat(
+    census_marker(run: census_run_a, word: "begin"), "\n",
+    "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; [ \"$ok\" = 1 ] && echo workload-digest-stable=yes\nworkload-write-rc=0\n----EXIT workload: 0\n",
+    census_marker(run: census_run_a, word: "end"), "\n",
+  )
+  match host_capture_bind(capture: capture, machine: mtcollins1_census_machine) {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } => host_capture_bound_workload_stable(envelope: e) == false
+  }
+}
+
+// A stock boot of the same medium with no seed: firmware, kernel, then the installer's language menu.
+data census_console_seed_absent_reaches_tui: String = "[    0.000000] Kernel command line: BOOT_IMAGE=/casper/vmlinuz --- console=ttyAMA0,115200\n[   17.340772] cloud-init: no datasource found\nWelcome!\nUse UP, DOWN and ENTER keys to select your language.\n[ English ]\n"
+
+test fn seed_absent_reaches_the_installer_and_never_binds() -> Bool {
+  census_binds(capture: census_console_seed_absent_reaches_tui) == false
+}
+
+// THE HISTORICAL IDENTITY FORM IS KEPT APART FROM THE NEW ONE: attempt=3's ordinal parses as an
+// ordinal, not as a boot id, so a reader can tell which producer wrote the capture.
+test fn the_two_run_identity_forms_are_distinguished() -> Bool {
+  let historical = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=3 begin 2026-09-11T01:26:50Z=====\n", census_sections_body, "\n",
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=3 end 2026-09-11T01:30:29Z=====\n",
+  )
+  match host_capture_bind(capture: historical, machine: mtcollins1_census_machine) {
+    HostCaptureUnbound { reason: _ } => false
+    HostCaptureBound { envelope: e } =>
+      match e.run {
+        HistoricalAttemptOrdinal { ordinal: o } => (o as String) == "3"
+        KernelBootId { boot_id: _ } => false
+      }
+  }
+}
+
+// EVERY HISTORICAL SECTION HAS EXACTLY ONE DISPOSITION AND EVERY ROSTER STAGE IS BOUND.
+test fn every_stage_is_bound_to_the_historical_capture() -> Bool {
+  census_roster_is_fully_bound()
+    && census_roster_matches_bindings()
+    && census_historical_stage_bindings.length() == 19
+}
+
+// THE MAP REFUSES A MUTATED STAGE: editing a bound command away from what its row says makes the
+// roster a different program from the one the binding describes.
+test fn a_mutated_bound_stage_fails_the_historical_map() -> Bool {
+  roster_matches_bindings(stages: census_stages_with_mutated_command(name: "boot-media", command: "ls")) == false
+    && roster_matches_bindings(stages: census_stages_with_mutated_command(name: "nproc", command: "nproc --all")) == false
+    && roster_matches_bindings(stages: host_capture_census_stages)
+}
+
+// THE WORKLOAD CANNOT MINT A CLEAN RESULT FROM TWO FAILED PASSES: the body requires both hash passes'
+// statuses and each pass's coverage of every named chunk, not merely that the two lists agree -- two
+// empty lists agree. Executed end to end in the local-wet file; this pins the shape.
+test fn the_workload_requires_pass_status_and_full_coverage() -> Bool {
+  let body = host_capture_workload_command() as String
+  string_contains(s: body, pattern: "sa=$?")
+    && string_contains(s: body, pattern: "sb=$?")
+    && string_contains(s: body, pattern: "[ \"$sa\" = 0 ]")
+    && string_contains(s: body, pattern: "[ \"$sb\" = 0 ]")
+    && string_contains(s: body, pattern: concat("[ \"$na\" = ", host_capture_workload_chunk_count() as String, " ]"))
+    && string_contains(s: body, pattern: host_capture_workload_chunk_paths())
+    && string_contains(s: body, pattern: "chunk*") == false
+}
+
+test fn the_census_roster_is_the_brief_order() -> Bool {
+  join(map(host_capture_census_stages, s => s.name as String), ",")
+    == "subject-system,subject-baseboard,subject-chassis,boot-id,boot-cmdline,kernel,boot-media,nproc,lscpu,numa,meminfo,dmidecode-type16,dmidecode-type17,edac-mc-name,edac-find,edac-before,workload,edac-after"
+}
+
+fn census_program_index(needle: String) -> Int {
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  split(s: program, delimiter: needle).first().length()
+}
+
+// HALT ONLY AFTER END. END is echoed after the last section, `sync` after END, and the power-off is
+// the program's last line; nothing the census reads can follow the halt.
+test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Bool {
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  let end_at = census_program_index(needle: concat(host_capture_run_token, "$GUNBC_BOOT_ID end"))
+  let last_section_at = census_program_index(needle: concat(host_capture_section_open, "edac-after", host_capture_line_close))
+  let sync_at = census_program_index(needle: "\nsync\n")
+  let halt_at = census_program_index(needle: "\npoweroff -f\n")
+  string_contains(s: program, pattern: concat("exec >", mtcollins1_census_console_device as String, " 2>&1"))
+    && last_section_at < end_at
+    && end_at < sync_at
+    && sync_at < halt_at
+    && ends_with(s: program, suffix: "\npoweroff -f\n")
+}
+
+// THE SEED RUNS THE PROGRAM BEFORE ANY INSTALLER SECTION AND LEAVES EVERY SECTION TO A HUMAN, so a
+// failed power-off parks the unit at the installer rather than letting an unattended install touch
+// storage. No storage or identity key is present for subiquity to act on.
+test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() -> Bool {
+  let ud = mtcollins1_census_image_input.user_data_body as String
+  string_contains(s: ud, pattern: "#cloud-config")
+    && string_contains(s: ud, pattern: "early-commands:")
+    && string_contains(s: ud, pattern: "sh /cdrom/gunbc-census/capture.sh")
+    && string_contains(s: ud, pattern: "interactive-sections:")
+    && string_contains(s: ud, pattern: "*")
+    && string_contains(s: ud, pattern: "storage") == false
+    && string_contains(s: ud, pattern: "identity") == false
+}
+
+// ONE TTY, BOTH SPELLINGS. The device the program writes to and the console the kernel is told to
+// use derive from the same row, so they cannot be edited apart.
+test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> Bool {
+  let cmdline = mtcollins1_census_image_input.grub_kernel_cmdline as String
+  string_contains(s: cmdline, pattern: "autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\"")
+    && string_contains(s: cmdline, pattern: concat("console=", mtcollins1_census_console_tty as String, ","))
+    && (mtcollins1_census_console_device as String) == concat("/dev/", mtcollins1_census_console_tty as String)
+    && mtcollins1_census_image_input.seed_files.length() == 1
+    && (mtcollins1_census_image_input.volume_id as String).length() <= 32
+}
+
+fn census_input_varying(
+  program: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  pinned_dates: SeededInstallMediaPinnedDates,
+  builder_revision: NonEmptyStr,
+) -> UbuntuSeededInstallMediaBuildInput {
+  let base = mtcollins1_census_image_input
+  UbuntuSeededInstallMediaBuildInput {
+    stock_artifact: base.stock_artifact,
+    nocloud_dir_on_iso: base.nocloud_dir_on_iso,
+    user_data_body: base.user_data_body,
+    seed_files: [NoCloudSeedFile { name: mtcollins1_census_program_file, content: program }],
+    grub_kernel_cmdline: grub_kernel_cmdline,
+    volume_id: volume_id,
+    pinned_dates: pinned_dates,
+    image_stem: base.image_stem,
+    builder_revision: builder_revision,
+  }
+}
+
+fn census_key_varying(
+  program: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  pinned_dates: SeededInstallMediaPinnedDates,
+  builder_revision: NonEmptyStr,
+) -> NonEmptyStr {
+  seeded_install_media_build_key(input: census_input_varying(
+    program: program,
+    grub_kernel_cmdline: grub_kernel_cmdline,
+    volume_id: volume_id,
+    pinned_dates: pinned_dates,
+    builder_revision: builder_revision,
+  ))
+}
+
+// EVERY INPUT REACHES THE KEY. Reassembling the census input from its own fields reproduces the key
+// (the positive control), and one byte of the capture program, the boot configuration, the label,
+// either pinned date or the builder revision each move it, as does a roster with a stage appended.
+// The key names the derivation; the image's identity is its measured bytes (next claim), and whether
+// one changed input byte changes THOSE bytes is the wet build's control on srv2.
+test fn every_build_input_reaches_the_derivation_key() -> Bool {
+  let base = mtcollins1_census_image_input
+  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages)
+  let cmdline = base.grub_kernel_cmdline
+  let volid = base.volume_id
+  let dates = base.pinned_dates
+  let revision = base.builder_revision
+  let key = seeded_install_media_build_key(input: base)
+  key == census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: concat(program as String, " ") as NonEmptyStr, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: concat(cmdline as String, " quiet") as NonEmptyStr, volume_id: volid, pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: "GUNBC_MTC1_CENSUS_OTHER", pinned_dates: dates, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: "2025080615525001", file_date: dates.file_date }, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: dates.volume_uuid, file_date: "2025.08.06.155251" }, builder_revision: revision)
+    && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: "xorriso-replay-pinned-dates/2")
+    && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
+      stages: append(host_capture_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
+      image_stem: mtcollins1_census_image_stem,
+      volume_id: mtcollins1_census_volume_id,
+    ))
+}
+
+test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
+  let a = ubuntu_seeded_install_media_built(
+    input: mtcollins1_census_image_input,
+    output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  )
+  let b = ubuntu_seeded_install_media_built(
+    input: mtcollins1_census_image_input,
+    output_digest: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+  )
+  a.image_name == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123456789abcdef.iso"
+    && a.image_name != b.image_name
+    && a.build_key == b.build_key
+    && a.image_name != mtcollins1_diskless_image_name
+}

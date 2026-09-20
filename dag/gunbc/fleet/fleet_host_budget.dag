@@ -28,6 +28,12 @@ import gunbc.fabric_control_plane_charge {
   ControlPlaneClaimResolved,
   ControlPlaneClaimUnmeasured,
 }
+import gunbc.live_deploy.served_slice_charge {
+  HostServedDeploymentClaim,
+  ServedDeploymentNotPlaced,
+  ServedDeploymentClaimResolved,
+  ServedDeploymentClaimUnmeasured,
+}
 import gunbc.ci_fleet { ComputeOffer }
 import gunbc.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
@@ -244,6 +250,13 @@ data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_
 // envelope and a later migration path. Folding it into overhead erases all five and makes a future
 // MOVE indistinguishable from a drift in miscellaneous OS usage -- and it would double-charge the
 // moment overhead is next measured on a host where the service is running.
+// served_deployment_pool IS A NAMED CHILD FOR THE REASON fabric_control_plane_pool IS ONE, and it
+// closes a hole rather than adding a term. The roadmap deployment's slice is the declared MemoryMax
+// at gunbc.live_deploy.slice_bounds live_deploy_slice_memory_max, which systemd lets four units
+// hold on srv1, and it appeared in NONE of the terms below:
+// the verdict answered "this host conserves" for a machine on which that allowance had already been
+// written by gunbc.live_deploy. The approval-broker split adds a second served slice, so the moment
+// to charge them is the moment there are two (gunbc.live_deploy.served_slice_charge).
 fn host_allocation_tree(
   host: ByteSize,
   overhead: ByteSize,
@@ -251,7 +264,8 @@ fn host_allocation_tree(
   runner_pool: ByteSize,
   session_pool: ByteSize,
   compile_pool: ByteSize,
-  control_plane: ByteSize
+  control_plane: ByteSize,
+  served_deployment: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -262,6 +276,7 @@ fn host_allocation_tree(
       child_node(name: "session_pool", b: session_pool),
       child_node(name: "compile_pool", b: compile_pool),
       child_node(name: "fabric_control_plane_pool", b: control_plane),
+      child_node(name: "served_deployment_pool", b: served_deployment),
       child_node(name: "headroom", b: headroom),
     ],
   }
@@ -290,19 +305,53 @@ fn host_allocation_verdict(
   runner_pool: ByteSize,
   session_pool: ByteSize,
   compile_pool: ByteSize,
-  control_plane: HostFabricControlPlaneClaim
+  control_plane: HostFabricControlPlaneClaim,
+  served_deployment: HostServedDeploymentClaim
 ) -> HostAllocationVerdict {
   match control_plane {
     ControlPlaneClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
     ControlPlaneNotPlaced =>
-      host_allocation_verdict_charged(
+      host_allocation_verdict_served(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
-        session_pool: session_pool, compile_pool: compile_pool, control_plane: byte_size(0)
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: byte_size(0),
+        served_deployment: served_deployment
       )
     ControlPlaneClaimResolved { memory: m } =>
+      host_allocation_verdict_served(
+        host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: m,
+        served_deployment: served_deployment
+      )
+  }
+}
+
+// EACH UNMEASURED CLAIM REFUSES IN ITS OWN NAME. Folding the two claims into one match would make
+// "unchargeable" unable to say WHICH resident's size is unknown, and the remedy is a different
+// measurement in each case -- which is the whole reason HostAllocationUnchargeable carries a cause
+// rather than being a false.
+fn host_allocation_verdict_served(
+  host: ByteSize,
+  overhead: ByteSize,
+  headroom: ByteSize,
+  runner_pool: ByteSize,
+  session_pool: ByteSize,
+  compile_pool: ByteSize,
+  control_plane: ByteSize,
+  served_deployment: HostServedDeploymentClaim
+) -> HostAllocationVerdict {
+  match served_deployment {
+    ServedDeploymentClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
+    ServedDeploymentNotPlaced =>
       host_allocation_verdict_charged(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
-        session_pool: session_pool, compile_pool: compile_pool, control_plane: m
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
+        served_deployment: byte_size(0)
+      )
+    ServedDeploymentClaimResolved { memory: m } =>
+      host_allocation_verdict_charged(
+        host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
+        session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
+        served_deployment: m
       )
   }
 }
@@ -314,7 +363,8 @@ fn host_allocation_verdict_charged(
   runner_pool: ByteSize,
   session_pool: ByteSize,
   compile_pool: ByteSize,
-  control_plane: ByteSize
+  control_plane: ByteSize,
+  served_deployment: ByteSize
 ) -> HostAllocationVerdict {
   if node_conserves(node: host_allocation_tree(
     host: host,
@@ -323,7 +373,8 @@ fn host_allocation_verdict_charged(
     runner_pool: runner_pool,
     session_pool: session_pool,
     compile_pool: compile_pool,
-    control_plane: control_plane
+    control_plane: control_plane,
+    served_deployment: served_deployment
   )) {
     HostAllocationConserves
   } else {
