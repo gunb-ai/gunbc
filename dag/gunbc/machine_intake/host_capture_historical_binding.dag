@@ -153,10 +153,6 @@ data census_historical_stage_bindings: List<HistoricalStageBinding> = [
   },
 ]
 
-fn historical_binding_names() -> List<String> {
-  map(census_historical_stage_bindings, b => b.name as String)
-}
-
 fn historical_binding_for(name: String) -> HistoricalStageBinding? {
   fold(
     census_historical_stage_bindings,
