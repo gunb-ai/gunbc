@@ -16,10 +16,21 @@ import extdeps.crypto.hash { Digest }
 import extdeps.iproute2.ip_show { ip_addr_show_command, ip_route_show_command }
 import extdeps.linux.nf_conntrack { nf_conntrack_helper_proc_path }
 import extdeps.tools.uname { uname_release_command }
-import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, run_shell_commands, LocalExec }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy, runner_host_deploy_for, runner_index_seq,
+  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
+}
+import gunbc.executor_privileged_apply { apply_executor_privileged_operations_wet }
 import gunbc.executor_privileged_apply { executor_privileged_operation_command }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ReadNftRuleset, ReadConntrackExpectations }
 import gunbc.runner_microvm_network {
@@ -567,6 +578,15 @@ fn runner_microvm_network_converge_wet() -> ProcessExit {
       }
     }
   }
+}
+
+// EVERY SLOT ON THE HOST HAS A microVM NETWORK, because the microVM path replaces the shared slot
+// rather than sitting beside it. The roster is derived here rather than imported from
+// gunbc.runner_host_grants, which consumes THIS module's operation fold to render its sudoers lines:
+// importing it back would be a cycle, and the slot roster is a fact about the deploy row either way.
+fn runner_microvm_network_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
+  let host = deploy.host_label as HostIdentity
+  map(runner_index_seq(n: deploy.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i })
 }
 
 fn converge_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit {

@@ -330,6 +330,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
+    MicrovmNetworkConverge => FleetSshKeyConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
     MicrovmBootProbe => FleetSshKeyConsumed

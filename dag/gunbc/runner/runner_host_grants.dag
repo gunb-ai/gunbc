@@ -48,7 +48,9 @@ import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner_host_deploy { runner_index_seq }
-import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
+import gunbc.runner_microvm_network_converge {
+  microvm_network_granted_operations, runner_microvm_network_slot_identities_of,
+}
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
@@ -315,15 +317,6 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
   ]
 }
 
-// EVERY SLOT ON THE HOST GETS A microVM NETWORK, because the microVM path replaces the shared slot
-// rather than sitting beside it: the tap, its address and its v6 sysctl are per-slot state whichever
-// way that slot is currently executed. The grant follows the roster, so a slot added to a host brings
-// its own network authorization and a slot removed takes it away.
-fn runner_microvm_network_slot_identities(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
-  let host = deploy.host_label as HostIdentity
-  map(runner_index_seq(n: deploy.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i })
-}
-
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
@@ -333,7 +326,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
-    + microvm_network_granted_operations(slots: runner_microvm_network_slot_identities(deploy: deploy))
+    + microvm_network_granted_operations(slots: runner_microvm_network_slot_identities_of(deploy: deploy))
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
