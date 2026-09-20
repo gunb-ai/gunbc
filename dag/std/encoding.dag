@@ -2,8 +2,8 @@ module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
-import std.integer { UInt8 }
-import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, OctetsResult, OctetsReady, OctetsRefused, Octet, OctetResult, OctetReady, OctetRefused, octet_of_int, octet_value, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values, octets_of_ints }
+import std.integer { UInt8, UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int }
+import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or, octet_int_values, octets_of_ints }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
@@ -130,8 +130,8 @@ fn base64_alphabet(variant: Base64Variant) -> String {
 
 type Base64EncodeBuf
   = EncEmpty
-  | EncOne { b0: Octet }
-  | EncTwo { b0: Octet, b1: Octet }
+  | EncOne { b0: UInt8 }
+  | EncTwo { b0: UInt8, b1: UInt8 }
 
 type Base64EncodeState {
   out: String
@@ -154,10 +154,10 @@ type Base64EncodeState {
 
 // THE GROUP IS ASSEMBLED IN OCTETS AND ONLY ITS RESULT IS A WORD. The previous form converted each
 // octet to a Width8 Word first and packed Words, which meant three conversions that could refuse
-// and a leading zero Word minted separately. With Octet as the member type the packing takes the
+// and a leading zero Word minted separately. With UInt8 as the member type the packing takes the
 // members directly, so the only refusal left is the one word_from_octets raises about the WIDTH --
 // and the conversions, along with their unreachable arms, are gone rather than handled.
-fn base64_group_word(octets: List<Octet>) -> WordResult {
+fn base64_group_word(octets: List<UInt8>) -> WordResult {
   word_from_octets(width: Width32, octets: octets, endianness: BigEndian)
 }
 
@@ -172,8 +172,8 @@ fn base64_group_word(octets: List<Octet>) -> WordResult {
 // An out-of-range octet is a CONSTRUCTION failure, not an encoding failure, so it belongs here.
 // base64_octets admits a List<UInt8> into the qualified carrier once; past this point an octet
 // cannot be out of range BY TYPE, so base64_encode is total again and every caller stops carrying
-// an arm that cannot occur for it. This is the same move std.machine_word makes with Octet, applied
-// at the boundary where raw values enter.
+// an arm that cannot occur for it. The octet's own constructor is std.integer uint8_of_int; this
+// applies it at the boundary where raw values enter this module.
 fn base64_octets(values: List<UInt8>) -> OctetsResult {
   octets_of_ints(octets: [], remaining: values |> map(v => v + 0))
 }
@@ -186,8 +186,8 @@ fn base64_sextet_mask() -> WordResult {
 // substrate realizes and inventing a Width24 for one caller would be a width authority minted for
 // a convenience. The leading zero octet is the packing's own statement that the group occupies the
 // low three octets, and every field offset below is measured from that.
-fn base64_zero_octet() -> OctetResult {
-  octet_of_int(value: 0)
+fn base64_zero_octet() -> UInt8Result {
+  uint8_of_int(value: 0)
 }
 
 fn base64_sextet_at(group: Word, offset: Int) -> Int? {
@@ -212,10 +212,10 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
   }
 }
 
-fn base64_group_of_octets(x: Octet, y: Octet, z: Octet) -> WordResult {
+fn base64_group_of_octets(x: UInt8, y: UInt8, z: UInt8) -> WordResult {
   match base64_zero_octet() {
-    OctetRefused { cause: c } => WordRefused { cause: c }
-    OctetReady { octet: zero } => base64_group_word(octets: [zero, x, y, z])
+    UInt8OutOfRange { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
+    UInt8Ready { value: zero } => base64_group_word(octets: [zero, x, y, z])
   }
 }
 
@@ -238,7 +238,7 @@ fn base64_quad(alphabet: String, group: Word) -> String? {
   }
 }
 
-fn base64_encode_step(st: Base64EncodeState, octet: Octet, alphabet: String) -> Base64EncodeState? {
+fn base64_encode_step(st: Base64EncodeState, octet: UInt8, alphabet: String) -> Base64EncodeState? {
   match st.buf {
     EncEmpty => Present { value: Base64EncodeState { out: st.out, buf: EncOne { b0: octet } } }
     EncOne { b0: x } => Present { value: Base64EncodeState { out: st.out, buf: EncTwo { b0: x, b1: octet } } }
@@ -254,7 +254,7 @@ fn base64_encode_step(st: Base64EncodeState, octet: Octet, alphabet: String) -> 
   }
 }
 
-fn base64_encode_step_optional(st: Base64EncodeState?, octet: Octet, alphabet: String) -> Base64EncodeState? {
+fn base64_encode_step_optional(st: Base64EncodeState?, octet: UInt8, alphabet: String) -> Base64EncodeState? {
   match st {
     Absent => none
     Present { value: s } => base64_encode_step(st: s, octet: octet, alphabet: alphabet)
@@ -266,8 +266,8 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
     EncEmpty => Present { value: st.out }
     EncOne { b0: x } =>
       match base64_zero_octet() {
-        OctetRefused { cause: _ } => none
-        OctetReady { octet: zero } =>
+        UInt8OutOfRange { observed: _ } => none
+        UInt8Ready { value: zero } =>
           match base64_group_of_octets(x: x, y: zero, z: zero) {
             WordRefused { cause: _ } => none
             WordReady { word: group } =>
@@ -283,8 +283,8 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
       }
     EncTwo { b0: x, b1: y } =>
       match base64_zero_octet() {
-        OctetRefused { cause: _ } => none
-        OctetReady { octet: zero } =>
+        UInt8OutOfRange { observed: _ } => none
+        UInt8Ready { value: zero } =>
           match base64_group_of_octets(x: x, y: y, z: zero) {
             WordRefused { cause: _ } => none
             WordReady { word: group } =>
@@ -305,7 +305,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
   }
 }
 
-fn base64_encode_optional(octets: List<Octet>, variant: Base64Variant) -> String? {
+fn base64_encode_optional(octets: List<UInt8>, variant: Base64Variant) -> String? {
   let alphabet = base64_alphabet(variant: variant)
   let st = fold(octets,
     init: Present { value: Base64EncodeState { out: "", buf: EncEmpty } },
@@ -333,8 +333,8 @@ fn base64_encode_forged_qualified_octet_diverges() -> String {
 //
 // Every member produced by base64_octets is an established Width8 octet, so no shift, mask or
 // packing can refuse for any input this module can construct, and the encoder needs no refusal
-// channel. The one way to reach the arm below is to forge the carrier; that possibility, its rung
-// and its trigger are stated ONCE at their home -- std.machine_word's Octet annotation -- and are
+// channel. The one way to reach the arm below is to bypass the carrier's constructor; that
+// possibility, its rung and its trigger are stated ONCE at their home -- std.integer UInt8 -- and are
 // not restated here, because a fact with two statements is a fact that can disagree with itself,
 // which is what two earlier cuts of this annotation did: the first claimed the arm unreachable
 // outright, the second claimed forgery was the only route while the carrier in use at the time
@@ -342,7 +342,7 @@ fn base64_encode_forged_qualified_octet_diverges() -> String {
 //
 // Returning "" instead would be a fabricated plausible output: "" is the legitimate encoding of the
 // empty input, so it would stand where a failure happened and be indistinguishable from success.
-fn base64_encode(octets: List<Octet>, variant: Base64Variant) -> String {
+fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
   match base64_encode_optional(octets: octets, variant: variant) {
     Present { value: encoded } => encoded
     Absent => base64_encode_forged_qualified_octet_diverges()

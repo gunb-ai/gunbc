@@ -42,25 +42,32 @@ fn probe_blocking_at(source: String, subject: String, wanted: String) -> Int {
   }
 }
 
-// A List<Word> where List<Octet> is declared. This is the counterexample that motivated the Octet
-// carrier: a Word carries a width that may not be eight, and the old carrier let a SANCTIONED
-// Width16 value reach the octet path.
-data word_list_for_octet_list_red_source: String = "module probe_octet_carrier_word_list\nimport std.machine_word { Word, Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List }\nfn f(w: List<Word>) -> WordResult { word_from_octets(width: Width32, octets: w, endianness: BigEndian) }\n"
+// A List<Word> where List<UInt8> is declared. This is the counterexample that motivated naming the
+// octet at all: a Word carries a width that may not be eight, and the QualifiedWord carrier this
+// replaced let a SANCTIONED Width16 value reach the octet path. It is the surviving RED because
+// Word is a record and no composition makes it transparent to UInt8.
+data word_list_for_octet_list_red_source: String = "module probe_octet_carrier_word_list\nimport std.machine_word { Word, Width32, WordResult, word_from_octets }\nimport extdeps.toolchain.architecture_profile { BigEndian }\nimport std.types { List }\nfn f(w: List<Word>) -> WordResult { word_from_octets(width: Width32, octets: w, endianness: BigEndian) }\n"
 
-// A bare Int list where List<Octet> is declared -- the rawest form of the same mistake.
-data int_list_for_octet_list_red_source: String = "module probe_octet_carrier_int_list\nimport std.machine_word { Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List, Int }\nfn f(v: List<Int>) -> WordResult { word_from_octets(width: Width32, octets: v, endianness: BigEndian) }\n"
+// THE Int-LIST RED IS DELETED, AND WHY IT IS DELETED IS THE FINDING.
+//
+// It asserted that passing List<Int> where the octet list is declared would refuse. Against the old
+// Octet record that was true. Against UInt8 it is FALSE: UInt8 is Compose<UInt, MachineWidth<8>>,
+// a phantom transparent to Int at a formal, so that call compiles and SHOULD. Keeping the claim
+// would have asserted a wall that does not exist -- the mirror of the decoration DESIGN 4b names,
+// a RED that can never fire because the state it forbids is legitimate.
+//
+// The receipt for the transparency is in the corpus rather than in this reasoning: this lane's own
+// witness passed [256, 0, 0] to a List<UInt8> parameter and COMPILED, in the floor run at
+// 9ca9d9ab. The out-of-range wall therefore belongs at std.integer uint8_of_int and is claimed
+// there, not here.
 
 // THE GREEN CONTROL, load-bearing rather than decorative: two reds alone are satisfied by a compiler
 // that has stopped judging argument types, or by a harness reporting a blocking row for everything.
 // This takes the SAME route with the RIGHT carrier and must produce nothing.
-data octet_list_green_source: String = "module probe_octet_carrier_green\nimport std.machine_word { Octet, Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List }\nfn f(o: List<Octet>) -> WordResult { word_from_octets(width: Width32, octets: o, endianness: BigEndian) }\n"
+data octet_list_green_source: String = "module probe_octet_carrier_green\nimport std.machine_word { Width32, WordResult, word_from_octets }\nimport std.integer { UInt8 }\nimport extdeps.toolchain.architecture_profile { BigEndian }\nimport std.types { List }\nfn f(o: List<UInt8>) -> WordResult { word_from_octets(width: Width32, octets: o, endianness: BigEndian) }\n"
 
 test fn a_word_list_does_not_satisfy_the_octet_carrier_holds() -> Bool {
   probe_blocking_at(source: word_list_for_octet_list_red_source, subject: "probe_octet_carrier_word_list", wanted: "TypeMismatch") > 0
-}
-
-test fn an_int_list_does_not_satisfy_the_octet_carrier_holds() -> Bool {
-  probe_blocking_at(source: int_list_for_octet_list_red_source, subject: "probe_octet_carrier_int_list", wanted: "TypeMismatch") > 0
 }
 
 // THE GREEN CONTROL IS SUBJECT-SCOPED TOO, so it says "this probe produced no TypeMismatch" rather

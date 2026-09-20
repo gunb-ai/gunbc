@@ -1,15 +1,19 @@
 module test.claim.machine_word_witness
 
-// Octet IS IMPORTED WHERE EVERY OTHER NAME HERE IS BARE, and the asymmetry is the point:
-// extdeps.network.ipv4 also declares `type Octet = Int where range(min: 0, max: 255)`, so a bare
-// Octet is two declarations and resolves to neither. The other machine_word names are unique
-// corpus-wide and bind without help. I NOTED THAT COLLISION AT THE START OF THIS LANE, as the
-// reason not to mint a second octet spelling, and then minted one under the carrier ruling without
-// re-checking my own note -- which is why this file failed to resolve and its 60 claims never ran
-// on srv1 (receipt at 63bb03a4cf). The two Octets are a real section 3 question, raised with the
-// program rather than settled here: ipv4's is the same concept (a value in 0..255) in a
-// network-layer row.
-import std.machine_word { Octet }
+// THIS FILE IMPORTS NOTHING, AND THE ONE TYPE IT NAMES ACROSS A MODULE BOUNDARY IS WRITTEN OUT IN
+// FULL. It briefly imported std.machine_word Octet, and a bare Octet was ambiguous against
+// extdeps.network.ipv4's -- which is what made its 60 claims fail to resolve on srv1. The octet is
+// std.integer UInt8 now; uint8_of_int, UInt8Ready and UInt8OutOfRange resolve bare, and the one
+// place the TYPE is named is written `std.integer.UInt8` at octet_words below.
+//
+// AN `import std.integer` HERE WOULD BREAK EVERY CLAIM IN THE FILE, which is why the line is absent
+// rather than merely unnecessary, and why the qualified spelling is worth its length. std.integer
+// declares `type Int = AbelianGroup<GroupCompletion<Nat>>`, and importing the module rebinds bare
+// Int in THIS module to that type, which an integer literal does not inhabit -- so
+// `word_of_int(width: Width32, value: 5)` stops typechecking and every vector below it goes with it.
+// Measured, not reasoned: two probe modules differing ONLY by that import line, the one without it
+// returning true and the one with it refusing at the literal with "expected
+// Node(std.algebra.AbelianGroup<Product(std.algebra.GroupCompletion)>), got Primitive(Int)".
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -292,8 +296,18 @@ test fn carry_is_pinned_in_both_directions_holds() -> Bool {
   }
 }
 
-fn octet_words(values: List<Int>) -> List<Octet> {
-  values |> map(v => Octet { value: v })
+// THE VECTOR HELPER CONSTRUCTS ITS OCTETS RATHER THAN ASSERTING THEM. An earlier cut was
+// `values |> map(v => v + 0)`, which minted a List<UInt8> out of bare Ints with no construction at
+// all -- the exact bypass this file's own RED claims uint8_of_int exists to refuse, authored into
+// the file that claims it. Every vector below is in range, so the refusal arm is unreachable FOR
+// THESE INPUTS and returning [] there would be a fabricated answer; it is the one arm no vector
+// reaches, and a vector that did reach it would make the claim that consumes this list red rather
+// than quietly shorter.
+fn octet_words(values: List<Int>) -> List<std.integer.UInt8> {
+  match octets_of_ints(octets: [], remaining: values) {
+    OctetsReady { octets: os } => os
+    OctetsRefused { cause: _ } => []
+  }
 }
 
 fn octets_of(result: OctetsResult) -> List<Int> {
@@ -332,22 +346,28 @@ test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
   }
 }
 
-// A NON-OCTET MEMBER IS NO LONGER EXPRESSIBLE, so the claim that refused one is replaced by the
-// claim that says why. Octet carries a value and no width, so a member cannot disagree about its
-// width -- the state the old control caught has no constructor. What CAN still be written is an
-// out-of-range value, and octet_of_int is what refuses it.
+// A MEMBER OF THE WRONG WIDTH IS NO LONGER EXPRESSIBLE, so the claim that refused one is replaced
+// by the claim that says why. UInt8 composes MachineWidth<8> rather than carrying a width field, so
+// a member cannot disagree about its width -- the state the old control caught has no constructor.
+// What CAN still be written is an out-of-range value, because the composition is transparent to Int
+// at a formal, and std.integer uint8_of_int is what refuses it.
+// THE BYPASS RED NOW SITS AT std.integer uint8_of_int, the octet's own constructor, rather than at
+// a carrier this module invented. Re-introducing an unchecked crossing turns this Refused into a
+// Ready. What it does NOT establish is that a caller cannot bypass it: UInt8 is transparent to Int
+// at a formal, which is measured rather than assumed -- this very file once passed [256, 0, 0] to a
+// List<UInt8> parameter and compiled. The constructor is mitigation; sole construction is the
+// trigger, stated at std.integer.
 test fn an_octet_cannot_be_built_out_of_range_holds() -> Bool {
-  match octet_of_int(value: 256) {
-    OctetRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    OctetRefused { cause: _ } => false
-    OctetReady { octet: _ } => false
+  match uint8_of_int(value: 256) {
+    UInt8OutOfRange { observed: o } => o == 256
+    UInt8Ready { value: _ } => false
   }
 }
 
 test fn an_octet_admits_the_byte_range_holds() -> Bool {
-  match octet_of_int(value: 255) {
-    OctetReady { octet: o } => octet_value(o: o) == 255
-    OctetRefused { cause: _ } => false
+  match uint8_of_int(value: 255) {
+    UInt8Ready { value: v } => uint8_int_value(v: v) == 255
+    UInt8OutOfRange { observed: _ } => false
   }
 }
 
@@ -435,10 +455,15 @@ fn frontier_subject_key(row: FrontierRow) -> String {
   }
 }
 
-test fn machine_word_frontier_rows_name_this_module_holds() -> Bool {
+// THE ROWS NAME THIS MODULE OR THE OCTET'S AUTHORITY, and the second case is not a loosening. The
+// octet constructor lives at std.integer because that is where UInt8 lives; a row about ipv4
+// consuming it is this lane's obligation and names the declaration this lane landed. Anything
+// outside those two homes would be this roster reaching onto a surface it does not own.
+test fn machine_word_frontier_rows_name_an_owned_module_holds() -> Bool {
   machine_word_consumer_frontier_rows |> all(row =>
     match row.subject {
-      DeclSubject { ref: r } => (r.module_path as String) == "std.machine_word"
+      DeclSubject { ref: r } =>
+        (r.module_path as String) == "std.machine_word" || (r.module_path as String) == "std.integer"
       PathSubject { path: _ } => false
     })
 }
@@ -452,7 +477,8 @@ test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool {
     "std.machine_word.word_not",
     "std.machine_word.word_wrapping_multiply",
     "std.machine_word.word_wrapping_subtract",
-    "std.machine_word.word_carrying_add"
+    "std.machine_word.word_carrying_add",
+    "std.integer.uint8_of_int"
   ]
   expected |> all(e => keys |> any(k => k == e))
     && keys |> all(k => expected |> any(e => e == k))
@@ -692,9 +718,10 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
 
 // THE PROJECTION NO LONGER HAS A REFUSAL TO CLAIM, and that is a climb rather than a loss.
 // octet_int_values once read a value off members it had not established, so [Word{Width8,256}]
-// projected to [256] on the base64 decode route. It now takes List<Octet>, where the width is
-// structural and the range was settled by octet_of_int, so there is no inspection left to assert --
-// the earlier control's subject was the gap, and the gap is closed by construction. What remains
+// projected to [256] on the base64 decode route. It now takes List<UInt8>, where the width is
+// structural, so the width half of the gap is closed by construction and there is no width
+// inspection left to assert. The RANGE half is not closed there: it is mitigated by uint8_of_int
+// and claimed at that constructor, which is where this file's bypass RED now sits. What remains
 // claimable is that the projection reads what was admitted, which is the claim below.
 test fn octet_projection_reads_what_was_admitted_holds() -> Bool {
   match octets_of_ints(octets: [], remaining: [0, 1, 255]) {

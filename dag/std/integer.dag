@@ -21,6 +21,47 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
+// THE OCTET CONSTRUCTOR LIVES WITH THE OCTET'S TYPE, AND THE OCTET'S TYPE IS UInt8.
+//
+// extdeps.network.mac settled this concept already: UInt8 is the universal authority for an 8-bit
+// unsigned integer, ipv4's `type Octet = Int where range(min: 0, max: 255)` is a pre-existing
+// duplicate left deliberately untouched, and a second spelling would be the section 2 re-invention.
+// std.machine_word briefly carried a THIRD name, an Octet record of its own; it is deleted, and
+// what it was reaching for lands here instead.
+//
+// WHAT UInt8 ALREADY ESTABLISHES AND WHAT IT DOES NOT, measured rather than assumed. UInt8 is
+// Compose<UInt, MachineWidth<8>>, so "the width is eight" is STRUCTURAL -- there is no width field
+// to write wrongly, which is the construction rung. INHABITANCE is not: the composition is a
+// phantom and transparent to Int at a formal, so a bare Int reaches a UInt8 parameter unchecked.
+// The receipt is in the corpus rather than in an argument: std.encoding base64_octets declares
+// List<UInt8> and test.claim.machine_word_witness calls it with [256, 0, 0], and that claim
+// COMPILED AND EXECUTED in the floor receipt at 9ca9d9ab -- 256 crossed a UInt8 formal with no
+// refusal.
+//
+// So this constructor is the wall, and it is MITIGATION, not construction: nothing stops a caller
+// bypassing it with a bare Int. Rung: mitigatable. NEXT-RUNG TRIGGER, shared with std.machine_word's
+// word carrier: sole construction over UInt8, which makes the unconstructed value unwritable and
+// turns this refusal into a state with no constructor.
+type UInt8Result
+  = UInt8Ready { value: UInt8 }
+  | UInt8OutOfRange { observed: Int }
+
+fn uint8_of_int(value: Int) -> UInt8Result {
+  match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
+    Absent => UInt8OutOfRange { observed: value }
+    Present { value: modulus } =>
+      if value < 0 || value >= modulus {
+        UInt8OutOfRange { observed: value }
+      } else {
+        UInt8Ready { value: value }
+      }
+  }
+}
+
+fn uint8_int_value(v: UInt8) -> Int {
+  v + 0
+}
+
 type Signedness
   = Signed
   | Unsigned
