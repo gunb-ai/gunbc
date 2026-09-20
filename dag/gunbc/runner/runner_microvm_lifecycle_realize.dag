@@ -306,12 +306,75 @@ fn read_cgroup_subtree_at(root: NonEmptyStr) -> CgroupSubtreeReadback
   )
 }
 
-fn observe_cell_cgroup(slot: RunnerSlotIdentity) -> ObservedCgroup
+fn observe_cell_cgroup(slot: RunnerSlotIdentity, after: ObservedStop) -> ObservedCgroup
   uses net: Network
 {
   ObservedCgroup {
     root: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
     readback: read_cell_cgroup_subtree(slice: fabric_cell_slice_name(slot: slot) as NonEmptyStr),
+  }
+}
+
+// ABSENCE IS INHERITED DOWNWARD, AND WITHOUT THAT THE SUCCESSFUL CASE CANNOT BE PROVEN AT ALL.
+//
+// The jail root and the credential drive live INSIDE the attempt directory, so their absence is
+// established by a listing of THAT directory -- which, after a teardown that did its job, does not
+// exist. Listing a directory that is gone fails, and a failed listing establishes nothing
+// (extdeps.filesystem.filesystem_io), so reading each of the three subjects independently makes the
+// CLEAN outcome unobservable: every successful teardown would quarantine its own cell on two facts
+// it cannot read, and the cell would never be released. Found by executing the teardown against a
+// real host rather than by reading it.
+//
+// THE REPAIR IS CONTAINMENT, NOT A WIDER READ. A path under a directory that is ESTABLISHED ABSENT
+// is absent: there is no filesystem in which /a/b exists and /a does not. So the attempt directory
+// is read first, and its established absence answers for everything under it; only an attempt
+// directory that is still THERE is listed, and then each entry is read on its own. This is derived
+// from the established absence, never from a failed read -- an attempt directory that could not be
+// read leaves its contents unreadable too, which is the arm that keeps the cell.
+type AttemptResourceObservations {
+  storage: ObservedPath
+  jail: ObservedPath
+  credential_disk: ObservedPath
+}
+
+fn observe_attempt_resources(attempt: MicroVmAttempt, after: ObservedStop) -> AttemptResourceObservations {
+  let storage_subject = attempt_storage_subject(attempt: attempt)
+  let storage = observe_attempt_resource(subject: storage_subject)
+  match storage.readback {
+    ResourceAbsent =>
+      AttemptResourceObservations {
+        storage: storage,
+        jail: contained_absence(subject: attempt_jail_subject(attempt: attempt)),
+        credential_disk: contained_absence(subject: attempt_credential_subject(attempt: attempt)),
+      }
+    ResourcePresent { detail: _ } => observe_resources_inside_attempt(attempt: attempt, storage: storage, after: after)
+    ResourceUnreadable { reason: r } =>
+      AttemptResourceObservations {
+        storage: storage,
+        jail: contained_unreadable(subject: attempt_jail_subject(attempt: attempt), reason: r),
+        credential_disk: contained_unreadable(subject: attempt_credential_subject(attempt: attempt), reason: r),
+      }
+  }
+}
+
+fn observe_resources_inside_attempt(attempt: MicroVmAttempt, storage: ObservedPath, after: ObservedStop) -> AttemptResourceObservations {
+  AttemptResourceObservations {
+    storage: storage,
+    jail: observe_attempt_resource(subject: attempt_jail_subject(attempt: attempt)),
+    credential_disk: observe_attempt_resource(subject: attempt_credential_subject(attempt: attempt)),
+  }
+}
+
+fn contained_absence(subject: AttemptResourceSubject) -> ObservedPath {
+  ObservedPath { path: subject.path, readback: ResourceAbsent }
+}
+
+fn contained_unreadable(subject: AttemptResourceSubject, reason: NonEmptyStr) -> ObservedPath {
+  ObservedPath {
+    path: subject.path,
+    readback: ResourceUnreadable {
+      reason: join(["its containing attempt directory could not be read: ", reason as String], "") as NonEmptyStr,
+    },
   }
 }
 
@@ -474,6 +537,15 @@ fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownS
 
 // ── THE TEARDOWN, OBSERVED AND SETTLED ────────────────────────────────────────────────────────
 
+// EVERY READBACK TAKES THE STOP AS AN INPUT, AND THAT PARAMETER IS THE WORD "AFTER".
+//
+// A readback taken BEFORE the stop answers about a cell that was still running, which is not the
+// question -- and in a pure dependency graph there is no statement order to rely on: a reading with
+// no edge to the stop may be evaluated on either side of it. So the stop is bound first and handed
+// to each readback, which makes "after the stop" a real edge rather than a line in a file. The
+// readbacks do not otherwise consult it; the sequencing IS the use, and it is the only mechanism a
+// graph affords for it.
+
 // THE SLOT NETWORK READBACK IS A PARAMETER, AND IT IS NOT AN OMISSION.
 //
 // gunbc.runner_microvm_network owns that reading and takes SEVEN host readings plus the slot's
@@ -494,21 +566,23 @@ fn observe_attempt_teardown(bound: CellBoundAttempt, network: BoundSlotNetworkRe
   uses net: Network
 {
   let attempt = bound.attempt.attempt
+  let stop = ObservedStop {
+    unit: in_flight_attempt_unit(attempt: bound.attempt),
+    invocation_id: bound.attempt.invocation_id,
+    outcome: perform_bounded_stop(
+      unit: in_flight_attempt_unit(attempt: bound.attempt),
+      slice: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
+    ),
+  }
+  let resources = observe_attempt_resources(attempt: attempt, after: stop)
   ObservedTeardown {
     host: attempt.slot.host as String,
     generation: bound.generation,
-    stop: ObservedStop {
-      unit: in_flight_attempt_unit(attempt: bound.attempt),
-      invocation_id: bound.attempt.invocation_id,
-      outcome: perform_bounded_stop(
-        unit: in_flight_attempt_unit(attempt: bound.attempt),
-        slice: fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr,
-      ),
-    },
-    cgroup: observe_cell_cgroup(slot: attempt.slot),
-    mounts: observe_attempt_resource(subject: attempt_jail_subject(attempt: attempt)),
-    attempt_storage: observe_attempt_resource(subject: attempt_storage_subject(attempt: attempt)),
-    credential_disk: observe_attempt_resource(subject: attempt_credential_subject(attempt: attempt)),
+    stop: stop,
+    cgroup: observe_cell_cgroup(slot: attempt.slot, after: stop),
+    mounts: resources.jail,
+    attempt_storage: resources.storage,
+    credential_disk: resources.credential_disk,
     network: network,
   }
 }
