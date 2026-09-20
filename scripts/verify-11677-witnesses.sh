@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # One-off verification driver for gunbc#11677 at 217f5afffcd.
 #
-# WHY THIS EXISTS AND WHY IT IS NOT IN #11677: CI floor lane green is not a witness
-# over a parse failure (run 35494972594, job 106036217104, step 8 => success
-# while logging "FAILED PHASE parse (8 error(s))"), so CI's green is not a
-# witness verdict for this head. This runs the three witness files that judge
-# the change, on a host with memory, and prints their output verbatim.
+# WHY THIS EXISTS AND WHY IT IS NOT IN #11677: on the previous head the required
+# floor lane exited 0 while its own log said "FAILED PHASE parse (8 error(s))"
+# and "floor refused" (run 35494972594, job 106036217104, step 8 => success), so
+# its green was not a witness verdict. main has since fixed that parse defect
+# (#11822, #11830), so the lane on THIS head may plan again -- which is worth
+# checking rather than assuming. Either way this driver runs the three witness
+# files that judge the change, on a host with memory, and prints them verbatim.
 #
 # It lives on branch verify/keen-bear-791-217f5aff, which is 217f5afffcd plus
 # this file, so the driver sits INSIDE the repo (gunbc refuses a source root
