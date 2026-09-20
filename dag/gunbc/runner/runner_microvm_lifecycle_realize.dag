@@ -257,12 +257,26 @@ fn read_cgroup_root_procs(root: NonEmptyStr) -> CgroupRootProcsReading {
 // MISSING directory and answers that the cell is clean. So the manager is asked for ControlGroup,
 // which is the path it actually placed the unit at.
 //
-// A BLANK ControlGroup IS NOT A MISSING ANSWER AND IT IS NOT AN EMPTY CELL EITHER. `systemctl show`
-// exits 0 for a unit it has never heard of, so blank means "this manager holds no cgroup under that
-// name" -- which for a cell whose attempt is being torn down means the slice is not there to read,
-// and the readback is unobservable rather than empty.
+// A BLANK ControlGroup IS AN ANSWER, AND READING IT AS DOUBT DEADLOCKS THE CELL. `systemctl show`
+// exits 0 and prints nothing for a unit the manager holds no control group for -- which is the
+// manager AFFIRMING there is no cgroup under that name, the same shape as a successful listing that
+// does not name an entry. A cgroup that does not exist holds no process, so this establishes the
+// fact the readback is asking for.
+//
+// THE ALTERNATIVE WAS TRIED AND IT IS UNSOUND, not merely strict. Reading blank as unobservable
+// makes a cell whose slice has been garbage-collected unreleasable -- and systemd removes a slice's
+// cgroup as soon as the last unit in it exits, which is exactly the state a SUCCESSFUL teardown
+// leaves. gunbc.runner_microvm_cell_readiness says the first incarnation on a cell needs a readback
+// establishing the empty cell before it, and under that reading no such readback could ever
+// succeed, so no cell could ever have a first incarnation.
+//
+// WHAT KEEPS THIS FROM BEING A WIDEN: the name is not a caller's string. It is derived by
+// gunbc.fabric_cell_converge from THIS attempt's own slot, the same authority the Slice= property
+// that placed the VMM reads, so "no cgroup under that name" is a fact about this cell and not about
+// a name nobody checked. A manager that could not ANSWER is a different arm and stays unreadable.
 type SliceCgroupPathReading
   = SliceCgroupPath { path: NonEmptyStr }
+  | SliceCgroupNotHeld
   | SliceCgroupPathUnread { reason: NonEmptyStr }
 
 fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading
@@ -273,10 +287,7 @@ fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading
       SliceCgroupPathUnread {
         reason: join([slice as String, ": its ControlGroup could not be read: ", why], "") as NonEmptyStr,
       }
-    SystemdPropertyBlank =>
-      SliceCgroupPathUnread {
-        reason: join([slice as String, ": the manager holds no control group under that name"], "") as NonEmptyStr,
-      }
+    SystemdPropertyBlank => SliceCgroupNotHeld
     SystemdPropertyCaptured { value: path } =>
       SliceCgroupPath {
         path: join([cgroup_v2_mount_point as String, path], "") as NonEmptyStr,
@@ -289,6 +300,7 @@ fn read_cell_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
 {
   match read_slice_cgroup_path(slice: slice) {
     SliceCgroupPathUnread { reason: why } => CgroupSubtreeReadFailed { reason: why }
+    SliceCgroupNotHeld => CgroupSubtreeEmpty
     SliceCgroupPath { path: root } => read_cgroup_subtree_at(root: root)
   }
 }
@@ -637,6 +649,7 @@ fn read_slice_freeze_state(slice: NonEmptyStr) -> SliceFreezeReadback
 {
   match read_slice_cgroup_path(slice: slice) {
     SliceCgroupPathUnread { reason: why } => SliceFreezeUnreadable { reason: why }
+    SliceCgroupNotHeld => SliceThawed
     SliceCgroupPath { path: root } => read_freeze_state_at(root: root)
   }
 }

@@ -23,6 +23,7 @@ import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptAccepted, microvm_attempt, runner_microvm_attempt_unit_name,
+  runner_microvm_attempt_dir, runner_microvm_attempt_jail_base, runner_microvm_attempt_jit_drive_path,
 }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready,
@@ -45,7 +46,10 @@ import gunbc.runner_microvm_lifecycle {
   StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, StopOutcomeUnobserved,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
-  TeardownSettlement,
+  TeardownSettlement, settle_teardown, attempt_teardown_readback,
+  TeardownReadbackBound, TeardownReadbackForeignSubject,
+  ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath,
+  ResourceReadback, ResourceAbsent,
 }
 import gunbc.runner_microvm_lifecycle_realize {
   AttemptTeardownOutcome, TeardownSettled, TeardownObservationForeign,
@@ -387,44 +391,66 @@ fn red_a_surviving_task_quarantines_the_cell() -> Bool {
 
 // ── RED 4: a cgroup read that failed quarantines, and the quarantine is never released ────────
 
-// NO UNIT IS STARTED FOR THIS CELL, so the manager holds no control group under its slice name and
-// the subtree read cannot be taken at all. That is the unobservable case, and it must reach the
-// same place a refuted one does: not Ready.
+// THE UNREADABLE READING IS SUPPLIED AND THE REFUSAL TO RELEASE IS EXECUTED, AND THE SPLIT IS THE
+// HONEST ONE. Producing a genuine cgroup read failure on a serving host means breaking the host:
+// the manager would have to stop answering, or the unified hierarchy would have to become
+// unreadable to root, and neither is a state to create on a machine other people are using. The
+// reading is therefore handed to the fold at its own boundary. What is NOT supplied is the half the
+// brief calls "never released": the quarantine is written to the real store as real bytes, a Ready
+// settlement at the same generation is offered to the real store and refused, and the store is read
+// back off disk afterwards. The load-bearing claim here is that a cell quarantined for a fact
+// nobody could read stays quarantined, and that half runs for real.
 fn red_a_cgroup_read_that_failed_quarantines_the_cell() -> Bool {
-  match red_attempt(index: 93, attempt_id: "red4") {
-    Absent => false
-    Present { value: a } =>
-      match read_cell_cgroup_subtree(slice: red_slice(index: 93)) {
-        CgroupSubtreeReadFailed { reason: _ } =>
-          match red_settlement(attempt: a, generation: 4, trigger: DeadlineReached) {
-            Absent => false
-            Present { value: s } => !cell_is_ready(readiness: s.readiness)
-          }
-        _ => false
-      }
-  }
-}
-
-// THE QUARANTINE SURVIVES THE STORE, WHICH IS THE HALF THE NEXT INCARNATION READS. The settlement is
-// written, and a Ready settlement at the SAME generation is then refused by the store rather than
-// overwriting it -- so a controller that re-ran its readback and got a clean answer cannot clear a
-// quarantine by repetition. The store is read back afterwards to prove the bytes on disk still say
-// quarantined.
-fn red_a_quarantine_written_to_the_store_is_never_released() -> Bool {
   match red_attempt(index: 93, attempt_id: "red4") {
     Absent => false
     Present { value: a } =>
       match red_bound_attempt(attempt: a, generation: 4) {
         Absent => false
         Present { value: bound } =>
-          match red_settlement(attempt: a, generation: 4, trigger: DeadlineReached) {
+          match red_network(slot: a.slot) {
             Absent => false
-            Present { value: s } => red_store_refuses_release(bound: bound, settled: s)
+            Present { value: network } =>
+              red_unreadable_cgroup_quarantines(bound: bound, network: network)
           }
       }
   }
 }
 
+// THE READBACK IS ASSEMBLED THROUGH THE PRODUCTION CONSTRUCTOR, so the subjects are joined against
+// the attempt exactly as they are in production and the claim cannot pass on a carrier the
+// controller could not have built.
+fn red_unreadable_cgroup_quarantines(bound: CellBoundAttempt, network: BoundSlotNetworkReadback) -> Bool {
+  let observed = ObservedTeardown {
+    host: bound.attempt.attempt.slot.host as String,
+    generation: bound.generation,
+    stop: ObservedStop {
+      unit: in_flight_attempt_unit(attempt: bound.attempt),
+      invocation_id: bound.attempt.invocation_id,
+      outcome: StoppedGracefully,
+    },
+    cgroup: ObservedCgroup {
+      root: fabric_cell_slice_name(slot: bound.attempt.attempt.slot) as NonEmptyStr,
+      readback: CgroupSubtreeReadFailed { reason: "the cgroup.procs tree read exited 2" as NonEmptyStr },
+    },
+    mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: bound.attempt.attempt), readback: ResourceAbsent },
+    attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: bound.attempt.attempt), readback: ResourceAbsent },
+    credential_disk: ObservedPath { path: runner_microvm_attempt_jit_drive_path(attempt: bound.attempt.attempt), readback: ResourceAbsent },
+    network: network,
+  }
+  match attempt_teardown_readback(bound: bound, observed: observed) {
+    TeardownReadbackForeignSubject { subject: _, expected: _, observed: _ } => false
+    TeardownReadbackBound { readback: r } => {
+      let settled = settle_teardown(readback: r, trigger: DeadlineReached)
+      !cell_is_ready(readiness: settled.readiness) && red_store_refuses_release(bound: bound, settled: settled)
+    }
+  }
+}
+
+// THE QUARANTINE SURVIVES THE STORE, WHICH IS THE HALF THE NEXT INCARNATION READS. The settlement is
+// written; a Ready settlement at the SAME generation is then refused by the store rather than
+// overwriting it, so a controller that re-ran its readback and got a clean answer cannot clear a
+// quarantine by repetition. The store is read back off disk afterwards to prove the bytes still say
+// quarantined -- which also exercises the codec's inverse against bytes this run wrote.
 fn red_store_refuses_release(bound: CellBoundAttempt, settled: TeardownSettlement) -> Bool {
   let wrote = write_cell_readiness_record(
     root: cell_readiness_store_root,
