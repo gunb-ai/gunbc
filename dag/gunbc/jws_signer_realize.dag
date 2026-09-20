@@ -1,0 +1,31 @@
+module gunbc.jws_signer_realize
+
+import std.types { String, NonEmptyStr }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
+import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
+import gunbc.host_cli_dependency { first_absent_host_cli_dependency, jws_signer_host_cli_requirements }
+import v2.std.optional { Absent, Present }
+
+// THE HANDLER DISPATCH FOR extdeps.auth.jws's signer interface, kept peripheral because selecting a
+// realization is itself realization (DESIGN §3). A key held as a HOST FILE is signed by openssl,
+// which reads the file itself: the key never enters the evaluator, the signing input goes on stdin
+// and the signature comes back on stdout. openssl is ONE handler: a key held elsewhere (an HSM, a
+// cloud KMS) is a new JwsSigningKeyRef arm with its own handler here, and the interface stays as it is. A
+// modeled RSA inside the evaluator would be a different subject (the key inside) and would not
+// replace this. The handler's enrolled CLI dependency is checked before the key is touched, so a
+// missing binary is refused with its install hint and does not surface as an exec error.
+fn jws_rs256_sign(signing_input: NonEmptyStr, key: JwsSigningKeyRef) -> JwsSignOutcome {
+  match key {
+    HostKeyFile { path: path } =>
+      match first_absent_host_cli_dependency(tools: jws_signer_host_cli_requirements) {
+        Present { value: absence } =>
+          JwsSignRefused { detail: join(["signer tool ", absence.tool as String, " is absent: ", absence.hint], "") }
+        Absent =>
+          match openssl_sign_sha256(key_file: path, signing_input: signing_input) {
+            OpensslSigned { octets: sig } => JwsSigned { signature: sig }
+            OpensslSignRefused { exit_code: code, detail: d } =>
+              JwsSignRefused { detail: join(["openssl dgst exit ", to_string(code), ": ", d], "") }
+          }
+      }
+  }
+}

@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_jit_admission {
   JitAdmissionAxis, SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis,
   AttemptBindingAxis, jit_admission_axis_standing, AxisRequired, AxisDeferred, AxisDissolvedInto,
-  HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
+  HostMintAdmission, GitHubMintRequestName,
 }
 
 // TWO GITHUB ACTIONS JOBS RAN IN TWO SEPARATE MICROVMS ON ONE BOOT OF THE PHYSICAL MACHINE.
@@ -134,10 +134,10 @@ data artifact_staging: NonEmptyStr = "guest kernel and rootfs are copied off the
 // Axis membership is gunbc.runner.runner_jit_admission, not a second roster on this receipt.
 fn still_open_from_axis_standing(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
   match jit_admission_axis_standing(axis: axis) {
-    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => match axis {
-      SignatureAxis => ["signature still required on the host envelope"]
-      ExpiryAxis => ["expiry still required on the host envelope"]
-      _ => ["host envelope nonempty-and-fresh still required"]
+    AxisRequired { checker: HostMintAdmission } => match axis {
+      SignatureAxis => ["signature: admitted only from the host App-JWT mint (gunbc.runner_attempt_launch admit_jit_credential); not yet executed by the lifecycle controller"]
+      ExpiryAxis => ["expiry: fresh by construction from a per-attempt host mint; not yet executed by the lifecycle controller"]
+      _ => ["host mint admission not yet executed by the lifecycle controller"]
     }
     AxisRequired { checker: GitHubMintRequestName } =>
       ["attempt binding still required on the mint name"]

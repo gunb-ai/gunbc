@@ -3,8 +3,8 @@ module gunbc.ci_workflow_scan_producer
 import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.github.code_search {
+  CodeSearchPageSize,
   CodeSearchPage,
   CodeSearchHit,
   code_search_hits_read,
@@ -22,6 +22,7 @@ import gunbc.github_observation_record {
   GithubObservation,
   GithubObservationRequest,
   CodeSearchPageRequest,
+  digest_unobservable,
   ObservationCompleteness,
   ObservationComplete,
   ObservationTruncatedUpstream,
@@ -186,7 +187,7 @@ fn scan_observation(
     request: CodeSearchPageRequest { query: query, per_page: per_page, page: page },
     observed_at: observed_at,
     api_version: api_version,
-    body_digest: content_hash_atom(value: query),
+    body_digest: digest_unobservable(),
     completeness: completeness,
     budget: budget_unobservable(),
   )
@@ -283,16 +284,22 @@ fn page_completeness(read_count: Int, per_page: Int, page: Int) -> ObservationCo
 // THE WALK ITSELF, AND ITS BOUND IS DERIVED BEFORE THE FIRST CALL. deepest_retrievable_page turns
 // the endpoint's own ceiling into the page list, so the cost of this scan is known from the query
 // and the page size alone -- no configuration, no caller-supplied limit that could be set past what
-// the endpoint will serve. A caller wanting a shallower walk narrows the query, which is the same
+// the endpoint will serve. THE PAGE SIZE ARRIVES ADMITTED rather than as a bare Int: an earlier cut
+// took one and divided the retrievable ceiling by it, so a caller passing 1000 got a bound of ONE
+// PAGE and a short first page then reported StoppedExhausted -- a partial page presented as a
+// complete population, which is the same shape as every other defect this module is about. The
+// admission is extdeps.github.code_search admit_code_search_page_size, because the 1..max_per_page
+// domain is the endpoint's contract rather than this lane's policy. A caller wanting a shallower walk narrows the query, which is the same
 // repair saturation calls for.
 fn scan_partition(
   auth_token: Secret,
   query: NonEmptyStr,
-  per_page: Int,
+  page_size: CodeSearchPageSize,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanReceipt uses net: Network {
-  let bound = deepest_retrievable_page(per_page: per_page)
+) -> ScanOutcome uses net: Network {
+  let per_page = page_size.size
+  let bound = deepest_retrievable_page(page_size: page_size)
   let walked = fold(
     nat_range_inclusive(1, bound as Nat),
     init: initial_walk_state(),
@@ -308,7 +315,7 @@ fn scan_partition(
       )
     },
   )
-  ScanReceipt {
+  let receipt = ScanReceipt {
     query: query,
     per_page: per_page,
     page_bound: bound,
@@ -321,17 +328,48 @@ fn scan_partition(
     stop: walk_stop_or_bound(state: walked),
     records: walked.records,
   }
+  if scan_is_a_declared_population(receipt: receipt) {
+    ScanOutcome { receipt: receipt, disposition: ScanDeclaredPopulation { hits: walked.hits } }
+  } else {
+    ScanOutcome { receipt: receipt, disposition: ScanNotAPopulation }
+  }
 }
 
-// THE HITS A CONSUMER MAY ACT ON, and it is deliberately not a field on the receipt. A reader
-// holding the receipt can see the standing and the hits together; a reader handed only a list
-// cannot, and this lane has already shipped one figure that was a lower bound presented as a total.
-// Reading hits out requires passing the receipt, so the standing is always in reach of the hand
-// that takes the population.
-fn scan_hits_if_declared_population(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> List<CodeSearchHit> {
-  if scan_is_a_declared_population(receipt: receipt) {
-    hits
-  } else {
-    []
-  }
+// THE HITS AND THE STANDING ARE BOUND, NOT MERELY COLOCATED, AND THE DIFFERENCE IS THE WHOLE POINT.
+// Two revisions got this wrong in opposite directions. The first kept the hits off the receipt and
+// offered a gate taking (receipt, hits) -- but scan_partition dropped walked.hits, so no caller
+// could obtain the list and the gate was uninvokable. The second added this coproduct and an
+// EXPORTED MINT over two independently supplied values, which fixes the honest production call and
+// leaves the dishonest one writable: a caller could still pair a green receipt for population A
+// with hits from population B and get ScanDeclaredPopulation, because ScanReceipt is freely
+// constructible and nothing bound the two arguments to one walk.
+//
+// SO THE POSITIVE CARRIER IS sole_constructor AND IS MINTED ONLY HERE, inside the fold that HAS the
+// walk state -- the receipt and the hits come from one `walked` and cannot come from anywhere else.
+// The judgement itself stays ordinary and freely testable as scan_is_a_declared_population over a
+// receipt, which is what the hermetic claims exercise; what they can no longer do is mint the
+// production-positive carrier, which is correct, because the live route that would justify one is
+// still missing and says so.
+// TWO TYPES, BECAUSE sole_constructor SEALS A RECORD AND IS DISCARDED ON A COPRODUCT. An earlier cut
+// wrote `type ScanOutcome sole_constructor = <coproduct>` and claimed the cross-population pairing
+// was unwritable. It was not: v1.02_parse threads the modifier into the anonymous-record arm and
+// drops it on every other `=` right-hand side. That hole is not a fact discovered here: it is the
+// rostered class gunbc.recurring_failure_mode modifier_accepted_on_a_shape_its_check_cannot_see,
+// which carries its own probe and next-rung trigger -- so an outside module could still author ScanDeclaredPopulation { receipt:
+// from_population_A, hits: from_population_B } directly, which is the exact invalid state the seal
+// was supposed to remove. The honest production path was correct; the dishonest construction stayed
+// available, and green CI could not discharge it because it is a compiler behaviour rather than a
+// test failure.
+//
+// THE RECORD IS WHAT THE LANGUAGE ACTUALLY SEALS: infer's sole_constructor_construction_diags
+// refuses a construction whose span.file differs from the declaring type's. So the judgement is an
+// ordinary coproduct anyone may build, and the AUTHORITY binding a receipt to the hits it came from
+// is a sealed record minted only inside scan_partition, where both come from one walked state.
+type ScanDisposition
+  = ScanDeclaredPopulation { hits: List<CodeSearchHit> }
+  | ScanNotAPopulation
+
+type ScanOutcome sole_constructor {
+  receipt: ScanReceipt
+  disposition: ScanDisposition
 }
