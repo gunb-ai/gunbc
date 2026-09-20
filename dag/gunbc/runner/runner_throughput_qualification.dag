@@ -126,14 +126,6 @@ fn workspace_locus_eq(a: WorkspaceBytesLocus, b: WorkspaceBytesLocus) -> Bool {
   }
 }
 
-fn workspace_backing_wire(backing: WorkspaceBacking) -> NonEmptyStr {
-  match backing {
-    RamBackedTmpfs => "ram-backed tmpfs, charged to the slot cgroup" as NonEmptyStr
-    HostLocalDisk => "host-local disk" as NonEmptyStr
-    PeerScratchExport { peer: p } => concat("scratch export from ", p as String) as NonEmptyStr
-  }
-}
-
 // ── THE INSTRUMENT READINGS, ONE PER RUN ──────────────────────────────────────────────────────
 
 type PhaseWall {

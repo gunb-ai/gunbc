@@ -102,7 +102,7 @@ group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the
 | declaration | disposition |
 |---|---|
 | `FloorWorkloadPin` | survives; gains `specimen: NonEmptyStr` (calibration specimen identity) |
-| `WorkspaceBacking`, `WorkspaceBytesLocus`, `workspace_bytes_locus`, `workspace_backing_wire` | survive; the observed run carries the locus as READ, the selection carries the declared backing, the join compares them |
+| `WorkspaceBacking`, `WorkspaceBytesLocus`, `workspace_bytes_locus` | survive; the observed run carries the locus as READ, the selection carries the declared backing, the join compares them. `workspace_backing_wire` deleted (no consumer) |
 | `PhaseWall` | survives |
 | `RateSpecimenReading`, `CgroupMemoryReading` | survive as fields of `ObservedRunnerQualificationRun` |
 | `QualificationRun` | DELETED → `ObservedRunnerQualificationRun` (sole_constructor, identities added) |
