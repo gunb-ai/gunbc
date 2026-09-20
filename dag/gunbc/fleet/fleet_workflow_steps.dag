@@ -22,9 +22,12 @@ import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue, YamlString, YamlInt, YamlFloat, YamlBool, YamlNull, YamlSequence, YamlMapping }
 import extdeps.github.action_release { action_release_same_producer }
 import gunbc.cli_invoke { gunbc_bin_name, release_bin_rel_path, release_bin_dir_rel }
+import extdeps.languages.yaml.gha_workflow { shell_type_string }
+import std.optional { optional_equal }
+import v2.std.algebra { zip_eq }
 import extdeps.github.actions {
   Job,
-  Step, RunStep, UsesStep, ShellType, Bash, Sh, Pwsh, Python, Cmd, 
+  Step, RunStep, UsesStep, ShellType, 
   max_job_timeout_minutes,
 }
 import gunbc.action_use_admission { cache_action, checkout_action, download_artifact_action, google_auth_action, setup_rust_action, upload_artifact_action }
@@ -762,47 +765,47 @@ fn kv_equal(a: YamlKeyValue, b: YamlKeyValue) -> Bool {
     })
 }
 
-type KvZip { index: Int, equal: Bool }
-
 fn kv_lists_equal(a: List<YamlKeyValue>, b: List<YamlKeyValue>) -> Bool {
-  list_length(a) == list_length(b)
-    && (fold(a, init: KvZip { index: 0, equal: true }, f: (acc, x) =>
-      KvZip {
-        index: acc.index + 1,
-        equal: acc.equal && (match b[acc.index] { Absent => false  Present { value: y } => kv_equal(a: x, b: y) }),
-      })).equal
+  zip_eq(a: a, b: b, eq: kv_equal_fn)
+}
+
+fn kv_equal_fn(x: YamlKeyValue, y: YamlKeyValue) -> Bool {
+  kv_equal(a: x, b: y)
+}
+
+fn string_eq(x: String, y: String) -> Bool {
+  x == y
+}
+
+fn bool_eq(x: Bool, y: Bool) -> Bool {
+  x == y
+}
+
+// Shells compare through the textual projection their emitter owns
+// (extdeps.languages.yaml.gha_workflow shell_type_string), so the comparator and the YAML the
+// workflow actually carries cannot disagree about which shells are the same.
+fn shell_eq(x: ShellType, y: ShellType) -> Bool {
+  shell_type_string(shell: x) == shell_type_string(shell: y)
 }
 
 fn optional_kv_lists_equal(a: List<YamlKeyValue>?, b: List<YamlKeyValue>?) -> Bool {
-  match a {
-    Absent => (match b { Absent => true  Present { value: _ } => false })
-    Present { value: xs } => (match b { Absent => false  Present { value: ys } => kv_lists_equal(a: xs, b: ys) })
-  }
+  optional_equal(a: a, b: b, eq: kv_lists_equal_fn)
+}
+
+fn kv_lists_equal_fn(x: List<YamlKeyValue>, y: List<YamlKeyValue>) -> Bool {
+  kv_lists_equal(a: x, b: y)
 }
 
 fn optional_strings_equal(a: String?, b: String?) -> Bool {
-  match a {
-    Absent => (match b { Absent => true  Present { value: _ } => false })
-    Present { value: x } => (match b { Absent => false  Present { value: y } => x == y })
-  }
+  optional_equal(a: a, b: b, eq: string_eq)
 }
 
 fn optional_bools_equal(a: Bool?, b: Bool?) -> Bool {
-  match a {
-    Absent => (match b { Absent => true  Present { value: _ } => false })
-    Present { value: x } => (match b { Absent => false  Present { value: y } => x == y })
-  }
-}
-
-fn shell_type_text(s: ShellType) -> String {
-  match s { Bash => "bash"  Sh => "sh"  Pwsh => "pwsh"  Python => "python"  Cmd => "cmd" }
+  optional_equal(a: a, b: b, eq: bool_eq)
 }
 
 fn optional_shells_equal(a: ShellType?, b: ShellType?) -> Bool {
-  match a {
-    Absent => (match b { Absent => true  Present { value: _ } => false })
-    Present { value: x } => (match b { Absent => false  Present { value: y } => shell_type_text(s: x) == shell_type_text(s: y) })
-  }
+  optional_equal(a: a, b: b, eq: shell_eq)
 }
 
 // A step REALIZES its canonical constructor when every behaviour-bearing field agrees. Name, id

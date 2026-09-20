@@ -1,0 +1,26 @@
+module std.optional
+
+import std.types { Bool }
+
+// EQUALITY OF TWO OPTIONALS UNDER AN ELEMENT EQUALITY, ONCE. Two absents are equal, an absent and
+// a present are not, and two presents are equal exactly when their values are under `eq`. The
+// element equality is a parameter rather than a type-class obligation for the same reason
+// std.list list_member takes one: the substrate has no derived equality for every carrier, and the
+// caller is the one who knows which projection of the element decides sameness (a wire spelling,
+// a producer identity, a scalar rendering). Minted here because the shape was about to be written
+// four times over four element types in one module (gunbc#11693 review 68977); DESIGN section 2 --
+// one concept, every breadth.
+fn optional_equal<T>(a: T?, b: T?, eq: fn(T, T) -> Bool) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => eq(x, y)
+      }
+  }
+}
