@@ -90,6 +90,7 @@ mod census_heads;
 pub mod declaration_index;
 pub mod derived_row_roster;
 mod native_lane_runner;
+pub mod required_ci_measurement;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;

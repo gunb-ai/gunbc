@@ -5,98 +5,35 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
-// HAND-RUST GATE explicit deferral. Lane: required-ci-measurement-host-realization. The authority
-// is `v2.workflow.required_ci_measurement`; this seed code realizes its filesystem write, JSON
-// transport, process exit and existing required-phase host diagnostics because required CI runs
-// the bootstrapped `claim_executor` before a generated replacement owns those effects. This adds
-// no competing domain model: the coproduct, blocker fields and build-unreached JSON originate in
-// `.dag`. It dissolves at the concrete ROADMAP row `v1-zero-hand-maintained-rust`, whose boundary
-// requires every tracked Rust file to be generated or deleted; at that row this realization is
-// generated from the measurement model or removed with the v1 seed. Until then this is counted
-// hand-maintained bootstrap surface, not a terminal Rust authority.
-const REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION: u8 = 1;
+// THE REQUIRED-CI MEASUREMENT RECEIPT AND ITS ADMISSION RELATION NOW LIVE IN THE LIBRARY,
+// `v1_compiler::cli_run::required_ci_measurement`, which carries the hand-Rust deferral note
+// this block used to. They moved for one reason: the relation that decides a required lane's
+// exit status was wrong on at least two landed runs and nothing executed it. A library module
+// has a documented execution route (`cargo test --release -p v1-compiler --lib`); a module
+// beside this binary has none. What stays here is what only a process can do -- print the
+// located lines and set the status.
+use v1_compiler::cli_run::required_ci_measurement::{
+    adjudicate_required_ci_measurement_receipt_file, completed_required_ci_measurement_receipt,
+    write_required_ci_measurement_receipt, RequiredCiAdmission, RequiredCiBlocker,
+    RequiredCiMeasurementReceipt,
+};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "standing", rename_all = "snake_case")]
-enum RequiredCiMeasurementReceipt {
-    MeasurementCompleted { blockers: Vec<RequiredCiBlocker> },
-    MeasurementUnreached { cause: String },
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
-struct RequiredCiBlocker {
-    phase: String,
-    identity: String,
-    cause: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct VersionedRequiredCiMeasurementReceipt {
-    version: u8,
-    receipt: RequiredCiMeasurementReceipt,
-}
-
-fn completed_required_ci_measurement_receipt(
-    blockers: Vec<RequiredCiBlocker>,
-) -> RequiredCiMeasurementReceipt {
-    RequiredCiMeasurementReceipt::MeasurementCompleted { blockers }
-}
-
-fn write_required_ci_measurement_receipt(
-    path: &str,
-    receipt: RequiredCiMeasurementReceipt,
-) -> Result<(), String> {
-    let encoded = serde_json::to_vec_pretty(&VersionedRequiredCiMeasurementReceipt {
-        version: REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION,
-        receipt,
-    })
-    .map_err(|e| format!("encode required CI measurement receipt: {e}"))?;
-    std::fs::write(path, encoded)
-        .map_err(|e| format!("write required CI measurement receipt {path}: {e}"))
+// ONE RELATION, ONE EXIT. Both consumers -- the separate `--adjudicate-measurement-receipt`
+// mode and the measuring process reading back its own receipt -- reach the process exit through
+// THIS function, so no second mapping from an admission verdict to a status can exist to drift.
+fn required_ci_admission_exit(admission: RequiredCiAdmission) -> Result<ExitCode, ExitCode> {
+    for line in admission.diagnostics() {
+        eprintln!("{line}");
+    }
+    if admission.is_admitted() {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Err(ExitCode::from(1))
+    }
 }
 
 fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
-    let body = std::fs::read(path).map_err(|e| {
-        eprintln!("required-ci: adjudication REFUSED receipt unreadable path={path} cause={e}");
-        ExitCode::from(1)
-    })?;
-    let versioned: VersionedRequiredCiMeasurementReceipt =
-        serde_json::from_slice(&body).map_err(|e| {
-            eprintln!("required-ci: adjudication REFUSED receipt malformed path={path} cause={e}");
-            ExitCode::from(1)
-        })?;
-    if versioned.version != REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION {
-        eprintln!(
-            "required-ci: adjudication REFUSED receipt version={} expected={}",
-            versioned.version, REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION
-        );
-        return Err(ExitCode::from(1));
-    }
-    match versioned.receipt {
-        RequiredCiMeasurementReceipt::MeasurementUnreached { cause } => {
-            eprintln!(
-                "required-ci: adjudication REFUSED standing=measurement_unreached cause={cause}"
-            );
-            Err(ExitCode::from(1))
-        }
-        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } if blockers.is_empty() => {
-            eprintln!("required-ci: adjudication PASSED standing=measurement_completed blockers=0");
-            Ok(ExitCode::SUCCESS)
-        }
-        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } => {
-            for blocker in &blockers {
-                eprintln!(
-                    "required-ci: adjudication BLOCKING phase={} identity={} cause={}",
-                    blocker.phase, blocker.identity, blocker.cause
-                );
-            }
-            eprintln!(
-                "required-ci: adjudication REFUSED standing=measurement_completed blockers={}",
-                blockers.len()
-            );
-            Err(ExitCode::from(1))
-        }
-    }
+    required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(path))
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -1139,21 +1076,24 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("required-ci: FAILED PHASE {failure}");
         }
         if let Some(path) = required_ci_measurement_receipt {
+            // EVERY REPORTED FAILURE MUST REACH THE BLOCKER SET, because the blocker set is
+            // what the exit is derived from below. Two things were wrong here and both were
+            // silent. The coverage test compared a blocker's PHASE to the whole failure
+            // sentence, so `floor refused: <cause>` never matched a floor blocker and was
+            // covered only by accident; and `floor` was carved out by name, so a floor that
+            // reported not-clean while yielding no blockers of its own produced an EMPTY
+            // blocker set from a failed phase -- a completed measurement with nothing to
+            // adjudicate. The test is now the failure's phase word against the blocker's phase,
+            // which is the same grain on both sides, and no phase is exempt.
+            //
             // Dissolve this compatibility boundary when every required phase returns its own
             // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
             // blocker's phase and identity.
             for failure in &phase_failures {
-                if !measurement_blockers
-                    .iter()
-                    .any(|b| b.phase == failure.as_str())
-                    && failure != "floor"
-                {
+                let phase = failure.split_whitespace().next().unwrap_or("unknown");
+                if !measurement_blockers.iter().any(|b| b.phase == phase) {
                     measurement_blockers.push(RequiredCiBlocker {
-                        phase: failure
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("unknown")
-                            .to_string(),
+                        phase: phase.to_string(),
                         identity: "<phase>".to_string(),
                         cause: failure.clone(),
                     });
@@ -1170,7 +1110,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
             eprintln!("required-ci: measurement completed receipt={path}");
-            return Ok(ExitCode::SUCCESS);
+            // THE WRITE IS NOT THE VERDICT. This branch used to return SUCCESS here because the
+            // D0 design published the receipt and let a SEPARATE adjudicating step decide. That
+            // step no longer exists: `gunbc.compiler_gate_workflow`
+            // `compiler_gate_floor_run_step` carries no `continue-on-error` and is followed by
+            // no adjudicator -- "here a refused claim refuses the lane", as its own note says --
+            // while the command it runs still asks for a receipt. So the measuring process is
+            // now the only authority left standing, and it was answering SUCCESS for a phase it
+            // had just refused (runs 35503853026 and 35510547600, both green on a declined
+            // changed-witness observation).
+            //
+            // It adjudicates the FILE it just wrote rather than the value it meant to write, so
+            // the readback, the JSON transport and the version agreement are all inside the
+            // verdict, and it reaches the exit through the same function the separate
+            // `--adjudicate-measurement-receipt` mode uses: one relation, one exit. Restoring
+            // the published/adjudicated split costs nothing here -- a step carrying
+            // `continue-on-error` absorbs this status and its own adjudicator reads the same
+            // receipt to the same verdict.
+            return required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(
+                &path,
+            ));
         }
         return if phase_failures.is_empty() {
             Ok(ExitCode::SUCCESS)
