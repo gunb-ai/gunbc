@@ -58,6 +58,15 @@ type SeededInstallMediaStageOutcome
   = SeededInstallMediaStaged { staging_path: NonEmptyStr, output_digest: NonEmptyStr }
   | SeededInstallMediaStageRefused { reason: NonEmptyStr }
 
+// WHERE THE LIVE-SERVER MEDIUM KEEPS ITS BOOT CONFIGURATION. This is a fact about the Ubuntu medium,
+// not about xorriso, so it is authored here and passed to the replay as an ordinary map destination;
+// the extracted tree's copy is the same path under the work dir.
+data install_media_remaster_grub_cfg_on_iso: NonEmptyStr = "/boot/grub/grub.cfg"
+
+fn install_media_remaster_grub_cfg_path(work_dir: NonEmptyStr) -> NonEmptyStr {
+  concat(work_dir as String, install_media_remaster_grub_cfg_on_iso as String) as NonEmptyStr
+}
+
 // grep exits non-zero when the pattern is ABSENT, and absence is precisely the question this fn
 // asks — the idempotence probe deciding whether to substitute or leave the file alone. Both answers
 // are ordinary: on a fresh image the cmdline is missing and gets inserted; on a re-run it is present
@@ -141,9 +150,10 @@ fn install_media_remaster_replay(
     volume_id: input.volume_id,
     volume_uuid: input.pinned_dates.volume_uuid,
     file_date: input.pinned_dates.file_date,
-    seed_source: concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
-    seed_iso_path: concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
-    grub_cfg_source: concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr,
+    map_one_source: concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
+    map_one_iso_path: concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
+    map_two_source: install_media_remaster_grub_cfg_path(work_dir: work_dir),
+    map_two_iso_path: install_media_remaster_grub_cfg_on_iso,
   )
   if built.success == false {
     SeededInstallMediaStageRefused { reason: "xorriso -boot_image any replay build failed" as NonEmptyStr }
@@ -166,7 +176,7 @@ fn install_media_remaster_from_tree(
   } else if install_media_remaster_write_nocloud_seed(work_dir: work_dir, input: input) == false {
     SeededInstallMediaStageRefused { reason: "writing NoCloud seed files failed" as NonEmptyStr }
   } else {
-    let grub_cfg = concat(work_dir as String, "/boot/grub/grub.cfg") as NonEmptyStr
+    let grub_cfg = install_media_remaster_grub_cfg_path(work_dir: work_dir)
     if shell.Test.IsFile(path: grub_cfg as FilePath).is_file == false {
       SeededInstallMediaStageRefused { reason: concat("missing grub.cfg at ", grub_cfg as String) as NonEmptyStr }
     } else if install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: input.grub_kernel_cmdline) == false {

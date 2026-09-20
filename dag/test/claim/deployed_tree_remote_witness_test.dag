@@ -18,10 +18,12 @@ import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   PublicationHelperTimerUnit,
+  FabricDbServeUnit,
+  FabricDbServeMapping,
   GunbcSourceTree,
   ServeBinary,
   DispatchWorktreeRoot,
-  AttemptStateRoot, ComputeRoot, FabricEventLogRoot,
+  AttemptStateRoot, ComputeRoot,
   SystemdUnit,
   BeltTimerUnit,
   FleetConvergeTimerUnit,
@@ -226,12 +228,13 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     ServeBinary => "binary"
     DeployedTreeRemoteUnit => "remote"
     PublicationHelperTimerUnit => "publication"
+    FabricDbServeUnit => ""
+    FabricDbServeMapping => ""
     BeltTimerUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""
     AttemptStateRoot => ""
     ComputeRoot => ""
-    FabricEventLogRoot => ""
     SystemdUnit => ""
     FleetConvergeTimerUnit => ""
   }
