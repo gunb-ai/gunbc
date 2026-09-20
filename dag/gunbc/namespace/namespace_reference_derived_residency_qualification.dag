@@ -151,6 +151,11 @@ fn first_whole_corpus_syntax_carrier(
 // Construction peak is read BEFORE retention, so the whole-pool-build-then-release specimen refuses on
 // the strength of `constructed` with `retained_at_return` empty. An empty `constructed` is refused
 // rather than qualified: a producer that reports no carriers has supplied no evidence of a bound.
+//
+// NOTHING DEFINITE FOUND IS NOT THE SAME AS A BOUND, so the undecidable case is checked LAST, after
+// both definite failures: a known-bad producer still reports its specific carrier, and a producer
+// whose carriers could not be read still refuses, because qualifying there would let one buy the
+// admission by renaming a type.
 fn qualify_bounded_realization(
   reading: ProductionLifecycleReading,
 ) -> ResidencyQualification {
@@ -175,10 +180,6 @@ fn qualify_bounded_realization(
                 failure: WholeCorpusSyntaxRetainedAtReturn { carrier: held.carrier },
               }
             Absent =>
-              // NOTHING DEFINITE WAS FOUND, WHICH IS NOT THE SAME AS A BOUND. A carrier the
-              // derivation could not read is checked LAST, after the definite failures, so a
-              // known-bad producer still reports its specific carrier -- but it refuses, because
-              // qualifying here would let a producer buy the admission by renaming a type.
               match first_undecidable_failure(
                 readings: concat(reading.constructed, reading.retained_at_return),
               ) {
