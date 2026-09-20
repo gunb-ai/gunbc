@@ -52,7 +52,7 @@ import extdeps.systemd.systemd_run { systemd_run_property_argv }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
-  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
   AttemptIdentity, CellBoundIdentity, CellBinding,
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
@@ -358,14 +358,23 @@ fn polls_for(bound: Second) -> Int {
   second_count(s: bound) / second_count(s: attempt_stop_poll_interval)
 }
 
-fn survivors_of(q: StopQuiescence) -> List<Int> {
+// THE FORCE'S OUTCOME IS DERIVED FROM THE READBACK'S OWN ARM, NOT FROM A PID LIST FLATTENED OUT OF
+// IT. This used to be a `survivors_of` that answered EMPTY for a read failure, and poll_until_quiet
+// correctly treats unreadable as not-quiet, so the two composed into an exceeded-bound carrying no
+// survivors -- a refutation whose cause nobody observed. The mapping is now total over the readback:
+// populated refutes, unreadable is unobservable, and empty cannot arrive here because
+// poll_until_quiet would have said quiet.
+fn force_stop_outcome(q: StopQuiescence) -> TeardownStop {
   match q {
-    CgroupQuiet => []
+    CgroupQuiet => StoppedByForce
     CgroupStillHolding { readback: r } =>
       match r {
-        CgroupSubtreeEmpty => []
-        CgroupSubtreePopulated { pids: p, cgroups: _ } => p
-        CgroupSubtreeReadFailed { reason: _ } => []
+        CgroupSubtreePopulated { pids: p, cgroups: _ } => ForceStopBoundExceeded { survivors: p }
+        CgroupSubtreeReadFailed { reason: reason } =>
+          ForceStopOutcomeUnobservable {
+            reason: join(["the cell's cgroup subtree could not be read after the bounded force-stop: ", reason as String], "") as NonEmptyStr,
+          }
+        CgroupSubtreeEmpty => StoppedByForce
       }
   }
 }
@@ -387,8 +396,10 @@ fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
   match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
-    SliceNameNotASlice { spelling: _ } =>
-      ForceStopBoundExceeded { survivors: survivors_of(q: poll_until_quiet(slice: slice, polls_remaining: 0)) }
+    SliceNameNotASlice { spelling: sp } =>
+      ForceStopOutcomeUnobservable {
+        reason: join([sp, " is not a slice unit name, so the cell's cgroup could not be addressed to force-stop it"], "") as NonEmptyStr,
+      }
     SliceCgroupPath { path: p } => force_stop_subtree(path: p, slice: slice)
   }
 }
@@ -400,11 +411,7 @@ fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
     path: cgroup_v2_kill_path(cgroup_path: path) as String,
     content: cgroup_v2_kill_trigger_value,
   )
-  let q = poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound))
-  match q {
-    CgroupQuiet => StoppedByForce
-    CgroupStillHolding { readback: _ } => ForceStopBoundExceeded { survivors: survivors_of(q: q) }
-  }
+  force_stop_outcome(q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)))
 }
 
 // --- the teardown observation, assembled for one bound attempt ---

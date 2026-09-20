@@ -12,7 +12,7 @@ import extdeps.linux.cgroup_v2 {
 
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
-  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
 import gunbc.runner_microvm_lifecycle_realize {
@@ -165,6 +165,7 @@ test fn a_sigterm_ignoring_child_is_stopped_by_force() -> Bool
       StoppedByForce => true
       StoppedGracefully => false
       ForceStopBoundExceeded { survivors: _ } => false
+      ForceStopOutcomeUnobservable { reason: _ } => false
     }
   }
 }
@@ -239,6 +240,7 @@ fn stop_exceeded_the_bound(stop: TeardownStop) -> Bool {
     ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
     StoppedGracefully => false
     StoppedByForce => false
+    ForceStopOutcomeUnobservable { reason: _ } => false
   }
 }
 
@@ -263,6 +265,7 @@ fn write_freeze_after(value: String, after: TeardownStop) -> Bool
 fn stop_names_an_outcome(stop: TeardownStop) -> Bool {
   match stop {
     ForceStopBoundExceeded { survivors: _ } => true
+    ForceStopOutcomeUnobservable { reason: _ } => true
     StoppedGracefully => true
     StoppedByForce => true
   }
@@ -433,6 +436,7 @@ test fn the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup() -> Bool
       StoppedByForce => readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
       StoppedGracefully => false
       ForceStopBoundExceeded { survivors: _ } => false
+      ForceStopOutcomeUnobservable { reason: _ } => false
     }
   }
 }

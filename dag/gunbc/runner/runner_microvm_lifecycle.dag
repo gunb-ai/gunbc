@@ -247,13 +247,24 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 }
 
 // THE STOP IS GRACEFUL, THEN FORCED, AND THE FORCE IS BOUNDED. What the controller observes is
-// which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
-// survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
-// it whatever the cgroup readback says afterwards.
+// which of these happened; a task that survives the bounded force-stop (uninterruptible sleep, or a
+// frozen cgroup, survives SIGKILL) is not "still stopping", it is a surviving process, and the cell
+// quarantines on it whatever the cgroup readback says afterwards.
+//
+// A FORCE WHOSE RESULT COULD NOT BE READ IS ITS OWN ARM, AND ADDING IT REMOVED A FABRICATED CAUSE.
+// There used to be three arms, and a controller whose cgroup readback FAILED after the force had
+// only ForceStopBoundExceeded to report -- with an empty survivor list, because there were no pids to
+// name. The cell still quarantined, so nothing was released; but the receipt read
+// "pids  survived the bounded force-stop", which sends an operator to hunt processes when what
+// actually happened is that the instrument could not see. The verdict was right and the CAUSE was
+// invented, which is the class this whole program exists to remove, so the state gets the arm it
+// always needed (vivid-stag-809's review on gunbc#11803). FactUnobservable was already the honest
+// destination; nothing could reach it from here.
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | ForceStopOutcomeUnobservable { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
 // cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
@@ -417,9 +428,23 @@ fn cgroup_observation(readback: CgroupSubtreeReadback) -> SanitationObservation 
 fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> SanitationObservation {
   match stop {
     ForceStopBoundExceeded { survivors: s } =>
-      FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
+      FactRefuted { fact: NoSurvivingProcesses, detail: force_stop_survivor_detail(survivors: s) }
+    ForceStopOutcomeUnobservable { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
+  }
+}
+
+// THE DETAIL SAYS WHAT WAS ESTABLISHED AND NOT MORE. The cgroup's own `populated` key can say the
+// subtree holds live processes while no pid is nameable -- a process that exits between the two
+// reads, or a walk that ran out of depth -- and "pids  survived" reads as a rendering bug in the one
+// place an operator is looking for a pid. The verdict is identical either way; only the sentence
+// differs, and the sentence is the whole remedy.
+fn force_stop_survivor_detail(survivors: List<Int>) -> NonEmptyStr {
+  if (survivors |> count) == 0 {
+    "the cell's cgroup subtree still reports live processes after the bounded force-stop, and none could be named" as NonEmptyStr
+  } else {
+    join(["pids ", pid_list_text(pids: survivors), " survived the bounded force-stop"], "") as NonEmptyStr
   }
 }
 

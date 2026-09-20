@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv2 }
-import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
+import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready, cell_readiness_line }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt,
@@ -45,7 +45,7 @@ import gunbc.runner_microvm_lifecycle {
   BringUpRefusedOutOfOrder, advance_bring_up,
   TerminalTrigger, VmmExited, RunnerExited, ControllerLost, ResourcesFoundOnRecovery, StopRequested,
   StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
-  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
   SubjectSlotNetwork,
@@ -310,6 +310,51 @@ test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
 // afterwards -- the listing is a later instant, and the task that outlived SIGKILL is the fact.
 test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -> Bool {
   is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
+}
+
+// A FORCE WHOSE RESULT COULD NOT BE READ IS UNOBSERVABLE, AND ITS RECEIPT NAMES NO PIDS.
+//
+// THIS IS THE CLAIM THE THIRD ARM OWES AND IT DISCRIMINATES ON THE KIND, NOT ON THE VERDICT. Both
+// this and ForceStopBoundExceeded quarantine the cell, so a claim that only asked "is it
+// quarantined" would have been equally green before the arm existed -- which is exactly how the
+// defect survived: the controller reported an exceeded bound with an EMPTY survivor list whenever
+// the cgroup could not be read, and the receipt said "pids  survived the bounded force-stop". So
+// what is asserted here is that the unproven fact is UNOBSERVABLE rather than REFUTED, and that its
+// text carries the read failure's own reason instead of a pid sentence.
+test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids() -> Bool {
+  let unreadable = readiness_after(
+    trigger: StopRequested,
+    host: clean_host(
+      stop: ForceStopOutcomeUnobservable { reason: "the cell's cgroup subtree could not be read after the bounded force-stop: EIO" as NonEmptyStr },
+      cgroup: CgroupSubtreeEmpty,
+    ),
+  )
+  is_quarantined(r: unreadable)
+    && unproven_mentions(r: unreadable, needle: "no-surviving-processes: unobservable")
+    && !unproven_mentions(r: unreadable, needle: "survived the bounded force-stop")
+}
+
+// THE PAIR THAT KEEPS THE CLAIM ABOVE FROM BEING SATISFIED BY A DECODER THAT SAYS `unobservable` TO
+// EVERYTHING: a real exceeded bound still reports REFUTED and still names its pid.
+test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
+  let exceeded = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty))
+  is_quarantined(r: exceeded)
+    && unproven_mentions(r: exceeded, needle: "pids 777 survived the bounded force-stop")
+    && !unproven_mentions(r: exceeded, needle: "no-surviving-processes: unobservable")
+}
+
+// AND THE CASE THE DETAIL RENDERING WAS WRONG FOR: the subtree reports live processes and no pid can
+// be named. It is a refutation -- the kernel saw something -- but the sentence must not be the
+// pid sentence with a hole where the pid goes.
+test fn an_exceeded_bound_with_no_nameable_pid_says_so() -> Bool {
+  let unnamed = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [] }, cgroup: CgroupSubtreeEmpty))
+  is_quarantined(r: unnamed)
+    && unproven_mentions(r: unnamed, needle: "none could be named")
+    && !unproven_mentions(r: unnamed, needle: "pids  survived")
+}
+
+fn unproven_mentions(r: CellReadiness, needle: String) -> Bool {
+  string_contains(s: cell_readiness_line(readiness: r), pattern: needle)
 }
 
 // A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
