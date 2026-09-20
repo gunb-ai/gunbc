@@ -528,7 +528,6 @@ fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
       }
   }
 }
-}
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the
 // authorization does not name is not dropped from the requirement -- it is reported as a retiree this
