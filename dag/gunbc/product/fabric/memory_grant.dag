@@ -1,0 +1,217 @@
+module product.fabric.memory_grant
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size_count }
+import product.fabric.envelope { MemoryRequirement }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+
+// A REQUIREMENT IS NOT A GRANT, AND THIS MODULE EXISTS BECAUSE THE TWO WERE ONE WORD.
+//
+// product.fabric.envelope MemoryRequirement.min_bytes says "the Work needs AT LEAST N bytes". That
+// is a fact about the WORK, authored by whoever described it, and it is a LOWER BOUND: it bounds
+// nothing above, it authorizes nothing, and it is not a quantity any realization may hand to a VMM
+// as a size. A grant says "THIS ATTEMPT IS AUTHORIZED TO CONSUME G BYTES". It is a fact about ONE
+// ATTEMPT, authored by an operator policy, and it is a CEILING the realization provisions against.
+//
+// They are different facts even when a policy chooses G = N, which is exactly why the conflation is
+// cheap to write and expensive to find: the two numbers agree at the one input where a reader would
+// check, and disagree on who may state them, what revises them, and what a consumer may conclude.
+// gunbc.runner_microvm runner_microvm_shape_after_cpu_admitted already READS the requirement, and
+// reads it correctly -- as a FIT GATE. Every Work it admits then receives the SAME guest memory,
+// the whole cell remainder, because there is no allocator between the requirement and the size.
+// This carrier is the missing fact, and nothing in this change hands it to a realization yet.
+//
+// THE CARRIER IS PROVIDER-NEUTRAL, LIKE EVERY OTHER product.fabric CARRIER: it names a Work and an
+// Attempt through FabricIdentity<P, _> and it names its policy through an OPAQUE REFERENCE. It
+// knows no cell, no VMM, no fleet and no number. The policy that chooses G lives in a gunbc.fabric_*
+// authority (gunbc.fabric_memory_grant_policy), which is where an operator decision belongs.
+
+// THE POLICY IS NAMED, NOT INLINED, AND THE REFERENCE IS OPAQUE ON PURPOSE. A grant that carried
+// its policy's fields would let two grants disagree about the policy they claim to share, and it
+// would drag fleet numbers into a provider-neutral carrier. A grant carries the NAME of the
+// authority that issued it; an auditor resolves that name against the authority itself.
+type MemoryGrantPolicyRef = NonEmptyStr where brand("MemoryGrantPolicyRef")
+
+// THE COMPATIBILITY PERMIT IS THE ONLY THING THAT MAKES AN UNSTATED AXIS GRANTABLE, and it is a
+// named permit rather than a Bool for the reason every other authorization in this corpus is: a
+// Bool records that someone said yes and loses who, and a permit that cannot be named cannot be
+// revoked, counted, or given a runway.
+type MemoryCompatibilityPermitRef = NonEmptyStr where brand("MemoryCompatibilityPermitRef")
+
+// PROVENANCE CARRIES THE REQUIREMENT RATHER THAN SITTING BESIDE IT, so the two cannot disagree.
+//
+// The obvious shape is a `required_minimum: MemoryRequirement?` FIELD beside a provenance tag. That
+// shape makes two contradictory states writable -- an absent minimum tagged as derived from a
+// stated requirement, and a present minimum tagged as a compatibility default -- and then owes a
+// validator to reject them. DESIGN 5 prefers the construction: the stated arm HOLDS the requirement
+// it was derived from, the permitted arm holds the permit it was issued under, and neither state
+// can be written. memory_grant_required_minimum below projects the optional field a reader wants,
+// derived rather than stored.
+type MemoryGrantProvenance
+  = GrantedAgainstStatedRequirement { required: MemoryRequirement }
+  | GrantedUnderCompatibilityPermit { permit: MemoryCompatibilityPermitRef }
+
+// sole_constructor: NOTHING OUTSIDE THIS MODULE MAY MINT A GRANT. The laws below are the whole
+// value of the carrier, and a record any module could build would carry none of them -- a grant
+// under its minimum, above its cell maximum, or defaulted with no permit would all be one struct
+// literal away. issue_memory_grant is the single door, and it is total: every refusal is typed and
+// carries the two numbers that disagreed.
+type MemoryGrant<P> sole_constructor {
+  work: FabricIdentity<P, WorkKey>
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  granted: ByteSize
+  policy: MemoryGrantPolicyRef
+  provenance: MemoryGrantProvenance
+}
+
+// THE OPTIONAL MINIMUM, DERIVED. A grant issued under a compatibility permit has no required
+// minimum -- not a zero one, and not an unknown one: the Work stated none.
+fn memory_grant_required_minimum<P>(g: MemoryGrant<P>) -> MemoryRequirement? {
+  match g.provenance {
+    GrantedAgainstStatedRequirement { required: r } => Present { value: r }
+    GrantedUnderCompatibilityPermit { permit: _ } => none
+  }
+}
+
+fn memory_grant_bytes<P>(g: MemoryGrant<P>) -> ByteSize {
+  g.granted
+}
+
+// THE THREE WAYS A GRANT IS REFUSED, AND NOT ONE OF THEM DEGRADES.
+//
+// GrantBelowStatedMinimum is the law the whole module exists for: a policy may grant MORE than the
+// Work asked for and may never grant less. A policy that returned a smaller number has answered a
+// different question than the one it was asked.
+//
+// GrantAboveCellMaximum REFUSES AND MUST NEVER CLAMP. Clamping is the absorbing fallback DESIGN 5
+// forbids in its purest form: the caller asked for a Work that needs G bytes, the policy cannot
+// authorize G, and a clamp silently provisions something smaller and reports success. The attempt
+// then dies inside the guest, at a layer that cannot attribute the death to this decision, and the
+// signal that the cell row is too small for the demand is destroyed at the one place it existed.
+// The remedy differs by arm -- raise the cell row, lower the allowance, or reduce the demand -- and
+// a clamp picks one silently. So the refusal carries BOTH numbers and the line stops.
+//
+// GrantUnstatedWithoutCompatibilityPermit is the absent axis. An unstated requirement is a
+// requirement NOBODY EXPRESSED, never one satisfied by everything (product.fabric.envelope states
+// that rule for the envelope; this is the same rule at the allocator). Without a permit there is no
+// authority to invent a number on the Work's behalf.
+type MemoryGrantRefusal
+  = GrantBelowStatedMinimum { required: ByteSize, granted: ByteSize }
+  | GrantAboveCellMaximum { granted: ByteSize, maximum: FiniteByteSize }
+  | GrantUnstatedWithoutCompatibilityPermit
+
+type MemoryGrantResolution<P>
+  = MemoryGranted { grant: MemoryGrant<P> }
+  | MemoryGrantRefused { refusal: MemoryGrantRefusal }
+
+fn memory_grant_refusal_text(r: MemoryGrantRefusal) -> String {
+  match r {
+    GrantBelowStatedMinimum { required: q, granted: g } =>
+      join(["the policy granted ", to_string(byte_size_count(b: g)), " bytes for a Work that states a minimum of ", to_string(byte_size_count(b: q)), " bytes; a grant below the stated minimum authorizes an attempt the Work already said cannot run"], "")
+    GrantAboveCellMaximum { granted: g, maximum: m } =>
+      join(["the policy sized a grant of ", to_string(byte_size_count(b: g)), " bytes against a per-cell maximum of ", to_string(finite_byte_size_count(size: m)), " bytes; the grant is REFUSED and is never reduced to the maximum -- raise the cell row, lower the policy allowance or reduce the demand"], "")
+    GrantUnstatedWithoutCompatibilityPermit =>
+      "the Work states no memory requirement and no fleet compatibility permit authorizes a default, so no quantity may be granted on the Work's behalf"
+  }
+}
+
+// THE SOLE MINT. Ordered so no law can be answered on a number another law says is meaningless: the
+// per-cell maximum is decided FIRST, because a grant the cell cannot hold is refused whatever the
+// Work asked for, and reporting "below minimum" about a figure that was never issuable would send
+// the reader to the wrong authority.
+//
+// THE MAXIMUM IS A FiniteByteSize, SO A ZERO CEILING IS UNWRITABLE. A zero maximum is not a small
+// maximum, it is the absence of one, and a policy that could declare it would refuse every grant
+// while looking like an ordinary row.
+fn issue_memory_grant<P>(
+  work: FabricIdentity<P, WorkKey>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  requirement: MemoryRequirement?,
+  permit: MemoryCompatibilityPermitRef?,
+  granted: ByteSize,
+  maximum: FiniteByteSize,
+  policy: MemoryGrantPolicyRef,
+) -> MemoryGrantResolution<P> {
+  if byte_size_count(b: granted) > finite_byte_size_count(size: maximum) {
+    MemoryGrantRefused { refusal: GrantAboveCellMaximum { granted: granted, maximum: maximum } }
+  } else {
+    match requirement {
+      Present { value: need } =>
+        if byte_size_count(b: granted) < byte_size_count(b: need.min_bytes) {
+          MemoryGrantRefused {
+            refusal: GrantBelowStatedMinimum { required: need.min_bytes, granted: granted },
+          }
+        } else {
+          MemoryGranted {
+            grant: MemoryGrant {
+              work: work,
+              attempt: attempt,
+              granted: granted,
+              policy: policy,
+              provenance: GrantedAgainstStatedRequirement { required: need },
+            },
+          }
+        }
+      Absent =>
+        match permit {
+          Absent => MemoryGrantRefused { refusal: GrantUnstatedWithoutCompatibilityPermit }
+          Present { value: p } =>
+            MemoryGranted {
+              grant: MemoryGrant {
+                work: work,
+                attempt: attempt,
+                granted: granted,
+                policy: policy,
+                provenance: GrantedUnderCompatibilityPermit { permit: p },
+              },
+            }
+        }
+    }
+  }
+}
+
+// A DEFAULTED GRANT MAY NOT RENDER AS "MEMORY REQUIREMENT CHECKED", AND THAT IS A CONSTRUCTION
+// RATHER THAN A STYLE RULE FOR THE RENDERER.
+//
+// The two grants carry materially different evidence. One says "the Work stated N and the policy
+// authorized G >= N" -- a checked relation between two facts. The other says "THE WORK STATED NO
+// REQUIREMENT; fleet compatibility policy nevertheless granted G" -- no relation was checked at
+// all, because there was nothing to check it against, and the number is an operator's guess that a
+// legacy Work will fit. Rendering the second with the first's sentence is the conflation
+// product.fabric.envelope already names for the matching fold: absence of observation reported as
+// positive clearance.
+//
+// So the standing is a COPRODUCT derived from the provenance, and there is no route from a
+// permitted grant to the checked arm. A renderer that wants the strong sentence must match the
+// strong arm, and the compiler will not let it forget the other one exists.
+type MemoryGrantStanding
+  = RequirementCheckedAtOrAbove { required: ByteSize, granted: ByteSize }
+  | NoRequirementStatedCompatibilityDefault { permit: MemoryCompatibilityPermitRef, granted: ByteSize }
+
+fn memory_grant_standing<P>(g: MemoryGrant<P>) -> MemoryGrantStanding {
+  match g.provenance {
+    GrantedAgainstStatedRequirement { required: r } =>
+      RequirementCheckedAtOrAbove { required: r.min_bytes, granted: g.granted }
+    GrantedUnderCompatibilityPermit { permit: p } =>
+      NoRequirementStatedCompatibilityDefault { permit: p, granted: g.granted }
+  }
+}
+
+fn memory_grant_standing_text(s: MemoryGrantStanding) -> String {
+  match s {
+    RequirementCheckedAtOrAbove { required: q, granted: g } =>
+      join(["memory requirement checked: the Work states a minimum of ", to_string(byte_size_count(b: q)), " bytes and this attempt is authorized to consume ", to_string(byte_size_count(b: g)), " bytes"], "")
+    NoRequirementStatedCompatibilityDefault { permit: p, granted: g } =>
+      join(["the Work stated no memory requirement; fleet compatibility policy ", p as String, " nevertheless granted ", to_string(byte_size_count(b: g)), " bytes"], "")
+  }
+}
+
+// THE PREDICATE A CONSUMER ASKS INSTEAD OF READING THE SENTENCE. It exists so the weaker standing
+// is countable -- a fleet can report how many of its attempts run on a compatibility default -- and
+// so no consumer reaches for a substring test on the rendered text to find out.
+fn memory_grant_standing_is_requirement_checked(s: MemoryGrantStanding) -> Bool {
+  match s {
+    RequirementCheckedAtOrAbove { required: _, granted: _ } => true
+    NoRequirementStatedCompatibilityDefault { permit: _, granted: _ } => false
+  }
+}
