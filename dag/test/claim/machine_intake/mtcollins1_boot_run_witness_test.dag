@@ -14,7 +14,6 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_observed_from_collector,
   mtcollins1_boot_terminal_observed,
   mtcollins1_boot_medium_refusal,
-  mtcollins1_boot_medium_label,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
@@ -26,7 +25,7 @@ import std.temporal_effect {
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import std.scoped_authorization { authorization_claim_key }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
-  mtcollins1_boot_subject, MtCollins1CensusMedium, MtCollins1StockInstallerMedium,
+  mtcollins1_boot_subject, mtcollins1_boot_subject_for, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_label,
 }
 import gunbc.auth.approval_request_client {
   approval_poll_standing, PollExpired, PollUnreadable,
@@ -200,7 +199,8 @@ test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
 
 test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-  let census_medium = MtCollins1CensusMedium { image_name: "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123.iso" as NonEmptyStr, image_sha256: "0123" as NonEmptyStr }
+  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let census_subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let clean = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
@@ -339,17 +339,18 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
       ),
     ),
   )
-  mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: stock_medium, subject: subject, medium: census_medium)
+  mtcollins1_boot_terminal_observed(capture: clean, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: stock_medium, subject: census_subject, medium: census_medium)
     && !mtcollins1_boot_terminal_observed(capture: clean, subject: subject, medium: MtCollins1StockInstallerMedium)
-    && !mtcollins1_boot_terminal_observed(capture: argv_echo_only, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: ue, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: subject, medium: census_medium)
-    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: argv_echo_only, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: ue, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: census_subject, medium: census_medium)
+    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium)
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {
@@ -370,7 +371,7 @@ test fn the_stock_installer_medium_refuses_the_census_boot_at_the_gate() -> Bool
 }
 
 test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -> Bool {
-  let medium = MtCollins1CensusMedium { image_name: "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0123.iso" as NonEmptyStr, image_sha256: "0123" as NonEmptyStr }
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   match mtcollins1_boot_medium_refusal(medium: medium) {
     Present { value: _ } => false
     Absent =>

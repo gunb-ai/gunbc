@@ -25,6 +25,8 @@ import gunbc.auth.approval_request_client {
 }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_input }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_built }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
@@ -59,36 +61,54 @@ data mtcollins1_boot_machine: NonEmptyStr = "mtcollins1"
 // refuses at the gate rather than after a hardware run.
 type MtCollins1BootMedium
   = MtCollins1StockInstallerMedium
-  | MtCollins1CensusMedium { image_name: NonEmptyStr, image_sha256: NonEmptyStr }
+  | MtCollins1CensusMedium { output_digest: NonEmptyStr }
 
 data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1StockInstallerMedium
 
+// THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name
+// derives from that digest through the same build input that owns the census volume id
+// (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_image_input), so a census arm naming
+// a stock installer, or any artifact but the census image, has no spelling: the row cannot disagree
+// with the label the verdict binds to (review 5261662425). The published file's name is its digest,
+// so the digest is also the sha256 the signed subject and the attach carry.
 fn mtcollins1_boot_medium_image_name(medium: MtCollins1BootMedium) -> NonEmptyStr {
   match medium {
     MtCollins1StockInstallerMedium => mtcollins1_diskless_image_name
-    MtCollins1CensusMedium { image_name: n, image_sha256: _ } => n
+    MtCollins1CensusMedium { output_digest: d } =>
+      ubuntu_seeded_install_media_built(input: mtcollins1_census_image_input, output_digest: d).image_name
   }
 }
 
 fn mtcollins1_boot_medium_image_sha256(medium: MtCollins1BootMedium) -> NonEmptyStr {
   match medium {
     MtCollins1StockInstallerMedium => mtcollins1_boot_image_sha256
-    MtCollins1CensusMedium { image_name: _, image_sha256: d } => d
+    MtCollins1CensusMedium { output_digest: d } => d
   }
 }
 
-fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
+fn mtcollins1_boot_medium_label(medium: MtCollins1BootMedium) -> NonEmptyStr? {
+  match medium {
+    MtCollins1StockInstallerMedium => none
+    MtCollins1CensusMedium { output_digest: _ } => Present { value: mtcollins1_census_image_input.volume_id }
+  }
+}
+
+fn mtcollins1_boot_subject_for(medium: MtCollins1BootMedium, execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
   MtCollins1BootSubject {
     machine: mtcollins1_boot_machine,
     bmc_host: mtcollins1_endpoint.host,
-    image_name: mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium),
-    image_sha256: mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium),
+    image_name: mtcollins1_boot_medium_image_name(medium: medium),
+    image_sha256: mtcollins1_boot_medium_image_sha256(medium: medium),
     export_host: operator_host_srv2 as NonEmptyStr,
     export_dir: mtcollins1_boot_export_dir,
     selection: mtcollins1_cdrom_selection,
     power_action: mtcollins1_power_action,
     execution_revision: execution_revision,
   }
+}
+
+fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
+  mtcollins1_boot_subject_for(medium: mtcollins1_boot_medium, execution_revision: execution_revision)
 }
 
 data mtcollins1_virtual_media_resource: NamespacePosition = NamespacePosition {

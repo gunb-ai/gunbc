@@ -22,6 +22,7 @@ import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authori
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
   MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium,
+  mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256, mtcollins1_boot_medium_label,
   MtCollins1BootSubject,
   mtcollins1_boot_authorization_request,
   mtcollins1_boot_gate_from_poll,
@@ -48,7 +49,6 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_bind, host_capture_bound_section, host_capture_bound_section_exit_zero,
   host_capture_bound_nproc_exact, host_capture_bound_edac_clean, host_capture_bound_workload_stable,
 }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_volume_id }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at }
@@ -364,20 +364,19 @@ fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
   match medium {
     MtCollins1StockInstallerMedium =>
       Present { value: "mtcollins1 boot: the boot medium is the stock installer, which carries no census program, so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched" }
-    MtCollins1CensusMedium { image_name: _, image_sha256: _ } => none
+    MtCollins1CensusMedium { output_digest: _ } => none
   }
 }
 
-fn mtcollins1_boot_medium_label(medium: MtCollins1BootMedium) -> NonEmptyStr? {
-  match medium {
-    MtCollins1StockInstallerMedium => none
-    MtCollins1CensusMedium { image_name: _, image_sha256: _ } => Present { value: mtcollins1_census_volume_id }
-  }
-}
-
+// THE SUBJECT AND THE MEDIUM ARE JOINED BEFORE THE CAPTURE IS READ: the signed subject names the
+// image the grant was issued for, the medium names the image this verdict expects to have booted,
+// and a terminal is a fact about ONE image. A census terminal against a stock-authorized subject is
+// refused here rather than accepted (review 5261662425).
 fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> Bool {
   let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
-  match mtcollins1_boot_medium_label(medium: medium) {
+  let joined = (subject.image_name as String) == (mtcollins1_boot_medium_image_name(medium: medium) as String)
+    && (subject.image_sha256 as String) == (mtcollins1_boot_medium_image_sha256(medium: medium) as String)
+  match if joined { mtcollins1_boot_medium_label(medium: medium) } else { none } {
     Absent => false
     Present { value: label } =>
       match host_capture_bind(capture: capture, machine: subject.machine) {
