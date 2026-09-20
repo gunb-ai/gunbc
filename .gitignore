@@ -122,8 +122,6 @@ out.txt
 # --- OpenClaw workspace artifacts [owner: gunbc.repo_workspace] ---
 # session/runtime state; not source-of-truth — OpenClaw control dir; the control plane lives in ~/ctrl, not this repo
 /.openclaw/
-# session/runtime state; not source-of-truth — OpenClaw agent roster projection
-/AGENTS.md
 # session/runtime state; not source-of-truth — OpenClaw heartbeat projection
 /HEARTBEAT.md
 # session/runtime state; not source-of-truth — OpenClaw identity projection
