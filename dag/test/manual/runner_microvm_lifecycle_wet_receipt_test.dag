@@ -229,9 +229,7 @@ test fn a_frozen_cell_is_still_ended_by_the_cell_wide_force() -> Bool
     false
   } else if !start_payload(unit: "gunbc-wet-frozen.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
     false
-  } else if !write_freeze(value: cgroup_v2_frozen_value) {
-    false
-  } else if read_freeze() != cgroup_v2_frozen_value {
+  } else if read_freeze_after(wrote: write_freeze(value: cgroup_v2_frozen_value)) != cgroup_v2_frozen_value {
     false
   } else {
     let stopped = stop_attempt(unit: "gunbc-wet-frozen.service" as NonEmptyStr, slice: wet_slice)
@@ -253,6 +251,17 @@ fn stop_was_by_force(stop: TeardownStop) -> Bool {
 // make the rest of this claim a statement about an unfrozen cgroup, which is a different and much
 // less interesting fact; and when the claim fails, this is what says whether the freeze or the force
 // was the part that did not do what it says.
+// THE READBACK TAKES THE WRITE'S RESULT AS ITS ARGUMENT, so it cannot be hoisted above it. Order in
+// this substrate is data dependence and nothing else; an `else if` chain sequences its CONDITIONS,
+// but two effectful calls inside one condition have no edge between them unless one consumes the
+// other. A readback that ran first would read the cgroup's state before the freeze and report it as
+// the freeze's result.
+fn read_freeze_after(wrote: Bool) -> String
+  uses net: Network
+{
+  if wrote == false { "" } else { read_freeze() }
+}
+
 fn read_freeze() -> String
   uses net: Network
 {
