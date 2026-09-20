@@ -32,7 +32,10 @@ data runner_microvm_attempt_disposition: Disposition = SingleAuthority
 //   BOUNDARY  the VMM runs in the cell's slice, so the guest's CPU, memory and task consumption is
 //             accounted to the cell that was reserved -- a VM outside the slice is invisible to
 //             every limit the cell carries and to every observation that reads them.
-//   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted.
+//   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted. That verdict is
+//             gunbc.product.fabric.sanitation's CellReadiness, derived from host readbacks by
+//             gunbc.runner_microvm_lifecycle and held across incarnations by
+//             gunbc.runner_microvm_cell_readiness; this module owns no second release verdict.
 //
 // A guest missing any one of these is refused rather than downgraded, because each failure is
 // silent in production: unbound storage looks like a working VM until two attempts collide,
@@ -234,38 +237,5 @@ fn bind_owned_attempt(attempt: MicroVmAttempt, owned: Bool) -> MicroVmCellBindin
         " is not owned, so no guest may consume it; a VM launched here would run outside every limit the cell carries",
       ], ""),
     }
-  }
-}
-
-// TEARDOWN IS PROVEN, NOT ATTEMPTED, AND THE CELL IS NOT RELEASABLE WITHOUT THE PROOF.
-//
-// The arms are separate because they are different events with different remedies. A VMM that
-// exited but left its attempt directory populated is a cleanup bug; a VMM still running is a
-// LEAK, and releasing the cell under it would hand a reserved boundary to a second guest while the
-// first still executes in it. There is deliberately no arm meaning "probably fine".
-type MicroVmTeardownVerdict
-  = TeardownProven
-  | TeardownVmmStillRunning { unit: NonEmptyStr }
-  | TeardownResidueRemains { path: String }
-  | TeardownNotObserved { cause: String }
-
-fn microvm_cell_releasable(verdict: MicroVmTeardownVerdict) -> Bool {
-  match verdict {
-    TeardownProven => true
-    TeardownVmmStillRunning { unit: _ } => false
-    TeardownResidueRemains { path: _ } => false
-    TeardownNotObserved { cause: _ } => false
-  }
-}
-
-fn microvm_teardown_verdict_text(v: MicroVmTeardownVerdict) -> String {
-  match v {
-    TeardownProven => "teardown=proven"
-    TeardownVmmStillRunning { unit: u } =>
-      join(["teardown=REFUSED vmm still running (", u as String, "); releasing the cell would hand a live boundary to a second guest"], "")
-    TeardownResidueRemains { path: p } =>
-      join(["teardown=REFUSED residue remains at ", p], "")
-    TeardownNotObserved { cause: c } =>
-      join(["teardown=REFUSED not observed (", c, "); an unobserved teardown is not a completed one"], "")
   }
 }

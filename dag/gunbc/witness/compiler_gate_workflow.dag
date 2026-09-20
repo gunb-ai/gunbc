@@ -61,6 +61,14 @@ import gunbc.witness_floor_workflow {
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
+// THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
+// GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
+// TRIGGERING COMMIT -- the bytes GitHub executed -- so the judging side does not author what it
+// requires, and gunbc.fleet_revision_acceptance will not advance the fleet's desired state without
+// it. witnesses.yml lost the member at 85c1356300c and fleet-desired has refused every push to main
+// since (8 runs, 2026-09-19T23:50Z onward) with RequiredCiEpochAbsent, against 52 consecutive
+// greens before it.
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 
 // The ruleset requires a check named `witnesses`, and a job's check is named by its id.
 data compiler_gate_job_id: String = "compiler"
@@ -312,7 +320,10 @@ data compiler_gate_workflow: Workflow = Workflow {
   concurrency: Present {
     value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
   },
-  env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
+  env: Present { value: [
+    kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+    kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
+  ] },
   permissions: Present { value: compiler_gate_permissions },
   jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_aggregate_job()]
 }
