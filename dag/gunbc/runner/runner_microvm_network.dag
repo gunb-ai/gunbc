@@ -1070,6 +1070,22 @@ type SlotNetworkFact
   | ExpectationTableEmptyFact
   | RulesetMatchesConvergedFact
 
+// EACH FACT HAS ITS OWN WIRE WORD, because a consumer that folds this readback into one sanitation
+// fact (gunbc.runner_microvm_lifecycle maps it onto product.fabric.sanitation SlotNetworkQuiescent)
+// otherwise reports "the slot network is not quiescent" and sends an operator to look at all seven.
+// The label lives here, with the coproduct, rather than being spelled a second time by that consumer.
+fn slot_network_fact_label(fact: SlotNetworkFact) -> String {
+  match fact {
+    TapUnheldFact => "tap-unheld"
+    TapIpv6DisabledFact => "tap-ipv6-disabled"
+    GuestOriginatedConntrackEmptyFact => "guest-originated-conntrack-empty"
+    GuestDestinedConntrackEmptyFact => "guest-destined-conntrack-empty"
+    GuestNeighbourAbsentFact => "guest-neighbour-absent"
+    ExpectationTableEmptyFact => "expectation-table-empty"
+    RulesetMatchesConvergedFact => "ruleset-matches-converged"
+  }
+}
+
 type TapHolderObservation
   = TapPresentUnheld
   | TapHeld { holders: Int }
@@ -1354,11 +1370,15 @@ data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dis
 // DECLARED FRONTIER (DESIGN 3c). The kernel records dns0 in /proc/net/pnp; it does not write
 // /etc/resolv.conf. NAMED CONSUMER: the guest image (gunbc.runner_guest_image), whose resolver
 // configuration must read the booted dns0 so the guest resolves through the one address the DNS
-// grant admits. TRIGGER: the guest image links /etc/resolv.conf to /proc/net/pnp (or derives it from
-// dns0 at boot) and a booted guest resolves github.com through runner_microvm_guest_resolver.
-// SUFFICIENT FOR deleting this row. NOT satisfied by the boot argument carrying dns0 alone.
+// grant admits. THE IMAGE HALF IS LANDED: gunbc.runner_guest_image runner_guest_resolver_link_command
+// makes the image's /etc/resolv.conf a symlink to /proc/net/pnp, the form the kernel's own nfsroot
+// documentation names. WHAT REMAINS is the executing half -- a booted, NETWORKED guest resolving
+// github.com through runner_microvm_guest_resolver -- which the boot probe cannot supply (it boots
+// with GuestNetworkAbsent) and only a real job under a test label can (gunbc.runner_guest_image
+// guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the
+// link alone, nor by the boot argument carrying dns0 alone.
 data guest_resolver_configuration_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. TRIGGER: the guest image makes /etc/resolv.conf follow the booted dns0 (/proc/net/pnp) and a booted guest resolves github.com through runner_microvm_guest_resolver. SUFFICIENT FOR deleting this row. NOT satisfied by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. IMAGE HALF LANDED: runner_guest_resolver_link_command links /etc/resolv.conf to /proc/net/pnp. REMAINING TRIGGER: a booted networked guest resolves github.com through runner_microvm_guest_resolver, observed on the console of the first test-label job (guest_agent_real_job_acceptance_frontier). SUFFICIENT FOR deleting this row. NOT satisfied by the link alone or by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
 )
 
 // --- the receipt as a wire value: what a later process reads back ---

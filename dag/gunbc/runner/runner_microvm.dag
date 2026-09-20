@@ -46,6 +46,11 @@ import gunbc.runner_unit {
   lifecycle_intent_stops_finished_incarnation,
   gunbc_runner_main_exits_when_incarnation_ends,
 }
+import product.fabric.sanitation { CellId }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
+  HostWithdrawn, HostWithdrawal, CellWithdrawal, CellBoundAttempt,
+}
 import extdeps.github.actions_runner {
   ActionsRunnerRelease, actions_runner_release_2_337_0, actions_runner_jitconfig_env_name,
 }
@@ -815,15 +820,22 @@ type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
 // re-deriving it. Stating the dependency in prose would have left it satisfiable by an author who
 // never read the paragraph.
 //
-// THIS IS A NECESSARY GATE, NOT A SUFFICIENT ONE, and the gap is a declared frontier. The predicate
-// is static: it says a finished incarnation makes systemd issue a stop that reaches the cgroup. It
-// cannot say the VMM is gone afterwards -- a task in uninterruptible sleep survives SIGKILL, and a
-// main process that outlives its incarnation issues no stop at all -- nor that the cell is safe to
-// reuse. That is gunbc.product.fabric.sanitation's CellReadiness, established by a terminalizer's
-// readback, which this admission will consume once the terminalizer lands. Until then an Admitted
-// verdict here is not sufficient grounds to run customer work.
+// THE TOPOLOGY GATE IS NECESSARY, NOT SUFFICIENT, and the cell's readiness is the other half. The
+// predicate is static: it says a finished incarnation makes systemd issue a stop that reaches the
+// cgroup. It cannot say the VMM is gone afterwards -- a task in uninterruptible sleep survives
+// SIGKILL -- nor that the cell is safe to reuse. That is gunbc.product.fabric.sanitation's
+// CellReadiness as held across incarnations by gunbc.runner_microvm_cell_readiness, whose admission
+// joins the allocation generation to the readiness recorded at the previous one. It is consumed
+// FIRST, before any static gate: a cell that is withdrawn is withdrawn whatever the VM looks like,
+// and reporting a malformed VM for a quarantined cell would send the operator to the wrong fact.
+// Its three non-admitting arms stay three arms here, because their remedies differ: host grain (fix
+// the store; no cell on the host may start), cell grain (this cell's readback), and recovery required
+// (not a refusal to act but the instruction to run the lost attempt's teardown first).
 type RunnerMicroVmAdmission
   = RunnerMicroVmAdmitted
+  | RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostWithdrawal }
+  | RunnerMicroVmRefusedCellWithdrawn { cell: CellId, withdrawal: CellWithdrawal }
+  | RunnerMicroVmRecoveryRequired { bound: CellBoundAttempt }
   | RunnerMicroVmRefusedOrphanableUnit { reason: String }
   | RunnerMicroVmRefusedSharedCredential { reason: String }
   | RunnerMicroVmRefusedMalformedVm { reason: String }
@@ -843,6 +855,31 @@ type RunnerMicroVmAdmission
 // instead of writing it. Collapsing them into one cause is the state-space conflation DESIGN names,
 // and it would send an operator to the wrong module.
 fn runner_microvm_admission(
+  cell: CellIncarnationAdmission,
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  main_exits_when_incarnation_ends: Bool,
+  transport: JitCredentialTransport,
+  config: FirecrackerVmConfig,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmAdmission {
+  match cell {
+    HostWithdrawn { withdrawal: w } => RunnerMicroVmRefusedHostWithdrawn { withdrawal: w }
+    CellWithdrawn { cell: c, withdrawal: w } => RunnerMicroVmRefusedCellWithdrawn { cell: c, withdrawal: w }
+    CellRecoveryRequired { bound: b } => RunnerMicroVmRecoveryRequired { bound: b }
+    CellIncarnationAdmitted { cell: _, generation: _ } =>
+      runner_microvm_admission_after_cell(
+        topology: topology,
+        intent: intent,
+        main_exits_when_incarnation_ends: main_exits_when_incarnation_ends,
+        transport: transport,
+        config: config,
+        reserve: reserve,
+      )
+  }
+}
+
+fn runner_microvm_admission_after_cell(
   topology: VmmProcessTopology,
   intent: RunnerUnitLifecycleIntent,
   main_exits_when_incarnation_ends: Bool,
@@ -1026,10 +1063,12 @@ fn attach_workspace_drive(config: FirecrackerVmConfig, path: FilePath) -> Firecr
 // gunbc_runner_lifecycle_intent rather than by an author's assertion. It moves the day that intent
 // is deployed, and not before.
 fn gunbc_runner_microvm_admission(
+  cell: CellIncarnationAdmission,
   topology: VmmProcessTopology,
   config: FirecrackerVmConfig,
 ) -> RunnerMicroVmAdmission {
   runner_microvm_admission(
+    cell: cell,
     topology: topology,
     intent: gunbc_runner_lifecycle_intent,
     main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
