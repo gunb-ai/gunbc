@@ -1,0 +1,308 @@
+module extdeps.bmc.redfish_telemetry
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonNull, JsonNumber, JsonValue }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import gunbc.scm.json_member {
+  MemberArray,
+  MemberFailed,
+  MemberLookupFailed,
+  MemberObject,
+  MemberReadMissing,
+  MemberString,
+  MemberValue,
+  read_member,
+  read_member_value,
+  read_string_member,
+}
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+
+// WHAT A REDFISH SERVICE SAYS ABOUT A SENSOR, A THERMAL SUBSYSTEM AND A LOG, as the DMTF schemas
+// define those resources -- and nothing about what the readings mean for a host.
+//
+// Three resource shapes, because the fleet's two BMC images serve telemetry through different ones
+// (extdeps.bmc.types RedfishThermalTelemetrySurface; observed 2026-09-18 with the read-only health
+// account): the ASRock 2.07 image serves one Sensor resource per sensor under Chassis/{id}/Sensors
+// and no Thermal resource; OpenBMC 3.22 serves the legacy Chassis/{id}/Thermal with Temperatures[]
+// and Fans[] and only power readings under Sensors. Both are decoded into one point shape so the
+// consumer asks one question of either image.
+//
+// A READING IS A VALUE, A NULL, OR MISSING -- THREE FACTS. Thermal carries `Reading: null` for a fan
+// header with nothing connected; a member that is absent altogether is a different rendering.
+// Neither is converted into zero, and zero is kept as a reading.
+//
+// HEALTH IS THE SERVICE'S OWN VERDICT (Resource.Health: OK, Warning, Critical), kept beside the
+// reading rather than recomputed from thresholds: the service is the authority for its verdict, and
+// the consumer decides what the verdict means.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/Sensor.v1_2_0.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.redfish_telemetry",
+      decl_name: "RedfishTelemetryPoint",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/Thermal.v1_3_0.json" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/LogEntry.v1_9_0.json" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/Resource.json" } },
+  ]
+}
+
+type RedfishHealth
+  = RedfishHealthOk
+  | RedfishHealthWarning
+  | RedfishHealthCritical
+  | RedfishHealthOther { health: NonEmptyStr }
+  | RedfishHealthUnreported
+
+type RedfishResourceState
+  = RedfishStateEnabled
+  | RedfishStateDisabled
+  | RedfishStateAbsent
+  | RedfishStateOther { state: NonEmptyStr }
+  | RedfishStateUnreported
+
+// The whole-number part of the reading. Temperatures render as N.0 and tachometers as integers on
+// both images, so the integer part is exact for every point this module decodes.
+type RedfishReading
+  = RedfishReadingValue { whole: Int }
+  | RedfishReadingNull
+  | RedfishReadingMissing
+
+type RedfishPointKind
+  = RedfishTemperatureCelsius
+  | RedfishRotationalRpm
+  | RedfishOtherReading { reading_type: NonEmptyStr }
+
+type RedfishTelemetryPoint {
+  name: NonEmptyStr
+  kind: RedfishPointKind
+  reading: RedfishReading
+  health: RedfishHealth
+  state: RedfishResourceState
+}
+
+fn redfish_status(v: JsonValue) -> ObservationAttempt<RedfishStatusPair, NonEmptyStr> {
+  match read_member(v: v, key: "Status") {
+    MemberObject { value: status } => ObservationEstablished { observed: RedfishStatusPair {
+      health: match read_string_member(v: status, key: "Health") {
+        MemberString { value: h } =>
+          if h == "OK" { RedfishHealthOk } else if h == "Warning" { RedfishHealthWarning } else if h == "Critical" { RedfishHealthCritical }
+          else if h == "" { RedfishHealthUnreported } else { RedfishHealthOther { health: h as NonEmptyStr } }
+        _ => RedfishHealthUnreported
+      },
+      state: match read_string_member(v: status, key: "State") {
+        MemberString { value: s } =>
+          if s == "Enabled" { RedfishStateEnabled } else if s == "Disabled" { RedfishStateDisabled } else if s == "Absent" { RedfishStateAbsent }
+          else if s == "" { RedfishStateUnreported } else { RedfishStateOther { state: s as NonEmptyStr } }
+        _ => RedfishStateUnreported
+      },
+    } }
+    MemberFailed { cause: MemberReadMissing { key: _ } } =>
+      ObservationEstablished { observed: RedfishStatusPair { health: RedfishHealthUnreported, state: RedfishStateUnreported } }
+    _ => ObservationRefused { cause: "a Redfish Status member is present but is not a single object" }
+  }
+}
+
+type RedfishStatusPair {
+  health: RedfishHealth
+  state: RedfishResourceState
+}
+
+fn redfish_whole_number(lexeme: String) -> Int? {
+  match split(s: lexeme, delimiter: ".").first() {
+    Absent => none
+    Present { value: whole } => if whole == "" || whole == "-" { none } else { parse_int(s: whole) }
+  }
+}
+
+// A reading that is present but neither a number nor null refuses the point: coercing it would
+// fabricate a value, and skipping it would read as missing.
+fn redfish_reading(v: JsonValue, key: String) -> ObservationAttempt<RedfishReading, NonEmptyStr> {
+  match read_member_value(v: v, key: key) {
+    MemberLookupFailed { cause: MemberReadMissing { key: _ } } => ObservationEstablished { observed: RedfishReadingMissing }
+    MemberLookupFailed { cause: _ } => ObservationRefused { cause: concat("the Redfish reading member ", key, " is duplicated or its subject is not an object") as NonEmptyStr }
+    MemberValue { value: JsonNull } => ObservationEstablished { observed: RedfishReadingNull }
+    MemberValue { value: JsonNumber { lexeme } } => match redfish_whole_number(lexeme: lexeme as String) {
+      Present { value: n } => ObservationEstablished { observed: RedfishReadingValue { whole: n } }
+      none => ObservationRefused { cause: concat("the Redfish reading ", key, " is not a decimal number") as NonEmptyStr }
+    }
+    MemberValue { value: _ } => ObservationRefused { cause: concat("the Redfish reading ", key, " is neither a number nor null") as NonEmptyStr }
+  }
+}
+
+fn redfish_point(v: JsonValue, kind: RedfishPointKind, reading_key: String) -> ObservationAttempt<RedfishTelemetryPoint, NonEmptyStr> {
+  match read_string_member(v: v, key: "Name") {
+    MemberString { value: name } =>
+      if name == "" { ObservationRefused { cause: "a Redfish telemetry point has an empty Name" } } else {
+        match redfish_reading(v: v, key: reading_key) {
+          ObservationRefused { cause } => ObservationRefused { cause: concat(name, ": ", cause as String) as NonEmptyStr }
+          ObservationEstablished { observed: reading } => match redfish_status(v: v) {
+            ObservationRefused { cause } => ObservationRefused { cause: concat(name, ": ", cause as String) as NonEmptyStr }
+            ObservationEstablished { observed: status } => ObservationEstablished { observed: RedfishTelemetryPoint {
+              name: name as NonEmptyStr, kind: kind, reading: reading, health: status.health, state: status.state,
+            } }
+          }
+        }
+      }
+    _ => ObservationRefused { cause: "a Redfish telemetry point carries no single string Name" }
+  }
+}
+
+fn redfish_document(body: String, what: String) -> ObservationAttempt<JsonValue, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ObservationRefused { cause: concat("the Redfish ", what, " response is not a JSON document") as NonEmptyStr }
+    JsonDocumentParsed { value } => ObservationEstablished { observed: value }
+  }
+}
+
+// ONE Sensor resource (Sensor.v1_2_0). ReadingType selects the kind; a type this module does not
+// name is carried by name rather than dropped, so a caller can see what it did not ask for.
+fn redfish_sensor_point(body: String) -> ObservationAttempt<RedfishTelemetryPoint, NonEmptyStr> {
+  match redfish_document(body: body, what: "Sensor") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: v } => match read_string_member(v: v, key: "ReadingType") {
+      MemberString { value: t } => redfish_point(
+        v: v,
+        kind: if t == "Temperature" { RedfishTemperatureCelsius } else if t == "Rotational" { RedfishRotationalRpm }
+          else if t == "" { RedfishOtherReading { reading_type: "unnamed" } } else { RedfishOtherReading { reading_type: t as NonEmptyStr } },
+        reading_key: "Reading",
+      )
+      _ => ObservationRefused { cause: "a Redfish Sensor carries no single string ReadingType" }
+    }
+  }
+}
+
+fn redfish_points_of(elements: List<JsonValue>, kind: RedfishPointKind, reading_key: String) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> {
+  let empty: List<RedfishTelemetryPoint> = []
+  let initial: ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> = ObservationEstablished { observed: empty }
+  let reversed = fold(elements, init: initial, f: (acc, e) => match acc {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: points } => match redfish_point(v: e, kind: kind, reading_key: reading_key) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: p } => ObservationEstablished { observed: concat([p], points) }
+    }
+  })
+  match reversed {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: points } => ObservationEstablished { observed: reverse(points) }
+  }
+}
+
+// The legacy Thermal resource (Thermal.v1_3_0): Temperatures[] read ReadingCelsius, Fans[] read
+// Reading in RPM. Both arrays must be present; an image that omits one has not reported it, which is
+// a different fact from reporting none.
+fn redfish_thermal_points(body: String) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> {
+  match redfish_document(body: body, what: "Thermal") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: v } => match read_member(v: v, key: "Temperatures") {
+      MemberArray { elements: temps } => match read_member(v: v, key: "Fans") {
+        MemberArray { elements: fans } => match redfish_points_of(elements: temps, kind: RedfishTemperatureCelsius, reading_key: "ReadingCelsius") {
+          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationEstablished { observed: t } => match redfish_points_of(elements: fans, kind: RedfishRotationalRpm, reading_key: "Reading") {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: f } => ObservationEstablished { observed: concat(t, f) }
+          }
+        }
+        _ => ObservationRefused { cause: "the Redfish Thermal resource carries no Fans array" }
+      }
+      _ => ObservationRefused { cause: "the Redfish Thermal resource carries no Temperatures array" }
+    }
+  }
+}
+
+// A collection's member references, for walking a Sensors collection. Every member must name
+// itself; a member that does not makes the collection unreadable rather than shorter.
+fn redfish_member_ids(body: String) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+  match redfish_document(body: body, what: "collection") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: v } => match read_member_value(v: v, key: "Members@odata.nextLink") {
+      MemberValue { value: _ } => ObservationRefused { cause: "the Redfish collection is paginated (Members@odata.nextLink); a first page is not the collection" }
+      MemberLookupFailed { cause: _ } => match read_member(v: v, key: "Members") {
+        MemberArray { elements } => {
+          let empty: List<NonEmptyStr> = []
+          let initial: ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> = ObservationEstablished { observed: empty }
+          let reversed = fold(elements, init: initial, f: (acc, e) => match acc {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: ids } => match read_string_member(v: e, key: "@odata.id") {
+              MemberString { value: id } => if id == "" { ObservationRefused { cause: "a Redfish collection member has an empty @odata.id" } } else { ObservationEstablished { observed: concat([id as NonEmptyStr], ids) } }
+              _ => ObservationRefused { cause: "a Redfish collection member carries no single string @odata.id" }
+            }
+          })
+          match reversed {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: ids } => ObservationEstablished { observed: reverse(ids) }
+          }
+        }
+        _ => ObservationRefused { cause: "the Redfish collection carries no Members array" }
+      }
+    }
+  }
+}
+
+// ONE LOG ENTRY (LogEntry.v1_9_0), with the Id the service numbers entries by. The Id is what orders
+// and watermarks a log; Created is the BMC's clock and orders nothing. Message is carried whole: its
+// first line is the registry message id on OpenBMC, and interpreting it is the consumer's job.
+type RedfishLogEntry {
+  id: Int
+  severity: NonEmptyStr
+  message: NonEmptyStr
+}
+
+fn redfish_log_entry(v: JsonValue) -> ObservationAttempt<RedfishLogEntry, NonEmptyStr> {
+  match read_string_member(v: v, key: "Id") {
+    MemberString { value: id_text } => match parse_int(s: id_text) {
+      none => ObservationRefused { cause: concat("a Redfish log entry Id is not an integer: ", id_text) as NonEmptyStr }
+      Present { value: id } => match read_string_member(v: v, key: "Message") {
+        MemberString { value: m } => if m == "" { ObservationRefused { cause: "a Redfish log entry has an empty Message" } } else {
+          ObservationEstablished { observed: RedfishLogEntry {
+            id: id,
+            severity: match read_string_member(v: v, key: "Severity") { MemberString { value: s } => if s == "" { "Unreported" as NonEmptyStr } else { s as NonEmptyStr } _ => "Unreported" as NonEmptyStr },
+            message: m as NonEmptyStr,
+          } }
+        }
+        _ => ObservationRefused { cause: "a Redfish log entry carries no single string Message" }
+      }
+    }
+    _ => ObservationRefused { cause: "a Redfish log entry carries no single string Id" }
+  }
+}
+
+fn redfish_log_entries(body: String) -> ObservationAttempt<List<RedfishLogEntry>, NonEmptyStr> {
+  match redfish_document(body: body, what: "log entry collection") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: v } => match read_member_value(v: v, key: "Members@odata.nextLink") {
+      MemberValue { value: _ } => ObservationRefused { cause: "the Redfish log entry collection is paginated (Members@odata.nextLink); a first page is not the log" }
+      MemberLookupFailed { cause: _ } => match read_member(v: v, key: "Members") {
+        MemberArray { elements } => {
+          let empty: List<RedfishLogEntry> = []
+          let initial: ObservationAttempt<List<RedfishLogEntry>, NonEmptyStr> = ObservationEstablished { observed: empty }
+          let reversed = fold(elements, init: initial, f: (acc, e) => match acc {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: entries } => match redfish_log_entry(v: e) {
+              ObservationRefused { cause } => ObservationRefused { cause: cause }
+              ObservationEstablished { observed: entry } => ObservationEstablished { observed: concat([entry], entries) }
+            }
+          })
+          match reversed {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: entries } => ObservationEstablished { observed: reverse(entries) }
+          }
+        }
+        _ => ObservationRefused { cause: "the Redfish log entry collection carries no Members array" }
+      }
+    }
+  }
+}

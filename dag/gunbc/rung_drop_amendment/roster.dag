@@ -1,0 +1,19 @@
+module gunbc.rung_drop_amendment.roster
+
+// THE ENUMERATION AND NOTHING ELSE, held apart from `gunbc.rung_drop_amendment` for the reason
+// gunbc.rung_drop.roster is held apart from its own type module: every row imports the type, so the
+// type module cannot import the rows back. The order here is the projection's order within a drop.
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign { namespace_wave_admission_carrier_redesign }
+
+data rung_drop_amendment_roster: List<RungDropAmendment> = [
+  namespace_wave_admission_carrier_redesign,
+]
+
+// THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at
+// every consumer that renders a drop.
+fn amendments_for_drop(identity: NonEmptyStr) -> List<RungDropAmendment> {
+  filter(rung_drop_amendment_roster, a => (a.drop_identity as String) == (identity as String))
+}
