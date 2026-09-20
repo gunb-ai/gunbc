@@ -394,3 +394,65 @@ fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
 fn systemd_name_component_is_escaped(component: String) -> Bool {
   string_contains(s: component, pattern: "\\")
 }
+
+// WHERE A SLICE'S CGROUP ACTUALLY IS, AND IT IS NOT `<mount point>/<slice name>`.
+//
+// systemd.slice(5) states the rule outright: "a slice unit named foo-bar-baz.slice is located in
+// the foo.slice/foo-bar.slice/ slice". The dashes in a slice's NAME are its path in the hierarchy,
+// not characters in a directory name -- so the cgroup of `fabric-cell-srv1-07.slice` lives at
+// `fabric.slice/fabric-cell.slice/fabric-cell-srv1.slice/fabric-cell-srv1-07.slice`, four levels
+// down, and a reader that joined the mount point to the name directly looks at a directory that
+// does not exist.
+//
+// THIS IS SYSTEMD'S FACT AND NOT THE KERNEL'S, which is why it is homed here rather than in
+// extdeps.linux.cgroup_v2. The kernel represents a hierarchy of directories; WHICH directory a
+// named slice unit gets is systemd's naming convention, and a copy of it inside the kernel's module
+// would be the layer inversion DESIGN section 3 names -- an upstream module carrying a different
+// upstream's policy. extdeps.linux.cgroup_v2 cgroup_v2_slice_path did exactly that, wrongly, and is
+// deleted with this landing; it had no consumer but the one that found the bug.
+//
+// MEASURED, NOT DERIVED FROM THE MAN PAGE ALONE: on srv1, a transient unit started with
+// `--property=Slice=gunbc-wetprobe.slice` reports `ControlGroup` as
+// `/gunbc.slice/gunbc-wetprobe.slice/wetprobe-a.service`, and `/sys/fs/cgroup/gunbc-wetprobe.slice`
+// does not exist.
+//
+// A NAME THAT IS NOT A SLICE IS REFUSED RATHER THAN GUESSED AT. `-.slice` is the root slice and has
+// no ancestors to expand; a name without the suffix is not a slice unit at all, and joining it into
+// a path would produce a directory whose meaning nobody stated.
+type SystemdSliceCgroupPath
+  = SliceCgroupPath { path: NonEmptyStr }
+  | SliceNameNotASlice { spelling: String }
+
+data systemd_slice_suffix: String = ".slice"
+
+data systemd_root_slice_name: String = "-.slice"
+
+fn systemd_slice_ancestor_names(stem: String) -> List<String> {
+  fold(split(s: stem, delimiter: "-"), init: [], f: (acc, segment) =>
+    match acc.last() {
+      Absent => [segment]
+      Present { value: prev } => concat(acc, [join([prev, "-", segment], "")])
+    })
+}
+
+fn systemd_slice_cgroup_path(mount_point: NonEmptyStr, slice: NonEmptyStr) -> SystemdSliceCgroupPath {
+  let name = slice as String
+  if name == systemd_root_slice_name {
+    SliceCgroupPath { path: mount_point }
+  } else if !ends_with(s: name, suffix: systemd_slice_suffix) {
+    SliceNameNotASlice { spelling: name }
+  } else {
+    let stem = substring(s: name, start: 0, end: string_length(s: name) - string_length(s: systemd_slice_suffix))
+    if stem == "" {
+      SliceNameNotASlice { spelling: name }
+    } else {
+      SliceCgroupPath {
+        path: fold(
+          systemd_slice_ancestor_names(stem: stem),
+          init: mount_point as String,
+          f: (acc, ancestor) => join([acc, "/", ancestor, systemd_slice_suffix], ""),
+        ) as NonEmptyStr,
+      }
+    }
+  }
+}

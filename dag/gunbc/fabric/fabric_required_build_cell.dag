@@ -405,6 +405,25 @@ fn required_build_cell_lifetime_sample_wire(sample: RequiredBuildCellLifetimeSam
   ], "\n")
 }
 
+// A DIGEST FIELD IS AN OPTIONAL AND IS OPENED BEFORE IT IS PARSED. Two call sites below passed
+// `fields.skip(n: N).first()` -- an Optional<String> -- straight into
+// content_hash_from_structural_digest's String parameter, so this module did not typecheck and had
+// not resolved for any consumer that reached it. The required CI check executes no .dag witness,
+// which is how it stood; it was found by resolving gunbc.runner_microvm_lifecycle's witness on a
+// host (gunbc#11803).
+//
+// THE TWO ABSENCES SHARE ONE ARM AND THAT LOSES NOTHING HERE. "the field is not there" and "the
+// field is there and is not a structural digest" both reach the caller's single
+// RequiredBuildCellLifetimeSampleUndecodable, exactly as they did before; and the seven-field guard
+// above makes the first unreachable. This is the narrowest repair that makes the existing arms
+// typecheck, not a re-modelling of the decoder's shape.
+fn content_hash_of_digest_field(field: String?) -> ContentHash? {
+  match field {
+    Absent => none
+    Present { value: digest } => content_hash_from_structural_digest(digest: digest)
+  }
+}
+
 fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   let fields = split(s: wire, delimiter: "\n")
   if list_length(items: fields) != 7 {
@@ -413,10 +432,10 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
     match parse_int(s: fields.skip(n: 1).first()) {
       Absent => RequiredBuildCellLifetimeSampleUndecodable
       Present { value: generation } =>
-        match content_hash_from_structural_digest(digest: fields.skip(n: 3).first()) {
+        match content_hash_of_digest_field(field: fields.skip(n: 3).first()) {
           Absent => RequiredBuildCellLifetimeSampleUndecodable
           Present { value: reservation_content } =>
-            match content_hash_from_structural_digest(digest: fields.skip(n: 5).first()) {
+            match content_hash_of_digest_field(field: fields.skip(n: 5).first()) {
               Absent => RequiredBuildCellLifetimeSampleUndecodable
               Present { value: members_content } =>
                 match fields.first() {

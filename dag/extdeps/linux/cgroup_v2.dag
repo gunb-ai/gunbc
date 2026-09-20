@@ -245,10 +245,6 @@ fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr 
   concat(parent as String, "/", child as String) as NonEmptyStr
 }
 
-fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
-}
-
 fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
 }

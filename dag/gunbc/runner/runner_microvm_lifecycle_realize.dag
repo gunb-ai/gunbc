@@ -5,28 +5,60 @@ import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem, Network }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, ByteSize, byte_size }
+import std.algebra { trim }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.posix.test_utility { test_exists_command }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.linux.cgroup_v2 {
-  cgroup_v2_slice_path, cgroup_v2_child_path, cgroup_v2_events_path,
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd { SystemdUnitProperty }
+import extdeps.systemd {
+  SystemdUnitProperty, InvocationIDProperty, ExecMainStatus,
+  SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
+}
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
-  runner_microvm_attempt_jail_base,
+  runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property,
 }
-import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
+import gunbc.runner_attempt_launch {
+  AttemptGround, GroundClear, GroundOccupied,
+  AttemptLaunchPlan, LaunchAuthorized,
+  AttemptStagingVerdict, StagingAdmitsJailer, AttemptStagingReceipt,
+  WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
+  attempt_staging_verdict, workspace_readback_command, stage_jit_device,
+  runner_attempt_vmm_deadline,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellBoundAttempt, CellIncarnationAdmission, cell_incarnation_admission,
+  CellReadinessWrite, in_flight_attempt_unit,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  read_cell_readiness_store, persist_cell_readiness_write,
+  CellReadinessStorePersist, StorePersisted,
+}
+import gunbc.runner_microvm_network { BoundSlotNetworkReadback }
+import product.fabric.sanitation { CellId }
+import extdeps.tools.e2fsprogs {
+  decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
+}
+import extdeps.systemd.systemd_run { systemd_run_property_argv }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  AttemptIdentity, CellBoundIdentity, CellBinding,
+  ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
+  StartRefused, StartBindingRefused, controller_start,
+  TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
+  ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
+  TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
+  attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
 
 data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
@@ -132,7 +164,24 @@ fn walk_populated_cgroups(walk: CgroupWalk) -> List<NonEmptyStr> {
 fn observe_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
   uses net: Network
 {
-  let path = cgroup_v2_slice_path(slice: slice)
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
+    SliceNameNotASlice { spelling: sp } =>
+      CgroupSubtreeReadFailed {
+        reason: join([sp, " is not a slice unit name, so it addresses no cgroup"], "") as NonEmptyStr,
+      }
+    SliceCgroupPath { path: p } => observe_cgroup_at(path: p)
+  }
+}
+
+// THE SLICE'S CGROUP IS NOT `<mount point>/<slice name>` AND THE FIRST WET RUN IS WHAT SAID SO.
+// systemd expands a dashed slice name into a path (extdeps.systemd systemd_slice_cgroup_path), and
+// every cell slice is dashed -- fabric-cell-<host>-<NN>.slice. Joined directly, the readback would
+// have found no directory at all and reported the subtree EMPTY, which is this whole lane's worst
+// arm: every cell released clean, whatever was running in it. It read green on a hermetic witness
+// because a supplied CgroupSubtreeReadback never touches a path.
+fn observe_cgroup_at(path: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
   if linux.CgroupV2.PathIsDirectory(path: path).success == false {
     CgroupSubtreeEmpty
   } else {
@@ -551,5 +600,155 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, receipt: AttemptStagingReceipt) -
     VmmStarted { unit: unit, receipt: receipt }
   } else {
     VmmStartFailed { unit: unit, detail: trim(s: started.stderr) }
+  }
+}
+
+// --- waiting for a terminal condition ---
+
+// THE DEADLINE IS A TERMINAL TRIGGER AND NOT AN ERROR PATH. A guest that runs past its deadline is
+// torn down exactly as one that exited, through the same stop and the same readbacks, and the cell's
+// readiness is decided by what the host finds afterwards. That is gunbc.runner_microvm_lifecycle's
+// rule made operational: the trigger starts a teardown and never decides its outcome.
+//
+// THE EXIT CODE IS CARRIED AND GOES NOWHERE. VmmExited holds it because an operator reading a
+// quarantine wants it; no fold downstream takes it, so a job that succeeded cannot argue its way
+// past a dirty readback.
+fn unit_exec_main_status(unit: NonEmptyStr) -> Int
+  uses net: Network
+{
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: ExecMainStatus)
+  if shown.success == false {
+    -1
+  } else {
+    match parse_int(s: trim(s: shown.value)) {
+      Present { value: n } => n
+      Absent => -1
+    }
+  }
+}
+
+fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
+  uses net: Network
+{
+  if systemd.Systemctl.IsActive(unit: unit).active == false {
+    VmmExited { exit_code: unit_exec_main_status(unit: unit) }
+  } else if polls_remaining <= 0 {
+    DeadlineReached
+  } else {
+    let _slept = sleep_delay_seconds_second_carrier_projection(duration: attempt_stop_poll_interval)
+    await_terminal(unit: unit, polls_remaining: polls_remaining - 1)
+  }
+}
+
+// --- the controller ---
+
+// DECLARED FRONTIER (DESIGN 3c). The bring-up progression above VmmStarted -- GuestBooted,
+// RunnerListening, SlotServing -- is decided by gunbc.runner_microvm_lifecycle advance_bring_up from
+// BringUpEvents the GUEST reports, and this controller emits none of them: there is no channel from
+// the guest to the host in this tree yet. What the controller establishes on its own is
+// AttemptPrepared (staging read back) and VmmStarted (the host saw systemd start the unit in the
+// cell's slice), and it then waits for a terminal condition. NAMED CONSUMER of the missing half: this
+// module's run_controller, which will call advance_bring_up once a guest channel delivers a
+// BringUpEvent. TRIGGER: a modeled guest-to-host readiness channel -- the capability, not an
+// artifact -- carrying the runner's own listening report bound to this attempt's invocation id.
+// SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling the host for something
+// the guest alone can know.
+//
+// WHY THAT IS SAFE TO DECLARE RATHER THAN FAKE. The progression decides only whether the slot is
+// SERVING. It never decides whether the cell is CLEAN, so a controller that never advances past
+// VmmStarted runs the job and settles the cell correctly; what it cannot do is tell a guest that
+// failed to boot from one that booted and is idle, and it will reach the deadline in both cases.
+data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
+)
+
+// THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.
+//
+// The in-flight record is written BEFORE anything is staged, and a record that did not persist stops
+// the controller before it stages or launches. That is the durable half of boot recovery
+// (gunbc.runner_microvm_cell_readiness): a controller lost at any later point leaves a record saying
+// cleanup is owed, rather than the previous attempt's settled Ready readmitting a cell whose VMM may
+// still be running. Launching first and recording afterwards would make the window between them
+// invisible, which is the one window in this whole lane that nobody can observe after the fact.
+//
+// AND THE TEARDOWN RUNS WHATEVER THE LAUNCH DID. A refused staging, a jailer that would not start and
+// a job that ran to completion all reach run_teardown, because all three can leave something behind
+// -- a staged credential device, a half-built workspace, a process. The trigger differs; the
+// obligation does not.
+type ControllerOutcome
+  = ControllerRefusedAdmission { admission: CellIncarnationAdmission }
+  | ControllerRefusedBinding { binding: CellBinding }
+  | ControllerQuarantinedUnattributedResidue { persisted: CellReadinessStorePersist }
+  | ControllerStartNotRecorded { persisted: CellReadinessStorePersist }
+  | ControllerRecovered { teardown: TeardownRun }
+  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, teardown: TeardownRun }
+
+fn run_controller(
+  identity: AttemptIdentity,
+  allocation_generation: Int,
+  plan: AttemptLaunchPlan,
+  network: BoundSlotNetworkReadback,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let cell = runner_slot_instance_name(slot: identity.attempt.slot) as CellId
+  let admission = cell_incarnation_admission(
+    store: read_cell_readiness_store(),
+    cell: cell,
+    allocation_generation: allocation_generation,
+  )
+  match controller_start(admission: admission, ground: observe_attempt_ground(attempt: identity.attempt), identity: identity) {
+    StartRefused { admission: a } => ControllerRefusedAdmission { admission: a }
+    StartBindingRefused { binding: b } => ControllerRefusedBinding { binding: b }
+    StartQuarantineUnattributedResidue { trigger: _, record: r } =>
+      ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
+    StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, network: network, trigger: t) }
+    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, network: network)
+  }
+}
+
+fn run_started_attempt(
+  bound: CellBoundIdentity,
+  record: CellReadinessWrite,
+  plan: AttemptLaunchPlan,
+  network: BoundSlotNetworkReadback,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let persisted = persist_cell_readiness_write(write: record)
+  match persisted {
+    StorePersisted { records: _ } => run_launched_attempt(bound: bound, plan: plan, network: network)
+    refused => ControllerStartNotRecorded { persisted: refused }
+  }
+}
+
+fn run_launched_attempt(
+  bound: CellBoundIdentity,
+  plan: AttemptLaunchPlan,
+  network: BoundSlotNetworkReadback,
+) -> ControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  let launch = launch_attempt(attempt: bound.attempt.attempt.attempt, plan: plan)
+  let trigger = terminal_trigger_of_launch(launch: launch)
+  ControllerRanAttempt {
+    launch: launch,
+    trigger: trigger,
+    teardown: run_teardown(bound: bound.attempt, network: network, trigger: trigger),
+  }
+}
+
+// A LAUNCH THAT NEVER STARTED STILL HAS A TERMINAL TRIGGER, and it is StopRequested rather than an
+// invented exit: nothing ran, so there is no exit code to report, and the teardown that follows is a
+// stop asked for by the controller. Reporting VmmExited with a fabricated code would put a number
+// into a quarantine message that no process ever produced.
+fn terminal_trigger_of_launch(launch: AttemptLaunch) -> TerminalTrigger
+  uses net: Network
+{
+  match launch {
+    VmmStarted { unit: u, receipt: _ } => await_terminal(unit: u, polls_remaining: polls_for(bound: runner_attempt_vmm_deadline))
+    VmmRefusedStaging { verdict: _ } => StopRequested
+    VmmNotPlanned { plan: _ } => StopRequested
+    VmmStartFailed { unit: _, detail: _ } => StopRequested
   }
 }
