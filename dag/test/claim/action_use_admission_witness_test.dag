@@ -19,6 +19,7 @@ import gunbc.action_use_admission {
   ActionUseSite, StepActionUse, JobReusableWorkflowUse,
   RealizedActionUse, RealizedWorkflowReading, RealizedWorkflowUses, RealizedWorkflowUnreadable,
   WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
+  realized_census_cost_standing,
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
   upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
@@ -295,6 +296,15 @@ test fn every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_mis
   ((listed |> count) == (realized_workflow_files |> count))
     && all(listed, name => any(realized_workflow_files, f => f == name))
     && all(realized_workflow_files, f => any(listed, name => name == f))
+}
+
+// THE COST STANDING NAMES THE FILE THIS CLAIM READS. gunbc.action_use_admission
+// realized_census_cost_standing records that the claim below sits close under the floor's
+// new-witness budget, that its subject grows outside this lane, and what the remedy is when it stops
+// fitting; this join keeps that row pointing at a file the census actually reads.
+test fn the_cost_standing_names_a_file_this_census_reads() -> Bool {
+  any(realized_workflow_files, f => f == (realized_census_cost_standing.subject as String))
+    && ((realized_census_cost_standing.refused_remedies |> count) > 0)
 }
 
 // Every use of the largest generated workflow is read through the modeled reader and admitted, in

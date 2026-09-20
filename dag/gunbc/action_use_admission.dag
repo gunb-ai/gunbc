@@ -412,6 +412,43 @@ fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: Y
   }
 }
 
+// THE CENSUS CLAIM'S HEADROOM IS SMALL AND ITS SUBJECT GROWS OUTSIDE THIS LANE. The per-file claims
+// read committed workflow files, and those files are projections of authorities other lanes edit:
+// main grew .github/workflows/fleet-converge.yml from 912 to 973 lines while this reader was being
+// written, which spent most of the margin that existed before. The claim over that file now sits a
+// low single-digit percentage under v2.workflow.required_floor's new-witness budget, so the next
+// growth of its authority reds a REQUIRED claim.
+//
+// THE REMEDY IS NAMED HERE SO IT IS NOT RE-DECIDED UNDER PRESSURE: cut the reader's per-entry cost.
+// That is where the cost is -- the largest file is ~619 mapping entries and sequence items, each
+// paying the one-line entry path in extdeps.languages.yaml.ingest yaml_entry, against a small
+// per-block and per-literal-line remainder. A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE,
+// AND A DECLARED COST DROP ARE NOT REMEDIES: the first moves the line rather than the work, and the
+// other two are the scaffold this change deleted and the debt row DESIGN section 4b(3) keeps for
+// capability losses, not for a claim whose cost is ordinary work nobody cut yet.
+//
+// The numbers are not transcribed here (DESIGN section 6: name the instrument): they are re-derived by
+// claim_batch over test.claim.action_use_admission_witness's per-file claims, judged against
+// v2.workflow.required_floor claim_eval_step_budget_for_identity.
+type RealizedCensusCostStanding {
+  subject: NonEmptyStr
+  instrument: NonEmptyStr
+  remedy: NonEmptyStr
+  refused_remedies: List<NonEmptyStr>
+}
+
+data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
+  subject: "fleet-converge.yml" as NonEmptyStr,
+  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor claim_eval_step_budget_for_identity" as NonEmptyStr,
+  remedy: "cut the per-entry cost of extdeps.languages.yaml.ingest yaml_entry and the paths it routes to (the one-line entry, the multi-line entry, the sequence item); the largest committed workflow is ~619 of those units and they dominate the claim" as NonEmptyStr,
+  refused_remedies: [
+    "raising the claim's eval-step budget" as NonEmptyStr,
+    "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
+    "a declared cost drop or debt row for the claim" as NonEmptyStr,
+    "dropping a workflow file from the census, or splitting one file's parse across claims" as NonEmptyStr,
+  ],
+}
+
 // EACH DISTINCT USE IS ADMITTED ONCE. Admission is a function of a use's site and text alone, and
 // a workflow repeats the same few releases across its jobs, so admitting every occurrence asked one
 // question many times over (DESIGN section 2: a repeated demand is removed, not cached). The first
