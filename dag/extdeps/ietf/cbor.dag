@@ -1,0 +1,315 @@
+module extdeps.ietf.cbor
+
+import std.integer { UInt8 }
+import std.octet_span {
+  OctetSpan, OctetReadRefusal, OctetInputTruncated, OctetUnsignedTooWide, OctetWordRefused,
+  OctetUnsignedRead, OctetUnsignedReady, OctetUnsignedRefused,
+  OctetSpanRead, OctetSpanReady, OctetSpanRefused,
+  octet_at, octet_bit_field, octet_read_unsigned_be, octet_span_read, octet_span_equals, octet_span_is,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// CBOR, RFC 8949 (Concise Binary Object Representation), as a total decoder over one octet input.
+//
+// Only what a named consumer decodes is modeled: App Attest attestation and assertion objects, their
+// COSE credential keys and authenticator-data extensions (extdeps.apple.app_attest). Every data item
+// is decoded structurally; strings are carried as spans into the input rather than copied, so a
+// consumer compares or re-reads the exact wire octets.
+//
+// The accepted form is RFC 8949 section 4.2.1's deterministic encoding, and every departure from it
+// is its own refusal rather than a best-effort reading, because a protocol that verifies bytes must
+// not accept two encodings of one value:
+//   * an argument not in its shortest form            -> CborNoncanonicalArgument
+//   * an indefinite-length string, array or map       -> CborIndefiniteLengthUnsupported
+//   * additional information 28-30 (reserved, 3.1)    -> CborReservedAdditionalInfo
+//   * a map with two equal keys (5.6)                 -> CborDuplicateMapKey
+//   * octets left over after the top-level item       -> CborTrailingInput
+// Floats and simple values other than false/true/null have no consumer and refuse as unsupported.
+// An 8-octet argument refuses as too wide: std.machine_word does not yet realize 64-bit words, and
+// no consumed App Attest field needs one.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8949"
+  }
+}
+
+type CborEntry {
+  key: CborItem
+  key_encoding: OctetSpan
+  value: CborItem
+}
+
+type CborItem
+  = CborUnsigned { value: Int }
+  | CborNegative { argument: Int }
+  | CborBytes { span: OctetSpan }
+  | CborText { span: OctetSpan }
+  | CborArray { items: List<CborItem> }
+  | CborMap { entries: List<CborEntry> }
+  | CborTagged { tag: Int, item: CborItem }
+  | CborFalse
+  | CborTrue
+  | CborNull
+
+type CborRefusal
+  = CborTruncated { at: Int, needed: Int, available: Int }
+  | CborReservedAdditionalInfo { at: Int, info: Int }
+  | CborIndefiniteLengthUnsupported { at: Int }
+  | CborNoncanonicalArgument { at: Int }
+  | CborArgumentTooWide { at: Int }
+  | CborSimpleValueUnsupported { at: Int, info: Int }
+  | CborDuplicateMapKey { at: Int }
+  | CborTrailingInput { at: Int, remaining: Int }
+  | CborNestingExhausted { at: Int }
+
+// One decoded item and the offset just past it.
+type CborStep
+  = CborStepped { item: CborItem, end: Int }
+  | CborStepRefused { cause: CborRefusal }
+
+type CborDecode
+  = CborDecoded { item: CborItem }
+  | CborRefused { cause: CborRefusal }
+
+// Nesting bound. Every item consumes at least one octet, so the recursion also descends on the
+// input; the depth bound makes the refusal for pathological nesting a named arm, not a stack.
+data cbor_max_depth: Int = 16
+
+type CborHead {
+  major: Int
+  argument: Int
+  end: Int
+}
+
+type CborHeadRead
+  = CborHeadReady { head: CborHead }
+  | CborHeadIndefinite { major: Int }
+  | CborHeadSimple { info: Int, end: Int }
+  | CborHeadRefused { cause: CborRefusal }
+
+fn cbor_refusal_of_octet_read(cause: OctetReadRefusal) -> CborRefusal {
+  match cause {
+    OctetInputTruncated { at: a, needed: n, available: v } => CborTruncated { at: a, needed: n, available: v }
+    OctetUnsignedTooWide { at: a, octets: _ } => CborArgumentTooWide { at: a }
+    OctetWordRefused { at: a } => CborArgumentTooWide { at: a }
+  }
+}
+
+// The smallest argument each extended form may carry (RFC 8949 4.2.1 preferred serialization).
+fn cbor_extended_minimum(octets: Int) -> Int {
+  if octets == 1 { 24 } else if octets == 2 { 256 } else { 65536 }
+}
+
+fn cbor_extended_octets(info: Int) -> Int {
+  if info == 24 { 1 } else if info == 25 { 2 } else if info == 26 { 4 } else { 8 }
+}
+
+// The initial byte and its argument: major type = the top 3 bits, additional information = the low
+// 5, both read through std.octet_span's machine-word bit field.
+fn cbor_read_head(input: List<UInt8>, at: Int) -> CborHeadRead {
+  match octet_at(input: input, at: at) {
+    Absent => CborHeadRefused { cause: CborTruncated { at: at, needed: 1, available: 0 } }
+    Present { value: initial } =>
+      match octet_bit_field(octet: initial, shift: 5, mask: 7) {
+        Absent => CborHeadRefused { cause: CborArgumentTooWide { at: at } }
+        Present { value: major } =>
+          match octet_bit_field(octet: initial, shift: 0, mask: 31) {
+            Absent => CborHeadRefused { cause: CborArgumentTooWide { at: at } }
+            Present { value: info } => cbor_read_argument(input: input, at: at, major: major, info: info)
+          }
+      }
+  }
+}
+
+fn cbor_read_argument(input: List<UInt8>, at: Int, major: Int, info: Int) -> CborHeadRead {
+  if info >= 28 && info <= 30 {
+    CborHeadRefused { cause: CborReservedAdditionalInfo { at: at, info: info } }
+  } else if major == 7 && info >= 20 && info != 24 && info != 31 {
+    CborHeadSimple { info: info, end: at + 1 }
+  } else if info < 24 {
+    CborHeadReady { head: CborHead { major: major, argument: info, end: at + 1 } }
+  } else if info == 31 {
+    CborHeadIndefinite { major: major }
+  } else {
+    let octets = cbor_extended_octets(info: info)
+    match octet_read_unsigned_be(input: input, at: at + 1, octets: octets) {
+      OctetUnsignedRefused { cause: c } => CborHeadRefused { cause: cbor_refusal_of_octet_read(cause: c) }
+      OctetUnsignedReady { value: v, end: e } =>
+        if v < cbor_extended_minimum(octets: octets) {
+          CborHeadRefused { cause: CborNoncanonicalArgument { at: at } }
+        } else if major == 7 {
+          CborHeadRefused { cause: CborSimpleValueUnsupported { at: at, info: info } }
+        } else {
+          CborHeadReady { head: CborHead { major: major, argument: v, end: e } }
+        }
+    }
+  }
+}
+
+fn cbor_simple_item(at: Int, info: Int, end: Int) -> CborStep {
+  if info == 20 {
+    CborStepped { item: CborFalse, end: end }
+  } else if info == 21 {
+    CborStepped { item: CborTrue, end: end }
+  } else if info == 22 {
+    CborStepped { item: CborNull, end: end }
+  } else {
+    CborStepRefused { cause: CborSimpleValueUnsupported { at: at, info: info } }
+  }
+}
+
+fn cbor_decode_item(input: List<UInt8>, at: Int, depth: Int) -> CborStep {
+  if depth <= 0 {
+    CborStepRefused { cause: CborNestingExhausted { at: at } }
+  } else {
+    match cbor_read_head(input: input, at: at) {
+      CborHeadRefused { cause: c } => CborStepRefused { cause: c }
+      CborHeadIndefinite { major: _ } => CborStepRefused { cause: CborIndefiniteLengthUnsupported { at: at } }
+      CborHeadSimple { info: info, end: end } => cbor_simple_item(at: at, info: info, end: end)
+      CborHeadReady { head: head } => cbor_decode_body(input: input, at: at, head: head, depth: depth)
+    }
+  }
+}
+
+fn cbor_string_span(input: List<UInt8>, head: CborHead) -> OctetSpanRead {
+  octet_span_read(input: input, at: head.end, length: head.argument)
+}
+
+fn cbor_decode_body(input: List<UInt8>, at: Int, head: CborHead, depth: Int) -> CborStep {
+  if head.major == 0 {
+    CborStepped { item: CborUnsigned { value: head.argument }, end: head.end }
+  } else if head.major == 1 {
+    CborStepped { item: CborNegative { argument: head.argument }, end: head.end }
+  } else if head.major == 2 || head.major == 3 {
+    match cbor_string_span(input: input, head: head) {
+      OctetSpanRefused { cause: c } => CborStepRefused { cause: cbor_refusal_of_octet_read(cause: c) }
+      OctetSpanReady { span: span } =>
+        if head.major == 2 {
+          CborStepped { item: CborBytes { span: span }, end: span.end }
+        } else {
+          CborStepped { item: CborText { span: span }, end: span.end }
+        }
+    }
+  } else if head.major == 4 {
+    cbor_decode_array(input: input, at: head.end, remaining: head.argument, depth: depth, acc: [])
+  } else if head.major == 5 {
+    cbor_decode_map(input: input, at: head.end, remaining: head.argument, depth: depth, acc: [])
+  } else {
+    match cbor_decode_item(input: input, at: head.end, depth: depth - 1) {
+      CborStepRefused { cause: c } => CborStepRefused { cause: c }
+      CborStepped { item: inner, end: end } => CborStepped { item: CborTagged { tag: head.argument, item: inner }, end: end }
+    }
+  }
+}
+
+// A count larger than the octets left cannot be satisfied (each item takes at least one octet), so
+// it refuses as truncation before any element is read.
+fn cbor_count_fits(input: List<UInt8>, at: Int, remaining: Int) -> Bool {
+  remaining <= count(input) - at
+}
+
+fn cbor_decode_array(input: List<UInt8>, at: Int, remaining: Int, depth: Int, acc: List<CborItem>) -> CborStep {
+  if remaining == 0 {
+    CborStepped { item: CborArray { items: acc }, end: at }
+  } else if !cbor_count_fits(input: input, at: at, remaining: remaining) {
+    CborStepRefused { cause: CborTruncated { at: at, needed: remaining, available: count(input) - at } }
+  } else {
+    match cbor_decode_item(input: input, at: at, depth: depth - 1) {
+      CborStepRefused { cause: c } => CborStepRefused { cause: c }
+      CborStepped { item: item, end: end } =>
+        cbor_decode_array(input: input, at: end, remaining: remaining - 1, depth: depth, acc: acc |> list_push(item))
+    }
+  }
+}
+
+fn cbor_key_seen(input: List<UInt8>, entries: List<CborEntry>, key: OctetSpan) -> Bool {
+  any(entries, e => octet_span_equals(input: input, a: e.key_encoding, b: key))
+}
+
+fn cbor_decode_map(input: List<UInt8>, at: Int, remaining: Int, depth: Int, acc: List<CborEntry>) -> CborStep {
+  if remaining == 0 {
+    CborStepped { item: CborMap { entries: acc }, end: at }
+  } else if !cbor_count_fits(input: input, at: at, remaining: remaining * 2) {
+    CborStepRefused { cause: CborTruncated { at: at, needed: remaining * 2, available: count(input) - at } }
+  } else {
+    match cbor_decode_item(input: input, at: at, depth: depth - 1) {
+      CborStepRefused { cause: c } => CborStepRefused { cause: c }
+      CborStepped { item: key, end: key_end } => {
+        let key_span = OctetSpan { start: at, end: key_end }
+        if cbor_key_seen(input: input, entries: acc, key: key_span) {
+          CborStepRefused { cause: CborDuplicateMapKey { at: at } }
+        } else {
+          match cbor_decode_item(input: input, at: key_end, depth: depth - 1) {
+            CborStepRefused { cause: c } => CborStepRefused { cause: c }
+            CborStepped { item: value, end: value_end } =>
+              cbor_decode_map(
+                input: input, at: value_end, remaining: remaining - 1, depth: depth,
+                acc: acc |> list_push(CborEntry { key: key, key_encoding: key_span, value: value })
+              )
+          }
+        }
+      }
+    }
+  }
+}
+
+// One item starting at `at` that must end exactly at `end`: used for an embedded CBOR value whose
+// extent the enclosing structure already fixed.
+fn cbor_decode_exact(input: List<UInt8>, at: Int, end: Int) -> CborDecode {
+  match cbor_decode_item(input: input, at: at, depth: cbor_max_depth) {
+    CborStepRefused { cause: c } => CborRefused { cause: c }
+    CborStepped { item: item, end: e } =>
+      if e == end {
+        CborDecoded { item: item }
+      } else if e < end {
+        CborRefused { cause: CborTrailingInput { at: e, remaining: end - e } }
+      } else {
+        CborRefused { cause: CborTruncated { at: end, needed: e - end, available: 0 } }
+      }
+  }
+}
+
+// A whole input that is exactly one CBOR data item.
+fn cbor_decode(input: List<UInt8>) -> CborDecode {
+  cbor_decode_exact(input: input, at: 0, end: count(input))
+}
+
+// ── Reading decoded maps ─────────────────────────────────────────────────────────────────────
+// Protocol maps are keyed by text strings (App Attest) or small integers (COSE). A key is looked up
+// by its WIRE octets, so a consumer states the exact encoding it expects and nothing is transcoded.
+
+fn cbor_text_key_is(input: List<UInt8>, key: CborItem, expected: List<UInt8>) -> Bool {
+  match key {
+    CborText { span: span } => octet_span_is(input: input, span: span, expected: expected)
+    _ => false
+  }
+}
+
+fn cbor_map_text_value(input: List<UInt8>, entries: List<CborEntry>, key: List<UInt8>) -> CborItem? {
+  fold(entries, init: none, f: (acc, e) =>
+    if cbor_text_key_is(input: input, key: e.key, expected: key) { Present { value: e.value } } else { acc })
+}
+
+// A COSE integer label: non-negative n is CborUnsigned n; negative -1 - a is CborNegative a.
+fn cbor_int_key_is(key: CborItem, label: Int) -> Bool {
+  match key {
+    CborUnsigned { value: v } => label >= 0 && v == label
+    CborNegative { argument: a } => label < 0 && (0 - 1 - a) == label
+    _ => false
+  }
+}
+
+fn cbor_map_int_value(entries: List<CborEntry>, label: Int) -> CborItem? {
+  fold(entries, init: none, f: (acc, e) =>
+    if cbor_int_key_is(key: e.key, label: label) { Present { value: e.value } } else { acc })
+}
+
+fn cbor_int_value(item: CborItem) -> Int? {
+  match item {
+    CborUnsigned { value: v } => Present { value: v }
+    CborNegative { argument: a } => Present { value: 0 - 1 - a }
+    _ => none
+  }
+}
