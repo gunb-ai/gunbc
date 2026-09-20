@@ -1352,26 +1352,19 @@ fn floor_route_gap_expectation_chunk_19() -> List<FloorRouteGapExpectation> {
 fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_attempt_three_capture_binds_and_reads_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_historical_binding_holds_against_the_committed_capture_by_real_execution", operation: "Read", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_committed_capture_matches_its_recorded_identity_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_rendered_program_runs_and_its_output_parses_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.a_removed_image_is_absent_not_diverged_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail:
-  Cons {
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
-    tail:
-  Empty {}
+    tail: Empty {}
   }
   }
   }
