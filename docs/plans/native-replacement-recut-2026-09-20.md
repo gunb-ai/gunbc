@@ -141,9 +141,11 @@ re-deriving it is owed an entry point.
      heading a `&&` or `==` chain is consumed alone and the operator is orphaned, although
      `dag_grammar_primary_expr_core` already reaches those forms. One reordering, no corpus edits.
    - The **effect and transport declaration families** — `uses`, `service`, `admit_callers`,
-     `pattern`, `resource` — are 267 files and **none of them is under `src/v2`**. They do not block
-     self-hosting, which settles the sequencing question §3(2) raised: the wall the CLI hits over
-     full roots belongs to the corpus the retained profile does not contain.
+     `pattern`, `resource` — are 267 files and **none of them is under `src/v2`**. *That is a
+     directory test, and §3(4) above is the reason it does not settle the question:* the retained
+     population is the dependency-complete closure, and import-line selection already missed six
+     modules the emitter included. Before this is relied on it needs a closure-level join. What the
+     directory evidence does support is that these families are not the FIRST thing in the way.
    - `src/v2`'s own parse refusals are dominated by two cheap items: keyword-spelled binding
      *references* (the declaration and expression sites use different terminals) and the ordering
      defect above.
@@ -180,7 +182,21 @@ directory; a number copied into this prose would rot away from the carrier that 
 What this document adds is four things, and each is a change to those carriers rather than a
 parallel program.
 
-### 4a. Two arms that do not exist
+### 4a. Two arms missing from the interlock vocabulary — whose requirements are already owned
+
+**Stated precisely, because the loose version would re-author contracts that exist.**
+`gunbc.plans.demand_engine_program` already carries the realization, materialization, derived-demand
+and partition decisions. **D9** — crate partition of the emitted closure, with generator promotion a
+separate fact joined through generation identity — sits in that document's *deferred* set (D6–D10,
+with named triggers), while **D11** (effects on the native route), **D12** (executable composition
+root; workflow was never a semantic kind) and **D13** are ruled. So the design space is owned, and
+for D9 the decision is deferred rather than absent. What is missing is an arm in `ProgramMilestone`,
+so this work's standing becomes *derivable* alongside the rest of the program. Each arm below
+therefore **consumes that document's requirements and evidence**; neither re-states an acceptance
+contract, and what is sketched here is the reconciliation an arm owes, not a second authority. The
+same restraint applies to realization: the preparation-shard design is a candidate, and the
+demand-engine carrier's direction — derived demands and a shared ready queue served by admitted
+capacity — governs over author-chosen widths or shard plans.
 
 | Proposed arm | Why it is not covered by an existing arm | Prerequisite |
 |---|---|---|
@@ -199,8 +215,12 @@ namespace waves stay unreleased until a wall exists again. The ruling is that th
 mechanism: the delta should be established the way the self-host frontier establishes its own
 standing — **a receipt produced on demand, off CI, by the stage carrier that already exists** —
 rather than by a gate that charges every unrelated change at landing time. So the arm is re-cut to
-be satisfied by that receipt, and the drop retires against that capability instead of against a
-resurrected gate. `gunbc.namespace_cut_stage` is already that shape and already reports; what it
+be satisfied by that receipt. **Producing evidence and enforcing it are two facts, and the drop
+retires only against the second:** an admission consumer must refuse a transition whose evidence is
+absent, mismatched or stale against its base, candidate and subject population. An inspected
+snapshot that nothing refuses without is not a restored guard. The existing ACT-0 separation of
+collecting evidence from releasing waves is where that belongs, and the consumer and the standing
+move together. `gunbc.namespace_cut_stage` is already that shape and already reports; what it
 does not yet do is discharge this arm.
 
 ### 4c. Three subjects that are not compiler-frontend milestones
@@ -222,18 +242,26 @@ that owns it, and none of them gates the arms above:
 §3's findings are facts about arms that already exist, and belong on them:
 `SelfHostNativeRouteRequiredLane` is outstanding for a reason it does not yet carry — the lane's
 positive population is empty, every enrolled identity refusing — and the front-end refusal census
-bears on the emit arms. Recording them as `MilestoneEvidence` is what keeps `where_are_we` the
-single place the frontier is read.
+bears on the emit arms. Recording them as `MilestoneEvidence` means **binding the producer's receipt into the derivation**,
+not authoring a standing string — that type's vocabulary separates a named observed population from
+a bare completion claim, and a hand-written standing would be the second authority this section
+exists to remove. Bound that way, `where_are_we` stays the single place the frontier is read.
 
 ## 5. Sequencing notes
 
 - **The carrier already answers one question this document was about to get wrong.**
   `milestone_prerequisites` makes `NamespaceFixForwardComplete` require `SelfHostSeedRetirement` —
-  the last arm. Read literally, namespace fix-forward cannot begin until the seed is gone, which
-  contradicts the intent of starting namespace early so it does not drag across a growing retained
-  set. Either that prerequisite is right and the intent is wrong, or it encodes an assumption the
-  re-cut of 4b changes. It is a decision (§7), and it was invisible while the program lived in
-  prose.
+  the last arm. **That edge is deliberate, not an oversight:** the ordering placed namespace
+  cutover after seed deletion so that nobody teaches import-free source to a seed being retired, and
+  so the cutover is validated natively. What is too broad is reading it as "no namespace work may
+  begin" — `gunbc.namespace_cut_stage` separately covers preparation, capture, rehearsal, spelling,
+  graph derivation, activation and cutover, and already distinguishes collecting evidence from
+  releasing semantic waves. So the amendment to propose is to **preserve the reason and narrow the
+  prerequisite to the retained scope**: that scope has an admitted native route, and its namespace
+  transition does not require extending the retiring seed — which does not require every unrelated
+  legacy consumer to be gone first. That is an amendment to the existing relation and its consumers,
+  checked against the stage-level activation conditions so the coarse arm and the finer stages do
+  not express two plans (§7).
 - **Finish one successful whole-closure emit before the derived-unit arm can be judged.**
   Interfaces, rebuild behaviour and the memory envelope all need a successful emission to measure
   against. The one-package artifact stays a bootstrap and measurement probe; it never satisfies 4a.
@@ -279,9 +307,14 @@ single place the frontier is read.
    `SelfHostSeedRetirement` as a prerequisite, or does 4b's re-cut change it?
 2. The admitted source universe (§5).
 3. Grammar or corpus, now answerable per form rather than in aggregate (§3(10)): the roster says
-   grammar for all but about thirteen files, one cause is a defect rather than a feature at all,
-   and the large declaration families can be deferred without blocking self-hosting. What remains
-   yours is whether the forms with no meaning-preserving rewrite are admitted or designed out.
+   grammar for all but about thirteen files, and the largest cause is a defect rather than a missing
+   feature at all. Two narrowings. `uses` is **already ruled** — `gunbc.plans.demand_engine_program`
+   **D13** (2026-09-18) supersedes the migration that would have added it along every call chain,
+   deriving transparent-body demand instead, so the grammar should not learn that clause and the
+   next step is finishing that derivation and its per-identity disposition. And whether the
+   remaining declaration families are deferrable depends on the closure join §3(10) now flags, not
+   on the directory test. What is left yours is whether the forms with no meaning-preserving rewrite
+   are admitted or designed out.
 4. Where the designated executor of 4c runs: a retired CI slot, or a host whose envelope is
    established first.
 5. Who integrates `gunbc.roadmap_authority`.
