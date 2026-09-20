@@ -855,10 +855,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
         headline: "Nine privileged call sites still take their credential from outside the procedure",
-        boundary: "The census rosters them in order in gunbc.auth.privileged_effect_census follow_up_sites. Seven are one seam each: the call-site GcloudPrintToken / read_supplied_access_token binding becomes gunbc.auth.access_token_source resolve_access_token. The two that are not (an org-wide estate read, a legacy eager credential) need their pattern decided first.",
+        boundary: "The census rosters them in order in gunbc.auth.privileged_effect_census follow_up_sites, which lands with gunbc#11734 and does not resolve before it. Seven are one seam each: the call-site GcloudPrintToken / read_supplied_access_token binding becomes gunbc.auth.access_token_source resolve_access_token. The two that are not (an org-wide estate read, a legacy eager credential) need their pattern decided first.",
         displaced_cost: "Every one of them is a site where a human pastes or a process assumes a credential, which is the class the census exists to retire; left alone the roster ages into a list nobody believes.",
         first_slice: "Migrate the seven one-seam sites, each leaving the roster in the same change.",
-        red_control: "A migrated site removed from the code but left on the roster, or left on the code and removed from the roster, makes unreasoned_divergences_join_the_follow_up_roster_exactly go red in both directions.",
+        red_control: "A migrated site removed from the code but left on the roster, or left on the code and removed from the roster, makes the census's roster-join witness (unreasoned_divergences_join_the_follow_up_roster_exactly, landing with gunbc#11734) go red in both directions.",
         out_of_scope: "The approval authority adapter, and the two sites whose pattern is not yet decided.",
         handback: "The migrated sites, the roster shrunk by exactly those, and the witness green."
       )
@@ -870,7 +870,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
         headline: "A tapped approval can authorize a cloud effect, not just a boot",
-        boundary: "An adapter that executes an effect under a redeemed approval capability: Cloudflare AccountTokens.Create for one-off mints, and GCP IAM / Secret Manager control-plane calls (getIamPolicy, setIamPolicy, create, addVersion) for the accessor cells. It is what retires the two UNBOUND DivergenceReason rows the census carries.",
+        boundary: "An adapter that executes an effect under a redeemed approval capability: Cloudflare AccountTokens.Create for one-off mints, and GCP IAM / Secret Manager control-plane calls (getIamPolicy, setIamPolicy, create, addVersion) for the accessor cells. It is what retires the two UNBOUND DivergenceReason rows the census carries once gunbc#11734 lands.",
         displaced_cost: "Until it exists the only way to perform a one-off privileged effect is the operator's own token in the operator's own session, and the failure mode that produced this lane -- a token pasted into chat and relayed between sessions -- stays one tired evening away.",
         first_slice: "One effect end to end: a request filed, tapped, redeemed, and the Cloudflare mint performed under that capability with its receipt.",
         red_control: "An effect attempted without a redeemed capability refuses; a capability redeemed for one effect cannot perform another; an expired capability refuses rather than proceeding.",
@@ -885,7 +885,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
         headline: "The fleet principal can actually reach the secrets its runs need",
-        boundary: "Seven Secret Manager IAM cells are declared and unconverged -- four for the R2 origin write token, three for the bucket-admin token. Their converge entries shell out to gcloud, which no reachable host carries today.",
+        boundary: "Seven Secret Manager IAM cells are declared and unconverged -- four for the R2 origin write token (gunbc.cloudflare.r2_mint_secret_access), three for the bucket-admin token landing with gunbc#11721. Their converge entries shell out to gcloud, which no reachable host carries today.",
         displaced_cost: "A declared grant nothing applied is a grant that will be discovered missing by a run that needed it, at the moment it needed it; and a fleet-principal run of the write path cannot reach those secrets until they are applied.",
         first_slice: "Get gcloud onto a host the fleet can run from, then converge the seven cells and record the receipts.",
         red_control: "A run as the fleet principal reaches the write secret after convergence and refuses before it, so the cells are shown to be load-bearing rather than assumed.",
@@ -900,7 +900,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
         headline: "A census row cannot be made to conform by editing its own inputs",
-        boundary: "The characteristics each privileged-effect row is classified on -- frequency, reversibility, minted reach -- are authored beside the row rather than derived from the effect's own declarations, so the answer the selection gives can be moved by editing the question.",
+        boundary: "Once gunbc#11734 lands, the characteristics each privileged-effect row is classified on -- frequency, reversibility, minted reach -- are authored beside the row rather than derived from the effect's own declarations, so the answer the selection gives can be moved by editing the question.",
         displaced_cost: "A derived verdict over authored inputs is only as honest as the inputs; the census claims its verdicts are computed, and this is the seam where that claim is weaker than it reads.",
         first_slice: "Name the derivation as the roster preamble's next-rung trigger, then derive one characteristic for one class of effect.",
         red_control: "A row whose authored characteristic disagrees with the effect's declarations is caught rather than classified.",
