@@ -2,9 +2,7 @@
 # Authority: gunbc.heal_workflow heal_workflow; regen via tools.generated_artifact_gate main_wet.
 name: heal
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -17,7 +15,7 @@ jobs:
   heal-generated-artifacts:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     permissions:
       contents: read
     steps:

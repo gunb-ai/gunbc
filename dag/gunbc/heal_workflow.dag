@@ -8,7 +8,7 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowTrigger, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
+  WorkflowTrigger, WorkflowDispatch, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
 }
@@ -81,8 +81,15 @@ data heal_same_repository_clause: String = "github.event.pull_request.head.repo.
 
 data heal_not_dependabot_clause: String = "github.actor != 'dependabot[bot]'"
 
+// A DISPATCH CARRIES NO PULL REQUEST, so the fork clauses would read null and skip the job on the
+// one event this workflow still answers (it became dispatch-only when the required gate took its
+// work). The dispatcher holds write access already, which is the same authority the fork clauses
+// establish for a pull request.
 fn heal_workflow_job_condition() -> String {
-  join([heal_same_repository_clause, " && ", heal_not_dependabot_clause], "")
+  join([
+    "github.event_name == 'workflow_dispatch' || (",
+    heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")"
+  ], "")
 }
 
 fn heal_pull_request_head_sha_expression() -> String {
@@ -292,15 +299,17 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
   explicit_single: none
 }
 
+// THIS WORKFLOW NO LONGER RUNS ON A PULL REQUEST. Its work -- declare, regenerate, seal the
+// candidate -- is the repair path of the consolidated required job
+// (gunbc.compiler_gate_workflow), which runs it only on the push where the drift gate refused.
+// Leaving the pull_request trigger here would pay heal's four whole-corpus invocations (22.7 of
+// its 26.4 minutes, measured on run 35475373850) again on every push, for the same repair.
+// The workflow stays registered, committed and dispatchable so an operator can still run a repair
+// by hand; the emitted file is unchanged apart from its trigger.
 data heal_workflow: Workflow = Workflow {
   name: heal_workflow_name,
   run_name: none,
-  on: [
-    PullRequest {
-      branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened]
-    }
-  ],
+  on: [WorkflowDispatch { inputs: [] }],
   concurrency: Present { value: heal_workflow_concurrency },
   env: Present {
     value: [
