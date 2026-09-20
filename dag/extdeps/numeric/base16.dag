@@ -112,23 +112,25 @@ fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
   any(base16_digit_rows, row => code_point(row.upper) == cp && row.lower != row.upper)
 }
 
+// THE LOOKUP IS OVER A CODE POINT, AND THAT IS THE WHOLE OPERATION. A String-shaped wrapper stood
+// here and read its argument with code_point, which returns only the FIRST scalar (and 0 for the
+// empty string): "one lowercase digit" silently widened to "this text starts with one", so "aa"
+// answered Present { value: 10 } (review 69058). Its only caller already holds one character from
+// char_at, so the wrapper is deleted rather than guarded -- the caller's convention cannot repair an
+// operation whose own contract is wrong, and there is no second contract to keep honest.
 fn base16_lower_digit_value_at(cp: Int) -> Int? {
   fold(base16_digit_rows, init: none, f: (acc, row) =>
     if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
-}
-
-fn base16_lower_digit_value(c: String) -> Int? {
-  base16_lower_digit_value_at(cp: code_point(c))
 }
 
 fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<UInt8>) -> List<UInt8>? {
   if i >= len {
     Present { value: acc }
   } else {
-    match base16_lower_digit_value(c: char_at(hex, i)) {
+    match base16_lower_digit_value_at(cp: code_point(char_at(hex, i))) {
       Absent => none
       Present { value: high } =>
-        match base16_lower_digit_value(c: char_at(hex, i + 1)) {
+        match base16_lower_digit_value_at(cp: code_point(char_at(hex, i + 1))) {
           Absent => none
           Present { value: low } =>
             base16_decode_lower_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))

@@ -26,6 +26,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // vector, so mutating base16_decode_lower or base16_encode_lower turns these RED -- a consumer that
 // had kept its own codec would stay green under that mutation.
 
+data asymmetric_aa: List<UInt8> = [170]
+
+data asymmetric_f0: List<UInt8> = [240]
+
 data asymmetric_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 0, 255]
 
 data asymmetric_hex: String = "0123456789abcdef00ff"
@@ -109,6 +113,43 @@ test fn a_digit_value_is_read_from_the_same_rows() -> Bool {
     && base16_lower_digit_value_at(cp: 97) == Present { value: 10 }
     && base16_lower_digit_value_at(cp: 102) == Present { value: 15 }
     && base16_lower_digit_value_at(cp: 65) == none
+}
+
+// THE DIGIT LOOKUP IS OVER ONE CODE POINT, AND THE DECODER READS EVERY CHARACTER. A String-shaped
+// wrapper over this lookup read its argument with code_point, which returns only the first scalar,
+// so "aa" and "f0" answered as if they were single digits (review 69058). The wrapper is deleted;
+// these pin the surviving operations against exactly those inputs -- the lookup at the code points
+// of 'a' and 'f', and the decoder over two-character text that must be read as TWO digits, not one.
+test fn the_digit_lookup_answers_for_single_code_points() -> Bool {
+  base16_lower_digit_value_at(cp: 97) == Present { value: 10 }
+    && base16_lower_digit_value_at(cp: 102) == Present { value: 15 }
+    && base16_lower_digit_value_at(cp: 90) == none
+    && base16_lower_digit_value_at(cp: 0) == none
+}
+
+fn decodes_to(hex: String, expected: List<UInt8>) -> Bool {
+  match base16_decode_lower(hex: hex) {
+    Present { value: octets } => octets == expected
+    Absent => false
+  }
+}
+
+fn decode_refuses(hex: String) -> Bool {
+  match base16_decode_lower(hex: hex) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn two_character_text_decodes_as_two_digits_never_as_its_first() -> Bool {
+  decodes_to(hex: "aa", expected: asymmetric_aa)
+    && decodes_to(hex: "f0", expected: asymmetric_f0)
+    && decode_refuses(hex: "aZ")
+    && decode_refuses(hex: "a")
+    && match base16_decode_lower(hex: "") {
+      Present { value: octets } => count(octets) == 0
+      Absent => false
+    }
 }
 
 test fn git_raw_octets_route_through_base16() -> Bool {
