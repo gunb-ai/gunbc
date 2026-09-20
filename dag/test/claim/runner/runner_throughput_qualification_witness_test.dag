@@ -37,7 +37,7 @@ import v2.workflow.floor_eval_step_calibration {
 import gunbc.runner_throughput_qualification {
   FloorWorkloadPin, RamBackedTmpfs, PeerScratchExport,
   RateSpecimenRead, RateSpecimenUnread, CgroupMemoryRead, CgroupMemoryUnreadable,
-  QualificationRun, PhaseWall, RunnerThroughputQualification,
+  QualificationRun, PhaseWall, RunnerThroughputQualification, HostBudgetFacts,
   ThroughputMeetsPin, ThroughputBelowPin, ThroughputUnread,
   PeakWithinSlotHigh, PeakExceedsSlotHigh, SlotHighBelowFloorMinimum, RunBoundUnreadable,
   SlotWidthDerived, SlotWidthUnderivable,
@@ -47,7 +47,13 @@ import gunbc.runner_throughput_qualification {
   admission_refusals, workspace_bytes_locus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
   qualification_run_producer_frontier, qualification_admission_consumer_frontier, leg_is_bound,
 }
-import gunbc.fleet_host_budget { runner_slice_cap, oomd_actuation_floor }
+import gunbc.fleet_host_budget {
+  FleetHostPlanDerived, FleetHostPlanUnsound, HeadroomSet, HeadroomUnset, fleet_host_plan_for,
+  oomd_actuation_floor,
+}
+import gunbc.fleet_container { gha_runner_container }
+import gunbc.ci_floor_measurement { OomdEnforced, OomdUnverified }
+import extdeps.jobserver { jobserver_config, JobserverAbsent }
 import gunbc.runner_throughput_qualification_route {
   QualificationStage, mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels,
   route_controller_writes_are_gated, route_controller_write_count, route_registers_one_slot,
@@ -86,7 +92,9 @@ fn specimen_steps() -> EvalStepCount {
 }
 
 // THE HOST FIXTURE IS CONTROLLED; THE SLOT SHAPE IS LIVE. So the expected memory width is derived
-// through the same fold and the live memory_max, never written as a number (review 68620).
+// through the fleet's own plan fold and the live memory_max, never written as a number (reviews
+// 68620, 68731). The budget facts below are the SOUND fixture: oomd verified, the fleet's cited
+// jobserver knobs, a headroom policy set exactly at the oomd actuation floor, no session slice.
 fn fixture_host_total() -> Int {
   268435456000
 }
@@ -95,14 +103,35 @@ fn fixture_host_available_idle() -> Int {
   263066746880
 }
 
+fn sound_host_budget() -> HostBudgetFacts {
+  HostBudgetFacts {
+    oomd: OomdEnforced,
+    jobserver: jobserver_config,
+    headroom: HeadroomSet { bytes: oomd_actuation_floor(host: byte_size(count: fixture_host_total())) },
+    session_slice: byte_size(count: 0),
+  }
+}
+
 fn expected_memory_width() -> Int {
   let total = byte_size(count: fixture_host_total())
   let overhead = byte_size(count: fixture_host_total() - fixture_host_available_idle())
-  let slice = runner_slice_cap(
-    host: total, overhead: overhead, session_slice: byte_size(count: 0),
-    headroom: oomd_actuation_floor(host: total), compile_pool: byte_size(count: 0),
-  )
-  byte_size_count(b: slice) / byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  match fleet_host_plan_for(
+    name: "mtcollins1",
+    host: total,
+    overhead: overhead,
+    nproc: hardware_thread_count(count: 160),
+    runner: gha_runner_container,
+    session_slice: byte_size(count: 0),
+    citation: jobserver_config,
+    policy: HeadroomSet { bytes: oomd_actuation_floor(host: total) },
+    oomd: OomdEnforced,
+  ) {
+    FleetHostPlanUnsound { reason: _ } => 0
+    FleetHostPlanDerived {
+      name: _, tree: _, runner_slice_cap: slice, effective_build_tokens: _,
+      effective_runner_cpu_cap: _, build_step: _,
+    } => byte_size_count(b: slice) / byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  }
 }
 
 fn expected_slot_width(cores_per_slot: Int) -> Int {
@@ -153,6 +182,10 @@ fn good_run(revision: String) -> QualificationRun {
 }
 
 fn subject(runs: List<QualificationRun>) -> RunnerThroughputQualification {
+  subject_with_budget(runs: runs, host_budget: sound_host_budget())
+}
+
+fn subject_with_budget(runs: List<QualificationRun>, host_budget: HostBudgetFacts) -> RunnerThroughputQualification {
   RunnerThroughputQualification {
     host: "mtcollins1",
     capacity_class_candidate: mtcollins1_capacity_class_candidate,
@@ -160,6 +193,7 @@ fn subject(runs: List<QualificationRun>) -> RunnerThroughputQualification {
     slot_envelope: gunbc_runner_slot_desired(),
     workspace_backing: mtcollins1_qualification_workspace_backing,
     cores_per_slot: gunbc_runner_cores_per_slot(),
+    host_budget: host_budget,
     calibration: floor_eval_step_calibration,
     runs: runs,
   }
@@ -341,6 +375,34 @@ test fn a_peak_at_or_over_the_slot_high_is_not_admitted() -> Bool {
       )
     _ => false
   }
+}
+
+// THE WIDTH REFUSES WHEN THE FLEET'S BUDGET AUTHORITY REFUSES: oomd unverified, no jobserver
+// citation, or an unset headroom policy each yield an unsound plan, which is SlotWidthUnderivable
+// carrying that plan's reason, which is not admitted -- a diskless live host with no
+// ctrl-jobserver is exactly this state today.
+test fn a_host_the_fleet_budget_refuses_a_slice_for_is_not_admitted() -> Bool {
+  let floor = oomd_actuation_floor(host: byte_size(count: fixture_host_total()))
+  let unverified = HostBudgetFacts {
+    oomd: OomdUnverified, jobserver: jobserver_config, headroom: HeadroomSet { bytes: floor }, session_slice: byte_size(count: 0),
+  }
+  let absent = HostBudgetFacts {
+    oomd: OomdEnforced, jobserver: JobserverAbsent, headroom: HeadroomSet { bytes: floor }, session_slice: byte_size(count: 0),
+  }
+  let unset = HostBudgetFacts {
+    oomd: OomdEnforced, jobserver: jobserver_config, headroom: HeadroomUnset, session_slice: byte_size(count: 0),
+  }
+  [unverified, absent, unset] |> all(b =>
+    match qualify_runner_throughput(subject: subject_with_budget(runs: [good_run(revision: pin_revision)], host_budget: b)) {
+      HostNotAdmittedToClass { receipt: r, candidate: _, refusals: rs } =>
+        rs.length() == 1
+          && (match r.slot_width {
+            SlotWidthUnderivable { cause: _ } => true
+            SlotWidthDerived { by_memory: _, by_cpu: _, slots: _ } => false
+          })
+      _ => false
+    }
+  )
 }
 
 // ── the join into the fabric's admission ──────────────────────────────────────────────────────

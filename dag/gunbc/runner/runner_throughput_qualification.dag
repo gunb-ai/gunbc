@@ -29,7 +29,12 @@ import gunbc.runner_slot_allocation {
 import gunbc.host_budget_source {
   HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
 }
-import gunbc.fleet_host_budget { runner_slice_cap, oomd_actuation_floor }
+import gunbc.fleet_host_budget {
+  FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound, HeadroomPolicy, fleet_host_plan_for,
+}
+import gunbc.fleet_container { gha_runner_container }
+import gunbc.ci_floor_measurement { OomdEnforcementEvidence }
+import extdeps.jobserver { JobserverCitation }
 import gunbc.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
 import v2.workflow.floor_eval_step_calibration {
   EvalStepCalibration, calibration_rate, calibration_specimen_eval_steps,
@@ -151,6 +156,20 @@ type QualificationRun {
 
 // ── THE SUBJECT ───────────────────────────────────────────────────────────────────────────────
 
+// THE HOST FACTS THE FLEET'S BUDGET AUTHORITY REFUSES WITHOUT. `gunbc.fleet_host_budget
+// fleet_host_plan_for` derives a runner slice cap only when systemd-oomd enforcement is verified,
+// the jobserver knobs are cited, and a headroom policy is set at or above the oomd actuation
+// floor; otherwise it refuses, and so does the width here. These are facts about THIS host's
+// configuration, observed by the run or declared by the fleet for it, never defaulted: a diskless
+// live host with no ctrl-jobserver installed cites JobserverAbsent and is refused a width, which
+// is the honest standing until the host is assimilated.
+type HostBudgetFacts {
+  oomd: OomdEnforcementEvidence
+  jobserver: JobserverCitation
+  headroom: HeadroomPolicy
+  session_slice: ByteSize
+}
+
 type RunnerThroughputQualification {
   host: HostIdentity
   capacity_class_candidate: CapacityClass
@@ -158,6 +177,7 @@ type RunnerThroughputQualification {
   slot_envelope: RunnerSlotDesired
   workspace_backing: WorkspaceBacking
   cores_per_slot: HardwareThreadCount
+  host_budget: HostBudgetFacts
   calibration: EvalStepCalibration
   runs: List<QualificationRun>
 }
@@ -189,13 +209,16 @@ type RevisionStanding
   = RevisionMatchesPin { revision: CommitSha }
   | RevisionStale { pinned: CommitSha, observed: CommitSha }
 
-// THE SLOT COUNT IS DERIVED THE WAY THE FLEET DERIVES IT: the runner slice is what the host
-// leaves after its measured idle overhead and the oomd actuation floor, and width is the minimum
-// over the memory and CPU axes, the CPU axis at the fleet's authored cores-per-slot policy
-// (`gunbc_runner_cores_per_slot`, 1 under the 2026-09-19 ruling, so memory binds). Nothing about the host's disk enters, because a diskless host has
-// none and a fleet host's disk axis is DiskWidthUnconstrained today. The overhead is the run's own
-// idle reading (MemTotal minus MemAvailable before the job), not a fleet allowance carried over
-// from a machine with a different OS image.
+// THE SLOT COUNT IS DERIVED THROUGH THE FLEET'S OWN REFUSING AUTHORITY, `fleet_host_plan_for`,
+// and by nothing beneath it (review 68731 caught an earlier draft calling the arithmetic helper
+// under it with the oomd floor standing in for a resolved headroom policy -- a width the fleet
+// itself would have refused). The runner slice is what that plan leaves the host; width is the
+// minimum over the memory and CPU axes, the CPU axis at the fleet's authored cores-per-slot policy
+// (`gunbc_runner_cores_per_slot`, 1 under the 2026-09-19 ruling, so memory binds). Nothing about
+// the host's disk enters, because a diskless host has none and a fleet host's disk axis is
+// DiskWidthUnconstrained today. The overhead is the run's own idle reading (MemTotal minus
+// MemAvailable before the job), not a fleet allowance carried over from a machine with a
+// different OS image. An unsound plan is SlotWidthUnderivable with the plan's own reason.
 type SlotWidthStanding
   = SlotWidthDerived { by_memory: Int, by_cpu: Int, slots: Int }
   | SlotWidthUnderivable { cause: NonEmptyStr }
@@ -365,6 +388,8 @@ fn qualify_revision(pin: FloorWorkloadPin, observed: CommitSha) -> RevisionStand
 fn qualify_slot_width(
   envelope: RunnerSlotDesired,
   cores_per_slot: HardwareThreadCount,
+  host_budget: HostBudgetFacts,
+  host: HostIdentity,
   run: QualificationRun,
 ) -> SlotWidthStanding {
   let per_slot_threads = hardware_thread_count_value(t: cores_per_slot)
@@ -375,19 +400,30 @@ fn qualify_slot_width(
     }
   } else {
     let overhead = byte_size_saturating_sub(total: run.host_memory_total, reserved: run.host_memory_available_idle)
-    let slice = runner_slice_cap(
+    match fleet_host_plan_for(
+      name: host as String,
       host: run.host_memory_total,
       overhead: overhead,
-      session_slice: byte_size(count: 0),
-      headroom: oomd_actuation_floor(host: run.host_memory_total),
-      compile_pool: byte_size(count: 0),
-    )
-    let by_memory = byte_size_count(b: slice) / per_slot_bytes
-    let by_cpu = hardware_thread_count_value(t: run.host_threads) / per_slot_threads
-    SlotWidthDerived {
-      by_memory: by_memory,
-      by_cpu: by_cpu,
-      slots: if by_cpu < by_memory { by_cpu } else { by_memory },
+      nproc: run.host_threads,
+      runner: gha_runner_container,
+      session_slice: host_budget.session_slice,
+      citation: host_budget.jobserver,
+      policy: host_budget.headroom,
+      oomd: host_budget.oomd,
+    ) {
+      FleetHostPlanUnsound { reason: r } => SlotWidthUnderivable { cause: r as NonEmptyStr }
+      FleetHostPlanDerived {
+        name: _, tree: _, runner_slice_cap: slice, effective_build_tokens: _,
+        effective_runner_cpu_cap: _, build_step: _,
+      } => {
+        let by_memory = byte_size_count(b: slice) / per_slot_bytes
+        let by_cpu = hardware_thread_count_value(t: run.host_threads) / per_slot_threads
+        SlotWidthDerived {
+          by_memory: by_memory,
+          by_cpu: by_cpu,
+          slots: if by_cpu < by_memory { by_cpu } else { by_memory },
+        }
+      }
     }
   }
 }
@@ -410,7 +446,13 @@ fn receipt_for_run(subject: RunnerThroughputQualification, run: QualificationRun
     memory: qualify_memory_envelope(envelope: subject.slot_envelope, reading: run.memory),
     phase_wall: run.phase_wall,
     floor_eval_steps: run.floor_eval_steps,
-    slot_width: qualify_slot_width(envelope: subject.slot_envelope, cores_per_slot: subject.cores_per_slot, run: run),
+    slot_width: qualify_slot_width(
+      envelope: subject.slot_envelope,
+      cores_per_slot: subject.cores_per_slot,
+      host_budget: subject.host_budget,
+      host: subject.host,
+      run: run,
+    ),
     workspace_backing: subject.workspace_backing,
   }
 }
