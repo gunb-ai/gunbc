@@ -182,4 +182,6 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable gunbc-microvm-nft.servic
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl restart gunbc-microvm-nft.service
 ghrunner ALL=(root) NOPASSWD: /usr/sbin/nft list table inet gunbc_microvm
 ghrunner ALL=(root) NOPASSWD: /usr/sbin/nft list ruleset
+ghrunner ALL=(root) NOPASSWD: /usr/sbin/iptables-legacy-save
+ghrunner ALL=(root) NOPASSWD: /usr/sbin/nfct helper list
 ghrunner ALL=(root) NOPASSWD: /usr/sbin/conntrack -L expect
