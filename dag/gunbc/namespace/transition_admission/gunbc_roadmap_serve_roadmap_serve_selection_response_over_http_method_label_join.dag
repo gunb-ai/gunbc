@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_roadmap_serve_roadmap_serve_selection_response_over_http_method_label_join
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_roadmap_serve_roadmap_serve_selection_response_over_http_method_label_join: TransitionAdmission = TransitionAdmission {
+  label: "REQUALIFICATION `http_method_label_join` home extdeps.http.server" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.roadmap_serve", "roadmap_serve_selection_response_over"),
+    spelling: "http_method_label_join" as NonEmptyStr,
+    expected_candidates: [decl_ref("extdeps.http.server", "http_method_label_join")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11667 as UInt32,
+}
