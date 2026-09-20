@@ -1233,7 +1233,7 @@ fn floor_route_gap_expectation_chunk_16() -> List<FloorRouteGapExpectation> {
 }
 
 // THE FABRIC DB WET EVIDENCE: the nine file-store identities (one of them the served handler's
-// store side) and the three event-log identities over it. First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment:
+// store side), the three event-log identities over it, and the three read-only readout identities. First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment:
 // this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // witness_exclusion_frontier LocalRepoWetLane rows for fabric_db_file_store_wet_witness_test.dag and
 // fabric_event_log_wet_witness_test.dag.
@@ -1257,12 +1257,21 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_db_file_store_wet_witness.a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.a_two_event_partition_reports_both_events_oldest_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.three_chained_appends_read_back_whole_oldest_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
   }
   }
   }
