@@ -7,6 +7,7 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
+  FloorMemoryQualificationProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   CompileCleanDiagnosticCensusStanding,
@@ -74,6 +75,17 @@ fn heads_reading_differential_label() -> Label {
   Label {
     package: instruments_package()
     target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE FLOOR'S MEMORY DEMAND, QUALIFIED. The subject is the required-floor PROCESS -- not any
+// function inside it -- which is why the reading is taken by a supervisor from outside rather than
+// by anything the floor itself emits. See `gunbc.floor_memory_demand` for why an in-process
+// observer cannot report the two terminations that matter most.
+fn floor_memory_qualification_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "floor-memory-qualification" }
   }
 }
 
@@ -164,6 +176,12 @@ fn heads_reading_differential_target() -> BuildTarget {
   }
 }
 
+// NOT EVERY `*_target()` BELOW IS CONSUMED. `evaluation_store_address_exact_head_target` and
+// `v2_native_cli_target` are each referenced only by their own definition; `instrument_targets()`
+// folds LABELS and `instrument_bindings()` folds BINDINGS, and neither reads a `BuildTarget`. That
+// is a DESIGN section 3c dangling set, recorded here rather than resolved because resolving it is
+// a separate change -- and recorded so the next author adding an instrument does not copy the
+// pattern. The floor-memory row deliberately adds no `*_target()` for that reason.
 fn instrument_test_target(label: Label) -> BuildTarget {
   BuildTarget { label: label kind: TestRule {} dependencies: [] }
 }
@@ -231,6 +249,13 @@ fn evaluation_store_address_exact_head_binding() -> TargetBinding {
   TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
 }
 
+fn floor_memory_qualification_binding() -> TargetBinding {
+  TargetBinding {
+    target: floor_memory_qualification_label()
+    producer: FloorMemoryQualificationProducer {}
+  }
+}
+
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
 //
 // `gunbc test //gunbc/instruments:heads-reading-differential` takes no source-root option, and
@@ -252,6 +277,18 @@ fn heads_reading_differential_source_roots() -> List<String> {
 // roots are the same population its sibling reads, because the CLI entry resolves against both.
 fn v2_native_cli_source_roots() -> List<String> {
   ["dag", "src/v2"]
+}
+
+// The floor-memory instrument's own subject, on the same rule its siblings follow: WHICH floor run
+// is being qualified is a property of this instrument, not an invocation option, so a run cannot
+// quietly measure a different lane while reporting this target's standing. These are the roots and
+// the lane the required check ran when this instrument was written.
+fn floor_memory_qualification_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn floor_memory_qualification_lane() -> String {
+  "witnesses"
 }
 
 fn self_host_source_roots() -> List<String> {
@@ -292,7 +329,7 @@ fn instrument_targets() -> List<Label> {
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
-    evaluation_store_address_exact_head_label()
+    evaluation_store_address_exact_head_label(), floor_memory_qualification_label()
   ]
 }
 
@@ -301,7 +338,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
-    evaluation_store_address_exact_head_binding()
+    evaluation_store_address_exact_head_binding(), floor_memory_qualification_binding()
   ]
 }
 

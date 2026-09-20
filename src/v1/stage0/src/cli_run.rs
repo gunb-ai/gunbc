@@ -203,6 +203,8 @@ mod required_regen_host;
 // `gunbc.target_invocation_seed_growth`.
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
+pub mod floor_memory_supervisor;
+
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
