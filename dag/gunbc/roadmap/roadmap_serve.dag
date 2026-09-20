@@ -3,7 +3,7 @@ module gunbc.roadmap_serve
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
-  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
+  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
   SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
@@ -682,7 +682,7 @@ fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
   serve_text_response(
     status: status,
     content_type: text_plain_utf8,
-    body: join(["approval submission: ", submission_outcome_reason(o: outcome), "\n"], ""),
+    body: submission_outcome_http_body(o: outcome),
   )
 }
 

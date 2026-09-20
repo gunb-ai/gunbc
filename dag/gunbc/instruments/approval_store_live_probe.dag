@@ -13,7 +13,7 @@ import gunbc.auth.approval_request_submission {
   PublisherTokenUnavailable, SubmissionFiledPublisherTokenUnavailable, SubmissionAlreadyFiled, SubmissionRefused, SubmissionNotEnrolled,
 }
 import gunbc.auth.approval_decision_store {
-  ApprovalKeyLoaded, approval_mac_key_id,
+  ApprovalKeyLoaded, approval_mac_key_id, approval_capability_authority,
   StoredApprovalRequest, file_approval_request, StoreWritten, StoreSlotOccupied, StoreRefused,
   capability_path_segment, IdentityHeaderTrustEstablished,
   redeem_over_store, RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionEscalationNotFiled, RedemptionBrokerRefused,
