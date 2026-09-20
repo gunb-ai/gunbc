@@ -206,3 +206,167 @@ fn floor_typecheck_store_materialization_without_provider() -> ValueMaterializat
     providers: floor_typecheck_store_no_providers
   )
 }
+
+// C3 — the HOST-PERSISTED tier over the SAME identity as C2. C2 discharges typed-module
+// plurality inside ONE executor process; this row says where the value lives when that process is
+// gone. The frame is UnboundedSiblingsFrame, not SharedStateFrame: recurring invocations of the
+// fold on a runner host are successive siblings with no shared mutable state to rewire — there is
+// no LCA process in which the repetition could have been carried, which is precisely the ladder's
+// isolation-LCA obligation that only a STORE tier can discharge. ArtifactTier, not CasTier:
+// tier_axes assigns CasTier the RemoteNetwork placement, and this store is a host-local directory
+// (LocalFilesystem) — the same axis reading that puts extdeps.realization.resolved_graph's
+// per-host content-addressed store at ArtifactTier.
+//
+// WHAT THIS DELIVERS TODAY, named so the row is not read as more than it is: the typed-module
+// content key's compiler-identity term is the running binary's content digest, and build.rs embeds
+// the checkout's commit in that binary, so a rebuild at ANY new commit — including a corpus-only
+// .dag commit — re-keys every entry. The relief therefore covers SAME-BUILD, CROSS-PROCESS reuse:
+// the witness fold and the generated-artifact drift gate are two processes over one corpus running
+// one built binary, and the second pays typecheck preparation again today. Cross-push reuse is a
+// separate change to how compiler identity is derived and is NOT claimed by this row.
+
+data floor_typecheck_store_persist_provider_id: String = "host_persisted_typecheck_store"
+
+fn floor_runner_host_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "runner-host", kind: UnboundedSiblingsFrame }
+}
+
+// The ladder refuses ReleasedNever with CapacityUnbounded (RetentionUnbounded) and with
+// CapacityUnobserved (RetentionUnobserved), so a byte ceiling and an at-capacity disposition are
+// OBLIGATIONS this row discharges rather than options it selects. ByteCapacity and not
+// EntryCountCapacity: the ceiling that matters on a runner host is disk, and an entry bound over a
+// payload whose size is not fixed establishes no byte bound. RefuseNewStore and not
+// ReplaceExisting: replacement is a second mechanism with its own correctness surface, and this
+// bridge does not need one — a full store declines publication, counts the refusal, and the run is
+// merely cold. Its realization is shared_typecheck_store PersistentTypedStore, held in lockstep by
+// persist_cap_matches_modeled_authority.
+
+data floor_typecheck_store_persist_cap_bytes: ByteSize = byte_size(count: 8589934592)
+
+data floor_typecheck_store_persist_provider: CacheProvider = provider_row(
+  id: floor_typecheck_store_persist_provider_id,
+  scope: [floor_runner_host_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityBounded {
+    limit: ByteCapacity { limit: ExactLimit { value: floor_typecheck_store_persist_cap_bytes } },
+    at_capacity: RefuseNewStore
+  })
+)
+
+// The two sibling processes that each demand union-typecheck-store(dag,src/v2) over one corpus
+// under one built binary. They execute apart by construction, so the repetition between them is
+// not authored duplication a rewire could remove — their obligation LCA is the runner host, which
+// is not a shared-state frame, and only a STORE tier reaches across it. The demand nature is
+// PureComputation: same module text, same resolved dependency closure, same compiler binary ⇒ same
+// typed result, which is what makes ContentKeyed reuse sound here without declaring any staleness
+// envelope. Nothing is read from the world.
+
+fn floor_witness_fold_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "witness-fold-process", kind: SharedStateFrame }
+}
+
+fn floor_drift_gate_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "drift-gate-process", kind: SharedStateFrame }
+}
+
+fn floor_typecheck_store_cross_process_demands() -> List<FrameDemand> {
+  [
+    FrameDemand {
+      identity: floor_typecheck_store_identity,
+      site: [floor_runner_host_frame(), floor_witness_fold_process_frame()],
+      nature: PureComputation
+    },
+    FrameDemand {
+      identity: floor_typecheck_store_identity,
+      site: [floor_runner_host_frame(), floor_drift_gate_process_frame()],
+      nature: PureComputation
+    }
+  ]
+}
+
+data floor_typecheck_store_persist_providers: List<CacheProvider> = [floor_typecheck_store_persist_provider]
+
+data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
+
+fn floor_typecheck_store_persist_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: floor_typecheck_store_persist_providers,
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
+
+// RED CONTROLS. Each is the SAME demand set with exactly one obligation withdrawn from the
+// provider, so the green above is green because the ladder looked and admitted it, never because
+// nothing looked. Each red names the DISTINCT refusal it must produce, so a provider that fails
+// for the wrong reason does not pass as the right one.
+
+data floor_typecheck_store_persist_provider_unbounded: CacheProvider = provider_row(
+  id: floor_typecheck_store_persist_provider_id,
+  scope: [floor_runner_host_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityUnbounded)
+)
+
+data floor_typecheck_store_persist_provider_unobserved: CacheProvider = provider_row(
+  id: floor_typecheck_store_persist_provider_id,
+  scope: [floor_runner_host_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityUnobserved)
+)
+
+// Scope too narrow: the in-process row cannot answer a cross-process demand. A reference does not
+// survive the process that holds it, which is the whole reason this tier exists — so the existing
+// C2 provider, offered alone against these two demands, must REFUSE rather than appear to cover
+// them.
+
+fn floor_typecheck_store_persist_verdicts_unbounded() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: [floor_typecheck_store_persist_provider_unbounded],
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
+
+fn floor_typecheck_store_persist_verdicts_unobserved() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: [floor_typecheck_store_persist_provider_unobserved],
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
+
+// The scope control is the SAME store row with only its scope withdrawn to one process — not the
+// C2 ReferenceTier share, which is not a store tier at all and would refuse for the unrelated
+// reason that no store provider exists. Withdrawing one obligation at a time is what makes each
+// red name its own refusal.
+
+data floor_typecheck_store_persist_provider_process_scoped: CacheProvider = provider_row(
+  id: floor_typecheck_store_persist_provider_id,
+  scope: [floor_executor_process_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityBounded {
+    limit: ByteCapacity { limit: ExactLimit { value: floor_typecheck_store_persist_cap_bytes } },
+    at_capacity: RefuseNewStore
+  })
+)
+
+fn floor_typecheck_store_persist_verdicts_process_scoped() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: [floor_typecheck_store_persist_provider_process_scoped],
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
+
+fn floor_typecheck_store_persist_verdicts_without_provider() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: floor_typecheck_store_no_providers,
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
