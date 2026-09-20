@@ -191,15 +191,3 @@ test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
   }
 }
 
-test fn record_construct_emit_holds_keystone() -> Bool {
-  record_construct_emit_holds()
-}
-
-test fn record_construct_grammar_inverse_holds_keystone() -> Bool {
-  record_construct_grammar_inverse_holds()
-}
-
-test fn record_construct_ingest_via_coerce_holds_keystone() -> Bool {
-  record_construct_ingest_via_coerce_matches_canonical()
-}
-

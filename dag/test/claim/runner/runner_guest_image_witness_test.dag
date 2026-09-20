@@ -2,8 +2,11 @@ module test.claim.runner_guest_image_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.crypto.hash { sha256_digest }
-import extdeps.github.actions_runner { ActionsRunnerRelease }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_binary_artifact_for_arch }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.toolchain.types { Aarch64 }
+import gunbc.runner_microvm_network { runner_microvm_guest_resolver }
+import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
 import gunbc.runner_microvm {
@@ -31,6 +34,7 @@ import gunbc.runner_guest_image {
   GuestBooted, RunnerStarted, RunnerExited,
   guest_observation_line, guest_observation_kind_label,
   guest_console_observations, guest_console_carries,
+  runner_guest_tree_commands, runner_guest_resolver_link_command, runner_guest_tree_resolv_conf_path,
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -298,4 +302,50 @@ test fn the_credential_device_is_where_the_vm_config_puts_the_credential_drive()
     && (match firecracker_drive_guest_device(drives: with_work.drives, drive_id: jit) { Present { value: d } => d == observed_on_hardware  Absent => false })
     && (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: "rootfs" as NonEmptyStr) { Present { value: d } => d == "/dev/vda"  Absent => false })
     && (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: "absent" as NonEmptyStr) { Present { value: _ } => false  Absent => true })
+}
+
+type StagingOrder {
+  extracted: Bool
+  linked_after_extract: Bool
+}
+
+fn staging_order(commands: List<ArgvCommand>) -> StagingOrder {
+  fold(commands, init: StagingOrder { extracted: false, linked_after_extract: false }, f: fn(acc, c) {
+    if (c.program as String) == "unsquashfs" {
+      StagingOrder { extracted: true, linked_after_extract: acc.linked_after_extract }
+    } else if (c.program as String) == "ln" {
+      StagingOrder { extracted: acc.extracted, linked_after_extract: acc.extracted }
+    } else {
+      acc
+    }
+  })
+}
+
+// THE GUEST'S RESOLVER FOLLOWS THE BOOTED dns0 THROUGH ONE LINK, AND NO ADDRESS IS BAKED IN. The
+// staging carries `ln -sfnT /proc/net/pnp <tree>/etc/resolv.conf` AFTER the extraction that ships
+// Ubuntu's own resolv.conf (so the base file is replaced, not overwritten by the extraction), and the
+// resolver address the host boots the guest with appears in NO staging word: the guest reads it from
+// the kernel at boot, so runner_microvm_guest_resolver has one authority. The reds: a `cp` of a
+// rendered file in place of the link (a second authority for the address, and a file that could not
+// exist at build time), a link placed before the extraction, and the address copied into the tree.
+// -T IS PINNED WITH ITS DISCRIMINATOR: without it, a real directory at the extracted /etc/resolv.conf
+// makes `ln -sfn` succeed by creating the link INSIDE that directory, so the build reports the link
+// installed while the image has none; with -T that destination makes image construction refuse.
+test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_no_baked_address() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: gunbc_runner_guest_image.runner, arch: Aarch64) {
+    Absent => false
+    Present { value: a } => {
+      let cmds = runner_guest_tree_commands(root: "/r", image: gunbc_runner_guest_image, artifact: a)
+      let link = runner_guest_resolver_link_command(root: "/r", image: gunbc_runner_guest_image)
+      let resolver = render_ipv4_address(addr: runner_microvm_guest_resolver()) as String
+      let order = staging_order(commands: cmds)
+      argv_words(command: link) == ["ln", "-sfnT", "/proc/net/pnp", runner_guest_tree_resolv_conf_path(root: "/r", image: gunbc_runner_guest_image)]
+        && string_contains(s: runner_guest_tree_resolv_conf_path(root: "/r", image: gunbc_runner_guest_image), pattern: concat(runner_guest_tree_dir(root: "/r", image: gunbc_runner_guest_image), "/etc/resolv.conf"))
+        && any(xs: cmds, predicate: fn(c) { argv_words(command: c) == argv_words(command: link) })
+        && order.extracted
+        && order.linked_after_extract
+        && !any(xs: cmds, predicate: fn(c) { (c.program as String) == "cp" })
+        && !any(xs: cmds, predicate: fn(c) { any(xs: c.arguments, predicate: fn(w) { string_contains(s: w, pattern: resolver) }) })
+    }
+  }
 }

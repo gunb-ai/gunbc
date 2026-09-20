@@ -36,6 +36,7 @@ import gunbc.harness.harness_seat {
   harness_model_requirement_ref,
 }
 import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of }
+import gunbc.spark.serving_group_launch { serving_group_launch }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch, LaunchObserved }
 import std.measure { token_count_value }
 import product.fabric.demand { ObservationReceiptRef }
@@ -369,4 +370,27 @@ test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() 
       <= token_count_value(t: harness_unit_declared_context_ceiling(unit: DeepseekV4FlashOnVllm))
     && token_count_value(t: harness_context_budget_for(unit: Glm53FlashOnVllm))
       <= token_count_value(t: harness_unit_declared_context_ceiling(unit: Glm53FlashOnVllm))
+}
+
+// THE SERVICE-IDENTITY FACTS ARE THE GROUP'S OWN. Group A is observed through the pair-serving
+// container and unit; group B through the native arm's. A harness that still read pair-serving
+// names for group B would inspect a container that does not exist on srv9 and compare the GLM
+// engine's reported model path against the DeepSeek declaration -- both failures were measured on
+// the live end-to-end run of 2026-09-16. The declared model paths must also differ, since the two
+// groups serve different checkpoints.
+test fn each_groups_service_identity_comes_from_its_own_launch_authority() -> Bool {
+  let a = serving_group_launch(group: FabricGroupA)
+  let b = serving_group_launch(group: FabricGroupB)
+  (a.container_name as String) == "gunbc-spark-pair"
+    && (b.container_name as String) == "glm-native-tp4"
+    && (a.head_unit_name as String) == "gunbc-spark-pair-head.service"
+    && (b.head_unit_name as String) == "gunbc-glm-native-head.service"
+    && (match a.declared_model_path {
+         Absent => false
+         Present { value: pa } =>
+           match b.declared_model_path {
+             Absent => false
+             Present { value: pb } => pa != pb
+           }
+       })
 }

@@ -60,6 +60,17 @@ fn posix_sh_program_command(script: String) -> ArgvCommand {
   argv_command(program: posix_sh_program, arguments: ["-c", script])
 }
 
+// THE FILE FORM: `sh` reads its commands from the named file rather than from a `-c` word. This is
+// NOT another arm of the residual class above -- it is the form a script takes once its text has
+// become DATA: written to the far side as a staged, readback-verified file
+// (gunbc.typed_remote_file_write), so the only words the portable-word wall ever sees are the two
+// literals `sh` and the path, and the script's content is never re-parsed as a word. A caller that
+// holds its script as a verified file belongs here; a caller holding it as a string belongs to the
+// shell -> dag lane's debt, as above.
+fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: posix_sh_program, arguments: [path as String])
+}
+
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
