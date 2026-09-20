@@ -11,11 +11,11 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation {
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
+  RunnerSlotCpuQuota,
+  CpuQuotaResolved,
+  SlotCpuQuotaUnbounded,
   gunbc_runner_slot_desired,
   gunbc_runner_slots_per_host,
-  gunbc_runner_cores_per_slot,
 }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
@@ -109,17 +109,24 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // amount of anything. CPUQuota= is an ABSOLUTE ceiling on CPU time per wall second. AllowedCPUs=
 // is a third thing again -- a pinning of the unit to named CPUs.
 //
-// CapacityQuota is the no-overcommit contract this fleet adopts: each slot may consume at most
-// cores_per_slot threads' worth of CPU time, and the sum of the runner, compile-pool and host
-// reserve ceilings must fit the machine. Pinning each slot to a pairwise-disjoint SET of named CPUs
-// is a stronger contract again, and this fleet does not make it; the block below records why it has
-// no constructor rather than a variant.
+// CapacityQuota is a no-overcommit contract: each slot may consume at most that many threads'
+// worth of CPU time, and the sum of the runner, compile-pool and host reserve ceilings must fit
+// the machine. NoCpuCeiling is the contract this fleet ADOPTS as of the 2026-09-19 operator ruling
+// ("there is no CPU demand - the processes we run are single core"): a slot carries CPUWeight only
+// and no CPUQuota, which is the state the hosts run in today, and a 100% quota at the policy of
+// one core per slot would throttle the parallel link/codegen phases of a job that is otherwise
+// single-core. The arm is read from gunbc.runner_slot_allocation's cpu_quota, never derived from
+// cores_per_slot here: width admission and the per-slot ceiling are two facts of one row, and
+// deriving one from the other is what bound the fleet at a tenfold over-reservation.
+// Pinning each slot to a pairwise-disjoint SET of named CPUs is a stronger contract again, and
+// this fleet does not make it; the block below records why it has no constructor rather than a
+// variant.
 //
-// THE ARM THIS TYPE REPLACES WAS NEITHER OF THEM. cores_per_slot was consumed to decide how many
-// units to create and then dropped, so the width was CPU-derived while the units it created carried
-// no CPU directive at all -- srv1 and srv2 show MemoryMax as their only resource line, CPUWeight
-// unset and CPUQuota infinity. Admission without confinement: the arithmetic said six threads per
-// slot and the host was never told.
+// NoCpuCeiling IS NOT THE "ADMISSION WITHOUT CONFINEMENT" ARM THIS TYPE ONCE REPLACED. That arm
+// derived a width from cores_per_slot and then told the host nothing, so the units ran unconfined
+// while the model believed them confined. NoCpuCeiling realizes as an affirmative `CPUQuota=`
+// reset on every unit (gunbc.host_converge runner_cpu_boundary_knobs), so the model and the host
+// agree that there is no ceiling; a unit that once carried one is converged back to none.
 // THE PINNING CONTRACT HAS NO CONSTRUCTOR, AND THAT IS THE POINT RATHER THAN AN OMISSION.
 //
 // An earlier revision carried a DisjointCpuSet arm so the promise this fleet does NOT make would have
@@ -144,6 +151,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // this deletion removes.
 type RunnerCpuBoundary
   = CapacityQuota { threads: HardwareThreadCount }
+  | NoCpuCeiling
 
 type RunnerCpuBoundaryResolution
   = RunnerCpuBoundaryDerived { boundary: RunnerCpuBoundary }
@@ -167,9 +175,15 @@ type RunnerCpuBoundaryResolution
 //
 // NEXT-RUNG TRIGGER: a compile-pool CPU charge in the host allocation, at which point this arm
 // derives a rebalanced width and ceiling instead of refusing.
-fn runner_cpu_boundary_for(placement: CompilePoolPlacement, per_slot: HardwareThreadCount) -> RunnerCpuBoundaryResolution {
+fn runner_cpu_boundary_for(placement: CompilePoolPlacement, quota: RunnerSlotCpuQuota) -> RunnerCpuBoundaryResolution {
   match placement {
-    CompilePoolInRunnerSlots => RunnerCpuBoundaryDerived { boundary: CapacityQuota { threads: per_slot } }
+    CompilePoolInRunnerSlots =>
+      RunnerCpuBoundaryDerived {
+        boundary: match quota {
+          CpuQuotaResolved { threads: t } => CapacityQuota { threads: t }
+          SlotCpuQuotaUnbounded => NoCpuCeiling
+        }
+      }
     CompilePoolSliceDeclared { slice_unit: u } =>
       RunnerCpuBoundaryUnchargeable {
         reason: concat("compile pool is a declared host slice and carries no modeled CPU charge, so a per-slot CPU ceiling derived from cores_per_slot alone would commit the host past its threads once that pool runs: rederive runner width and the per-slot ceiling together with the pool's CPU charge. Slice: ", u)
@@ -215,7 +229,6 @@ type HostRunnerDeploymentRefusal
   | ZeroRunnerWidth
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
-  | RunnerCoreRatioUnresolved { cause: String }
   | HostNotEnrolledInFleet
 
 type RefusedHostDeployment {
@@ -511,7 +524,6 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     ZeroRunnerWidth => "zero_runner_width"
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
-    RunnerCoreRatioUnresolved { cause: t } => concat("runner_core_ratio_unresolved ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
   }
 }
@@ -602,30 +614,25 @@ fn host_standing_with_session_slice(
                     cause: concat("no cited jobserver configuration, so the compile-token budget has no derivation and the host cannot be told a bound it did not compute: ", host_id)
                   })
                 JobserverCited { config: jcfg, provenance: _ } =>
-                  match gunbc_runner_cores_per_slot() {
-                    CoresPerSlotUnresolved { cause: rc } =>
-                      refuse_host(host: host_id, cause: RunnerCoreRatioUnresolved { cause: rc })
-                    CoresPerSlotResolved { threads: per_slot_threads } =>
-                      match runner_cpu_boundary_for(
-                        placement: gunbc_compile_pool_placement,
-                        per_slot: per_slot_threads
-                      ) {
-                        RunnerCpuBoundaryUnchargeable { reason: cr } =>
-                          refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
-                        RunnerCpuBoundaryDerived { boundary: cpub } =>
-                          admit_or_refuse_zero_width(
-                            dep: conservation_host_deployment(
-                              offer: offer,
-                              build_tokens: derive_jobserver_tokens(
-                                nproc: cpu_facts_threads(cpu: cpu),
-                                mem_total: host_ram,
-                                cfg: jcfg
-                              ),
-                              cpu_boundary: cpub
-                            ),
-                            host_id: host_id
-                          )
-                      }
+                  match runner_cpu_boundary_for(
+                    placement: gunbc_compile_pool_placement,
+                    quota: gunbc_runner_slot_desired().cpu_quota
+                  ) {
+                    RunnerCpuBoundaryUnchargeable { reason: cr } =>
+                      refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
+                    RunnerCpuBoundaryDerived { boundary: cpub } =>
+                      admit_or_refuse_zero_width(
+                        dep: conservation_host_deployment(
+                          offer: offer,
+                          build_tokens: derive_jobserver_tokens(
+                            nproc: cpu_facts_threads(cpu: cpu),
+                            mem_total: host_ram,
+                            cfg: jcfg
+                          ),
+                          cpu_boundary: cpub
+                        ),
+                        host_id: host_id
+                      )
                   }
               }
           }

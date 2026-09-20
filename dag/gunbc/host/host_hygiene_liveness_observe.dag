@@ -5,6 +5,7 @@ import std.disposition { Disposition, Terminal }
 import std.realization_reconcile { ShowEffectiveRead, ReadObserved, ReadAbsent, Reconciliation }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.systemd.journalctl
+import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
 import gunbc.systemctl_list_units { systemctl_list_units_all_states }
 import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 import gunbc.host_hygiene_liveness {
@@ -23,14 +24,12 @@ data gunbc_host_hygiene_liveness_observe_scope_disposition: Disposition = Termin
   reason: "The OBSERVE half of the liveness vertical (brief: split observe from mutate). Runs LocalShell only: unit enumeration reuses gunbc.systemctl_list_units's all-states seam (the same one-op, different-binding move the reaper observe module uses — a listener slot is worth checking whether active, inactive, or failed, since a failed slot is exactly the outage this exists to catch), and the journal read goes through the new extdeps.systemd.Journalctl.UnitLog typed op rather than a piped `journalctl | grep | tail` shell body. Marker-matching (last 'Listening for Jobs' line) and freshness (age against extdeps.clock's typed Clock.UnixMillis read) are pure .dag folds over one typed stdout read, replacing what the deleted host_hygiene_liveness_script.dag did as one hand-written pipeline in a single shell body."
 }
 
-data host_hygiene_listening_marker: String = "Listening for Jobs"
-
 fn host_hygiene_journal_lines(stdout: String) -> List<String> {
   filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != "")
 }
 
 fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
-  filter(host_hygiene_journal_lines(stdout: stdout), l => string_contains(s: l, pattern: host_hygiene_listening_marker))
+  filter(host_hygiene_journal_lines(stdout: stdout), l => string_contains(s: l, pattern: actions_runner_listening_line_suffix))
 }
 
 // journalctl -o short-unix prints "SECONDS.MICROSECONDS host proc[pid]: msg" — the first
