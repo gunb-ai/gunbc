@@ -159,7 +159,8 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
   wall_tree(
     root: wall_module_root(leaf_segment: ^peer, members: [
       wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
-      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
+      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture)),
+      wall_member(name: ^qualified_user, body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf]))
     ]),
     marked: [^peer_leaf]
   )
@@ -170,7 +171,11 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
 // (`helper`, the one-parameter domain), and wall_member with a name-reference body carrying the test
 // marker (`peer_leaf`). Three members because the builders have three distinct bodies; the front
 // end's cost grows with the source and this claim pays for one real tokenize, parse and normalize.
-// The only supplied node no source produces is wall_qualified, declared beside it.
+// SINCE gunbc#11683 THERE IS NO SUPPLIED NODE HERE THAT NO SOURCE PRODUCES. A bare dotted body chain
+// now lowers to the qualified-name spine, so wall_qualified became producible the day that landed --
+// and a supplied builder whose producer has moved is exactly what the pairing obligation exists to
+// catch. The fourth member of the paired source and fixture below (`qualified_user`) joins it to the
+// real front end, so the whole-root content_hash comparison reds if that lowering moves again.
 fn inhabitance_module() -> Outcome<NormalizedTree> {
   wall_tree(
     root: wall_module_root(leaf_segment: ^peer, members: [
@@ -182,7 +187,7 @@ fn inhabitance_module() -> Outcome<NormalizedTree> {
   )
 }
 
-data inhabitance_module_source: String = "module wall.peer\nfn shared_fixture() -> Bool = true\nfn helper(leaf: Bool) -> Bool = leaf\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
+data inhabitance_module_source: String = "module wall.peer\nfn shared_fixture() -> Bool = true\nfn helper(leaf: Bool) -> Bool = leaf\ntest fn peer_leaf() -> Bool = shared_fixture()\nfn qualified_user() -> Bool = wall.peer.peer_leaf\n"
 
 // module wall.peer -- `fn shared_fixture() -> Bool = true`, no test code.
 fn peer_serving_module() -> Outcome<NormalizedTree> {
@@ -202,12 +207,13 @@ fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
 // uses), emits the same root (by content hash, which does not read occurrence ids) and a
 // channel marking exactly `peer_leaf` -- one claim per half, both reading the one shared front-end
 // value below. They are the two things every claim below reads.
-// THE SHARE POINT: the real front end's output for `inhabitance_module_source`, enrolled WARM in
-// v2.workflow.floor_pure_producer_share. The floor forces it once, during strict preparation and
-// outside every per-claim budget, and both inhabitance claims read the same value. A real
-// tokenize, parse and normalize of even a one-member module costs about 75k eval steps, over the
-// 72,300 new-witness budget by itself, so paying it once and sharing it is the only way the real
-// path gets onto the floor at all.
+// ONE PRODUCER, TWO READERS, AND NO WARM-SHARE ROW. Both inhabitance claims call this one function,
+// so the source literal and the producer are shared; the VALUE is not. Claim frames are isolated, so
+// each claim recomputes this front-end run. A row enrolling it would have to be admitted by a
+// controlled row-present against row-absent measurement on the required floor, and the restored floor
+// publishes no claim-cost table, no shared-fill ledger and no receipt to make one -- so the row that
+// stood here is deleted rather than argued from the value being portable, which establishes only that
+// it CAN be served, never that serving is cheaper.
 // WHEN THE ROOT CLAIM REDS: render BOTH trees with their EDGE LABELS and compare those. A read by
 // child index is what made the graft-marker drift (#11694, a leading edge on the module body) look
 // like a change inside the member Arrow, and cost two lanes to find.
