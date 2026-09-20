@@ -15,6 +15,7 @@ import extdeps.bmc.ipmi_sdr {
   SdrTemperaturePublication,
   TemperaturePublished,
   TemperatureSensorsSilent,
+  TemperatureNoSensorRows,
   TemperatureUndecodable,
   sdr_decode_lines,
   sdr_decoded_lines,
@@ -86,6 +87,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // construction rather than by a checking order.
 type ChassisPowerObservation
   = ChassisPowerRead { power_on: Bool }
+  | ChassisStatusUndecodable
   | ChassisUnreadable
 
 type ThermalObservation
@@ -157,6 +159,7 @@ type FanObservationRound {
 fn post_state_of_round(round: FanObservationRound) -> HostPostState {
   match round.chassis {
     ChassisUnreadable => HostPostStateUnobserved
+    ChassisStatusUndecodable => HostPostStateUnobserved
     ChassisPowerRead { power_on: on } => if !on {
       HostPoweredOff
     } else {
@@ -166,6 +169,7 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
           TemperaturePublished => HostPosted
           TemperatureSensorsSilent => HostPoweredOnPrePost
           TemperatureUndecodable => HostPostStateUnobserved
+          TemperatureNoSensorRows => HostPostStateUnobserved
         }
       }
     }
@@ -176,8 +180,24 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
 // "System Power         : on". An unreadable status is NOT read as powered-off: a machine whose
 // controller did not answer is a machine we know nothing about, and answering "off" there would put
 // every such sample into the arm where full-duty fans are expected and unremarkable.
-fn chassis_power_on(stdout: String) -> Bool {
-  fold(split(s: stdout, delimiter: "\n"), init: false, f: (acc, line) => {
+// THE ABSENCE OF THE LINE IS NOT THE WORD "off".
+//
+// This fold used to start at `false` and return the accumulator for every non-matching line, so a
+// chassis status that SUCCEEDED but printed no `System Power :` row -- different firmware wording,
+// truncated stdout, a locale -- answered `power_on: false`. That is structurally indistinguishable
+// from the controller saying the host is off, and it routes to HostPoweredOff and from there to
+// FailsafeBeforeHostTelemetry, the arm this module's own header calls "the contract working rather
+// than a finding". A read that understood nothing would have been reported as a healthy failsafe.
+//
+// So the parse answers three things, not two: the line said on, the line said off, or the line was
+// never there. Only the third is new and it is the one that was being laundered.
+type ChassisPowerLine
+  = ChassisPowerLineOn
+  | ChassisPowerLineOff
+  | ChassisPowerLineAbsent
+
+fn chassis_power_line(stdout: String) -> ChassisPowerLine {
+  fold(split(s: stdout, delimiter: "\n"), init: ChassisPowerLineAbsent, f: (acc, line) => {
     let fields = split(s: line, delimiter: ":") |> map(f => trim(f))
     if fields.length() < 2 {
       acc
@@ -187,7 +207,7 @@ fn chassis_power_on(stdout: String) -> Bool {
         Present { value: key } => if trim(key) == "System Power" {
           match fields.skip(n: 1).first() {
             Absent => acc
-            Present { value: v } => trim(v) == "on"
+            Present { value: v } => if trim(v) == "on" { ChassisPowerLineOn } else { ChassisPowerLineOff }
           }
         } else {
           acc
@@ -258,13 +278,18 @@ fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObse
 fn chassis_was_read(chassis: ChassisPowerObservation) -> Bool {
   match chassis {
     ChassisUnreadable => false
+    ChassisStatusUndecodable => false
     ChassisPowerRead { power_on: _ } => true
   }
 }
 
 fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation {
   if success {
-    ChassisPowerRead { power_on: chassis_power_on(stdout: stdout) }
+    match chassis_power_line(stdout: stdout) {
+      ChassisPowerLineOn => ChassisPowerRead { power_on: true }
+      ChassisPowerLineOff => ChassisPowerRead { power_on: false }
+      ChassisPowerLineAbsent => ChassisStatusUndecodable
+    }
   } else {
     ChassisUnreadable
   }
@@ -273,7 +298,7 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
 fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalObservation {
   if success {
     ThermalRead {
-      publication: sdr_temperature_publication(lines: sdr_decoded_lines(results: results)),
+      publication: sdr_temperature_publication(results: results),
       undecoded_line_count: sdr_unstructured_count(results: results),
     }
   } else {
@@ -445,6 +470,7 @@ fn render_thermal_detail(thermal: ThermalObservation) -> String {
 fn render_chassis(chassis: ChassisPowerObservation) -> String {
   match chassis {
     ChassisUnreadable => "UNREAD"
+    ChassisStatusUndecodable => "UNDECODABLE"
     ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
   }
 }
@@ -454,6 +480,7 @@ fn render_thermal_publication(publication: SdrTemperaturePublication) -> String 
     TemperaturePublished => "published"
     TemperatureSensorsSilent => "sensors-silent"
     TemperatureUndecodable => "UNDECODABLE"
+    TemperatureNoSensorRows => "NO-SENSOR-ROWS"
   }
 }
 

@@ -278,15 +278,49 @@ type SdrTemperaturePublication
   = TemperaturePublished
   | TemperatureSensorsSilent
   | TemperatureUndecodable
+  | TemperatureNoSensorRows
 
-fn sdr_temperature_publication(lines: List<SdrTypeLine>) -> SdrTemperaturePublication {
-  fold(lines, init: TemperatureSensorsSilent, f: (acc, l) => match sdr_temperature_reading(reading_text: l.reading_text) {
-    SdrTemperatureDegreesC { degrees: _ } => TemperaturePublished
-    SdrTemperatureNoReading => acc
-    SdrTemperatureUnrecognised { text: _ } => match acc {
-      TemperaturePublished => TemperaturePublished
-      TemperatureSensorsSilent => TemperatureUndecodable
-      TemperatureUndecodable => TemperatureUndecodable
-    }
-  })
+// THIS FOLD TAKES THE RAW RESULTS, NOT THE DECODED SUBSET, AND THAT IS THE WHOLE CORRECTION.
+//
+// It used to take List<SdrTypeLine> - the lines that survived STRUCTURAL decode - and start the
+// fold at TemperatureSensorsSilent. So a read whose every line failed structural decode handed this
+// function an EMPTY list, the fold never ran, and the initial value was returned: "this host
+// publishes no thermals", about a read where nothing was understood at all. Downstream that reads
+// as pre-POST and silently disables FailsafeHeldAfterPost, which is the one finding the observation
+// exists to be able to make.
+//
+// The caller could not have fixed it either. It held the undecoded count in its other hand and
+// would have had to JOIN two folds correctly to recover the truth; taking the results here means
+// there is no join to get wrong, and no way to pair this answer with someone else's count.
+//
+// FOUR STATES, EACH REACHABLE AND EACH MEANING SOMETHING DIFFERENT ABOUT THE EVIDENCE:
+//   TemperaturePublished    at least one row carried a magnitude
+//   TemperatureSensorsSilent  rows decoded, every one said No Reading - sensors present, quiet
+//   TemperatureUndecodable  something failed to decode, structurally or semantically, and nothing
+//                           published: the decoder's gap, not the sensor's silence
+//   TemperatureNoSensorRows the read succeeded and returned nothing at all - no temperature sensors
+//                           listed, which is not the same fact as sensors that are present and quiet
+fn sdr_temperature_publication(results: List<SdrLineResult>) -> SdrTemperaturePublication {
+  if results.length() == 0 {
+    TemperatureNoSensorRows
+  } else {
+    fold(results, init: TemperatureSensorsSilent, f: (acc, r) => match r {
+      SdrLineUnstructured { text: _ } => match acc {
+        TemperaturePublished => TemperaturePublished
+        TemperatureSensorsSilent => TemperatureUndecodable
+        TemperatureUndecodable => TemperatureUndecodable
+        TemperatureNoSensorRows => TemperatureUndecodable
+      }
+      SdrLineDecoded { line: l } => match sdr_temperature_reading(reading_text: l.reading_text) {
+        SdrTemperatureDegreesC { degrees: _ } => TemperaturePublished
+        SdrTemperatureNoReading => acc
+        SdrTemperatureUnrecognised { text: _ } => match acc {
+          TemperaturePublished => TemperaturePublished
+          TemperatureSensorsSilent => TemperatureUndecodable
+          TemperatureUndecodable => TemperatureUndecodable
+          TemperatureNoSensorRows => TemperatureUndecodable
+        }
+      }
+    })
+  }
 }

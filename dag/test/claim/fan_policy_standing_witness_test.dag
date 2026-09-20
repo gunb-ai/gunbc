@@ -29,6 +29,7 @@ import extdeps.bmc.ipmi_sdr {
   SdrTemperaturePublication,
   TemperaturePublished,
   TemperatureSensorsSilent,
+  TemperatureNoSensorRows,
   TemperatureUndecodable,
   sdr_temperature_publication,
   sdr_decode_line,
@@ -94,6 +95,8 @@ import product.fan_policy_standing {
 }
 import gunbc.machine_intake_bmc_fan_observation {
   ChassisPowerRead,
+  ChassisStatusUndecodable,
+  chassis_observation,
   ChassisUnreadable,
   FanObservationRound,
   FanSensorObservation,
@@ -102,7 +105,10 @@ import gunbc.machine_intake_bmc_fan_observation {
   ThermalRead,
   ThermalUnreadable,
   round_fan_lines,
-  chassis_power_on,
+  ChassisPowerLineAbsent,
+  ChassisPowerLineOff,
+  ChassisPowerLineOn,
+  chassis_power_line,
   elapsed_at_round,
   post_state_of_round,
   first_posted_round_index,
@@ -125,7 +131,7 @@ import gunbc.fleet_fan_converge_routes { fan_converge_route_for_family }
 // alternative is a witness whose verdict depends on a machine in someone's house being powered on.
 //
 // EXECUTED, AND THIS IS THE HALF THAT MAKES THE SUPPLY HONEST: everything from the decoder inward is
-// the real production path. sdr_decode_line, sdr_fan_reading, chassis_power_on, post_state_of_round,
+// the real production path. sdr_decode_line, sdr_fan_reading, chassis_power_line, post_state_of_round,
 // samples_of_round and fan_policy_standing_of_sample are the SAME functions the wet entry calls, not
 // shapes designed to match them. A change that broke the decoder would red these claims.
 //
@@ -263,13 +269,13 @@ test fn witness_unparseable_reading_is_a_decoder_gap_not_a_silent_sensor() -> Bo
   } && match sdr_temperature_reading(reading_text: "No Reading") {
     SdrTemperatureNoReading => true
     _ => false
-  } && match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(
+  } && match sdr_temperature_publication(results: (sdr_decode_lines(
     stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
   ))) {
     TemperatureUndecodable => true
     _ => false
   } && match post_state_of_round(round: witness_round_thermal(
-    publication: sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(
+    publication: sdr_temperature_publication(results: (sdr_decode_lines(
       stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
     )))
   )) {
@@ -289,11 +295,40 @@ test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> 
     && sdr_decoded_lines(results: results).length() == 1
 }
 
+// AN UNREAD CHASSIS LINE IS NOT A POWERED-OFF HOST, AND A GARBLED THERMAL READ IS NOT A SILENT ONE.
+//
+// TWO REDS FOR THE SAME CLASS, both of which the suite lacked and both of which were live. The
+// chassis parse started at `false`, so a successful `chassis status` that printed no
+// `System Power :` row answered power_on:false -- indistinguishable from the controller saying the
+// host is off, and routing to FailsafeBeforeHostTelemetry, the arm this module calls the contract
+// working rather than a finding. And sdr_temperature_publication took only the STRUCTURALLY decoded
+// lines, so a read where every line failed to decode handed it an empty list and got back the fold's
+// initial value: "sensors present and silent", about a read where nothing was understood.
+//
+// Each case below goes red on the pre-fix folds. The fourth pins the new empty-read arm apart from
+// silence, because "no temperature rows at all" and "rows that all said No Reading" are different
+// facts about the evidence even though both leave the host's thermals unknown.
+test fn witness_unparsed_chassis_and_undecodable_thermal_are_not_off_and_silent() -> Bool {
+  match chassis_observation(success: true, stdout: "Chassis Intrusion : inactive\nFront Panel Lockout : inactive\n") {
+    ChassisStatusUndecodable => true
+    _ => false
+  } && match chassis_observation(success: true, stdout: "System Power         : off\n") {
+    ChassisPowerRead { power_on: on } => !on
+    _ => false
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: "garbage\nmore garbage\n")) {
+    TemperatureUndecodable => true
+    _ => false
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: "")) {
+    TemperatureNoSensorRows => true
+    _ => false
+  }
+}
+
 test fn witness_temperature_publication_discriminates_post() -> Bool {
-  match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted))) {
+  match sdr_temperature_publication(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted)) {
     TemperaturePublished => true
     _ => false
-  } && match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost))) {
+  } && match sdr_temperature_publication(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost)) {
     TemperatureSensorsSilent => true
     _ => false
   }
@@ -303,13 +338,23 @@ test fn witness_temperature_publication_discriminates_post() -> Bool {
     }
 }
 
-// AN UNREADABLE CHASSIS STATUS IS NOT "POWERED OFF". The second half of this claim is the one that
-// matters: a controller that did not answer must not produce a sample whose power column says off,
-// because off is the arm where full-duty fans are unremarkable.
+// AN UNREADABLE CHASSIS STATUS IS NOT "POWERED OFF", and this claim now asserts what its name has
+// always said. It used to call chassis_power_on, a Bool, so the third case could only assert
+// !on -- which is the SAME VALUE the "off" case returns. The name promised a discrimination the
+// assertion could not make, and the defect review 69131 found was sitting directly under it: the
+// parse answered false for a missing line. Against a three-valued parse the third case is now a
+// distinct arm, and the claim reds if absence is ever folded back onto off.
 test fn witness_chassis_power_parses_and_absence_is_not_off() -> Bool {
-  chassis_power_on(stdout: "System Power         : on\nPower Overload       : false\n")
-    && !chassis_power_on(stdout: "System Power         : off\n")
-    && !chassis_power_on(stdout: "")
+  match chassis_power_line(stdout: "System Power         : on\nPower Overload       : false\n") {
+    ChassisPowerLineOn => true
+    _ => false
+  } && match chassis_power_line(stdout: "System Power         : off\n") {
+    ChassisPowerLineOff => true
+    _ => false
+  } && match chassis_power_line(stdout: "") {
+    ChassisPowerLineAbsent => true
+    _ => false
+  }
 }
 
 // ── the observation round, projected onto product-layer samples ────────────────────────────────
