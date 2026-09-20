@@ -11,6 +11,7 @@ import product.fabric.isolation {
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
 import extdeps.virtualization.firecracker {
+  firecracker_vcpu_range_v1_16_1,
   FirecrackerMachineConfig,
   FirecrackerVmConfig,
   FirecrackerDrive,
@@ -54,6 +55,7 @@ import gunbc.runner_microvm {
   MicroVmShapeResolved,
   MicroVmShapeRefused,
   RunnerMicroVmShapeRefusal,
+  ShapeRefusedVcpuCountUnsupported,
   ShapeRefusedWorkThreadsExceedEntitlement,
   ShapeRefusedWorkMemoryUnstated,
   ShapeRefusedReserveUnmodeled,
@@ -508,6 +510,18 @@ test fn a_zero_guest_memory_is_refused() -> Bool {
 test fn a_non_positive_vcpu_count_is_refused() -> Bool {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 0, mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: -2, mib: 4096))
+}
+
+// THE VMM'S OWN vCPU RANGE IS APPLIED AT THE HAND-AUTHORED CONFIG ENTRY TOO, so a configuration
+// that bypasses the shape cannot carry a count Firecracker refuses before boot: 32 is admitted,
+// 33 is the boundary refusal, 64 refuses harder. The range is the pinned release's row
+// (extdeps.virtualization.firecracker firecracker_vcpu_range_v1_16_1), not a literal here.
+test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool {
+  admission_is_admitted(a: admission_of_machine(vcpus: firecracker_vcpu_range_v1_16_1.maximum, mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: firecracker_vcpu_range_v1_16_1.maximum + 1, mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: 64, mib: 4096))
+    && firecracker_vcpu_range_v1_16_1.maximum == 32
+    && firecracker_vcpu_range_v1_16_1.minimum == 1
 }
 
 // AN UNREPRESENTABLE MEMORY SIZE IS REFUSED RATHER THAN WRAPPED. mebibyte_to_byte_size multiplies
@@ -983,21 +997,47 @@ test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -
   }
 }
 
-// A RELATIVE-ONLY ENTITLEMENT BOUNDS NOTHING ON THE CPU AXIS, SO THE WORK'S THREADS STAND. Under
-// the 2026-09-19 no-ceiling ruling this is the production arm: the slot carries CPUWeight and no
-// ceiling, and a relative share can refuse no count. An implementation that refused here would
-// refuse the whole fleet for a reason the operator has ruled is not one.
-test fn a_relative_only_entitlement_admits_the_works_threads_unbounded() -> Bool {
-  match shape_of(
-    work: work_with(threads: 64, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
+// A RELATIVE-ONLY ENTITLEMENT BOUNDS NOTHING ON THE CELL'S CPU AXIS, SO THE WORK'S THREADS STAND
+// -- WITHIN THE VMM'S OWN RANGE. Under the 2026-09-19 no-ceiling ruling this is the production
+// arm: the slot carries CPUWeight and no ceiling, and a relative share can refuse no count. What
+// still refuses is the pinned Firecracker release's range, which no cell policy lifts: 8 and 32
+// resolve, 33 is the boundary refusal and 64 refuses, each carrying the requested count and the
+// range. The count is never clamped to the maximum -- that would be a false admission.
+fn relative_only_shape(threads: Int) -> RunnerMicroVmShapeResolution {
+  shape_of(
+    work: work_with(threads: threads, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
     storage: fixture_storage(),
     cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
-  ) {
+  )
+}
+
+fn relative_only_resolves_with(threads: Int) -> Bool {
+  match relative_only_shape(threads: threads) {
     MicroVmShapeRefused { refusal: _ } => false
-    MicroVmShapeResolved { shape: s } => hardware_thread_count_value(t: s.size.vcpu_count) == 64
+    MicroVmShapeResolved { shape: s } => hardware_thread_count_value(t: s.size.vcpu_count) == threads
   }
+}
+
+fn relative_only_refuses_unsupported(threads: Int) -> Bool {
+  match relative_only_shape(threads: threads) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedVcpuCountUnsupported { requested: q, minimum: lo, maximum: hi } =>
+          hardware_thread_count_value(t: q) == threads && lo == 1 && hi == 32
+        _ => false
+      }
+  }
+}
+
+test fn a_relative_only_entitlement_admits_the_works_threads_within_the_vmm_range() -> Bool {
+  relative_only_resolves_with(threads: 8) && relative_only_resolves_with(threads: 32)
+}
+
+test fn a_thread_count_past_the_pinned_firecracker_range_refuses_the_shape() -> Bool {
+  relative_only_refuses_unsupported(threads: 33) && relative_only_refuses_unsupported(threads: 64)
 }
 
 test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_counts() -> Bool {

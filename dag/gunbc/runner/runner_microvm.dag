@@ -60,6 +60,10 @@ import extdeps.virtualization.firecracker {
   firecracker_config_has_single_root,
   firecracker_block_sector_size,
   firecracker_drive_guest_device,
+  firecracker_vcpu_range_v1_16_1,
+  firecracker_vcpu_count_admission,
+  VcpuCountAdmitted,
+  VcpuCountUnsupported,
 }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 
@@ -289,11 +293,18 @@ fn guest_resources_of_machine_config(mc: FirecrackerMachineConfig) -> GuestResou
           cause: "the guest machine configuration declares a vCPU count that is zero or negative, which is not a cardinality; the guest could not be started with it",
         }
       } else {
-        GuestResourcesValidated {
-          memory: GuestMemoryRequest {
-            bytes: mebibyte_to_byte_size(m: mebibyte(count: mc.mem_size_mib)),
-          },
-          vcpus: hardware_thread_count(count: mc.vcpu_count),
+        match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: mc.vcpu_count) {
+          VcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
+            GuestResourcesInvalid {
+              cause: join(["the guest machine configuration declares ", to_string(r), " vCPUs, outside the ", to_string(lo), "..", to_string(hi), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], ""),
+            }
+          VcpuCountAdmitted { count: _ } =>
+            GuestResourcesValidated {
+              memory: GuestMemoryRequest {
+                bytes: mebibyte_to_byte_size(m: mebibyte(count: mc.mem_size_mib)),
+              },
+              vcpus: hardware_thread_count(count: mc.vcpu_count),
+            }
         }
       }
     }
@@ -460,8 +471,11 @@ data runner_microvm_workspace_grant: Mebibyte = mebibyte(count: 4096)
 //
 // Four quantities, each with one source:
 //
-//   vCPUs        the Work's own hard thread requirement, admitted against the cell's absolute
-//                CPU entitlement when one is declared, and unbounded by the cell when the slot
+//   vCPUs        the Work's own hard thread requirement, admitted FIRST against the range the
+//                pinned Firecracker release accepts (extdeps.virtualization.firecracker
+//                firecracker_vcpu_range_v1_16_1 -- the VMM's own bound, which no cell policy can
+//                lift and which is never clamped to), then against the cell's absolute CPU
+//                entitlement when one is declared, and unbounded by the cell when the slot
 //                carries only a relative share (the 2026-09-19 no-ceiling ruling). The guest is
 //                sized to what the Work asks for, not to a quota: the VMM's own threads -- the API
 //                thread, the block and net device threads -- would draw on the same CPUQuota, and a
@@ -499,7 +513,8 @@ type RunnerMicroVmShape {
 }
 
 type RunnerMicroVmShapeRefusal
-  = ShapeRefusedWorkThreadsExceedEntitlement { required: HardwareThreadCount, entitled: HardwareThreadCount }
+  = ShapeRefusedVcpuCountUnsupported { requested: HardwareThreadCount, minimum: Int, maximum: Int }
+  | ShapeRefusedWorkThreadsExceedEntitlement { required: HardwareThreadCount, entitled: HardwareThreadCount }
   | ShapeRefusedWorkMemoryUnstated
   | ShapeRefusedReserveUnmodeled { cause: String }
   | ShapeRefusedReserveExceedsCell { reserve: ByteSize, envelope: ByteSize }
@@ -514,6 +529,8 @@ type RunnerMicroVmShapeResolution
 
 fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
   match r {
+    ShapeRefusedVcpuCountUnsupported { requested: r, minimum: lo, maximum: hi } =>
+      join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " vCPUs, outside the ", to_string(lo), "..", to_string(hi), " range the pinned Firecracker release accepts; the VMM would refuse the configuration before any boot"], "")
     ShapeRefusedWorkThreadsExceedEntitlement { required: r, entitled: e } =>
       join(["the work requires ", to_string(hardware_thread_count_value(t: r)), " threads and the cell entitles ", to_string(hardware_thread_count_value(t: e))], "")
     ShapeRefusedWorkMemoryUnstated =>
@@ -543,21 +560,28 @@ fn runner_microvm_shape(
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
-  match cpu {
-    CpuEntitlementRelativeOnly { cause: _ } => runner_microvm_shape_after_cpu_admitted(
-      work: work, storage: storage, envelope: envelope, reserve: reserve, cache_allowance: cache_allowance,
-      task_ceiling: task_ceiling, workspace: workspace,
-    )
-    CpuEntitlementAbsolute { threads: entitled } =>
-      if hardware_thread_count_value(t: work.shape.hard.threads) > hardware_thread_count_value(t: entitled) {
-        MicroVmShapeRefused {
-          refusal: ShapeRefusedWorkThreadsExceedEntitlement { required: work.shape.hard.threads, entitled: entitled },
-        }
-      } else {
-        runner_microvm_shape_after_cpu_admitted(
+  match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: hardware_thread_count_value(t: work.shape.hard.threads)) {
+    VcpuCountUnsupported { requested: _, minimum: lo, maximum: hi } =>
+      MicroVmShapeRefused {
+        refusal: ShapeRefusedVcpuCountUnsupported { requested: work.shape.hard.threads, minimum: lo, maximum: hi },
+      }
+    VcpuCountAdmitted { count: _ } =>
+      match cpu {
+        CpuEntitlementRelativeOnly { cause: _ } => runner_microvm_shape_after_cpu_admitted(
           work: work, storage: storage, envelope: envelope, reserve: reserve, cache_allowance: cache_allowance,
           task_ceiling: task_ceiling, workspace: workspace,
         )
+        CpuEntitlementAbsolute { threads: entitled } =>
+          if hardware_thread_count_value(t: work.shape.hard.threads) > hardware_thread_count_value(t: entitled) {
+            MicroVmShapeRefused {
+              refusal: ShapeRefusedWorkThreadsExceedEntitlement { required: work.shape.hard.threads, entitled: entitled },
+            }
+          } else {
+            runner_microvm_shape_after_cpu_admitted(
+              work: work, storage: storage, envelope: envelope, reserve: reserve, cache_allowance: cache_allowance,
+              task_ceiling: task_ceiling, workspace: workspace,
+            )
+          }
       }
   }
 }

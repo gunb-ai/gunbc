@@ -39,6 +39,37 @@ data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
   arch: "aarch64",
 }
 
+// THE vCPU RANGE THE PINNED RELEASE ACCEPTS, AS UPSTREAM STATES IT. Firecracker's machine
+// configuration admits `vcpu_count` in 1..=32 (docs/api_requests: "Number of vCPUs (either 1 or
+// an even number)" was the pre-1.0 wording; the current MachineConfig schema constrains the field
+// to minimum 1, maximum 32, and the VMM refuses a PUT /machine-config outside that range before
+// any boot). It is a fact about this RELEASE and lives beside its row, so a consumer that admits
+// a guest topology can refuse a count the VMM would refuse, rather than discovering it at boot as
+// an API error. A later release that widens the range changes this row and nothing downstream.
+type FirecrackerVcpuRange {
+  of_release: FirecrackerRelease
+  minimum: Int
+  maximum: Int
+}
+
+data firecracker_vcpu_range_v1_16_1: FirecrackerVcpuRange = FirecrackerVcpuRange {
+  of_release: firecracker_release_aarch64,
+  minimum: 1,
+  maximum: 32,
+}
+
+type FirecrackerVcpuAdmission
+  = VcpuCountAdmitted { count: Int }
+  | VcpuCountUnsupported { requested: Int, minimum: Int, maximum: Int }
+
+fn firecracker_vcpu_count_admission(range: FirecrackerVcpuRange, count: Int) -> FirecrackerVcpuAdmission {
+  if count < range.minimum || count > range.maximum {
+    VcpuCountUnsupported { requested: count, minimum: range.minimum, maximum: range.maximum }
+  } else {
+    VcpuCountAdmitted { count: count }
+  }
+}
+
 // THE HOST REQUIREMENT IS ONE FACT AND IT IS NOT NEGOTIABLE. Upstream states it as read/write
 // access to /dev/kvm exposed by the KVM module. Modeled as a datum rather than prose because a
 // consumer must be able to refuse on it, and prose cannot be read by an Accepted program.
