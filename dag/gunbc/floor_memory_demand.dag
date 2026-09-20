@@ -265,7 +265,12 @@ fn qualification_is_a_demand(q: FloorMemoryQualification) -> Bool {
 // A NEGATIVE COUNT IS A MALFORMED READ, NOT A MAGNITUDE. `memory.peak` and the `memory.events`
 // fields are documented as non-negative, so a leading minus means the read is wrong, and taking
 // its absolute value would fabricate a plausible number from a broken one.
-// 🟡 DISSOLVE-ON, AND THE ROW IS ANSWERED RATHER THAN WAVED THROUGH. The mechanical unit scan
+// 🟡 feature:host-substrate-measure-argument-surface dissolve-on: see below. Owning lane:
+// v1-hand-queue-drain, the same lane `gunbc.target_invocation_seed_growth`
+// `owning_dissolution_lane` names for this instrument's other hand-authored debt -- one lane, so
+// the two halves of the same seam are not tracked in two places.
+//
+// THE ROW IS ANSWERED RATHER THAN WAVED THROUGH. The mechanical unit scan
 // flags `peak_bytes: Int` below as a flat-scalar unit field, and two reviewers have now split on
 // it -- review 68906 refuted it as a correct host-to-substrate primitive boundary, review 68936
 // echoed it as unrefuted-by-the-diff. Both readings are fair, so the row gets a gate rather than
