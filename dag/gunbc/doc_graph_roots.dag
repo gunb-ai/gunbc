@@ -1646,6 +1646,16 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "runner-throughput-qualification-recut",
+    primary_work: DeclarationRef { module_path: "gunbc.runner_throughput_qualification", decl_name: "qualification_admission_consumer_frontier", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.runner_throughput_qualification", decl_name: "qualification_run_producer_frontier", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.recurring_failure_mode.witness_oracle_transcribed_from_the_tree_it_measures", decl_name: "witness_oracle_transcribed_from_the_tree_it_measures", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the four-type shape the operator's 2026-09-19 hold on gunbc#11722 rules -- SelectedRunnerQualification consumed as input, ObservedRunnerQualificationRun and RunnerThroughputAssessment as sole_constructor records, RunnerOfferDeliveryClaim joined by product.fabric.capacity_admission admit_delivered_offer -- is on main with every effectful route leg bound, and the first ObservedRunnerQualificationRun is minted from a real run on mtcollins1. SUFFICIENT FOR deleting this bind and docs/plans/runner-throughput-qualification-recut.md together: the two frontier rows bound here have dissolved and the plan describes a shipped system. NOT satisfied by the plan existing, by the recut landing with the legs still declared, or by a fixture-minted run.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-per-job-microvm-migration",
     primary_work: DeclarationRef { module_path: "gunbc.runner_attempt_launch", decl_name: "host_boot_cutover_frontier", field: WholeDeclaration },
     additional_works: [
