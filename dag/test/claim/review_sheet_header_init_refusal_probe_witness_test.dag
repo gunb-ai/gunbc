@@ -49,7 +49,7 @@ fn probe_source(name: String) -> String {
 // so the 1 asserted per probe below is the literal and not a row the closure carries anyway.
 data harness_control_source: String = "module probe_review_sheet_header_init_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
 
-data no_forgery_source: String = "module probe_review_sheet_header_init_no_forgery\nimport std.types { String }\nimport gunbc.review_sheet_formula_observation { formula_whole_tab_refusal_text, FormulaReadRangeUnqualified }\nimport gunbc.review_sheet_header_init { occupied_cell_text, OccupiedCell }\nfn text() -> String { formula_whole_tab_refusal_text(refusal: FormulaReadRangeUnqualified { range: \"A1:B2\" }) }\nfn located() -> String { occupied_cell_text(cell: OccupiedCell { sheet_row: 1, column_index: 0, raw: \"x\" }) }\n"
+data no_forgery_source: String = "module probe_review_sheet_header_init_no_forgery\nimport std.types { String }\nimport gunbc.review_sheet_formula_observation { formula_whole_tab_refusal_text, FormulaReadRangeUnqualified, occupied_cell_text, OccupiedCell }\nimport gunbc.review_sheet_header_init { header_init_plan_text }\nfn text() -> String { formula_whole_tab_refusal_text(refusal: FormulaReadRangeUnqualified { range: \"A1:B2\" }) }\nfn located() -> String { occupied_cell_text(cell: OccupiedCell { sheet_row: 1, column_index: 0, raw: \"x\" }) }\n"
 
 test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
   total_blocking_count_for(source: harness_control_source) == 0

@@ -10,10 +10,17 @@ module test.claim.review_sheet_header_init_witness
 // the returned-tab mismatch, by asking for a tab the fixture does not answer with. One fixture is
 // one response, so the arms that need a DIFFERENT response -- a COLUMNS-major grid, an
 // unrecognised majorDimension, an unreadable exchange, an unqualified or malformed returned range,
-// and every occupied grid -- are established against formula_grid_admit and first_occupied_cell
-// with the reading SUPPLIED (DESIGN 3: a witness discriminates at one interface). The pairing
-// obligation is discharged by the executed route: the mint reaches formula_grid_admit with the
-// real read, and plan_header_init reaches first_occupied_cell with the real carrier.
+// and every occupied grid -- are established against formula_grid_admit with the reading SUPPLIED
+// (DESIGN 3: a witness discriminates at one interface). The pairing obligation is discharged by
+// the executed route: the mint reaches formula_grid_admit with the real read, and plan_header_init
+// receives the real carrier.
+//
+// WHY EMPTINESS IS CLAIMED AT formula_grid_admit AND NOT AT THE PLANNER. Mutation M14 of
+// gunbc#11769 (planner ignores the grid) SURVIVED the first cut of this witness: the planner's
+// input was sealed, so no claim could hand it an occupied observation. Emptiness now lives in the
+// observation module's mint, the carrier exists only for an empty tab, and the occupied reading
+// is an unsealed located arm -- which is exactly what lets the planner's occupied arm be executed
+// here with a supplied reading (an_occupied_reading_is_planned_as_occupied_never_as_a_write).
 //
 // WHAT THE FIXTURE CANNOT SHOW, said plainly: that the mint passed FORMULA rather than
 // FORMATTED_VALUE to the wire. mock_response ignores its input. formula_whole_tab_render_option
@@ -71,8 +78,10 @@ import gunbc.review_sheet_values_actuator {
 import gunbc.review_sheet_formula_observation {
   FormulaWholeTabObservation,
   FormulaWholeTabReading,
-  FormulaWholeTabObserved,
+  FormulaWholeTabEmpty,
+  FormulaWholeTabOccupied,
   FormulaWholeTabRefused,
+  OccupiedCell,
   FormulaWholeTabRefusal,
   FormulaRequestRejected,
   FormulaReadUnreadable,
@@ -81,7 +90,8 @@ import gunbc.review_sheet_formula_observation {
   FormulaReadTabMismatch,
   FormulaReadNotRowMajor,
   FormulaGridAdmission,
-  FormulaGridAdmitted,
+  FormulaGridEmpty,
+  FormulaGridOccupied,
   FormulaGridRefused,
   formula_grid_admit,
   formula_whole_tab_render_option,
@@ -89,11 +99,6 @@ import gunbc.review_sheet_formula_observation {
 }
 import gunbc.review_sheet_header_init {
   HeaderRowWriteAuthorization,
-  OccupiedCell,
-  RowScan,
-  RowScanClear,
-  RowScanFound,
-  first_occupied_cell,
   HeaderRowSpan,
   HeaderRowSpanned,
   HeaderRowUnaddressable,
@@ -172,32 +177,27 @@ fn fixture_tab() -> String {
 
 fn observed_tab(reading: FormulaWholeTabReading) -> String {
   match reading {
-    FormulaWholeTabObserved { observation: o } => o.tab as String
+    FormulaWholeTabEmpty { observation: o } => o.tab as String
+    FormulaWholeTabOccupied { spreadsheet_id: _, tab: _, first: _ } => "<occupied>"
     FormulaWholeTabRefused { refusal: _ } => "<refused>"
-  }
-}
-
-fn observed_row_count(reading: FormulaWholeTabReading) -> Int {
-  match reading {
-    FormulaWholeTabObserved { observation: o } => count(o.rows)
-    FormulaWholeTabRefused { refusal: _ } => -1
   }
 }
 
 fn observed_spreadsheet(reading: FormulaWholeTabReading) -> String {
   match reading {
-    FormulaWholeTabObserved { observation: o } => o.spreadsheet_id as String
+    FormulaWholeTabEmpty { observation: o } => o.spreadsheet_id as String
+    FormulaWholeTabOccupied { spreadsheet_id: _, tab: _, first: _ } => "<occupied>"
     FormulaWholeTabRefused { refusal: _ } => "<refused>"
   }
 }
 
 // THE POSITIVE CONTROL FOR THE CONSTRUCTION WALL: the carrier obtained from its mint, cross-module,
-// its fields read. The fixture tab is the tab the fixture range names, the fixture omits values,
-// and the observation binds the spreadsheet it was asked about.
+// its fields read. The fixture tab is the tab the fixture range names, the fixture omits values
+// (so the judgement is EMPTY and the carrier is minted), and the observation binds the spreadsheet
+// it was asked about.
 test fn the_mint_observes_the_hermetic_empty_tab_binding_spreadsheet_and_tab() -> Bool {
   let reading = observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: whole_tab(tab: fixture_tab()))
   observed_tab(reading: reading) == fixture_tab()
-    && observed_row_count(reading: reading) == 0
     && observed_spreadsheet(reading: reading) == (w_spreadsheet as String)
 }
 
@@ -277,7 +277,8 @@ test fn a_schema_wider_than_the_enrolled_letters_is_unaddressable_not_truncated(
 
 fn refusal_of(reading: FormulaWholeTabReading) -> String {
   match reading {
-    FormulaWholeTabObserved { observation: _ } => "<observed>"
+    FormulaWholeTabEmpty { observation: _ } => "<empty>"
+    FormulaWholeTabOccupied { spreadsheet_id: _, tab: _, first: _ } => "<occupied>"
     FormulaWholeTabRefused { refusal: r } => refusal_text(r: r)
   }
 }
@@ -366,9 +367,14 @@ test fn the_mint_reads_under_formula_rendering() -> Bool {
 
 // -- the mint's refusals the fixture cannot answer, at the admission fold ------------------
 
+fn cell_text(c: OccupiedCell) -> String {
+  join(["r", to_string(c.sheet_row), "c", to_string(c.column_index), "=", c.raw], "")
+}
+
 fn admission_text(a: FormulaGridAdmission) -> String {
   match a {
-    FormulaGridAdmitted { tab: t, rows: rows } => join(["admitted ", t as String, " ", to_string(count(rows))], "")
+    FormulaGridEmpty { tab: t } => join(["empty ", t as String], "")
+    FormulaGridOccupied { tab: t, first: c } => join(["occupied ", t as String, " ", cell_text(c: c)], "")
     FormulaGridRefused { refusal: r } => refusal_text(r: r)
   }
 }
@@ -421,52 +427,52 @@ test fn a_qualified_or_whole_sheet_returned_range_naming_the_requested_tab_is_ad
   admission_text(a: formula_grid_admit(
     requested: whole_tab(tab: "Review"),
     read: read_of(range: "'Review'!A1:Z1000", dimension: Present { value: "ROWS" }, rows: [["", ""], ["x"]]),
-  )) == "admitted Review 2"
+  )) == "occupied Review r2c0=x"
     && admission_text(a: formula_grid_admit(
       requested: whole_tab(tab: "Review"),
       read: read_of(range: "'Review'", dimension: Absent, rows: []),
-    )) == "admitted Review 0"
+    )) == "empty Review"
 }
 
-// -- emptiness, fail-closed --------------------------------------------------------------
+// -- emptiness, fail-closed, at the admission fold ----------------------------------------
 
-fn scan_text(s: RowScan) -> String {
-  match s {
-    RowScanClear => "clear"
-    RowScanFound { found: c } => join(["r", to_string(c.sheet_row), "c", to_string(c.column_index), "=", c.raw], "")
-  }
+fn scan_text(rows: List<List<String>>) -> String {
+  admission_text(a: formula_grid_admit(
+    requested: whole_tab(tab: "Review"),
+    read: read_of(range: "'Review'!A1:Z1000", dimension: Absent, rows: rows),
+  ))
 }
 
 // THE DISCRIMINATING SPECIMEN FOR gunbc#11613 FINDING 2. Under FORMATTED_VALUE this cell reads back
 // as "" and is indistinguishable from a blank; under FORMULA rendering it is its formula text, so
-// the FORMULA grid is occupied at A1 and the located cell carries the formula.
+// the FORMULA grid is occupied at A1, the located cell carries the formula, and NO carrier is minted.
 test fn a_blank_rendering_formula_is_occupied_at_its_cell_under_formula_rendering() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [["=IF(TRUE,\"\",\"\")"]])) == "r1c0==IF(TRUE,\"\",\"\")"
+  scan_text(rows: [["=IF(TRUE,\"\",\"\")"]]) == "occupied Review r1c0==IF(TRUE,\"\",\"\")"
 }
 
 // The same grid as FORMATTED_VALUE would have returned it, and as the parked planner would have
-// read it: clear. This is the control that the specimen above discriminates on the RENDERING and
+// read it: empty. This is the control that the specimen above discriminates on the RENDERING and
 // not on some other property of the cell.
-test fn the_formatted_reading_of_that_cell_would_have_read_as_clear() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [[""]])) == "clear"
-    && scan_text(s: first_occupied_cell(rows: [])) == "clear"
+test fn the_formatted_reading_of_that_cell_would_have_read_as_empty() -> Bool {
+  scan_text(rows: [[""]]) == "empty Review"
+    && scan_text(rows: []) == "empty Review"
 }
 
 test fn whitespace_is_content() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [[" "]])) == "r1c0= "
+  scan_text(rows: [[" "]]) == "occupied Review r1c0= "
 }
 
 // A blank row 1 over data: the parked planner's headers == [] test would have called this empty.
 test fn a_blank_row_one_over_data_is_occupied_at_the_data_cell() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [["", ""], ["", "x"]])) == "r2c1=x"
+  scan_text(rows: [["", ""], ["", "x"]]) == "occupied Review r2c1=x"
 }
 
 test fn content_past_column_a_is_content() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [["", "", "z"]])) == "r1c2=z"
+  scan_text(rows: [["", "", "z"]]) == "occupied Review r1c2=z"
 }
 
 test fn the_first_occupied_cell_is_the_first_in_reading_order() -> Bool {
-  scan_text(s: first_occupied_cell(rows: [["", "b", "c"], ["a"]])) == "r1c1=b"
+  scan_text(rows: [["", "b", "c"], ["a"]]) == "occupied Review r1c1=b"
 }
 
 // -- the planner's other arms --------------------------------------------------------------
@@ -474,7 +480,7 @@ test fn the_first_occupied_cell_is_the_first_in_reading_order() -> Bool {
 fn plan_text(p: HeaderInitPlan) -> String {
   match p {
     HeaderInitWriteHeaderRow { authorization: a } => concat("write ", a.range)
-    HeaderInitTabOccupied { tab: t, first: c } => join(["occupied ", t as String, " ", scan_text(s: RowScanFound { found: c })], "")
+    HeaderInitTabOccupied { tab: t, first: c } => join(["occupied ", t as String, " ", cell_text(c: c)], "")
     HeaderInitHeaderRowUnaddressable { tab: t, header_count: n, addressable_columns: a } =>
       join(["unaddressable ", t as String, " ", to_string(n), "/", to_string(a)], "")
     HeaderInitTabTitleUnquotable { tab: t } => concat("unquotable ", t as String)
@@ -494,6 +500,24 @@ test fn a_refused_reading_is_carried_through_the_planner_with_its_cause() -> Boo
         },
         validated: v,
       )) == "refused tab-mismatch requested=Buyer Review returned=Sheet1"
+  }
+}
+
+// THE PLANNER'S OCCUPIED ARM, EXECUTED WITH A SUPPLIED READING -- the arm mutation M14 showed was
+// unmeasured while the observation carried a grid. The reading is the unsealed located arm, so a
+// witness can write it; the planner reports the located cell and mints nothing, whatever the schema.
+test fn an_occupied_reading_is_planned_as_occupied_never_as_a_write() -> Bool {
+  match minted(s: four_wide_schema()) {
+    SchemaMintRefused => false
+    SchemaMinted { validated: v } =>
+      plan_text(p: plan_header_init(
+        reading: FormulaWholeTabOccupied {
+          spreadsheet_id: w_spreadsheet,
+          tab: "Buyer Review" as NonEmptyStr,
+          first: OccupiedCell { sheet_row: 3, column_index: 1, raw: "=IF(TRUE,\"\",\"\")" },
+        },
+        validated: v,
+      )) == "occupied Buyer Review r3c1==IF(TRUE,\"\",\"\")"
   }
 }
 

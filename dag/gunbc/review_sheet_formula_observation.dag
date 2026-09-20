@@ -1,6 +1,6 @@
 module gunbc.review_sheet_formula_observation
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.resources { Network }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -46,14 +46,27 @@ import gunbc.review_sheet_values_actuator {
 // reporting that it initialised an empty tab. FORMULA rendering returns the formula text itself, so
 // under it a formula cell is never blank. This carrier is that reading.
 //
-// WHAT THE CARRIER PROVES, STATED AT ITS WIDTH. FormulaWholeTabObservation is one whole-tab
-// values.get of the named tab in the named spreadsheet under FORMULA rendering, read as a row-major
-// grid. Every cell it carries is the cell's VALUE or FORMULA; a cell that carries "" under this
-// reading holds neither. That is the fact a values write needs -- values.batchUpdate replaces
-// values and formulas and nothing else -- so a grid of "" is what establishes that a write will not
-// erase an existing value or formula. It says NOTHING about notes, formatting, data validation,
-// protected ranges, merges, or hidden sheets: none of those are values, none reach a values.get,
-// and a consumer that reads this carrier as "the sheet is physically empty" has widened it.
+// WHAT THE CARRIER PROVES, STATED AT ITS WIDTH. FormulaWholeTabObservation exists only for a tab
+// whose whole-tab values.get under FORMULA rendering, read as a row-major grid, returned NO cell
+// other than "": it is the proof of VALUE/FORMULA EMPTINESS of the named tab in the named
+// spreadsheet at the moment of that read, and nothing else. A cell that holds any value or any
+// formula (=IF(TRUE,"","") included, since FORMULA rendering returns the formula text) reads as
+// non-empty and the carrier is NOT minted for that tab: the reading is the typed, located
+// FormulaWholeTabOccupied arm instead. That is the fact a values write needs -- values.batchUpdate
+// replaces values and formulas and nothing else -- so holding the carrier is what establishes that
+// a values write will not erase an existing value or formula. It says NOTHING about notes,
+// formatting, data validation, protected ranges, merges, or hidden sheets: none of those are
+// values, none reach a values.get, and a consumer that reads this carrier as "the sheet is
+// physically empty" has widened it.
+//
+// THE CARRIER CARRIES NO GRID, AND THAT IS THE POINT. An earlier cut carried the rows and let the
+// planner decide emptiness. Mutation M14 of gunbc#11769 -- the planner ignoring the grid, so an
+// occupied observation still received the header-row write -- SURVIVED every claim: the planner
+// takes the sealed carrier, no witness can mint an occupied one, and the one hermetic fixture is
+// empty, so the planner's safety arm was asserted and never measured. Moving the decision here
+// makes that arm unwritable rather than untested: there is no grid for a consumer to ignore, an
+// occupied tab has no carrier at all, and the emptiness fold (formula_grid_admit) is public so it
+// is executed both over supplied grids and, through the mint, over the fixture.
 //
 // THE MINT PERFORMS THE READ, AND THERE IS NO OTHER MINT. The type is sole_constructor, so the
 // record literal is unwritable outside this module, and the one function that writes it,
@@ -67,10 +80,12 @@ import gunbc.review_sheet_values_actuator {
 // THE FOLDS AROUND THE READ ARE PURE AND PUBLIC SO A WITNESS CAN REDDEN THEM, and none of them
 // returns the carrier. admit_whole_tab_request (gunbc.review_sheet_sheets, shared with the ensure
 // assessment) refuses a bounded or column-bounded request BEFORE any read is spent;
-// formula_grid_admit turns the read outcome into an admitted grid or a typed refusal -- the
-// returned range decoded with the landed A1 codec and required to name the requested tab, the
-// grid required to be row-major. FormulaGridAdmitted is an ordinary record: it confers nothing,
-// and the planner (gunbc.review_sheet_header_init) takes only the carrier.
+// formula_grid_admit turns the read outcome into the empty verdict, the located occupied verdict,
+// or a typed refusal -- the returned range decoded with the landed A1 codec and required to name
+// the requested tab, the grid required to be row-major, then every cell of every row required to
+// be exactly "" (whitespace is content; [] is empty only because it has no cell, which is how
+// values.get spells a tab with no values). FormulaGridEmpty is an ordinary record: it confers
+// nothing, and the planner (gunbc.review_sheet_header_init) takes only the carrier.
 //
 // RUNG HONESTY (DESIGN 4b). On the v1 seed's acceptance path the wall is structural: a literal
 // outside this module is refused as SoleConstructorViolation, measured by
@@ -93,7 +108,52 @@ import gunbc.review_sheet_values_actuator {
 type FormulaWholeTabObservation sole_constructor {
   spreadsheet_id: NonEmptyStr
   tab: NonEmptyStr
-  rows: List<List<String>>
+}
+
+// THE FIRST CELL THAT IS NOT "", LOCATED: sheet_row is 1-based (row 1 is the header row),
+// column_index is 0-based within that row. The raw cell is carried so the report names what was
+// found -- under FORMULA rendering that is the formula text for a formula cell -- because the
+// private caller reports WHICH cell blocked initialisation, not merely that one did.
+type OccupiedCell {
+  sheet_row: Int
+  column_index: Int
+  raw: String
+}
+
+type RowScan
+  = RowScanClear
+  | RowScanFound { found: OccupiedCell }
+
+fn first_occupied_in_row(cells: List<String>, sheet_row: Int) -> RowScan {
+  let found =
+    cells
+      |> enumerate
+      |> filter(p => p.second != "")
+      |> map(p => OccupiedCell { sheet_row: sheet_row, column_index: p.first, raw: p.second })
+      |> first
+  match found {
+    Present { value: c } => RowScanFound { found: c }
+    Absent => RowScanClear
+  }
+}
+
+// Reading order: the first row that holds a non-"" cell, and the first such cell in it.
+fn first_occupied_cell(rows: List<List<String>>) -> RowScan {
+  rows
+    |> enumerate
+    |> fold(init: RowScanClear, f: (acc, p) =>
+      match acc {
+        RowScanFound { found: c } => RowScanFound { found: c }
+        RowScanClear => first_occupied_in_row(cells: p.second, sheet_row: p.first + 1)
+      })
+}
+
+fn occupied_cell_text(cell: OccupiedCell) -> String {
+  join([
+    "row ", to_string(cell.sheet_row),
+    " column index ", to_string(cell.column_index),
+    " holds ", cell.raw,
+  ], "")
 }
 
 // Every way the read does NOT establish the fact, each as its own arm with what it saw. The
@@ -125,14 +185,19 @@ fn formula_whole_tab_refusal_text(refusal: FormulaWholeTabRefusal) -> String {
   }
 }
 
+// THREE KINDS OF READING, AND ONLY ONE IS SEALED. An occupied tab is a legitimate observation --
+// the read succeeded and the tab holds something -- so it is its own located arm and never a
+// refusal; the three request-shape refusals and the readback refusals stay in FormulaWholeTabRefusal.
 type FormulaWholeTabReading
-  = FormulaWholeTabObserved { observation: FormulaWholeTabObservation }
+  = FormulaWholeTabEmpty { observation: FormulaWholeTabObservation }
+  | FormulaWholeTabOccupied { spreadsheet_id: NonEmptyStr, tab: NonEmptyStr, first: OccupiedCell }
   | FormulaWholeTabRefused { refusal: FormulaWholeTabRefusal }
 
-// The admitted grid is NOT the carrier. It is what the mint wraps once the read has been judged,
-// and it is public so the judging fold can be executed against supplied readings.
+// The judged read is NOT the carrier. FormulaGridEmpty is what the mint wraps, and the sum is
+// public so the judging fold can be executed against supplied readings.
 type FormulaGridAdmission
-  = FormulaGridAdmitted { tab: NonEmptyStr, rows: List<List<String>> }
+  = FormulaGridEmpty { tab: NonEmptyStr }
+  | FormulaGridOccupied { tab: NonEmptyStr, first: OccupiedCell }
   | FormulaGridRefused { refusal: FormulaWholeTabRefusal }
 
 // The tab a returned range names, through the landed codec. A whole-sheet spelling ('Tab') and a
@@ -157,7 +222,9 @@ fn returned_tab(range: String) -> ReturnedTab {
 // range is what Sheets answered, and the two must agree by the codec's reading -- an answer about
 // another tab is a fact about another tab. Absent values is the empty grid: values.get omits the
 // field when the range holds nothing, and value_range_row_major already reads that omission as
-// zero rows (ROWS is the upstream default when majorDimension is omitted).
+// zero rows (ROWS is the upstream default when majorDimension is omitted). Emptiness is decided
+// LAST, over the admitted row-major grid, and it is fail-closed: every cell of every row must be
+// exactly "", and the first that is not is returned located.
 fn formula_grid_admit(requested: SheetA1Range, read: ValuesReadOutcome) -> FormulaGridAdmission {
   match read {
     ValuesUnreadable { cause: c } => FormulaGridRefused { refusal: FormulaReadUnreadable { cause: c } }
@@ -173,7 +240,11 @@ fn formula_grid_admit(requested: SheetA1Range, read: ValuesReadOutcome) -> Formu
             match value_range_row_major(r: got) {
               RowsNotRowMajor { cause: c } =>
                 FormulaGridRefused { refusal: FormulaReadNotRowMajor { cause: c } }
-              RowsRead { rows: rows } => FormulaGridAdmitted { tab: t, rows: rows }
+              RowsRead { rows: rows } =>
+                match first_occupied_cell(rows: rows) {
+                  RowScanFound { found: c } => FormulaGridOccupied { tab: t, first: c }
+                  RowScanClear => FormulaGridEmpty { tab: t }
+                }
             }
           }
       }
@@ -188,8 +259,8 @@ fn formula_whole_tab_render_option() -> SheetsValueRenderOption {
 
 // THE ONLY MINT. A bounded or column-bounded request is refused before the read is spent; the read
 // is the values actuator's one call site under FORMULA rendering; the answer is judged by
-// formula_grid_admit; only an admitted grid becomes the carrier, and it is written here and
-// nowhere else.
+// formula_grid_admit; only an EMPTY judgement becomes the carrier, and it is written here and
+// nowhere else. An occupied tab is carried through located, with the spreadsheet it was read from.
 fn observe_formula_whole_tab(
   spreadsheet_id: NonEmptyStr,
   requested: SheetA1Range,
@@ -207,9 +278,11 @@ fn observe_formula_whole_tab(
         ),
       ) {
         FormulaGridRefused { refusal: r } => FormulaWholeTabRefused { refusal: r }
-        FormulaGridAdmitted { tab: t, rows: rows } =>
-          FormulaWholeTabObserved {
-            observation: FormulaWholeTabObservation { spreadsheet_id: spreadsheet_id, tab: t, rows: rows }
+        FormulaGridOccupied { tab: t, first: c } =>
+          FormulaWholeTabOccupied { spreadsheet_id: spreadsheet_id, tab: t, first: c }
+        FormulaGridEmpty { tab: t } =>
+          FormulaWholeTabEmpty {
+            observation: FormulaWholeTabObservation { spreadsheet_id: spreadsheet_id, tab: t }
           }
       }
   }

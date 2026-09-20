@@ -23,9 +23,12 @@ import gunbc.review_sheet_sheets { sheet_qualified_span }
 import gunbc.review_sheet_formula_observation {
   FormulaWholeTabObservation,
   FormulaWholeTabReading,
-  FormulaWholeTabObserved,
+  FormulaWholeTabEmpty,
+  FormulaWholeTabOccupied,
   FormulaWholeTabRefused,
   FormulaWholeTabRefusal,
+  OccupiedCell,
+  occupied_cell_text,
   formula_whole_tab_refusal_text,
 }
 
@@ -39,20 +42,22 @@ import gunbc.review_sheet_formula_observation {
 // write authorisation that consulted no observation at all (finding 4).
 //
 // ONE INPUT, ONE MINT. plan_header_init takes the reading gunbc.review_sheet_formula_observation
-// produced -- its carrier is sole_constructor and its only mint performs the FORMULA read -- and
-// the landed ValidatedHeaderSchema, whose only mint is validate_header_schema. It is the only
-// function that writes HeaderRowWriteAuthorization, which is itself sole_constructor. No helper
-// here returns the authorisation or a plan from caller-supplied parts: first_occupied_cell answers
-// a question about a grid and header_row_span a question about a schema, and neither confers
-// anything. The pieces H2 needs to perform the write are read off the authorisation
-// (header_row_value_range_write), never assembled beside it.
+// produced -- its carrier is sole_constructor, exists only for a tab whose FORMULA read held no
+// value or formula, and its only mint performs that read -- and the landed ValidatedHeaderSchema,
+// whose only mint is validate_header_schema. It is the only function that writes
+// HeaderRowWriteAuthorization, which is itself sole_constructor. No helper here returns the
+// authorisation or a plan from caller-supplied parts: header_row_span answers a question about a
+// schema and confers nothing. The pieces H2 needs to perform the write are read off the
+// authorisation (header_row_value_range_write), never assembled beside it.
 //
-// EMPTINESS IS FAIL-CLOSED. A tab is empty exactly when every cell of every row the FORMULA read
-// returned is "". A header list that is [] says nothing -- values.get omits the values field for an
-// empty range and returns a ragged grid otherwise, so "row 1 is empty" is a statement about one
-// row and "there are no rows" is the only zero. Whitespace is content: " " in A1 is a value the
-// operator or a formula put there, and a write over it erases it. The first cell that is not ""
-// is returned located, in reading order, so the operator is told WHICH cell stopped the write.
+// EMPTINESS IS NOT DECIDED HERE, AND THAT IS A CORRECTION. An earlier cut of this module took an
+// observation that carried the grid and scanned it for the first occupied cell, and mutation M14
+// of gunbc#11769 -- ignore the grid, plan the write anyway -- survived every claim, because the
+// planner's input is sealed and no witness could hand it an occupied one: the safety arm was
+// asserted and never measured. Now the observation module decides emptiness inside its mint, the
+// carrier IS the proof of value/formula emptiness, and an occupied tab arrives here as the located
+// FormulaWholeTabOccupied arm with no carrier at all. There is no grid in this module to ignore:
+// the write arm is reachable only from the carrier, by construction.
 //
 // THE RUNG IS THE SAME AS THE OBSERVATION'S. sole_constructor is enforced on the v1 seed's
 // acceptance path and parsed without enforcement on the native v2 path (gunbc.rung_drop
@@ -68,50 +73,6 @@ type HeaderRowWriteAuthorization sole_constructor {
   range: String
   span: A1RowSpan
   cells: List<String>
-}
-
-// The first cell that is not "", located: sheet_row is 1-based (row 1 is the header row),
-// column_index is 0-based within that row. The raw cell is carried so the refusal names what was
-// found -- under FORMULA rendering that is the formula text for a formula cell.
-type OccupiedCell {
-  sheet_row: Int
-  column_index: Int
-  raw: String
-}
-
-type RowScan
-  = RowScanClear
-  | RowScanFound { found: OccupiedCell }
-
-fn first_occupied_in_row(cells: List<String>, sheet_row: Int) -> RowScan {
-  let found =
-    cells
-      |> enumerate
-      |> filter(p => p.second != "")
-      |> map(p => OccupiedCell { sheet_row: sheet_row, column_index: p.first, raw: p.second })
-      |> first
-  match found {
-    Present { value: c } => RowScanFound { found: c }
-    Absent => RowScanClear
-  }
-}
-
-fn first_occupied_cell(rows: List<List<String>>) -> RowScan {
-  rows
-    |> enumerate
-    |> fold(init: RowScanClear, f: (acc, p) =>
-      match acc {
-        RowScanFound { found: c } => RowScanFound { found: c }
-        RowScanClear => first_occupied_in_row(cells: p.second, sheet_row: p.first + 1)
-      })
-}
-
-fn occupied_cell_text(cell: OccupiedCell) -> String {
-  join([
-    "row ", to_string(cell.sheet_row),
-    " column index ", to_string(cell.column_index),
-    " holds ", cell.raw,
-  ], "")
 }
 
 // The header row's span: A1 to the last header's column on row 1. The A1 column authority is the
@@ -136,34 +97,32 @@ type HeaderInitPlan
   | HeaderInitTabTitleUnquotable { tab: NonEmptyStr }
   | HeaderInitObservationRefused { refusal: FormulaWholeTabRefusal }
 
-// THE ONLY MINT of HeaderRowWriteAuthorization. Order: the observation's own refusal first (there
-// is no tab to speak of); then the grid, because a schema question is not asked of an occupied
-// tab; then the schema's address. The title encoding is asked last and is unreachable in practice
-// -- the observation's tab equals the tab the encoder already admitted at request time -- but the
-// codec's refusal is an arm of its result and the fold is total over it.
+// THE ONLY MINT of HeaderRowWriteAuthorization. Order: the observation's own refusal and the
+// occupied reading first (neither holds a carrier); then the schema's address. The title encoding
+// is asked last and is unreachable in practice -- the observation's tab equals the tab the encoder
+// already admitted at request time -- but the codec's refusal is an arm of its result and the
+// fold is total over it.
 fn plan_header_init(reading: FormulaWholeTabReading, validated: ValidatedHeaderSchema) -> HeaderInitPlan {
   match reading {
     FormulaWholeTabRefused { refusal: r } => HeaderInitObservationRefused { refusal: r }
-    FormulaWholeTabObserved { observation: o } =>
-      match first_occupied_cell(rows: o.rows) {
-        RowScanFound { found: c } => HeaderInitTabOccupied { tab: o.tab, first: c }
-        RowScanClear =>
-          match header_row_span(validated: validated) {
-            HeaderRowUnaddressable { header_count: n, addressable_columns: a } =>
-              HeaderInitHeaderRowUnaddressable { tab: o.tab, header_count: n, addressable_columns: a }
-            HeaderRowSpanned { span: s } =>
-              match sheet_qualified_span(tab: o.tab, span: s) {
-                A1TitleApostropheUnsupported { title: t } => HeaderInitTabTitleUnquotable { tab: t }
-                A1RangeEncoded { wire: w } =>
-                  HeaderInitWriteHeaderRow {
-                    authorization: HeaderRowWriteAuthorization {
-                      spreadsheet_id: o.spreadsheet_id,
-                      tab: o.tab,
-                      range: w,
-                      span: s,
-                      cells: map(review_sheet_header_names(validated: validated), n => n as String),
-                    }
-                  }
+    FormulaWholeTabOccupied { spreadsheet_id: _, tab: t, first: c } =>
+      HeaderInitTabOccupied { tab: t, first: c }
+    FormulaWholeTabEmpty { observation: o } =>
+      match header_row_span(validated: validated) {
+        HeaderRowUnaddressable { header_count: n, addressable_columns: a } =>
+          HeaderInitHeaderRowUnaddressable { tab: o.tab, header_count: n, addressable_columns: a }
+        HeaderRowSpanned { span: s } =>
+          match sheet_qualified_span(tab: o.tab, span: s) {
+            A1TitleApostropheUnsupported { title: t } => HeaderInitTabTitleUnquotable { tab: t }
+            A1RangeEncoded { wire: w } =>
+              HeaderInitWriteHeaderRow {
+                authorization: HeaderRowWriteAuthorization {
+                  spreadsheet_id: o.spreadsheet_id,
+                  tab: o.tab,
+                  range: w,
+                  span: s,
+                  cells: map(review_sheet_header_names(validated: validated), n => n as String),
+                }
               }
           }
       }
@@ -197,9 +156,10 @@ fn header_init_plan_text(plan: HeaderInitPlan) -> String {
 
 // THE CONSUMER IS PRIVATE AND LATER. strategy.buyer_review_live (gunbc-private, H2) plans the
 // header row from the FORMULA reading and performs the write from header_row_value_range_write
-// under its transaction, with an independent readback. The pure folds are executed by
-// test.claim.review_sheet_header_init_witness, and plan_header_init is executed there against the
-// hermetic values.get fixture; neither is a production consumer, so both routes below are frontier.
+// under its transaction, with an independent readback. header_row_span is executed by
+// test.claim.review_sheet_header_init_witness with supplied schemas, and plan_header_init is
+// executed there against the hermetic values.get fixture and against supplied occupied and refused
+// readings; a witness is not a production consumer, so the routes below are frontier.
 data review_sheet_header_init_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "plan_header_init"),
