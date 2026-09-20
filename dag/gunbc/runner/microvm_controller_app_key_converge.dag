@@ -47,9 +47,9 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_job_user }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.live_deploy.member_observe { path_parent, path_basename }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
 import gunbc.runner_host_file_converge {
+  administrator_ssh_target,
   RunnerHostFileStanding,
   HostFileIdentical,
   HostFileDiffers,
@@ -260,14 +260,14 @@ type StagingResidue
   | StagingResiduePresent { path: String }
   | StagingUnobservable { reason: String }
 
-fn staging_parent_listing_argv(dir: String) -> List<String> {
-  ["ls", "-1", "-A", "--", dir]
-}
-
 // PURE, over a listing that SUCCEEDED. The caller reaches this only on a successful leg, so every
-// arm here is a reading of what the parent contains -- there is no exit code to misread.
+// arm here is a reading of what the parent contains -- there is no exit code to misread. The argv
+// and the membership read are member_observe's (parent_listing_argv, listing_contains_entry): only
+// the TRANSPORT differs here, so only the transport is this module's. An earlier revision spelled
+// both again and the copies had already drifted -- this one trimmed each line and the original did
+// not, which is two sources answering one question differently (DESIGN §2).
 fn classify_staging_residue(path: String, name: String, stdout: String) -> StagingResidue {
-  if any(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l == name) {
+  if listing_contains_entry(stdout: stdout, name: name) {
     StagingResiduePresent { path: path }
   } else {
     StagingAbsent
@@ -445,13 +445,7 @@ fn controller_key_host(host: HostIdentity) -> ControllerKeyHostAdmission {
         }
       } else {
         ControllerKeyHostAdmitted {
-          subject: ControllerKeyHost {
-            host: host,
-            target: SshTarget {
-              endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-              principal: executor_bootstrap_principal.login,
-            },
-          },
+          subject: ControllerKeyHost { host: host, target: administrator_ssh_target(host: host) },
         }
       }
   }
@@ -624,7 +618,7 @@ fn clear_staging(
       if rc != 0 {
         StagingUnobservable { reason: join(["staging removal exit=", to_string(rc), " ", trim(s: re)], "") }
       } else {
-        match run_elevated_leg(subject: subject, context: context, argv: staging_parent_listing_argv(dir: staging_parent), stdin_payload: "") {
+        match run_elevated_leg(subject: subject, context: context, argv: parent_listing_argv(parent: staging_parent), stdin_payload: "") {
           ElevatedLegRefused { reason: r } => StagingUnobservable { reason: concat("staging parent not listed: ", r) }
           ElevatedLegRan { exit_code: c, stdout: o, stderr: e } =>
             if c != 0 {
