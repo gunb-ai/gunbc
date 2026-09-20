@@ -217,6 +217,16 @@ fn floor_typecheck_store_materialization_without_provider() -> ValueMaterializat
 // (LocalFilesystem) — the same axis reading that puts extdeps.realization.resolved_graph's
 // per-host content-addressed store at ArtifactTier.
 //
+// NOT A SECOND STORE BESIDE extdeps.realization.resolved_graph.resolved_graph_cache. That store is
+// content-addressed and per-host too, and the question "why two" is the right one to ask. They key
+// DIFFERENT COMPUTATIONS: resolved_graph_cache keys a whole entry's resolved graph by its closure
+// subject, and this row keys ONE TYPED MODULE by its own content. The grains are not
+// interchangeable — a one-module edit invalidates a whole closure subject and only that module and
+// its dependents here, which is the entire reason a per-module grain buys anything the whole-graph
+// grain does not. They also share the compiler-identity term rather than each deriving one
+// (resolved_graph_cache transform_content_digest), which is the fnv1a64 dual-surface discipline
+// applied: two providers, one identity authority, no second key scheme.
+
 // WHAT THIS DELIVERS TODAY, named so the row is not read as more than it is: the typed-module
 // content key's compiler-identity term is the running binary's content digest, and build.rs embeds
 // the checkout's commit in that binary, so a rebuild at ANY new commit — including a corpus-only
