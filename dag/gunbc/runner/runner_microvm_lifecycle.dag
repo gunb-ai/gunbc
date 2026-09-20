@@ -275,6 +275,7 @@ type ResourceReadback
 // the tap, conntrack for the reused guest address is empty, the ruleset digest equals the converged
 // one -- which is product.fabric.sanitation's SlotNetworkQuiescent, owed by a SlotScopedNetwork
 // readback, and not NetworkNamespaceRemoved, which is the attempt-scoped contract.
+//
 // THE SLOT NETWORK RESULT IS CONSUMED AS THE BOUND READBACK, NEVER AS A BARE VERDICT.
 //
 // gunbc.runner_microvm_network slot_network_readback returns a sealed BoundSlotNetworkReadback: the
