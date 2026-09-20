@@ -146,40 +146,26 @@ data nonzero_decimal_digit_roster: List<NonZeroDecimalDigit> = [
   NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD5, NonZeroD6, NonZeroD7, NonZeroD8, NonZeroD9
 ]
 
-// THE INVERSE OF decimal_digit_value, WRITTEN AS THE SAME CLOSED TABLE READ BACKWARDS. This was a
-// roster scan -- a fold over decimal_digit_roster calling decimal_digit_value on every digit for
-// every lookup -- which made the innermost step of every doubling and subtraction a ten-way
-// search; every digit of every 2^n paid it, and only a result memo could hide that. A value
-// outside 0..9 after the tens reduction answers D0 exactly as the scan's empty arm did.
 fn decimal_digit_of_units(value: Int) -> DecimalDigit {
   if value >= 10 {
     decimal_digit_of_units(value: value - 10)
-  } else if value == 0 { D0 }
-  else if value == 1 { D1 }
-  else if value == 2 { D2 }
-  else if value == 3 { D3 }
-  else if value == 4 { D4 }
-  else if value == 5 { D5 }
-  else if value == 6 { D6 }
-  else if value == 7 { D7 }
-  else if value == 8 { D8 }
-  else if value == 9 { D9 }
-  else { D0 }
+  } else {
+    fold_list(
+      xs: decimal_digit_roster,
+      empty: D0,
+      cons: fn(acc, d) { if decimal_digit_value(d: d) == value { d } else { acc } }
+    )
+  }
 }
 
-// Same shape for the non-zero digits; a value outside 1..9 answers NonZeroD1 as the scan's
-// empty arm did.
 fn nonzero_decimal_digit_of_positive_units(value: Int) -> NonZeroDecimalDigit {
-  if value == 1 { NonZeroD1 }
-  else if value == 2 { NonZeroD2 }
-  else if value == 3 { NonZeroD3 }
-  else if value == 4 { NonZeroD4 }
-  else if value == 5 { NonZeroD5 }
-  else if value == 6 { NonZeroD6 }
-  else if value == 7 { NonZeroD7 }
-  else if value == 8 { NonZeroD8 }
-  else if value == 9 { NonZeroD9 }
-  else { NonZeroD1 }
+  fold_list(
+    xs: nonzero_decimal_digit_roster,
+    empty: NonZeroD1,
+    cons: fn(acc, d) {
+      if decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: d)) == value { d } else { acc }
+    }
+  )
 }
 
 type DecimalDigitStep {
@@ -187,24 +173,9 @@ type DecimalDigitStep {
   carry: Bool
 }
 
-// 2d + carry, as the closed twenty-row table it is: the digit is the units of 2d + carry and
-// the carry out is whether that reached ten. Written out rather than computed through
-// decimal_digit_value and decimal_digit_of_units because this is the innermost step of every
-// doubling, executed once per digit per power of two; the table is the computation's own
-// truth table, not a second way to double.
 fn decimal_digit_double(d: DecimalDigit, carry_in: Bool) -> DecimalDigitStep {
-  match d {
-    D0 => DecimalDigitStep { digit: if carry_in { D1 } else { D0 }, carry: false }
-    D1 => DecimalDigitStep { digit: if carry_in { D3 } else { D2 }, carry: false }
-    D2 => DecimalDigitStep { digit: if carry_in { D5 } else { D4 }, carry: false }
-    D3 => DecimalDigitStep { digit: if carry_in { D7 } else { D6 }, carry: false }
-    D4 => DecimalDigitStep { digit: if carry_in { D9 } else { D8 }, carry: false }
-    D5 => DecimalDigitStep { digit: if carry_in { D1 } else { D0 }, carry: true }
-    D6 => DecimalDigitStep { digit: if carry_in { D3 } else { D2 }, carry: true }
-    D7 => DecimalDigitStep { digit: if carry_in { D5 } else { D4 }, carry: true }
-    D8 => DecimalDigitStep { digit: if carry_in { D7 } else { D6 }, carry: true }
-    D9 => DecimalDigitStep { digit: if carry_in { D9 } else { D8 }, carry: true }
-  }
+  let doubled = (2 * decimal_digit_value(d: d)) + (if carry_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: doubled), carry: doubled >= 10 }
 }
 
 fn decimal_digit_sub_borrow(d: DecimalDigit, borrow_in: Bool) -> DecimalDigitStep {
@@ -329,16 +300,31 @@ data integer_pow2_magnitudes_carried: List<DecimalNonZeroMagnitude> = integer_po
   remaining: integer_pow2_magnitude_widest_carried_exponent
 )
 
+// Walk the carried ladder by structure: the nth Cons holds 2^n, so reaching the target index is
+// the answer and running off the end means the exponent lies beyond what is carried, in which
+// case the chain continues from the last carried power by the same doubling. There is no index
+// lookup and therefore no miss arm inside the carried range: the table's length IS the range.
+fn integer_pow2_from_ladder(ladder: List<DecimalNonZeroMagnitude>, last: DecimalNonZeroMagnitude, exponent: Int) -> DecimalNonZeroMagnitude {
+  match ladder {
+    Cons { head: carried, tail: rest } =>
+      if exponent == 0 { carried } else { integer_pow2_from_ladder(ladder: rest, last: carried, exponent: exponent - 1) }
+    Empty => integer_pow2_beyond_ladder(from: last, remaining: exponent + 1)
+  }
+}
+
+fn integer_pow2_beyond_ladder(from: DecimalNonZeroMagnitude, remaining: Int) -> DecimalNonZeroMagnitude {
+  if remaining <= 0 { from } else { integer_pow2_beyond_ladder(from: decimal_nonzero_double(m: from), remaining: remaining - 1) }
+}
+
 fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
   if exponent <= 0 {
     DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
-  } else if exponent <= integer_pow2_magnitude_widest_carried_exponent {
-    match list_at_optional(xs: integer_pow2_magnitudes_carried, index: exponent) {
-      Present { value: carried } => carried
-      Absent => decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
-    }
   } else {
-    decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
+    integer_pow2_from_ladder(
+      ladder: integer_pow2_magnitudes_carried,
+      last: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty },
+      exponent: exponent
+    )
   }
 }
 
