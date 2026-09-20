@@ -2,6 +2,7 @@ module gunbc.runner_microvm_cell_readiness_store
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.resources { Filesystem, Network }
@@ -352,6 +353,14 @@ fn encode_attempt(a: InFlightAttempt) -> JsonValue {
   ])
 }
 
+// THE SLOT INDEX CROSSES Int TO Nat THROUGH std.checked_arithmetic, NOT THROUGH A CAST, and the
+// first cut of this decoder used the cast and FAILED at runtime on every in-flight record. `as Nat`
+// in a record-field position typechecks and refuses only when it EVALUATES (the crossing is admitted
+// at a function RETURN position and not inside a record literal), so a decoder written that way is
+// green on every typecheck and aborts mid-run on the first store it reads. The negative guard above
+// stays: checked_int_magnitude returns a MAGNITUDE, so it would turn -1 into slot 1 rather than
+// refusing, and a record naming a slot that does not exist must not become a record naming one that
+// does.
 fn decode_attempt(v: JsonValue) -> Decoded<InFlightAttempt> {
   match decoded_nonempty(obj: v, key: "host") {
     DecodeRefused { reason: r } => DecodeRefused { reason: r }
@@ -362,7 +371,12 @@ fn decode_attempt(v: JsonValue) -> Decoded<InFlightAttempt> {
           if idx < 0 {
             DecodeRefused { reason: "a record's `slot_index` is negative, so it names no slot" as NonEmptyStr }
           } else {
-            decode_attempt_after_slot(v: v, slot: RunnerSlotIdentity { host: host as HostIdentity, slot_index: idx as Nat })
+            match checked_int_magnitude(a: idx) {
+              CheckedNatOverflow { cause: _ } =>
+                DecodeRefused { reason: "a record's `slot_index` is not representable as a slot index" as NonEmptyStr }
+              CheckedNatReady { value: n } =>
+                decode_attempt_after_slot(v: v, slot: RunnerSlotIdentity { host: host as HostIdentity, slot_index: n })
+            }
           }
       }
   }
