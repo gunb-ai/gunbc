@@ -88,10 +88,9 @@ fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<Roa
 
 fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
   let parents = roadmap_parent_ids(edges: edges, node: node)
-  if count(parents) == 0 {
-    top_level()
-  } else {
-    under_parent(p: first(parents))
+  match first(parents) {
+    Absent => top_level()
+    Present { value: p } => under_parent(p: p)
   }
 }
 
@@ -542,18 +541,21 @@ fn acceptance_history_prior_prefix_mismatch_index_at(
   current: List<RoadmapAcceptanceEvent>,
   index: Int,
 ) -> Int {
-  if count(prior) == 0 {
-    index
-  } else if count(current) == 0 {
-    index
-  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
-    index
-  } else {
-    acceptance_history_prior_prefix_mismatch_index_at(
-      prior: drop_first_acceptance_event(events: prior),
-      current: drop_first_acceptance_event(events: current),
-      index: index + 1,
-    )
+  match first(prior) {
+    Absent => index
+    Present { value: p } => match first(current) {
+      Absent => index
+      Present { value: c } =>
+        if !acceptance_event_eq(a: p, b: c) {
+          index
+        } else {
+          acceptance_history_prior_prefix_mismatch_index_at(
+            prior: drop_first_acceptance_event(events: prior),
+            current: drop_first_acceptance_event(events: current),
+            index: index + 1,
+          )
+        }
+    }
   }
 }
 
@@ -568,16 +570,21 @@ fn acceptance_history_extends_prior(
   prior: List<RoadmapAcceptanceEvent>,
   current: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
-  if count(prior) == 0 {
-    true
-  } else if count(current) < count(prior) {
+  if count(current) < count(prior) {
     false
   } else {
-    acceptance_event_eq(a: first(prior), b: first(current))
-      && acceptance_history_extends_prior(
-        prior: drop_first_acceptance_event(events: prior),
-        current: drop_first_acceptance_event(events: current),
-      )
+    match first(prior) {
+      Absent => true
+      Present { value: p } => match first(current) {
+        Absent => false
+        Present { value: c } =>
+          acceptance_event_eq(a: p, b: c)
+            && acceptance_history_extends_prior(
+              prior: drop_first_acceptance_event(events: prior),
+              current: drop_first_acceptance_event(events: current),
+            )
+      }
+    }
   }
 }
 

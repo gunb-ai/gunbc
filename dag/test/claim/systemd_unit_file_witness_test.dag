@@ -1,7 +1,7 @@
 module test.claim.systemd_unit_file_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -50,6 +50,8 @@ import extdeps.systemd.unit_file {
   slice_tasks_max,
   slice_cpu_weight,
   slice_memory_max_unlimited,
+  slice_cpu_quota,
+  slice_cpu_quota_unbounded,
   slice_memory_high_unlimited,
   slice_memory_swap_max_unlimited,
   slice_tasks_max_unlimited,
@@ -369,6 +371,16 @@ test fn the_unlimited_mints_render_systemds_sentinel() -> Bool {
 test fn an_unlimited_ceiling_is_not_a_zero_ceiling() -> Bool {
   systemd_slice_directive_line(directive: slice_memory_max_unlimited())
     != systemd_slice_directive_line(directive: slice_memory_max(bytes: byte_size(count: 0)))
+}
+
+// `CPUQuota=` HAS NO `infinity` SPELLING, SO ITS UNSET IS THE EMPTY ASSIGNMENT. The RED is a mint
+// that rendered the reset through the unlimited sentinel (`CPUQuota=infinity`, which systemd's
+// parser rejects) or through the thread arm at zero (`CPUQuota=0%`, the strictest ceiling there
+// is). Both are the same defect the memory test above guards, on the one knob whose wire differs.
+test fn the_cpu_quota_unset_renders_the_empty_assignment() -> Bool {
+  systemd_slice_directive_line(directive: slice_cpu_quota_unbounded()) == "CPUQuota="
+    && systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
+      != systemd_slice_directive_line(directive: slice_cpu_quota(threads: hardware_thread_count(count: 0)))
 }
 
 fn slice_sample() -> SystemdUnitFile {
