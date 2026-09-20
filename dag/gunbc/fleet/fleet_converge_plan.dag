@@ -79,6 +79,7 @@ import gunbc.fabric_cell_effect {
 import gunbc.runner_host_grants {
   fabric_cell_effect_operations,
   fabric_allocation_store_effect_operations,
+  runner_host_wide_refused_operations,
 }
 import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_substrate_spec,
@@ -89,7 +90,7 @@ import gunbc.fabric_allocation_store_substrate {
   AllocationStoreDirectoryPresentUnexpected,
   allocation_store_substrate_prestate_wire,
 }
-import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
@@ -186,7 +187,10 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
   runner_host_deploy_for,
+  runner_host_spec_for,
   admit_runner_host,
 }
 import gunbc.runner_service_activation {
@@ -2490,7 +2494,7 @@ fn fleet_converge_apply_shell(
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } =>
-      "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
+      "this script runs timer teardown, the host-wide executor grants, runner-slot ADD, and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
@@ -2520,6 +2524,8 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
           [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
         ),
         concat(
+          host_wide_grant_apply_lines(host: host),
+        concat(
           ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
           concat(
             slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
@@ -2531,6 +2537,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
               ),
             ),
           ),
+        ),
         ),
       )
     LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
@@ -2585,6 +2592,50 @@ fn fabric_cell_apply_lines(
       fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
       fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// THE HOST-WIDE EXECUTOR GRANTS, APPLIED WHERE EVERY OTHER HOST MUTATION IS APPLIED. These are the
+// operations the executor owes the machine itself rather than any runner population: its converge
+// state directory, the runner tree's roots, membership of the group udev hands /dev/kvm to, and the
+// daemon reload. gunbc.runner.runner_host_grants has emitted them since it was written and
+// runner_host_sudoers_content rendered PERMISSION for each one, but nothing executed them -- so the
+// KVM grant arrived on srv2 by an operator typing the rendered argv by hand on 2026-09-05, which is
+// the rostered class gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path.
+//
+// THEY BELONG HERE AND NOT BESIDE THE OBSERVER THAT NEEDS THEM, which is that row's explicit
+// ruling: an applier reached outside this spine inherits none of fleet_converge_plan_held_lease, so
+// two applies against one baseline could both proceed, and an applier bolted beside
+// gunbc.runner_microvm_host_ready -- the module that DISCLAIMED the grant -- inherits the
+// disclaimer's blind spots. Emitted into apply.sh, each line is one plan-time-resolved argv that
+// the operator reads before approving, the whole script runs under the generation flock, and the
+// readback that decides whether the capability actually landed stays with the module that claims it
+// (runner_microvm_host_ready's kvm_group standing).
+//
+// THE SPEC, NOT THE DEPLOY, AND THE DIFFERENCE IS A HOST. Every other family here resolves through
+// runner_host_deploy_for and contributes nothing for a host whose width refuses. These rows depend
+// on no runner population -- that is exactly why runner_host_wide_refused_operations takes the spec
+// -- so resolving them through the deploy would silently deny srv2, a rostered host with a refused
+// width, the group membership its own installed sudoers already authorizes.
+//
+// EVERY ROW IS AN IDEMPOTENT ENSURE, so a script stopped part-way by `set -euo pipefail` reconciles
+// forward on the next apply: `usermod -aG` appending a group the login already holds exits 0
+// (measured on srv1, twice -- gunbc.executor_privileged_operation's precondition roster), and the
+// directory rows are ensures by construction.
+data host_wide_grant_apply_header: String = "# host-wide executor grants (gunbc.runner_host_grants runner_host_wide_refused_operations) — resolved at plan time, authorized by this host's rendered sudoers"
+
+fn host_wide_grant_apply_lines(host: NonEmptyStr) -> List<String> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: h } =>
+      [concat("# host-wide executor grants: no runner host spec for ", concat(h as String, " — no grants are declared for it, so none are applied"))]
+    RunnerHostSpecFound { spec: spec } =>
+      concat(
+        [host_wide_grant_apply_header],
+        map(
+          runner_host_wide_refused_operations(spec: spec),
+          op => executor_privileged_operation_converge_command(op: op),
+        ),
+      )
   }
 }
 

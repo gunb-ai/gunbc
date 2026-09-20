@@ -14,7 +14,9 @@ import gunbc.runner_microvm_host_ready {
   KvmDeviceStanding, KvmDeviceWritable, KvmDevicePresentNotWritable, KvmDeviceAbsent,
   FirecrackerBinaryStanding, FirecrackerInstalled, FirecrackerVersionMismatch, FirecrackerBinaryAbsent,
   FirecrackerHostStanding,
-  kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_standing_text,
+  KvmGroupEnrolment, KvmGroupEnrolled, KvmGroupNotEnrolled, KvmGroupEnrolmentUnreadable,
+  kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
+  group_names_contain, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
 }
 import extdeps.systemd.systemctl { SystemdReportsMemoryPeak, SystemdTooOldForMemoryPeak, SystemdVersionUnreadable, systemd_memory_peak_support }
@@ -34,25 +36,92 @@ test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool 
     && firecracker_version_line(rel: firecracker_release_aarch64) == "Firecracker v1.16.1"
 }
 
+// THE FIXTURE IS SUPPLIED AT ONE INTERFACE (DESIGN section 3): every claim below discriminates over
+// firecracker_host_ready / _in_this_process / the standing renderer, so the standing is constructed
+// rather than produced by running the host probes those claims are not about. The inhabitance claim
+// that the real producer emits this shape is the converge itself, which runs on a host and writes
+// runner-microvm-host-standing.txt; no witness can execute it and none pretends to.
+data witness_instruments: FootprintInstrumentStanding = FootprintInstrumentStanding {
+  instruments: [
+    InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentAbsent },
+    InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentAbsent },
+    InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentUnreadable { cause: "systemctl --version produced no readable line" } },
+  ],
+}
+
+data witness_installed: FirecrackerBinaryStanding = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
+
+data witness_enrolled: KvmGroupEnrolment = KvmGroupEnrolled { login: "ghrunner" as NonEmptyStr, group: "kvm" as NonEmptyStr }
+
+data witness_not_enrolled: KvmGroupEnrolment = KvmGroupNotEnrolled { login: "ghrunner" as NonEmptyStr, group: "kvm" as NonEmptyStr }
+
+fn witness_standing(kvm: KvmDeviceStanding, group: KvmGroupEnrolment, binary: FirecrackerBinaryStanding) -> FirecrackerHostStanding {
+  FirecrackerHostStanding { kvm: kvm, kvm_group: group, binary: binary, footprint_instruments: witness_instruments }
+}
+
 // The standing folds two facts; readiness needs both, and each refusal names what it lacks.
-test fn readiness_needs_a_writable_kvm_device_and_the_modeled_version() -> Bool {
-  let instruments = FootprintInstrumentStanding {
-    instruments: [
-      InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentAbsent },
-      InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentAbsent },
-      InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentUnreadable { cause: "systemctl --version produced no readable line" } },
-    ],
-  }
-  let ready = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }, footprint_instruments: instruments }
-  let no_kvm = FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: ready.binary, footprint_instruments: instruments }
-  let unwritable = FirecrackerHostStanding { kvm: KvmDevicePresentNotWritable, binary: ready.binary, footprint_instruments: instruments }
-  let absent = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" }, footprint_instruments: instruments }
+test fn readiness_needs_a_reachable_kvm_device_and_the_modeled_version() -> Bool {
+  let ready = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: witness_installed)
+  let no_kvm = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
+  let unwritable = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
+  let absent = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" })
   firecracker_host_ready(standing: ready)
     && !firecracker_host_ready(standing: no_kvm)
     && !firecracker_host_ready(standing: unwritable)
     && !firecracker_host_ready(standing: absent)
-    && string_contains(s: firecracker_host_standing_text(s: unwritable), pattern: "kvm group membership is a runner-host grant")
+    && string_contains(s: firecracker_host_standing_text(s: unwritable), pattern: "kvm-group=not-enrolled")
     && string_contains(s: firecracker_host_standing_text(s: ready), pattern: "standing=ready")
+}
+
+// THE CLAIM THE WHOLE GRANT WIRING RESTS ON. A supplementary group enters a process at its exec, so
+// the converge that applies the grant observes present-not-writable from its own credentials. If
+// readiness required THIS process to open the device, a converged host would refuse forever and the
+// mode would report failure for work it had just completed correctly. Enrolment carries it; and the
+// carry is not unconditional -- an ABSENT device is not made reachable by any membership.
+test fn enrolment_carries_a_host_whose_converging_process_cannot_yet_open_the_device() -> Bool {
+  let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
+  let ungranted = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_not_enrolled, binary: witness_installed)
+  let no_device = witness_standing(kvm: KvmDeviceAbsent, group: witness_enrolled, binary: witness_installed)
+  firecracker_host_ready(standing: mid_converge)
+    && !firecracker_host_ready(standing: ungranted)
+    && !firecracker_host_ready(standing: no_device)
+    && string_contains(s: firecracker_host_standing_text(s: mid_converge), pattern: "effective for executor incarnations started AFTER this line")
+}
+
+// UNREADABLE IS NOT NOT-ENROLLED. A probe that could not answer must not carry a host to ready, and
+// must not render as a missing grant either -- the two send an operator to opposite remedies.
+test fn an_unreadable_membership_neither_carries_nor_reads_as_a_missing_grant() -> Bool {
+  let unreadable = witness_standing(
+    kvm: KvmDevicePresentNotWritable,
+    group: KvmGroupEnrolmentUnreadable { login: "ghrunner" as NonEmptyStr, cause: "id -nG exited 1: no such user" },
+    binary: witness_installed,
+  )
+  !firecracker_host_ready(standing: unreadable)
+    && string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=unreadable")
+    && !string_contains(s: firecracker_host_standing_text(s: unreadable), pattern: "kvm-group=not-enrolled")
+}
+
+// THE BOOT PROBE ASKS A DIFFERENT QUESTION AND MUST GET A DIFFERENT ANSWER. It opens /dev/kvm in
+// its own process, so an enrolment it did not inherit does not help it; gating it on converge
+// readiness would make it attempt a boot it cannot perform and report a VMM failure as an IMAGE
+// verdict.
+test fn the_in_process_predicate_refuses_exactly_where_the_converge_predicate_carries() -> Bool {
+  let mid_converge = witness_standing(kvm: KvmDevicePresentNotWritable, group: witness_enrolled, binary: witness_installed)
+  let picked_up = witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: witness_installed)
+  firecracker_host_ready(standing: mid_converge)
+    && !firecracker_host_ready_in_this_process(standing: mid_converge)
+    && firecracker_host_ready_in_this_process(standing: picked_up)
+    && !firecracker_host_ready_in_this_process(standing: witness_standing(kvm: KvmDeviceWritable, group: witness_enrolled, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" }))
+}
+
+// THE READBACK MATCHES WHOLE NAMES. `id -nG` prints names separated by single spaces, and a
+// substring test would accept "kvm-admin" -- an unrelated group -- as evidence that the executor may
+// open /dev/kvm.
+test fn the_group_readback_matches_a_whole_name_and_not_a_prefix() -> Bool {
+  group_names_contain(output: "ghrunner docker kvm\n", group: "kvm" as NonEmptyStr)
+    && group_names_contain(output: "kvm", group: "kvm" as NonEmptyStr)
+    && !group_names_contain(output: "ghrunner kvm-admin libvirt\n", group: "kvm" as NonEmptyStr)
+    && !group_names_contain(output: "", group: "kvm" as NonEmptyStr)
 }
 
 // RED control: a binary that answers another version is a mismatch, never installed.
@@ -132,9 +201,9 @@ test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
     ],
   }
   let installed = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
-  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: bare })
-    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: equipped })
-    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: installed, footprint_instruments: equipped })
+  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, binary: installed, footprint_instruments: bare })
+    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, kvm_group: witness_enrolled, binary: installed, footprint_instruments: equipped })
+    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, kvm_group: witness_enrolled, binary: installed, footprint_instruments: equipped })
 }
 
 // THE VERSION GATE, WHICH NOTHING EXERCISED UNTIL NOW AND WHICH WAS WRONG THE WHOLE TIME. Before
@@ -186,6 +255,7 @@ test fn the_memory_peak_threshold_admits_254_and_refuses_253() -> Bool {
 test fn the_standing_text_reports_the_instruments() -> Bool {
   let equipped = FirecrackerHostStanding {
     kvm: KvmDeviceWritable,
+    kvm_group: witness_enrolled,
     binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" },
     footprint_instruments: FootprintInstrumentStanding {
       instruments: [

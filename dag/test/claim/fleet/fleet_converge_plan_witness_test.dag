@@ -642,6 +642,45 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
   }
 }
 
+// THE GRANT THAT NOBODY EXECUTED IS NOW IN THE SCRIPT THAT EXECUTES, and this claim is what makes
+// that a fact rather than an intention. gunbc.recurring_failure_mode
+// capability_arrives_outside_the_converged_path was opened because /dev/kvm membership was granted
+// in sudoers and applied by an operator's hand -- so the discriminating assertion is the EXACT
+// elevated argv, not the presence of the word "kvm": a line that names the group but a different
+// binary, login or flag would satisfy a looser check and would not grant anything.
+//
+// THE NEGATIVE HALF IS A HOST WITH NO ROSTER ROW, which must contribute a stated refusal line and
+// no executable grant. Without it this claim would pass on a fold that emitted the same grants for
+// every host, which is a privilege placed on a machine no roster names.
+test fn the_full_host_apply_script_carries_the_hosts_own_executor_grants() -> Bool {
+  let rostered = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  let unrostered = fleet_converge_plan_artifact(
+    host: "srv-not-rostered" as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  )
+  string_contains(s: rostered.apply_shell, pattern: "'/usr/bin/sudo' '-n' '/usr/sbin/usermod' '-aG' 'kvm' 'ghrunner'")
+    && string_contains(s: rostered.apply_shell, pattern: "host-wide executor grants (gunbc.runner_host_grants runner_host_wide_refused_operations)")
+    && !string_contains(s: unrostered.apply_shell, pattern: "usermod")
+    && string_contains(s: unrostered.apply_shell, pattern: "no runner host spec for srv-not-rostered")
+}
+
 // The stale diagnostic names the observed generation as ONE word. Split across two echo
 // arguments it renders `observed= 4`, which reads as an empty observation followed by a
 // number — precisely the confusion this PR removes from the guard itself (review 54519).
