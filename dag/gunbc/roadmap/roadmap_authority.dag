@@ -700,10 +700,15 @@ fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract 
 // worker commits, when the file exists; until then an unauthored witness fails verification as
 // oracle-missing, which is the truthful outcome for work not yet done.
 
+// TEMPORARY MACHINERY-SMOKE BINDING (2026-09-20): points at the already-green shell_typed_invocation
+// witness so one dispatch can prove the launch -> worker -> belt -> verify path end to end. This is
+// the coverage-by-illusion tier BY DESIGN for one run — it proves Verify executes, nothing about
+// the node. Restore the real binding (the worker-authored acceptance witness, named below in the
+// comment's table entry) the moment the seeded red witness for this node lands.
 fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag" as FilePath,
-    function: "cron_entry_line_builder_acceptance_holds" as NonEmptyStr,
+    entry: "dag/test/claim/shell/shell_typed_invocation_witness_test.dag" as FilePath,
+    function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
   )
 }
 
