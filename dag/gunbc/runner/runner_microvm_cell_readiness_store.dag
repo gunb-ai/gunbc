@@ -799,6 +799,23 @@ fn read_entry_for_cell(rs: List<CellReadinessRecord>, name: String, named: CellI
   }
 }
 
+// THE FILENAME/BODY JOIN IS A PURE FOLD SO IT CAN BE CLAIMED WITHOUT A HOST. The read around it is
+// wet by necessity; this is the part that decides, and a discriminator for it has to be authorable
+// or the one-file-per-cell guarantee is a shape nobody checks.
+fn filename_body_disagreement(path: String, named: CellId, record: CellReadinessRecord) -> NonEmptyStr? {
+  if (record_cell(record: record) as String) == (named as String) {
+    none
+  } else {
+    Present {
+      value: join([
+        "the cell record at ", path, " is keyed for ", named as String,
+        " and its body names ", record_cell(record: record) as String,
+        ", so the store's filenames and contents disagree",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
 fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: CellId) -> NamedRecords
   uses fs: Filesystem
 {
@@ -809,16 +826,9 @@ fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: Cel
     match decode_record_document(text: body.content) {
       DecodeRefused { reason: r } => NamedRecordsUnread { reason: r }
       DecodeOk { value: rec } =>
-        if (record_cell(record: rec) as String) == (named as String) {
-          NamedRecordsRead { records: concat(rs, [rec]) }
-        } else {
-          NamedRecordsUnread {
-            reason: join([
-              "the cell record at ", path, " is keyed for ", named as String,
-              " and its body names ", record_cell(record: rec) as String,
-              ", so the store's filenames and contents disagree",
-            ], "") as NonEmptyStr,
-          }
+        match filename_body_disagreement(path: path, named: named, record: rec) {
+          Present { value: why } => NamedRecordsUnread { reason: why }
+          Absent => NamedRecordsRead { records: concat(rs, [rec]) }
         }
     }
   }

@@ -19,6 +19,11 @@ import gunbc.runner_microvm_cell_readiness_store {
   Decoded, DecodeOk, DecodeRefused,
   encode_record_document, decode_store_documents, decode_record_document,
   CellRecordPath, CellRecordAt, CellRecordNameRefused, cell_record_path,
+  cell_of_record_filename, filename_body_disagreement,
+  StoreOwnershipReading, OwnershipRead, OwnershipUnread, ownership_of_readings,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
 }
 
 // THE STORE'S CODEC, AND THE ONE THING A CODEC WITNESS MUST NOT DO.
@@ -255,5 +260,70 @@ test fn an_ordinary_cell_addresses_a_file_in_the_store_directory() -> Bool {
   match cell_record_path(cell: witness_cell) {
     CellRecordAt { path: p } => p == "/var/lib/gunbc/microvm-cell-readiness/srv1-07.json"
     CellRecordNameRefused { spelling: _ } => false
+  }
+}
+
+// A FILENAME AND A BODY THAT NAME DIFFERENT CELLS REFUSE -- THE DISCRIMINATOR FOR ONE-FILE-PER-CELL.
+//
+// The store's whole cross-cell guarantee is that a writer only ever holds its own cell's bytes, and
+// that holds on the WRITE side by construction. On the READ side it is a check, and without this
+// claim it is an unchecked one: a reader that took the body's cell and discarded the filename would
+// index srv1-07.json as srv1-08, and the legitimate srv1-07 write would later land in that same file
+// and erase it, with nothing refusing anywhere (side-chat ruling on gunbc#11803).
+//
+// THE AGREEING CASE IS ASSERTED BESIDE IT so a join that refused everything could not pass.
+test fn a_filename_and_a_body_that_name_different_cells_refuse() -> Bool {
+  let srv1_07 = CellSettled { cell: witness_cell, generation: 3, readiness: CellReady { cell: witness_cell } }
+  let srv1_08 = CellSettled { cell: "srv1-08" as CellId, generation: 3, readiness: CellReady { cell: "srv1-08" as CellId } }
+  disagrees(named: witness_cell, record: srv1_08)
+    && disagrees(named: "srv1-08" as CellId, record: srv1_07)
+    && !disagrees(named: witness_cell, record: srv1_07)
+}
+
+fn disagrees(named: CellId, record: CellReadinessRecord) -> Bool {
+  match filename_body_disagreement(path: "/var/lib/gunbc/microvm-cell-readiness/x.json", named: named, record: record) {
+    Present { value: r } => (r as String) != ""
+    Absent => false
+  }
+}
+
+// A FILENAME THE WRITER COULD NOT HAVE PRODUCED IS REFUSED RATHER THAN INDEXED UNDER ITS STEM. The
+// reader derives the cell through the same path builder the writer uses and requires the round trip,
+// so a name that resolves to some other path -- or to none -- never becomes a key.
+test fn a_filename_the_writer_could_not_produce_is_refused() -> Bool {
+  names_a_cell(name: "srv1-07.json")
+    && !names_a_cell(name: ".json")
+    && !names_a_cell(name: "...json")
+    && !names_a_cell(name: "a/b.json")
+}
+
+fn names_a_cell(name: String) -> Bool {
+  match cell_of_record_filename(name: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A WRITABLE RECORD IS NOT ROOT'S, WHATEVER THE DIRECTORY SAYS. A root-owned directory nobody else
+// may write stops a record being CREATED there; it says nothing about one already inside that the
+// tenant can still rewrite. This is the fold the per-entry admission runs, claimed on its own: uid 0
+// AND no write bit outside root, with each half's failure asserted separately so neither can carry
+// the other.
+test fn an_entry_is_roots_only_when_both_the_owner_and_the_mode_say_so() -> Bool {
+  root_owned(uid: "0", mode: "600")
+    && !root_owned(uid: "1000", mode: "600")
+    && !root_owned(uid: "0", mode: "660")
+    && !root_owned(uid: "0", mode: "606")
+    && root_owned(uid: "0", mode: "400")
+}
+
+fn root_owned(uid: String, mode: String) -> Bool {
+  match ownership_of_readings(uid_text: uid, mode_text: mode) {
+    OwnershipRead { ownership: o } =>
+      match o {
+        StoreRootOwned => true
+        StoreNotRootOwned { owner_uid: _, mode: _ } => false
+      }
+    OwnershipUnread { reason: _ } => false
   }
 }
