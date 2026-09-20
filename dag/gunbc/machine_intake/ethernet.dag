@@ -1,0 +1,171 @@
+module gunbc.machine_intake_ethernet
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.standards.nic_attachment { NicAttachmentClass }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
+import extdeps.network.mac { Eui48Address }
+import gunbc.machine_intake_subject { UnitKey }
+
+// ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
+// address as the host PXE interface. Mt. Jade's rear panel can carry a dedicated BMC RJ45
+// plus a dual-port host module, and one of those host ports may also bind BMC NCSI. A Bool
+// "is dedicated management" cannot represent that. Connector identity and function bindings
+// are therefore separate types. Expansion-card attachment is the standard
+// NicAttachmentClass, not a second PcieCem/OcpNic3 spelling.
+// Panel text is an observation. Identity is an observed unit key + locator + attachment.
+// An unobserved unit cannot mint SameUnit or DistinctUnits; matching discriminator prose
+// is not a unit key. An unobserved function cannot mint SameFunction or DistinctFunctions;
+// matching discriminator prose is not a function key.
+
+type EthernetAttachment
+  = BaseboardOnboard
+  | NicClass { class: NicAttachmentClass }
+  | AttachmentUnobserved { discriminator: NonEmptyStr }
+
+type EthernetPortUnit
+  = PortOnUnit { key: UnitKey }
+  | PortUnitUnobserved { discriminator: NonEmptyStr }
+
+type PhysicalEthernetPort {
+  unit: EthernetPortUnit
+  panel_label: NonEmptyStr
+  connector_label: NonEmptyStr
+  attachment: EthernetAttachment
+}
+
+type EthernetFunction
+  = BmcDedicated
+  | BmcNcsi
+  | HostData
+  | PrebootNetwork
+  | FunctionUnobserved { discriminator: NonEmptyStr }
+
+type EthernetFunctionBinding {
+  port: PhysicalEthernetPort
+  function: EthernetFunction
+}
+
+type EthernetLinkAddress
+  = ConfiguredLink { configured: Eui48Address }
+  | PermanentAndConfigured { permanent: Eui48Address, configured: Eui48Address }
+
+type ObservedEthernetLan {
+  binding: EthernetFunctionBinding
+  network_address: Ipv4Address
+  link: EthernetLinkAddress
+}
+
+type PortUnitIdentityStanding
+  = ObservedSameUnit
+  | ObservedDistinctUnits
+  | PortUnitIdentityUnobserved { discriminator: NonEmptyStr }
+
+type ConnectorIdentityStanding
+  = SameConnector
+  | DistinctConnectors
+  | ConnectorIdentityUnobserved { discriminator: NonEmptyStr }
+
+type FunctionIdentityStanding
+  = ObservedSameFunction
+  | ObservedDistinctFunctions
+  | FunctionIdentityUnobserved { discriminator: NonEmptyStr }
+
+type ConnectorFunctionStanding
+  = ObservedMultipleFunctions
+  | ObservedSingleFunction
+  | FunctionsOnDistinctConnectors
+  | ConnectorFunctionUnobserved { discriminator: NonEmptyStr }
+
+fn ethernet_port_unit_identity(a: EthernetPortUnit, b: EthernetPortUnit) -> PortUnitIdentityStanding {
+  match a {
+    PortOnUnit { key: ka } =>
+      match b {
+        PortOnUnit { key: kb } =>
+          if (ka as String) == (kb as String) {
+            ObservedSameUnit
+          } else {
+            ObservedDistinctUnits
+          }
+        PortUnitUnobserved { discriminator: _ } =>
+          PortUnitIdentityUnobserved {
+            discriminator: "one port binds a unit key and the other does not",
+          }
+      }
+    PortUnitUnobserved { discriminator: _ } =>
+      PortUnitIdentityUnobserved {
+        discriminator: "at least one port has no unit key; matching unobserved prose is not unit identity",
+      }
+  }
+}
+
+fn ethernet_locator_and_attachment_match(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
+  (a.panel_label as String) == (b.panel_label as String)
+    && (a.connector_label as String) == (b.connector_label as String)
+    && a.attachment == b.attachment
+}
+
+fn ethernet_connector_identity(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> ConnectorIdentityStanding {
+  match ethernet_port_unit_identity(a: a.unit, b: b.unit) {
+    ObservedDistinctUnits => DistinctConnectors
+    ObservedSameUnit =>
+      if ethernet_locator_and_attachment_match(a: a, b: b) {
+        SameConnector
+      } else {
+        DistinctConnectors
+      }
+    PortUnitIdentityUnobserved { discriminator: d } =>
+      ConnectorIdentityUnobserved { discriminator: d }
+  }
+}
+
+fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
+  match ethernet_connector_identity(a: a, b: b) {
+    DistinctConnectors => true
+    SameConnector => false
+    ConnectorIdentityUnobserved { discriminator: _ } => false
+  }
+}
+
+fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
+  match a {
+    FunctionUnobserved { discriminator: _ } =>
+      FunctionIdentityUnobserved {
+        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+      }
+    _ =>
+      match b {
+        FunctionUnobserved { discriminator: _ } =>
+          FunctionIdentityUnobserved {
+            discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+          }
+        _ =>
+          if a == b {
+            ObservedSameFunction
+          } else {
+            ObservedDistinctFunctions
+          }
+      }
+  }
+}
+
+fn ethernet_port_may_carry_multiple_functions(
+  a: EthernetFunctionBinding,
+  b: EthernetFunctionBinding,
+) -> ConnectorFunctionStanding {
+  match ethernet_connector_identity(a: a.port, b: b.port) {
+    SameConnector =>
+      match ethernet_function_identity(a: a.function, b: b.function) {
+        ObservedDistinctFunctions => ObservedMultipleFunctions
+        ObservedSameFunction => ObservedSingleFunction
+        FunctionIdentityUnobserved { discriminator: d } =>
+          ConnectorFunctionUnobserved { discriminator: d }
+      }
+    DistinctConnectors => FunctionsOnDistinctConnectors
+    ConnectorIdentityUnobserved { discriminator: d } =>
+      ConnectorFunctionUnobserved { discriminator: d }
+  }
+}
+
+fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {
+  ipv4_address_eq(a: a.network_address, b: b.network_address) == false
+}

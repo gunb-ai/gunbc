@@ -1,0 +1,113 @@
+module gunbc.authorization_claim_slot
+
+import std.types { NonEmptyStr, String, Timestamp }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.scoped_authorization {
+  AttemptIdentity,
+  claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
+  authorization_claim_outcome, AuthorizationClaimOutcome, ClaimUndecided,
+}
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused,
+}
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set, authorization_claim_store_root,
+  CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+}
+
+// ONE CLAIM / SETTLE PAIR FOR EVERY AUTHORIZATION SLOT, beside the store root it writes to. The
+// srv3 boot-once-cd step and the Mt. Collins boot step each held a verbatim copy of these folds
+// (review 68456): same admit_cas_attempt -> file_compare_and_set shape, same arms, same refusal
+// sentences, on ONE shared slot domain -- two sources that could drift on claim/terminal
+// semantics for one store. The escalation id, the attempt and the step's label are the only
+// facts that differed, so they are the parameters; the label prefixes every exit so an operator
+// still reads which step left a claim unterminated.
+
+fn claim_authorization_slot(
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  at: Timestamp,
+) -> AuthorizationClaimOutcome
+  uses fs: std.resources.Filesystem
+{
+  let proposed = claim_transition_claimed(attempt: attempt, at: at)
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: escalation_id,
+      expected: ExpectSlotAbsent,
+      proposed: proposed,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      authorization_claim_outcome(
+        proposed: proposed,
+        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v),
+      )
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim digest families are incomparable" as NonEmptyStr }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      ClaimUndecided { reason: "authorization claim key is not slot-addressable" as NonEmptyStr }
+  }
+}
+
+// THE TERMINAL TRANSITION RIDES THE SAME COMPARE-AND-SET, expecting the generation the step holds.
+// If it does not land, the step's own result still stands -- the mutation already happened, and
+// lying about it to keep the ledger tidy would be the worse failure -- but the exit carries the
+// fact that the claim was left unterminated, because an operator reading a bare success would not
+// know a manual slot inspection is owed.
+fn settle_authorization_claim(
+  label: String,
+  outcome: ProcessExit,
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  held_at: CasGeneration,
+  at: Timestamp,
+) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  let terminal = match outcome {
+    ExitSuccess => claim_transition_completed(attempt: attempt, at: at)
+    ExitFailure { code: _, reason: r } =>
+      claim_transition_aborted(attempt: attempt, at: at, cause: r as NonEmptyStr)
+  }
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: escalation_id,
+      expected: ExpectSlotGeneration { generation: held_at },
+      proposed: terminal,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
+        CasCommitted { committed: _ } => outcome
+        CasPreconditionFailed { expected: _, observed: _ } =>
+          unterminated_claim_exit(label: label, outcome: outcome, detail: "claim slot moved under us")
+        CasStoreRefused { cause: _ } =>
+          unterminated_claim_exit(label: label, outcome: outcome, detail: "claim store refused the terminal write")
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      unterminated_claim_exit(label: label, outcome: outcome, detail: "terminal payload and its digest disagree")
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      unterminated_claim_exit(label: label, outcome: outcome, detail: "terminal digest families are incomparable")
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      unterminated_claim_exit(label: label, outcome: outcome, detail: "authorization claim key is not slot-addressable")
+  }
+}
+
+fn unterminated_claim_exit(label: String, outcome: ProcessExit, detail: String) -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      label,
+      concat(
+        ": the step finished but its authorization claim was left unterminated (",
+        concat(detail, concat("); step outcome was: ", match outcome {
+          ExitSuccess => "success"
+          ExitFailure { code: _, reason: r } => concat("failure: ", r)
+        })),
+      ),
+    ),
+  )
+}

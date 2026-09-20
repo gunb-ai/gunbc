@@ -3,6 +3,7 @@ module std.decimal
 import std.types { String, Int, Bool }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.bytes { pure_dag_seam_unreachable }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_multiply, checked_int_subtract }
 
 data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
 
@@ -125,6 +126,62 @@ fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> Bool {
   let ca = canonical_exact_decimal(d: a)
   let cb = canonical_exact_decimal(d: b)
   ca.units == cb.units && ca.fraction_digits == cb.fraction_digits
+}
+
+// EXACT DIFFERENCE: both operands are aligned to the larger scale before subtracting, so no digit is
+// dropped and a decrease smaller than either operand's last shared digit still comes out negative.
+// Int is i64 in every realization, so alignment and subtraction are CHECKED: a difference that does
+// not fit is ExactDifferenceUnrepresentable with the overflow that refused it, never a wrapped value.
+// An operand whose scale is negative (a computed value the refinement cannot stop) is refused BEFORE
+// any alignment: checking arithmetic overflow does not validate the decimal's domain.
+type ExactDecimalDifference
+  = ExactDifference { value: ExactDecimal }
+  | ExactDifferenceUnrepresentable { cause: IntegerOverflow }
+  | ExactDifferenceOperandScaleRefused { observed_fraction_digits: Int }
+
+fn checked_decimal_pow10(exponent: Int) -> CheckedInt {
+  if exponent <= 0 {
+    CheckedIntReady { value: 1 }
+  } else {
+    match checked_decimal_pow10(exponent: exponent - 1) {
+      CheckedIntReady { value: p } => checked_int_multiply(a: p, b: 10)
+      CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    }
+  }
+}
+
+fn checked_decimal_rescale(units: Int, by: Int) -> CheckedInt {
+  match checked_decimal_pow10(exponent: by) {
+    CheckedIntReady { value: p } => checked_int_multiply(a: units, b: p)
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+  }
+}
+
+fn exact_decimal_sub(a: ExactDecimal, b: ExactDecimal) -> ExactDecimalDifference {
+  if a.fraction_digits < 0 {
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: a.fraction_digits }
+  } else if b.fraction_digits < 0 {
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: b.fraction_digits }
+  } else {
+    exact_decimal_sub_admitted(a: canonical_exact_decimal(d: a), b: canonical_exact_decimal(d: b))
+  }
+}
+
+// Both operands have a nonnegative, canonical scale here; only the i64 bound remains to check.
+fn exact_decimal_sub_admitted(a: ExactDecimal, b: ExactDecimal) -> ExactDecimalDifference {
+  let digits = if a.fraction_digits > b.fraction_digits { a.fraction_digits } else { b.fraction_digits }
+  match checked_decimal_rescale(units: a.units, by: digits - a.fraction_digits) {
+    CheckedIntOverflow { cause: c } => ExactDifferenceUnrepresentable { cause: c }
+    CheckedIntReady { value: au } =>
+      match checked_decimal_rescale(units: b.units, by: digits - b.fraction_digits) {
+        CheckedIntOverflow { cause: c } => ExactDifferenceUnrepresentable { cause: c }
+        CheckedIntReady { value: bu } =>
+          match checked_int_subtract(a: au, b: bu) {
+            CheckedIntOverflow { cause: c } => ExactDifferenceUnrepresentable { cause: c }
+            CheckedIntReady { value: d } => ExactDifference { value: canonical_exact_decimal(d: ExactDecimal { units: d, fraction_digits: digits }) }
+          }
+      }
+  }
 }
 
 // THE PROJECTION BACK TO A NUMERAL, WHICH IS NOT THE LEXEME IT WAS READ FROM AND DOES NOT CLAIM TO

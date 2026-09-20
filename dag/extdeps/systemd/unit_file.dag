@@ -125,13 +125,76 @@ type SystemdUnitDirective
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
+  | SuccessAction { action: SystemdUnitStateAction }
+  | FailureAction { action: SystemdUnitStateAction }
+
+// systemd.unit(5) (v255), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops
+// cleanly or enters the failed state. The value set is upstream's and CLOSED, so it is a coproduct
+// here, exactly as ExitType= and KillMode= are: a misspelled action has no constructor, rather than
+// rendering a unit systemd refuses at load inside a guest nobody is watching. The -force strengths
+// skip the orderly stop of other units but still kill every process and unmount; -immediate skips
+// even that.
+type SystemdUnitStateAction
+  = UnitActionNone
+  | UnitActionReboot
+  | UnitActionRebootForce
+  | UnitActionRebootImmediate
+  | UnitActionPoweroff
+  | UnitActionPoweroffForce
+  | UnitActionPoweroffImmediate
+  | UnitActionExit
+  | UnitActionExitForce
+  | UnitActionSoftReboot
+  | UnitActionSoftRebootForce
+  | UnitActionKexec
+  | UnitActionKexecForce
+  | UnitActionKexecImmediate
+  | UnitActionHalt
+  | UnitActionHaltForce
+  | UnitActionHaltImmediate
+
+fn systemd_unit_state_action_wire(action: SystemdUnitStateAction) -> String {
+  match action {
+    UnitActionNone => "none"
+    UnitActionReboot => "reboot"
+    UnitActionRebootForce => "reboot-force"
+    UnitActionRebootImmediate => "reboot-immediate"
+    UnitActionPoweroff => "poweroff"
+    UnitActionPoweroffForce => "poweroff-force"
+    UnitActionPoweroffImmediate => "poweroff-immediate"
+    UnitActionExit => "exit"
+    UnitActionExitForce => "exit-force"
+    UnitActionSoftReboot => "soft-reboot"
+    UnitActionSoftRebootForce => "soft-reboot-force"
+    UnitActionKexec => "kexec"
+    UnitActionKexecForce => "kexec-force"
+    UnitActionKexecImmediate => "kexec-immediate"
+    UnitActionHalt => "halt"
+    UnitActionHaltForce => "halt-force"
+    UnitActionHaltImmediate => "halt-immediate"
+  }
+}
+
+// systemd.service(5), "Command lines": `${NAME}` in an Exec*= line is replaced by that environment
+// variable's value as one argument. The environment includes what systemd itself sets for the
+// spawned process -- for ExecStop=/ExecStopPost=, $EXIT_CODE and $EXIT_STATUS (systemd.exec(5),
+// "Environment Variables in Spawned Processes"). The dollar and brace are joined rather than written
+// adjacently because `${` inside a .dag string literal is .dag's own interpolation.
+fn systemd_environment_reference(name: NonEmptyStr) -> String {
+  join(["$", "{", name as String, "}"], "")
+}
+
+data systemd_exit_code_variable: NonEmptyStr = "EXIT_CODE" as NonEmptyStr
+data systemd_exit_status_variable: NonEmptyStr = "EXIT_STATUS" as NonEmptyStr
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
+  | ExecStartPost { command: NonEmptyStr }
   | ExecStop { command: NonEmptyStr }
   | ExecStopPost { command: NonEmptyStr }
+  | ExecStopPostIgnoringFailure { command: NonEmptyStr }
   | ServiceStandardOutput { stream: SystemdOutputStream }
   | ServiceStandardError { stream: SystemdOutputStream }
   | Restart { policy: NonEmptyStr }
@@ -449,6 +512,7 @@ type SystemdDirectiveValue
   | DirectiveWeight { weight: Int }
   | DirectiveCpuTime { threads: HardwareThreadCount }
   | DirectiveUnlimited
+  | DirectiveReset
 
 fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
   match value {
@@ -457,8 +521,17 @@ fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
     DirectiveWeight { weight: w } => to_string(w)
     DirectiveCpuTime { threads: t } => join([to_string(hardware_thread_count_value(t: t) * 100), "%"], "")
     DirectiveUnlimited => systemd_directive_unlimited_wire
+    DirectiveReset => systemd_directive_reset_wire
   }
 }
+
+// AN EMPTY ASSIGNMENT RESETS THE SETTING TO ITS DEFAULT. systemd.syntax(7) states it for the unit
+// file, and systemd.resource-control(5) restates it for the one knob that has no `infinity`
+// spelling: "Setting CPUQuota= to an empty value unsets the quota" -- `CPUQuota=infinity` is not a
+// value that directive's parser admits, so `DirectiveUnlimited` cannot serve it. `systemctl
+// set-property` reads the same empty assignment as unset. `DirectiveReset` is the write-side arm
+// for that wire; the read side already carries the state it produces as `CpuQuotaUnbounded`.
+data systemd_directive_reset_wire: String = ""
 
 // systemd's sentinel for "no limit", spelled once. `max` is the cgroup v2 kernel interface's word;
 // `infinity` is systemd's, and a unit file is read by systemd rather than by the kernel.
@@ -521,6 +594,13 @@ fn slice_cpu_quota(threads: HardwareThreadCount) -> SystemdSliceDirective {
   SystemdSliceDirective { property: CPUQuota, value: DirectiveCpuTime { threads: threads } }
 }
 
+// NO CEILING ON THE CPU AXIS IS AN ASSIGNMENT, NOT AN OMISSION. A slice that was once given a
+// quota keeps it until something unsets it, so a desired state of "unbounded" that emitted nothing
+// would converge only on cells that never had one. This mint is the affirmative unset.
+fn slice_cpu_quota_unbounded() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUQuota, value: DirectiveReset }
+}
+
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
 
@@ -532,6 +612,8 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
+    SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
+    FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
 }
 
@@ -540,8 +622,10 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceType { mode: v } => join(["Type=", v as String], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    ExecStartPost { command: v } => join(["ExecStartPost=", v as String], "")
     ExecStop { command: v } => join(["ExecStop=", v as String], "")
     ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
+    ExecStopPostIgnoringFailure { command: v } => join(["ExecStopPost=-", v as String], "")
     ServiceStandardOutput { stream: v } =>
       join(["StandardOutput=", systemd_output_stream_wire(stream: v)], "")
     ServiceStandardError { stream: v } =>

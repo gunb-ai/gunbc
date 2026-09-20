@@ -41,6 +41,7 @@ import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
 import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
+import gunbc.rung_drop.witness_floor_off_the_required_gate { witness_floor_off_the_required_gate }
 import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
 import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
 import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
@@ -81,6 +82,8 @@ import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_f
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
 import gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format { persisted_resolved_graph_disk_probe_unqualified_format }
 import gunbc.rung_drop.self_host_emit_derisk_claim_unobserved { self_host_emit_derisk_claim_unobserved }
+import gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property { g0_type_decl_modifier_parse_without_sealing_property }
+import gunbc.rung_drop.fabric_db_append_principal_unrefused { fabric_db_append_principal_unrefused }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -105,6 +108,7 @@ data rung_drop_roster: List<RungDrop> = [
   text_boundary_identity_wall,
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
+  witness_floor_off_the_required_gate,
   emit_copy_qualification_without_a_consumer,
   floor_cost_high_cpu_withheld,
   spark_role_scoped_retirement_production_root,
@@ -145,6 +149,8 @@ data rung_drop_roster: List<RungDrop> = [
   type_reference_location_fallback_keys_production_realization,
   persisted_resolved_graph_disk_probe_unqualified_format,
   self_host_emit_derisk_claim_unobserved,
+  g0_type_decl_modifier_parse_without_sealing_property,
+  fabric_db_append_principal_unrefused,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

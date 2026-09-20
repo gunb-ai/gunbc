@@ -23,13 +23,25 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.auth.approval_keyring_pins {
+  approval_capability_mac_access_url,
+  approval_submission_mac_access_url,
+  approval_submission_mac_key_path_env,
+  approval_capability_mac_key_path_env,
+}
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_sol_capture_path_env,
+  mtcollins1_boot_sol_pid_path_env,
+}
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, Minute, minute, minute_count }
+import std.measure { second, millisecond, Minute, minute, minute_count, second_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -89,7 +101,7 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef, Int, String, List }
+import std.types { GitRef, Int, String, List, NonEmptyStr }
 import v2.std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
@@ -757,6 +769,11 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+data gunbc_ci_org_runner_roster_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/organization_runner_roster_read.dag",
+  function: "organization_runner_roster_observe_wet",
+}
+
 // THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
 // gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
 // non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
@@ -837,6 +854,16 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
 data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reset_return_run.dag",
   function: "host_reset_return_wet",
+}
+
+data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/auth/approval_keyring_converge.dag",
+  function: "approval_keyring_converge_wet",
+}
+
+data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+  function: "mtcollins1_boot_wet",
 }
 
 // THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
@@ -1031,7 +1058,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_candidate_target,
     gunbc_ci_heal_publication_admit_target,
-    gunbc_ci_heal_publication_publish_target
+    gunbc_ci_heal_publication_publish_target,
+    gunbc_ci_approval_keyring_converge_target,
+    gunbc_ci_mtcollins1_boot_target
   ]
 }
 
@@ -1595,6 +1624,43 @@ fn app_mint_step(command: String) -> PipelineStep {
 // THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
 // than the installation token it buys; it is written to a 0600 file, spent once, and removed before
 // the token is read out of the response.
+// A HOSTED RUNNER BINDS NO CGROUP, AND gunbc REFUSES WITHOUT ONE.
+//
+// v1_compiler cli_run entry_resolve typed_module_cache_cap_derivation panics with
+// HostBudgetUnreadable when no cgroup memory.high or memory.max binds the process: the
+// typed-module cache cap bounds the memory used to RESOLVE the corpus, so an unknown budget
+// cannot be defaulted. That refusal is the repair for an absorbing fallback which previously
+// took the ceiling and OOM-killed the corpus (exit 137), so it is not to be worked around --
+// and its own note rules out GUNBC_MEMORY_BUDGET_BYTES explicitly, because an environment
+// declaration constrains no allocation.
+//
+// Self-hosted runners satisfy it for free: actions-runner@.service carries MemoryMax. The heal
+// publisher runs on a HOSTED runner, deliberately, so that an App installation token which can
+// write a protected branch never lands on runners shared with pull-request workloads. Measured
+// 2026-09-19, publisher run 35451964724: admission panicked before any credential was minted.
+//
+// So the job binds a real cgroup itself. The shell moves into a leaf with memory.max set, and
+// gunbc inherits it as a child -- a constraint that actually holds, not a declared number. This
+// is a prelude rather than a wrapper because the invocation words pass an unquoted-path
+// allowlist (gunbc_invoke_first_unsafe_word) that a `systemd-run --scope -p ...` prefix would
+// not survive; moving the shell leaves the invocation untouched.
+data heal_publisher_cgroup_name: String = "gunbc-publish"
+
+// 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
+data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
+
+fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
+  [
+    app_mint_step(command: "set -euo pipefail"),
+    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
+    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
+    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
+    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
+    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
+    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
+  ]
+}
+
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
   concat(
     [
@@ -1824,6 +1890,19 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
   )
 }
 
+// SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
+// minted in-run and held only in this step's environment.
+fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_org_runner_roster_observe_target.entry,
+    function: gunbc_ci_org_runner_roster_observe_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 // THE MINT RUNS AS THE RUN'S OWN FEDERATED IDENTITY, AND THERE IS NO PRELUDE HERE ON PURPOSE.
 // The org-actions and App control-plane steps carry shell preludes because they mint credentials
 // the typed effects could not reach; this pair needs none. gunbc.auth.access_token_source
@@ -1991,6 +2070,105 @@ fn gunbc_ci_spark_serving_apply_invoke() -> String {
     function: gunbc_ci_spark_serving_apply_target.function,
     claim_run: false,
     receipt_rel: spark_pair_apply_receipt_path
+  )
+}
+
+fn gunbc_ci_sm_decode_payload_to_file() -> String {
+  "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$DEST_FILE\""
+}
+
+fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/approval-keyring-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/approval-keyring-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "CAP_FILE=\"$RUNNER_TEMP/approval-capability-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_capability_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+  ]
+}
+
+data gunbc_ci_approval_keyring_converge_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_approval_keyring_converge_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
+fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-boot-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-boot-sm.json\"") },
+    Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
+    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
+    Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
+    Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SUB_FILE\" \"$SOL_PID_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: concat("curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref), "\"; "), gunbc_ci_sm_decode_payload_to_file())) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(host_reset_bmc_credential_path_env as String, "=\"$DEST_FILE\""))) },
+    Do { run: ci_retry_body_run(command: "HOLD_BMC=\"$DEST_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; curl -sSf -o \"$RESP_FILE\" -H @\"$HDR_FILE\" \"", concat(approval_submission_mac_access_url(), concat("\"; ", concat(gunbc_ci_sm_decode_payload_to_file(), "; DEST_FILE=\"$HOLD_BMC\""))))) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+    Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
+    Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
+  ]
+}
+
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_mtcollins1_boot_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
+fn gunbc_ci_approval_keyring_converge_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_approval_keyring_converge_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_approval_keyring_converge_target.entry,
+      function: gunbc_ci_approval_keyring_converge_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
+  )
+}
+
+fn gunbc_ci_mtcollins1_boot_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_boot_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_boot_target.entry,
+      function: gunbc_ci_mtcollins1_boot_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
   )
 }
 
@@ -2245,7 +2423,8 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
 // federates, so a candidate that does not admit never causes a token to be minted.
 fn gunbc_ci_heal_publication_admit_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: heal_publisher_cgroup_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_admit_target.entry,
     function: gunbc_ci_heal_publication_admit_target.function,
@@ -2284,8 +2463,11 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
 // labelled for exactly this purpose -- so no arm of that match was reachable any more.
 fn gunbc_ci_heal_publication_publish_invoke() -> String {
   gunbc_run_step_script_with_prelude(
-    prelude: github_app_installation_token_prelude(
-      spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+    prelude: concat(
+      heal_publisher_cgroup_prelude(),
+      github_app_installation_token_prelude(
+        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+      )
     ),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_publish_target.entry,
