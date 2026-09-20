@@ -39,10 +39,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data census_capture_complete: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 begin 2026-09-19T00:00:00Z=====\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; echo workload-digest-stable=yes\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-before----\n----ARGV edac-before: find\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n/sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=b1 end 2026-09-19T00:04:00Z=====\n"
 
-// THE FALSE GREEN THE RECONSTRUCTED PROGRAM WOULD HAVE OPENED. Its ARGV line prints the workload
-// command verbatim, and that command contains both tokens; the write failed and the passes did not
-// agree, so the section's OUTPUT carries neither token as a line of its own.
-data census_capture_workload_failed_argv_carries_tokens: String = "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; [ ok ] && echo workload-digest-stable=yes\nworkload-write-rc=1\n----EXIT workload: 1\n"
+// THE FALSE GREEN THE RECONSTRUCTED PROGRAM WOULD HAVE OPENED, ISOLATED TO ONE CONJUNCT. The section
+// EXITS ZERO and its output carries `workload-write-rc=0` as a line, so every other conjunct of
+// host_capture_workload_stable holds; the passes DISAGREED, so the stable marker appears only inside
+// the ARGV echo of the command, never as an output line. A substring parser reads the program text as
+// its own result and calls this workload stable. That isolation is what makes this a discriminating
+// red: relax the parser to substring matching and this claim FAILS (measured), which it does not do
+// if the fixture also fails on its exit code or its write rc.
+data census_capture_workload_failed_argv_carries_tokens: String = "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; [ \"$a\" = \"$b\" ] && echo workload-digest-stable=yes\nworkload-write-rc=0\n----EXIT workload: 0\n"
 
 data census_capture_workload_failed_exit_zero: String = "----SECTION workload----\n----ARGV workload: echo workload-write-rc=$rc; echo workload-digest-stable=yes\nworkload-write-rc=1\n----EXIT workload: 0\n"
 
