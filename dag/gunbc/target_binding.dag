@@ -23,6 +23,16 @@ type TargetProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
   | EvaluationStoreAddressExactHeadProducer
+  | PrimitiveEgressCensusProducer
+  | PrimitiveEgressCensusV2Producer
+  | PrimitiveEgressCensusDagProducer
+  | PrimitiveEgressCensusSeedProducer
+  // Supervises a required-floor run inside a cgroup it shares with the child, then reads
+  // memory.peak and memory.events from OUTSIDE the dead process. Deliberately NOT the
+  // `RequiredFloorProducer` variant above, which remains unbound: what this produces is a memory
+  // QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact
+  // is the meaning fork DESIGN section 3 forbids.
+  | FloorMemoryQualificationProducer
 
 type TargetBinding {
   target: Label

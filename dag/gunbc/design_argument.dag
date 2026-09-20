@@ -114,6 +114,7 @@ data conformance_domains: List<ConformanceDomain> = [
       first: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
       rest: [
         decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
+        decl_ref(module_path: "std.durable_exclusive_hold", decl_name: "DurableHoldState"),
         decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
         decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
         decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
@@ -323,15 +324,30 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
       premises: ["s2.minimize-redundancy"]
     },
-    review: ReviewableOnChange { parts: [yes_no_review(
-      part: "single-authority",
-      question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
-      tells: [
-        "a literal string where a modeled value exists",
-        "a file:line citation in prose or a row where a module and symbol could be named",
-        "the same fact now answerable from two carriers with no relation stated between them"
-      ]
-    )] },
+    review: ReviewableOnChange { parts: [
+      yes_no_review(
+        part: "single-authority",
+        question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
+        tells: [
+          "a literal string where a modeled value exists",
+          "a file:line citation in prose or a row where a module and symbol could be named",
+          "the same fact now answerable from two carriers with no relation stated between them"
+        ]
+      ),
+      yes_no_review(
+        part: "witness-one-interface",
+        question: "Does a claim this change adds or edits take its subject beyond ONE interface -- deriving its inputs by executing the layers beneath the boundary instead of supplying them, folding several producers, or re-executing another module's claim functions -- or does it supply a boundary's inputs while leaving that boundary with no inhabitance claim that still runs the real path?",
+        tells: [
+          "a production module imports test.claim.* -- a layer inversion that makes every consumer a transitive consumer of those claims, and worth refusing on its own",
+          "a claim calls another module's claim functions, each of which already has its own subject and its own discriminating red",
+          "a claim whose evaluation is dominated by one call whose result shape is all it inspects",
+          "two claims making the same call on the same input where one assertion implies the other, each paying the call in full",
+          "a supplied boundary whose last real execution is gone: deleting the integration would make no control fail",
+          "an inhabitance claim that checks only shape, which is agreement rather than evidence that the real field reached the real decision",
+          "the eval-step budget refused the claim and a debt row was proposed -- the budget is the tell, not the rule, and the reach is never bought with a drop"
+        ]
+      )
+    ] },
   },
 
   DesignRow {

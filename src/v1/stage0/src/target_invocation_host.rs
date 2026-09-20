@@ -155,6 +155,11 @@ pub enum TargetProducer {
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
+    FloorMemoryQualification,
+    PrimitiveEgressCensus,
+    PrimitiveEgressCensusV2,
+    PrimitiveEgressCensusDag,
+    PrimitiveEgressCensusSeed,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -211,6 +216,26 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
+        ),
+        (
+            instrument_label("floor-memory-qualification"),
+            TargetProducer::FloorMemoryQualification,
+        ),
+        (
+            instrument_label("primitive-egress-census"),
+            TargetProducer::PrimitiveEgressCensus,
+        ),
+        (
+            instrument_label("primitive-egress-census-v2"),
+            TargetProducer::PrimitiveEgressCensusV2,
+        ),
+        (
+            instrument_label("primitive-egress-census-dag"),
+            TargetProducer::PrimitiveEgressCensusDag,
+        ),
+        (
+            instrument_label("primitive-egress-census-seed"),
+            TargetProducer::PrimitiveEgressCensusSeed,
         ),
     ]
 }
@@ -406,6 +431,122 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
+        TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
+        TargetProducer::PrimitiveEgressCensus => {
+            run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
+        }
+        TargetProducer::PrimitiveEgressCensusV2 => run_primitive_egress_census(
+            "primitive-egress-census-v2",
+            "primitive_egress_census_v2_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusDag => run_primitive_egress_census(
+            "primitive-egress-census-dag",
+            "primitive_egress_census_dag_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
+            "primitive-egress-census-seed",
+            "primitive_egress_census_seed_exit",
+        ),
+    }
+}
+
+/// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
+/// `gunbc.primitive_egress.census_live` `primitive_egress_census_*_exit` entries, each answering a
+/// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
+/// standing carries. The bytes are printed on EVERY termination, because the receipt is the
+/// product and a did-not-hold census is exactly when its identity lists are wanted.
+///
+/// THE THREE TERMINATIONS map off the wire exit read through the one classifier in `cli_run`:
+/// success is the census holding; `ExitFailure { code: 1 }` is a located census finding (an
+/// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
+/// is the population not being established (a refused entry, no identities) and is `Refused`;
+/// a resolve or eval failure is `SubjectUnreached`.
+/// One runner for the four census labels: the scope is the `.dag` entry function the label
+/// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
+/// bounded projection is a label of its own and not a flag on the full one.
+fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
+    const ENTRY: &str = "dag/gunbc/primitive_egress/census_live.dag";
+    let label_name = label;
+    let function_name = function;
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {ENTRY}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function_name, &[], true) {
+            Ok(value) => value,
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label_name}: eval failed: {cause}"),
+                }
+            }
+        };
+    match cli_run::classify_cli_wire(&value, &ctx) {
+        cli_run::CliWireClass::Printable { bytes, exit } => {
+            let termination = match &exit {
+                cli_run::ExitClass::Success => Termination::ObservationHeld,
+                cli_run::ExitClass::Failure { code: 1, .. } => Termination::ObservationDidNotHold,
+                cli_run::ExitClass::Failure { .. } => Termination::Refused,
+                cli_run::ExitClass::NotProcessExit { .. } => Termination::Refused,
+            };
+            let reason = match exit {
+                cli_run::ExitClass::Success => format!("{label_name}: held"),
+                cli_run::ExitClass::Failure { reason, .. } => {
+                    reason.unwrap_or_else(|| format!("{label_name}: failed"))
+                }
+                cli_run::ExitClass::NotProcessExit { type_name } => {
+                    format!("{label_name}: wire exit is `{type_name}`, not a ProcessExit")
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{reason}"),
+            }
+        }
+        cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: renderer refused: {cause}"),
+        },
+        cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: {function_name} returned `{type_name}`, not a CliWireResponse"
+            ),
+        },
+        cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: malformed CliWireResponse: {detail}"),
+        },
     }
 }
 
@@ -735,5 +876,353 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             }
         }
         Some((_, producer)) => run_producer(producer),
+    }
+}
+
+/// THE SUBJECT IS OWNED HERE, IN RUST, AND THAT IS A MEASURED DECISION RATHER THAN A SHORTCUT.
+///
+/// Every sibling instrument keeps its subject in `gunbc.instrument_targets` and mirrors it here,
+/// and this one was built that way first: two rows, `floor_memory_qualification_source_roots` and
+/// `floor_memory_qualification_lane`, read through the interpreter before spawning the child so
+/// the model would be the single authority for what gets measured.
+///
+/// IT CORRUPTS THE MEASUREMENT, AND THE COST WAS MEASURED RATHER THAN FEARED. Reading those rows
+/// means resolving a corpus graph, and this supervisor shares its cgroup with the child BY
+/// DESIGN — that sharing is what lets `memory.peak` survive the child's death. So the resolve
+/// lands in the very counter the instrument reports. Three runs of the same failing floor, same
+/// tree, same binary, differing only in whether the subject was read from the model:
+///
+///   Rust-owned subject   peak 15746146304  (14.66 GiB)
+///   Rust-owned subject   peak 15704227840  (14.63 GiB)   <- 0.2% apart, reproducible
+///   read from the model  peak 22293544960  (20.76 GiB)   <- +6.1 GiB, 42% inflation
+///
+/// An instrument may not consult the authority from inside the cgroup it is measuring; the act of
+/// reading perturbs the reading. Netting the supervisor's footprint back out is not available
+/// either — that would replace a measured number with an adjusted one, which is the whole habit
+/// `gunbc.floor_memory_demand` exists to refuse.
+///
+/// SO THE TWO `.dag` ROWS ARE DELETED RATHER THAN LEFT UNCONSUMED. A modeled subject nothing reads
+/// is the DESIGN section 3c dangling declaration, and keeping it while Rust silently owned the
+/// real fact would be worse than owning it openly: two authorities, one of them decorative. The
+/// honest state is one authority, here, saying plainly that it is here and why.
+///
+/// WHAT WOULD RESTORE THE MODELED SUBJECT: any route that reads the rows OUTSIDE the measured
+/// cgroup — a supervisor that resolves the subject before entering the scope, or a scope created
+/// after the read rather than around it. Both need the cgroup lifecycle to be modeled, which is
+/// the same capability `gunbc.target_invocation_seed_growth` names as this subset's trigger.
+fn floor_memory_qualification_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+fn floor_memory_qualification_lane() -> String {
+    "witnesses".to_string()
+}
+
+/// THE SUPERVISED MEMORY QUALIFICATION OF A REQUIRED-FLOOR RUN.
+///
+/// The three terminations are load-bearing and map onto `gunbc.floor_memory_demand`'s three arms:
+/// `DemandObserved` is ObservationHeld (0), `DemandBounded` is ObservationDidNotHold (1) — the
+/// peak is a LOWER BOUND, so the run produced a reading that may not size anything downward — and
+/// every refusal is Refused (2), no observation at all. An instrument that rendered "could not
+/// read" the same as "it fits" would reproduce one layer out the conflation it exists to remove.
+///
+/// THE PRECONDITION IS CHECKED BEFORE THE WORKLOAD, NOT AFTER. Resolving the measurement cgroup
+/// first means a 35-minute run is never spent producing a figure that cannot be qualified — and,
+/// more importantly, an invocation with no enforceable limit REFUSES instead of reporting a
+/// number. An unbounded run and a bounded one are indistinguishable in everything the workload
+/// itself emits, which is the class
+/// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+fn run_floor_memory_qualification() -> InvocationOutcome {
+    use cli_run::floor_memory_supervisor as sup;
+
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+
+    let measured_roots = floor_memory_qualification_source_roots();
+    let measured_lane = floor_memory_qualification_lane();
+
+    let cgroup = match sup::resolve_measurement_cgroup() {
+        Ok(dir) => dir,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
+    // unattributable is a wasted run, and worse, a tempting one to publish anyway.
+    match sup::children_of_cgroup(&cgroup) {
+        Ok(children) if !children.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        children,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    match sup::strangers_in_cgroup(&cgroup) {
+        Ok(strangers) if !strangers.is_empty() => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: {}",
+                    sup::QualificationRefusal::MeasurementCgroupShared {
+                        dir: cgroup.to_string_lossy().to_string(),
+                        strangers,
+                    }
+                    .render()
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    }
+
+    let baseline_peak = match sup::reset_or_baseline_peak(&cgroup) {
+        Ok(b) => b,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p.with_file_name("claim_executor"),
+        Err(e) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "floor-memory-qualification: refused: could not locate the measured binary \
+                     beside this one: {e}"
+                ),
+            };
+        }
+    };
+
+    let mut args = vec![
+        "--required-ci".to_string(),
+        "--required-lane".to_string(),
+        measured_lane.clone(),
+    ];
+    for root in measured_roots.iter().cloned() {
+        args.push("--source-root".to_string());
+        args.push(root);
+    }
+
+    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+        Ok(t) => t,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    let read = match sup::read_cgroup_memory(&cgroup) {
+        Ok(r) => r,
+        Err(refusal) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+            };
+        }
+    };
+
+    // THE PEAK MUST HAVE RISEN, or it is not this run's. Where the kernel refused to reset the
+    // counter, a post-run peak equal to the pre-run one says only that nothing here exceeded
+    // history — it says nothing about what this run demanded, and publishing it would attribute
+    // another workload's high-water mark to the floor.
+    if read.peak <= baseline_peak {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: refused: {}",
+                sup::QualificationRefusal::PeakDominatedByPriorHistory {
+                    dir: read.dir.clone(),
+                    before: baseline_peak,
+                    after: read.peak,
+                }
+                .render()
+            ),
+        };
+    }
+
+    // THE JUDGMENT IS THE `.dag` MODULE'S, NOT THIS FUNCTION'S. Reproducing the arms here in
+    // Rust would give one decision two authorities (DESIGN section 3); the host reads the
+    // counters and the substrate decides what they mean — including how to parse a `max` body,
+    // which `extdeps.linux.cgroup_v2_memory` already owns.
+    const ENTRY: &str = "dag/gunbc/floor_memory_demand.dag";
+    const FUNCTION: &str = "qualify_floor_memory_from_readings";
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&measured_roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("floor-memory-qualification: resolve failed for {ENTRY}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "floor-memory-qualification: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let (signalled, code) = match &termination {
+        sup::SupervisedTermination::Exited { code } => (false, *code as i64),
+        sup::SupervisedTermination::Signalled { signal } => (true, *signal as i64),
+    };
+    let args: Vec<(Option<String>, crate::v1_interpreter::Value)> = vec![
+        (
+            Some("peak_bytes".to_string()),
+            crate::v1_interpreter::Value::Int(read.peak as i64),
+        ),
+        (
+            Some("limit_max_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_max.as_str().into()),
+        ),
+        (
+            Some("limit_high_body".to_string()),
+            crate::v1_interpreter::Value::Str(read.limit_high.as_str().into()),
+        ),
+        (
+            Some("high_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.high_events as i64),
+        ),
+        (
+            Some("max_events".to_string()),
+            crate::v1_interpreter::Value::Int(read.max_events as i64),
+        ),
+        (
+            Some("oom_kills".to_string()),
+            crate::v1_interpreter::Value::Int(read.oom_kills as i64),
+        ),
+        (
+            Some("terminated_by_signal".to_string()),
+            crate::v1_interpreter::Value::Bool(signalled),
+        ),
+        (
+            Some("exit_code".to_string()),
+            crate::v1_interpreter::Value::Int(code),
+        ),
+    ];
+    let verdict = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &args, true)
+    {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "floor-memory-qualification: the judgment could not be reached: {cause}"
+                ),
+            };
+        }
+    };
+
+    // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
+    // Stated rather than netted out: subtracting an estimate would replace a measured number with
+    // an adjusted one.
+    let detail = format!(
+        "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
+         events=[high {} / max {} / oom_kill {}] termination={} lane={} \
+         (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
+         MiB — is included in the peak rather than subtracted)",
+        read.dir,
+        read.peak,
+        read.limit_max,
+        read.limit_high,
+        read.high_events,
+        read.max_events,
+        read.oom_kills,
+        match &termination {
+            sup::SupervisedTermination::Exited { code } => format!("exited {code}"),
+            sup::SupervisedTermination::Signalled { signal } => format!("signalled {signal}"),
+        },
+        measured_lane,
+    );
+
+    // WILDCARD-FREE ON PURPOSE: a fourth arm added to `FloorMemoryQualification` must land here
+    // rather than inherit whichever termination a `_` happened to name.
+    match &verdict {
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandObserved") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationHeld,
+                message: format!(
+                    "{detail}\nDemandObserved — nothing held this run, so the peak is a DEMAND."
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandBounded") =>
+        {
+            InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "{detail}\nDemandBounded — the peak is a LOWER BOUND, not a demand: the run \
+                     was killed, throttled, or pinned to a limit. It may not be used to size \
+                     anything downward."
+                ),
+            }
+        }
+        crate::v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "DemandUnreadable") =>
+        {
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{detail}\nDemandUnreadable — the reading could not be qualified."
+                ),
+            }
+        }
+        other => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!(
+                "floor-memory-qualification: {FUNCTION} returned a value this seam does not \
+                 recognise as a FloorMemoryQualification: {other:?}"
+            ),
+        },
     }
 }

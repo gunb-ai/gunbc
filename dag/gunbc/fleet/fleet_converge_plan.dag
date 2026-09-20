@@ -67,7 +67,6 @@ import gunbc.fabric_cell_effect {
   CellRosterDuplicateKey,
   CellChangeNotYetRealizable,
   CellTeardownNotYetRealizable,
-  CellCpuQuotaSurveyRefused,
   CellPlanRealizable,
   CellPlanRefused,
   FabricCellEffect,
@@ -865,7 +864,7 @@ fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) 
 
 // A REFUSED HOST IS NOT A HOST THAT WANTS ZERO SLOTS, AND THE DIFFERENCE IS A REMOVE-ALL PLAN.
 //
-// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_slots_per_host`, which answers 0 for a host
+// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_committed_width`, which REFUSES for a host
 // whose admission REFUSED -- srv2, whose session denominator is unestablished, is the live instance.
 // This family previously treated any found deploy row as an ordinary desired roster, so that refusal
 // arrived at `desired_runner_slot_members` as the empty list. Reconcile reads an empty desired set
@@ -1103,8 +1102,6 @@ fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -
       concat("fabric-cell ", concat(w, " change realization undeclared: no staged intermediates (gunbc.change_realization)"))
     CellTeardownNotYetRealizable { address_wire: w } =>
       concat("fabric-cell ", concat(w, " teardown unmodeled: destructive effect over possibly-live attempt state"))
-    CellCpuQuotaSurveyRefused { address_wire: w, cause: c } =>
-      join(["fabric-cell ", w, " CPU quota survey refused: ", c], "")
   }
 }
 

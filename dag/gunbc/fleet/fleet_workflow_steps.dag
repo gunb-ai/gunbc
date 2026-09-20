@@ -388,6 +388,12 @@ fn ci_fleet_wif_auth_step() -> Step {
 }
 
 fn ci_fleet_key_agent_step() -> Step {
+  ci_fleet_key_agent_step_when(if_condition: none)
+}
+
+// A job whose dispatches do not all consume host SSH authority passes the condition under which
+// they do, so a run that never opens a fleet session never holds the key (least access).
+fn ci_fleet_key_agent_step_when(if_condition: String?) -> Step {
   RunStep {
     name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
     id: none,
@@ -397,7 +403,7 @@ fn ci_fleet_key_agent_step() -> Step {
       value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: if_condition,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -564,7 +570,25 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // input, so plan/apply, dashboard deploy and the launch-deployment receipt of ONE host queue behind
 // each other while different hosts stay independent. Expression-valued because the host is a
 // dispatch input, not a constant of the workflow.
-data fleet_host_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.host }}"
+// THE PREFIX AND THE INPUT REFERENCE ARE EACH ONE DATUM, because a second mode composes its own
+// ternary around this same domain (gunbc.fleet.fleet_converge_workflow): spelling either half twice
+// would let one job move domain while the others stayed, which is exactly the interleaving the
+// ruling above forbids.
+data fleet_host_mutation_group_prefix: String = "gunbc-host-mutation-"
+
+data fleet_host_input_expression: String = "github.event.inputs.host"
+
+data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host_mutation_group_prefix, "${{ ", fleet_host_input_expression, " }}"], "")
+
+// ── THE HOST DOMAIN IS NOT THE ONLY MUTATION DOMAIN, AND THE EXCEPTION IS NAMED ELSEWHERE ─────
+//
+// The row above keys the domain to the `host` INPUT, which names the EXECUTOR a dispatch runs on. For
+// every mode whose subject is that executor the two coincide and this is right. One mode's subject is
+// not its executor -- gunbc.fleet.fleet_converge_workflow's native serving apply reaches out and
+// mutates Group B's four cage-2 hosts from whichever executor was selected -- so its group is
+// composed there, where the mode's own wire value lives and a second spelling of the mode name is not
+// needed. This row stays the host-domain authority and is unchanged by that.
+data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
@@ -639,7 +663,9 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // figure either. The runner_host_file_observe and runner_host_file_converge modes DO add steps to
 // this job -- one gated run step each plus one shared receipt upload -- and still do not move the
 // bound: a dispatch of either runs one step at gunbc_ci_runner_host_file_step_timeout_minutes and one
-// transfer-tier upload, which is below the spark_grants branch that sets the worst case.
+// transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
+// site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.site_pxe_edge_converge) have the same
+// shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }

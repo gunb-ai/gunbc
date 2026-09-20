@@ -1,27 +1,35 @@
 module gunbc.runner_slot_retirement
 
-import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_width_transition {
+  required_retirees_for_host,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
+}
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
   HostOperation,
   SystemctlMaskNow,
   CgroupPathIsDirectory,
-  CgroupReadInterfaceFile,
+  CgroupReadEvents,
   HostOperationObserved,
   HostOperationRefused,
   HostOperationOutcome,
   host_operation_exec,
 }
-import gunbc.host_converge { gunbc_cgroup_v2_root }
-import extdeps.linux.cgroup_v2 { cgroup_v2_child_path }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point,
+  cgroup_v2_events_path,
+  CgroupEventsDecoded,
+  CgroupEventsUnparseable,
+  decode_cgroup_events_populated,
+}
 import std.resources { Network }
-import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup }
+import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup, systemd_name_component_is_escaped }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
@@ -63,9 +71,21 @@ import gunbc.systemctl_show_read {
 // stopped has had its cgroup removed by systemd, and a positively-read absence is stronger evidence of
 // quiescence than a zero count. `CgroupUnobserved` keeps blocking, which is the fail-closed direction
 // the sentinel was reaching for without the ambiguity.
+//
+// THE OCCUPANCY IS THE SUBTREE'S, NOT THE DIRECTORY'S, AND THAT IS WHY `CgroupObservedPopulated`
+// CARRIES NO COUNT. The revision before this one read `<ControlGroup>/cgroup.procs` and counted its
+// lines. `cgroup.procs` lists the processes attached to THAT cgroup and nothing below it, and
+// systemd places a service's children in scoped child cgroups -- so a runner whose Runner.Worker and
+// claim_executor were still alive one level down read as an EMPTY parent, the fold accepted it, and
+// the directory teardown and capacity release it gates were permitted over live work. The kernel's
+// own answer to "is anything alive under here" is the `populated` key of `cgroup.events`
+// (extdeps.linux.cgroup_v2 decode_cgroup_events_populated: "1 if the cgroup or its descendants
+// contains any live processes; otherwise, 0"). That key is a bit, not a count; a count would have to
+// be summed over a subtree walk that the kernel already did, and carrying one would invite the next
+// consumer to decide something from a number that was never the subtree's.
 type CgroupOccupancy
   = CgroupObservedEmpty
-  | CgroupObservedPopulated { count: Int }
+  | CgroupObservedPopulated
   | CgroupAbsent
   | CgroupUnobserved { cause: String }
 
@@ -113,10 +133,10 @@ fn runner_retirement_standing(o: RunnerRetirementObservation) -> RunnerRetiremen
         unit: o.unit,
         cause: join(["the slot's workload cgroup could not be read (", c, "), so whether work is still running under it is unknown"], ""),
       }
-    CgroupObservedPopulated { count: n } =>
+    CgroupObservedPopulated =>
       RetirementPendingDrain {
         unit: o.unit,
-        cause: join(["the slot's cgroup still holds ", to_string(n), " process(es), which is the orphan state the teardown drop-in exists to prevent; the capacity stays charged"], ""),
+        cause: "the slot's cgroup or a descendant still holds live processes (cgroup.events populated 1), which is the orphan state the teardown drop-in exists to prevent; the capacity stays charged",
       }
     CgroupObservedEmpty => runner_retirement_standing_over_quiesced_workload(o: o)
     CgroupAbsent => runner_retirement_standing_over_quiesced_workload(o: o)
@@ -347,7 +367,7 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
-fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
+fn transition_required_retiring(host: HostIdentity) -> RequiredRetirees {
   required_retirees_for_host(host: host)
 }
 
@@ -495,8 +515,9 @@ fn surplus_observation_after_attempts(attempts: List<RetirementAttempt>) -> Surp
 //                     under which a drain never completes.
 //   LoadState      -> unit_present. `not-found` is the only reading that means the unit is gone; a
 //                     loaded-but-inactive unit is still present.
-//   TasksCurrent   -> cgroup_process_count. This is the orphan check, and it is the one fact
-//                     `systemctl list-units` cannot supply at any grain.
+//   ControlGroup   -> occupancy, via `cgroup.events` `populated` on the unit's cgroup. This is the
+//                     orphan check, and it is the one fact `systemctl list-units` cannot supply at
+//                     any grain.
 //
 // EVERY REFUSED READ LANDS ON `cgroup_readable: false`, WHICH IS THE UNOBSERVED ARM. That is
 // deliberate and it is the fail-closed direction: `runner_retirement_standing` tests
@@ -583,9 +604,15 @@ fn retirement_active_state_is_running(state: String) -> Bool {
   state == "active" || state == "activating" || state == "deactivating" || state == "reloading"
 }
 
+// THE DECISION, OVER THE TWO READINGS. The directory test answers ABSENT or not; only under an
+// existing directory does `cgroup.events` get consulted, and its `populated` key decides EMPTY or
+// POPULATED for the whole subtree. Every other reading -- a refused test, a refused or failed read,
+// a body the kernel's documented form does not admit -- is UNOBSERVED, which blocks. There is no
+// arm that reads `cgroup.procs`: a procs-only decision is the defect this fold replaced, and a
+// second path beside the events read would be a second authority for one question (DESIGN 3).
 fn cgroup_occupancy_from_reads(
   directory_test: HostOperationOutcome,
-  procs_read: HostOperationOutcome,
+  events_read: HostOperationOutcome,
 ) -> CgroupOccupancy {
   match directory_test {
     HostOperationRefused { operation: _, reason: why } =>
@@ -594,18 +621,18 @@ fn cgroup_occupancy_from_reads(
       if !exists {
         CgroupAbsent
       } else {
-        match procs_read {
+        match events_read {
           HostOperationRefused { operation: _, reason: why } =>
-            CgroupUnobserved { cause: join(["cgroup.procs could not be read: ", why], "") }
-          HostOperationObserved { stdout: procs, success: ok, stderr: _ } =>
+            CgroupUnobserved { cause: join(["cgroup.events could not be read: ", why], "") }
+          HostOperationObserved { stdout: body, success: ok, stderr: _ } =>
             if !ok {
-              CgroupUnobserved { cause: "reading cgroup.procs exited unsuccessfully, so occupancy is unknown" }
+              CgroupUnobserved { cause: "reading cgroup.events exited unsuccessfully, so subtree occupancy is unknown" }
             } else {
-              let pids = split(s: trim(s: procs), delimiter: "\n") |> filter(l => trim(s: l) != "")
-              if list_length(items: pids) == 0 {
-                CgroupObservedEmpty
-              } else {
-                CgroupObservedPopulated { count: list_length(items: pids) }
+              match decode_cgroup_events_populated(body: body) {
+                CgroupEventsUnparseable { cause: c } =>
+                  CgroupUnobserved { cause: join(["cgroup.events could not be decoded: ", c], "") }
+                CgroupEventsDecoded { populated: p } =>
+                  if p { CgroupObservedPopulated } else { CgroupObservedEmpty }
               }
             }
         }
@@ -624,7 +651,9 @@ fn control_group_property_means_cgroup_absent(value: String) -> Bool {
 
 // THE I/O HALF. It performs at most two reads and decides nothing: the second read is skipped when the
 // directory test says the cgroup is gone, because there is no file to read and a refusal there would
-// be reported as doubt about a question already answered.
+// be reported as doubt about a question already answered. The second read is `cgroup.events` of the
+// unit's own cgroup, whose `populated` key the kernel computes over the descendants too -- so one
+// read covers the subtree without this module walking it.
 fn observe_slot_cgroup_occupancy(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
@@ -639,22 +668,20 @@ fn observe_slot_cgroup_occupancy(
       if control_group_property_means_cgroup_absent(value: relative) {
         CgroupAbsent
       } else {
-        let cgroup_path = join([gunbc_cgroup_v2_root, relative], "") as NonEmptyStr
+        let cgroup_path = join([cgroup_v2_mount_point as String, relative], "") as NonEmptyStr
         let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
         match dir {
           HostOperationRefused { operation: _, reason: _ } =>
-            cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
+            cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
           HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
             if !exists {
-              cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
+              cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
             } else {
               cgroup_occupancy_from_reads(
                 directory_test: dir,
-                procs_read: host_operation_exec(
+                events_read: host_operation_exec(
                   transport: transport,
-                  operation: CgroupReadInterfaceFile {
-                    file_path: cgroup_v2_child_path(parent: cgroup_path, child: "cgroup.procs" as NonEmptyStr),
-                  },
+                  operation: CgroupReadEvents { cgroup_path: cgroup_path },
                 ),
               )
             }
@@ -847,12 +874,19 @@ fn observe_transition_retirement_evidence(
 ) -> SlotRetirementEvidence
   uses net: Network
 {
-  SlotRetirementEvidencePresent {
-    authorization: auth,
-    standings: observe_retirement_standings(
-      transport: transport,
-      units: transition_required_retiring(host: host),
-    ),
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([
+          "the retirement obligation for ", uh as String,
+          " is not derivable, so there is no set of required retirees to observe standings for: ", c,
+        ], ""),
+      }
+    RetireesKnown { units: units } =>
+      SlotRetirementEvidencePresent {
+        authorization: auth,
+        standings: observe_retirement_standings(transport: transport, units: units),
+      }
   }
 }
 
@@ -860,11 +894,33 @@ fn observe_transition_retirement_evidence(
 // refuse a partially-authorized transition without performing anything. Retiring only the covered
 // subset would release ceilings against a population that is still running, so an uncovered required
 // retiree refuses the whole transition rather than narrowing it.
+// AN UNRESOLVED OBLIGATION IS NOT A FULLY PERMITTED ONE. Coverage is a decision over a set, and a
+// host with no derivable set has nothing to cover -- which under the previous List shape arrived
+// here as the empty set and therefore as TransitionFullyPermitted: the strongest possible answer,
+// reached because nothing could be asked.
 fn transition_retirement_admission(
   host: HostIdentity,
   auth: InterruptionAuthorization,
 ) -> SlotRetirementEvidence {
-  match transition_interruption_coverage(auth: auth, required: transition_required_retiring(host: host)) {
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([
+          "the retirement obligation for ", uh as String,
+          " is not derivable, so no interruption coverage can be decided over it and no retirement is admitted: ", c,
+        ], ""),
+      }
+    RetireesKnown { units: required } =>
+      transition_retirement_admission_over(host: host, auth: auth, required: required)
+  }
+}
+
+fn transition_retirement_admission_over(
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+  required: List<NonEmptyStr>,
+) -> SlotRetirementEvidence {
+  match transition_interruption_coverage(auth: auth, required: required) {
     TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
       SlotRetirementEvidenceAbsent {
         cause: join(
@@ -922,6 +978,108 @@ fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
 // reobservation of a different one whose standings happen to look similar. The required set is the
 // transition's observable content: a changed prior width or target changes these rows even when every
 // disposition is unchanged.
+// THE UNRESOLVED OBLIGATION IS ITS OWN ROW rather than no row, for the reason the note above gives
+// about absent evidence: a plan built while a host's obligation was underivable must not fingerprint
+// identically to one built while the host had converged to nothing required.
 fn transition_baseline_rows(host: HostIdentity) -> List<String> {
-  transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: _ } =>
+      [join(["required-unresolved:", uh as String], "")]
+    RetireesKnown { units: units } => units |> map(u => join(["required:", u as String], ""))
+  }
+}
+
+// ── Batched readings: one show and one events read for every retiree ──────────────────────────────
+
+// ONE READ OF EVERY RETIREE'S `cgroup.events`, AS ITS HOST ANSWERED IT. `CgroupEventsBatchRead`
+// carries the whole `FILE:LINE` stdout of extdeps.tools.grep grep_fixed_string_in_tree_argv over
+// the `populated` key; `CgroupEventsBatchUnread` is a batch that never ran or was refused, which
+// leaves every retiree with a live cgroup unobserved.
+type CgroupEventsBatch
+  = CgroupEventsBatchRead { stdout: String, stderr: String }
+  | CgroupEventsBatchUnread { cause: String }
+
+fn retirement_cgroup_events_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: control_group)], "") as NonEmptyStr)
+}
+
+// THE DECISION OVER A BATCHED READ, and the same four answers as cgroup_occupancy_from_reads. A blank
+// ControlGroup is absence (control_group_property_means_cgroup_absent), so no file is consulted.
+// Otherwise the unit's answer is ONLY the lines prefixed by its own events path, decoded by the kernel
+// file's own decoder -- so a duplicated or malformed key still refuses. A path with NO line is
+// UNOBSERVED, never empty and never absent: grep is silent both for a file that vanished and for one it
+// could not open, and the directory test that discriminated those in the per-unit read is exactly the
+// round trip this batch removes. A cgroup that vanished between the show and the read is therefore a
+// one-observation delay, in the fail-closed direction.
+fn cgroup_occupancy_from_batched_events(control_group: String, batch: CgroupEventsBatch) -> CgroupOccupancy {
+  if control_group_property_means_cgroup_absent(value: control_group) {
+    CgroupAbsent
+  } else {
+    match batch {
+      CgroupEventsBatchUnread { cause: c } => CgroupUnobserved { cause: join(["the batched cgroup.events read did not run: ", c], "") }
+      CgroupEventsBatchRead { stdout: out, stderr: err } => {
+        let prefix = concat(retirement_cgroup_events_path(control_group: control_group) as String, ":")
+        let own = map(filter(split(s: out, delimiter: "\n"), l => starts_with(s: l, prefix: prefix)), l => substring(s: l, start: string_length(s: prefix), end: string_length(s: l)))
+        if list_length(items: own) == 0 {
+          CgroupUnobserved { cause: join(["the batched read returned no line for ", prefix, " ", trim(s: err)], "") }
+        } else {
+          match decode_cgroup_events_populated(body: join(own, "\n")) {
+            CgroupEventsUnparseable { cause: c } => CgroupUnobserved { cause: join(["cgroup.events could not be decoded: ", c], "") }
+            CgroupEventsDecoded { populated: p } => if p { CgroupObservedPopulated } else { CgroupObservedEmpty }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ROOT ONE READ CAN COVER, AND WHY IT IS NOT THE UNIT'S OWN CGROUP PATH. systemd escapes the
+// runner slice's name, so every retiree's `ControlGroup` carries a `\x2d` component
+// (extdeps.systemd systemd_name_component_is_escaped) -- and the fleet's typed argv edge REFUSES a
+// backslash rather than quoting it (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed),
+// which is the wall working. Naming those paths in an argv therefore cannot execute at all, so the
+// read is rooted at the deepest ancestor with NO escaped component: for
+// `/system.slice/system-actions\x2drunner.slice/<unit>` that is `/sys/fs/cgroup/system.slice`. The
+// tree read finds each unit's file under it and PRINTS the real escaped path, which is output rather
+// than argv, so the keying by retirement_cgroup_events_path is unaffected. A wider root means a wider
+// walk, never a different answer for a retiree.
+type CgroupRootScan {
+  components: List<String>
+  stopped: Bool
+}
+
+fn retirement_cgroup_unescaped_root(control_group: String) -> String {
+  let scan = fold(split(s: trim(s: control_group), delimiter: "/"), init: CgroupRootScan { components: [], stopped: false }, f: (acc, c) =>
+    if acc.stopped || c == "" {
+      acc
+    } else if systemd_name_component_is_escaped(component: c) {
+      CgroupRootScan { components: acc.components, stopped: true }
+    } else {
+      CgroupRootScan { components: concat(acc.components, [c]), stopped: false }
+    })
+  join(concat([cgroup_v2_mount_point as String], scan.components), "/")
+}
+
+// ONE ROOT, OR A TYPED REASON THERE IS NOT ONE. Every retiree of a host sits under the same runner
+// slice, so the roots agree and one read serves them all. Roots that DISAGREE are not folded into
+// their common ancestor: that would silently widen the walk to `/sys/fs/cgroup` on a population this
+// module does not understand, so it is reported and the caller leaves those retirees unobserved.
+type CgroupEventsReadRoot
+  = CgroupEventsReadRootNone
+  | CgroupEventsReadRootOne { root: NonEmptyStr }
+  | CgroupEventsReadRootAmbiguous { roots: List<String> }
+
+fn retirement_cgroup_events_read_root(control_groups: List<String>) -> CgroupEventsReadRoot {
+  let live = filter(control_groups, cg => !control_group_property_means_cgroup_absent(value: cg))
+  let roots = fold(live, init: [], f: (acc, cg) => {
+    let r = retirement_cgroup_unescaped_root(control_group: cg)
+    if any(acc, a => a == r) { acc } else { concat(acc, [r]) }
+  })
+  if list_length(items: roots) == 0 {
+    CgroupEventsReadRootNone
+  } else if list_length(items: roots) > 1 {
+    CgroupEventsReadRootAmbiguous { roots: roots }
+  } else {
+    fold(roots, init: CgroupEventsReadRootNone, f: (acc, r) => CgroupEventsReadRootOne { root: r as NonEmptyStr })
+  }
 }

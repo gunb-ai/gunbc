@@ -39,11 +39,12 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
+import gunbc.fabric_db_placement { fabric_db_store_root, fabric_db_placed_on, fabric_db_https_port, fabric_db_listen_port }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
-  dashboard_instance_compute_root, dashboard_instance_event_log_root,
+  dashboard_instance_compute_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -90,19 +91,21 @@ type OwnedArtifactKind =
   | DispatchWorktreeRoot
   | AttemptStateRoot
   | ComputeRoot
-  | FabricEventLogRoot
   | SystemdUnit
   | BeltTimerUnit
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperTimerUnit
+  | FabricDbServeUnit
+  | FabricDbServeMapping
 
 type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
   | DevbootArtifactStoreDirectory
   | CodexRuntimeReleaseDirectory
+  | FabricDbStoreDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
 // the first. What Ensured means was already exactly right for the build service's artifact store:
@@ -186,12 +189,13 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     DispatchWorktreeRoot => TeardownActs
     AttemptStateRoot => TeardownActs
     ComputeRoot => TeardownActs
-    FabricEventLogRoot => TeardownActs
     SystemdUnit => TeardownActs
     BeltTimerUnit => TeardownActs
     FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
     PublicationHelperTimerUnit => TeardownActs
+    FabricDbServeUnit => TeardownActs
+    FabricDbServeMapping => TeardownActs
   }
 }
 
@@ -426,6 +430,26 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
   service_unit.replace(from: ".service", to: "")
 }
 
+// THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
+// only by the deployment whose instance holds the fabric DB placement (fabric_db_placed_on). It is
+// deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
+// are an ensured host directory no retract touches (FabricDbStoreDirectory).
+fn deployment_fabric_db_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fabric-db.service"], "") as NonEmptyStr
+}
+
+fn deployment_fabric_db_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fabric_db_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_fabric_db_serve_endpoint() -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: fabric_db_https_port,
+    mount: ServeRootMount,
+    backend: to_string(fabric_db_listen_port) as NonEmptyStr,
+  }
+}
+
 fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
 }
@@ -524,13 +548,15 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
 // other. That argues for the tree-sync unit, which already has the right principal.
 //
-// It cannot be the tree-sync unit. That unit is installed and started inside the GunbcSourceTree
-// step, which is FIRST in deployment_owned_steps, while ServeBinary is second -- so on a fresh
-// instance the gunbc binary the convergence invokes does not exist yet, and the leg would red the
-// first deploy of every new slot. Ordering the member AFTER ServeBinary is what makes the binary a
-// precondition the membership itself establishes.
+// It cannot be the tree-sync unit. That unit was installed and started inside the GunbcSourceTree
+// step, and when this member was written that step came FIRST in deployment_owned_steps with
+// ServeBinary second -- so on a fresh instance the gunbc binary the convergence invokes did not
+// exist yet, and the leg would red the first deploy of every new slot. Ordering the member AFTER
+// ServeBinary is what makes the binary a precondition the membership itself establishes. (The two
+// have since swapped -- deployment_steps_apply_order says why binary now lands before the tree --
+// and this member's position after BOTH is unchanged by that.)
 //
-// It sits THIRD -- immediately after GunbcSourceTree and ServeBinary, and before the belt timer.
+// It sits THIRD -- immediately after ServeBinary and GunbcSourceTree, and before the belt timer.
 // An earlier cut of this change said "last" and placed it last; that was an inversion of
 // the rule deployment_steps_apply_order's annotation states, that dependencies precede their
 // consumers, because the
@@ -539,7 +565,7 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
 // only one. Witness: deployed_tree_remote_witness_test
 // `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
-// tree,binary,remote,belt,route.
+// binary,tree,remote,publication,belt,route.
 fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
 }
@@ -786,7 +812,7 @@ fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
-  [
+  concat([
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
@@ -796,7 +822,6 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ComputeRoot, path: dashboard_instance_compute_root(instance: instance) as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: FabricEventLogRoot, path: dashboard_instance_event_log_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
       kind: PublicationHelperTimerUnit,
@@ -807,7 +832,22 @@ fn deployment_owned_steps(
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
-  ]
+  ], deployment_fabric_db_steps(instance: instance, names: names))
+}
+
+// The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart
+// references the binary and tree installed above) and then its tailscale route (routes to a live
+// service, the same reason the dashboard's mapping is last). Empty on every instance that does not
+// hold the placement.
+fn deployment_fabric_db_steps(instance: HostDashboardInstance, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  if fabric_db_placed_on(instance: instance) {
+    [
+      DeploymentArtifactStep { kind: FabricDbServeUnit, path: deployment_fabric_db_unit_path(names: names) },
+      DeploymentArtifactStep { kind: FabricDbServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_db_serve_endpoint()) },
+    ]
+  } else {
+    []
+  }
 }
 
 // THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS --
@@ -842,12 +882,23 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
   ]
 }
 
+// THE FABRIC DB STORE IS ENSURED, NEVER OWNED: it is durable history every partition's chain
+// lives in, so no retract may remove it -- the property this category makes structural. It
+// replaced the per-instance event-log mirror root, which was owned and torn down with rm -rf;
+// that was harmless for a cache of a remote repository and would destroy the log itself here.
 fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep {
       kind: DevbootArtifactStoreDirectory,
       subject: EnsuredHostDirectory {
         path: srv1_devboot_artifact_store_root as String as NonEmptyStr,
+        owner: gunbc_service_user,
+      },
+    },
+    DeploymentDependencyStep {
+      kind: FabricDbStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: fabric_db_store_root(),
         owner: gunbc_service_user,
       },
     },

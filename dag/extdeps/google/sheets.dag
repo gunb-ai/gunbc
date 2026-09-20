@@ -4,7 +4,14 @@ import std.types { NonEmptyStr, String, Int, List, Secret, Bool, Float, HttpMeth
 import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority {
+  ExternalAuthority,
+  ExternalModelScope,
+  ExternalSubjectRef,
+  CitedFigureStanding,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -82,6 +89,10 @@ data sheets_conditional_format_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#conditionalformatrule" }
 }
 
+data sheets_a1_notation_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/guides/concepts#cell" }
+}
+
 data google_sheets_api: NonEmptyStr = "Google Sheets API"
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -105,7 +116,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_color_citation,
     sheets_get_citation,
     sheets_grid_properties_citation,
-    sheets_conditional_format_citation
+    sheets_conditional_format_citation,
+    sheets_a1_notation_citation
   ]
 }
 
@@ -227,6 +239,168 @@ fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption?
   }
 }
 
+// A1 NOTATION: THE SHEET-TITLE TOKEN (sheets_a1_notation_citation). A qualified A1 range is
+// `<title>!<cells>`. The guide's lines this codec rests on, verbatim:
+//   "Single quotes are required for sheet names with spaces or special characters."
+//   "'My Custom Sheet'!A:A refers to all the cells in the first column of a sheet named
+//   "My Custom Sheet.""
+//   "A1 (without quotes) refers to cell A1 in the first visible sheet. 'A1' refers to a sheet
+//   with the name A1."
+//   "'Sheet1' refers to the sheet."
+//   "'Jon's_Data'!A1:D5 refers to all the cells in the first five rows and four columns of a
+//   sheet named "Jon's_Data.""
+// So the ENCODER ALWAYS QUOTES: the guide itself says a quoted plain name ('Sheet1', 'A1') denotes
+// the sheet, and one spelling needs no "is this a plain identifier" classifier.
+// An APOSTROPHE inside a title is not grounded. The guide spells Jon's_Data UNDOUBLED, and whether
+// the API accepts or returns the doubled form is unobserved (a1_title_apostrophe_spelling_standing).
+// So the encoder REFUSES such a title rather than guess an escape, and the decoder reads only what
+// is unambiguous under both spellings.
+
+data a1_title_apostrophe_spelling_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "developers.google.com/sheets/api/guides/concepts#cell shows 'Jon's_Data'!A1:D5 with the apostrophe UNDOUBLED and states no escape rule; whether values.get returns, and values.batchUpdate accepts, a doubled '' inside a quoted title is unobserved. Discriminator: a live values.get and values.batchUpdate against a temporary tab whose title contains an apostrophe, reading the ValueRange.range spelling the API returns",
+}
+
+type A1RangeEncoding
+  = A1RangeEncoded { wire: String }
+  | A1TitleApostropheUnsupported { title: NonEmptyStr }
+
+fn a1_range_encoding_text(e: A1RangeEncoding) -> String {
+  match e {
+    A1RangeEncoded { wire: w } => w
+    A1TitleApostropheUnsupported { title: t } =>
+      concat(
+        "A1 sheet title contains an apostrophe, whose spelling is unobserved: ",
+        concat(
+          t as String,
+          concat(
+            " -- read obligation: ",
+            match cited_figure_read_obligation(standing: a1_title_apostrophe_spelling_standing) {
+              Present { value: o } => o as String
+              Absent => ""
+            },
+          ),
+        ),
+      )
+  }
+}
+
+// cells Absent is the whole-sheet range: the quoted title alone.
+fn a1_range_encode(title: NonEmptyStr, cells: String?) -> A1RangeEncoding {
+  if string_contains(s: title as String, pattern: "'") {
+    A1TitleApostropheUnsupported { title: title }
+  } else {
+    let token = concat("'", concat(title as String, "'"))
+    match cells {
+      Absent => A1RangeEncoded { wire: token }
+      Present { value: c } => A1RangeEncoded { wire: concat(token, concat("!", c)) }
+    }
+  }
+}
+
+type A1SheetTitleRefusal
+  = A1TitleUnterminatedQuote
+  | A1TitleBadEscape { at: Int }
+  | A1TitleApostropheAmbiguous { at: Int }
+  | A1TitleEmpty
+
+fn a1_sheet_title_refusal_text(refusal: A1SheetTitleRefusal) -> String {
+  match refusal {
+    A1TitleUnterminatedQuote => "A1 sheet title: unterminated quote"
+    A1TitleBadEscape { at: i } =>
+      concat("A1 sheet title: apostrophe in an unquoted title at offset ", to_string(i))
+    A1TitleApostropheAmbiguous { at: i } =>
+      concat("A1 sheet title: apostrophe spelling is ambiguous, and the API's escape rule is unobserved; at offset ", to_string(i))
+    A1TitleEmpty => "A1 sheet title: empty title"
+  }
+}
+
+type A1RangeTitleDecode
+  = A1TitleQualified { title: NonEmptyStr, cells: String }
+  | A1TitleWholeSheet { title: NonEmptyStr }
+  | A1TitleUnqualified { text: String }
+  | A1TitleRefused { refusal: A1SheetTitleRefusal }
+
+type A1TitleScan = A1ScanAt { index: Int } | A1ScanNone
+
+type A1QuotedClose = A1QuotedClosedAt { index: Int } | A1QuotedAmbiguousAt { index: Int } | A1QuotedUnterminated
+
+// Inside a quoted title opened at 0: an apostrophe followed by '!' or the end CLOSES the title; one
+// followed by any other character is a literal apostrophe (the guide's 'Jon's_Data'); a pair ''
+// is refused, because it reads as one escaped apostrophe or two literal ones and no source decides.
+fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> A1QuotedClose {
+  if i >= len {
+    A1QuotedUnterminated
+  } else if char_at(s, i) != "'" {
+    a1_quoted_title_close_from(s: s, i: i + 1, len: len)
+  } else if i + 1 == len {
+    A1QuotedClosedAt { index: i }
+  } else if char_at(s, i + 1) == "!" {
+    A1QuotedClosedAt { index: i }
+  } else if char_at(s, i + 1) == "'" {
+    A1QuotedAmbiguousAt { index: i }
+  } else {
+    a1_quoted_title_close_from(s: s, i: i + 1, len: len)
+  }
+}
+
+fn a1_char_from(s: String, ch: String, i: Int, end: Int) -> A1TitleScan {
+  if i >= end {
+    A1ScanNone
+  } else if char_at(s, i) == ch {
+    A1ScanAt { index: i }
+  } else {
+    a1_char_from(s: s, ch: ch, i: i + 1, end: end)
+  }
+}
+
+fn a1_range_title_decode(range: String) -> A1RangeTitleDecode {
+  let len = string_length(s: range)
+  if len == 0 {
+    A1TitleRefused { refusal: A1TitleEmpty }
+  } else if char_at(range, 0) == "'" {
+    match a1_quoted_title_close_from(s: range, i: 1, len: len) {
+      A1QuotedUnterminated => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
+      A1QuotedAmbiguousAt { index: i } => A1TitleRefused { refusal: A1TitleApostropheAmbiguous { at: i } }
+      A1QuotedClosedAt { index: close } => {
+        let title = substring(s: range, start: 1, end: close)
+        if title == "" {
+          A1TitleRefused { refusal: A1TitleEmpty }
+        } else if close + 1 == len {
+          A1TitleWholeSheet { title: title as NonEmptyStr }
+        } else {
+          let cells = substring(s: range, start: close + 2, end: len)
+          match a1_char_from(s: cells, ch: "'", i: 0, end: string_length(s: cells)) {
+            A1ScanAt { index: q } =>
+              A1TitleRefused { refusal: A1TitleApostropheAmbiguous { at: close + 2 + q } }
+            A1ScanNone => A1TitleQualified { title: title as NonEmptyStr, cells: cells }
+          }
+        }
+      }
+    }
+  } else {
+    match a1_char_from(s: range, ch: "!", i: 0, end: len) {
+      A1ScanNone =>
+        match a1_char_from(s: range, ch: "'", i: 0, end: len) {
+          A1ScanAt { index: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+          A1ScanNone => A1TitleUnqualified { text: range }
+        }
+      A1ScanAt { index: bang } =>
+        if bang == 0 {
+          A1TitleRefused { refusal: A1TitleEmpty }
+        } else {
+          match a1_char_from(s: range, ch: "'", i: 0, end: bang) {
+            A1ScanAt { index: q } => A1TitleRefused { refusal: A1TitleBadEscape { at: q } }
+            A1ScanNone =>
+              A1TitleQualified {
+                title: substring(s: range, start: 0, end: bang) as NonEmptyStr,
+                cells: substring(s: range, start: bang + 1, end: len),
+              }
+          }
+        }
+    }
+  }
+}
+
 type SheetsError {
   code: Int
   message: String
@@ -261,9 +435,9 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 // over it agrees with a request encoding nobody ever sent. That is shape agreement standing in for
 // execution, and the wire is where the two part company.
 //
-// gunbc.review_sheet_sheets value_range_from_derived_write builds the Optional form and has never
-// executed -- it is the caller live_sheets_transport_frontier reserved. It needs this type before
-// its first write, and that is a defect in a landed module rather than a gap in a new one.
+// gunbc.review_sheet_sheets once lowered a write plan to the Optional form, and it never executed
+// -- it was the caller live_sheets_transport_frontier reserved. lower_write_plan now builds this
+// type; the defect was in a landed module rather than a gap in a new one.
 type BatchUpdateSpreadsheetResponse {
   spreadsheetId: String
 }
@@ -279,7 +453,34 @@ type SheetsColor {
   blue: Float
 }
 
-data spreadsheet_first_sheet_id: Int = 0
+// THE FIELD PATHS A MASK IS BUILT FROM, NAMED ONCE, BECAUSE A MASK AND A DECODE ARE ONE FACT.
+// A spreadsheets.get field mask is a list of upstream field paths, and every consumer that spells
+// one as a literal is authoring a second representation of what its own decode reads. That fork
+// is not theoretical: the format actuator's readback was changed to select a sheet by its
+// sheetId while its two masks still asked for no sheetId at all, so the selector looked for a
+// field the request had told Sheets not to send -- the grid read matched no sheet whatsoever and
+// the converge refused every time (review 68553). Nothing caught it because a mask literal and a
+// decode fold have no relation a compiler or a claim can check.
+//
+// These rows are that relation. A consumer composes its mask from the same named path its decode
+// keys on, so widening the reading and widening the request are one edit rather than two that can
+// drift. They are extdeps facts because the spelling is upstream's, not ours.
+data sheets_field_sheet_id: String = "sheets.properties.sheetId"
+
+data sheets_field_sheet_title: String = "sheets.properties.title"
+
+data sheets_field_sheet_index: String = "sheets.properties.index"
+
+data sheets_field_frozen_row_count: String = "sheets.properties.gridProperties.frozenRowCount"
+
+data sheets_field_conditional_formats: String = "sheets.conditionalFormats"
+
+data sheets_field_user_entered_format: String = "sheets.data.rowData.values.userEnteredFormat"
+
+fn sheets_field_mask(paths: List<String>) -> String {
+  join(paths, ",")
+}
+
 
 // THE READ SIDE OF A COLOUR, AND IT IS NOT THE WRITE SIDE'S TYPE. Google's JSON omits a field whose
 // value equals the proto3 default, so a channel of zero comes back ABSENT rather than 0.0 -- the
@@ -297,6 +498,20 @@ fn sheets_color_channel_read(channel: Float?) -> Float {
   match channel {
     Present { value: v } => v
     Absent => 0.0
+  }
+}
+
+fn sheets_sheet_id_read(id: Int?) -> Int {
+  match id {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn sheets_sheet_index_read(index: Int?) -> Int {
+  match index {
+    Present { value: v } => v
+    Absent => 0
   }
 }
 
@@ -335,8 +550,29 @@ type SheetsGridPropertiesRead {
   frozenRowCount: Int?
 }
 
+// title AND index ARE THE TAB'S IDENTITY AND THEY ARE NOT THE FILE'S. A spreadsheet is a Drive
+// file with a display name, and every tab inside it carries its own title -- upstream calls the
+// file a Spreadsheet and each tab a Sheet, and sheets.properties.title is the tab's. Modelling
+// only sheetId left a consumer with no way to name the tab it had located, so the values path took
+// a title from its caller and the format path addressed sheet 0. Both are here because both come
+// back in one spreadsheets.get: sheetId is what a batchUpdate request addresses, title is what an
+// A1 range qualifies with, and index is the tab's position in the workbook, carried because the
+// response carries it and a consumer adjudicating two tabs needs to say which one it means.
+//
+// All three are Optional, and the three absences do NOT mean the same thing. sheetId and index
+// are Int and a first tab has 0 for both, which equals the proto3 default and is therefore OMITTED
+// from the JSON -- exactly as a zero colour channel and an unfrozen frozenRowCount are omitted, and
+// absent IS zero for the same reason. sheets_sheet_id_read and sheets_sheet_index_read are the only
+// places that say so, beside sheets_color_channel_read which already said it for a channel.
+//
+// title is NOT that case. Its proto3 default is the empty string and upstream never names a tab
+// with one, so an absent title is a response this model could not read rather than a tab called
+// nothing -- and a consumer that substituted a name there would be inventing the tab's identity.
+// Nothing here decides that; the type keeps the distinction and the consumer refuses on it.
 type SheetsSheetPropertiesRead {
   sheetId: Int?
+  title: String?
+  index: Int?
   gridProperties: SheetsGridPropertiesRead?
 }
 

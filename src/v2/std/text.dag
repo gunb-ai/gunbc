@@ -1,7 +1,7 @@
 module v2.std.text
 
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>
@@ -73,9 +73,8 @@ fn char_eq(a: Char, b: Char) -> Bool {
 // them under names that do not spell string_eq exactly.
 //
 // THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
-// rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster
-// header in src/v1/stage0/src/namespace_wave_admission.rs names -- two spellings of one census
-// would be the second authority DESIGN section 3 forbids, and the narrower one UNDER-REPORTS:
+// rots the moment anyone adds or removes a copy. ONE COMMAND (the roster header that used to name
+// its twin is deleted with the wave-admission wall, 2026-09-19, so this is now its only home):
 //   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
 // A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
 // after it stopped being true, which is why neither appears in this annotation.
@@ -169,4 +168,28 @@ fn string_join(fields: FreeMonoid<String>, separator: String) -> String {
 // same types as every other text fold.
 fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: String) -> String {
   string_join(fields: string_split(source: source, delimiter: needle), separator: replacement)
+}
+
+// ALPHABET MEMBERSHIP IS CHARACTER MEMBERSHIP, NOT SUBSTRING SEARCH. Every consumer this replaced
+// asked "is each character of s drawn from this admitted alphabet", and every one of them spelled
+// it as a host `string_contains(s: alphabet, pattern: ch)` -- substring search over a one-character
+// needle -- under a hand-rolled index walk carrying `i` and `n` past `char_at`. Two costs rode on
+// that spelling. The operand of `char_at` is a String, not a Char, so each site had to VALIDATE
+// `string_length(s: ch) == 1` to recover the fact the type should have carried; over the structural
+// carrier the element IS a Char and that state has no constructor (DESIGN section 4b, rung 4).
+// And substring search is the wrong semantic question: it answers containment of a SEQUENCE, so a
+// two-character operand would be admitted by an alphabet that spells it contiguously.
+//
+// The derivation is the list algebra, unchanged: membership is `contains` under char equality,
+// and the scan is `for_all` / `any` over the same carrier. No index, no bound, no second walk.
+fn string_contains_char(s: String, c: Char) -> Bool {
+  contains(xs: s, item: c, eq: char_eq)
+}
+
+fn string_all_chars_in(s: String, alphabet: String) -> Bool {
+  for_all(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+
+fn string_any_char_in(s: String, alphabet: String) -> Bool {
+  any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
 }

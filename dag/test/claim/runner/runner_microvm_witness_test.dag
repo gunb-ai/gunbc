@@ -1,6 +1,7 @@
 module test.claim.runner_microvm_witness_test
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
+import std.measure { ByteSize }
 import product.fabric.isolation {
   IsolationProfile,
   DedicatedKernel,
@@ -9,7 +10,17 @@ import product.fabric.isolation {
 }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.runner_microvm_attempt { MicroVmAttemptAccepted, microvm_attempt }
+import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned,
+  CellSettled, CellAttemptInFlight, CellQuarantinedAt, HostStoreUnreadable, cell_incarnation_admission,
+  InFlightAttempt,
+}
 import extdeps.virtualization.firecracker {
+  firecracker_vcpu_range_v1_16_1,
   FirecrackerMachineConfig,
   FirecrackerVmConfig,
   FirecrackerDrive,
@@ -47,11 +58,30 @@ import gunbc.runner_microvm {
   RunnerMicroVmRefusedMalformedVm,
   RunnerMicroVmRefusedEnvelopeDisagreement,
   RunnerMicroVmRefusedEnvelopeUnresolved,
-  RunnerMicroVmSizing,
-  MicroVmSized,
-  MicroVmSizeUnresolved,
-  runner_microvm_size_decision,
+  RunnerMicroVmRefusedHostWithdrawn,
+  RunnerMicroVmRefusedCellWithdrawn,
+  RunnerMicroVmRecoveryRequired,
   gunbc_runner_microvm_declared_size,
+  RunnerMicroVmShape,
+  RunnerMicroVmShapeResolution,
+  MicroVmShapeResolved,
+  MicroVmShapeRefused,
+  RunnerMicroVmShapeRefusal,
+  ShapeRefusedVcpuCountUnsupported,
+  ShapeRefusedWorkThreadsExceedEntitlement,
+  ShapeRefusedWorkMemoryUnstated,
+  ShapeRefusedReserveUnmodeled,
+  ShapeRefusedReserveExceedsCell,
+  ShapeRefusedWorkMemoryExceedsCellRemainder,
+  ShapeRefusedWorkStorageExceedsWorkspace,
+  ShapeRefusedCacheAllowanceUnderivable,
+  GuestCacheAllowance, AllowanceDerived, AllowanceUnderivable,
+  runner_microvm_shape,
+  gunbc_runner_microvm_shape,
+  runner_microvm_workspace_grant,
+  gunbc_runner_microvm_task_ceiling,
+  runner_microvm_shape_refusal_text,
+  gunbc_runner_microvm_guest_cache_allowance,
   RunnerMicroVmNetworking,
   GuestNetworkTap,
   GuestNetworkAbsent,
@@ -66,14 +96,29 @@ import gunbc.runner_microvm {
   gunbc_runner_guest_image,
 }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
-import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size, gibibyte_to_byte_size }
+import std.measure {
+  hardware_thread_count_value, hardware_thread_count, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size,
+  mebibyte, mebibyte_count, mebibyte_to_byte_size, events_per_minute_count,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity }
+import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import extdeps.storage.types { Ephemeral }
+import gunbc.runner_guest_image { runner_guest_agent_unit }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.floor_demand {
+  floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
+  round_up_to_gibibyte_grain, GrainRounded, GrainUnrepresentable,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
+  receipt_last_unstalled_beat, beat_reclaimable_cache,
+}
+import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.checked_arithmetic { int_inclusive_max }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
-  CoresPerSlotResolved,
-  CoresPerSlotUnresolved,
   gunbc_runner_slot_desired,
   CpuQuotaResolved,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
 }
 
 
@@ -97,6 +142,9 @@ fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -108,6 +156,9 @@ fn admission_is_credential_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -119,6 +170,9 @@ fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -135,6 +189,9 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -155,6 +212,9 @@ fn admission_refuses_naming_the_missing_reserve(a: RunnerMicroVmAdmission) -> Bo
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -166,6 +226,9 @@ fn admission_is_malformed_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { bound: _ } => false
   }
 }
 
@@ -196,6 +259,7 @@ data exittype_cgroup_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLif
 test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -211,6 +275,7 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
 test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: exittype_cgroup_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -226,6 +291,7 @@ test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
 test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -243,6 +309,7 @@ test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
 test fn shared_slot_directory_credential_is_refused() -> Bool {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -268,6 +335,7 @@ fn two_root_config() -> FirecrackerVmConfig {
 test fn two_root_devices_is_a_malformed_vm() -> Bool {
   admission_is_malformed_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -303,6 +371,7 @@ test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> B
 test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -319,6 +388,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
 test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -328,6 +398,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     ),
   ) && admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -343,6 +414,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
 test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -422,6 +494,7 @@ data witness_unmodeled_reserve: RealizationReserve = ReserveUnmodeled {
 test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
   admission_refuses_naming_the_missing_reserve(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -451,6 +524,7 @@ fn config_with_machine(vcpus: Int, mib: Int) -> FirecrackerVmConfig {
 
 fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
   runner_microvm_admission(
+    cell: witness_admitted_cell(),
     topology: VmmUnderLifecycleController,
     intent: repaired_lifecycle_intent,
     main_exits_when_incarnation_ends: true,
@@ -477,6 +551,18 @@ test fn a_zero_guest_memory_is_refused() -> Bool {
 test fn a_non_positive_vcpu_count_is_refused() -> Bool {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 0, mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: -2, mib: 4096))
+}
+
+// THE VMM'S OWN vCPU RANGE IS APPLIED AT THE HAND-AUTHORED CONFIG ENTRY TOO, so a configuration
+// that bypasses the shape cannot carry a count Firecracker refuses before boot: 32 is admitted,
+// 33 is the boundary refusal, 64 refuses harder. The range is the pinned release's row
+// (extdeps.virtualization.firecracker firecracker_vcpu_range_v1_16_1), not a literal here.
+test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool {
+  admission_is_admitted(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum), mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum) + 1, mib: 4096))
+    && admission_is_malformed_refusal(a: admission_of_machine(vcpus: 64, mib: 4096))
+    && hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum) == 32
+    && hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.minimum) == 1
 }
 
 // AN UNREPRESENTABLE MEMORY SIZE IS REFUSED RATHER THAN WRAPPED. mebibyte_to_byte_size multiplies
@@ -595,21 +681,187 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 //
 // It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
 // nothing; no Firecracker process is involved at any step.
-// PRODUCTION SIZING WITHDRAWS THE DECLARED CONFIGURATION NOW THAT THE CELL GRANTS AN ABSOLUTE
-// ENTITLEMENT. This previously asserted that the fleet's declared VM reached admission. That wall
-// landed: Absolute is inhabited, so gunbc_runner_microvm_vm_config is Unresolved and names the
-// repair. Per DESIGN 4b(4) the expecting-green probe flips rather than retiring.
-test fn the_production_vm_config_refuses_while_topology_is_still_the_stale_declaration() -> Bool {
-  match gunbc_runner_microvm_vm_config(
+// PRODUCTION SIZING NOW DERIVES, AND WHAT IT ANSWERS IS DECIDED BY THE FLOOR'S DEMAND STANDING.
+// While the held-set demand is unmeasured the Work states no memory and the shape must
+// refuse on exactly that absence -- not on the charge ceiling, which includes reclaimable cache
+// and is a bet. Once a receipt stands, the shape must resolve iff the stated requirement fits the
+// cell's remainder beside the reserve, and refuse with both figures otherwise. Both arms are
+// written so the witness is discriminating in whichever state production is in, rather than a
+// probe that has to be rewritten the day the receipt lands.
+test fn the_production_shape_answers_according_to_the_floor_demand_standing() -> Bool {
+  let remainder = byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+  match floor_memory_requirement() {
+    Absent =>
+      match gunbc_runner_microvm_shape() {
+        MicroVmShapeResolved { shape: _ } => false
+        MicroVmShapeRefused { refusal: r } =>
+          match r {
+            ShapeRefusedWorkMemoryUnstated => true
+            _ => false
+          }
+      }
+    Present { value: need } =>
+      match gunbc_runner_microvm_guest_cache_allowance() {
+        AllowanceUnderivable { cause: _ } =>
+          match gunbc_runner_microvm_shape() {
+            MicroVmShapeResolved { shape: _ } => false
+            MicroVmShapeRefused { refusal: r } =>
+              match r {
+                ShapeRefusedCacheAllowanceUnderivable { cause: _ } => true
+                _ => false
+              }
+          }
+        AllowanceDerived { bytes: allowance_bytes } =>
+      if byte_size_count(b: need.min_bytes) + byte_size_count(b: allowance_bytes) <= remainder {
+        match gunbc_runner_microvm_shape() {
+          MicroVmShapeResolved { shape: s } =>
+            mebibyte_count(m: s.size.memory) == remainder / (1024 * 1024)
+              && hardware_thread_count_value(t: s.size.vcpu_count) == 8
+          MicroVmShapeRefused { refusal: _ } => false
+        }
+      } else {
+        match gunbc_runner_microvm_shape() {
+          MicroVmShapeResolved { shape: _ } => false
+          MicroVmShapeRefused { refusal: r } =>
+            match r {
+              ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+                byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
+                  && byte_size_count(b: a) == byte_size_count(b: allowance_bytes)
+                  && byte_size_count(b: m) == remainder
+              _ => false
+            }
+        }
+      }
+      }
+  }
+}
+
+// THE EXPECTING-RED PROBE PINNED TO TODAY (DESIGN 4b(4); review 68307). The either-state witness
+// above cannot record WHICH state production is in, so this one does: at the 2026-09-19 receipt
+// and the 26 GiB cell row, the production shape refuses on the memory remainder, and the refusal
+// carries the floor's stated demand, the derived allowance and the cell's remainder. The day the
+// cell row or the demand receipt moves so the sum fits, this reds -- and it is then FLIPPED to
+// assert resolution, citing what moved, rather than deleted. The stall it evidences is
+// gunbc.guarantee_stall.runner_microvm_floor_fit_stall.
+test fn the_production_shape_refuses_today_on_the_memory_remainder_with_all_three_figures() -> Bool {
+  match floor_memory_requirement() {
+    Absent => false
+    Present { value: need } =>
+      match gunbc_runner_microvm_shape() {
+        MicroVmShapeResolved { shape: _ } => false
+        MicroVmShapeRefused { refusal: r } =>
+          match r {
+            ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+              byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
+                && allowance_is(bytes: a)
+                && byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+                && byte_size_count(b: n) + byte_size_count(b: a) > byte_size_count(b: m)
+            _ => false
+          }
+      }
+  }
+}
+
+fn allowance_is(bytes: ByteSize) -> Bool {
+  match gunbc_runner_microvm_guest_cache_allowance() {
+    AllowanceDerived { bytes: b } => byte_size_count(b: b) == byte_size_count(b: bytes)
+    AllowanceUnderivable { cause: _ } => false
+  }
+}
+
+// THE TASK CEILING IS APPLIED WHERE THE FLOOR'S PROCESSES LIVE: the guest agent unit's own
+// TasksMax= line carries the same value the shape states, both read from one cell row through
+// gunbc_runner_microvm_task_ceiling. The join is on the SERIALIZED unit, so a unit that dropped the
+// directive, or a shape that read a different row, reds here. What this does not establish is
+// pids.max as applied inside a booted guest -- that readback is the first guest attempt's.
+test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
+  let unit = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: "/dev/vdb" as NonEmptyStr))
+  string_contains(s: unit, pattern: join(["TasksMax=", to_string(gunbc_runner_microvm_task_ceiling())], ""))
+    && gunbc_runner_microvm_task_ceiling() == gunbc_runner_slot_desired().tasks_max
+    && match shape_of(
+      work: floor_like_work(),
+      storage: fixture_storage(),
+      cpu: fixture_entitlement(),
+      envelope: fixture_cell(),
+      reserve: fixture_reserve(),
+    ) {
+      MicroVmShapeResolved { shape: s } => s.task_ceiling == 16384
+      MicroVmShapeRefused { refusal: _ } => false
+    }
+}
+
+// THE ALLOWANCE IS THE LAST UNSTALLED BEAT'S RECLAIMABLE CACHE AT GIBIBYTE GRAIN, READ FROM THE
+// RECEIPT, and underivable rather than zero while nothing is measured -- so a change to the receipt
+// moves the allowance without anyone editing a literal, and an absent receipt cannot read as "no
+// cache needed".
+test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat() -> Bool {
+  match gunbc_floor_held_set_standing() {
+    HeldSetUnmeasured { instrument: _ } =>
+      match gunbc_runner_microvm_guest_cache_allowance() {
+        AllowanceUnderivable { cause: _ } => true
+        AllowanceDerived { bytes: _ } => false
+      }
+    HeldSetReceiptUnrepresentable { cause: _ } => false
+    HeldSetMeasured { receipt: r, peak: _ } =>
+      match receipt_last_unstalled_beat(r: r) {
+        Absent => false
+        Present { value: b } =>
+          match beat_reclaimable_cache(b: b) {
+            MeasureSubtrahendExceedsMinuend => false
+            MeasureDifference { value: cache } =>
+              match round_up_to_gibibyte_grain(bytes: cache) {
+                GrainUnrepresentable { cause: _ } => false
+                GrainRounded { bytes: g } => allowance_is(bytes: g) && events_per_minute_count(r: b.stall) == 0
+              }
+          }
+      }
+  }
+}
+
+// THE RED FOR THE TYPED CACHE SUBTRACTION, CARRIED THROUGH TO THE SHAPE: a supplied allowance that
+// refused (as a torn beat with shmem = file + 1 would make it) refuses the shape on its own arm,
+// after the reserve is judged and before any remainder is compared -- a zero here would have
+// admitted a guest with no cache and reported it as a fit.
+test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shape() -> Bool {
+  match runner_microvm_shape(
+    work: floor_like_work(),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+    cache_allowance: AllowanceUnderivable { cause: "fixture: shmem exceeds file" },
+    task_ceiling: 16384,
+    workspace: runner_microvm_workspace_grant,
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedCacheAllowanceUnderivable { cause: c } => cause_mentions(cause: c, needle: "fixture")
+        _ => false
+      }
+  }
+}
+
+// THE FLEET VM CONFIG CARRIES THE SHAPE'S ANSWER AND NOT A DEFAULT: unresolved exactly when the
+// shape refuses, with the refusal's text, and resolved exactly when it resolves.
+test fn the_production_vm_config_mirrors_the_shape_resolution() -> Bool {
+  let config = gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
     kernel_path: "/var/lib/gunbc/cell/vmlinux",
-    net: GuestNetworkAbsent { cause: "this control judges admission, not the per-slot tap" },
-  ) {
-    MicroVmConfigResolved { config: _ } => false
-    MicroVmConfigUnresolved { cause: c } =>
-      cause_mentions(cause: c, needle: "derivable")
-        && cause_mentions(cause: c, needle: "stale")
+    net: GuestNetworkAbsent { cause: "this control judges sizing, not the per-slot tap" },
+  )
+  match gunbc_runner_microvm_shape() {
+    MicroVmShapeResolved { shape: s } =>
+      match config {
+        MicroVmConfigResolved { config: c } => c.machine_config.mem_size_mib == mebibyte_count(m: s.size.memory)
+        MicroVmConfigUnresolved { cause: _ } => false
+      }
+    MicroVmShapeRefused { refusal: r } =>
+      match config {
+        MicroVmConfigResolved { config: _ } => false
+        MicroVmConfigUnresolved { cause: c } => c == runner_microvm_shape_refusal_text(r: r)
+      }
   }
 }
 
@@ -625,17 +877,22 @@ test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool
   guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
-// THE CELL GRANTS AN ABSOLUTE CPU ENTITLEMENT WHEN THE SLOT SURVEY RESOLVES, AND THAT IS THE SAME
-// THREAD COUNT AS gunbc_runner_slot_desired().cpu_quota. If this ever falls back to RelativeOnly
-// while the survey is Resolved, the slice quota and the guest-sizing entitlement have forked.
-test fn the_cell_grants_the_surveyed_absolute_cpu_entitlement() -> Bool {
+// THE CELL'S ENTITLEMENT IS THE SLOT ROW'S QUOTA SEEN FROM THE GUEST, ARM FOR ARM. A resolved
+// quota is an Absolute entitlement of the same thread count; the unbounded quota (the 2026-09-19
+// policy, and the production row) is RelativeOnly with a cause that names that policy. If either
+// arm ever maps to the other, the slice quota and the guest-sizing entitlement have forked.
+test fn the_cell_entitlement_is_the_slot_quota_arm_for_arm() -> Bool {
   match gunbc_runner_slot_desired().cpu_quota {
-    CpuQuotaRefused { cause: _ } => false
     CpuQuotaResolved { threads: want } =>
       match gunbc_runner_microvm_cell_cpu_entitlement() {
         CpuEntitlementRelativeOnly { cause: _ } => false
         CpuEntitlementAbsolute { threads: got } =>
           hardware_thread_count_value(t: want) == hardware_thread_count_value(t: got)
+      }
+    SlotCpuQuotaUnbounded =>
+      match gunbc_runner_microvm_cell_cpu_entitlement() {
+        CpuEntitlementAbsolute { threads: _ } => false
+        CpuEntitlementRelativeOnly { cause: c } => cause_mentions(cause: c, needle: "2026-09-19")
       }
   }
 }
@@ -674,35 +931,334 @@ test fn the_cell_grants_the_surveyed_absolute_cpu_entitlement() -> Bool {
 // cause NAMES the missing footprint. That has an authorable red -- a cause that stops naming the
 // footprint fails it -- where "an unresolved config cannot be admitted" has none.
 
-// THE POSITIVE CONTROL FOR THE DECLARED SIZE: while the cell grants only a relative CPU share --
-// which is the fact that FORCED the declaration -- the decision resolves, and it resolves to the
-// declared row rather than to some derived approximation of it. Driven with a fixture RelativeOnly
-// so production Absolute does not make this row permanently red.
-test fn a_relative_only_entitlement_resolves_to_the_declared_size() -> Bool {
-  match runner_microvm_size_decision(
-    cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
-  ) {
-    MicroVmSizeUnresolved { cause: _ } => false
-    MicroVmSized { size: sz } =>
-      hardware_thread_count_value(t: sz.vcpu_count)
-        == hardware_thread_count_value(t: gunbc_runner_microvm_declared_size.vcpu_count)
+// ── the shape derivation, driven with supplied inputs on both polarities ───────────────────────
+//
+// THE FIXTURE CELL IS 28 GiB WITH A 1 GiB RESERVE, so the remainder (27 GiB) holds the floor's real
+// demand and the accept arm executes against the PRODUCTION Work and storage figures -- the
+// inhabitance claim DESIGN 3 asks for. Every refusal control below moves exactly one input off
+// this fixture and expects exactly one arm, so an implementation that refused uniformly, or that
+// took a later arm before an earlier one, reds on the arm name rather than on a Bool.
+fn fixture_cell() -> CellMemoryEnvelope {
+  CellMemoryEnvelope { bytes: gibibyte_to_byte_size(gibibyte(count: 28)) }
+}
+
+fn fixture_reserve() -> RealizationReserve {
+  ReserveDeclared { bytes: gibibyte_to_byte_size(gibibyte(count: 1)) }
+}
+
+fn fixture_entitlement() -> CellCpuEntitlement {
+  CpuEntitlementAbsolute { threads: hardware_thread_count(count: 10) }
+}
+
+fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: threads) }, envelope: envelope },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
   }
 }
 
-// THE DISCRIMINATING RED, AND THE ONE THAT KEEPS THE DECLARATION FROM BECOMING AN ABSORBING ANSWER.
-// The day the cell grants an ABSOLUTE entitlement, the declared size is a stale answer to a question
-// that has become derivable -- and a stale answer that keeps returning successfully is what would
-// stop anyone from ever noticing the repair is available. So that arm refuses, and the refusal names
-// the repair. An implementation that returned the declaration on BOTH arms passes the control above
-// and reds here, which is exactly the pair's job.
-test fn an_absolute_entitlement_withdraws_the_declared_size_and_names_the_repair() -> Bool {
-  match runner_microvm_size_decision(
-    cpu: CpuEntitlementAbsolute { threads: hardware_thread_count(count: 8) },
+// A WORK SHAPED LIKE THE FLOOR'S -- eight threads, a 25 GiB memory minimum -- SUPPLIED rather than
+// read from gunbc.fabric_witness_run, because the production Work states memory only once the
+// memory.stat receipt stands (gunbc.floor_demand) and these controls are about the fold's
+// arms, not about that standing. The production route is judged by
+// the_production_shape_answers_according_to_the_floor_demand_standing.
+// THE FLOOR'S STORAGE DEMAND AS A SUPPLIED REQUIREMENT: two gibibytes, the figure
+// gunbc.floor_demand states today, so these controls judge the fold's arms and not the demand's
+// representability (which floor_demand_witness_test judges).
+fn fixture_storage() -> StorageRequirement {
+  StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 2)), persistence: Ephemeral }
+}
+
+fn floor_like_work() -> ExecutionRequirements {
+  work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 25))))
+}
+
+fn shape_of(
+  work: ExecutionRequirements,
+  storage: StorageRequirement,
+  cpu: CellCpuEntitlement,
+  envelope: CellMemoryEnvelope,
+  reserve: RealizationReserve,
+) -> RunnerMicroVmShapeResolution {
+  runner_microvm_shape(
+    work: work,
+    storage: storage,
+    cpu: cpu,
+    envelope: envelope,
+    reserve: reserve,
+    cache_allowance: AllowanceDerived { bytes: gibibyte_to_byte_size(gibibyte(count: 1)) },
+    task_ceiling: 16384,
+    workspace: runner_microvm_workspace_grant,
+  )
+}
+
+// THE ACCEPT ARM: eight vCPUs from the Work's thread row, 27 GiB of guest
+// memory as the whole remainder in MiB, the workspace grant, and the cell's task row.
+test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool {
+  match shape_of(
+    work: floor_like_work(),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
   ) {
-    MicroVmSized { size: _ } => false
-    MicroVmSizeUnresolved { cause: c } =>
-      cause_mentions(cause: c, needle: "derivable")
-        && cause_mentions(cause: c, needle: "stale")
+    MicroVmShapeRefused { refusal: _ } => false
+    MicroVmShapeResolved { shape: s } =>
+      hardware_thread_count_value(t: s.size.vcpu_count) == 8
+        && mebibyte_count(m: s.size.memory) == 27 * 1024
+        && mebibyte_count(m: s.workspace) == mebibyte_count(m: runner_microvm_workspace_grant)
+        && s.task_ceiling == 16384
+  }
+}
+
+// THE DERIVED GUEST FITS BY CONSTRUCTION: floor division to MiB never rounds the remainder up, so
+// the existing containment law admits it with the same reserve and envelope it was derived from.
+test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -> Bool {
+  match shape_of(
+    work: floor_like_work(),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeRefused { refusal: _ } => false
+    MicroVmShapeResolved { shape: s } =>
+      match guest_memory_fits(
+        guest: GuestMemoryRequest { bytes: mebibyte_to_byte_size(m: s.size.memory) },
+        reserve: fixture_reserve(),
+        envelope: fixture_cell(),
+      ) {
+        GuestFitsWithinCell => true
+        GuestExceedsCell { detail: _ } => false
+        MemoryFitUnresolved { cause: _ } => false
+      }
+  }
+}
+
+// A RELATIVE-ONLY ENTITLEMENT BOUNDS NOTHING ON THE CELL'S CPU AXIS, SO THE WORK'S THREADS STAND
+// -- WITHIN THE VMM'S OWN RANGE. Under the 2026-09-19 no-ceiling ruling this is the production
+// arm: the slot carries CPUWeight and no ceiling, and a relative share can refuse no count. What
+// still refuses is the pinned Firecracker release's range, which no cell policy lifts: 8 and 32
+// resolve, 33 is the boundary refusal and 64 refuses, each carrying the requested count and the
+// range. The count is never clamped to the maximum -- that would be a false admission.
+fn relative_only_shape(threads: Int) -> RunnerMicroVmShapeResolution {
+  shape_of(
+    work: work_with(threads: threads, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
+    storage: fixture_storage(),
+    cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  )
+}
+
+fn relative_only_resolves_with(threads: Int) -> Bool {
+  match relative_only_shape(threads: threads) {
+    MicroVmShapeRefused { refusal: _ } => false
+    MicroVmShapeResolved { shape: s } => hardware_thread_count_value(t: s.size.vcpu_count) == threads
+  }
+}
+
+fn relative_only_refuses_unsupported(threads: Int) -> Bool {
+  match relative_only_shape(threads: threads) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedVcpuCountUnsupported { requested: q, minimum: lo, maximum: hi } =>
+          hardware_thread_count_value(t: q) == threads && hardware_thread_count_value(t: lo) == 1 && hardware_thread_count_value(t: hi) == 32
+        _ => false
+      }
+  }
+}
+
+test fn a_relative_only_entitlement_admits_the_works_threads_within_the_vmm_range() -> Bool {
+  relative_only_resolves_with(threads: 8) && relative_only_resolves_with(threads: 32)
+}
+
+test fn a_thread_count_past_the_pinned_firecracker_range_refuses_the_shape() -> Bool {
+  relative_only_refuses_unsupported(threads: 33) && relative_only_refuses_unsupported(threads: 64)
+}
+
+test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_counts() -> Bool {
+  match shape_of(
+    work: work_with(threads: 12, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkThreadsExceedEntitlement { required: n, entitled: e } =>
+          hardware_thread_count_value(t: n) == 12 && hardware_thread_count_value(t: e) == 10
+        _ => false
+      }
+  }
+}
+
+// A WORK THAT STATES NO MEMORY IS REFUSED, WHICH IS WHAT MAKES STATING THE FLOOR'S DEMAND
+// LOAD-BEARING: the envelope field gunbc.fabric_witness_run filled on 2026-09-19 is the one this
+// arm reads, so removing it takes the production shape to this refusal rather than to a guest
+// sized against nothing.
+test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool {
+  match shape_of(
+    work: work_with(threads: 8, envelope: unstated_envelope()),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryUnstated => true
+        _ => false
+      }
+  }
+}
+
+test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_figures() -> Bool {
+  match shape_of(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 28)))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+          byte_size_count(b: n) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 28)))
+            && byte_size_count(b: a) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 1)))
+            && byte_size_count(b: m) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 27)))
+        _ => false
+      }
+  }
+}
+
+// THE BOUNDARY, WITH THE ALLOWANCE COUNTED: a demand of 26 GiB plus the fixture's 1 GiB allowance
+// equals the 27 GiB remainder and is admitted; 27 GiB plus the allowance is one gibibyte over and
+// refuses. A fold that forgot the allowance would admit the second, and one that used a strict
+// comparison would refuse the first.
+test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitted_and_one_over_is_not() -> Bool {
+  let exact = match shape_of(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 26)))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeRefused { refusal: _ } => false
+    MicroVmShapeResolved { shape: s } => mebibyte_count(m: s.size.memory) == 27 * 1024
+  }
+  let over = match shape_of(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 27)))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: _, allowance: _, remainder: _ } => true
+        _ => false
+      }
+  }
+  exact && over
+}
+
+
+test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool {
+  match shape_of(
+    work: floor_like_work(),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: CellMemoryEnvelope { bytes: byte_size(count: 1) },
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedReserveExceedsCell { reserve: _, envelope: e } => byte_size_count(b: e) == 1
+        _ => false
+      }
+  }
+}
+
+test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
+  match shape_of(
+    work: floor_like_work(),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: ReserveUnmodeled { cause: "fixture: no footprint" },
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedReserveUnmodeled { cause: c } => cause_mentions(cause: c, needle: "fixture")
+        _ => false
+      }
+  }
+}
+
+test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool {
+  match shape_of(
+    work: floor_like_work(),
+    storage: StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 5)), persistence: Ephemeral },
+    cpu: fixture_entitlement(),
+    envelope: fixture_cell(),
+    reserve: fixture_reserve(),
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkStorageExceedsWorkspace { required: n, workspace: w } =>
+          byte_size_count(b: n) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 5)))
+            && byte_size_count(b: w) == byte_size_count(b: mebibyte_to_byte_size(m: runner_microvm_workspace_grant))
+        _ => false
+      }
+  }
+}
+
+// THE FLOOR'S OWN STORAGE DEMAND FITS THE GRANT, stated as a control rather than assumed: the
+// measured components in gunbc.floor_demand round to 2 GiB against a 4 GiB workspace.
+test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool {
+  match floor_storage_demand() {
+    StorageDemandUnrepresentable { cause: _ } => false
+    StorageDemandStated { requirement: r } =>
+      byte_size_count(b: r.min_bytes) <= byte_size_count(b: mebibyte_to_byte_size(m: runner_microvm_workspace_grant))
+  }
+}
+
+// THE RED FOR THE FIT ARITHMETIC (review by side-chat at f35ce9db): a demand at the representable
+// bound with a one-byte allowance against a remainder at the bound. A sum would wrap negative and
+// admit; the subtraction form refuses with the three figures. The cell is the bound plus the 1 GiB
+// fixture reserve less one... which is itself unrepresentable, so the control supplies the
+// remainder directly through a zero reserve: envelope = int_inclusive_max, reserve = 0.
+test fn a_demand_at_the_representable_bound_with_a_one_byte_allowance_refuses_rather_than_wrapping() -> Bool {
+  match runner_microvm_shape(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: byte_size(int_inclusive_max()))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: CellMemoryEnvelope { bytes: byte_size(int_inclusive_max()) },
+    reserve: ReserveDeclared { bytes: byte_size(0) },
+    cache_allowance: AllowanceDerived { bytes: byte_size(1) },
+    task_ceiling: 16384,
+    workspace: runner_microvm_workspace_grant,
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+          byte_size_count(b: n) == int_inclusive_max() && byte_size_count(b: a) == 1 && byte_size_count(b: m) == int_inclusive_max()
+        _ => false
+      }
   }
 }
 
@@ -723,11 +1279,109 @@ test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> 
     && count(mvp_sized_config().network_interfaces) == 1
 }
 
-// THE CORE COUNT RESOLVES AND THE CELL NOW GRANTS THAT COUNT AS AN ABSOLUTE ENTITLEMENT. This
-// witness keeps the survey fact true so a sizing refusal cannot be misread as "the survey failed".
-test fn the_cell_core_count_still_resolves() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) > 0
+// THE CORE COUNT IS A POLICY AND IT IS POSITIVE. cores_per_slot no longer resolves or refuses --
+// it is authored (gunbc_runner_cores_per_slot_policy) -- so the only thing left to keep true is
+// that the policy is not zero, which would admit every core against no slot at all.
+test fn the_cell_core_count_is_a_positive_policy() -> Bool {
+  hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) > 0
+}
+
+// THE CELL ADMISSION EVERY OTHER CONTROL HERE RUNS UNDER, OBTAINED THROUGH THE REAL JOIN rather than
+// constructed: a store holding a settled Ready at generation 0, asked for allocation generation 1.
+fn witness_store(cell: String, readiness_ready: Bool) -> CellReadinessStoreRead {
+  StoreRead {
+    ownership: StoreRootOwned,
+    records: [
+      CellSettled {
+        cell: cell as CellId,
+        generation: 0,
+        readiness: if readiness_ready {
+          CellReady { cell: cell as CellId }
+        } else {
+          CellQuarantined { cell: cell as CellId, unproven: [FactNotObserved { fact: CgroupEmpty }] }
+        },
+      },
+    ],
   }
+}
+
+fn witness_admitted_cell() -> CellIncarnationAdmission {
+  cell_incarnation_admission(store: witness_store(cell: "srv1-01", readiness_ready: true), cell: "srv1-01" as CellId, allocation_generation: 1)
+}
+
+// A QUARANTINED CELL REFUSES AN OTHERWISE ADMISSIBLE VM, AND REFUSES WITH THE CELL'S CAUSE. The
+// VM, intent and reserve are exactly those of the admitted controls, so the only thing this varies
+// is the readiness the admission consumes -- the frontier #11662 declared here, now closed.
+test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
+  let quarantined = runner_microvm_admission(
+    cell: cell_incarnation_admission(store: witness_store(cell: "srv1-01", readiness_ready: false), cell: "srv1-01" as CellId, allocation_generation: 1),
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    main_exits_when_incarnation_ends: true,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: mvp_sized_config(),
+    reserve: witness_reserve,
+  )
+  let refused_with_cause = match quarantined {
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: 0, unproven: _ } } => true
+    _ => false
+  }
+  refused_with_cause
+    && admission_is_admitted(a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
+      topology: VmmUnderLifecycleController,
+      intent: repaired_lifecycle_intent,
+      main_exits_when_incarnation_ends: true,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: mvp_sized_config(),
+      reserve: witness_reserve,
+    ))
+}
+
+// THE THREE NON-ADMITTING ARMS STAY DISTINCT THROUGH THE ADMISSION (review 68119): an unreadable
+// store is a HOST refusal, an in-flight record is RECOVERY REQUIRED, and neither is the quarantine arm
+// above. A collapse into one refusal would still pass the quarantine witness and fail this one.
+test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
+  let host = match runner_microvm_admission(
+    cell: cell_incarnation_admission(store: StoreUnreadable { reason: "EACCES" as NonEmptyStr }, cell: "srv1-01" as CellId, allocation_generation: 1),
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    main_exits_when_incarnation_ends: true,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: mvp_sized_config(),
+    reserve: witness_reserve,
+  ) {
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostStoreUnreadable { reason: _ } } => true
+    _ => false
+  }
+  let lost_slot = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  let lost_cell = runner_slot_instance_name(slot: lost_slot) as CellId
+  let recovery = match microvm_attempt(slot: lost_slot, attempt_id: "lost-0") {
+    MicroVmAttemptAccepted { attempt: lost } =>
+      match runner_microvm_admission(
+        cell: cell_incarnation_admission(
+          store: StoreRead {
+            ownership: StoreRootOwned,
+            records: [CellAttemptInFlight {
+              cell: lost_cell,
+              generation: 0,
+              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, jit_registration_id: "reg-lost" as NonEmptyStr },
+            }],
+          },
+          cell: lost_cell,
+          allocation_generation: 1,
+        ),
+        topology: VmmUnderLifecycleController,
+        intent: repaired_lifecycle_intent,
+        main_exits_when_incarnation_ends: true,
+        transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+        config: mvp_sized_config(),
+        reserve: witness_reserve,
+      ) {
+        RunnerMicroVmRecoveryRequired { bound: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  host && recovery
 }

@@ -18,10 +18,12 @@ import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   PublicationHelperTimerUnit,
+  FabricDbServeUnit,
+  FabricDbServeMapping,
   GunbcSourceTree,
   ServeBinary,
   DispatchWorktreeRoot,
-  AttemptStateRoot, ComputeRoot, FabricEventLogRoot,
+  AttemptStateRoot, ComputeRoot,
   SystemdUnit,
   BeltTimerUnit,
   FleetConvergeTimerUnit,
@@ -210,6 +212,13 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 // concern that put it last to begin with — so this position satisfies both constraints, and the
 // original placement satisfied only one.
 //
+// THE ORDER OF THOSE TWO IS NOT THIS CLAIM'S SUBJECT, and the expectation below no longer pins it
+// the wrong way round. gunbc.live_deploy.spec deployment_steps_apply_order states binary-then-tree
+// -- the tree is published by a service-user oneshot that RUNS the admitted binary (review on
+// PR #10696) -- and this expectation kept the older tree-then-binary spelling, so it was red against
+// its own authority with no production defect behind it. What the claim discriminates is unchanged:
+// the remote after both of its inputs and before the publication helper and the belt.
+//
 // Asserted as a filtered SEQUENCE rather than absolute indices, so inserting an unrelated member
 // leaves this green while a genuine reordering reds it.
 //
@@ -226,12 +235,13 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     ServeBinary => "binary"
     DeployedTreeRemoteUnit => "remote"
     PublicationHelperTimerUnit => "publication"
+    FabricDbServeUnit => ""
+    FabricDbServeMapping => ""
     BeltTimerUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""
     AttemptStateRoot => ""
     ComputeRoot => ""
-    FabricEventLogRoot => ""
     SystemdUnit => ""
     FleetConvergeTimerUnit => ""
   }
@@ -252,5 +262,5 @@ fn ordered_tags() -> List<String> {
 }
 
 test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
-  join(ordered_tags(), ",") == "tree,binary,remote,publication,belt,route"
+  join(ordered_tags(), ",") == "binary,tree,remote,publication,belt,route"
 }

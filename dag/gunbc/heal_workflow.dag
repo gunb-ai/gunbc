@@ -1,0 +1,438 @@
+module gunbc.heal_workflow
+
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
+  WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
+}
+import gunbc.action_use_admission { checkout_action, upload_artifact_action, google_auth_action }
+import extdeps.github.action_release { ActionRelease, action_release_same_producer }
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.ci_spec {
+  gunbc_ci_heal_regen_invoke,
+  gunbc_ci_heal_repair_declaration_invoke,
+  gunbc_ci_heal_candidate_invoke
+}
+import gunbc.heal_candidate {
+  heal_candidate_directory,
+  heal_candidate_repository_env,
+  heal_candidate_pull_number_env,
+  heal_candidate_head_ref_env,
+  heal_candidate_base_ref_env,
+  heal_candidate_run_id_env
+}
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+
+// THE PULL REQUEST'S OWN HALF OF HEAL, IN ITS OWN WORKFLOW (gunbc#10958 Phase A).
+//
+// IT HOLDS NO WRITE AUTHORITY AND PUSHES NOTHING. Until this cut, this job checked out the branch,
+// regenerated, committed and pushed with the Actions job credential -- and GitHub holds the
+// pull_request run that such a push causes (docs: a push made with GITHUB_TOKEN creates workflow runs
+// in an approval-required state), so every healed head waited for a human. The repair now leaves as a
+// CANDIDATE ARTIFACT, and gunbc.heal_publisher_workflow publishes it from the default branch under an
+// App installation token, whose pushes run without approval.
+//
+// WHY A SEPARATE WORKFLOW RATHER THAN A LANE OF `witnesses`. The publisher is triggered by
+// workflow_run on THIS workflow's completion, and a workflow_run fires when the whole run finishes.
+// Left inside `witnesses`, publication would wait for the required floor of a head the repair is
+// about to supersede. Heal was never a required lane -- it remediates, the build lane's
+// generated-artifact phase adjudicates -- so nothing of the gate moves with it.
+//
+// THE CHECKOUT IS THE EXACT HEAD, NOT THE BRANCH NAME. The candidate describes the commit it was
+// derived from, and the publisher refuses any candidate whose expected head is not the branch's
+// current head; taking the sha the event names keeps the run's subject and the candidate's subject
+// the same value rather than two reads of a moving ref.
+
+// A DISPATCH CARRIES NO PULL REQUEST, so the operator supplies what the event does not. The retained
+// manual path checked out github.event.pull_request.head.sha and handed the candidate producer that
+// object's number, head ref and base ref: on a dispatch every one of them is empty, so the run would
+// have sealed a candidate describing nothing. These four inputs are the same four facts, asked for
+// instead of assumed, and they are required because a repair against an unnamed head is not a repair.
+data heal_dispatch_pull_number_input: DispatchInput = DispatchInput {
+  name: "pull_number",
+  description: Present { value: "Pull request this manual repair describes" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_head_sha_input: DispatchInput = DispatchInput {
+  name: "head_sha",
+  description: Present { value: "Exact head commit the candidate is sealed against" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_head_ref_input: DispatchInput = DispatchInput {
+  name: "head_ref",
+  description: Present { value: "Head branch the repair would fast-forward" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_base_ref_input: DispatchInput = DispatchInput {
+  name: "base_ref",
+  description: Present { value: "Base branch of that pull request" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_workflow_name: String = "heal"
+
+data heal_workflow_job_id: String = "heal-generated-artifacts"
+
+data heal_workflow_timeout_minutes: Int = 90
+
+data heal_workflow_required_bins: List<String> = ["gunbc"]
+
+data heal_build_step_name: String = "Build the regenerator this job runs against its own checkout"
+
+data heal_candidate_artifact_retention_days: Int = 3
+
+// SAME-REPOSITORY PULL REQUESTS ONLY, AND NOT DEPENDABOT. A fork's head is not a branch this
+// repository can publish to, and the publisher independently refuses a candidate whose run reports a
+// head repository other than this one; the guard here is what keeps the job from running at all.
+data heal_same_repository_clause: String = "github.event.pull_request.head.repo.full_name == github.repository"
+
+data heal_not_dependabot_clause: String = "github.actor != 'dependabot[bot]'"
+
+// A DISPATCH CARRIES NO PULL REQUEST, so the fork clauses would read null and skip the job on the
+// one event this workflow still answers (it became dispatch-only when the required gate took its
+// work). The dispatcher holds write access already, which is the same authority the fork clauses
+// establish for a pull request.
+fn heal_workflow_job_condition() -> String {
+  "github.event_name == 'workflow_dispatch'"
+}
+
+fn heal_pull_request_head_sha_expression() -> String {
+  "${{ inputs.head_sha }}"
+}
+
+// persist-credentials: false is the load-bearing input. The job has no write grant to persist, and
+// saying so in the checkout keeps a later editor from inheriting one by default.
+fn heal_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the exact pull request head this candidate will describe" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: heal_pull_request_head_sha_expression())),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_repair_declaration_step() -> Step {
+  RunStep {
+    name: Present { value: "Declare which ledger rows this heal will repair" },
+    id: none,
+    run: gunbc_ci_heal_repair_declaration_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate every committed generated artifact" },
+    id: none,
+    run: gunbc_ci_heal_regen_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE SUBJECT FACTS ARRIVE AS ENVIRONMENT VALUES, NEVER INTERPOLATED INTO A SCRIPT. A branch name is
+// pull-request-controlled text; spliced into a command it would be shell, and read from the
+// environment it is a value the producer refuses if it is empty.
+fn heal_candidate_step() -> Step {
+  RunStep {
+    name: Present { value: "Produce the sealed repair candidate" },
+    id: none,
+    run: gunbc_ci_heal_candidate_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ inputs.pull_number }}")),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ inputs.head_ref }}")),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ inputs.base_ref }}")),
+        kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE UPLOAD IS OWED ON EVERY SUCCESSFUL RUN, SO A MISSING FILE IS AN ERROR RATHER THAN A SIGNAL.
+// gunbc.heal_candidate writes a manifest whether or not anything drifted -- a clean tree is an empty
+// entries list, not an absent file -- so `if-no-files-found: ignore` would now hide a producer that
+// failed to write rather than describe a tree that was clean. Retention is short because a candidate
+// is only meaningful while its expected head is still the branch head.
+fn heal_candidate_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the sealed repair candidate" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+type HealBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn heal_workflow_bound_steps() -> List<HealBoundStep> {
+  [
+    HealBoundStep {
+      step: heal_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout the exact pull request head this candidate will describe",
+    },
+    HealBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    HealBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    HealBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    HealBoundStep {
+      step: witness_floor_build_step(step_name: heal_build_step_name, build_script: repo_self_build_command(bins: heal_workflow_required_bins)),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: heal_build_step_name,
+    },
+    HealBoundStep {
+      step: heal_repair_declaration_step(),
+      role: capability_neutral,
+      step_name: "Declare which ledger rows this heal will repair",
+    },
+    HealBoundStep {
+      step: heal_regen_step(),
+      role: capability_neutral,
+      step_name: "Regenerate every committed generated artifact",
+    },
+    HealBoundStep {
+      step: heal_candidate_step(),
+      role: capability_neutral,
+      step_name: "Produce the sealed repair candidate",
+    },
+    HealBoundStep {
+      step: heal_candidate_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload the sealed repair candidate",
+    },
+  ]
+}
+
+fn heal_workflow_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: heal_workflow_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+// contents: READ. The job reads its own checkout and writes an artifact; the artifact upload is
+// authorized by the runtime token, not by this grant. Every other axis is None by omission.
+data heal_workflow_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: none
+}
+
+fn heal_workflow_job() -> Job {
+  Job {
+    id: heal_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: heal_workflow_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: heal_workflow_job_condition() },
+    timeout_minutes: Present { value: heal_workflow_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: heal_workflow_job_permissions }
+  }
+}
+
+// A SUPERSEDED HEAL IS CANCELLED, WHICH IS RIGHT FOR A REMEDIATOR AND WOULD BE WRONG FOR A VERDICT.
+// A candidate describes one head; when the author pushes another, the in-flight run is producing a
+// candidate the publisher would refuse as stale, and the successor run produces the one that can
+// land. Nothing here reports a verdict about a revision, so cancelling loses no judgment.
+data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax {
+  group: "heal-pr-${{ github.event.pull_request.number }}",
+  cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+  explicit_single: none
+}
+
+// THIS WORKFLOW NO LONGER RUNS ON A PULL REQUEST. Its work -- declare, regenerate, seal the
+// candidate -- is the repair path of the consolidated required job
+// (gunbc.compiler_gate_workflow), which runs it only on the push where the drift gate refused.
+// Leaving the pull_request trigger here would pay heal's four whole-corpus invocations (22.7 of
+// its 26.4 minutes, measured on run 35475373850) again on every push, for the same repair.
+// The workflow stays registered, committed and dispatchable so an operator can still run a repair
+// by hand; the emitted file is unchanged apart from its trigger.
+data heal_workflow: Workflow = Workflow {
+  name: heal_workflow_name,
+  run_name: none,
+  on: [WorkflowDispatch { inputs: [
+    heal_dispatch_pull_number_input,
+    heal_dispatch_head_sha_input,
+    heal_dispatch_head_ref_input,
+    heal_dispatch_base_ref_input
+  ] }],
+  concurrency: Present { value: heal_workflow_concurrency },
+  env: Present {
+    value: [
+      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: "MALLOC_ARENA_MAX", value: yaml_string(s: "2"))
+    ]
+  },
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    }
+  },
+  jobs: [heal_workflow_job()]
+}
+
+// ── The isolation invariant, asked of the emitted job ────────────────────────────────────────
+
+// THE CANDIDATE PHASE MUST HOLD NOTHING THAT COULD PUBLISH. This reads the job that will actually
+// run: any write grant, an id-token grant it could federate with, or a federation step at all makes
+// the answer true, and the emitter refuses rather than producing a workflow that violates the
+// boundary. gunbc#10887 is the receipt for why this is checked rather than reviewed.
+fn permission_is_write(p: PermissionLevel?) -> Bool {
+  match p {
+    Absent => false
+    Present { value: level } =>
+      match level {
+        PermWrite => true
+        PermRead => false
+        PermNone => false
+      }
+  }
+}
+
+fn job_permissions_carry_write(permissions: WorkflowPermissions?) -> Bool {
+  match permissions {
+    Absent => true
+    Present { value: p } =>
+      permission_is_write(p: p.contents)
+        || permission_is_write(p: p.pull_requests)
+        || permission_is_write(p: p.issues)
+        || permission_is_write(p: p.actions)
+        || permission_is_write(p: p.id_token)
+  }
+}
+
+fn step_uses_action(step: Step, action: ActionRelease) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => action_release_same_producer(a: u, b: action)
+  }
+}
+
+fn job_federates_to_a_cloud_identity(job: Job) -> Bool {
+  any(job.steps, s => step_uses_action(step: s, action: google_auth_action))
+}
+
+fn heal_job_holds_publication_credential() -> Bool {
+  job_permissions_carry_write(permissions: heal_workflow_job().permissions)
+    || job_federates_to_a_cloud_identity(job: heal_workflow_job())
+}
+
+type HealWorkflowGenerationOutcome
+  = HealWorkflowGenerated { content: String }
+  | HealWorkflowGenerationRefused { reason: String }
+
+data heal_workflow_credential_refusal_reason: String = "REFUSED gunbc.heal_workflow: the candidate job carries a write grant or federates to a cloud identity, which is the credential placement gunbc.heal_publication_boundary forbids for the phase that executes pull-request code. No workflow yaml was emitted."
+
+data heal_workflow_capability_refusal_reason: String = "REFUSED gunbc.heal_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in the job's annotations, or the order of the steps themselves."
+
+fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
+  match admit_workflow_toolchain_homes(workflow: heal_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      HealWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if heal_job_holds_publication_credential() {
+        HealWorkflowGenerationRefused { reason: heal_workflow_credential_refusal_reason }
+      } else if !heal_workflow_capability_closure_holds() {
+        HealWorkflowGenerationRefused { reason: heal_workflow_capability_refusal_reason }
+      } else {
+        HealWorkflowGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: heal_workflow)) }
+      }
+  }
+}

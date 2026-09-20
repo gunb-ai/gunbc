@@ -1320,6 +1320,32 @@ pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
     measure_count(r.clone())
 }
 
+pub type MilliTokensPerSecond = Rc<Measure<Frequency, Milli, i64>>;
+
+pub fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, i64>>;
+
+pub fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn milli_requests_per_second_count(r: MilliRequestsPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type EvalStepsPerMillisecond = Rc<Measure<Frequency, Kilo, i64>>;
 
 pub fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
@@ -1504,6 +1530,10 @@ pub fn minute(count: Nat) -> Minute {
 
 pub fn minute_count(m: Minute) -> Nat {
     measure_count(m.clone())
+}
+
+pub fn minute_to_second(m: Minute) -> Second {
+    second((minute_count(m.clone()) * seconds_per_minute()))
 }
 
 pub fn minute_to_millisecond(m: Minute) -> Millisecond {
