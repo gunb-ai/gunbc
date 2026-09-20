@@ -1,0 +1,63 @@
+module test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.ci_spec { gunbc_ci_heal_regen_invoke, gunbc_ci_heal_regen_target, gunbc_ci_heal_verify_target }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-ci-heal-regen-invoke, RED BY DESIGN UNTIL THE NODE IS DONE.
+// The node's bar is that gunbc.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the
+// deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of
+// ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd), the absorbing fallback deleted. The
+// typed toplevel authority is the SAME ONE shell-dag-ci-deploy-invoke-prelude binds — this
+// witness asserts over the rendered invoke only and never names a second spelling. The red arms
+// assert the rendered invoke carries no fallback and no shell control word (`set -e`, `||`, `&&`,
+// `;`, `2>/dev/null`); they are red on today's prelude and turn green only when the toplevel read
+// is typed and a nonzero git exit refuses with a typed cause instead of substituting pwd. Enrolled
+// in v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (gunbc_ci_heal_regen_invoke and the
+// regen/verify target rows) must survive the rebind, because this witness cannot be re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+// RED TODAY: the rendered invoke carries the prelude's absorbing fallback and stderr swallow.
+// Greens when the toplevel read is the shared typed git.Core.ShowToplevel with a nonzero-refuse
+// arm.
+test fn heal_regen_invoke_prelude_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: w))
+}
+
+// RED TODAY, the absorbing fallback named alone: `|| pwd` substitutes the working directory for a
+// failed toplevel read, and a heal-regen acting on the wrong root regenerates against the wrong
+// tree. Greens when the fallback spelling is deleted, not preserved.
+test fn heal_regen_invoke_has_no_pwd_fallback() -> Bool {
+  !string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "|| pwd")
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the invoke still reads the repository
+// toplevel through the same upstream argv the shared typed ShowToplevel authority names.
+test fn heal_regen_invoke_still_reads_the_repo_toplevel() -> Bool {
+  string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "rev-parse")
+    && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: "--show-toplevel")
+}
+
+// POSITIVE CONTROL, green today and after: the invoke remains the declared two-call composition —
+// regen then verify — because workflow and corpus have different revision authorities.
+test fn heal_regen_invoke_composes_the_declared_two_calls() -> Bool {
+  string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_regen_target.entry)
+    && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_regen_target.function)
+    && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_verify_target.entry)
+    && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_verify_target.function)
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arms are red; green only when every clause holds over the typed rebind.
+test fn ci_heal_regen_invoke_acceptance_holds() -> Bool {
+  heal_regen_invoke_prelude_renders_no_shell_control_word()
+    && heal_regen_invoke_has_no_pwd_fallback()
+    && heal_regen_invoke_still_reads_the_repo_toplevel()
+    && heal_regen_invoke_composes_the_declared_two_calls()
+}
