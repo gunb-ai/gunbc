@@ -298,7 +298,26 @@ type ResourceReadback
 // readback is what ObservedTeardown carries, its slot is one of the subjects
 // attempt_teardown_readback joins against the attempt, and only a readback that survived that join
 // is mapped onto SlotNetworkQuiescent.
-type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
+// WHAT THE UNIT SAID ITS ATTEMPT WAS, OR WHY IT SAID NOTHING -- THREE STATES, NOT A STRING.
+//
+// The controller reads this off the unit rather than copying it from the request, so it is an
+// OBSERVATION and it can fail to be taken: systemd unloads a unit the moment it is collected, and
+// this lane's own receipts produce "Unit ... not loaded" routinely. A reading that folded that into
+// the empty string would make "the unit named a different attempt" and "the unit could not be asked"
+// one value, and those have opposite remedies -- the first is a stale incarnation and the teardown
+// must not proceed, the second is an instrument that did not answer and the cell must not be
+// released. This is the same split CgroupSubtreeReadFailed and ResourceUnreadable already make one
+// subject over.
+//
+// AND IT IS WHY THE FIELD IS NOT A NonEmptyStr. Crossing a possibly-empty String into NonEmptyStr in
+// a record-field position is the defect this module's sibling store codec already documents for
+// `as Nat`: it typechecks and is decided only when it EVALUATES, so the designed empty case never
+// reaches the refusal it was written for (review 69057). The arm replaces the cast.
+type UnitInvocationReading
+  = UnitInvocationRead { invocation_id: NonEmptyStr }
+  | UnitInvocationUnread { reason: NonEmptyStr }
+
+type ObservedStop { unit: NonEmptyStr, invocation_id: UnitInvocationReading, outcome: TeardownStop }
 
 type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
 
@@ -331,9 +350,15 @@ type AttemptTeardownReadback sole_constructor {
   observed: ObservedTeardown
 }
 
+// A SUBJECT THAT COULD NOT BE OBSERVED IS ITS OWN ARM, NOT A FOREIGN ONE. Both refuse the readback
+// and neither releases the cell, so the disposition is the same -- what differs is the remedy an
+// operator is sent to. A foreign subject says this readback describes another incarnation; an
+// unobservable one says the instrument did not answer, and reporting the second as the first sends
+// someone to hunt a stale attempt that does not exist.
 type TeardownReadbackBinding
   = TeardownReadbackBound { readback: AttemptTeardownReadback }
   | TeardownReadbackForeignSubject { subject: TeardownSubject, expected: String, observed: String }
+  | TeardownReadbackSubjectUnobservable { subject: TeardownSubject, reason: NonEmptyStr }
 
 type SubjectPair { subject: TeardownSubject, expected: String, observed: String }
 
@@ -343,7 +368,6 @@ fn teardown_subject_pairs(bound: CellBoundAttempt, o: ObservedTeardown) -> List<
     SubjectPair { subject: SubjectHost, expected: a.slot.host as String, observed: o.host },
     SubjectPair { subject: SubjectGeneration, expected: to_string(bound.generation), observed: to_string(o.generation) },
     SubjectPair { subject: SubjectVmmUnit, expected: in_flight_attempt_unit(attempt: bound.attempt) as String, observed: o.stop.unit as String },
-    SubjectPair { subject: SubjectInvocation, expected: bound.attempt.invocation_id as String, observed: o.stop.invocation_id as String },
     SubjectPair { subject: SubjectCgroupRoot, expected: fabric_cell_slice_name(slot: a.slot), observed: o.cgroup.root as String },
     SubjectPair { subject: SubjectJailRoot, expected: runner_microvm_attempt_jail_base(attempt: a), observed: o.mounts.path },
     SubjectPair { subject: SubjectAttemptDirectory, expected: runner_microvm_attempt_dir(attempt: a), observed: o.attempt_storage.path },
@@ -370,7 +394,29 @@ fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown
       observed: runner_slot_instance_name(slot: bound_slot_network_readback_slot(b: observed.network)),
     }
   } else {
-    attempt_teardown_readback_after_network(bound: bound, observed: observed)
+    attempt_teardown_readback_after_invocation(bound: bound, observed: observed)
+  }
+}
+
+// THE INVOCATION IS CHECKED BESIDE THE STRING-RENDERED SUBJECTS RATHER THAN INSIDE THEM, for the
+// same reason the slot network is: it is the one subject whose reading has three states, and a pair
+// of strings can only carry two. It is also the only subject in the list that is an OBSERVATION
+// rather than a derivation from the attempt, which is what makes the join a wall instead of a
+// comparison of one value with itself.
+fn attempt_teardown_readback_after_invocation(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
+  match observed.stop.invocation_id {
+    UnitInvocationUnread { reason: r } =>
+      TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: r }
+    UnitInvocationRead { invocation_id: seen } =>
+      if (seen as String) != (bound.attempt.invocation_id as String) {
+        TeardownReadbackForeignSubject {
+          subject: SubjectInvocation,
+          expected: bound.attempt.invocation_id as String,
+          observed: seen as String,
+        }
+      } else {
+        attempt_teardown_readback_after_network(bound: bound, observed: observed)
+      }
   }
 }
 

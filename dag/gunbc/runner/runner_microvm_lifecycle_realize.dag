@@ -59,6 +59,8 @@ import gunbc.runner_microvm_lifecycle {
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
+  TeardownReadbackSubjectUnobservable,
+  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
 
@@ -264,15 +266,28 @@ fn populated_readback(path: NonEmptyStr) -> CgroupSubtreeReadback
 fn observe_resource_absence(path: String) -> ResourceReadback
   uses net: Network
 {
-  match run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec) {
-    ProcessOutputPresent { text: _ } => ResourcePresent { detail: path as NonEmptyStr }
-    ProcessOutputAbsent => ResourcePresent { detail: path as NonEmptyStr }
+  if path == "" {
+    ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
+  } else {
+    resource_absence_at(path: path as NonEmptyStr)
+  }
+}
+
+// THE PATH IS NONEMPTY BEFORE ANYTHING IS RUN, so the detail below crosses nothing. An empty path is
+// not a resource that is absent -- `test -e ""` exits 1 and would have read as ABSENT, releasing a
+// cell on a reading of nothing at all.
+fn resource_absence_at(path: NonEmptyStr) -> ResourceReadback
+  uses net: Network
+{
+  match run_shell_command_capture(command: test_exists_command(path: path as String), transport: LocalExec) {
+    ProcessOutputPresent { text: _ } => ResourcePresent { detail: path }
+    ProcessOutputAbsent => ResourcePresent { detail: path }
     ProcessRefused { exit_code: code, stderr: e } =>
       if code == 1 {
         ResourceAbsent
       } else {
         ResourceUnreadable {
-          reason: join(["`test -e ", path, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
+          reason: join(["`test -e ", path as String, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
         }
       }
   }
@@ -500,7 +515,15 @@ fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunPrope
 // property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
 // assignment whose key is ours. An absent key reads as the empty string, which no attempt's
 // invocation id can equal, so the join refuses rather than matching.
-fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> String
+// THE GUARD IS BEFORE THE CROSSING, NOT AFTER IT, and the first cut had it the wrong way round.
+// It returned a String that was "" when the property could not be read or the key was absent, and
+// the caller crossed that into NonEmptyStr inside a record literal -- which is decided only when it
+// EVALUATES, so the designed empty case never reached the refusal the annotation promised. It would
+// have aborted inside the teardown instead, untyped and unlocated, after the stop had already been
+// asked: a failure arm that neither refuses nor is located, on the exact path this module exists to
+// make observable (review 69057). The three states are separated here, where they are produced, and
+// the empty string has no way out of this function.
+fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
   uses net: Network
 {
   let shown = systemd.Systemctl.ShowProperty(
@@ -508,14 +531,31 @@ fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> String
     property: systemd_unit_property_wire(property: EnvironmentProperty),
   )
   if shown.success == false {
-    ""
+    UnitInvocationUnread {
+      reason: join(["the unit's Environment could not be read, so the attempt it was started for is unknown: ", unit as String], "") as NonEmptyStr,
+    }
   } else {
-    fold(split(s: trim(s: shown.value), delimiter: " "), init: "", f: (acc, word) =>
-      if starts_with(s: word, prefix: join([attempt_invocation_env_key, "="], "")) {
-        substring(s: word, start: string_length(s: attempt_invocation_env_key) + 1, end: string_length(s: word))
-      } else {
-        acc
-      })
+    invocation_of_environment(unit: unit, environment: trim(s: shown.value))
+  }
+}
+
+// THE UNIT'S Environment IS A LIST OF ASSIGNMENTS AND ONLY ONE OF THEM IS OURS. systemd renders the
+// property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
+// assignment whose key is ours. A missing key and an EMPTY value are the same answer here -- neither
+// names an attempt -- and both are Unread rather than a value nothing can equal.
+fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvocationReading {
+  let found = fold(split(s: environment, delimiter: " "), init: "", f: (acc, word) =>
+    if starts_with(s: word, prefix: join([attempt_invocation_env_key, "="], "")) {
+      substring(s: word, start: string_length(s: attempt_invocation_env_key) + 1, end: string_length(s: word))
+    } else {
+      acc
+    })
+  if found == "" {
+    UnitInvocationUnread {
+      reason: join(["the unit carries no ", attempt_invocation_env_key, " assignment, so it names no attempt: ", unit as String], "") as NonEmptyStr,
+    }
+  } else {
+    UnitInvocationRead { invocation_id: found as NonEmptyStr }
   }
 }
 
@@ -545,7 +585,7 @@ fn perform_teardown_and_observe(
   ObservedTeardown {
     host: attempt.slot.host as String,
     generation: bound.generation,
-    stop: ObservedStop { unit: unit, invocation_id: invocation as NonEmptyStr, outcome: outcome },
+    stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
     cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
     mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
     attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
@@ -591,6 +631,10 @@ fn run_teardown(
     TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
       TeardownSubjectRefused {
         binding: TeardownReadbackForeignSubject { subject: s, expected: e, observed: o },
+      }
+    TeardownReadbackSubjectUnobservable { subject: s, reason: r } =>
+      TeardownSubjectRefused {
+        binding: TeardownReadbackSubjectUnobservable { subject: s, reason: r },
       }
     TeardownReadbackBound { readback: rb } => {
       let settlement = settle_teardown(readback: rb, trigger: trigger)

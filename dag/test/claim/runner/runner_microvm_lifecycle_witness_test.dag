@@ -51,6 +51,7 @@ import gunbc.runner_microvm_lifecycle {
   SubjectSlotNetwork,
   ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, TeardownSettlement,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSubject,
+  TeardownReadbackSubjectUnobservable, UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   SubjectInvocation, attempt_teardown_readback, settle_teardown,
 }
 
@@ -221,7 +222,7 @@ fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
   ObservedTeardown {
     host: id.attempt.slot.host as String,
     generation: id.allocation_generation,
-    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: id.invocation_id, outcome: facts.stop },
+    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: UnitInvocationRead { invocation_id: id.invocation_id }, outcome: facts.stop },
     cgroup: ObservedCgroup { root: fabric_cell_slice_name(slot: id.attempt.slot) as NonEmptyStr, readback: facts.cgroup },
     mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
     attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
@@ -361,6 +362,87 @@ fn unproven_mentions(r: CellReadiness?, needle: String) -> Bool {
   match r {
     Absent => false
     Present { value: readiness } => string_contains(s: cell_readiness_line(readiness: readiness), pattern: needle)
+  }
+}
+
+// A UNIT WHOSE INVOCATION COULD NOT BE READ REFUSES THE READBACK AS UNOBSERVABLE, NOT AS FOREIGN.
+//
+// THE DISCRIMINATION IS ON THE KIND, BECAUSE THE VERDICT IS THE SAME. Both arms refuse the readback
+// and neither settles or releases anything, so a claim that asked only "did it refuse" would have
+// been green before the arm existed -- and before it existed, the empty reading did not reach a
+// refusal at all: it crossed into NonEmptyStr inside a record literal, which is decided only when it
+// evaluates (review 69057). What is asserted is that an UNREAD invocation is reported as
+// unobservable AND names the invocation subject, while a foreign one is still reported as foreign.
+//
+// THE PAIR IS THE POINT. A binder that answered "unobservable" to everything would pass the first
+// half alone, and one that answered "foreign" to everything would pass the second.
+test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_as_foreign() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } => {
+          let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
+          let unread = match attempt_teardown_readback(
+            bound: b,
+            observed: observed_with_invocation(id: id, facts: clean, reading: UnitInvocationUnread { reason: "the unit carries no assignment" as NonEmptyStr }),
+          ) {
+            TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: _ } => true
+            _ => false
+          }
+          let foreign = match attempt_teardown_readback(
+            bound: b,
+            observed: observed_with_invocation(id: id, facts: clean, reading: UnitInvocationRead { invocation_id: "inv-somebody-else" as NonEmptyStr }),
+          ) {
+            TeardownReadbackForeignSubject { subject: SubjectInvocation, expected: _, observed: _ } => true
+            _ => false
+          }
+          let own = match attempt_teardown_readback(bound: b, observed: observed_for(id: id, facts: clean)) {
+            TeardownReadbackBound { readback: _ } => true
+            _ => false
+          }
+          unread && foreign && own
+        }
+      }
+  }
+}
+
+// AN UNREADABLE INVOCATION SETTLES NOTHING, which is the consequence that matters: the cell keeps its
+// in-flight record, so the next admission owes recovery rather than being handed a released cell.
+test fn an_unreadable_unit_invocation_settles_nothing() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } =>
+          match attempt_teardown_readback(
+            bound: b,
+            observed: observed_with_invocation(
+              id: id,
+              facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
+              reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+            ),
+          ) {
+            TeardownReadbackBound { readback: _ } => false
+            _ => true
+          }
+      }
+  }
+}
+
+fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: UnitInvocationReading) -> ObservedTeardown {
+  let base = observed_for(id: id, facts: facts)
+  ObservedTeardown {
+    host: base.host,
+    generation: base.generation,
+    stop: ObservedStop { unit: base.stop.unit, invocation_id: reading, outcome: base.stop.outcome },
+    cgroup: base.cgroup,
+    mounts: base.mounts,
+    attempt_storage: base.attempt_storage,
+    credential_disk: base.credential_disk,
+    network: base.network,
   }
 }
 

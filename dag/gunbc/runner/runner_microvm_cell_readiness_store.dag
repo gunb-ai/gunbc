@@ -484,7 +484,7 @@ fn decode_attempt_after_identity(v: JsonValue, attempt: MicroVmAttempt) -> Decod
       match decoded_nonempty(obj: v, key: "jit_registration_id") {
         DecodeRefused { reason: r } => DecodeRefused { reason: r }
         DecodeOk { value: reg } =>
-          match decoded_string(obj: v, key: "credential_device_path") {
+          match decoded_nonempty(obj: v, key: "credential_device_path") {
             DecodeRefused { reason: r } => DecodeRefused { reason: r }
             DecodeOk { value: dev } =>
               DecodeOk {
@@ -492,7 +492,7 @@ fn decode_attempt_after_identity(v: JsonValue, attempt: MicroVmAttempt) -> Decod
                   attempt: attempt,
                   invocation_id: inv,
                   jit_registration_id: reg,
-                  credential_device_path: dev,
+                  credential_device_path: dev as String,
                 },
               }
           }
