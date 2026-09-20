@@ -763,6 +763,13 @@ fn srv1_retired() -> List<NonEmptyStr> {
   }
 }
 
+fn srv1_desired() -> List<NonEmptyStr> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => s.desired_units
+  }
+}
+
 fn three_retirees() -> List<NonEmptyStr> {
   ["actions-runner@srv1-13.service" as NonEmptyStr, "actions-runner@srv1-14.service" as NonEmptyStr, "actions-runner@srv1-15.service" as NonEmptyStr]
 }
@@ -907,13 +914,22 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 // the same functions: the subject's retired roster IS the obligation gunbc.runner_width_transition
 // declares for srv1 (an identity join, not a count -- DESIGN 5: a size literal copied from the
 // current tree is a change detector, and review 68841 found it already stale after srv1's target
-// width moved), it is non-empty, its real ControlGroup paths carry systemd's escape, and one
-// admitted argv still covers all of them.
+// width moved), it is non-empty, it is DISJOINT from the same subject's desired units, its real
+// ControlGroup paths carry systemd's escape, and one admitted argv still covers all of them.
+//
+// The disjointness is the relation the stale 38 was standing in for. That number went wrong
+// precisely because slots 13-15 were still counted as retirees after the width authority made
+// them desired-live, and a non-empty check cannot see that: it catches an empty roster and not
+// an overlapping one, so the next width move could put a desired slot back into the retiree set
+// with the claim still green. From sharp-dove-876's reading of the same defect.
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
+  let desired = srv1_desired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
   length(retired) > 0
     && retired == required_retirees_for_host(host: operator_host_srv1)
+    && length(desired) > 0
+    && all(retired, u => !any(desired, d => (d as String) == (u as String)))
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
 }
