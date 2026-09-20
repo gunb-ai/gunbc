@@ -3,10 +3,14 @@ module gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign
 import std.types { NonEmptyStr }
 import gunbc.rung_drop_amendment { RungDropAmendment }
 
-// THE FACT THIS ROW RESCUES WAS WRITTEN AS BYTES IN A GENERATED FILE AND DIED THERE. gunbc#11774
-// appended it to docs/design-rung-drops.md, which is a projection of gunbc.rung_drop; gunbc#11789
-// regenerated the file and the paragraph went with it. It is restored here, in the authority, with
-// its closing sentence derived from the drop's own standing rather than authored beside it.
+// THE ARGUMENT THIS ROW NOW OWNS WAS WRITTEN TWICE AND READ NOWHERE. gunbc#11774 put it in an
+// annotation on the drop row -- the right home for why-rationale under DESIGN section 4c, and a
+// home no Accepted program can read -- and ALSO pasted it into docs/design-rung-drops.md, which is
+// a projection of gunbc.rung_drop. gunbc#11789 regenerated the file and the pasted copy went with
+// it. So the defect was a DUPLICATE, not a loss; what was genuinely missing was a carrier the
+// projection could render. This row is it, and the annotation on the drop row is now a pointer
+// here, so the argument has one authority again. Its closing sentence is derived from the drop's
+// own standing rather than authored beside it.
 //
 // WHY IT IS WORTH A ROW. Without it the next reader of the drop meets a deletion whose stated
 // occasion is a billing loop that charged bystanders -- and the obvious inference from that
@@ -22,7 +26,7 @@ data namespace_wave_admission_carrier_redesign: RungDropAmendment = RungDropAmen
 
   amended: "2026-09-20",
 
-  later_event: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion" as NonEmptyStr,
+  later_event: "gunbc#11704 rebuilt the wall to carry admissions in the change's own commit messages rather than the tree -- restoration half (1) above, EXECUTING: no bystander could be billed for a row it did not carry -- and it merged hours before this deletion" as NonEmptyStr,
 
-  bearing: "the ruling prices the gate itself, not only its billing, and removes the redesigned wall with the old one" as NonEmptyStr,
+  bearing: "the ruling deletes THAT wall too, because the operator priced the gate itself -- its fleet time, its bookkeeping surface, its self-sealing repair history (gunbc.recurring_failure_mode fail_closed_gate_refuses_its_own_repair) -- and not only the billing loop; so half (1) stands BUILT AND DELETED rather than unbuilt, which is why re-landing gunbc#11704 restores nothing, and half (2), the landing-time enforcement run, was never built under either design" as NonEmptyStr,
 }
