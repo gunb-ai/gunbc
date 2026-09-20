@@ -704,12 +704,14 @@ test fn an_executable_built_from_another_revision_blocks_the_assessment() -> Boo
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
+      roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -732,12 +734,14 @@ test fn an_unobserved_executable_identity_blocks_the_assessment() -> Bool {
   !assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
+      roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -758,12 +762,14 @@ test fn an_executable_built_from_the_selected_revision_leaves_the_assessment_cle
   assessment_is_clear_of_blockers(
     v: retirement_assessment_verdict(
       revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      local_population: settled_local_population(),
       host: operator_host_srv2,
       roster: observed_roster(),
+      roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -792,12 +798,14 @@ test fn an_executable_built_from_the_selected_revision_leaves_the_assessment_cle
 fn settled_verdict_with_provenance(reading: RunningSeedIdentityReading) -> RetirementAssessmentVerdict {
   retirement_assessment_verdict(
     revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+    local_population: settled_local_population(),
     host: operator_host_srv2,
     roster: observed_roster(),
+    roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
     required: one_required(),
     standings: settled_standings(),
     method_subjects: [],
-    method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+    method: GracefulRetirement,
     planner: PlannerSawCompleteSubject { operations_emitted: 0 },
     basis: grounded_basis(),
     obligation_population: one_required(),
