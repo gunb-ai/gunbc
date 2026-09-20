@@ -456,6 +456,50 @@ fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: Unit
   }
 }
 
+// AN UNOBSERVABLE INVOCATION LEAVES RECOVERY OWED, WHICH IS THE WHOLE POINT OF NOT SETTLING.
+//
+// The arm refuses the readback, so nothing is written -- and the consequence that matters is what the
+// NEXT admission then sees. The in-flight record still stands, so the cell answers CellRecoveryRequired
+// rather than being admitted or released. Without this the refusal is only a local fact; with it, the
+// chain from "the unit could not say which attempt it was" to "the cell is not handed to anyone" is
+// asserted end to end.
+//
+// AND IT IS WHY THE RETAINED UNIT MUST OUTLIVE THE BINDING. A controller that unloaded the unit
+// before the binding was known would leave this record standing AND destroy the only place the
+// attempt's invocation id still exists, so the recovery this claim establishes would arrive at a unit
+// it could not read either -- a loop whose every pass destroys what the next pass needs (side-chat
+// ruling on gunbc#11803).
+test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match bound_of(id: id) {
+        Absent => false
+        Present { value: b } => {
+          let refused = match binding_with_invocation(
+            bound: b,
+            id: id,
+            facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
+            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+          ) {
+            TeardownReadbackBound { readback: _ } => false
+            _ => true
+          }
+          let in_flight = [CellAttemptInFlight { cell: cell, generation: 1, attempt: in_flight(id: id) }]
+          let owes_recovery = match cell_incarnation_admission(
+            store: StoreRead { ownership: StoreRootOwned, records: in_flight },
+            cell: cell,
+            allocation_generation: 2,
+          ) {
+            CellRecoveryRequired { bound: _ } => true
+            _ => false
+          }
+          refused && owes_recovery
+        }
+      }
+  }
+}
+
 // THE TWO ARMS ADDED FOR CAUSALITY DEFER TO THE CGROUP, AND THE PAIR IS WHAT MAKES THAT MEANINGFUL.
 //
 // StopFoundAlreadyQuiescent (nothing was running to ask) and ForceNotAsked (the kill could not be
