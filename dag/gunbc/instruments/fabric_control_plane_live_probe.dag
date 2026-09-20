@@ -25,6 +25,7 @@ import std.measure {
 }
 import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.envelope { unstated_envelope }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import std.durable_compare_and_set {
@@ -1750,7 +1751,7 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
     id: cp_probe_offer_id(key: "offer-1"),
     executor: executor,
     route: probe_route(),
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: gunbc_runner_slot_offer_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: IsolationProfile { guarantees: [] },

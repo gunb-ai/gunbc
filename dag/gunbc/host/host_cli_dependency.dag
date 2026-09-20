@@ -3,6 +3,7 @@ module gunbc.host_cli_dependency
 import extdeps.tools { CliTool, install_hint }
 import extdeps.tools.npm { npm_cli_tool }
 import extdeps.tools.sshpass { sshpass_cli_tool }
+import extdeps.tools.gh { gh_cli_tool }
 import extdeps.tools.openssl { openssl_cli_tool }
 import extdeps.shell
 import std.types { String, NonEmptyStr }
@@ -81,7 +82,16 @@ data codex_wet_materialization_host_cli_requirements: List<CliTool> = [npm_cli_t
 // side belongs to.
 data password_session_host_cli_requirements: List<CliTool> = [sshpass_cli_tool]
 
-// THIRD ENROLLMENT ANSWER: a host that SIGNS a JWS with a key it holds as a file.
+// THIRD ENROLLMENT ANSWER: whichever runner EXECUTES a gh-CLI operation (extdeps.github's
+// `transport shell` services -- github.CliOrgSelfHostedRunners, github.CliOrganizations,
+// github.CliOrgRunnerGroups). The membership test is the executor, not the hosts a read
+// describes: the org runner roster read is about every runner host, yet only the one runner that
+// spawns gh needs it. MEASURED: fleet-converge run 35448023511 on srv4 died with
+// `failed to execute gh: No such file or directory` mid-read, while srv1 and srv3 carry gh. The
+// consumers (gunbc.fleet.org_actions_converge, gunbc.fleet.organization_runner_roster_read) refuse
+// BEFORE the first gh call with a cause naming the binary; no read-only route installs it.
+data gh_cli_operation_host_cli_requirements: List<CliTool> = [gh_cli_tool]
+// FOURTH ENROLLMENT ANSWER: a host that SIGNS a JWS with a key it holds as a file.
 // gunbc.jws_signer_realize binds openssl (extdeps.tools.openssl) as that signer's handler and
 // refuses from this roster before the key is touched. It is a separate roster for the same reason
 // the two above are separate: the population is "hosts that sign", not every runner.
@@ -124,6 +134,10 @@ fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDepend
 
 fn first_absent_password_session_host_cli_dependency() -> HostCliDependencyAbsence? {
   first_absent_host_cli_dependency(tools: password_session_host_cli_requirements)
+}
+
+fn first_absent_gh_cli_operation_host_cli_dependency() -> HostCliDependencyAbsence? {
+  first_absent_host_cli_dependency(tools: gh_cli_operation_host_cli_requirements)
 }
 
 fn first_absent_host_cli_dependency(

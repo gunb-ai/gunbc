@@ -5,7 +5,7 @@ import v2.std.optional { Absent, Present }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, Mebibyte, mebibyte, mebibyte_to_byte_size }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count, measure_le, mebibyte_to_byte_size }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command, dumpe2fs_superblock_command }
 import extdeps.tools.gnu_coreutils {
@@ -45,7 +45,8 @@ import gunbc.runner_microvm {
   runner_microvm_vm_config,
   attach_workspace_drive,
   runner_microvm_workspace_drive_id,
-  RunnerMicroVmSize,
+  RunnerMicroVmShape,
+  runner_microvm_workspace_grant,
   gunbc_runner_jit_transport,
 }
 import gunbc.runner_microvm_attempt {
@@ -128,8 +129,9 @@ data jail_workspace_path: FilePath = "/work.img"
 
 data host_busybox_bin: NonEmptyStr = "/bin/busybox"
 
-// X's WORKGB=4 with `dd bs=1M count=0 seek=$((WORKGB*1024))`: four gibibytes as a Mebibyte seek.
-data runner_attempt_workspace_size: Mebibyte = mebibyte(count: 4096)
+// THE WORKSPACE GRANT MOVED TO gunbc.runner_microvm runner_microvm_workspace_grant, beside the
+// drive it sizes, so the guest shape can judge the Work's storage demand against it; the plan
+// realizes shape.workspace and no longer carries a size of its own.
 
 type AttemptGround
   = GroundClear
@@ -300,11 +302,13 @@ type AttemptLaunchPlan
       jailer: ArgvCommand
     }
 
-fn with_guest_ip_boot_arg(config: FirecrackerVmConfig, ip_arg: String) -> FirecrackerVmConfig {
+// ONE APPENDER FOR EVERY BOOT ARGUMENT THE PLAN ADDS -- the guest address today -- so the join
+// is spelled once and a second argument is one more call, not a second copy.
+fn with_boot_arg(config: FirecrackerVmConfig, arg: String) -> FirecrackerVmConfig {
   FirecrackerVmConfig {
     boot_source: FirecrackerBootSource {
       kernel_image_path: config.boot_source.kernel_image_path,
-      boot_args: join([config.boot_source.boot_args as String, " ", ip_arg], "") as NonEmptyStr,
+      boot_args: join([config.boot_source.boot_args as String, " ", arg], "") as NonEmptyStr,
     },
     drives: config.drives,
     network_interfaces: config.network_interfaces,
@@ -347,7 +351,7 @@ fn plan_attempt_launch(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   let authorization = grant_authorizes_reservation(
     grant: grant,
@@ -367,7 +371,7 @@ fn plan_attempt_launch(
       firecracker_binary: firecracker_binary,
       kernel_source: kernel_source,
       rootfs_source: rootfs_source,
-      guest_size: guest_size,
+      shape: shape,
     )
     GrantFenceRefused => LaunchRefusedUnauthorized { authorization: authorization }
     GrantAuthorizesDifferentWork => LaunchRefusedUnauthorized { authorization: authorization }
@@ -385,7 +389,7 @@ fn plan_after_authorization(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   match ground {
     GroundOccupied => LaunchRefusedPriorResources
@@ -400,7 +404,7 @@ fn plan_after_authorization(
           firecracker_binary: firecracker_binary,
           kernel_source: kernel_source,
           rootfs_source: rootfs_source,
-          guest_size: guest_size,
+          shape: shape,
         )
       }
   }
@@ -414,7 +418,7 @@ fn plan_authorized_steps(
   firecracker_binary: String,
   kernel_source: String,
   rootfs_source: String,
-  guest_size: RunnerMicroVmSize,
+  shape: RunnerMicroVmShape,
 ) -> AttemptLaunchPlan {
   let net = runner_slot_network(slot: attempt.slot)
   let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
@@ -424,12 +428,12 @@ fn plan_authorized_steps(
     jit_config_path: jail_jit_path,
     kernel_path: jail_kernel_path,
     net: runner_slot_network_as_microvm_networking(net: net),
-    size: guest_size,
+    size: shape.size,
     transport: gunbc_runner_jit_transport,
   )
-  let jailed = with_guest_ip_boot_arg(
+  let jailed = with_boot_arg(
     config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
-    ip_arg: runner_slot_guest_network_boot_args(net: net),
+    arg: runner_slot_guest_network_boot_args(net: net),
   )
   LaunchAuthorized {
     authorization: authorization,
@@ -453,7 +457,7 @@ fn plan_authorized_steps(
     workspace_create: busybox_dd_sparse_image_command(
       busybox_bin: host_busybox_bin,
       image_path: workspace_host,
-      size: runner_attempt_workspace_size,
+      size: shape.workspace,
     ),
     workspace_format: mke2fs_format_command(
       fs: Ext2,
@@ -650,8 +654,11 @@ type WorkspaceStanding
   | WorkspaceUnreadable { reason: NonEmptyStr }
   | WorkspaceReadbackOfDifferentImage { read: String, planned: String }
 
+// THE EXPECTED SIZE IS THE ONE GRANT, read from gunbc.runner_microvm runner_microvm_workspace_grant
+// -- the same row the plan's dd seek and the guest shape's storage fit read -- so the readback
+// judges the image against the size that was planned and not against a second copy of it.
 fn runner_attempt_workspace_bytes() -> ByteSize {
-  mebibyte_to_byte_size(m: runner_attempt_workspace_size)
+  mebibyte_to_byte_size(m: runner_microvm_workspace_grant)
 }
 
 // THE ORDER IS CAUSAL: a failed create makes the format's exit meaningless, and a failed format

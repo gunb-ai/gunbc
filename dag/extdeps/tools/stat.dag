@@ -93,6 +93,12 @@ fn stat_mode_command(path: String) -> ArgvCommand {
 
 fn stat_size_bytes_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
+// %b IS THE NUMBER OF BLOCKS ALLOCATED and %B the size of each in bytes, so their product is the
+// bytes a file actually occupies -- which for a sparse image is the bytes WRITTEN, not the
+// apparent size %s reports. That is the reading a workspace image's usage wants, and it is the
+// one %s cannot give.
+fn stat_allocated_blocks_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%b %B", "--", path])
 }
 
 // THE TYPED OBSERVATION, BESIDE THE ARGV BUILDER THAT ALREADY SPELLS IT. `stat_file_type_command`
