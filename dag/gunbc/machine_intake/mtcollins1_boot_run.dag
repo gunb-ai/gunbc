@@ -1,0 +1,729 @@
+module gunbc.machine_intake_mtcollins1_boot_run
+
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
+import std.temporal_effect {
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeaseInaccessible,
+  held_lease_observed_verdict,
+}
+import std.algebra { trim }
+import std.measure { Second, second, second_count, Minute, minute, hardware_thread_count_value }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationRequest,
+  authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
+  ClaimHeld, ClaimLost, ClaimUndecided,
+}
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
+import gunbc.machine_intake_mtcollins1_boot_authorization {
+  MtCollins1BootGate,
+  MtCollins1BootSubject,
+  mtcollins1_boot_authorization_request,
+  mtcollins1_boot_gate_from_poll,
+  BootGateAdmitted, BootGatePending, BootGateDenied, BootGateExpired, BootGateNotFiled,
+  BootGateIntentMismatch, BootGateStoreUnreadable, BootGateAuthorizeRefused,
+}
+import gunbc.auth.approval_request_client {
+  stored_request_from_authorization, sign_stored_request,
+  approval_submit_url, approval_status_url,
+  approval_poll_standing,
+  SubmissionMacReady, SubmissionMacKeyNotHex,
+  PollStillPending,
+}
+import gunbc.auth.approval_status_wire {
+  parse_filed_approval_status, FiledApprovalStatus, StatusUnreadable, submission_body_admits_poll,
+}
+import gunbc.auth.approval_request_submission { submission_envelope_json }
+import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
+import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
+import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import extdeps.clock { Clock }
+import v2.std.optional { Present }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name, github_runner_temp_variable_name }
+import extdeps.bmc.ipmi
+import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
+import std.dissolution { dissolution_description }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.http.client
+import std.durable_compare_and_set { CasGeneration }
+
+data mtcollins1_boot_label: String = "mtcollins1 boot"
+
+data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
+
+data mtcollins1_boot_sol_pid_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_PID_FILE"
+
+data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
+
+data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
+
+data mtcollins1_boot_poll_cadence: Second = second(count: 15)
+
+data mtcollins1_boot_poll_tick_budget: Int = 90
+
+data mtcollins1_boot_sol_settle: Second = second(count: 2)
+
+data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
+
+data mtcollins1_boot_issue_allowance: Second = second(count: 120)
+
+data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
+
+data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
+
+data mtcollins1_boot_submit_timeout: Second = second(count: 30)
+
+fn mtcollins1_boot_approval_window() -> Second {
+  second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
+}
+
+fn mtcollins1_boot_step_timeout_minutes() -> Minute {
+  let secs = second_count(s: mtcollins1_boot_prelude_allowance)
+    + second_count(s: mtcollins1_boot_approval_window())
+    + second_count(s: mtcollins1_boot_issue_allowance)
+    + second_count(s: mtcollins1_boot_actuation_allowance)
+    + second_count(s: mtcollins1_boot_cleanup_allowance)
+  minute(count: (secs + 59) / 60)
+}
+
+fn mtcollins1_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {
+  if success {
+    parse_filed_approval_status(body: body)
+  } else {
+    StatusUnreadable { detail: "status GET did not succeed; the roadmap standing is unknown, not pending" as NonEmptyStr }
+  }
+}
+
+fn mtcollins1_approval_expires_at(issued: Timestamp) -> Timestamp? {
+  if !utc_instant_is_canonical(t: issued) {
+    none
+  } else {
+    Present { value: Clock.TimestampAdd(timestamp: issued, offset: second_count(s: mtcollins1_boot_approval_window())).result }
+  }
+}
+
+fn mtcollins1_boot_refusal(gate: MtCollins1BootGate) -> ProcessExit {
+  match gate {
+    BootGateAdmitted { authorization: _ } => ExitSuccess
+    BootGatePending { escalation_id: e } =>
+      exit_failure(reason: concat("mtcollins1 boot: still pending operator decision for ", e as String))
+    BootGateDenied { reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot: operator denied; controller untouched: ", r as String))
+    BootGateExpired =>
+      exit_failure(reason: "mtcollins1 boot: approval window expired; controller untouched")
+    BootGateNotFiled { escalation_id: e } =>
+      exit_failure(reason: concat("mtcollins1 boot: no request filed for ", e as String))
+    BootGateIntentMismatch { requested_revision: a, decided_revision: b } =>
+      exit_failure(reason: concat("mtcollins1 boot: stored decision is for another intent (", concat(a as String, concat(" vs ", b as String)), ")"))
+    BootGateStoreUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: approval store unreadable: ", d as String))
+    BootGateAuthorizeRefused { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: grant present but authorize refused: ", d as String))
+  }
+}
+
+fn mtcollins1_boot_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
+  match reading {
+    Absent => none
+    Present { value: ts } =>
+      if utc_instant_is_canonical(t: ts as Timestamp) {
+        Present { value: ts as Timestamp }
+      } else {
+        none
+      }
+  }
+}
+
+fn mtcollins1_boot_sol_held_from_observations(
+  pid_path: String,
+  pid_file_ok: Bool,
+  pid_file_content: String,
+  cmdline_ok: Bool,
+  cmdline_content: String,
+) -> Bool {
+  if pid_path == "" {
+    false
+  } else if !pid_file_ok {
+    false
+  } else {
+    let pid = trim(s: pid_file_content)
+    if pid == "" {
+      false
+    } else {
+      cmdline_ok && string_contains(s: cmdline_content, pattern: "ipmitool")
+    }
+  }
+}
+
+fn mtcollins1_sol_observed_from_collector(
+  pid_path_set: Bool,
+  pid_file_ok: Bool,
+  pid_file_content: String,
+  collector_held: Bool,
+) -> HeldLeaseObservedState {
+  if !pid_path_set {
+    LeaseInaccessible
+  } else if collector_held {
+    LeaseRunningExpected
+  } else if pid_file_ok && trim(s: pid_file_content) != "" {
+    LeaseRunningStale
+  } else {
+    LeaseAbsent
+  }
+}
+
+// ONE pid-file read, then the cmdline read that depends on it, then both the
+// held-Bool and the lease state from that same observation. Two independent
+// Filesystem.Read of the pid file can disagree on a mutable path and feed
+// held_lease_observed_verdict a collector_held that does not match pid_file_ok.
+fn mtcollins1_sol_observed_from_pid_path(pid_path: String) -> HeldLeaseObservedState {
+  if pid_path == "" {
+    mtcollins1_sol_observed_from_collector(
+      pid_path_set: false,
+      pid_file_ok: false,
+      pid_file_content: "",
+      collector_held: false,
+    )
+  } else {
+    let pid_read = Filesystem.Read(path: pid_path)
+    if !pid_read.success {
+      mtcollins1_sol_observed_from_collector(
+        pid_path_set: true,
+        pid_file_ok: false,
+        pid_file_content: pid_read.content,
+        collector_held: mtcollins1_boot_sol_held_from_observations(
+          pid_path: pid_path,
+          pid_file_ok: false,
+          pid_file_content: pid_read.content,
+          cmdline_ok: false,
+          cmdline_content: "",
+        ),
+      )
+    } else {
+      let pid = trim(s: pid_read.content)
+      if pid == "" {
+        mtcollins1_sol_observed_from_collector(
+          pid_path_set: true,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          collector_held: mtcollins1_boot_sol_held_from_observations(
+            pid_path: pid_path,
+            pid_file_ok: true,
+            pid_file_content: pid_read.content,
+            cmdline_ok: false,
+            cmdline_content: "",
+          ),
+        )
+      } else {
+        let cmdline = Filesystem.Read(path: concat("/proc/", concat(pid, "/cmdline")))
+        mtcollins1_sol_observed_from_collector(
+          pid_path_set: true,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          collector_held: mtcollins1_boot_sol_held_from_observations(
+            pid_path: pid_path,
+            pid_file_ok: true,
+            pid_file_content: pid_read.content,
+            cmdline_ok: cmdline.success,
+            cmdline_content: cmdline.content,
+          ),
+        )
+      }
+    }
+  }
+}
+
+fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
+  mtcollins1_sol_observed_from_pid_path(pid_path: pid_path) == LeaseRunningExpected
+}
+
+fn mtcollins1_sol_release(
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+) -> Bool
+  uses net: std.resources.Network
+{
+  dropped = diagnostic.ipmi.Tool.SolDeactivate(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+  )
+  dropped.success
+}
+
+fn mtcollins1_sol_acquire_after_grant(
+  password_file: NonEmptyStr,
+  pid_path: String,
+  capture_path: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_bmc_username {
+    Absent =>
+      exit_failure(reason: "mtcollins1 boot: BMC is not BmcSecured; refusing SOL acquire")
+    Present { value: username } =>
+      if pid_path == "" {
+        exit_failure(reason: "mtcollins1 boot: SOL pid path unset; cannot observe a collector we hold")
+      } else {
+        match held_lease_observed_verdict(
+          observed: mtcollins1_sol_observed_from_pid_path(pid_path: pid_path),
+        ) {
+          Conflict =>
+            exit_failure(reason: "mtcollins1 boot: refusing live foreign SOL; not deactivating a session we do not hold")
+          Inaccessible =>
+            exit_failure(reason: "mtcollins1 boot: SOL collector observation is inaccessible")
+          Converged => ExitSuccess
+          Drifted => {
+            let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
+            mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          }
+          Absent =>
+            mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          UnknownRefused =>
+            exit_failure(reason: "mtcollins1 boot: SOL lease observation classification unknown")
+        }
+      }
+  }
+}
+
+fn mtcollins1_sol_activate_held(
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  pid_path: String,
+  capture_path: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if pid_path == "" {
+    return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
+  }
+  if capture_path == "" {
+    return exit_failure(reason: "mtcollins1 boot: SOL capture path unset; refusing acquire")
+  }
+  spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    capture_path: capture_path as NonEmptyStr,
+    pid_path: pid_path as NonEmptyStr,
+  )
+  if !spawned.success {
+    return exit_failure(reason: concat(dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), concat(" mtcollins1 boot: SOL activate held refused: ", spawned.stdout)))
+  }
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_sol_settle)
+  if mtcollins1_boot_sol_is_held(pid_path: pid_path) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 boot: SOL collector is not held after acquire; treating the session as foreign and not deactivating: ", capture_path))
+  }
+}
+
+fn mtcollins1_boot_terminal_tick_budget() -> Int {
+  (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+    / (second_count(s: mtcollins1_boot_poll_cadence) as Int)
+}
+
+fn mtcollins1_host_capture_section(capture: String, name: String) -> String? {
+  fold(
+    split(s: capture, delimiter: "----SECTION "),
+    init: none,
+    f: (acc, part) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if starts_with(s: part, prefix: concat(name, "----")) {
+          Present { value: part }
+        } else {
+          none
+        }
+    },
+  )
+}
+
+fn mtcollins1_host_capture_section_exit_zero(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+  }
+}
+
+fn mtcollins1_host_capture_has_envelope_marker(capture: String, machine: NonEmptyStr, kind: String) -> Bool {
+  fold(
+    split(s: capture, delimiter: "\n"),
+    init: false,
+    f: (acc, line) =>
+      acc || (
+        string_contains(s: line, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
+          && string_contains(s: line, pattern: concat(" ", concat(kind, " ")))
+      ),
+  )
+}
+
+fn mtcollins1_host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
+  mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "begin")
+    && mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "end")
+}
+
+fn mtcollins1_host_capture_nproc_exact(capture: String, threads: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "nproc") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT nproc: 0")
+        && string_contains(s: section, pattern: concat("\n", concat(threads, "\n----EXIT nproc: 0")))
+  }
+}
+
+fn mtcollins1_host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
+  string_contains(
+    s: section,
+    pattern: concat("/sys/devices/system/edac/mc/mc0/", concat(counter, concat(" == ", value))),
+  )
+}
+
+fn mtcollins1_host_capture_edac_clean_section(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ce_count", value: "0")
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ue_count", value: "0")
+  }
+}
+
+fn mtcollins1_host_capture_workload_stable(capture: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "workload") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT workload: 0")
+        && string_contains(s: section, pattern: "workload-write-rc=0")
+        && string_contains(s: section, pattern: "workload-digest-stable=yes")
+  }
+}
+
+fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
+  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
+  mtcollins1_host_capture_envelope_complete(capture: capture, machine: subject.machine)
+    && mtcollins1_host_capture_nproc_exact(capture: capture, threads: threads)
+    && mtcollins1_host_capture_section_exit_zero(capture: capture, name: "boot-media")
+    && match mtcollins1_host_capture_section(capture: capture, name: "boot-media") {
+      Absent => false
+      Present { value: media } =>
+        string_contains(s: media, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
+    }
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-before")
+    && mtcollins1_host_capture_workload_stable(capture: capture)
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-after")
+}
+
+fn mtcollins1_boot_await_capture_terminal(
+  remaining: Int,
+  capture_path: String,
+  subject: MtCollins1BootSubject,
+) -> ProcessExit {
+  if remaining <= 0 {
+    exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
+  } else {
+    let capture = Filesystem.Read(path: capture_path)
+    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject) {
+      ExitSuccess
+    } else {
+      let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+      mtcollins1_boot_await_capture_terminal(
+        remaining: remaining - 1,
+        capture_path: capture_path,
+        subject: subject,
+      )
+    }
+  }
+}
+
+fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
+  uses net: std.resources.Network
+{
+  match mtcollins1_bmc_username {
+    Absent => LeaseInaccessible
+    Present { value: user } => {
+      let _attempted = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+      mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
+    }
+  }
+}
+
+fn mtcollins1_boot_settle_from_fresh_clock(
+  outcome: ProcessExit,
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  held_at: CasGeneration,
+) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      unterminated_claim_exit(
+        label: mtcollins1_boot_label,
+        outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable at the terminal; refusing to stamp completion or abort with the pre-actuation instant"),
+        detail: "clock unreadable at claim terminal",
+      )
+    Present { value: at } =>
+      settle_authorization_claim(
+        label: mtcollins1_boot_label,
+        outcome: outcome,
+        escalation_id: escalation_id,
+        attempt: attempt,
+        held_at: held_at,
+        at: at,
+      )
+  }
+}
+
+fn mtcollins1_boot_after_gate(
+  gate: MtCollins1BootGate,
+  request: AuthorizationRequest<MtCollins1BootSubject>,
+  password_file: String,
+  attempt: String,
+  sol_pid_path: String,
+  sol_capture_path: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match gate {
+    BootGateAdmitted { authorization: auth } =>
+      match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+        Absent =>
+          exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot decide whether the operator grant has expired before a controller write")
+        Present { value: at } =>
+          match authorize(authorization: auth, request: request, observed_at: at) {
+            AuthorizationRefused { cause: c } =>
+              exit_failure(reason: concat("mtcollins1 boot: ", authorization_refusal_reason(cause: c)))
+            AuthorizationPermitted { grant: g } =>
+              match claim_authorization_slot(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
+                ClaimLost { holder: who } =>
+                  exit_failure(reason: concat("mtcollins1 boot: operator grant already claimed: ", who as String))
+                ClaimUndecided { reason: why } =>
+                  exit_failure(reason: concat("mtcollins1 boot: ", why as String))
+                ClaimHeld { state: _, generation: held_at } =>
+                  match mtcollins1_sol_acquire_after_grant(password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
+                    ExitFailure { code: _, reason: r } =>
+                      mtcollins1_boot_settle_from_fresh_clock(
+                        outcome: exit_failure(reason: r),
+                        escalation_id: g.escalation_id,
+                        attempt: g.attempt,
+                        held_at: held_at,
+                      )
+                    ExitSuccess => {
+                      let issued = match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
+                        ExitSuccess =>
+                          mtcollins1_drive_handoff(
+                            label: "mtcollins1 cdrom handoff",
+                            password_file_raw: password_file,
+                            capability_row: mtcollins1_capability_row,
+                            selection: request.subject.selection,
+                          )
+                        other => other
+                      }
+                      let observed = match issued {
+                        ExitSuccess =>
+                          mtcollins1_boot_await_capture_terminal(
+                            remaining: mtcollins1_boot_terminal_tick_budget(),
+                            capture_path: sol_capture_path,
+                            subject: request.subject,
+                          )
+                        other => other
+                      }
+                      let teardown = mtcollins1_boot_release_sol(password_file: password_file, pid_path: sol_pid_path)
+                      let terminal = match observed {
+                        ExitSuccess =>
+                          match teardown {
+                            LeaseRunningExpected =>
+                              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
+                            LeaseRunningStale =>
+                              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
+                            _ => ExitSuccess
+                          }
+                        other => other
+                      }
+                      mtcollins1_boot_settle_from_fresh_clock(
+                        outcome: terminal,
+                        escalation_id: g.escalation_id,
+                        attempt: g.attempt,
+                        held_at: held_at,
+                      )
+                    }
+                  }
+              }
+          }
+      }
+    _ => mtcollins1_boot_refusal(gate: gate)
+  }
+}
+
+fn mtcollins1_boot_poll_ticks(
+  remaining: Int,
+  request: AuthorizationRequest<MtCollins1BootSubject>,
+  expires_at: Timestamp,
+) -> MtCollins1BootGate
+  uses net: std.resources.Network
+{
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      BootGateStoreUnreadable {
+        detail: "clock unreadable; refusing to judge expiry against a fabricated instant" as NonEmptyStr,
+      }
+    Present { value: observed } =>
+      if remaining <= 0 {
+        BootGateExpired
+      } else {
+        let got = http.Client.GetLocalhostBounded(url: approval_status_url(escalation_id: request.escalation_id))
+        let status = mtcollins1_status_from_get(success: got.success, body: got.body)
+        let standing = approval_poll_standing(status: status, observed_at: observed, expires_at: expires_at)
+        match standing {
+          PollStillPending => {
+            let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
+            mtcollins1_boot_poll_ticks(remaining: remaining - 1, request: request, expires_at: expires_at)
+          }
+          _ => mtcollins1_boot_gate_from_poll(poll: standing, request: request, observed_at: observed)
+        }
+      }
+  }
+}
+
+fn mtcollins1_boot_host_must_be_srv1(host: String) -> Bool {
+  host == operator_host_srv1 as String
+}
+
+fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
+  if mtcollins1_boot_host_must_be_srv1(host: host) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 boot refuses host '", concat(host, concat("': POST/GET /approvals is loopback on the machine that serves the dashboard, which is ", operator_host_srv1 as String))))
+  }
+}
+
+fn mtcollins1_boot_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; loopback filing is srv1 only")))))
+    ActionsVariablePresent { value: host } =>
+      match mtcollins1_boot_refuses_off_srv1(host: host) {
+        ExitSuccess => mtcollins1_boot_wet_on_srv1()
+        other => other
+      }
+  }
+}
+
+fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
+  if cred == "" {
+    return exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched")))
+  }
+  let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
+  if sub_path == "" {
+    return exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched")))
+  }
+  let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
+  let sol_capture_path = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
+  let run_id = match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if run_id == "" {
+    return exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id")
+  }
+  let sha = match actions_variable_read(name: github_sha_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if sha == "" {
+    return exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision")
+  }
+  let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
+  let request = mtcollins1_boot_authorization_request(
+    escalation_id: escalation,
+    attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
+    execution_revision: sha as NonEmptyStr,
+  )
+  match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
+    Absent =>
+      exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot mint issued_at or an approval window; controller untouched")
+    Present { value: issued } => {
+      let expires = match mtcollins1_approval_expires_at(issued: issued) {
+        Absent => ""
+        Present { value: e } => e
+      }
+      if expires == "" {
+        return exit_failure(reason: "mtcollins1 boot: issued_at is not a canonical UTC instant; cannot mint an approval window; controller untouched")
+      }
+      let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
+      let key_read = Filesystem.Read(path: sub_path)
+      if !key_read.success {
+        return exit_failure(reason: concat("mtcollins1 boot: submission MAC key unreadable: ", key_read.error))
+      }
+      match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+        SubmissionMacKeyNotHex { key_id: k } =>
+          exit_failure(reason: concat("mtcollins1 boot: submission MAC key is not hex: ", k as String))
+        SubmissionMacReady { tag_hex: tag } => {
+          let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
+          if tmp == "" {
+            return exit_failure(reason: "mtcollins1 boot: RUNNER_TEMP is unset; cannot write the submit body")
+          }
+          let body_path = concat(tmp, "/mtcollins1-approval-submit.json")
+          let body = submission_envelope_json(request: stored, tag_hex: tag)
+          let written = Filesystem.WriteOwnerOnly(path: body_path, content: body)
+          if !written.success {
+            return exit_failure(reason: concat("mtcollins1 boot: could not write submit body: ", written.error))
+          }
+          let posted = http.Client.PostJsonFromFile(
+            url: approval_submit_url(),
+            request_body_file: body_path as NonEmptyStr,
+            max_seconds: to_string(second_count(s: mtcollins1_boot_submit_timeout)) as NonEmptyStr,
+          )
+          let _wiped = Filesystem.Delete(path: body_path)
+          if !submission_body_admits_poll(body: posted.body) {
+            return exit_failure(reason: concat("mtcollins1 boot: POST /approvals refused; controller untouched; ", posted.body))
+          }
+          let gate = mtcollins1_boot_poll_ticks(
+            remaining: mtcollins1_boot_poll_tick_budget,
+            request: request,
+            expires_at: expires,
+          )
+          let pw_read = Filesystem.Read(path: cred)
+          if !pw_read.success {
+            return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
+          }
+          let actuated = mtcollins1_boot_after_gate(
+            gate: gate,
+            request: request,
+            password_file: cred,
+            attempt: run_id,
+            sol_pid_path: sol_pid_path,
+            sol_capture_path: sol_capture_path,
+          )
+          let exit_word = match actuated { ExitSuccess => "ok"  _ => "refused" }
+          let receipt_body = concat("escalation_id=", concat(escalation as String, concat("\nexit=", exit_word)))
+          let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
+          if !kept.success {
+            return exit_failure(reason: concat("mtcollins1 boot: could not write receipt: ", kept.error))
+          }
+          actuated
+        }
+      }
+    }
+  }
+}
