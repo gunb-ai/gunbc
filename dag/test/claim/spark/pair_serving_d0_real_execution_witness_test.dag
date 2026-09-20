@@ -414,7 +414,8 @@ fn d0r_w_observe_live_declared(group: FabricGroup) -> D0Observation {
       let head = endpoint_incarnation_observation(
         endpoint: vllm_endpoint_process_launch(group: group, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
         launch: vllm_serving_launch(group: group, head: d.head.host, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: d.head.digest, unit_digest: d.head.digest, started_at: 1),
-        receipt: "test.claim.spark.pair_serving_d0_real_execution fixture" as ObservationReceiptRef,
+        container_env: [] as List<String>,
+    receipt: "test.claim.spark.pair_serving_d0_real_execution fixture" as ObservationReceiptRef,
       )
       let workers = map(d.workers, w => ObservedRankUnit { host: w.host, unit_name: w.unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: w.digest })
       let agreement = pair_realization_agreement(

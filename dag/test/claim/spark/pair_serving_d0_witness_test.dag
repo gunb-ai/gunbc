@@ -263,6 +263,7 @@ fn d0w_t_answered(a: ContentHash, b: ContentHash, declared_worker: ContentHash, 
   let head = endpoint_incarnation_observation(
     endpoint: vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
     launch: vllm_serving_launch(group: FabricGroupA, head: operator_host_srv5, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: img, unit_digest: a, started_at: 1),
+    container_env: [] as List<String>,
     receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef,
   )
   let workers = [
