@@ -103,8 +103,20 @@ type RequiredRetirees
   = RetireesKnown { units: List<NonEmptyStr> }
   | RetireesUnresolved { host: HostIdentity, cause: String }
 
-fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {
-  match gunbc_runner_committed_width(host: t.host) {
+// THE TARGET WIDTH IS A PARAMETER OF THE DECISION AND A READ OF THE WRAPPER, WHICH IS WHAT MAKES
+// THE UNRESOLVED ARM TESTABLE AT ALL. `RunnerWidthTransition` is sole_constructor, so a witness
+// cannot author a transition for a host whose width does not resolve, and no such host has a
+// transition row today -- which left the unresolved arm with no discriminating red and only a type
+// to point at. A type is not a control: this mutation is well-formed and would have passed
+// unnoticed --
+//
+//     RunnerWidthUnresolved { cause: _ } => RetireesKnown { units: [] }
+//
+// A coproduct makes the distinction EXPRESSIBLE; it does not establish that the producer chose the
+// right arm. So the decision takes the resolution as a supplied value and the wrapper below reads
+// it from the authority, the same separation fleet_capacity_withdrawn_line_over uses.
+fn transition_required_retirees_at(t: RunnerWidthTransition, target_width: RunnerWidthResolution) -> RequiredRetirees {
+  match target_width {
     RunnerWidthUnresolved { cause: c } =>
       RetireesUnresolved { host: t.host, cause: runner_width_unresolved_cause_text(cause: c) }
     RunnerWidthDerived { slots: target } =>
@@ -116,6 +128,10 @@ fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {
         ) |> map(u => u as NonEmptyStr),
       }
   }
+}
+
+fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {
+  transition_required_retirees_at(t: t, target_width: gunbc_runner_committed_width(host: t.host))
 }
 
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {
@@ -154,7 +170,21 @@ fn transition_population_agreement(
   host: HostIdentity,
   observed_surplus: List<NonEmptyStr>,
 ) -> TransitionPopulationAgreement {
-  match required_retirees_for_host(host: host) {
+  transition_population_agreement_over(
+    host: host,
+    required: required_retirees_for_host(host: host),
+    observed_surplus: observed_surplus,
+  )
+}
+
+// SAME SEPARATION AS THE REQUIREMENT ABOVE: the obligation is supplied, so the undecidable arm can
+// be exercised on a host that does resolve today, and the wrapper is the one real-path read.
+fn transition_population_agreement_over(
+  host: HostIdentity,
+  required: RequiredRetirees,
+  observed_surplus: List<NonEmptyStr>,
+) -> TransitionPopulationAgreement {
+  match required {
     RetireesUnresolved { host: h, cause: c } => TransitionPopulationUndecidable { host: h, cause: c }
     RetireesKnown { units: required } => {
       let unexpected = observed_surplus

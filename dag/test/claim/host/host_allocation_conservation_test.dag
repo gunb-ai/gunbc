@@ -106,23 +106,30 @@ fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
   }
 }
 
-// THE LIVE POOL IS READ THROUGH THE WIDTH RESOLUTION, so a host whose width does not resolve yields
-// a zero pool HERE AND ONLY HERE, where the fixture asks "does a host of this size conserve with
-// this much runner memory charged" rather than "what does this host commit". srv1 resolves, so the
-// call below is unaffected; the arm exists because the helper is total.
-fn live_runner_pool_for(host: HostIdentity) -> ByteSize {
-  match gunbc_runner_committed_width(host: host) {
-    RunnerWidthUnresolved { cause: _ } => byte_size(0)
-    RunnerWidthDerived { slots: n } => gunbc_runner_slice_cap_for_width(slots: n)
-  }
-}
+// THE CHARGE IS SUPPLIED, NOT DEFAULTED. An earlier revision of this change read the live width and
+// mapped an unresolved answer to byte_size(0) -- and this row feeds that value straight into the
+// conservation arithmetic, where a zero runner charge makes conservation EASIER to satisfy. That is
+// the same substitution the production code stopped making, reappearing in the test that checks it:
+// if srv1's width ever stopped resolving, the row would go on passing for the strongest possible
+// reason. The subject here is the comparison interface -- does a host of this size conserve with
+// this much runner memory charged -- so the charge is a deliberate fixture and no live resolution
+// is consulted. The live-derived claims live in the rows that match the resolution and fail on
+// unresolved.
+//
+// TEN IS A CHOSEN CHARGE, NOT srv1'S WIDTH, and the difference is deliberate: a fixture equal to
+// the live commitment would read as a transcription of it and would have to be re-authored every
+// time the width moved (DESIGN 5 -- a measurement copied from the same current tree is not an
+// oracle). Ten 26 GiB slots is 260 GiB against srv1's measured RAM with the overhead and headroom
+// this row already supplies, which is the "pools fit" side of the boundary the four controls below
+// pin from both directions at the live width.
+data witness_srv1_fixture_slot_count: Int = 10
 
 test fn allocation_conserves_when_pools_fit() -> Bool {
   witness_allocation_conserves(
     host: usable_ram_of(host: operator_host_srv1),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: live_runner_pool_for(host: operator_host_srv1),
+    runner_pool: gunbc_runner_slice_cap_for_width(slots: witness_srv1_fixture_slot_count),
     session_pool: byte_size(0),
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced

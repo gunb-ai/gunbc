@@ -44,7 +44,9 @@ import extdeps.systemd.systemctl {
 import std.measure { byte_size_count }
 import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
+  bash_build_with_redir,
   bash_build_with_redir_to_file,
+  bash_build_exit,
   bash_build_word_lit,
 }
 import v2.std.node { Node }
@@ -629,16 +631,28 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
-// A HOST WITH NO DERIVABLE UNIT ROSTER EMITS A REFUSAL LINE, NOT AN EMPTY SCRIPT. An empty script
+// A HOST WITH NO DERIVABLE UNIT ROSTER EMITS A REFUSAL, NOT AN EMPTY SCRIPT. An empty script
 // applies cleanly and reports nothing, which is the quietest possible way to not converge a host.
+//
+// THE REFUSAL IS BUILT AS A COMMAND, NOT CONCATENATED AS TEXT. An earlier revision of this arm
+// spelled `echo '<message>' >&2; exit 1` by joining strings with the cause interpolated inside the
+// opening quote. The cause is DATA from gunbc.session_reservation_policy, and an apostrophe in it
+// closes the quoted argument -- so the refusal script would stop being shell exactly when it had
+// something to say. gunbc.shell_command_text serializes the message as a WORD, and the redirection
+// and the exit are modeled bash nodes rather than characters appended to a string.
 fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
   match runner_slot_service_units_for_host(host: host) {
     ServiceUnitsWidthUnresolved { host: uh, cause: c } =>
-      join([
-        "echo '__GUNBC_DEPLOY_REFUSED__ memory-cap apply: host=", uh as String,
-        " cause=no cap-bearing unit population is derivable for this host; ", c,
-        "' >&2; exit 1",
-      ], "")
+      shell_command_text_of_stmts(stmts: [
+        bash_build_with_redir(
+          inner: shell_command_intent(words: ["echo", join([
+            "__GUNBC_DEPLOY_REFUSED__ memory-cap apply: host=", uh as String,
+            " cause=no cap-bearing unit population is derivable for this host; ", c,
+          ], "")]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ])
     ServiceUnitsDerived { units: units } => deploy_memory_cap_apply_script_ordered(units: units)
   }
 }

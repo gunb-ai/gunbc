@@ -62,7 +62,8 @@ import gunbc.runner_unit {
 }
 import extdeps.systemd.systemctl { systemctl_mask_now_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv, shell_command_text_of_node, shell_command_intent }
+import v2.extdeps.languages.bash_build { bash_build_with_redir }
 import gunbc.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
@@ -211,6 +212,32 @@ fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
   !any(removed, r => r == unit)
 }
 
+// EVERY WITHHELD LINE IS A COMMAND, NOT A SENTENCE, AND IT IS SERIALIZED BY THE AUTHORITY THAT
+// KNOWS THAT. These four renderers each spelled `echo '<text>' >&2` by concatenation, with the
+// diagnostic interpolated INSIDE the opening quote -- so a cause containing an apostrophe closes
+// the quoted argument and the emitted script stops being shell. Measured on the arm this change
+// added: with an ordinary host and an apostrophe-free cause, the fixed text "this host's
+// retirement obligation" alone made `/bin/bash -n` and `/bin/sh -n` both refuse with an
+// unterminated-quote error. The cause is DATA -- it comes from gunbc.session_reservation_policy,
+// whose sentences are prose -- and data interpolated into a quoted program is the injection shape
+// regardless of who wrote today's string.
+//
+// gunbc.shell_command_text is the single authority for "an argv this repository intends to run"
+// becoming shell text: the message is a WORD, quoting is the serializer's structural job (POSIX
+// single-quote, cited at extdeps.posix.shell_command_language), and the stderr redirection is the
+// modeled `^bash_production_fold_redir_stdout_to_stderr` rather than two characters appended to a
+// string. All four renderers route through it here rather than one being repaired -- the other
+// three carry the same defect for the same reason, and leaving them hand-spelled beside a
+// serialized sibling is the second spelling DESIGN 3 forbids.
+fn withheld_diagnostic_line(message: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_with_redir(
+      inner: shell_command_intent(words: ["echo", message]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    )
+  )
+}
+
 fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
   match read_runner_unit_name(observed: unit as NonEmptyStr) {
     RunnerUnitInstance { registration_name: n } =>
@@ -220,29 +247,21 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
         cause: cause,
       )]
     NotARunnerUnit { observed: o } =>
-      [join(
-        [
-          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
-          o as String,
-          " cause=the required identity is not a runner unit, so no slot tree is derived; ",
-          cause,
-          "' >&2",
-        ],
-        "",
-      )]
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        o as String,
+        " cause=the required identity is not a runner unit, so no slot tree is derived; ",
+        cause,
+      ], ""))]
     RunnerUnitInstanceMalformed { observed: o, cause: mc } =>
-      [join(
-        [
-          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
-          o as String,
-          " cause=",
-          mc as String,
-          "; ",
-          cause,
-          "' >&2",
-        ],
-        "",
-      )]
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        o as String,
+        " cause=",
+        mc as String,
+        "; ",
+        cause,
+      ], ""))]
   }
 }
 
@@ -265,12 +284,11 @@ fn obligation_withheld_scripts(
   let removed = membership_removed_unit_names(membership: membership)
   match transition_required_retiring(host: deploy.host_label as HostIdentity) {
     RetireesUnresolved { host: uh, cause: c } =>
-      [join([
-        "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
-        " cause=this host's retirement obligation is not derivable, so no required retiree can be named and none may be torn down; ",
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
+        " cause=the retirement obligation for this host is not derivable, so no required retiree can be named and none may be torn down; ",
         c,
-        "' >&2",
-      ], "")]
+      ], ""))]
     RetireesKnown { units: units } =>
       obligation_withheld_scripts_over(units: units, removed: removed, evidence: evidence)
   }
@@ -333,18 +351,17 @@ fn retirement_actuation_units(
 // leave a narrowing host quietly accumulating trees with no record of which units were waiting on
 // what, which is the silent-degradation arm DESIGN section 5 forbids.
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
-  join(
+  withheld_diagnostic_line(message: join(
     [
-      "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
+      "__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
       unit,
       " tree=",
       tree as String,
       " cause=",
       cause,
-      "' >&2",
     ],
     "",
-  )
+  ))
 }
 
 fn runner_slot_provenance_is_retired_incarnation(p: RunnerSlotProvenance) -> Bool {
