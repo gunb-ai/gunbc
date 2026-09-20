@@ -322,7 +322,7 @@ test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -
 // what is asserted here is that the unproven fact is UNOBSERVABLE rather than REFUTED, and that its
 // text carries the read failure's own reason instead of a pid sentence.
 test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids() -> Bool {
-  let unreadable = readiness_after(
+  let unreadable: CellReadiness? = readiness_after(
     trigger: StopRequested,
     host: clean_host(
       stop: ForceStopOutcomeUnobservable { reason: "the cell's cgroup subtree could not be read after the bounded force-stop: EIO" as NonEmptyStr },
@@ -337,7 +337,7 @@ test fn a_force_whose_result_could_not_be_read_is_unobservable_and_names_no_pids
 // THE PAIR THAT KEEPS THE CLAIM ABOVE FROM BEING SATISFIED BY A DECODER THAT SAYS `unobservable` TO
 // EVERYTHING: a real exceeded bound still reports REFUTED and still names its pid.
 test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
-  let exceeded = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty))
+  let exceeded: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty))
   is_quarantined(r: exceeded)
     && unproven_mentions(r: exceeded, needle: "pids 777 survived the bounded force-stop")
     && !unproven_mentions(r: exceeded, needle: "no-surviving-processes: unobservable")
@@ -347,14 +347,21 @@ test fn an_exceeded_bound_still_refutes_and_still_names_its_pids() -> Bool {
 // be named. It is a refutation -- the kernel saw something -- but the sentence must not be the
 // pid sentence with a hole where the pid goes.
 test fn an_exceeded_bound_with_no_nameable_pid_says_so() -> Bool {
-  let unnamed = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [] }, cgroup: CgroupSubtreeEmpty))
+  let unnamed: CellReadiness? = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [] }, cgroup: CgroupSubtreeEmpty))
   is_quarantined(r: unnamed)
     && unproven_mentions(r: unnamed, needle: "none could be named")
     && !unproven_mentions(r: unnamed, needle: "pids  survived")
 }
 
-fn unproven_mentions(r: CellReadiness, needle: String) -> Bool {
-  string_contains(s: cell_readiness_line(readiness: r), pattern: needle)
+// THE READINESS IS OPTIONAL BECAUSE readiness_after IS: an Absent reading is a settlement that never
+// happened, and it must not satisfy a claim about what a receipt SAYS. Absent reads as "does not
+// mention", which fails the positive half of every claim below and would pass the negative half
+// alone -- so each claim asserts both halves, and a missing settlement cannot pass either pair.
+fn unproven_mentions(r: CellReadiness?, needle: String) -> Bool {
+  match r {
+    Absent => false
+    Present { value: readiness } => string_contains(s: cell_readiness_line(readiness: readiness), pattern: needle)
+  }
 }
 
 // A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
