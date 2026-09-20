@@ -24,6 +24,9 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
   host_memory_admitted_width,
   host_memory_width_is_established,
+  host_width_axes,
+  AxisAdmits,
+  AxisUnmeasured,
   host_held_runner_width,
   host_disk_admitted_width,
   DiskAdmitsWidth,
@@ -110,6 +113,31 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // The second is the larger change -- srv2's session denominator is unestablished, so the memory
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is a HELD allocation reached through host_held_runner_width, asserted below on its own terms.
+// AN UNCLASSIFIED HOST STATES NO MEMORY WIDTH RATHER THAN A WIDTH OF ZERO (review 69079).
+//
+// The discriminating input is a host the fleet has never measured -- the srv5 case, supplied here
+// rather than derived, since the whole subject is what happens at the boundary when the inputs are
+// absent. gunbc_ci_host_fixed_overhead_for answers HostFixedOverheadUnmeasured for it, so the
+// envelope refuses and the Int shim flattens that refusal to zero.
+//
+// WHAT GOES RED: while host_memory_width_is_established keyed on session_reservation_bytes alone,
+// this host answered TRUE -- the reservation arm it reads is not the arm that failed -- divided the
+// flattened zero and reported AxisAdmits { memory, 0 }. A positive claim that a machine has no
+// capacity, standing where "nobody has read this machine" was the fact, and an operator relieving a
+// capacity bound that does not exist. Keying on the resolution is what makes the arm below the one
+// that runs.
+test fn an_unmeasured_host_states_no_memory_width() -> Bool {
+  let unread = "srv5" as HostIdentity
+  !host_memory_width_is_established(host: unread)
+    && all(host_width_axes(host: unread), a =>
+      match a {
+        AxisAdmits { axis: x, slots: _ } => (x as String) != "memory"
+        AxisUnmeasured { axis: x, reason: r } =>
+          (x as String) != "memory"
+            || string_contains(s: r as String, pattern: "host fixed overhead is unmeasured")
+      })
+}
+
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
   host_memory_admitted_width(host: operator_host_srv1) == 15
     && host_memory_admitted_width(host: operator_host_srv3) == 17

@@ -11,7 +11,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation {
-  host_width_binding_label,
+  host_width_binding_label, host_width_unmeasured_reasons,
   RunnerSlotCpuQuota,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
@@ -555,14 +555,23 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
   }
 }
 
-// THE ZERO-WIDTH REFUSAL NOW CARRIES WHY, AND THAT IS WHAT MAKES THE ENVELOPE'S CAUSES A CONSUMED
-// DECLARATION (review 67875, DESIGN 3c). gunbc.runner_slot_allocation
-// host_runner_memory_envelope_resolution constructs four distinct located causes for a host whose
-// envelope cannot be derived, and until this arm read them every one of them was written and never
-// looked at: the Int shim flattened the refusal to zero, the zero arrived here, and this function
-// reported a bare ZeroRunnerWidth that could not say whether the host had no memory or had never
-// been measured. Operationally those are opposite instructions -- one is a capacity fact, the other
-// is a reading somebody owes -- and the refusal was unable to tell an operator which.
+// THE ZERO-WIDTH REFUSAL CARRIES WHY, AND THE ROUTE BY WHICH IT DOES IS WORTH STATING EXACTLY,
+// BECAUSE AN EARLIER REVISION OF THIS NOTE CLAIMED A ROUTE THE DIFF DID NOT HAVE (review 69079,
+// DESIGN 4b(1)). It said the envelope's four causes were consumed here. They were not: this arm
+// reached them through host_width_binding_label, which renders axis NAMES, and the only other
+// reader of host_runner_memory_envelope_resolution was the Int shim, which discards the cause. So
+// the causes were constructed and unread -- DESIGN 3c's red state -- underneath a sentence
+// asserting the opposite, which is the rung inflation 4b(1) names.
+//
+// The route now exists rather than being described. gunbc.runner_slot_allocation
+// host_memory_width_is_established keys on the RESOLUTION instead of on session_reservation_bytes
+// alone, so a host whose overhead or usable RAM is unread reports AxisUnmeasured carrying the
+// envelope's own cause instead of AxisAdmits { memory, 0 }; and host_width_unmeasured_reasons
+// carries those reasons out to this refusal, which is the surface with room for them. Without that
+// fold this arm reported a bare ZeroRunnerWidth that could not say whether the host had no memory
+// or had never been measured. Operationally those are opposite instructions -- one is a capacity
+// fact, the other is a reading somebody owes -- and the refusal was unable to tell an operator
+// which.
 //
 // ZeroRunnerWidth IS THE ONLY VARIANT IN THIS COPRODUCT THAT CARRIED NO CAUSE, which is the tell
 // that the fact was being dropped rather than that it did not exist. It now matches its siblings.
@@ -587,7 +596,12 @@ fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) 
 // authorities for one fact is the fork DESIGN 3 forbids, and the one to delete is the newer, narrower
 // branch-local one. host_width_binding_label is consumed here instead.
 fn zero_width_cause(host: HostIdentity) -> String {
-  host_width_binding_label(host: host)
+  let reasons = host_width_unmeasured_reasons(host: host)
+  if reasons == "" {
+    host_width_binding_label(host: host)
+  } else {
+    concat(concat(host_width_binding_label(host: host), " · "), reasons)
+  }
 }
 
 fn refuse_host(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRunnerDeploymentStanding {

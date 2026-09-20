@@ -580,25 +580,35 @@ fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
 // The repair mints nothing. WidthAxisStanding already carries AxisUnmeasured for exactly this, and
 // the disk arm already routes through it -- its own comment says rendering an unmeasured axis as a
 // width "would turn an absence of observation into a positive clearance". Memory now does the same.
+// THE PREDICATE KEYS ON THE ENVELOPE, NOT ON ONE OF ITS FIVE INPUTS (review 69079). It read
+// session_reservation_bytes alone, which is the only input srv2 happens to be missing, so it was
+// right about the live fleet by coincidence and wrong about the class. A host whose fixed overhead
+// or usable RAM is unread -- the srv5 case host_memory_observation exists to make expressible --
+// answered TRUE here, then divided an envelope the Int shim had flattened to zero and reported
+// AxisAdmits { memory, 0 }: a positive claim that the machine has no capacity, standing where
+// "nobody has measured this machine" was the fact. Those are opposite operator instructions.
+//
+// Keying on the resolution makes the predicate exactly as strong as the derivation it guards, so a
+// new envelope input cannot be added without this axis seeing it.
 fn host_memory_width_is_established(host: HostIdentity) -> Bool {
-  match session_reservation_bytes(host: host) {
-    ReservationBytes { bytes: _ } => true
-    ReservationBytesNotApplicable => true
-    ReservationBytesUnestablished { cause: _ } => false
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeDerived { bytes: _ } => true
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => false
   }
 }
 
 fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
-  let memory = if host_memory_width_is_established(host: host) {
-    AxisAdmits {
-      axis: "memory" as NonEmptyStr,
-      slots: host_memory_admitted_width(host: host),
-    }
-  } else {
-    AxisUnmeasured {
-      axis: "memory" as NonEmptyStr,
-      reason: "session reservation unestablished on this host, so the memory subtraction has no denominator and states no width" as NonEmptyStr,
-    }
+  let memory = match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeDerived { bytes: _ } =>
+      AxisAdmits {
+        axis: "memory" as NonEmptyStr,
+        slots: host_memory_admitted_width(host: host),
+      }
+    RunnerMemoryEnvelopeUnestablished { cause: why } =>
+      AxisUnmeasured {
+        axis: "memory" as NonEmptyStr,
+        reason: concat("the memory envelope states no width on this host: ", why) as NonEmptyStr,
+      }
   }
   let cpu = AxisAdmits { axis: "cores" as NonEmptyStr, slots: host_cpu_admitted_width(host: host) }
   let disk = match host_disk_admitted_width(host: host) {
@@ -657,6 +667,26 @@ fn width_binding_head(host: HostIdentity) -> String {
       Absent => "no axis binds"
     }
   }
+}
+
+// THE REASONS AN AXIS STATES NO WIDTH, FOR THE SURFACE THAT HAS ROOM FOR THEM (review 69079).
+// host_width_binding_label is a panel metric and renders axis NAMES, so "memory unmeasured" is all
+// an operator gets there. That is the right length for a column and the wrong length for a refusal:
+// a refusal is read exactly once, by someone deciding what to do next, and the four causes
+// host_runner_memory_envelope_resolution distinguishes are four different next actions. This fold
+// is the seam that carries them out, and it is why those causes are read rather than merely
+// constructed -- deleting it leaves them written and unlooked-at, which is DESIGN 3c's red state.
+fn host_width_unmeasured_reasons(host: HostIdentity) -> String {
+  let unmeasured = filter(host_width_axes(host: host), a =>
+    match a {
+      AxisAdmits { axis: _, slots: _ } => false
+      AxisUnmeasured { axis: _, reason: _ } => true
+    })
+  join(map(unmeasured, a =>
+    match a {
+      AxisAdmits { axis: x, slots: _ } => x as String
+      AxisUnmeasured { axis: x, reason: r } => concat(concat(x as String, ": "), r as String)
+    }), "; ")
 }
 
 fn host_width_binding_label(host: HostIdentity) -> String {
