@@ -1391,6 +1391,51 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The per-phase receipt on the required run, and the first phase attribution read from it."
       )
     ),
+    active_small(
+      identity: "rn_5NTJP2XWCB7QVK0HDRM8FZ4136",
+      id: "boot-probe-must-not-read-a-bare-124-as-a-deadline",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_microvm.dag",
+      t: fields(
+        headline: "A micro-VM boot that exits 124 for its own reasons must not be reported as a deadline that fired",
+        boundary: "gunbc.runner_microvm_boot_probe boot_probe_verdict reads a bare exit status and returns BootExceededHostDeadline, and boot_probe_verdict_text renders a deadline sentence with a duration nobody observed, discarding the cause BootVmmFailed exists to carry. The repair is the capability the landed failure-mode row declares as its trigger: a typed execution-bound observation emitted at the deadline-enforcement decision and carried to the classifier.",
+        displaced_cost: "Executed on coreutils 9.7 (2026-09-20): timeout returns 124 on expiry AND forwards a child's own 124, so the two events are indistinguishable by status alone -- 6ms without expiry versus 111ms with one. Contained today only because boot_probe_admitted refuses both verdicts, so the defect is a wrong explanation rather than a silenced failure; that containment belongs to this consumer and evaporates under any consumer that exempts a timeout from blocking.",
+        first_slice: "The observation emitted where the bound is imposed, for one bounded invocation.",
+        red_control: "A child exiting 124 without the bound firing is not reported as a deadline; a real expiry still is.",
+        out_of_scope: "No 124 arm keyed on the bare exit status anywhere, and no wall-clock reading substituted for the observation; the withdrawn floor classifier must not be re-attempted (the floor path has no GNU timeout producer, so its only reachable 124 is a subject's own).",
+        handback: "The typed observation reaching the verdict, with the two 124 events distinguished by it."
+      )
+    ),
+    active_large(
+      identity: "rn_9HVXR4CBM0KT2WPND7FJ3QZY85",
+      id: "claim-entry-resolution-population",
+      owner: "ci-control",
+      path: "src/v2/workflow/required_floor.dag",
+      t: fields(
+        headline: "Count and close the claim entries that cannot execute under any driver",
+        boundary: "Two populations, reported separately because they have different owners: entries whose closure is incomplete (registry rows absent), and entries that do not typecheck at all. A census over dag/test/claim under claim_batch, at identity grain, with member lists.",
+        displaced_cost: "Partial census 2026-09-20 over 512 of 1582 entries: 8 members of the first population (ci_failure_class 41 causes, fleet_intent_network 49, fabric_witness_run 33, deploy_mutation_gate 32, deploy_access_privilege 22, design_argument 11, compile_permit_scope_observe 8, cli_run_floor_lens_oracle 2) and 20 of the second from 17 distinct sites, EIGHT of them in production modules including dag/std/algebra.dag and dag/std/effect_axes.dag. The required floor is green over all of them, because an entry that fails to resolve is indistinguishable at the floor from one never selected.",
+        first_slice: "The complete census with both member lists and both counts.",
+        red_control: "An entry that cannot resolve is reported as unexecuted rather than passing silently; a production module that does not typecheck is named.",
+        out_of_scope: "No weakening or deletion of any claim to make it resolve; the import-binding repair is its own row.",
+        handback: "Both counts, both member lists, and the disposition of each population."
+      )
+    ),
+    active_large(
+      identity: "rn_6BFLC3WQZ8NKX1VTDR5HJMP902",
+      id: "compiler-import-list-binds",
+      owner: "namespace",
+      path: "src/v2/compiler/03_name_resolve.dag",
+      t: fields(
+        headline: "Decide whether a .dag import list binds, and make the answer enforceable",
+        boundary: "Name resolution builds its symbol index from a tree-wide census, while the compiled population is the declared-import closure. Their reconciliation (the bare-reference pull) is short-circuited for any file that declares at least one import, so such a file silently gets no bare edges. Two candidate repairs: make the import list BIND and refuse a name resolving outside it, or complete the reconciliation for every file.",
+        displaced_cost: "Measured 2026-09-20: the flip control removes the predicate at both call sites and the subject entry goes from 41 registry-row-absent causes to resolving with 585 modules and 14877 rows, nothing else changed. Completing the reconciliation instead grows closure path rows 358442 to 586388, moves 1502 of 1582 entries, charges every already-correct entry (a control grows 16 to 24 modules), and raises the memory floor of every entry compile. 646 files are bare-eligible today, which is the transition scope of the binding repair.",
+        first_slice: "The operator decision between the two repairs, then the chosen one behind a declared bounded transition.",
+        red_control: "A name resolving outside the declared import closure refuses, with the file and the name located.",
+        out_of_scope: "No witness edits to route around the loader; the effect-summary join that currently notices this is CORRECT and must not be made quieter.",
+        handback: "The chosen repair with its transition population named, and the flip control retained as the regression probe."
+      )
+    ),
     superseded(
       identity: "rn_8QK2M5F7V3N9P1R4T6W0X2Y5Z8A",
       id: "five-minute-ci-gate",
@@ -2383,6 +2428,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An undeclared file, service, credential, or device refuses before anything is changed.",
         out_of_scope: "No inventory of everything on the machine for its own sake.",
         handback: "The classification plus one refusal on something unclassified."
+      )
+    ),
+    active_small(
+      identity: "rn_7CMXV1QBZ4KTPN9HDRJF08SW6",
+      id: "fleet-assessment-build-provenance-join",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_slot_retirement.dag",
+      t: fields(
+        headline: "Bind the binary that ran a retirement assessment to the revision the assessment claims",
+        boundary: "The assessment already corroborates the checked-out revision and refuses on disagreement; what is missing is that the EXECUTABLE which evaluated it was built from that revision. The join reads the running image's own reported build identity and admits it only through the trusted delivery route (the fleet-converge retire job taking release-bins from the build job), never from a self-report alone. It resumes when the retirement route lands; its consumers are that route's blockers, terminal and receipt.",
+        displaced_cost: "Without it the assessment carries a named unresolved blocker and cannot complete the convergence package, so srv2 cannot be declared converged even after its registrations are removed.",
+        first_slice: "The four-arm join (joined, mismatch, dirty, unobserved) consumed as a blocker by the assessment verdict.",
+        red_control: "A checkout at R with a binary built from S refuses; an unreadable identity refuses as unobserved; a matching report from outside the admitted delivery route refuses.",
+        out_of_scope: "No signing infrastructure; a --version string is not provenance on its own.",
+        handback: "The join consumed by the assessment, with the delivery premise bound to the real steps rather than their names."
+      )
+    ),
+    active_large(
+      identity: "rn_3WZQ8WHXK5CVTB1NDRM7FJ204P",
+      id: "fleet-srv2-retirement-completion",
+      owner: "fleet",
+      path: "dag/gunbc/runner/runner_slot_retirement.dag",
+      t: fields(
+        headline: "Finish retiring srv2, from an executor that is not srv2, with a readback that proves it",
+        boundary: "srv2's retirement as an explicit obligation over its host spec and its owned identities: seven local slot trees (01-05, 11, 12), two live organization registrations (ids 251463 srv2-02 and 251484 srv2-05; ids 91529 and 91513 are already absent), the runner trees, and the reclaim timer's disposition. The assessment route landed; what remains is plan and apply reaching the target over SSH rather than reading it locally, graceful retirement, and the authorized removal with its postcondition.",
+        displaced_cost: "srv2 was hand-converged to zero workers on 2026-09-18 and the model could not describe that state: the assessment refuses today on an ungrounded local population and an unread roster, and the capacity plan refuses for every host while srv2's registrations are unaccounted for. Until the route can act, every convergence is hand SSH and the next one repeats it.",
+        first_slice: "The plan and apply spine reaching a target that is not the executor, which is the only remaining reason srv2 cannot be acted on from the model.",
+        red_control: "Retiring srv2 must not require a runnable srv2 runner; a registration whose ownership is not established by the host capture refuses rather than being deleted; an unobserved roster refuses rather than reading as empty.",
+        out_of_scope: "No second actuator beside the reviewed plan/apply spine; no deletion authorized by a name prefix; GracefulRetirement stays refused until implemented.",
+        handback: "One transaction at one revision: plan artifact, authorized apply receipts, independent readback, and a second assessment with nothing remaining."
       )
     ),
     active_large(
