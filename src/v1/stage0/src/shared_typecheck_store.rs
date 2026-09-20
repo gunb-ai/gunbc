@@ -570,7 +570,7 @@ fn scan_occupancy(namespace_root: &Path) -> (u64, u64) {
     (bytes, entries)
 }
 
-static PERSISTENT_STORE: std::sync::OnceLock<Option<PersistentTypedStore>> =
+static PERSISTENT_STORE: std::sync::OnceLock<Result<Option<PersistentTypedStore>, String>> =
     std::sync::OnceLock::new();
 
 /// The process's persistent typed store for `source_roots`, or `None` when it
@@ -581,36 +581,43 @@ static PERSISTENT_STORE: std::sync::OnceLock<Option<PersistentTypedStore>> =
 /// read from the environment -- resolution is root-relative, so the roots are a
 /// fact about the computation and never an operator's assertion about it.
 ///
-/// An open failure is reported once on stderr and leaves the store unarmed: the
-/// run proceeds cold, which is the only honest arm, because no verdict may
-/// depend on the store being available. A SECOND root set inside one process is
-/// a different namespace and REFUSES rather than silently serving the first
-/// one's entries.
+/// UNARMED and ARMED-BUT-UNUSABLE are different states with different arms. An
+/// absent environment variable means the operator asked for no store, so the
+/// run proceeds cold and that is correct: no verdict may depend on a store
+/// being available. A directory that was NAMED and cannot be opened is an
+/// operator asking for a store they do not have, so it REFUSES with a located
+/// diagnostic rather than quietly running cold under a name that promised
+/// otherwise (DESIGN section 5). A SECOND root set inside one process refuses
+/// for the same reason: entries from one namespace are not answers in another.
 pub fn persistent_typed_store_for(
     source_roots: &[String],
 ) -> Result<Option<&'static PersistentTypedStore>, String> {
     let wanted = source_root_namespace(source_roots);
-    let store = PERSISTENT_STORE
-        .get_or_init(|| {
-            let root = std::env::var_os("GUNBC_TYPED_STORE_PERSIST")?;
-            let root = PathBuf::from(root);
-            if root.as_os_str().is_empty() {
-                return None;
-            }
-            let cap = std::env::var("GUNBC_TYPED_STORE_PERSIST_MAX_BYTES")
-                .ok()
-                .and_then(|raw| raw.trim().parse::<u64>().ok())
-                .filter(|n| *n > 0)
-                .unwrap_or(PERSIST_DEFAULT_CAP_BYTES);
-            match PersistentTypedStore::open(&root, source_roots, cap) {
-                Ok(store) => Some(store),
-                Err(e) => {
-                    eprintln!("[typed-store-persist] unarmed: {e}");
-                    None
-                }
-            }
-        })
-        .as_ref();
+    let opened = PERSISTENT_STORE.get_or_init(|| {
+        let Some(root) = std::env::var_os("GUNBC_TYPED_STORE_PERSIST") else {
+            return Ok(None);
+        };
+        let root = PathBuf::from(root);
+        if root.as_os_str().is_empty() {
+            return Ok(None);
+        }
+        let cap = std::env::var("GUNBC_TYPED_STORE_PERSIST_MAX_BYTES")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(PERSIST_DEFAULT_CAP_BYTES);
+        PersistentTypedStore::open(&root, source_roots, cap).map(Some)
+    });
+    let store = match opened {
+        Ok(store) => store.as_ref(),
+        Err(e) => {
+            return Err(format!(
+                "persistent typed store refused: GUNBC_TYPED_STORE_PERSIST named a store this \
+                 process cannot open ({e}). Arming names a directory, so an unopenable one is a \
+                 stopped line, not a quiet cold run"
+            ))
+        }
+    };
     let Some(store) = store else {
         return Ok(None);
     };
@@ -633,7 +640,10 @@ pub fn persistent_typed_store_for(
 /// The store if this process already opened one. Used by the counters and the
 /// receipt line, which must observe without arming.
 pub fn persistent_typed_store_if_open() -> Option<&'static PersistentTypedStore> {
-    PERSISTENT_STORE.get().and_then(|s| s.as_ref())
+    PERSISTENT_STORE
+        .get()
+        .and_then(|s| s.as_ref().ok())
+        .and_then(|s| s.as_ref())
 }
 
 #[doc(hidden)]
