@@ -308,6 +308,7 @@ fn infra_signature_wire(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
     CommandNotFound => "CommandNotFound"
     MemoryStallRefusedPageThrash => memory_stall_refusal_page_thrash_class_name
+    GnuCoreutilsTimeoutKill => timeout_kill_class_name
     ClassWireOnly => "ClassWireOnly"
   }
 }
