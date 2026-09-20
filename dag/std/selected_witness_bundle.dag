@@ -149,14 +149,19 @@ fn native_bundle_members_eq(
 ) -> Bool {
   if left.count() != right.count() {
     false
-  } else if left.count() == 0 {
-    true
   } else {
-    native_bundle_member_eq(left: left.first(), right: right.first())
-      && native_bundle_members_eq(
-        left: left.skip(n: 1),
-        right: right.skip(n: 1)
-      )
+    match left.first() {
+      Absent => true
+      Present { value: l } => match right.first() {
+        Absent => false
+        Present { value: r } =>
+          native_bundle_member_eq(left: l, right: r)
+            && native_bundle_members_eq(
+              left: left.skip(n: 1),
+              right: right.skip(n: 1)
+            )
+      }
+    }
   }
 }
 
