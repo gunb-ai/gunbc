@@ -52,5 +52,7 @@ data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
     reason: ReplacementStaged { replacement: "a keyed membership set backed by a primitive map_insert / map_lookup realization" },
     population: native_lane_closure_walk_unkeyed_membership_population,
     restoration_trigger: "A realization DELEGATES to std.primitives map_insert_contract so a keyed membership set is writable in v2, and the frontier walk answers membership by key lookup rather than by folding the fact list. That capability is gunbc#11121; the change that lands it is this row's toucher and retires it. The existence of v2.std.collection map_insert_host_binding does NOT satisfy this trigger -- the binding is already present and nothing delegates to it, so a trigger keyed on the binding would fire while the walk stayed quadratic."
-  }
+  },
+
+  amendments: [],
 }

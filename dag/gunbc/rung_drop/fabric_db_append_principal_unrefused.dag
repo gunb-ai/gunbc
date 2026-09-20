@@ -36,5 +36,7 @@ data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
       "gunbc.fabric_event_log fabric_seat_acquire",
     ],
     restoration_trigger: "a modeled roster of fabric writer principals, grounded in an observed reading of the identity each fleet writer presents through tailscale serve on srv1 -- SUFFICIENT FOR fabric_db_serve_handle to refuse a put or advance from any identity outside the roster, including an absent identity, with a discriminating RED over the real handler",
-  }
+  },
+
+  amendments: [],
 }

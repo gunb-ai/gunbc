@@ -5,9 +5,12 @@ import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable, guarantee_rung_label,
 }
 import gunbc.rung_drop {
-  RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
-  rung_drop_declaration_message, rung_drop_off_ladder_judgment,
+  RungDrop, RungDropAmendment, TypedDeclaration, DeletedWithoutReplacement, Standing,
+  rung_drop_declaration_message, rung_drop_amendment_message, rung_drop_off_ladder_judgment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
+}
+import gunbc.rung_drop.namespace_wave_admission_wall_removed {
+  namespace_wave_admission_wall_removed,
 }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
@@ -26,7 +29,9 @@ data control_rung_drop: RungDrop = RungDrop {
     reason: DeletedWithoutReplacement,
     population: ["control.population.one"],
     restoration_trigger: "control restoration trigger"
-  }
+  },
+
+  amendments: [],
 }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
@@ -92,4 +97,44 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// AN AMENDMENT RENDERS ITS OWN THREE FIELDS AND NOTHING ELSE. The amendment is a separate record
+// from the declaration on purpose -- a later fact does not rewrite a trigger -- so the assertion
+// that would go red if the two were ever fused is that the amendment's text does NOT appear in the
+// declaration's message and the declaration's does not appear in the amendment's.
+test fn an_amendment_renders_separately_from_its_declaration() -> Bool {
+  let a = rung_drop_amendment_message(a: control_amendment)
+  let d = rung_drop_declaration_message(d: control_rung_drop)
+  contains_text(haystack: a, needle: "AMENDED 2026-01-02: ")
+    && contains_text(haystack: a, needle: "control.occasion")
+    && contains_text(haystack: a, needle: "control.consequence")
+    && !contains_text(haystack: a, needle: "control restoration trigger")
+    && !contains_text(haystack: d, needle: "control.occasion")
+}
+
+// THE LIVE ROW CARRIES THE AMENDMENT, AND THE CONTROL DOES NOT. This is the discriminating pair
+// for the field itself: a projection that dropped `amendments`, or a row whose amendment was
+// deleted, reds here rather than silently regenerating the paragraph away -- which is exactly what
+// happened when the same text lived as hand-edited bytes in docs/design-rung-drops.md.
+test fn the_namespace_wave_admission_row_is_amended_and_the_control_is_not() -> Bool {
+  length(xs: namespace_wave_admission_wall_removed.amendments) == 1
+    && length(xs: control_rung_drop.amendments) == 0
+    && fold(
+      namespace_wave_admission_wall_removed.amendments,
+      init: false,
+      f: fn(acc, a) {
+        acc || contains_text(haystack: rung_drop_amendment_message(a: a), needle: "gunbc#11704")
+      }
+    )
+}
+
+// THE CONTROL AMENDMENT, differing from the live one in every field for the same reason the control
+// drop does: a renderer that ignored its argument would agree with both.
+data control_amendment: RungDropAmendment = RungDropAmendment {
+  amended: "2026-01-02",
+
+  occasion: "control.occasion" as NonEmptyStr,
+
+  consequence: "control.consequence" as NonEmptyStr,
 }

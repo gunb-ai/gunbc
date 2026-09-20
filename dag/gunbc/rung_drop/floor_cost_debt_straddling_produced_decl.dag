@@ -34,5 +34,7 @@ data floor_cost_debt_straddling_produced_decl: RungDrop = RungDrop {
       "v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order",
     ],
     restoration_trigger: "EITHER ARM RETIRES THIS ROW, AND NEITHER IS AN ARTIFACT. (a) The produced-decl consumers stop paying to rebuild the rust TargetModel once per claim -- the measured serve-below-recompute ON THOSE CONSUMERS SPECIFICALLY that v2.workflow.floor_pure_producer_share names as its own next trigger, not on their family total, which has already been observed pointing the wrong way -- so these rows sit under the ceiling on their own work rather than on which runner the job landed on. (b) The required floor qualifies a claim's cost on a measure that IS a stable property of the claim, which is the capability gunbc.rung_drop floor_cost_claim_qualification_unavailable is waiting on; the deterministic eval_steps column already published in the floor's [over-cost] line is the candidate, and it is a candidate rather than the answer because no ceiling has been derived against it. WHAT THIS TRIGGER IS SUFFICIENT FOR, stated because 4b(3) requires it: after either arm, both identities execute on every ordinary required floor and are decided by a figure that does not change between two runs of one tree. DELETING THESE TWO LINES FROM v2.workflow.floor_cost_debt, EMPTYING THAT ROSTER, OR SHRINKING THE EMISSION SUBJECT THE WITNESSES ASSERT OVER SATISFIES NEITHER ARM -- the first two return the flapping, and the third would shrink the subject to buy the budget, which is the move that carrier already refuses for the live_deploy apply witnesses.",
-  }
+  },
+
+  amendments: [],
 }

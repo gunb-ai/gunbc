@@ -44,5 +44,7 @@ data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
     },
     population: seed_whole_corpus_demand_population_blind_population,
     restoration_trigger: "THE SEED ADMITS ON THE ROOT'S OWN ROW: for every whole-root compile v1_compiler.cli_run compile_emission resolves the invocation's root identity (declared repository, primary root, ordered dependency pools) against that repository's measured rows, refuses a root with no MeasuredForRoot row with the recipe-naming UnmeasuredRoot refusal before indexing, and compares the budget only to that root's own peak -- executed by a discriminating red (an unmeasured root refused at a budget above the public peak) beside the positive control (the public root admitted at its peak and refused one byte below); and an EXECUTING CHECK pins what the seed admits on to the authority row, so the seed cannot drift from the row silently. A seed change that renames the constant, or mirrors a row without performing the join, does not satisfy it",
-  }
+  },
+
+  amendments: [],
 }

@@ -61,5 +61,7 @@ data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: roadmap_live_projection_new_witness_eval_step_cost_population,
     restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) loaded roadmap history consumed as a prepared effect input (dashboard work item adhoc-5ecec982-c23; gentle-ram-506's lane) so no per-claim projection is paid; WHAT adhoc-5ecec982-c23 MUST BE SUFFICIENT FOR: a required-floor claim does not re-pay the live roadmap projection per claim because that history is already a prepared effect input. (ii) AND each of the four identities measured under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the four under budget without the prepared-input capability does not retire the row; landing the capability without those four under that derived budget on the acceptance path does not retire it either. THE BUDGET IS NAMED, NOT PINNED, AND IS NOT RAISED TO RETIRE THIS ROW: clause (ii) is read against claim_ceiling_eval_step_budget at NewWitnessTier, never against a transcribed figure. A literal would go stale the moment the rate is re-pinned -- and a fail-closed re-pin TIGHTENS the live budget, so a pinned number could be satisfied while the identities are still over the gate this drop lowered. That is the same reason the budget witnesses assert the products rather than the numbers",
-  }
+  },
+
+  amendments: [],
 }

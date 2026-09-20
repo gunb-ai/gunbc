@@ -301,12 +301,53 @@ type RungDropDeclaration
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
 
+// A LATER RULING MOVED THE WORLD UNDER A STANDING DROP, AND THE DECLARATION HAD NOWHERE TO SAY SO.
+// DESIGN section 4b(3) names five fields, all of them about the MOMENT the rung fell: previous,
+// temporary, reason, population, trigger. None of them can carry a fact established AFTERWARDS that
+// changes how the declaration should be read -- and one such fact was written into
+// docs/design-rung-drops.md by hand on 2026-09-20, in a file that module's own note says is
+// generated from this roster. It survived one regeneration as unexplained drift on two lanes
+// (gunbc#11732 reverted the deletion; gunbc#11786 was left holding nothing but it) and was then
+// regenerated away on main by gunbc#11789, which is the silent loss DESIGN section 6 calls manual
+// application committed as source: the prose dies and the diff that kills it looks like noise.
+//
+// THIS IS NOT A COMMENTARY FIELD AND IS DELIBERATELY NOT ONE. A free-text note on a drop would be
+// the absorbing fallback with a nicer name -- every sentence nobody could place would land in it.
+// An amendment is a specific thing with three parts and no fourth: WHEN the later fact was
+// recorded, WHAT it was (cited, so a reader can reach it), and WHAT IT DOES to this declaration.
+// The third part is the load-bearing one, because the whole reason to carry an amendment rather
+// than edit the row is that the declaration itself did NOT change: the trigger a drop is retired by
+// is the trigger it was declared with, and an amendment that silently rewrote it would retire a
+// drop by something other than its trigger, which 4b(3) forbids.
+//
+// WHY NOT AN ANNOTATION. The reasoning below already exists as a source annotation on the row that
+// needs it, and that is exactly why the paragraph went missing: DESIGN section 4c states that no
+// Accepted program can read an annotation, so the projection could not and did not. A fact a
+// generated document must carry is program data, not commentary.
+type RungDropAmendment {
+  amended: String
+  occasion: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+// THE ONE RENDERING, for the reason rung_drop_declaration_message is the one rendering of a
+// declaration: a second speller of an amendment would drift from the row it amends.
+fn rung_drop_amendment_message(a: RungDropAmendment) -> String {
+  concat(
+    concat("AMENDED ", concat(a.amended, ": ")),
+    concat(a.occasion, concat(" -- ", concat(a.consequence, ".")))
+  )
+}
+
+// `amendments` IS ORDINARILY EMPTY AND IS A LIST RATHER THAN AN OPTION because the world can move
+// under one declaration more than once, and a second amendment must not overwrite the first.
 type RungDrop {
   identity: NonEmptyStr
   subject: String
   declared: String
   standing: RungDropStanding
   declaration: RungDropDeclaration
+  amendments: List<RungDropAmendment>
 }
 
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its

@@ -62,5 +62,7 @@ data long_home_enrolment_margin_observed_only: RungDrop = RungDrop {
     "src/v1/stage0/src/cli_run/required_floor_runner.rs enrolment_margin_standing_for (the seed realization of the same arm, keyed on enrolment_expensiveness_declaration long_home_holds)",
     ],
     restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a newly enrolled long-home identity's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required, and they are the same capability `long_module_changed_witness_cpu_observed_only` waits on, named here because a trigger that named only that sibling ROW would fire while this gate stayed stood down. WHAT THIS TRIGGER IS SUFFICIENT FOR: after it, a newly enrolled long-home identity observed over floor_enrolment_margin_budget_ms with a reached verdict is EnrolmentOverMargin again and blocks this gate. A run in which such an identity merely passes under EnrolmentExpensivenessDeclared does not discharge it, because that is the state this row declares",
-  }
+  },
+
+  amendments: [],
 }

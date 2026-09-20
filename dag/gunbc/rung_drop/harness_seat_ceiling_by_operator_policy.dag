@@ -78,5 +78,7 @@ data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
     "gunbc.serving.serving_enrollment serving_group_b_route_turn_ceiling (group B's arm of the same question, a session-attributed allocation of 4 standing where a derivation belongs. It replaced serving_canary_route_ceiling on 2026-09-18, which delegated to the retired exl3 canary's operator bound; it is deliberately NOT the converged arm's --max-num-seqs, which is what the engine schedules rather than what this repository offers)",
     ],
     restoration_trigger: "a seat lease is granted only against a resolved KV layout read back from the engine incarnation that will serve the request: the layout receipt names allocator inventory, per-group block sizes, windows and the engine's own startup projections, it is bound to a live incarnation identity so a restart invalidates every prior grant, and the amount leased is the block cost of the admitted sequence envelope computed from the whole group layout rather than any single field. A layout observation that is not incarnation-bound does not discharge this row, because an unbound receipt lets a grant taken against one launch authorize a request against another",
-  }
+  },
+
+  amendments: [],
 }

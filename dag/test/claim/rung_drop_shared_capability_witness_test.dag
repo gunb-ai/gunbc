@@ -27,7 +27,9 @@ fn fixture_drop(id: String, standing: RungDropStanding, trigger: String) -> Rung
       reason: DeletedWithoutReplacement,
       population: ["fixture.population"],
       restoration_trigger: trigger
-    }
+    },
+
+    amendments: [],
   }
 }
 
@@ -171,7 +173,9 @@ fn fixture_prose_drop(id: String, authored: String) -> RungDrop {
     subject: id,
     declared: "2026-01-01",
     standing: Standing,
-    declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored }
+    declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored },
+
+    amendments: [],
   }
 }
 

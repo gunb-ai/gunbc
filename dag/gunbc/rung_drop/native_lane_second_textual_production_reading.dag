@@ -51,5 +51,7 @@ data native_lane_second_textual_production_reading: RungDrop = RungDrop {
     reason: ReplacementStaged { replacement: "the closure computed from the front end's own import edges after a cheap parse of the seed set" },
     population: native_lane_second_textual_production_reading_population,
     restoration_trigger: "The route derives the universe's import closure from the FRONT END'S OWN IMPORT EDGES, after a parse of the seed set that yields those edges WITHOUT preparing each module. That capability must be sufficient for the whole derivation -- module identity and import identity both -- so that native_lane_declared_module_name and native_lane_declared_imports are DELETED rather than retained beside the grammar. A parse that yields edges only after preparation does not retire this row: preparation is the cost the scans exist to avoid, so satisfying the sentence that way would leave the second reading standing."
-  }
+  },
+
+  amendments: [],
 }
