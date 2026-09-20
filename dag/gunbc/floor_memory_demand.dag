@@ -172,6 +172,12 @@ fn termination_withheld_completion(termination: SupervisedTermination) -> Bool {
   }
 }
 
+// AN UNREADABLE LIMIT REFUSES BEFORE ANYTHING ELSE IS ASKED (the first arm of the qualification
+// below). Every question after it -- was it pinned, did it fit -- is a comparison AGAINST the
+// limits, so a limit that could not be read makes those questions unanswerable rather than
+// negative. This is the arm whose absence let a run with an unknown throttle line publish as a
+// demand.
+//
 // THE JUDGMENT. Every input is a kernel counter or a wait status; nothing here is authored.
 //
 // The order of the tests is the order of severity, and each one independently establishes that the
@@ -188,10 +194,6 @@ fn qualify_floor_memory_demand(
   events: CgroupMemoryEvents,
   termination: SupervisedTermination,
 ) -> FloorMemoryQualification {
-  // AN UNREADABLE LIMIT REFUSES BEFORE ANYTHING ELSE IS ASKED. Every question below -- was it
-  // pinned, did it fit -- is a comparison AGAINST the limits, so a limit that could not be read
-  // makes those questions unanswerable rather than negative. This is the arm whose absence let a
-  // run with an unknown throttle line publish as a demand.
   match limit_unparseable_body(limit: limit_high) {
     Present { value: hb } =>
       DemandUnreadable {
