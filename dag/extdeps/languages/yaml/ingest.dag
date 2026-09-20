@@ -661,7 +661,15 @@ fn yaml_scalar_with_cont(value: YamlValue, cont: String) -> YamlBlockResult {
 // A chunk continues the one before it when its first line is empty (a blank line at column 0),
 // a comment, or -- in a mapping -- a sequence item at the mapping's own column.
 fn yaml_chunk_continues(c: String, seq: Bool) -> Bool {
-  starts_with(s: concat(c, "\n"), prefix: "\n") || starts_with(s: c, prefix: "#") || (!seq && yaml_is_seq_item(t: yaml_first_line(c: c)))
+  if starts_with(s: concat(c, "\n"), prefix: "\n") {
+    true
+  } else if starts_with(s: c, prefix: "#") {
+    true
+  } else if seq {
+    false
+  } else {
+    yaml_is_seq_item(t: yaml_first_line(c: c))
+  }
 }
 
 fn yaml_merge_chunks(chunks: List<String>, sp: String, seq: Bool) -> List<String> {
@@ -739,11 +747,10 @@ fn yaml_line_count(c: String) -> Int {
 // keys this block builds answers both questions: whether an entry was refused, and whether a key
 // repeats.
 fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
-  let reads = map(chunks, c => yaml_entry(c: c, n: n))
-  let entries = map(reads, r => r.entry)
+  let entries = map(chunks, c => yaml_entry(c: c, n: n).entry)
   let keys = fold(entries, init: empty_map(), f: (m, e) => map_insert(m, e.key, true))
   if map_contains_key(keys, yaml_line_join_sentinel) {
-    yaml_first_entry_refusal(chunks: chunks, reads: reads, index: 0, line: base)
+    yaml_first_entry_refusal(chunks: chunks, index: 0, line: base, n: n)
   } else if (map_keys(keys) |> count) != (entries |> count) {
     yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: 0, line: base, seen: empty_map())
   } else {
@@ -751,15 +758,23 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
   }
 }
 
-fn yaml_first_entry_refusal(chunks: List<String>, reads: List<YamlEntryRead>, index: Int, line: Int) -> YamlBlockResult {
-  match get(xs: reads, index: index) {
+// THE REFUSAL WALK RE-READS THE CHUNKS RATHER THAN BEING HANDED THE READS. The accepted path --
+// every chunk in every committed workflow -- would otherwise carry a whole list of `YamlEntryRead`
+// it never inspects, built one per entry, so that this walk could exist for the documents that
+// refuse. Re-reading costs one parse of each chunk up to the first refusal, on a path that is about
+// to refuse anyway (DESIGN section 2: the cost belongs where the work is demanded).
+fn yaml_first_entry_refusal(chunks: List<String>, index: Int, line: Int, n: Int) -> YamlBlockResult {
+  match get(xs: chunks, index: index) {
     Absent => YamlBlockRefused { line: line, reason: "a mapping key decoded to U+0001, which this reader reserves as its line-join sentinel; such a key is outside the supported subset" }
-    Present { value: r } =>
-      if r.refusal != "" {
-        YamlBlockRefused { line: line + r.line, reason: r.refusal }
-      } else {
-        yaml_first_entry_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }))
-      }
+    Present { value: c } => yaml_first_entry_refusal_at(chunks: chunks, index: index, line: line, n: n, c: c, r: yaml_entry(c: c, n: n))
+  }
+}
+
+fn yaml_first_entry_refusal_at(chunks: List<String>, index: Int, line: Int, n: Int, c: String, r: YamlEntryRead) -> YamlBlockResult {
+  if r.refusal != "" {
+    YamlBlockRefused { line: line + r.line, reason: r.refusal }
+  } else {
+    yaml_first_entry_refusal(chunks: chunks, index: index + 1, line: line + yaml_line_count(c: c), n: n)
   }
 }
 
@@ -775,23 +790,34 @@ fn yaml_duplicate_key_refusal(chunks: List<String>, entries: List<YamlKeyValue>,
   }
 }
 
+// ONE PASS TO THE ELEMENTS, AND THE REFUSAL WALK RE-READS. A refused item yields the join sentinel
+// as a string, which no accepted scalar can hold -- the reader refuses U+0001 anywhere in a document
+// -- so the accepted path never builds a second list of results to inspect, exactly as
+// `yaml_map_block` detects a refused entry from the key it produced.
 fn yaml_seq_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
-  let reads = map(chunks, c => yaml_item(c: c, n: n))
-  if any(reads, r => match r { YamlBlockRefused { line: _, reason: _ } => true  YamlBlockParsed { value: _ } => false }) {
-    yaml_first_item_refusal(chunks: chunks, reads: reads, index: 0, line: base)
+  let elements = map(chunks, c => yaml_item_value(c: c, n: n))
+  if any(elements, e => match e { YamlString { value: v } => v == yaml_line_join_sentinel  _ => false }) {
+    yaml_first_item_refusal(chunks: chunks, index: 0, line: base, n: n)
   } else {
-    YamlBlockParsed { value: YamlSequence { elements: map(reads, r => match r { YamlBlockParsed { value: v } => v  YamlBlockRefused { line: _, reason: _ } => YamlNull }) } }
+    YamlBlockParsed { value: YamlSequence { elements: elements } }
   }
 }
 
-fn yaml_first_item_refusal(chunks: List<String>, reads: List<YamlBlockResult>, index: Int, line: Int) -> YamlBlockResult {
-  match get(xs: reads, index: index) {
+fn yaml_item_value(c: String, n: Int) -> YamlValue {
+  match yaml_item(c: c, n: n) {
+    YamlBlockParsed { value: v } => v
+    YamlBlockRefused { line: _, reason: _ } => YamlString { value: yaml_line_join_sentinel }
+  }
+}
+
+fn yaml_first_item_refusal(chunks: List<String>, index: Int, line: Int, n: Int) -> YamlBlockResult {
+  match get(xs: chunks, index: index) {
     Absent => YamlBlockRefused { line: line, reason: "a sequence item was refused" }
-    Present { value: r } =>
-      match r {
+    Present { value: c } =>
+      match yaml_item(c: c, n: n) {
         YamlBlockRefused { line: l, reason: why } => YamlBlockRefused { line: line + l, reason: why }
         YamlBlockParsed { value: _ } =>
-          yaml_first_item_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }))
+          yaml_first_item_refusal(chunks: chunks, index: index + 1, line: line + yaml_line_count(c: c), n: n)
       }
   }
 }
@@ -825,6 +851,34 @@ data yaml_value_start_class: Map<String, Int> = {
   "n": 3, "N": 3, "t": 3, "T": 3, "f": 3, "F": 3, "~": 3
 }
 
+// The key half of the one-line fast path, as ONE map lookup instead of a scan of the refused
+// starts plus an unconditional core-schema word lookup. Class 1 starts leave the path outright;
+// class 3 starts are the only ones a core-schema word can begin with, so only they consult the word
+// map; every other start is an ordinary key. A trailing space or tab is still a slow start, because
+// `uses : x` names the key `uses ` and only the general path decides what that means.
+data yaml_key_start_class: Map<String, Int> = {
+  "": 1, " ": 1, "\t": 1, "-": 1, "?": 1, ":": 1, ",": 1, "[": 1, "]": 1, "\{": 1, "}": 1,
+  "#": 1, "&": 1, "*": 1, "!": 1, "|": 1, ">": 1, "'": 1, "\"": 1, "%": 1, "@": 1, "`": 1,
+  "0": 1, "1": 1, "2": 1, "3": 1, "4": 1, "5": 1, "6": 1, "7": 1, "8": 1, "9": 1,
+  "+": 1, ".": 1, "~": 1,
+  "n": 3, "N": 3, "t": 3, "T": 3, "f": 3, "F": 3
+}
+
+fn yaml_key_start_leaves_fast_path(c0: String, k: String) -> Bool {
+  match map_get(yaml_key_start_class, c0) {
+    Absent => false
+    Present { value: cls } => if cls == 1 { true } else { map_contains_key(yaml_core_schema_words, k) }
+  }
+}
+
+fn yaml_key_leaves_fast_path(k: String) -> Bool {
+  if yaml_key_start_leaves_fast_path(c0: substring(s: k, start: 0, end: 1), k: k) {
+    true
+  } else {
+    trim(k) != k
+  }
+}
+
 // THE COMMON ENTRY, `key: plain`, ON ONE LINE. Every test here only routes: a chunk that fails one
 // is read by yaml_entry_general, which decides everything this path does not. Exactly one `: `, no
 // continuation, no `#` anywhere (so no comment), no final `:`, a key that starts ordinarily and is
@@ -834,14 +888,14 @@ fn yaml_entry(c: String, n: Int) -> YamlEntryRead {
     yaml_entry_multiline(c: c, n: n)
   } else {
     let parts = split(s: c, delimiter: ": ")
-    let v = join(parts.skip(n: 1), "")
     if (parts |> count) != 2 {
       yaml_entry_general(c: c, n: n)
-    } else if string_contains(s: c, pattern: "#") || ends_with(s: v, suffix: ":") {
+    } else if string_contains(s: c, pattern: "#") {
       yaml_entry_general(c: c, n: n)
     } else {
+      let v = join(parts.skip(n: 1), "")
       let k = join(parts.take(n: 1), "")
-      if string_contains(s: yaml_key_slow_starts, pattern: substring(s: k, start: 0, end: 1)) || map_contains_key(yaml_core_schema_words, k) || (trim(k) != k) {
+      if ends_with(s: v, suffix: ":") || yaml_key_leaves_fast_path(k: k) {
         yaml_entry_general(c: c, n: n)
       } else {
         match map_get(yaml_value_start_class, substring(s: v, start: 0, end: 1)) {
@@ -860,19 +914,32 @@ fn yaml_entry(c: String, n: Int) -> YamlEntryRead {
   }
 }
 
+// THE TESTS ARE NESTED RATHER THAN CONJOINED BECAUSE `&&` EVALUATES BOTH SIDES. A chunk whose first
+// line does not end in `:` -- every literal block and every sequence item -- would otherwise pay all
+// five tests to learn what the first one already decided. The order is cheapest-and-most-selective
+// first. (gunbc.recurring_failure_mode realization_arms_diverge_on_whether_the_program_refuses owns
+// the eager-`&&` question itself; this module only declines to depend on short-circuiting.)
 fn yaml_entry_multiline(c: String, n: Int) -> YamlEntryRead {
   let f = yaml_first_line(c: c)
-  if ends_with(s: f, suffix: ":") && !string_contains(s: f, pattern: ": ") && !string_contains(s: "\"' \t", pattern: substring(s: f, start: 0, end: 1)) && !ends_with(s: f, suffix: " :") && !ends_with(s: f, suffix: "\t:") {
-    yaml_keyed_nested(k: substring(s: f, start: 0, end: f.length() - 1), cont: substring(s: c, start: f.length() + 1, end: c.length()), n: n)
-  } else {
+  if !ends_with(s: f, suffix: ":") {
     yaml_entry_multiline_general(c: c, n: n, f: f)
+  } else if string_contains(s: f, pattern: ": ") {
+    yaml_entry_multiline_general(c: c, n: n, f: f)
+  } else if ends_with(s: f, suffix: " :") || ends_with(s: f, suffix: "\t:") {
+    yaml_entry_multiline_general(c: c, n: n, f: f)
+  } else if string_contains(s: "\"' \t", pattern: substring(s: f, start: 0, end: 1)) {
+    yaml_entry_multiline_general(c: c, n: n, f: f)
+  } else {
+    yaml_keyed_nested(k: substring(s: f, start: 0, end: f.length() - 1), cont: substring(s: c, start: f.length() + 1, end: c.length()), n: n)
   }
 }
 
 fn yaml_entry_multiline_general(c: String, n: Int, f: String) -> YamlEntryRead {
   let parts = split(s: f, delimiter: ": ")
   let k = join(parts.take(n: 1), "")
-  if ends_with(s: k, suffix: " ") || ends_with(s: k, suffix: "\t") || (parts |> count) == 1 {
+  if (parts |> count) == 1 {
+    yaml_entry_general(c: c, n: n)
+  } else if ends_with(s: k, suffix: " ") || ends_with(s: k, suffix: "\t") {
     yaml_entry_general(c: c, n: n)
   } else if ((parts |> count) == 2) && starts_with(s: join(parts.skip(n: 1), ""), prefix: "|") && !string_contains(s: "\"'", pattern: substring(s: f, start: 0, end: 1)) {
     yaml_literal_entry(k: k, v: substring(s: c, start: k.length() + 2, end: c.length()), n: n, c: c)
@@ -881,8 +948,13 @@ fn yaml_entry_multiline_general(c: String, n: Int, f: String) -> YamlEntryRead {
   }
 }
 
+// `yaml_entry_multiline` has already established that `k` neither starts nor ends with whitespace,
+// so only the start class and a comment marker remain. Nested rather than conjoined: the start
+// class decides for almost every key, and `&&`/`||` would evaluate the rest anyway.
 fn yaml_keyed_nested(k: String, cont: String, n: Int) -> YamlEntryRead {
-  if string_contains(s: yaml_key_slow_starts, pattern: substring(s: k, start: 0, end: 1)) || map_contains_key(yaml_core_schema_words, k) || string_contains(s: k, pattern: "#") {
+  if yaml_key_start_leaves_fast_path(c0: substring(s: k, start: 0, end: 1), k: k) {
+    yaml_keyed_entry(k: k, v: "", cont: cont, n: n)
+  } else if string_contains(s: k, pattern: "#") {
     yaml_keyed_entry(k: k, v: "", cont: cont, n: n)
   } else {
     yaml_entry_value(k: k, r: yaml_nested(cont: cont, col: n, same_col_seq: true))
@@ -991,11 +1063,11 @@ fn yaml_quoted_key_entry(f: String, cont: String, n: Int) -> YamlEntryRead {
 fn yaml_value(v: String, cont: String, col: Int, same_col_seq: Bool) -> YamlBlockResult {
   if v == "" {
     yaml_nested(cont: cont, col: col, same_col_seq: same_col_seq)
-  } else if starts_with(s: v, prefix: " ") || starts_with(s: v, prefix: "\t") {
-    yaml_value(v: trim(v), cont: cont, col: col, same_col_seq: same_col_seq)
   } else {
     let c0 = substring(s: v, start: 0, end: 1)
-    if !string_contains(s: yaml_value_special_starts, pattern: c0) {
+    if string_contains(s: " \t", pattern: c0) {
+      yaml_value(v: trim(v), cont: cont, col: col, same_col_seq: same_col_seq)
+    } else if !string_contains(s: yaml_value_special_starts, pattern: c0) {
       yaml_plain_value(v: v, cont: cont)
     } else if yaml_indicator_opens_plain(v: v) {
       yaml_plain_value(v: v, cont: cont)
@@ -1117,7 +1189,7 @@ fn yaml_item(c: String, n: Int) -> YamlBlockResult {
 
 // Whether a sequence item's text is the first entry of a compact mapping rather than a scalar.
 fn yaml_opens_mapping_entry(t: String) -> Bool {
-  if !(string_contains(s: t, pattern: ": ") || ends_with(s: t, suffix: ":")) {
+  if !string_contains(s: t, pattern: ": ") && !ends_with(s: t, suffix: ":") {
     false
   } else if !string_contains(s: yaml_value_special_starts, pattern: substring(s: t, start: 0, end: 1)) {
     true
