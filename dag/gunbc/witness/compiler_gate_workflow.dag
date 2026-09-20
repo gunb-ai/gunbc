@@ -312,10 +312,18 @@ data compiler_gate_candidate_retention_days: Int = 3
 // required lane never reports, which stalls the merge queue for good. The repository's Actions
 // policy already requires approval for all external contributors; this is the second wall.
 fn compiler_gate_floor_job_condition() -> String {
-  join([
-    "github.event_name != 'pull_request' || (",
-    heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")"
-  ], "")
+  join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
+}
+
+// DEPENDABOT IS DECLINED BY THE REPAIR, NOT BY THE LANE, and the distinction is a deadlock this
+// nearly shipped with. heal excluded dependabot because heal PUSHES to the head branch, which is
+// dependabot's to manage; the FOLD and the drift gate push nothing, and a dependabot pull request
+// that merges without them is exactly the unobserved head this lane exists to prevent. Skipping the
+// whole lane would also have hung those pull requests forever: dependabot's head repository IS this
+// repository, so the aggregator's fork carve-out below does not cover it and it would reach the
+// error branch on a lane that never ran.
+fn compiler_gate_repair_actor_clause() -> String {
+  concat(" && ", heal_not_dependabot_clause)
 }
 
 // The candidate must describe the pull request head, not the merge result, or a repair would carry
@@ -371,7 +379,10 @@ fn compiler_gate_drift_step() -> Step {
 }
 
 fn compiler_gate_repair_condition() -> String {
-  concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'"))
+  concat(
+    concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'")),
+    compiler_gate_repair_actor_clause()
+  )
 }
 
 fn compiler_gate_step_succeeded_clause(step_id: String) -> String {

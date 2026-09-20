@@ -8,7 +8,7 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowTrigger, WorkflowDispatch, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
+  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool
 }
@@ -62,6 +62,43 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // current head; taking the sha the event names keeps the run's subject and the candidate's subject
 // the same value rather than two reads of a moving ref.
 
+// A DISPATCH CARRIES NO PULL REQUEST, so the operator supplies what the event does not. The retained
+// manual path checked out github.event.pull_request.head.sha and handed the candidate producer that
+// object's number, head ref and base ref: on a dispatch every one of them is empty, so the run would
+// have sealed a candidate describing nothing. These four inputs are the same four facts, asked for
+// instead of assumed, and they are required because a repair against an unnamed head is not a repair.
+data heal_dispatch_pull_number_input: DispatchInput = DispatchInput {
+  name: "pull_number",
+  description: Present { value: "Pull request this manual repair describes" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_head_sha_input: DispatchInput = DispatchInput {
+  name: "head_sha",
+  description: Present { value: "Exact head commit the candidate is sealed against" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_head_ref_input: DispatchInput = DispatchInput {
+  name: "head_ref",
+  description: Present { value: "Head branch the repair would fast-forward" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+data heal_dispatch_base_ref_input: DispatchInput = DispatchInput {
+  name: "base_ref",
+  description: Present { value: "Base branch of that pull request" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
 data heal_workflow_name: String = "heal"
 
 data heal_workflow_job_id: String = "heal-generated-artifacts"
@@ -86,14 +123,11 @@ data heal_not_dependabot_clause: String = "github.actor != 'dependabot[bot]'"
 // work). The dispatcher holds write access already, which is the same authority the fork clauses
 // establish for a pull request.
 fn heal_workflow_job_condition() -> String {
-  join([
-    "github.event_name == 'workflow_dispatch' || (",
-    heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")"
-  ], "")
+  "github.event_name == 'workflow_dispatch'"
 }
 
 fn heal_pull_request_head_sha_expression() -> String {
-  "${{ github.event.pull_request.head.sha }}"
+  "${{ inputs.head_sha }}"
 }
 
 // persist-credentials: false is the load-bearing input. The job has no write grant to persist, and
@@ -157,9 +191,9 @@ fn heal_candidate_step() -> Step {
     env: Present {
       value: [
         kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
-        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ github.event.pull_request.number }}")),
-        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.head.ref }}")),
-        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.ref }}")),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ inputs.pull_number }}")),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ inputs.head_ref }}")),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ inputs.base_ref }}")),
         kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
       ]
     },
@@ -309,7 +343,12 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 data heal_workflow: Workflow = Workflow {
   name: heal_workflow_name,
   run_name: none,
-  on: [WorkflowDispatch { inputs: [] }],
+  on: [WorkflowDispatch { inputs: [
+    heal_dispatch_pull_number_input,
+    heal_dispatch_head_sha_input,
+    heal_dispatch_head_ref_input,
+    heal_dispatch_base_ref_input
+  ] }],
   concurrency: Present { value: heal_workflow_concurrency },
   env: Present {
     value: [
