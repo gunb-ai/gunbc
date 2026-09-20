@@ -1,0 +1,87 @@
+module gunbc.rung_drop_amendment
+
+import std.types { String, List, NonEmptyStr, Bool }
+import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired }
+
+// A LATER RULING THAT BEARS ON A STANDING DROP WITHOUT RETIRING IT, AND THE REASON IT NEEDED A
+// CARRIER. DESIGN 4b(3) gives a drop five fields fixed at declaration time -- previous rung,
+// temporary rung, reason, population, restoration trigger -- and one standing field that says
+// whether the trigger has fired. Between those two states there is a third thing that happens to a
+// drop and had nowhere to go: the world moves under a row that is still standing. A redesign the
+// trigger anticipated lands and is deleted anyway; a sibling ruling narrows what the population
+// means; a premise the declaration argued from turns out to have been true earlier than the row
+// says. None of that retires the row, so `standing` cannot carry it, and none of it is part of the
+// declaration the row made on its declared date, so rewriting `restoration_trigger` or `population`
+// to hold it would be back-dating an argument the declaration did not make.
+//
+// WHAT HAPPENED WITHOUT ONE, WHICH IS WHY THIS IS A CARRIER AND NOT A CONVENTION. gunbc#11774
+// declared `namespace_wave_admission_wall_removed` and wanted to record that the carrier redesign
+// its own restoration trigger names as half (1) had landed on main HOURS EARLIER and was deleted
+// with the old wall regardless -- the fact that stops the ruling being re-litigated from the
+// premise that the operator had not seen it. With no field to put it in, the paragraph was written
+// straight into `docs/design-rung-drops.md`, which is a PROJECTION of this roster's sibling. So a
+// regeneration deletes it, and three lanes then hit exactly that: gunbc#11732 reverted the deletion
+// rather than carry it, gunbc#11786 was left holding nothing but the deletion and was closed, and
+// gunbc#11789 carried it -- so the reasoning is GONE from main and this carrier restores it.
+// That is DESIGN 6's manual-application-committed-as-source, and its cost is not the bytes -- it is
+// that every answer available to a regenerating lane was wrong: revert and the drift survives into
+// another pull request, carry and the argument dies. Neither lane did anything incorrect.
+//
+// WHY A SEPARATE ROSTER RATHER THAN A FIELD ON `RungDrop`. Two reasons, and the second is the one
+// that decides it. A field would be filled with an empty list by 72 of 73 construction sites, which
+// is a shared carrier widened for one row. More importantly, an amendment is APPENDED BY A LATER
+// LANE THAN THE ONE THAT DECLARED THE ROW -- that is what makes it an amendment -- and DESIGN 4b
+// already rules on this exact contention for the two ledgers: rosters that are separately appended
+// are kept separate so one lane's append does not rewrite the file another lane is appending to.
+// Amending a drop touches this roster and never the drop's own file, so the declaring lane and the
+// amending lane do not collide.
+//
+// WHY THE RULING IS CARRIED AS PROSE RATHER THAN DECOMPOSED. The same ground `gunbc.rung_drop`
+// already states for its `authored` arm: splitting a ruling into typed parts means deciding, per
+// amendment, which sentence is the world-change and which is the consequence, and there is no
+// oracle for that -- it is semantic rewriting, and unfalsifiable afterwards because nothing retains
+// the original. What IS typed is the thing that has a decidable answer and was the drift's actual
+// payload: which row this bears on, when it was ruled, and -- derived below rather than authored --
+// whether the restoration trigger survives it.
+
+type RungDropAmendment {
+  drop_identity: NonEmptyStr
+  dated: NonEmptyStr
+  ruling: String
+}
+
+// THE TRIGGER SENTENCE IS DERIVED FROM THE ROW'S OWN STANDING AND IS NOT A FIELD. An amendment
+// that could ASSERT "the restoration trigger stands whole" beside a row whose `standing` says
+// Retired would be a second authority for retirement, and the two would drift in the ordinary way.
+// DESIGN 4b(3) says a drop is retired by its trigger and by nothing else, so the row's standing is
+// the only thing entitled to answer, and the amendment reads it rather than restating it.
+fn amendment_trigger_sentence(standing: RungDropStanding) -> String {
+  match standing {
+    Standing => " The restoration trigger stands whole."
+    Retired { trigger_fired: _ } => ""
+  }
+}
+
+// THE ONE RENDERING, for the same reason `rung_drop_declaration_message` is one rendering: a second
+// place that spelled an amendment would restate the row beside it and then drift from it.
+fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding) -> String {
+  concat(
+    concat(concat("AMENDMENT, ", (a.dated as String)), ": "),
+    concat(a.ruling, amendment_trigger_sentence(standing: standing))
+  )
+}
+
+fn amendments_for_drop(amendments: List<RungDropAmendment>, identity: NonEmptyStr) -> List<RungDropAmendment> {
+  filter(amendments, a => (a.drop_identity as String) == (identity as String))
+}
+
+// EVERY AMENDMENT NAMES A ROSTERED DROP. The join is by identity, so a misspelled or stale
+// `drop_identity` renders NOWHERE -- the projection folds amendments under the drop they name, and
+// one that names nothing is silently dropped from the document it exists to appear in. That is the
+// silent-loss arm this predicate closes, and it is the price of the separate-roster shape above.
+fn every_amendment_names_a_rostered_drop(amendments: List<RungDropAmendment>, ds: List<RungDrop>) -> Bool {
+  let ids = map(ds, d => (d.identity as String))
+  fold(amendments, init: true, f: fn(acc, a) {
+    acc && length(xs: filter(ids, i => i == (a.drop_identity as String))) == 1
+  })
+}

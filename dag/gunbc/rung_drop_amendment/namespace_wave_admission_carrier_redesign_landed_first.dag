@@ -1,0 +1,33 @@
+module gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign_landed_first
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// RULED 2026-09-20, THE DAY AFTER THE ROW IT AMENDS WAS DECLARED. The text below was authored by
+// gunbc#11774 and committed straight into docs/design-rung-drops.md, where it had no producer, and
+// it is RESTORED here rather than relocated: the third lane to meet the drift carried the deletion
+// instead of reverting it, so gunbc#11789's regeneration removed the paragraph from main and the
+// reasoning was lost before this carrier existed. Two lanes had already paid for it the other way
+// (gunbc#11732 reverted the deletion, gunbc#11786 was left holding nothing but it and was closed),
+// which is the whole argument for a carrier: every available answer was wrong while the prose had
+// no producer.
+//
+// IT IS CARRIED UNCHANGED except for two things. Its "POSTSCRIPT, 2026-09-20:" prefix becomes the
+// `dated` field, and its closing sentence is derived from the row's standing by
+// `amendment_trigger_sentence` rather than authored twice. That closing sentence also said the
+// trigger stood "below", which was true of the paragraph it was spliced into and false of the
+// projection, where the trigger renders above it -- a positional citation rotting in the way
+// DESIGN section 3's standing rule describes, removed by deriving the sentence instead.
+//
+// WHY IT IS LOAD-BEARING AND NOT A FOOTNOTE. The amended row's restoration trigger names two
+// halves and states that BOTH must execute. Without this amendment a reader meets a trigger whose
+// half (1) is a design nobody has built, and the obvious next move is to build it -- when in fact
+// it WAS built, landed hours before the deletion, and was deleted with the wall anyway, because
+// the operator priced the gate itself and not only its billing loop. The amendment is what stops
+// the ruling being re-litigated from that wrong premise.
+
+data namespace_wave_admission_carrier_redesign_landed_first: RungDropAmendment = RungDropAmendment {
+  drop_identity: "namespace_wave_admission_wall_removed" as NonEmptyStr,
+  dated: "2026-09-20" as NonEmptyStr,
+  ruling: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion; the ruling prices the gate itself, not only its billing, and removes the redesigned wall with the old one.",
+}

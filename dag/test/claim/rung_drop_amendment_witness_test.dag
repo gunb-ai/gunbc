@@ -1,0 +1,100 @@
+module test.claim.rung_drop_amendment_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_drop {
+  RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing, Retired,
+}
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop_amendment {
+  RungDropAmendment, rung_drop_amendment_message, amendments_for_drop,
+  every_amendment_names_a_rostered_drop,
+}
+import gunbc.rung_drop_amendment.roster { rung_drop_amendment_roster }
+
+fn contains_amendment_text(haystack: String, needle: String) -> Bool {
+  haystack.contains(needle)
+}
+
+// A CONTROL AMENDMENT NAMING A DROP THAT IS NOT ROSTERED. This is the input the join predicate
+// exists to refuse, and constructing it here is what makes the predicate's green an answer rather
+// than a constant: the live roster satisfies it, and this one must not.
+data control_dangling_amendment: RungDropAmendment = RungDropAmendment {
+  drop_identity: "control.no.such.drop" as NonEmptyStr,
+  dated: "2026-01-01" as NonEmptyStr,
+  ruling: "control ruling text",
+}
+
+data control_standing_drop: RungDrop = RungDrop {
+  identity: "control.amended.drop" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: ["control.population.one"],
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+data control_retired_drop: RungDrop = RungDrop {
+  identity: "control.retired.drop" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Retired { trigger_fired: "control trigger fired" as NonEmptyStr },
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: ["control.population.one"],
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
+// THE JOIN IS CLOSED IN BOTH DIRECTIONS. Green on the live roster says nothing on its own -- a
+// predicate answering a constant true would agree -- so the dangling control must refuse.
+test fn every_live_amendment_names_a_rostered_drop() -> Bool {
+  every_amendment_names_a_rostered_drop(amendments: rung_drop_amendment_roster, ds: rung_drop_roster)
+}
+
+test fn an_amendment_naming_no_rostered_drop_refuses() -> Bool {
+  !every_amendment_names_a_rostered_drop(amendments: [control_dangling_amendment], ds: rung_drop_roster)
+}
+
+// THE TRIGGER SENTENCE IS READ FROM THE ROW'S STANDING AND NOT FROM THE AMENDMENT. The same
+// amendment text rendered against a Standing row and a Retired row must differ in exactly that
+// sentence: if the renderer ignored `standing`, an amendment would assert a whole restoration
+// trigger beside a row whose trigger has already fired.
+test fn the_trigger_sentence_follows_the_rows_standing() -> Bool {
+  let live = rung_drop_amendment_message(a: control_dangling_amendment, standing: control_standing_drop.standing)
+  let retired = rung_drop_amendment_message(a: control_dangling_amendment, standing: control_retired_drop.standing)
+  contains_amendment_text(haystack: live, needle: "The restoration trigger stands whole.")
+    && !contains_amendment_text(haystack: retired, needle: "The restoration trigger stands whole.")
+    && contains_amendment_text(haystack: retired, needle: "control ruling text")
+}
+
+// THE AMENDMENT THIS CARRIER WAS BUILT FOR IS PRESENT AND JOINS TO ITS ROW. The reasoning it
+// carries is what stops the wave-admission ruling being re-litigated from the premise that the
+// carrier redesign had not landed; a roster that quietly lost it would look exactly like the
+// generated file did before this carrier existed.
+test fn the_wave_admission_amendment_joins_to_its_row() -> Bool {
+  let found = amendments_for_drop(
+    amendments: rung_drop_amendment_roster,
+    identity: "namespace_wave_admission_wall_removed" as NonEmptyStr
+  )
+  length(xs: found) == 1
+    && contains_amendment_text(
+         haystack: rung_drop_amendment_message(a: found[0], standing: Standing),
+         needle: "gunbc#11704"
+       )
+}
+
+// THE FILTER READS ITS ARGUMENT. An identity no amendment names must select nothing.
+test fn amendments_for_an_unamended_drop_are_empty() -> Bool {
+  length(xs: amendments_for_drop(
+    amendments: rung_drop_amendment_roster,
+    identity: "control.amended.drop" as NonEmptyStr
+  )) == 0
+}

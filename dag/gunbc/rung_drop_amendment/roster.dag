@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.roster
+
+import std.types { List }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign_landed_first {
+  namespace_wave_admission_carrier_redesign_landed_first
+}
+
+// THE MEMBERSHIP, ONE ROW PER FILE AND ONE LINE PER ROW, the same shape as
+// gunbc.rung_drop.roster and for the same contention reason stated there.
+
+data rung_drop_amendment_roster: List<RungDropAmendment> = [
+  namespace_wave_admission_carrier_redesign_landed_first,
+]

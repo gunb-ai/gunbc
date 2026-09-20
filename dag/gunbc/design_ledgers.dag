@@ -74,8 +74,10 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
-import gunbc.rung_drop { rung_drop_declaration_message, RungDropStanding, Standing, Retired }
+import gunbc.rung_drop { RungDrop, rung_drop_declaration_message, RungDropStanding, Standing, Retired }
 import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop_amendment { rung_drop_amendment_message, amendments_for_drop }
+import gunbc.rung_drop_amendment.roster { rung_drop_amendment_roster }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
   census_identity_domain_separator,
@@ -125,9 +127,9 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
       ],
       flat_map(rung_drop_roster, d => concat(concat([
         h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
-      ], rung_drop_standing_blocks(standing: d.standing)), concat([
+      ], rung_drop_standing_blocks(standing: d.standing)), concat(concat([
         p(text: rung_drop_declaration_message(d: d)),
-      ], if (d.identity as String) == "measurement_bankruptcy" {
+      ], rung_drop_amendment_blocks(d: d)), if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] }))),
     ],
@@ -147,6 +149,17 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 // the projection stops discarding the field that decides it. The retirement's own trigger_fired
 // text is rendered too, because a retirement asserting no reason is the shape that lets a row be
 // retired quietly.
+// A LATER RULING THAT BEARS ON A STANDING ROW RENDERS AS ITS OWN PARAGRAPH UNDER THAT ROW, not
+// spliced into the declaration sentence. The declaration is what the row said on its declared
+// date; an amendment is a different fact ruled on a different date, and merging the two into one
+// paragraph is what made the first amendment look like hand-edited bytes in a generated file.
+fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {
+  map(
+    amendments_for_drop(amendments: rung_drop_amendment_roster, identity: d.identity),
+    a => p(text: rung_drop_amendment_message(a: a, standing: d.standing))
+  )
+}
+
 fn rung_drop_standing_suffix(standing: RungDropStanding) -> String {
   match standing {
     Standing => ""
