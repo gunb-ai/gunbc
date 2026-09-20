@@ -551,8 +551,18 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
 // host_memory_denominator keys on session_reservation_bytes alone, which is one of the five inputs
 // host_runner_memory_envelope_resolution folds. A host whose FIXED OVERHEAD or USABLE RAM is unread
 // -- the srv5 case gunbc.host_memory_observation exists to make expressible -- still passes the
-// denominator check and divides an envelope the Int shim flattened to zero. Filed as a roadmap item
-// rather than forked here (review 69079).
+// denominator check and divides an envelope the Int shim flattened to zero.
+//
+// IT IS A STATED FRONTIER, NOT A DANGLING FOLD (review 69200, DESIGN 3c). An earlier revision of
+// this branch carried host_width_unmeasured_reasons to render those causes into this refusal. Its
+// consumer was deleted when this arm adopted main's causeless variant, and the fold was deleted
+// with it rather than left standing under a note claiming it was read -- a declaration nothing
+// consumes is red however well modelled, and an annotation asserting a consumer it does not have is
+// the 4b(1) inflation this file has already been caught at once.
+//
+// TRIGGER: MemoryDenominatorStanding keyed on host_runner_memory_envelope_resolution rather than on
+// session_reservation_bytes alone, so the memory axis states the unread INPUT. The rendering seam
+// returns with the consumer that needs it, not before.
 fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) -> HostRunnerDeploymentStanding {
   if dep.runner_count == 0 {
     refuse_host(host: host_id, cause: ZeroRunnerWidth)

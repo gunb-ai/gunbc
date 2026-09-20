@@ -679,26 +679,6 @@ fn width_binding_head(host: HostIdentity) -> String {
   }
 }
 
-// THE REASONS AN AXIS STATES NO WIDTH, FOR THE SURFACE THAT HAS ROOM FOR THEM (review 69079).
-// host_width_binding_label is a panel metric and renders axis NAMES, so "memory unmeasured" is all
-// an operator gets there. That is the right length for a column and the wrong length for a refusal:
-// a refusal is read exactly once, by someone deciding what to do next, and the four causes
-// host_runner_memory_envelope_resolution distinguishes are four different next actions. This fold
-// is the seam that carries them out, and it is why those causes are read rather than merely
-// constructed -- deleting it leaves them written and unlooked-at, which is DESIGN 3c's red state.
-fn host_width_unmeasured_reasons(host: HostIdentity) -> String {
-  let unmeasured = filter(host_width_axes(host: host), a =>
-    match a {
-      AxisAdmits { axis: _, slots: _ } => false
-      AxisUnmeasured { axis: _, reason: _ } => true
-    })
-  join(map(unmeasured, a =>
-    match a {
-      AxisAdmits { axis: x, slots: _ } => x as String
-      AxisUnmeasured { axis: x, reason: r } => concat(concat(x as String, ": "), r as String)
-    }), "; ")
-}
-
 fn host_width_binding_label(host: HostIdentity) -> String {
   let unmeasured = filter(host_width_axes(host: host), a =>
     match a {
