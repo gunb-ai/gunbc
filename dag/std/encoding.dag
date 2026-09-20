@@ -614,7 +614,7 @@ fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
 // other malformed input, so no new refusal vocabulary is minted for a case the model already had a
 // word for.
 fn utf8_admit_octet(d: Utf8DecodeState, b: UInt8) -> Utf8DecodeState {
-  match word_of_int(width: Width8, value: b + 0) {
+  match word_of_int(width: Width8, value: uint8_int_value(v: b)) {
     WordRefused { cause: _ } => Utf8Refused
     WordReady { word: w } => utf8_step(d: d, o: w.value)
   }

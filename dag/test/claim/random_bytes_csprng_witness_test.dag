@@ -13,8 +13,8 @@ pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
 {
   node cred = match getrandom_octets(count: byte_count) {
     Present { value: bs } => match base64_octets(values: bs) {
-      OctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: UrlSafe)
-      OctetsRefused { cause: _ } => ""
+      QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: UrlSafe)
+      QualifiedOctetsRefused { observed: _ } => ""
     }
     Absent => ""
   }
