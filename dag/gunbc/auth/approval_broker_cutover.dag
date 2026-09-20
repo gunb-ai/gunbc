@@ -1,6 +1,6 @@
 module gunbc.auth.approval_broker_cutover
 
-import std.types { NonEmptyStr, String, Int, Bool, List, Port }
+import std.types { NonEmptyStr, String, Int, Bool, List, Port, HttpStatus }
 import std.measure { ByteSize }
 import gunbc.serve_liveness {
   serve_liveness_path,
@@ -290,10 +290,27 @@ type FrontDoorStanding
 // "it routed it and stripped the prefix, so the broker's table saw /<capability>", and those want
 // opposite repairs. The observed marker separates them, and gunbc.auth.approval_broker_marker is
 // where the tokens are declared so the probe and the responder read one spelling.
+// THE STATUS FIELDS ARE HttpStatus, NOT Int (review 69024). std.types already owns the carrier --
+// `type HttpStatus = Int where range(min: 100, max: 599)`, with http_status_of as its admission
+// fold -- and this change's OWN sibling consumes it: gunbc.auth.approval_broker_serve
+// broker_text_response takes `status: HttpStatus`. Declaring Int here made the two halves of one
+// change disagree about where the fact lives, which is DESIGN section 3's nicknaming and fails
+// section 2's test that net concepts must not grow by re-invention.
+//
+// IT IS LOAD-BEARING RATHER THAN COSMETIC BECAUSE OF WHO WRITES THESE ROWS. Every constructor of
+// these arms today is CALLER-SUPPLIED evidence in a witness -- there is no production probe yet --
+// so a row carrying `status: 7` was writable, and the fixture population is exactly what the
+// refinement walls.
+//
+// WHAT THE REFINEMENT DOES AND DOES NOT DO, said rather than assumed: `where range` refuses a
+// LITERAL outside the range at authoring time, which is the fixture case above. It does not refuse
+// a value computed at runtime. So the remaining obligation is http_status_of at the eventual probe
+// boundary, where a real HTTP client's integer enters -- named here so the wall is not mistaken for
+// covering that too.
 type RouteClassProbe
   = RouteClassUnprobed
-  | RouteClassRefused { status: Int, detail: NonEmptyStr }
-  | RouteClassAnswered { status: Int, observed: ObservedMarker }
+  | RouteClassRefused { status: HttpStatus, detail: NonEmptyStr }
+  | RouteClassAnswered { status: HttpStatus, observed: ObservedMarker }
 
 // THE CANDIDATE THIS DEPLOY INSTALLED, CARRIED SO THE READBACK CAN BE COMPARED RATHER THAN MERELY
 // PARSED (cutover HOLD item 4). Without it, release_admission accepted ANY well-formed 40-hex
@@ -329,8 +346,8 @@ type CutoverRefusal
   | DemandNotMeasured { missing: NonEmptyStr }
   | FrontDoorStillAtRoadmap
   | RouteClassNotProbed { route: NonEmptyStr }
-  | RouteClassProbeRefused { route: NonEmptyStr, status: Int, detail: NonEmptyStr }
-  | RouteClassAnsweredByNoBroker { route: NonEmptyStr, status: Int }
+  | RouteClassProbeRefused { route: NonEmptyStr, status: HttpStatus, detail: NonEmptyStr }
+  | RouteClassAnsweredByNoBroker { route: NonEmptyStr, status: HttpStatus }
   | RouteClassAnsweredByWrongFold { route: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | BothWritersWouldBeLive { detail: NonEmptyStr }
   | TreeReceiptNotObserved { detail: NonEmptyStr }
