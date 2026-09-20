@@ -1,0 +1,34 @@
+module test.fixture.health_read_only.mutation_probe
+
+import std.types { Bool, NonEmptyStr, String }
+
+// THE FORBIDDEN PROGRAM, parsed by the same declaration census as the health closure and reached by
+// the same call walk. It is what a health route would look like if someone wired a mutation into it:
+// one entry whose transitive callees reach a Redfish account POST and a host-OS shell leg. The
+// no-mutation witness derives its findings from THIS module too and requires them found by identity,
+// so a derivation that stopped seeing callee atoms, or stopped following calls past the entry body,
+// goes red here instead of silently reporting the live closure clean.
+//
+// It is a fixture: nothing imports it, it names no real service, and its callees are undeclared
+// spellings -- the census is parse-only and reads spellings, not resolutions.
+fn fixture_probe_entry(bmc_host: NonEmptyStr) -> Bool {
+  fixture_probe_creates_account(bmc_host: bmc_host)
+    && fixture_probe_service_call_mutation(bmc_host: bmc_host)
+    && fixture_probe_runs_host_shell(bmc_host: bmc_host)
+}
+
+// The BARE-CALL form, which the declaration census sees.
+fn fixture_probe_creates_account(bmc_host: NonEmptyStr) -> Bool {
+  CreateAccount(bmc_host: bmc_host, netrc_file: "netrc", request_body_file: "body.json").success
+}
+
+// The SERVICE-CALL form, which is how a real mutation would be written -- and which the census does
+// NOT see today. The witness asserts this absence, so the blind spot is executable rather than
+// prose, and the assertion flips the day an instrument carries service-call operation identity.
+fn fixture_probe_service_call_mutation(bmc_host: NonEmptyStr) -> Bool {
+  redfish.Http.SetAccountPassword(bmc_host: bmc_host, netrc_file: "netrc", account_id: "root", request_body_file: "body.json").success
+}
+
+fn fixture_probe_runs_host_shell(bmc_host: NonEmptyStr) -> Bool {
+  ssh_session_exec(target: SshShell { ssh_host: bmc_host }, command: "reboot").success
+}

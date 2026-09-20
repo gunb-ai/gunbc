@@ -150,16 +150,24 @@ test fn type_position_only_is_missing_from_parse_tree_today_holds() -> Bool {
   ca_parse_type_pos_edge_count() == 0
 }
 
-test fn type_position_only_is_missing_from_normalized_tree_today_holds() -> Bool {
-  ca_normalized_type_pos_edge_count() == 0
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): the provider TYPE is Named at the graft since
+// gunbc#11574, so the qualified type-position mention resolves and the normalized
+// tree derives the edge. Permanent control. Its parse-tree twin above still holds:
+// reference edges are a normalized-tree derivation and the parse tree never carries
+// one (v2.lens.module_graph reference_derived_parse_tree_site_oracle_frontier).
+test fn type_position_only_is_present_in_normalized_tree_holds() -> Bool {
+  ca_normalized_type_pos_edge_count() > 0
 }
 
 test fn body_value_outside_call_is_missing_from_parse_tree_today_holds() -> Bool {
   ca_parse_body_value_edge_count() == 0
 }
 
-test fn body_value_outside_call_is_missing_from_normalized_tree_today_holds() -> Bool {
-  ca_normalized_body_value_edge_count() == 0
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): the provider DATA declaration is Named at the
+// graft since gunbc#11574, so a body-value mention outside any call resolves and the
+// normalized tree derives the edge. Permanent control; parse-tree twin as above.
+test fn body_value_outside_call_is_present_in_normalized_tree_holds() -> Bool {
+  ca_normalized_body_value_edge_count() > 0
 }
 
 data ca_no_qn_sites: List<QualifiedName> = []
