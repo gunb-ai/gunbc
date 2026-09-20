@@ -531,10 +531,6 @@ fn store_ownership_of(uid: Int, mode: NonEmptyStr) -> StoreOwnershipReading {
 // -- two records for one cell, a record whose contents name another cell -- are properties of the
 // DIRECTORY, so a read that returned only the asked-for cell would make them unaskable. One listing
 // plus one read per record file, and any failure anywhere is StoreUnreadable for the whole store.
-type StoreRecordReading
-  = StoreRecordsRead { records: List<CellReadinessRecord> }
-  | StoreRecordsUnreadable { reason: NonEmptyStr }
-
 fn record_file_names(entries: String) -> List<String> {
   filter(split(s: entries, delimiter: "\n"), e => ends_with(s: trim(s: e), suffix: cell_readiness_record_suffix))
 }
