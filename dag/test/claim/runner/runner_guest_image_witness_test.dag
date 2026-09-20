@@ -328,6 +328,9 @@ fn staging_order(commands: List<ArgvCommand>) -> StagingOrder {
 // the kernel at boot, so runner_microvm_guest_resolver has one authority. The reds: a `cp` of a
 // rendered file in place of the link (a second authority for the address, and a file that could not
 // exist at build time), a link placed before the extraction, and the address copied into the tree.
+// -T IS PINNED WITH ITS DISCRIMINATOR: without it, a real directory at the extracted /etc/resolv.conf
+// makes `ln -sfn` succeed by creating the link INSIDE that directory, so the build reports the link
+// installed while the image has none; with -T that destination makes image construction refuse.
 test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_no_baked_address() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: gunbc_runner_guest_image.runner, arch: Aarch64) {
     Absent => false
@@ -336,7 +339,7 @@ test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_n
       let link = runner_guest_resolver_link_command(root: "/r", image: gunbc_runner_guest_image)
       let resolver = render_ipv4_address(addr: runner_microvm_guest_resolver()) as String
       let order = staging_order(commands: cmds)
-      argv_words(command: link) == ["ln", "-sfn", "/proc/net/pnp", runner_guest_tree_resolv_conf_path(root: "/r", image: gunbc_runner_guest_image)]
+      argv_words(command: link) == ["ln", "-sfnT", "/proc/net/pnp", runner_guest_tree_resolv_conf_path(root: "/r", image: gunbc_runner_guest_image)]
         && string_contains(s: runner_guest_tree_resolv_conf_path(root: "/r", image: gunbc_runner_guest_image), pattern: concat(runner_guest_tree_dir(root: "/r", image: gunbc_runner_guest_image), "/etc/resolv.conf"))
         && any(xs: cmds, predicate: fn(c) { argv_words(command: c) == argv_words(command: link) })
         && order.extracted

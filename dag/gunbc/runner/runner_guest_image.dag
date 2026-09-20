@@ -618,9 +618,12 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
 // is a moving part ordered against network-online.target for a fact the kernel has already produced
 // before init starts, and it would carry shell semantics (`cp` at boot) where the link carries none.
 //
-// Whatever the base rootfs ships at /etc/resolv.conf -- unobserved here; an Ubuntu image commonly
-// carries a link to systemd-resolved's stub file, but this fleet has not read this one's -- is why
-// the builder is the -sfn form: an existing entry, file or link, is replaced and never linked into.
+// Whatever the base rootfs ships at /etc/resolv.conf is unobserved here -- an Ubuntu image commonly
+// carries a link to systemd-resolved's stub file, but this fleet has not read this one's -- so the
+// builder is the exact-destination form (-sfnT): an existing file or link is replaced, and a real
+// DIRECTORY there makes the build REFUSE rather than create the link inside it and report success
+// over an image with no resolver link. The refusal is the located diagnostic; the extracted kind
+// is then a fact to observe, not a guess to widen the builder around.
 fn runner_guest_resolver_link_target() -> String {
   procfs_path_literal(p: ProcNetPnp) as String
 }

@@ -86,20 +86,26 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
 
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
 // existing destination first, -n treats a destination that is itself a symlink to a directory as a
-// file to replace rather than a directory to link into. The three are one operation -- "make this
-// path a symlink to that target, whatever stands there now" -- and the name carries all three so a
-// caller cannot obtain the dereferencing form (which would follow an existing link and create the
-// new one INSIDE its target directory) by dropping a flag. The target is spelled as given and never
-// resolved: a symlink's target is text the kernel reads at open time, which is the whole reason
-// gunbc.runner_guest_image can point a file inside an image at a path that exists only once that
-// image has booted.
+// file to replace, and -T (--no-target-directory) makes ln REFUSE when the destination is a real
+// directory instead of creating the link INSIDE it. The four are one operation -- "make exactly
+// this path a symlink to that target, or refuse" -- and the name carries all of them so a caller
+// cannot obtain the target-directory form by dropping a flag.
+//
+// -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
+// -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits
+// 0 having created D/T's-basename, so the command succeeds while the intended path was never made a
+// link -- a witness pinning the argv stays green over an image with no link. With -T that case is a
+// nonzero exit, which is what makes the builder's claim ("this path is now a link") true whenever it
+// returns success. The target is spelled as given and never resolved: a symlink's target is text the
+// kernel reads at open time, which is the whole reason gunbc.runner_guest_image can point a file
+// inside an image at a path that exists only once that image has booted.
 data coreutils_ln_binary_name: NonEmptyStr = "ln"
-data coreutils_ln_symbolic_force_no_dereference_flags: NonEmptyStr = "-sfn"
+data coreutils_ln_symbolic_force_exact_destination_flags: NonEmptyStr = "-sfnT"
 
 fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
   argv_command(
     program: coreutils_ln_binary_name,
-    arguments: [coreutils_ln_symbolic_force_no_dereference_flags as String, target, link_name],
+    arguments: [coreutils_ln_symbolic_force_exact_destination_flags as String, target, link_name],
   )
 }
 

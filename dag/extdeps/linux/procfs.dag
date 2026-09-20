@@ -57,8 +57,10 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
 // form DNS resolvers recognise, and states that /etc/resolv.conf is linked to it on such systems.
 // gunbc.runner_guest_image installs exactly that link, so every resolver library in a booted guest
 // reads this path. The file is synthesised by the kernel's ipconfig, not by proc.5's process table,
-// and exists only on a kernel with IP_PNP -- the guest kernel this fleet boots with ip= is one by
-// construction, since ip= is that option's directive.
+// and exists only on a kernel built with IP_PNP. Supplying ip= on the command line does not
+// establish that its parser was compiled in, so whether the guest kernel this fleet boots provides
+// /proc/net/pnp is a fact the first NETWORKED boot must establish, and the resolver frontier
+// (gunbc.runner_microvm_network guest_resolver_configuration_frontier) waits on exactly that.
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
   ProcSelfStat,
