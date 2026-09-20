@@ -20,7 +20,12 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_program,
   host_capture_workload_command,
 }
-import gunbc.machine_intake_host_capture_historical_binding { bindings_hold_against_capture }
+import gunbc.machine_intake_host_capture_historical_binding {
+  bindings_hold_against_capture,
+  census_historical_capture,
+}
+import std.content_hash { Sha256Hash }
+import std.measure { byte_size_count }
 import extdeps.shell
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -56,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // attempt=3's capture must BIND -- one begin, the matching end for the same machine and run -- and
 // every verdict axis must read that bound envelope. This is the committed file, not a copy.
 test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
-  let read = Filesystem.Read(path: "artifacts/bmc/mtcollins1-host-capture.txt")
+  let read = Filesystem.Read(path: census_historical_capture.path as String)
   read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureBound { envelope: e } =>
@@ -72,11 +77,36 @@ test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
 // the ARGV line the committed capture actually carries, every Exact row's command must BE that line,
 // and the omitted section must be present in the file and absent from the roster.
 test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
-  let read = Filesystem.Read(path: "artifacts/bmc/mtcollins1-host-capture.txt")
+  let read = Filesystem.Read(path: census_historical_capture.path as String)
   read.success && match host_capture_bind(capture: read.content, machine: "mtcollins1") {
     HostCaptureUnbound { reason: _ } => false
     HostCaptureBound { envelope: e } => bindings_hold_against_capture(envelope: e, stages: host_capture_census_stages)
   }
+}
+
+// THE PRODUCER IS CONSTRAINED BY THE CAPTURE'S COMMITTED IDENTITY, not by its name. The bindings
+// above are statements about ONE artifact; read against a different file they would be statements
+// about nothing, and the file sits in the worktree where anything may rewrite it. So the digest and
+// the byte count the census observation committed are checked against the bytes on disk, and this
+// is the claim that goes red on the brief's digest-disagreement refusal. It also makes the identity
+// row load-bearing: before this, the row named a digest that nothing compared anything to.
+test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() -> Bool {
+  let path = census_historical_capture.path
+  let digest_holds = match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: observed } =>
+      match census_historical_capture.digest {
+        Sha256Hash(recorded) => (observed.hex as String) == (recorded.hex as String)
+        _ => false
+      }
+  }
+  let counted = run_shell_command_observe(
+    command: posix_sh_program_command(script: concat("printf '%s' \"$(wc -c < ", path as String, ")\"\n")),
+    transport: LocalExec,
+  )
+  digest_holds
+    && counted.exit_code == 0
+    && counted.stdout == (byte_size_count(b: census_historical_capture.byte_count) as String)
 }
 
 // A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter
