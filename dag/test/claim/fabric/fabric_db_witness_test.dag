@@ -1,0 +1,82 @@
+module test.claim.fabric.fabric_db_witness
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.fabric_db {
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_ref_eq,
+  fabric_object_preimage, fabric_object_decode, fabric_objects_decode_stream, fabric_object_verified,
+  FabricObjectVerified, FabricObjectVerificationFailed, FabricObjectCorrupt, FabricStoreUnreachable, FabricObjectMissing,
+  FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, fabric_head_admits,
+}
+
+// Evidence for the pure half of std.fabric_db: the canonical preimage round-trips, is
+// self-delimiting in a stream, refuses truncation, and a fetched object is verified against the ref
+// it was asked for. Values are supplied; the store realization's evidence is its own witness.
+
+fn root_object() -> FabricObject {
+  FabricObject { links: [], body: "{\"event\":\"root\"}" }
+}
+
+fn child_object() -> FabricObject {
+  FabricObject { links: [fabric_object_ref_of(object: root_object())], body: "{\"event\":\"child\";\"note\":\"B7:colon\"}" }
+}
+
+test fn an_object_with_links_round_trips_through_its_preimage() -> Bool {
+  match fabric_object_decode(preimage: fabric_object_preimage(object: child_object()) as String) {
+    Absent => false
+    Present { value: o } => fabric_object_ref_eq(a: fabric_object_ref_of(object: o), b: fabric_object_ref_of(object: child_object()))
+  }
+}
+
+test fn a_truncated_preimage_decodes_to_nothing_rather_than_a_prefix() -> Bool {
+  let p = fabric_object_preimage(object: child_object()) as String
+  match fabric_object_decode(preimage: substring(s: p, start: 0, end: length(p) - 1)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn two_preimages_concatenated_decode_as_a_stream_of_two() -> Bool {
+  let text = join([fabric_object_preimage(object: child_object()) as String, fabric_object_preimage(object: root_object()) as String], "")
+  match fabric_objects_decode_stream(text: text, acc: []) {
+    Absent => false
+    Present { value: xs } => length(xs) == 2
+  }
+}
+
+test fn distinct_links_give_distinct_refs_for_one_body() -> Bool {
+  let bare = FabricObject { links: [], body: child_object().body }
+  !fabric_object_ref_eq(a: fabric_object_ref_of(object: bare), b: fabric_object_ref_of(object: child_object()))
+}
+
+test fn a_ref_survives_its_wire_form() -> Bool {
+  let r = fabric_object_ref_of(object: root_object())
+  match fabric_object_ref_of_wire(wire: fabric_object_ref_wire(object: r) as String) {
+    Absent => false
+    Present { value: back } => fabric_object_ref_eq(a: r, b: back)
+  }
+}
+
+test fn bytes_that_do_not_hash_to_the_asked_ref_are_corrupt_not_served() -> Bool {
+  match fabric_object_verified(asked: fabric_object_ref_of(object: root_object()), content: child_object()) {
+    FabricObjectVerified { stored: _ } => false
+    FabricObjectVerificationFailed { fault: f } => match f { FabricObjectCorrupt { object: _, detail: _ } => true  _ => false }
+  }
+}
+
+test fn bytes_that_hash_to_the_asked_ref_verify() -> Bool {
+  match fabric_object_verified(asked: fabric_object_ref_of(object: root_object()), content: root_object()) {
+    FabricObjectVerified { stored: _ } => true
+    FabricObjectVerificationFailed { fault: _ } => false
+  }
+}
+
+test fn an_absent_expectation_is_refused_by_a_present_head() -> Bool {
+  let at = FabricHeadAt { object: fabric_object_ref_of(object: root_object()), generation: 1 }
+  !fabric_head_admits(expected: ExpectHeadAbsent, observed: at) && fabric_head_admits(expected: ExpectHeadAbsent, observed: FabricHeadAbsent)
+}
+
+test fn an_expectation_of_another_object_is_refused_by_the_head() -> Bool {
+  let at = FabricHeadAt { object: fabric_object_ref_of(object: root_object()), generation: 1 }
+  !fabric_head_admits(expected: ExpectHeadAt { object: fabric_object_ref_of(object: child_object()) }, observed: at)
+    && fabric_head_admits(expected: ExpectHeadAt { object: fabric_object_ref_of(object: root_object()) }, observed: at)
+}
