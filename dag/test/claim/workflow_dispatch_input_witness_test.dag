@@ -14,8 +14,8 @@ import gunbc.fleet_converge_workflow {
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
-  fleet_converge_microvm_network_converge_step, fleet_converge_mode_fleet_ssh_key_demand,
-  MicrovmNetworkConverge, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
+  fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
+  MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
@@ -149,9 +149,18 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
   }
 }
 
+// THE TRIGGER IS TAKEN THROUGH ITS OPTIONAL. `on[0]` is an Optional<WorkflowTrigger>, so passing it
+// straight into workflow_trigger_entry was a latent type defect that main's own newly landed
+// Optional checker now refuses -- a workflow declaring no trigger is a real (if absurd) shape, and
+// this claim has to say what it does with it rather than assume one is there.
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
-  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+  match fleet_converge_workflow.on.first() {
+    Absent => false
+    Present { value: trigger } => {
+      let entry = workflow_trigger_entry(trigger: trigger)
+      entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+    }
+  }
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
@@ -437,7 +446,7 @@ fn yaml_scalar_text(v: YamlValue) -> String {
 }
 
 fn microvm_network_step_env_text() -> String {
-  match fleet_converge_microvm_network_converge_step() {
+  match fleet_converge_microvm_network_observe_step() {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match e {
         Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
@@ -452,7 +461,7 @@ test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment(
   let yml = expected_fleet_converge_yml_content()
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST")
     && string_contains(s: env, pattern: "github.event.inputs.host")
-    && string_contains(s: yml, pattern: "id: microvm_network_converge")
+    && string_contains(s: yml, pattern: "id: microvm_network_observe")
     && string_contains(s: yml, pattern: "FLEET_CONVERGE_EXPECTED_HOST: $\{\{ github.event.inputs.host \}\}")
 }
 
@@ -461,7 +470,7 @@ test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment(
 // conntrack reads on that host. Materialising the fleet SSH key for it would widen a capability with
 // no consumer in the source (side-chat hold on #11751).
 test fn the_microvm_network_mode_claims_no_fleet_ssh_key() -> Bool {
-  match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkConverge) {
+  match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkObserve) {
     FleetSshKeyNotConsumed => true
     FleetSshKeyConsumed => false
   }

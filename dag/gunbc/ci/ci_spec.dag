@@ -822,9 +822,9 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
-data gunbc_ci_runner_microvm_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_network_converge.dag",
-  function: "runner_microvm_network_converge_wet",
+  function: "runner_microvm_network_observe_wet",
 }
 
 data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1065,7 +1065,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
-    gunbc_ci_runner_microvm_network_converge_target,
+    gunbc_ci_runner_microvm_network_observe_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
@@ -1983,13 +1983,13 @@ fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
   )
 }
 
-fn gunbc_ci_runner_microvm_network_converge_invoke() -> String {
+fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_runner_microvm_network_converge_target.entry,
-    function: gunbc_ci_runner_microvm_network_converge_target.function,
+    entry: gunbc_ci_runner_microvm_network_observe_target.entry,
+    function: gunbc_ci_runner_microvm_network_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/microvm-network-converge.txt"
+    receipt_rel: "target/microvm-network-observe.txt"
   )
 }
 

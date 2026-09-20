@@ -179,9 +179,35 @@ fn microvm_network_readback_operations() -> List<ExecutorPrivilegedOperation> {
   ]
 }
 
+// THE JOB USER IS GRANTED THE READS AND NONE OF THE MUTATIONS, BECAUSE THE PAIR WOULD BE ROOT.
+//
+// Every file this converge installs is staged by the converge itself, unprivileged, into a directory
+// the job user owns -- and the job user is the SAME principal that executes job steps. Granting
+// `install <grantee-writable path> /etc/systemd/system/...` beside `systemctl restart` on that unit
+// therefore grants arbitrary root execution to anything running in a job: write your own ExecStart=
+// into the staged path, then have root run it. The same pair holds for the nft ruleset loaded by that
+// unit and for the sysctl files re-read by systemd-sysctl (review 69104). Spelling the source path in
+// full narrows nothing when the source is grantee-writable, which is the guarantee
+// gunbc.executor_privileged_operation states this type exists to provide.
+//
+// So the roster carries the READBACKS ONLY. They are reads: they disclose host configuration to a
+// principal that already runs on the host, and they cannot install or start anything. The mutating
+// half needs a principal the job user cannot impersonate, which this mode does not have today --
+// microvm_network_host_mutation_principal_frontier names it.
 fn microvm_network_granted_operations(slots: List<RunnerSlotIdentity>) -> List<ExecutorPrivilegedOperation> {
-  concat(microvm_network_converge_operations(slots: slots), microvm_network_readback_operations())
+  microvm_network_readback_operations()
 }
+
+// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: this module's apply half. TRIGGER: the microVM
+// network mutations run under a principal the job user cannot impersonate -- the administrator over
+// the fleet key, as gunbc.runner_host_file_converge already does for root-owned files -- so the
+// staged content cannot be substituted by anything executing in a job. SUFFICIENT FOR deleting this
+// row and re-admitting the install operations to the grant roster. NOT satisfied by spelling the
+// staged source path in full, by staging into another grantee-owned directory, or by checking the
+// staged file's digest from the same principal that can rewrite it.
+data microvm_network_host_mutation_principal_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_network_converge's apply half. TRIGGER: the microVM network mutations execute under a principal the job user cannot impersonate (the administrator over the fleet key, as runner_host_file_converge does), so staged content cannot be substituted by anything running in a job. SUFFICIENT FOR deleting this row and re-admitting the install operations to the grant roster. NOT satisfied by spelling the staged source in full, by staging into another grantee-owned directory, or by digesting the staged file from the principal that can rewrite it." as NonEmptyStr,
+)
 
 // --- reading the host back ---
 
@@ -644,7 +670,7 @@ fn converge_generation_reading() -> String {
   }
 }
 
-data runner_microvm_network_receipt_path: String = "target/microvm-network-converge.txt"
+data runner_microvm_network_receipt_path: String = "target/microvm-network-observe.txt"
 
 data runner_microvm_network_receipt_dir: String = "target"
 
@@ -716,7 +742,7 @@ fn converged_slot_text(c: ConvergedSlot) -> String {
 
 fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
   join([
-    "# microvm-network-converge CONVERGED\n",
+    "# microvm-network-observe OBSERVED\n",
     "# host=", c.host as String, "\n",
     "# generation=", c.generation as String, "\n",
     "# nft_digest=", c.nft_digest.hex as String, "\n",
@@ -733,7 +759,7 @@ fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
 
 fn receipt_text(o: ConvergeOutcome) -> String {
   match o {
-    ConvergeRefused { refusal: r } => join(["microvm-network-converge REFUSED: ", refusal_text(r: r), "\n"], "")
+    ConvergeRefused { refusal: r } => join(["microvm-network-observe REFUSED: ", refusal_text(r: r), "\n"], "")
     ConvergedNetwork { receipt: c } => join([render_converged_slot_network(c: c), converged_receipt_text(c: c)], "")
   }
 }
@@ -779,42 +805,42 @@ fn expected_host_reading() -> String {
 fn host_binding_refusal_text(b: HostBinding) -> String {
   match b {
     HostBindingUnnamed { detail: d } =>
-      join(["microvm-network-converge: HostBindingUnnamed -- ", d, "; nothing was staged and no privileged operation ran"], "")
+      join(["microvm-network-observe: HostBindingUnnamed -- ", d, "; nothing was staged and no privileged operation ran"], "")
     HostBindingRefused { expected: e, observed: o } =>
-      join(["microvm-network-converge: HostBindingRefused -- expected ", e, ", observed ", o, "; nothing was staged and no privileged operation ran"], "")
-    HostBindingHeld { host: h } => join(["microvm-network-converge: bound to ", h as String], "")
+      join(["microvm-network-observe: HostBindingRefused -- expected ", e, ", observed ", o, "; nothing was staged and no privileged operation ran"], "")
+    HostBindingHeld { host: h } => join(["microvm-network-observe: bound to ", h as String], "")
   }
 }
 
-fn runner_microvm_network_converge_wet() -> ProcessExit {
+fn runner_microvm_network_observe_wet() -> ProcessExit {
   let host_reading = hostname_short_read(transport: LocalShell)
   match host_reading {
     HostnameShortCaptureRefused { reason: r } =>
-      exit_failure(reason: join(["microvm-network-converge: the host could not name itself: ", r], ""))
+      exit_failure(reason: join(["microvm-network-observe: the host could not name itself: ", r], ""))
     HostnameShortCaptured { value: name } =>
       match bind_requested_host(expected: expected_host_reading(), observed: name) {
         HostBindingUnnamed { detail: d } =>
           exit_failure(reason: host_binding_refusal_text(b: HostBindingUnnamed { detail: d }))
         HostBindingRefused { expected: e, observed: o } =>
           exit_failure(reason: host_binding_refusal_text(b: HostBindingRefused { expected: e, observed: o }))
-        HostBindingHeld { host: bound } => converge_bound_host_wet(bound: bound)
+        HostBindingHeld { host: bound } => observe_bound_host_wet(bound: bound)
       }
   }
 }
 
-fn converge_bound_host_wet(bound: HostIdentity) -> ProcessExit {
+fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit {
   {
       let generation = converge_generation_reading()
       if generation == "" {
-        exit_failure(reason: "microvm-network-converge: no run identity in the environment, so the receipt would carry a generation nobody can compare against")
+        exit_failure(reason: "microvm-network-observe: no run identity in the environment, so the receipt would carry a generation nobody can compare against")
       } else {
         match runner_host_deploy_for(host: bound) {
           RunnerHostDeployUnmodeled { host: h } =>
-            exit_failure(reason: join(["microvm-network-converge: ", h as String, " is not a modeled runner host"], ""))
+            exit_failure(reason: join(["microvm-network-observe: ", h as String, " is not a modeled runner host"], ""))
           RunnerHostDeployRefused { host: h, cause: c } =>
-            exit_failure(reason: join(["microvm-network-converge: ", h as String, " refuses its deploy row: ", c], ""))
+            exit_failure(reason: join(["microvm-network-observe: ", h as String, " refuses its deploy row: ", c], ""))
           RunnerHostDeployFound { deploy: d } =>
-            converge_admitted_host_wet(deploy: d, host: bound, generation: generation as NonEmptyStr)
+            observe_admitted_host_wet(deploy: d, host: bound, generation: generation as NonEmptyStr)
         }
       }
   }
@@ -829,26 +855,18 @@ fn runner_microvm_network_slot_identities_of(deploy: RunnerHostDeploy) -> List<R
   map(runner_index_seq(n: deploy.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i })
 }
 
-fn converge_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit {
-  let slots = runner_microvm_network_slot_identities_of(deploy: deploy)
-  let staged = converge_staged_files(
-    slots: slots,
-    host: runner_microvm_shared_host_grain,
-    tap_owner: deploy.job_user,
+// THIS MODE OBSERVES AND RECORDS; IT DOES NOT MUTATE. The readbacks are granted because they are
+// reads, and they establish exactly what ConvergedSlotNetwork means: what the host IS at a
+// generation. The mutating half is NOT granted to this principal and must not be -- see
+// microvm_network_host_mutation_principal_frontier -- so nothing here stages a file or runs an
+// install. A mode named for a convergence it cannot perform would be the DESIGN section 3 meaning
+// fork, which is why the mode is named observe.
+fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit {
+  record_converge_readback_wet(
+    slots: runner_microvm_network_slot_identities_of(deploy: deploy),
+    host: host,
+    generation: generation,
   )
-  let _ = run_shell_commands(
-    commands: [mkdir_parents_command(path: runner_microvm_staging_dir as String)],
-    transport: LocalExec,
-  )
-  let staged_ok = fold(staged, init: true, f: (acc, f) => acc && stage_file_wet(f: f))
-  if !staged_ok {
-    exit_failure(reason: "microvm-network-converge: a file could not be staged, so NOTHING was installed")
-  } else {
-    match apply_executor_privileged_operations_wet(ops: microvm_network_converge_operations(slots: slots)) {
-      ExitSuccess => record_converge_readback_wet(slots: slots, host: host, generation: generation)
-      other => other
-    }
-  }
 }
 
 fn record_converge_readback_wet(slots: List<RunnerSlotIdentity>, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit {
@@ -860,11 +878,11 @@ fn record_converge_readback_wet(slots: List<RunnerSlotIdentity>, host: HostIdent
   let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_network_receipt_dir)], transport: LocalExec)
   let w = Filesystem.Write(path: runner_microvm_network_receipt_path, content: text)
   if !w.success {
-    exit_failure(reason: join(["microvm-network-converge: receipt write refused: ", w.error], ""))
+    exit_failure(reason: join(["microvm-network-observe: receipt write refused: ", w.error], ""))
   } else {
     match outcome {
       ConvergedNetwork { receipt: _ } => ExitSuccess
-      ConvergeRefused { refusal: _ } => exit_failure(reason: join(["microvm-network-converge: ", text], ""))
+      ConvergeRefused { refusal: _ } => exit_failure(reason: join(["microvm-network-observe: ", text], ""))
     }
   }
 }
