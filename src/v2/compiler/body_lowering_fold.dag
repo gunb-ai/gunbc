@@ -2119,9 +2119,19 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
 // by the time this shell reduces, and this arm lifts the member out of the sequence's right
 // projection after checking the marker lexeme really is "test". A non-"test" marker is a typed
 // refusal, never a retained wrapper. The TEST-NESS marker is deliberately not reified into the
-// member node: the native route's universe derivation is the floor's own source-scan authority
-// (v2.workflow.floor_discovery discover_floor_rows_for_source), which reads the surface text, and
-// resolve/infer see an ordinary function — a stated divergence, not a silent one.
+// member node: it rides its own channel beside the semantic tree (the DESIGN section 4c shape),
+// v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
+// to a plain fn's.
+//
+// TWO PRODUCERS OF TEST-NESS STAND TODAY, AND THIS NAMES BOTH RATHER THAN DROPPING ONE.
+// (1) The capture above, the compiler's. (2) The floor's witness universe, derived by
+// v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source, a line scan for
+// `test fn ` / `test data ` over source text that deliberately neither parses nor resolves
+// (v2.workflow.floor_naming_hygiene names it a second parser). TRIGGER for converging it onto this
+// channel: the floor preparing a parse artifact for each discovered source, at which point discovery
+// reads the marks from that parse instead of rescanning the bytes. A third producer,
+// v2.workflow.realization_attempt's line-rewriting capture, was deleted in the change that added
+// this channel: its only reason was a grammar that could not parse the marker.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
