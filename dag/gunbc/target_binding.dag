@@ -27,6 +27,7 @@ type TargetProducer
   | PrimitiveEgressCensusV2Producer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
+  | RequiredLaneResolutionCensusProducer
 
 type TargetBinding {
   target: Label

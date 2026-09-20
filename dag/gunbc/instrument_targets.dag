@@ -177,6 +177,18 @@ fn primitive_egress_census_seed_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
 }
 
+// THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
+// one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
+// The unreached population, by identity, is the printed product; the exit says whether it is
+// empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
+// and let every required lane report SUCCESS" measured rather than warned about, after
+// gunbc.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
+// classifies is read from gunbc.compiler_gate_workflow, the authority that emits witnesses.yml.
+// `gunbc test //gunbc/instruments:required-lane-resolution-census`.
+fn required_lane_resolution_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -237,6 +249,10 @@ fn primitive_egress_census_seed_target() -> BuildTarget {
   instrument_test_target(label: primitive_egress_census_seed_label())
 }
 
+fn required_lane_resolution_census_target() -> BuildTarget {
+  instrument_test_target(label: required_lane_resolution_census_label())
+}
+
 fn v2_native_cli_binding() -> TargetBinding {
   TargetBinding { target: v2_native_cli_label() producer: V2NativeCliProducer {} }
 }
@@ -286,6 +302,10 @@ fn primitive_egress_census_dag_binding() -> TargetBinding {
 
 fn primitive_egress_census_seed_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
+}
+
+fn required_lane_resolution_census_binding() -> TargetBinding {
+  TargetBinding { target: required_lane_resolution_census_label() producer: RequiredLaneResolutionCensusProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -350,7 +370,8 @@ fn instrument_targets() -> List<Label> {
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
-    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(), primitive_egress_census_seed_label()
+    primitive_egress_census_v2_label(), primitive_egress_census_dag_label(), primitive_egress_census_seed_label(),
+    required_lane_resolution_census_label()
   ]
 }
 
@@ -360,7 +381,8 @@ fn instrument_bindings() -> List<TargetBinding> {
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
-    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(), primitive_egress_census_seed_binding()
+    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(), primitive_egress_census_seed_binding(),
+    required_lane_resolution_census_binding()
   ]
 }
 
