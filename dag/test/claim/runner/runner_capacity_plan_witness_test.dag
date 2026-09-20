@@ -27,8 +27,8 @@ import gunbc.runner_capacity_plan {
   PlanRefused,
 }
 import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
-  organization_runner_roster_managed_hosts_incident_evidence,
+  incident_2026_08_06_roster_fixture,
+  incident_2026_08_06_managed_roster_fixture,
   RosterReadUnavailable,
   RosterObserved,
   RosterObservedPartial,
@@ -88,7 +88,7 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
   let plan = runner_capacity_plan(
     srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
     srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
-    roster: organization_runner_roster_managed_hosts_incident_evidence()
+    roster: incident_2026_08_06_managed_roster_fixture()
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -134,7 +134,7 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 // SAME ROSTER MOVE AS THE ROW ABOVE: the managed-pair slice of the 2026-08-06 corpus, which carries
 // the holes this row is about ({01,02,04,05} on both hosts) and nothing about srv2.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
-  let roster = organization_runner_roster_managed_hosts_incident_evidence()
+  let roster = incident_2026_08_06_managed_roster_fixture()
   let plan = runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: roster)
   match plan {
     PlanReady { hosts: _ } =>
@@ -150,10 +150,10 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   }
 }
 
-// THE ONE CLAIM THAT STILL RUNS THE REAL PRODUCER, AND WHAT IT ESTABLISHES IS A REFUSAL. This is
-// the pairing obligation for the supplied slices above (DESIGN 3): organization_runner_roster_evidence
-// is what gunbc.apply and gunbc.runner_capacity_realize hand the planner, and against the fleet as
-// committed today the planner REFUSES it, naming srv2-01. srv2's commitment is unestablished since
+// THE WHOLE 2026-08-06 CORPUS, AND WHAT IT ESTABLISHES IS A REFUSAL. incident_2026_08_06_roster_fixture
+// was what gunbc.apply and gunbc.runner_capacity_realize handed the planner until they moved to the
+// live read (gunbc.fleet.organization_runner_roster_read); against the fleet as committed today the
+// planner REFUSES this corpus, naming srv2-01. srv2's commitment is unestablished since
 // the 26/25 GiB transition, so its three 2026-08-06 registrations resolve to no committed slot, and
 // a registration the fleet cannot account for is refused rather than dropped
 // (a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped is the srv9-01 form of
@@ -165,7 +165,7 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // resolves again and the row is re-derived by the change that re-establishes srv2, not by editing
 // the 2026-08-06 rows to fit the fleet of the day.
 test fn the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations() -> Bool {
-  match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: organization_runner_roster_evidence()) {
+  match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
     PlanReady { hosts: _ } => false
     PlanRefused { reason: r } =>
       string_contains(s: r, pattern: "resolves to no committed fleet slot")
@@ -390,12 +390,12 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
 // THE NUMBERS BELOW ARE ABOUT A FIXTURE AND NOT ABOUT THE FLEET, AND AN EARLIER REVISION OF THIS
 // BLOCK SAID OTHERWISE. Measured by execution against what the production path currently supplies:
 // srv1 synthesized 5 / decoded 5, srv2 5 / 3, srv3 5 / 4, srv4 5 / 4, twenty against sixteen. What
-// it supplies is organization_runner_roster_evidence, a declared Scaffold returning the pinned
-// 2026-08-06 incident corpus, so this decodes a sixteen-day-old constant. The earlier revision also
+// it supplied was the pinned 2026-08-06 incident corpus, now the dated witness fixture
+// incident_2026_08_06_roster_fixture, so this decodes a constant. The earlier revision also
 // called the incident note's fifteen-offline-of-sixteen line an INDEPENDENT corroboration; it is the
 // prose describing the same fixture, so the two agreements are one source agreeing with itself.
 // That makes this a consistency check on the decoder, which is worth having, and it is not evidence
-// about today's fleet -- nothing on the production path has read GitHub since the pin.
+// about today's fleet -- the production path now reads gunbc.fleet.organization_runner_roster_read instead.
 //
 // WHAT IS TRUE AGAINST ANY ROSTER, AND IS THE HALF THAT MATTERS: the category error is a fact about
 // the wiring rather than the data, and the direction of the error is fixed -- addition_actions
@@ -408,8 +408,8 @@ fn one_registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration
     name: name as NonEmptyStr,
     status: GitHubRunnerOnline,
     busy: false,
-    ephemeral: true,
-    version: "2.334.0" as NonEmptyStr,
+    ephemeral: Present { value: true },
+    version: Present { value: "2.334.0" as NonEmptyStr },
     os: "Linux" as NonEmptyStr,
     labels: [],
   }
