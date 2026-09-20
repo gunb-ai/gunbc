@@ -274,9 +274,26 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
 // PID1 refusals (no boot secret, stage2 missing files) have no constructor on AttemptLaunchPlan.
 // That is the census: they are outside this per-attempt planner by construction, not by a Bool.
 //
-// THE LAW THIS SHAPE CARRIES: jit_device and jailer are fields of ONE arm, and that arm is
-// reachable only through admit_jit_credential's admitted arm. So no admitted, non-empty,
-// attempt-bound credential means no device AND no VMM process -- the two cannot come apart.
+// WHAT THIS ARM ESTABLISHES, AND WHAT IT DOES NOT. jit_device and jailer are fields of ONE arm,
+// and plan_after_authorization reaches it only through admit_jit_credential's admitted arm, so a
+// plan BUILT BY THIS PLANNER carries a staging plan and a jailer command together or carries
+// neither.
+//
+// THAT IS NOT A CONSTRUCTION WALL, and an earlier revision of this comment said it was. This type
+// is not sole_constructor, so a LaunchAuthorized is assemblable outside this module, and its jailer
+// field is readable by any holder: a caller can execute plan.jailer without ever obtaining the
+// AttemptStagingReceipt that attempt_staging_verdict produces, and modules outside this one already
+// read that field. So the arm establishes that every LaunchAuthorized HAS FIELDS FOR BOTH -- not
+// that the value came from admit_jit_credential, not that staging ran, not that the readbacks
+// happened, and not that the jailer cannot be obtained first. The rung this module reports,
+// Mitigatable, is the honest one; the earlier "unwritable by shape" language was not.
+//
+// AND DEVICE-WITHOUT-LAUNCH IS NOT THE STATE THAT MUST BE IMPOSSIBLE: a staged device with no VMM
+// is safe provided teardown removes it. The dangerous state is A VMM LAUNCHED WITHOUT AN
+// EFFECT-BOUND, READ-BACK CREDENTIAL DEVICE FOR THIS ATTEMPT. ONE MECHANICALLY PREVENTING REPAIR
+// is to withhold the raw jailer capability until after effect-bound staging, with the staging
+// realization constructing the executable jailer from its own observations. That is a substantive
+// redesign, not a comment fix, and is not attempted here.
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
@@ -685,12 +702,19 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
   }
 }
 
-// THE RECEIPT IS SEALED, so the admitted arm cannot be assembled beside the gate. sole_constructor
-// makes attempt_staging_verdict the ONLY producer of an AttemptStagingReceipt, and the jailer
-// command is reachable only inside one -- so a caller cannot mint "staging passed" while holding a
-// failed device, and cannot lift the jailer out of a refusal. The receipt names WHICH device and
-// WHICH workspace were read back, so the capability it releases is bound to the attempt whose
-// premises were established rather than to staging in general.
+// THE RECEIPT IS SEALED: sole_constructor makes attempt_staging_verdict the only
+// producer of an AttemptStagingReceipt, so a caller cannot construct that receipt
+// beside the gate. The receipt carries the planned JIT-device path and workspace
+// path against which the supplied outcomes were judged.
+//
+// WHAT SEALING DOES NOT PROVE, twice over. FIRST, it does not withhold the jailer
+// capability: the same jailer command sits in plain sight on AttemptLaunchPlan's
+// LaunchAuthorized arm, which is not sole_constructor, so a caller holding the plan
+// already has the capability this receipt was described as gating.
+// SECOND, the gate accepts CALLER-AUTHORED positive outcomes: a JitDeviceStaged value is
+// constructible without stage_jit_device ever running -- this module's own witnesses construct one
+// to drive the foreign-device case -- so a sealed receipt proves the gate was CALLED with
+// positive-shaped arguments, not that the host effects and their readbacks occurred.
 //
 // A PROSE OBLIGATION BESIDE A JAILER-ADMITTING VALUE IS NOT A WALL (sunny-ant-606 ruling): the
 // frontier row can say the controller must reach the jailer through this fold, and a controller
