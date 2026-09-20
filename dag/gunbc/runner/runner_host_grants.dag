@@ -48,9 +48,7 @@ import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner_host_deploy { runner_index_seq }
-import gunbc.runner_microvm_network_converge {
-  microvm_network_granted_operations, runner_microvm_network_slot_identities_of,
-}
+import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
@@ -326,7 +324,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
-    + microvm_network_granted_operations(slots: runner_microvm_network_slot_identities_of(deploy: deploy))
+    + microvm_network_granted_operations()
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module

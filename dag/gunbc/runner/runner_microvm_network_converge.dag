@@ -193,7 +193,7 @@ fn microvm_network_readback_operations() -> List<ExecutorPrivilegedOperation> {
 // principal that already runs on the host, and they cannot install or start anything. The mutating
 // half needs a principal the job user cannot impersonate, which this mode does not have today --
 // microvm_network_host_mutation_principal_frontier names it.
-fn microvm_network_granted_operations(slots: List<RunnerSlotIdentity>) -> List<ExecutorPrivilegedOperation> {
+fn microvm_network_granted_operations() -> List<ExecutorPrivilegedOperation> {
   microvm_network_readback_operations()
 }
 
