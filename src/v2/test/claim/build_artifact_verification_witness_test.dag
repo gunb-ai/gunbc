@@ -54,11 +54,17 @@ fn stmt_text(s: Node) -> Bool {
 
 test fn witness_single_artifact_produces_two_checks() -> Bool {
   let stmts = probe_stmts()
-  stmts.length() == 2 && witness_stmt_is_if(s: stmts.first())
+  stmts.length() == 2 && (match stmts.first() {
+    Present { value: s } => witness_stmt_is_if(s: s)
+    Absent => false
+  })
 }
 
 test fn witness_existence_check_no_mtime() -> Bool {
-  stmt_text(s: probe_stmts().first())
+  match probe_stmts().first() {
+    Present { value: s } => stmt_text(s: s)
+    Absent => false
+  }
 }
 
 test fn witness_floor_covers_both_release_bins() -> Bool {
