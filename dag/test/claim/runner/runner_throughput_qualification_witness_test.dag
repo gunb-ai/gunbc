@@ -661,9 +661,15 @@ test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
     })
 }
 
+// THE CLASS LABEL IS READ OFF THE SLOT AUTHORITY, not written here (review 68972 -- the class this
+// PR's own failure-mode row names, caught a fourth time in this file). The host and attempt are
+// fixture inputs.
 test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
   let labels = ephemeral_slot_labels(host: "mtcollins1", attempt: attempt)
-  (labels |> any(l => l == "gunbc-heavy")) && (labels |> any(l => l == "mtcollins1")) && (labels |> any(l => l == (attempt as String)))
+  let class_labels = gunbc_runner_slot_desired().labels.github_labels
+  class_labels.length() >= 1
+    && (class_labels |> all(c => labels |> any(l => l == c)))
+    && (labels |> any(l => l == "mtcollins1")) && (labels |> any(l => l == (attempt as String)))
 }
 
 // THE INHABITANCE CLAIMS FOR THE SUPPLIED SELECTION: the fleet's plan fold derives a sound plan
