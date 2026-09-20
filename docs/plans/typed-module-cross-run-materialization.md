@@ -7,6 +7,10 @@
 > **Authority it answers to:** `docs/dag-modeling/DESIGN.md`; the ladder's own admission rules in
 > `std.materialization_ladder`.
 > **Framing:** relief during the v1 → v2 migration. Not a parallelism project — see §7.
+> **Revision 2 (2026-09-20):** integrated with the fabric store (`std.fabric_db`, which the operator
+> would rather see named `fabric_storage`) instead of proposing a per-host directory; the frame is
+> fabric-wide so warming is independent of branch and process; the key is a typed row; arming is
+> derived with a measurement gate that can refuse the provider. What is left to decide is in §8.
 
 ---
 
@@ -50,38 +54,45 @@ the rest from scratch.
 So the relief is structural to the migration rather than incidental to it: while two corpora are
 resolved together, the unchanged one is re-derived on every push of the other.
 
-## 3. What already exists (this design adds one rung, it does not build a cache)
+## 3. What already exists (this design declares a rung; it builds no store)
 
-- **`gunbc.floor_materialization`** declares two providers, both scoped to the executor process
-  with `scope_released_retention`:
-  - `process_shared_index` over `union-index-build(dag,src/v2)`
-  - `process_shared_typecheck_store` over `union-typecheck-store(dag,src/v2)`
-- **`std.materialization_ladder`** already carries the vocabulary this needs:
-  `Frame { name, kind }`, `ProviderTier` including `CasTier { keying: ContentKeyed }`,
-  and **`persistent_retention(capacity)`** (`release_policy: ReleasedNever`).
-- **`src/v1/stage0/src/shared_typecheck_store.rs`** ("S2a increment C") is a working **serde byte
-  transport** for typed modules. It serializes `TypecheckModuleResult` as *authored module and type
-  names*, explicitly so a decoding process can read an encoding process's snapshot against its own
-  intern table. It was built for cross-worker sharing; cross-run is the same problem with a longer
-  gap.
-- **`SharedTypecheckStoreCounters`** already counts hits, misses and bytes.
-- **`test.claim.typed_module_cache_capacity_witness`** already guards the cache's capacity.
+- **The store is the fabric store** — `std.fabric_db`, which the operator would rather see named
+  `fabric_storage` (rename noted, not taken here; the modules are cited under today's names). It is
+  content-addressed by construction: `FabricObjectRef` IS a content hash, `FabricObject` the payload,
+  with put, get, head read and head advance, and `FabricClosureRead` for reading a closure in one
+  request rather than per object. `gunbc.fabric_db_placement` holds which host serves it ("one
+  placement, not a replica set"); `fabric_db_file_store` and `fabric_db_serve` realize it.
+- **Verification on read is already the store's rule**: `fabric_object_verified(asked, content)` is
+  "the single authority every handler routes a fetched object through: a store that answered with
+  other bytes is corrupt, never trusted."
+- **`gunbc.floor_materialization`** declares two providers, both scoped to the executor process with
+  `scope_released_retention`: `process_shared_index` over `union-index-build(dag,src/v2)` and
+  `process_shared_typecheck_store` over `union-typecheck-store(dag,src/v2)`.
+- **`std.materialization_ladder`** carries the vocabulary: `Frame { name, kind }`, `ProviderTier`
+  including `CasTier { keying: ContentKeyed }`, and `persistent_retention(capacity)`.
+- **`src/v1/stage0/src/shared_typecheck_store.rs`** ("S2a increment C") already serializes
+  `TypecheckModuleResult` as authored module and type *names*, explicitly so a decoding process can
+  read an encoding process's snapshot against its own intern table. Built for cross-worker; cross-run
+  and cross-host are the same problem with a longer gap.
+- **`SharedTypecheckStoreCounters`** already counts hits, misses and bytes;
+  **`test.claim.typed_module_cache_capacity_witness`** already guards capacity.
 
-What does *not* exist: any retention beyond process exit, and any content key.
+What does not exist: a typed-module key, any retention beyond process exit, and a provider row that
+names the fabric store as the place typed modules live.
 
 ## 4. The design
 
 ### 4.1 One new frame
 
 ```
-data floor_runner_host_frame: Frame = Frame {
-  name: "runner-host",
+data floor_fabric_runs_frame: Frame = Frame {
+  name: "fabric-recurring-runs",
   kind: UnboundedSiblingsFrame
 }
 ```
 
-**The kind is load-bearing, and the first draft had it wrong** (review of this design, 2026-09-20).
-`SharedStateFrame` would have defeated the whole row. The ladder's plurality rules read:
+**The kind is load-bearing, and the first draft had it wrong** (review, 2026-09-20). The ladder's
+plurality rules read:
 
 > (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process —
 > rewireable) = AUTHORED duplication = error; the fix is rewire/Share, **never a cache**. …
@@ -90,69 +101,75 @@ data floor_runner_host_frame: Frame = Frame {
 > loop / recurring CI invocations over time**) — obligates UP FRONT: prepare-before-demand, so
 > checkpointing and **cross-run caches are derived, not bolted on** after the incident.
 
-Successive CI invocations are state (3), not state (1): they execute apart by construction and
-cannot be rewired into one another. Declared as `SharedStateFrame` the ladder would classify them as
-authored duplication and answer that a cache is the wrong fix; declared as `UnboundedSiblingsFrame`
-it derives the obligation this row exists to discharge. The frame is broader than
-`floor_executor_process_frame()` and narrower than the fleet — a host's store is never read by
-another host, so no cross-host coherence question arises.
+Recurring invocations are state (3): they execute apart by construction and cannot be rewired into
+one another. Under `SharedStateFrame` the ladder would call them authored duplication and answer that
+a cache is the wrong fix.
+
+**The frame is the fabric, not one host** (operator ruling, 2026-09-20: warming must be independent
+of branch and process). Every runner puts to and gets from one served store, so the re-demanding
+siblings are every invocation anywhere — CI on any host, the merge queue, a session container, a
+developer's own run. Nothing seeds anything and no branch is privileged: a module resolved once is
+resolved for everyone who asks next.
 
 ### 4.2 One new provider row
 
 ```
-data floor_typecheck_store_persist_provider: CacheProvider = provider_row(
-  id: "host_persisted_typecheck_store",
-  scope: [floor_runner_host_frame],
+data floor_typecheck_store_fabric_provider: CacheProvider = provider_row(
+  id: "fabric_typecheck_store",
+  scope: [floor_fabric_runs_frame],
   coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
-  tier: ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: CapacityBounded {
-    limit: <entry-count limit, §8>,
-    at_capacity: <eviction, §8>
-  })
+  tier: CasTier { keying: ContentKeyed },
+  retention: <the fork in §8.1>
 )
 ```
 
-It covers the **same identity** as the in-process provider, `union-typecheck-store(dag,src/v2)`.
-The in-process row stays exactly as it is; this row says where the value lives when the process
-that computed it is gone.
+It covers the **same identity** as the in-process provider, `union-typecheck-store(dag,src/v2)`. The
+in-process row stays exactly as it is; this row says where the value lives when the process that
+computed it is gone.
 
-**`ArtifactTier`, not `CasTier`** (review, 2026-09-20). `tier_axes` grounds the tiers in placement:
-`ArtifactTier` is `LocalFilesystem` and `CasTier` is `RemoteNetwork`. The implementation here is a
-per-host directory, so `CasTier` would have declared a placement nothing implements and contradicted
-this row's own no-cross-host boundary. Both tiers are `KeyAddressed`, so the content keying below is
-unchanged. A fleet-wide store, if it is ever wanted, is the `CasTier` row — a different provider with
-a coherence question this one does not have.
+**`CasTier`, and the reason changed under review.** The reviewer correctly objected that a per-host
+directory is `ArtifactTier` (`tier_axes`: `LocalFilesystem`) and not `CasTier` (`RemoteNetwork`) —
+against the draft that proposed a directory. The store is now the fabric store, a served endpoint on
+one host, which every other runner reaches over the network. `CasTier { keying: ContentKeyed }` is
+the placement that actually obtains. Both tiers are `KeyAddressed`, so the keying below is unchanged.
 
-**The ladder forces two properties, and that is the point of modelling it here rather than adding a
-disk cache:** `retention_admission` refuses `ReleasedNever` with `CapacityUnbounded`
-(`RetentionUnbounded`) and with `CapacityUnobserved` (`RetentionUnobserved`). A persistent provider
-is therefore inadmissible unless it is **bounded** and its occupancy is **observed**. Both are
-obligations this design must discharge, not features it may skip.
+### 4.3 The key is a typed row, not a table in this document
 
-### 4.3 Why content keying is sound here
+`FrameDemand.nature` for typed-module resolution is `PureComputation`: the same module text, the same
+dependency closure and the same compiler produce the same typed result. Content-keyed reuse of a pure
+computation is sound by construction — no staleness envelope is declared because nothing is read from
+the world.
 
-`FrameDemand.nature` for typed-module resolution is `PureComputation`: the same module text, the
-same dependency closure and the same compiler produce the same typed result. A `ContentKeyed`
-reuse of a pure computation is sound by construction, which is the argument the ladder wants — no
-staleness envelope is being declared, because nothing is being read from the world.
+**The preimage is a declaration, so that "did we include X" is a field rather than a memory**
+(operator ruling, 2026-09-20: these decisions belong in a conformant structure). The fabric store
+keys by `FabricObjectRef`, the hash of a preimage; the preimage is this record:
 
-The key is therefore everything the computation reads:
+```
+type TypedModuleKeyPreimage {
+  module_identity: NonEmptyStr        // which module's typed result this is
+  module_source_digest: NonEmptyStr   // the text that was typechecked
+  dependency_digests: List<NonEmptyStr> // the resolved closure it typed against
+  compiler_identity: NonEmptyStr      // the typechecker IS an input
+  source_roots: List<NonEmptyStr>     // resolution is root-relative
+  store_format_version: Int           // decode compatibility
+}
+```
 
-| Component | Why it is in the key | What breaks if it is out |
-|---|---|---|
-| Module authored identity | names the value | wrong module served |
-| Digest of the module's own source bytes | the text typechecked | edits ignored |
-| Digests of its resolved dependencies (transitive, as resolved) | typing depends on them | a dependency edit serves a stale type |
-| Compiler identity — the `gunbc`/`claim_executor` binary digest | the typechecker *is* an input | a typechecker fix serves pre-fix types |
-| Source-root set (`dag`, `src/v2`, …) | resolution is root-relative | a root change serves the wrong resolution |
-| Store format version | decode compatibility | a format change decodes garbage |
+Every component is there because omitting it serves a wrong answer: without the source digest an edit
+is ignored; without dependency digests a dependency's edit serves a stale type; without compiler
+identity a typechecker fix serves pre-fix types; without the roots a root change serves the wrong
+resolution; without the format version a format change decodes garbage. Adding a component later is a
+diff that invalidates the store by construction, which is the property a prose table could not give.
 
-### 4.4 Where it attaches in the code
+**The cost profile that follows from `compiler_identity`**: a change under `src/v1` (the Rust
+compiler) invalidates every entry, and a change to `.dag` corpus invalidates the changed modules and
+their dependents. During v1 → v2 the bulk of the churn is corpus, which is the case that hits.
 
-**The first draft's "reuse the existing seam" does not reach the fold, and that was the design's
-worst error** (review, 2026-09-20). The shared store is armed only when the adaptive worker width
-exceeds one, and `floor_materialization` says width 1 keeps the private per-index `Rc` cache. The
-read path says it plainly:
+## 4.4 Where it attaches in the code
+
+**The first draft's "reuse the existing seam" does not reach the fold, and that was its worst error**
+(review, 2026-09-20). The shared store is armed only when the adaptive worker width exceeds one, and
+`floor_materialization` says width 1 keeps the private per-index `Rc` cache. The read path says it:
 
 ```rust
 let Some(store) = index.cross_worker_store.as_ref() else {
@@ -161,48 +178,46 @@ let Some(store) = index.cross_worker_store.as_ref() else {
 };
 ```
 
-The nominal fold runs at width 1. So every read it performs takes that fallback — there is even a
-counter for it — and a persistent backing behind the shared store would never be consulted or
-populated. No warm relief could occur.
+The nominal fold runs at width 1, so every read takes that fallback — there is a counter for it — and
+a persistent backing behind the shared store would never be read or populated. No warm relief could
+occur. **Arming must therefore be independent of worker width.**
 
-**So the store must be armed independently of worker width**, and that is a change to arming, not
-only to backing:
+**Two levels, and the store's "sole authority" rule has to relax.** The cross-worker store documents
+that when armed it becomes the only typed-cache authority and reads decode bytes. At width 1 that
+would replace a cheap `Rc` clone with a decode — now a *network get* — on thousands of reads, and
+could make a warm run slower than a cold one. So:
 
 | | Today at width 1 | This design |
 |---|---|---|
-| Read | private `Rc` map | L1 private `Rc` map, then L2 persistent entry on an L1 miss |
-| Write | private `Rc` map only | L1 as today, plus one L2 encode per newly resolved module |
-| Arming | `scheduled_width > 1` | independent of width; the persistent provider is its own arm |
+| Read | private `Rc` map | L1 private `Rc` map; on an L1 miss, the fabric store |
+| Write | private `Rc` map only | L1 as today, plus one put per newly resolved module |
+| Fetch shape | — | one `FabricClosureRead` for the closure, not 1,733 round trips |
+| Arming | `scheduled_width > 1` | derived (§4.5), never a flag someone remembers |
 
-**Two levels, not one, and the store's "sole authority" rule has to relax.** The cross-worker store
-documents that when armed it becomes the only typed-cache authority and `index_insert_typed` stops
-writing the per-index map, so reads decode bytes — which avoids double retention but pays a decode
-on **every** read. At width 1 that would replace a cheap `Rc` clone with a decode on thousands of
-reads and could make a warm run *slower* than a cold one. The persistent provider therefore sits
-BEHIND the in-process map rather than replacing it: L1 answers repeat reads within a run, L2 answers
-the first read of a module that a previous run resolved.
+### 4.5 Arming is derived, and the gate that can refuse it is a row
 
-**The serialization cost is a first-class unknown, not an assumption.** Width 1 encodes nothing
-today, so this design adds encode work that did not exist: one encode per newly resolved module and
-one decode per warm hit. Step 3 of the rollout measures exactly this — cold-run wall time with the
-provider armed but empty (encode cost, no benefit) against cold-run time with it disarmed, and warm
-against cold. If the encode cost on a cold run exceeds the warm saving on a typical PR, the design
-fails its own test and the provider stays disarmed.
+**Whether to arm was decision 5 of the first draft; asking a reviewer was the error** (operator
+ruling, 2026-09-20). The ladder already decides it: a `PureComputation` demand whose enclosing frame
+declares re-demand obligates prepare-before-demand, and §4.1's frame declares exactly that. Arming is
+the consequence; there is nothing left to choose.
 
-The counters already in `SharedTypecheckStoreCounters` become the observation the ladder demands,
-emitted into the floor's measurement receipt so a run reports hits, misses, bytes and evictions —
-and, with the above, L1 hits separately from L2 hits.
+What remains is empirical and belongs in the model as a refusable row rather than in someone's
+judgement: **the provider is admitted only while its measured cold-run overhead is below its measured
+warm-run saving.** Width 1 encodes nothing today, so this design adds put work on a cold run for
+benefit that arrives on a later one, plus network latency on warm gets. The measurement in §9 step 3
+produces both numbers, and a provider whose overhead exceeds its saving is refused by that row — not
+kept alive by an argument.
 
 ## 5. Soundness, and how each failure mode ends
 
 | Failure | Behaviour |
 |---|---|
-| Entry decodes wrongly / truncated | treated as a **miss**, recompute, count it. Never a partial decode used as a result. |
-| Key collision | keyed by the repo's existing content hash; a collision is a hash break, not a cache bug. |
-| Compiler changed | binary digest is in the key, so every entry misses. Correct, and honest: a `src/v1` Rust change gets no relief. |
-| Corpus module changed | that module and its dependents miss; the rest hit. This is the common session PR. |
-| Store corrupt / unreadable / disk full | fall back to full preparation, log it, continue. The gate's verdict never depends on the store being available. |
-| A stale hit would change a verdict | §6 verify mode is the falsifier. |
+| Store answered with other bytes | the store's own rule refuses it: `fabric_object_verified` treats it as corrupt, never trusted. Recompute, count it. |
+| Entry decodes wrongly / truncated | treated as a **miss**: recompute, count it. Never a partial decode used as a result. |
+| Store unreachable, endpoint down, `FabricDbFault` | full preparation, logged. The gate's verdict never depends on the store being available — an unreachable store costs time, not correctness. |
+| Compiler changed | `compiler_identity` is in the preimage, so every entry misses. Correct, and honest: a `src/v1` change gets no relief. |
+| Corpus module changed | that module and its dependents miss; the rest hit. The common session PR. |
+| A wrong KEY would return bytes that verify perfectly | **this is the gap verification cannot close** — the hash matches what was asked for; the question is whether the preimage covered everything that affects typing. §6 is the only check for it. |
 
 ## 6. The falsifier
 
@@ -240,39 +255,67 @@ catch any divergence that changes a claim's disposition.
   in `run_discovery_corpus_with_options` belongs to the corpus-batch regime whose authority was
   superseded 2026-08-13 and deleted 2026-08-15.
 - **Moving the fold to a hosted runner.** It peaks at 20.2 GiB; a standard hosted runner has 16 GB.
+- **Building a store.** The fabric store exists and is content-addressed with verification on read;
+  this design declares where typed modules live in it, and nothing more. A rename of `fabric_db` to
+  `fabric_storage` is the operator's preference and a separate change.
 
-## 8. What the reviewer has to decide
+## 8. What is left to decide
 
-1. **Store location.** A per-host directory (candidate: alongside the existing
-   `/var/lib/ctrl/…` host state), and whether ctrl's `ctrl-runner-reclaim.timer` prunes it or the
-   store evicts for itself.
-2. **The capacity limit and the at-capacity policy.** The ladder refuses the provider without them.
-   Proposal: entry-count bound sized to one corpus plus headroom, least-recently-used eviction.
-3. **Warm-seeding.** Whether a post-merge run on `main` populates the store so PR runs start warm,
-   or PRs warm it themselves.
-4. **Whether verify mode is a scheduled job** (§6) or an operator-invoked instrument.
-5. **Whether the width-1 arming is acceptable as its own provider arm** (§4.4), given it adds encode
-   work to every cold run. The alternative is to arm only where a warm store already exists for the
-   closure, which is cheaper on a first run and more state to reason about.
+Four of the first draft's five questions dissolved: the store is the fabric store (§3), warming is
+emergent and branch-independent (§4.1), the key is a declaration (§4.3), and arming is derived with a
+refusable measurement gate (§4.5). Two remain, and the first is a genuine fork.
+
+### 8.1 Retention — the fork
+
+`std.fabric_db` states its divergence from `std.artifact_store` deliberately:
+
+> that store is an evicting cache (least-recently-used packing to a byte budget). An object here is
+> history a head may reach, so it is **never evicted** — retention is released-never, which
+> `store_over_provider` deliberately does not realize.
+
+So a bounded, evicting typed-module store is not what the fabric store is today, and the ladder still
+refuses `ReleasedNever` with `CapacityUnbounded`. Three ways out, and this is the decision:
+
+1. **Typed modules are history.** Keep them in the fabric store unevicted, and discharge the ladder's
+   capacity obligation by bounding what is *put* (only modules in a gate closure) and observing
+   growth. Simplest; unbounded in the long run.
+2. **Typed modules are a cache, so they belong in `std.artifact_store`** with its LRU-to-a-byte-budget
+   retention — the ~4,000 entries / ~14 GB already agreed — and the fabric store keeps history only.
+   Honest about what they are; a second store in the picture.
+3. **The fabric store grows a bounded namespace** whose objects are evictable, separated from
+   head-reachable history. Most work, and the only option that leaves one store.
+
+Option 2 matches the agreed sizing and each store's stated purpose; option 1 is the fastest to land.
+
+### 8.2 Placement and reachability
+
+The store has one placement by ruling, and the fold runs on srv1, srv3 and srv4. A warm get is a
+network round trip from those hosts, and an unreachable placement degrades every fold to cold. §9
+step 3 measures the latency; the question is whether one placement is acceptable for a CI-hot path or
+whether the typed-module namespace wants a local read-through per host.
 
 ## 9. Rollout, and the relief each step buys
 
 | Step | Work | Effect |
 |---|---|---|
-| 1. Model rows: frame, provider, capacity, eviction, counters-as-observation | today | the authority exists; ladder admission passes or refuses loudly |
-| 2. Persistent backing behind `GUNBC_TYPED_STORE_PERSIST`, default **off** | today | nothing changes until armed |
-| 3. Measure on one host: cold armed-but-empty vs cold disarmed (the encode cost), then warm vs cold, comparing typed-output digest and the floor's receipts | tomorrow | the number this design is worth, and whether the encode cost eats it |
-| 4. Arm in the workflow env | tomorrow | the relief lands in CI |
-| 5. Widen `required_gate_prefixes` back toward the full roster | after | the claims dropped for cost come back |
+| 1. Model rows: frame, provider, `TypedModuleKeyPreimage`, the retention arm §8.1 picks, counters-as-observation | today | the authority exists; ladder admission passes or refuses loudly |
+| 2. Put/get through `std.fabric_db` behind the L1 map, arming independent of width, closure read for the fetch | today | nothing changes until the gate row admits it |
+| 3. Measure on one host: cold-armed-but-empty vs cold-disarmed (put cost), warm vs cold (saving and get latency), typed-output digest and the floor's receipts byte-identical | tomorrow | the numbers the §4.5 gate row consumes — and the number this design is worth |
+| 4. The gate row admits the provider | tomorrow | the relief lands everywhere at once, since warming is fabric-wide |
+| 5. Widen `required_gate_prefixes` back toward the full roster | after | the claims dropped for cost come back, against the cheaper curve |
+
+No seeding step: warming is a property of the store, not of a branch or a job (§4.1).
 
 **Expected relief, on the measured basis** (a PR touching `.dag` corpus modules only):
 
 | | Now | With a warm store |
 |---|---|---|
-| Strict preparation | 8.3 min | ~1 min |
+| Strict preparation | 8.3 min | ~1 min + get latency |
 | Drift gate (same corpus work) | 6.3 min | ~2 min |
 | Fold total | 21 min | ~12 min |
 | Push total | ~32 min | ~20 min |
 
-A PR that changes the v1 Rust compiler gets **no** relief, by §4.3. During v1 → v2 the bulk of the
-churn is `.dag` corpus, which is exactly the case that hits.
+**And the roster curve this unlocks** (measured 2026-09-19): widening costs ~0.25 s and ~3.4 MiB per
+module a prefix's closure pulls in, ~0.14 s per claim probed, and ~13 ms per claim executed. The
+0.25 s/module term is preparation — the one a warm store removes — which is why the roster widens
+after this lands rather than before.
