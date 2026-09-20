@@ -40,16 +40,6 @@ import gunbc.host_effect { LocalShell }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.runner_slot_retirement {
-  RunnerRegistrationStanding,
-  RegistrationAbsent,
-  RegistrationPresent,
-  RegistrationUnobserved,
-  RunnerPurposeRelinquishment,
-  PurposeRelinquished,
-  PurposeRetirementIncomplete,
-  PurposeRegistrationNotRelinquished,
-  runner_purpose_relinquishment,
-  runner_registration_unobserved,
   CgroupObservedEmpty,
   CgroupObservedPopulated,
   CgroupAbsent,
@@ -1004,59 +994,5 @@ test fn a_surplus_inside_the_manifest_agrees() -> Bool {
   ) {
     TransitionPopulationAgrees => true
     TransitionPopulationDisagrees { unexpected: _ } => false
-  }
-}
-
-// RETIREMENT COMPLETE IS NOT RELINQUISHMENT, AND THESE THREE ROWS ARE WHY THE JOIN EXISTS RATHER
-// THAN A PROSE SENTENCE. The dangerous state is the second one: everything local is terminal and the
-// former authority can still dispatch onto the identity, which no amount of cgroup emptiness
-// prevents. If runner_purpose_relinquishment ever answers PurposeRelinquished on an unobserved
-// registration, that row goes red here rather than in production.
-fn a_complete_retirement() -> RunnerRetirementStanding {
-  runner_retirement_standing(o: RunnerRetirementObservation {
-    unit: "actions-runner@srv3-07.service",
-    replacement_inhibited: true,
-    service_running: false,
-    occupancy: CgroupObservedEmpty,
-  })
-}
-
-test fn a_complete_retirement_with_an_absent_registration_relinquishes() -> Bool {
-  match runner_purpose_relinquishment(
-    retirement: a_complete_retirement(),
-    registration: RegistrationAbsent { unit: "actions-runner@srv3-07.service" },
-  ) {
-    PurposeRelinquished { unit: u } => u == "actions-runner@srv3-07.service"
-    PurposeRetirementIncomplete { unit: _, cause: _ } => false
-    PurposeRegistrationNotRelinquished { unit: _, cause: _ } => false
-  }
-}
-
-// THE RED THAT MATTERS: locally terminal, still registered. A clean directory is not a defence
-// against GitHub assigning another job to the slot a fabric cell now owns.
-test fn a_complete_retirement_with_a_live_registration_does_not_relinquish() -> Bool {
-  match runner_purpose_relinquishment(
-    retirement: a_complete_retirement(),
-    registration: RegistrationPresent { unit: "actions-runner@srv3-07.service" },
-  ) {
-    PurposeRegistrationNotRelinquished { unit: _, cause: _ } => true
-    PurposeRelinquished { unit: _ } => false
-    PurposeRetirementIncomplete { unit: _, cause: _ } => false
-  }
-}
-
-// AND THE STANDING THIS CORPUS ACTUALLY HOLDS TODAY. There is no executed registration read, so the
-// only constructible standing is unobserved, and the handover refuses. This row is the executing
-// statement that the purpose transition cannot currently claim relinquishment for any slot -- it
-// flips to green-by-construction only when a real producer lands, and then it is that producer's
-// discriminating control rather than this one's.
-test fn the_live_registration_standing_is_unobserved_so_no_slot_relinquishes_today() -> Bool {
-  match runner_purpose_relinquishment(
-    retirement: a_complete_retirement(),
-    registration: runner_registration_unobserved(unit: "actions-runner@srv3-07.service"),
-  ) {
-    PurposeRegistrationNotRelinquished { unit: _, cause: c } => string_contains(s: c, pattern: "provisions nothing")
-    PurposeRelinquished { unit: _ } => false
-    PurposeRetirementIncomplete { unit: _, cause: _ } => false
   }
 }

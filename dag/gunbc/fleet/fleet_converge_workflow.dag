@@ -317,6 +317,21 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // that it needs it.
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
+// THE TWO MODES ADDED BY gunbc#11484 REACHED THIS MATCH LAST, AND ARE REPAIRED HERE RATHER THAN
+// LEFT AS FOUND (2026-09-20). That change added ApprovalKeyringConverge and MtCollins1Boot to
+// FleetConvergeWorkflowMode and updated two of the three matches over it; this one was missed, so
+// gunbc.instruments.generated_artifact_gate failed to resolve with "non-exhaustive match: missing
+// variant(s) ApprovalKeyringConverge, MtCollins1Boot" and the heal job refused. The file is
+// byte-identical to main, so the defect is main's rather than this branch's; it is fixed here
+// because a branch cannot go green around it and DESIGN 6b is explicit that a link read and found
+// wrong is followed rather than left.
+//
+// BOTH ANSWER FleetSshKeyConsumed, AND THE DIRECTION IS THE ARGUMENT. Every mode that acts on a host
+// consumes the key; only the two org-roster OBSERVE modes do not. A converge and a boot both act on
+// hosts, so they follow the pattern -- and the two errors are not symmetric: declaring the key
+// consumed when it is not provisions something unnecessarily, while declaring it unconsumed when it
+// is leaves the workflow without a key it needs. The conservative arm is the one that cannot strand
+// a converge.
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
   match mode {
     OrgActionsObserve => FleetSshKeyNotConsumed
@@ -342,6 +357,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
+    ApprovalKeyringConverge => FleetSshKeyConsumed
+    MtCollins1Boot => FleetSshKeyConsumed
   }
 }
 
