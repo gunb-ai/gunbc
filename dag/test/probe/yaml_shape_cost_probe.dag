@@ -1,0 +1,58 @@
+module test.probe.yaml_shape_cost_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INSTRUMENT THAT SAYS WHERE THE YAML READER SPENDS, so the answer is re-derived rather than
+// remembered. gunbc.action_use_admission realized_census_cost_standing names a remedy -- cut the
+// reader's per-entry cost -- and which per-entry path to cut is not obvious from the source: the
+// first two cuts made against a guess returned almost nothing. Each function below parses a
+// document of ONE repeated shape, so dividing its eval_steps by the repeat count gives the reader's
+// cost for that shape, and the difference between two of them says which path a corpus of that
+// shape will spend in.
+//
+// These are PROBES, not claims: they establish no product fact and nothing depends on them. Their
+// return value only reports that the shape parsed, so a shape that stops parsing is visible rather
+// than silently measuring a refusal.
+//
+// Run: claim_batch --source-root dag --source-root src/v2
+//        --entry dag/test/probe/yaml_shape_cost_probe.dag --functions <the names below>
+// and read eval_steps from each [witness] line. Subtract shape_single_entry_baseline, which carries
+// the per-document cost every other reading also pays, then divide by twenty.
+
+data twenty: List<Int> = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+
+fn parsed(src: String) -> Bool {
+  match ingest_yaml_source(src: src) {
+    IngestedYaml { value: _ } => true
+    YamlIngestRejected { line: _, reason: _ } => false
+  }
+}
+
+// The per-document cost: the refused-character scan, the whitespace checks and one entry.
+fn shape_single_entry_baseline() -> Bool {
+  parsed(src: "a: 1\n")
+}
+
+// Twenty one-line `key: value` entries. The keys differ because a repeated key is a duplicate and
+// the reader refuses it -- measuring a refusal instead of a read is the trap this comment exists
+// to stop, and it caught the first version of this probe.
+fn shape_plain_entries() -> Bool {
+  parsed(src: join(map(twenty, i => join(["key", to_string(i), ": value\n"], "")), ""))
+}
+
+fn shape_nested_entries() -> Bool {
+  parsed(src: join(map(twenty, i => join(["key", to_string(i), ":\n  inner: value\n"], "")), ""))
+}
+
+fn shape_sequence_items() -> Bool {
+  parsed(src: join(["items:\n", join(map(twenty, i => join(["  - name: value", to_string(i), "\n"], "")), "")], ""))
+}
+
+// The shape the committed workflows are mostly made of: a sequence of two-entry step mappings.
+fn shape_step_mappings() -> Bool {
+  parsed(src: join(["steps:\n", join(map(twenty, i => join(["  - name: step", to_string(i), "\n    uses: actions/checkout@v4\n"], "")), "")], ""))
+}
+
+fn shape_literal_blocks() -> Bool {
+  parsed(src: join(["steps:\n", join(map(twenty, i => join(["  - run: |\n      echo ", to_string(i), "\n      echo two\n"], "")), "")], ""))
+}
