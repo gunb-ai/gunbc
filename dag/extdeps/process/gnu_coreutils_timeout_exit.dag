@@ -1,0 +1,30 @@
+module extdeps.process.gnu_coreutils_timeout_exit
+
+import std.types { Int, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html"
+  }
+}
+
+// GNU coreutils `timeout` reserves exit status 124 for "the command timed out and was killed" --
+// its own convention, not POSIX.1-2017, which is why this is a separate authority from
+// extdeps.process.posix_exit (126/127) and extdeps.process.gnu_bash_exit (2). The three upstreams
+// version independently and each owns the codes it defines.
+//
+// The status carries NO cause: `timeout` kills on a wall-clock bound and reports only that the
+// bound was reached, so 124 cannot distinguish a wedged subject from a correct subject that was
+// denied CPU. It is a CANNOT-TELL about the subject, and the only honest reading is a fact about
+// the RUN rather than a verdict about the corpus.
+data timeout_exit_code_command_timed_out: Int = 124
+
+// `timeout` prints no diagnostic of its own on the timeout path, so there is no upstream log
+// fragment to cite. The classifier therefore reaches this class by EXIT CODE, exactly as it
+// reaches 126/127, and never by matching this text against a log. This string exists only to
+// satisfy the classifier's total signature->substring map; a run whose log happened to contain it
+// would already be classified by its code.
+data timeout_kill_class_name: String = "GnuCoreutilsTimeoutKill"
