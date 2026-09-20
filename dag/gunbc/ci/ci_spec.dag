@@ -974,6 +974,24 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
   function: "live_deploy_apply_srv1_transaction_wet",
 }
 
+// THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
+// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet
+// binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
+// a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
+// actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
+// so the install reaches srv1 the way every other host mutation does, as a dispatched job on the
+// host-pinned runner, rather than by relaxing the expected principal.
+//
+// IT TARGETS THE WET FOLD AND NOT gunbc.apply apply_dispatch, which is the convention every other
+// row here follows (spark_pair_serving_apply_wet, fleet_converge_apply_wet,
+// observe_srv1_tasks_preapply_wet): apply_dispatch is the operator's CLI door, parsing a workflow
+// name and a mode out of strings a human typed, and a CI step that went through it would be
+// re-deciding by string what this row decides by declaration.
+data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "approval_broker_dark_install_srv1_wet",
+}
+
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
   function: "rlm_launch_deployment_receipt_wet",
@@ -1093,6 +1111,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_authorized_key_enroll_target,
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
+    gunbc_ci_approval_broker_dark_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1135,6 +1154,24 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
     function: gunbc_ci_live_deploy_transaction_target.function,
     claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
+  )
+}
+
+// NO RECEIPT PATH, and that is a statement about the stage rather than an omission. The dark
+// install is ADDITIVE -- it writes the broker's slice and unit and starts them, and by the parent's
+// freeze it must not restart gunbc-roadmap.service -- so it mints no live-deploy transaction
+// receipt to bind to a plan and an apply run. What the stage is proved by is the NEXT one:
+// ProveRelease reads the broker's own /livez back and compares it to the candidate this install
+// named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
+// asserting it installed would be the control-plane fact standing in for the subject observation
+// that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
+fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_broker_dark_install_target.entry,
+    function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

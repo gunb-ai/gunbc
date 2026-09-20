@@ -11,7 +11,9 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved,
+}
 import gunbc.runner_width_transition { required_retirees_for_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
@@ -604,7 +606,10 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
 fn srv1_width() -> Int {
-  gunbc_runner_slots_per_host(host: "srv1" as HostIdentity)
+  match gunbc_runner_committed_width(host: "srv1" as HostIdentity) {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
 }
 
 fn srv1_live_names() -> List<String> {

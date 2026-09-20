@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_live_deploy_emit_live_deploy_slice_unit_file_live_deploy_slice_memory_max
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_live_deploy_emit_live_deploy_slice_unit_file_live_deploy_slice_memory_max: TransitionAdmission = TransitionAdmission {
+  label: "REQUALIFICATION `live_deploy_slice_memory_max` home gunbc.live_deploy.slice_bounds" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.live_deploy.emit", "live_deploy_slice_unit_file"),
+    spelling: "live_deploy_slice_memory_max" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.live_deploy.slice_bounds", "live_deploy_slice_memory_max")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11667 as UInt32,
+}

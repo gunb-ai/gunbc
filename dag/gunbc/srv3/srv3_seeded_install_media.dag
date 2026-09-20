@@ -2,11 +2,11 @@ module gunbc.srv3_seeded_install_media
 
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
+  reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; published under the sha256 of the built bytes, found by consumers through a derivation record keyed on every build input; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
 }
 
 data srv3_seeded_install_media_remaster_scaffold: Disposition = std.disposition.Terminal {
-  reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
+  reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to srv3_seeded_install_media_publish() (build, create-only publish, derivation record) in-process (TypedReconcileOnHost cell, dag/gunbc/host/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
 data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = std.disposition.Terminal {
@@ -60,10 +60,7 @@ fn srv3_seeded_install_media_actuator_host_is_srv1() -> Bool {
 }
 
 fn srv3_seeded_install_media_install_path_is_versioned() -> Bool {
-  string_contains(
-    s: srv3_seeded_ubuntu_install_media_install_path as String,
-    pattern: "ubuntu-24.04.3-live-server-srv3-seeded.iso",
-  )
+  string_contains(s: srv3_seeded_install_media_input.image_stem as String, pattern: "ubuntu-24.04.3-live-server-srv3-seeded")
 }
 
 fn srv3_seeded_autoinstall_delivery_is_on_iso() -> Bool {
