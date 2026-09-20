@@ -44,7 +44,7 @@ import gunbc.network_identity_subsumption {
   srv3_bmc_static_lease_row,
 }
 import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media, Srv3SeededInstallMedia, Srv3SeededInstallMediaDerived, Srv3SeededInstallMediaRefused }
 import product.placement_supply { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
@@ -127,16 +127,33 @@ type OsInstallAttemptIntent {
   serve_port: Int
 }
 
-data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIntent {
+// THE INTENT NAMES THE MEDIA'S CONTENT HASH, so it exists only where the media does: a derivation
+// the YAML writer refused leaves nothing to attempt, and the reader of this intent refuses with the
+// derivation's reason rather than diagnosing against a hash of something that was never written.
+type Srv3OsInstallAttempt
+  = Srv3OsInstallAttemptIntended { intent: OsInstallAttemptIntent }
+  | Srv3OsInstallAttemptUnavailable { reason: String }
+
+fn srv3_os_install_attempt() -> Srv3OsInstallAttempt {
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: r } => Srv3OsInstallAttemptUnavailable { reason: r }
+    Srv3SeededInstallMediaDerived { artifact: derived } =>
+      Srv3OsInstallAttemptIntended { intent: srv3_os_install_attempt_intent_for(iso_content_hash: derived.content_hash) }
+  }
+}
+
+fn srv3_os_install_attempt_intent_for(iso_content_hash: ContentHash) -> OsInstallAttemptIntent {
+  OsInstallAttemptIntent {
   target_host: operator_host_srv3,
   actuator_host: operator_host_srv1,
   bmc_endpoint: asrock_srv3_live_bmc_host,
   iso_path: srv3_actuator_virtual_media_iso_install_path,
-  iso_content_hash: srv3_seeded_install_media_content_hash,
+  iso_content_hash: iso_content_hash,
   expected_hostname: "srv3" as NonEmptyStr,
   boot_source: BootTargetCd,
   boot_override: BootOverrideOnce,
   serve_port: srv3_nbd_proxy_local_port,
+  }
 }
 
 type NbdServeProcessObservation
@@ -1399,11 +1416,12 @@ fn srv3_install_diagnostic_recommended_action_wire(verdict: Srv3InstallDiagnosti
 }
 
 fn srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation() -> Bool {
-  match diagnose_srv3_install(
-    intent: srv3_os_install_attempt_intent,
-    observation: srv3_remote_bmc_probe_observation,
-  ) {
-    InconclusiveNeedsServeObservation => true
-    _ => false
+  match srv3_os_install_attempt() {
+    Srv3OsInstallAttemptUnavailable { reason: _ } => false
+    Srv3OsInstallAttemptIntended { intent: i } =>
+      match diagnose_srv3_install(intent: i, observation: srv3_remote_bmc_probe_observation) {
+        InconclusiveNeedsServeObservation => true
+        _ => false
+      }
   }
 }

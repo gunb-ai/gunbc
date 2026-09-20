@@ -63,23 +63,38 @@ fn seeded_install_media_content_hash(
   )
 }
 
-fn ubuntu_seeded_install_media_filename(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+// THE TWO FACTS THE NAME IS MADE OF, so a caller that holds them can name the file without holding
+// a whole derived row: the stock media's point release and the host the seed is for. Nothing about
+// the seeded contents enters the name.
+fn ubuntu_seeded_install_media_filename_for(point_release: NonEmptyStr, hostname: NonEmptyStr) -> NonEmptyStr {
   concat(
     concat(
-      concat("ubuntu-", artifact.stock_artifact.point_release as String),
+      concat("ubuntu-", point_release as String),
       "-live-server-",
     ),
-    concat(
-      concat(artifact.autoinstall.identity.hostname as String, "-seeded.iso"),
-    ),
+    concat(hostname as String, "-seeded.iso"),
   ) as NonEmptyStr
 }
 
-fn ubuntu_seeded_install_media_install_path(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+fn ubuntu_seeded_install_media_install_path_for(point_release: NonEmptyStr, hostname: NonEmptyStr) -> NonEmptyStr {
   concat(
     concat(ubuntu_install_media_artifacts_dir() as String, "/"),
-    ubuntu_seeded_install_media_filename(artifact: artifact) as String,
+    ubuntu_seeded_install_media_filename_for(point_release: point_release, hostname: hostname) as String,
   ) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_filename(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+  ubuntu_seeded_install_media_filename_for(
+    point_release: artifact.stock_artifact.point_release as NonEmptyStr,
+    hostname: artifact.autoinstall.identity.hostname,
+  )
+}
+
+fn ubuntu_seeded_install_media_install_path(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+  ubuntu_seeded_install_media_install_path_for(
+    point_release: artifact.stock_artifact.point_release as NonEmptyStr,
+    hostname: artifact.autoinstall.identity.hostname,
+  )
 }
 
 fn ubuntu_seeded_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {

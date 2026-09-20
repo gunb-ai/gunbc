@@ -225,8 +225,9 @@ fn admit_action_release(action_release: ActionRelease) -> ActionUseAdmission {
 // selection. Nested releases inside a composite are admitted on runtime alone -- the composite's
 // producer chose them, not this repository.
 fn admit_selected_action_use(action_release: ActionRelease) -> ActionUseAdmission {
-  let a = admit_action_release(action_release: action_release)
-  if action_use_admitted(a: a) && !realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: action_release)) {
+  let uses_text = action_release_uses_text(action_release: action_release)
+  let a = admit_action_release_found(readings: action_manifest_readings, action_release: action_release, found: manifest_readings_for_producer(uses_text: uses_text))
+  if action_use_admitted(a: a) && !realized_use_is_a_repository_selection(uses_text: uses_text) {
     RefusedUnselectedRelease { action_release: action_release }
   } else {
     a
@@ -375,14 +376,15 @@ fn realized_uses_value(path: String, job_id: String, site: ActionUseSite, where_
 fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: YamlValue) -> RealizedUsesScan {
   match job {
     YamlMapping { entries: fields } => {
-      let with_job_use = match yaml_lookup(entries: fields, key: "uses") {
+      let named = filter(fields, e => (e.key == "uses") || (e.key == "steps"))
+      let with_job_use = match yaml_lookup(entries: named, key: "uses") {
         YamlKeyAbsent => acc
         YamlKeyPresent { value: v } => realized_uses_value(path: path, job_id: job_id, site: JobReusableWorkflowUse, where_: "the job-level", v: v, acc: acc)
       }
       if with_job_use.refusal != "" {
         with_job_use
       } else {
-        match yaml_lookup(entries: fields, key: "steps") {
+        match yaml_lookup(entries: named, key: "steps") {
           YamlKeyAbsent => with_job_use
           YamlKeyPresent { value: steps } =>
             match steps {

@@ -21,7 +21,7 @@ import gunbc.action_use_admission {
   WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
-  upload_artifact_action, checkout_action, github_script_action,
+  upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
@@ -311,8 +311,11 @@ test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
   census_holds(c: census_file(name: "heal-publish.yml"))
 }
 
+// The heal workflow carries the upload-artifact step the floor's receipts are published through.
 test fn census_heal_uses_are_modeled_and_executed_exactly() -> Bool {
-  census_holds(c: census_file(name: "heal.yml"))
+  let c = census_file(name: "heal.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
 }
 
 // The hand-authored canary: its checkout and github-script steps are among the admitted uses, so
@@ -324,11 +327,13 @@ test fn census_mtcollins_canary_uses_are_modeled_and_executed_exactly() -> Bool 
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: github_script_action))
 }
 
-// The generated floor workflow: its upload-artifact step is among the admitted uses.
+// The generated floor workflow: its checkout and setup-rust-toolchain steps are among the admitted
+// uses.
 test fn census_witnesses_uses_are_modeled_and_executed_exactly() -> Bool {
   let c = census_file(name: "witnesses.yml")
   census_holds(c: c)
-    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
 }
 
 // ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but

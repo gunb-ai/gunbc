@@ -15,7 +15,7 @@ import extdeps.languages.yaml.types {
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
   kv, empty_yaml_values
 }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 
 fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   [
@@ -65,9 +65,21 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
   }
 }
 
-fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
+// THE RENDERED USER-DATA, OR THE WRITER'S REFUSAL. extdeps.languages.yaml.emit emit_yaml refuses a
+// value it cannot write with its meaning -- a malformed number lexeme, a key held twice, a character
+// outside the repertoire it reads back -- and cloud-init is handed bytes, so that refusal travels to
+// whoever wanted the media rather than being rendered into the document it is about.
+type AutoinstallUserData
+  = AutoinstallUserDataRendered { content: String }
+  | AutoinstallUserDataRefused { reason: String }
+
+fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> AutoinstallUserData {
   let top = yaml_mapping(entries: [
     kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
   ])
-  concat("#cloud-config\n", serialize_yaml(v: top))
+  match emit_yaml(v: top) {
+    EmittedYaml { text: t } => AutoinstallUserDataRendered { content: concat("#cloud-config\n", t) }
+    YamlEmitRefused { path: p, reason: r } =>
+      AutoinstallUserDataRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.os_install_emit", path: p, reason: r) }
+  }
 }

@@ -2,7 +2,7 @@ module test.claim.srv3_seeded_install_media_real_execution
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_grub_kernel_cmdline }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_ensure_grub_cmdline }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -18,7 +18,7 @@ test fn install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution() -
   let dir = shell.Mktemp.Dir()
   let grub_cfg = concat(dir.path as String, "/grub.cfg") as NonEmptyStr
   let wrote = Filesystem.Write(path: grub_cfg as String, content: grub_cfg_fixture_without_cmdline)
-  let cmdline = srv3_seeded_install_media_artifact.grub_kernel_cmdline
+  let cmdline = srv3_seeded_grub_kernel_cmdline
   let applied = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)
   let after = Filesystem.Read(path: grub_cfg as String)
   let idempotent_reapply = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)

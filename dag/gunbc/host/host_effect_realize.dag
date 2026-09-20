@@ -345,13 +345,14 @@ import gunbc.srv3_boot_once_cd {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media, Srv3SeededInstallMedia, Srv3SeededInstallMediaDerived, Srv3SeededInstallMediaRefused }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
 }
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaArtifactRow }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
   install_media_remaster_reconcile,
   InstallMediaRemasterAlreadyPresent,
@@ -3354,7 +3355,16 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
 }
 
 fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match install_media_remaster_reconcile(artifact: srv3_seeded_install_media_artifact) {
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: r } =>
+      NotConverged { reason: concat("install-media-remaster: the seeded media has no derivation: ", r), applied: intent }
+    Srv3SeededInstallMediaDerived { artifact: derived } =>
+      realize_install_media_remaster_for(intent: intent, artifact: derived)
+  }
+}
+
+fn realize_install_media_remaster_for(intent: HostEffectIntent, artifact: UbuntuSeededInstallMediaArtifactRow) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match install_media_remaster_reconcile(artifact: artifact) {
     InstallMediaRemasterAlreadyPresent { path: p } =>
       reconcile_grounded(
         apply_effect: intent,

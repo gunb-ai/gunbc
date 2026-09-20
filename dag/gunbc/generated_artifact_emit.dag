@@ -49,7 +49,7 @@ import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { generated_artifact_author_regen_command }
-import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.runner_host_grants {
   runner_host_refused_sudoers_content, runner_host_sudoers_content }
 import gunbc.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
@@ -152,7 +152,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       Fci1BoundedExecutionContextEmissionRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
-    AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
+    AutoinstallUserDataArtifact { spec } => match autoinstall_user_data(payload: spec.payload) {
+      AutoinstallUserDataRendered { content } => artifact_generated(content: content)
+      AutoinstallUserDataRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
     RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
       RunnerHostDeployFound { deploy } =>
         artifact_generated(

@@ -6,16 +6,12 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   ubuntu_seeded_install_media_default_nocloud_dir,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
   seeded_install_media_content_hash,
-  ubuntu_seeded_install_media_install_path,
+  ubuntu_seeded_install_media_install_path_for,
 }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit { autoinstall_user_data }
-import std.types { NonEmptyStr }
+import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
+import std.types { NonEmptyStr, String }
 import std.content_hash { ContentHash }
-
-data srv3_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
-  payload: srv3_ubuntu_autoinstall_on_iso,
-) as NonEmptyStr
 
 data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
   hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
@@ -25,22 +21,40 @@ data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_
   nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
 )
 
-data srv3_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
-  stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-)
+// THE DERIVATION CARRIES THE RENDERER'S REFUSAL, because the seeded media IS its rendered user-data:
+// the body is written into the ISO's seed and hashed into the media's identity, so a document the
+// YAML writer will not write leaves no media to name. Every consumer of the row below therefore
+// matches this outcome and refuses in its own vocabulary; the install path above does not, because
+// the name is made of the stock point release and the host, neither of which is seeded content.
+type Srv3SeededInstallMedia
+  = Srv3SeededInstallMediaDerived { artifact: UbuntuSeededInstallMediaArtifactRow }
+  | Srv3SeededInstallMediaRefused { reason: String }
 
-data srv3_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {
-  stock_artifact: noble_numbat_2404_3_live_server_arm64,
-  autoinstall: srv3_ubuntu_autoinstall_on_iso,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-  content_hash: srv3_seeded_install_media_content_hash,
+fn srv3_seeded_install_media_derivation() -> Srv3SeededInstallMedia {
+  match autoinstall_user_data(payload: srv3_ubuntu_autoinstall_on_iso) {
+    AutoinstallUserDataRefused { reason: r } => Srv3SeededInstallMediaRefused { reason: r }
+    AutoinstallUserDataRendered { content: body } =>
+      Srv3SeededInstallMediaDerived {
+        artifact: UbuntuSeededInstallMediaArtifactRow {
+          stock_artifact: noble_numbat_2404_3_live_server_arm64,
+          autoinstall: srv3_ubuntu_autoinstall_on_iso,
+          autoinstall_user_data_body: body as NonEmptyStr,
+          grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
+          nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
+          content_hash: seeded_install_media_content_hash(
+            stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
+            autoinstall_user_data_body: body as NonEmptyStr,
+            grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
+            nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
+          ),
+        },
+      }
+  }
 }
 
-data srv3_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path(
-  artifact: srv3_seeded_install_media_artifact,
+data srv3_seeded_install_media: Srv3SeededInstallMedia = srv3_seeded_install_media_derivation()
+
+data srv3_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path_for(
+  point_release: noble_numbat_2404_3_live_server_arm64.point_release as NonEmptyStr,
+  hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
 )

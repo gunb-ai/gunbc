@@ -2,6 +2,34 @@ module test.claim.srv3_os_install_diagnostic
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// THE MEDIA HASH AND THE ATTEMPT INTENT ARE SUPPLIED HERE, because what these claims discriminate is
+// the DIAGNOSTIC FOLD over an observation, not the seeded media's derivation: deriving them would
+// re-execute the renderer and the content hash once per claim (DESIGN section 3's standing rule).
+// The pairing obligation is discharged by the_production_attempt_intent_carries_the_derived_media_hash
+// below, which runs the real derivation and the real intent and joins them.
+data witness_media_hash: ContentHash = content_hash_of_value(value: "srv3-seeded-media-witness-fixture")
+
+data witness_attempt_intent: OsInstallAttemptIntent = srv3_os_install_attempt_intent_for(
+  iso_content_hash: witness_media_hash,
+)
+
+// THE REAL ROUTE, RUN ONCE: the production derivation renders its user-data and hashes it, and the
+// production intent carries THAT hash -- so the supplied pair above stands for something the tree
+// actually produces. A refused derivation is a red here, not a skipped claim.
+test fn the_production_attempt_intent_carries_the_derived_media_hash() -> Bool {
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: _ } => false
+    Srv3SeededInstallMediaDerived { artifact: media } =>
+      match srv3_os_install_attempt() {
+        Srv3OsInstallAttemptUnavailable { reason: _ } => false
+        Srv3OsInstallAttemptIntended { intent: i } =>
+          (i.iso_content_hash == media.content_hash)
+            && (i.iso_path == srv3_actuator_virtual_media_iso_install_path)
+            && string_contains(s: media.autoinstall_user_data_body as String, pattern: "#cloud-config")
+      }
+  }
+}
+
 fn base_observations(
   serve_process: NbdServeProcessObservation,
   serve_port: NbdServePortObservation,
@@ -42,7 +70,7 @@ fn serve_ready_sol_silent_pre_boot_observations() -> OsInstallActuationObservati
   base_observations(
     serve_process: ServeProcessesPresent,
     serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
-    iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+    iso: IsoPresent { observed_content_hash: witness_media_hash },
     redfish_boot_enabled: BootOverrideDisabled,
     elapsed_ms: 0,
     sol: SolConsoleContentObservation {
@@ -61,11 +89,11 @@ fn serve_ready_sol_silent_pre_boot_observations() -> OsInstallActuationObservati
 
 test fn serve_absent_is_not_ready_to_boot() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: base_observations(
       serve_process: NbdkitAbsent,
       serve_port: ServePortAbsent,
-      iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 0,
       sol: SolConsoleContentObservation {
@@ -91,7 +119,7 @@ test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
     port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
     session: TokenPresent,
     iso: IsoPresent { observed_content_hash: content_hash_of_value(value: "wrong-hash") },
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
   ) {
     IsoHashMismatch => true
     _ => false
@@ -100,11 +128,11 @@ test fn wrong_iso_hash_refuses_serve_ready() -> Bool {
 
 test fn boot_override_consumed_without_install_evidence() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: base_observations(
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
-      iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 120000,
       sol: SolConsoleContentObservation {
@@ -132,7 +160,7 @@ test fn only_bmc_static_lease_is_not_os_installed() -> Bool {
     OnlyBmcLeasePresent =>
       !install_diagnostic_verdict_is_os_installed(
         verdict: diagnose_os_install_actuation(
-          intent: srv3_os_install_attempt_intent,
+          intent: witness_attempt_intent,
           observations: serve_ready_sol_silent_pre_boot_observations(),
         ),
       )
@@ -142,12 +170,12 @@ test fn only_bmc_static_lease_is_not_os_installed() -> Bool {
 
 test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
-      iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso_readiness: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_system: RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideDisabled,
@@ -184,12 +212,12 @@ test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
 
 test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
-      iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso_readiness: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_system: RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideDisabled,
@@ -225,11 +253,11 @@ test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
 
 test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
   let hung = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: base_observations(
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
-      iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: srv3_install_hang_no_router_lease_ms,
       sol: SolConsoleContentObservation {
@@ -251,7 +279,7 @@ test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
 
 test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: serve_ready_sol_silent_pre_boot_observations(),
   )
   install_diagnostic_verdict_is_ready_to_boot(verdict: verdict)
@@ -260,12 +288,12 @@ test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
 
 test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
-      iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso_readiness: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_system: RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideOnce,
@@ -301,11 +329,11 @@ test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
 
 test fn autoinstall_running_fixture() -> Bool {
   let verdict = diagnose_os_install_actuation(
-    intent: srv3_os_install_attempt_intent,
+    intent: witness_attempt_intent,
     observations: base_observations(
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
-      iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
+      iso: IsoPresent { observed_content_hash: witness_media_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 1800000,
       sol: SolConsoleContentObservation {
