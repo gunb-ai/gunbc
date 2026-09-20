@@ -1,0 +1,100 @@
+module v2.test.parse.block_expr_as_binary_operand_parse
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEFECT THESE ARMS DISCRIMINATE, AND WHY IT IS AN ORDERING FACT RATHER THAN A MISSING FORM.
+//
+// `dag_grammar_expr_expr` is an ordered choice whose first alternatives are `match_expr`,
+// `if_expr` and `loop_expr`, with `binary_expr` last. `dag_grammar_primary_expr_core` ALREADY
+// reaches all three of those same productions as its final alternatives, so a block-shaped
+// expression is a legal binary operand by construction. The ordering is what denies it: given
+// `match a { ... } && b`, the `expr` choice commits to `match_expr`, that production succeeds
+// having consumed the match alone, and the `&& b` that follows reaches no production -- the parse
+// ends with tokens remaining. Nothing about the operand is unrepresentable; the alternative that
+// could represent it is never offered.
+//
+// WHY THE RED IS AUTHORABLE HERE (DESIGN 4b, the top-rung question). The forbidden state is a
+// source text the accepted corpus cannot contain, because a module spelling it does not parse --
+// so no corpus fixture could carry it. It is perfectly representable as SOURCE HANDED TO THE
+// PARSER, which is what these arms do: the grammar under judgment is the live
+// `dag_prepared_grammar`, not a mirror of it, and the text is a value.
+//
+// WHAT EACH ARM ESTABLISHES, so a later reader does not mistake the set for one claim:
+//   - the two REDs are the defect, one per block form (`match` and `if`) heading a binary chain;
+//     before the reorder both are Rejected and both arms fail.
+//   - `bare_match_still_parses` and `bare_if_still_parses` are the controls that make the reorder
+//     a repair rather than a trade: a block form standing alone as a whole expression, which is
+//     how nearly every such expression in the corpus is written, must keep parsing.
+//   - `ordinary_binary_still_parses` holds the other side: an operand that was never block-shaped
+//     is unaffected.
+// A change that satisfied the REDs by making block forms parse ONLY as binary operands would take
+// the controls red, which is the discrimination the pair exists to provide.
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The shape read from a real refusing site: `dag/gunbc/fleet/fleet_fan_wiring_witness.dag` closes
+// one match and opens the next as the right operand of `&&`.
+data match_as_binary_operand_source: String = "module probe.match_binary\n\nfn f(a: Int) -> Bool {\n  match a {\n    _ => true\n  } && true\n}\n"
+
+data if_as_binary_operand_source: String = "module probe.if_binary\n\nfn f(a: Bool) -> Bool {\n  if a {\n    true\n  } else {\n    false\n  } && true\n}\n"
+
+data bare_match_source: String = "module probe.bare_match\n\nfn f(a: Int) -> Bool {\n  match a {\n    _ => true\n  }\n}\n"
+
+data bare_if_source: String = "module probe.bare_if\n\nfn f(a: Bool) -> Bool {\n  if a {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data ordinary_binary_source: String = "module probe.ordinary_binary\n\nfn f(a: Bool) -> Bool {\n  a && true\n}\n"
+
+test fn match_heading_a_binary_chain_parses_holds() -> Bool {
+  g_parse_accepted(text: match_as_binary_operand_source, file: ^probe_match_binary)
+}
+
+test fn if_heading_a_binary_chain_parses_holds() -> Bool {
+  g_parse_accepted(text: if_as_binary_operand_source, file: ^probe_if_binary)
+}
+
+test fn bare_match_still_parses_holds() -> Bool {
+  g_parse_accepted(text: bare_match_source, file: ^probe_bare_match)
+}
+
+test fn bare_if_still_parses_holds() -> Bool {
+  g_parse_accepted(text: bare_if_source, file: ^probe_bare_if)
+}
+
+test fn ordinary_binary_still_parses_holds() -> Bool {
+  g_parse_accepted(text: ordinary_binary_source, file: ^probe_ordinary_binary)
+}
