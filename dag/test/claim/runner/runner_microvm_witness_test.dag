@@ -1365,7 +1365,7 @@ test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
             records: [CellAttemptInFlight {
               cell: lost_cell,
               generation: 0,
-              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, jit_registration_id: "reg-lost" as NonEmptyStr },
+              attempt: InFlightAttempt { attempt: lost, invocation_id: "inv-lost" as NonEmptyStr, jit_registration_id: "reg-lost" as NonEmptyStr, credential_device_path: "/srv/gunbc/cells/lost/jail/firecracker/w/root/jit.bin" },
             }],
           },
           cell: lost_cell,

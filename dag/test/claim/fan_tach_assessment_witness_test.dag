@@ -108,13 +108,15 @@ test fn srv1_diverges_on_its_two_degraded_endpoints() -> Bool {
 
 // THE POSITIVE CONTROL. Without it the divergence above could be produced by an assessment that
 // never agrees for any input, which would make the wall decoration rather than a check. srv2 is
-// the same fleet, the same floor, and healthy.
+// the same fleet, the same floor, and healthy. Ten headers are judged: FAN1..FAN5 rotating, and the
+// board's five secondary tach headers FANn_1 correctly absent (gunbc.fleet_fan_tach_expectation
+// altrad8ud_secondary_tach_headers).
 test fn srv2_the_control_host_is_satisfied() -> Bool {
   match inspect_fan_tach(subject: subject_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
-        GoalSatisfied { evidence: e } => e.headers_judged == 5 && e.healthy.length() == 5
+        GoalSatisfied { evidence: e } => e.headers_judged == 10 && e.healthy.length() == 10
         GoalDiverged { deviations: ds } => false
         GoalIndeterminate { known_deviations: kd, unknowns: u } => false
         GoalAssessmentRefused { cause: c } => false
@@ -369,9 +371,11 @@ test fn an_expected_header_publishing_nothing_is_also_an_anomaly() -> Bool {
 
 // UNAVAILABLE AND NEVER-ROTATED ARE DIFFERENT ABSENCES. srv3/FAN2 publishes nothing because
 // nothing is wired to it; that is not the same as a rotor that was read and never turned.
+// Six correctly absent: srv3's unwired FAN2 plus the board's five secondary tach headers FANn_1
+// (gunbc.fleet_fan_tach_expectation altrad8ud_secondary_tach_headers), none of which has a window.
 test fn an_unwired_endpoint_is_nominal_not_a_missing_rotation() -> Bool {
   let js = judgements_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)
-  rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 1
+  rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 6
     && rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 0
     && rotation_observed_count(healthy: healthy_of(judgements: js)) == 4
 }
@@ -384,7 +388,7 @@ test fn a_not_expected_header_that_spins_is_drift() -> Bool {
     windows: with_window(windows: srv3_windows, header: "FAN2", replacement: srv3_fan2_spinning),
   )
   expectation_drift_count(deviations: deviations_of(judgements: js)) == 1
-    && rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 0
+    && rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 5
 }
 
 // AND DRIFT MUST BE ZERO ON THE UNMODIFIED FLEET, or the control above proves only that the counter

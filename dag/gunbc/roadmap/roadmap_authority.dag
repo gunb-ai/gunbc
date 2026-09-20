@@ -54,7 +54,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_acceptance_history_carrier {
   roadmap_acceptance_event_history_carrier_repo_path,
   load_roadmap_acceptance_event_history,
-  load_roadmap_acceptance_event_history_from_carrier_text,
+  RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
@@ -848,6 +848,66 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 // briefs and rulings live on the dashboard and are not restated here.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    active(
+      identity: "rn_GPNBAHVJ425GYW8DEWBD26144B",
+      id: "ci-cost-floor-memory-term-attribution",
+      owner: "ci-cost",
+      path: "docs/plans/floor-memory-envelope-2026-09-12.md",
+      t: fields(
+        headline: "Attribute the floor's memory to the terms that hold it, starting with pool_parse",
+        boundary: "Give the existing per-term retention machinery a byte-measuring driver. v1_compiler.cli_run drop_attributable_terms_for_test and drop_private_term_for_test already state that the live-heap release measured across a call is that term's EXCLUSIVE retention, and already enumerate the terms -- pool_parse among them -- with NO driver and a single unit-test caller counting entries. A TIME accumulator for the same term exists in claim_batch's cost partition; only the memory side is missing. Read the term roster from those two declarations rather than from a count quoted here.",
+        displaced_cost: "The floor's largest memory component cannot be named. First-touch attribution puts pool_parse's bytes on gate-closure or the whole-corpus resolve, and pool-root-index-warm reports zero growth because something upstream forced the parse first -- so the one number that would rank the work is the one nobody can produce. A cap or a slot sized without it is sized against an unattributed total.",
+        first_slice: "Wire a driver to the existing terms and report pool_parse. The machinery is three-quarters built; this is a driver, not a model.",
+        red_control: "A term whose retention the driver cannot measure REFUSES rather than reporting zero -- zero and unmeasured are the conflation this lane exists to prevent, and it is the same distinction the landed floor-memory carrier draws between a bound and a demand.",
+        out_of_scope: "Re-measuring the whole-run peak, which the landed instrument already does; and fixing the floor's inability to report its own peak, which is a separate defect recorded below.",
+        handback: "The driver, a pool_parse byte figure re-derivable by naming its producer, and a refusal receipt for a term it cannot measure. RELATED AND DELIBERATELY NOT BUNDLED: floor_cgroup_envelope is documented as emitted at entry AND EXIT and has no exit call, so a run outside the supervisor cannot report its maximum. If that is fixed it must be an RAII GUARD rather than a placed call, and the reason is countable in v1_compiler.cli_run run_required_floor rather than quotable from here: its early-return and propagation sites vastly outnumber its explicit successful returns, so a placed call is unreachable on most paths."
+      )
+    ),
+    active(
+      identity: "rn_K6EVN9SKS7WV617GECTH3N2TPQ",
+      id: "ci-cost-floor-preparation-cut",
+      owner: "ci-cost",
+      path: "docs/design-rung-drops.md",
+      t: fields(
+        headline: "Make the floor affordable enough to be a merge gate again",
+        boundary: "Cut the required fold's PREPARATION cost until the floor fits the fleet, then put it back on the merge path. THE CLAIMS WERE NEVER THE EXPENSE -- claim execution is a small fraction of the floor's wall time while strict-preparation and reach probes dominate it. Re-derive that split from the phase lines a required-witnesses-floor run prints (gunbc.witness_floor_workflow); THAT NO ENTRY POINT RE-DERIVES IT IS PART OF WHAT THIS NODE FIXES, which is why no figure is carried here. The two candidate constructions are reusing resolved-module and reach-probe results across runs, or scoping preparation to a diff's closure.",
+        displaced_cost: "The required gate is currently a compiler build. The witness floor, namespace-wave-admission, generated-artifact, the regen fixed point and the parse sweep all left the merge path, so main can break for any of them while every required check stays green -- which it already has, within three hours of the cut. Every session pays that risk on every change.",
+        first_slice: "Measure where preparation time goes at module grain, then land whichever of the two constructions the measurement supports. Restoring the gate is the second step and not this one.",
+        red_control: "A change that breaks a floor claim is refused on the revision that lands, at a whole-run cost the fleet can carry concurrently with the build lane.",
+        out_of_scope: "Re-emitting witnesses.yml from the old authority without the preparation repair, which restores the cost that caused the cut; and making the floor faster without returning it to the merge path.",
+        handback: "The preparation measurement WITH AN ENTRY POINT THAT RE-DERIVES IT rather than a figure quoted from a log, the landed construction, a required run that planned and executed the enrolled population on a landing revision, and the retirement of gunbc.rung_drop witness_floor_off_the_required_gate."
+      )
+    ),
+    active(
+      identity: "rn_B5WDFV02PYSHAYM68VKGVMGZW2",
+      id: "ci-control-namespace-admission-billing",
+      owner: "ci-control",
+      path: "docs/design-rung-drops.md",
+      t: fields(
+        headline: "Charge a transition-admission row to the change that owns it, and enforce it when the change lands",
+        boundary: "Both halves and no smaller set, as the drop's own trigger states. One: adjudicate a row's consumption and deletion debt on the composition of the change that OWNS the row, so a merge_group run over bystanders cannot refuse on a row it did not touch. Two: run that adjudication on the composition that actually lands, so a base-consumed row is observed then rather than whenever the roster is next touched.",
+        displaced_cost: "Getting the billing wrong in either direction has now been measured twice. Charging bystanders cost a large and recurring share of fleet time per queued pull request before refusal -- the figure and its reading are carried by the operator ruling recorded on gunbc#11774, which priced the gate and deleted it -- with ten open changes each independently deleting one stale row; removing the charge entirely left the wall unable to fire at all, and the wall was then deleted.",
+        first_slice: "The ownership half, since it is what makes the enforcement half safe to run at landing time.",
+        red_control: "A discriminating RED for each half on the real acceptance path: a bystander change is NOT refused by a row it does not own, and a change that consumes a row without deleting it IS refused on the revision that lands.",
+        out_of_scope: "Re-enrolling the phase without the billing repair, which reproduces the cost that caused the deletion.",
+        handback: "Both halves executing with their reds enrolled, the phase re-enrolled, and the retirement of gunbc.rung_drop namespace_wave_admission_wall_removed."
+      )
+    ),
+    active(
+      identity: "rn_P4WR8PZ5D6W4TMR1RZ7G87416F",
+      id: "namespace-reference-derived-producer-bounded",
+      owner: "namespace",
+      path: "docs/plans/namespace-cut-replacement-plan.md",
+      t: fields(
+        headline: "Give the reference-derived graph producer a bounded realization",
+        boundary: "Rewrite the producer so it retains only what its consumers demand. The demand was measured and it is a NAME TABLE, not a syntax population: every lookup the edge fold makes of the index discards the Node, the one genuine Node demand is an equality discriminant in index construction that a per-key digest supplies, and trees is read at one site for the importer's own root.",
+        displaced_cost: "The producer holds the whole corpus in memory to answer questions that need a name table, and it sits upstream of the namespace cut. Its residency is a standing cost on every consumer that resolves through it.",
+        first_slice: "TWO GATES IN ORDER, and the second is easy to miss: gunbc#11683 owns src/v2/lens/module_graph.dag, so racing it produces a conflict someone else pays for; and gunbc#11574 (type and data decls never become Named edges) blocks wiring the derivation to the producer's own declaration, because a TYPE declaration cannot be resolved from a live tree today. The qualification instrument any bounded-realization claim must pass has already landed and is unmintable from a semantic receipt alone.",
+        red_control: "Identical edge projection over the corpus before and after, plus the landed residency qualification passing on the rewritten producer rather than on a semantic receipt.",
+        out_of_scope: "Editing module_graph.dag while gunbc#11683 is open; and claiming bounded realization from the semantic receipt, which the qualification instrument exists to refuse.",
+        handback: "The rewritten producer, the before/after edge-projection equivalence evidence, and the qualification passing by invocation. A FALSIFIABLE PREDICTION IS ON RECORD RATHER THAN A BYTE FIGURE, because none was measured: run the census-resolve contrast of gunbc#11738 against this producer and the gap should be dominated by SymbolIndex.entries and ReferenceDerivedPool.trees rather than by the parse. Test it; do not inherit it."
+      )
+    ),
     active(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
@@ -3221,9 +3281,9 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // git.Core.Show — a changed carrier without valid merge-base parse refuses
 // AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = [].
 
-// The single route from a loaded event history to a receipts projection. Both wrappers below
-// call it, so a loaded-but-unreplayable history cannot fabricate an affirmative empty on one
-// path while the other refuses: there is one arm to get wrong, not two.
+// The single route from a loaded event history to a receipts projection. It is the one arm that
+// can get the replay distinction wrong, so there is exactly one place to get it right: a
+// loaded-but-unreplayable history refuses here and cannot fabricate an affirmative empty.
 fn acceptance_receipts_projection_from_events(
   events: List<RoadmapAcceptanceEvent>,
 ) -> RoadmapAcceptanceReceiptsProjection {
@@ -3237,17 +3297,10 @@ fn acceptance_receipts_projection_from_events(
   }
 }
 
-fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      acceptance_receipts_projection_from_events(events: events)
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
-  }
-}
-
-fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
-  match roadmap_acceptance_event_history_load() {
+// Acquisition stays at callers; both live and fixture projections carry parsed events or the
+// exact load refusal through this pure chain.
+fn roadmap_acceptance_receipts(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAcceptanceReceiptsProjection {
+  match history {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       acceptance_receipts_projection_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
@@ -3364,58 +3417,55 @@ type FrontierSetsProjection
   = FrontierSetsProjected { accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId> }
   | FrontierSetsProjectionRefused { detail: String }
 
-fn frontier_sets_from_events(events: List<RoadmapAcceptanceEvent>) -> FrontierSetsProjection {
-  match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-    RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
-      FrontierSetsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationsJoined =>
-      match replay_acceptance_history(events: events) {
-        Absent =>
-          FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
-        Present { value: state } =>
-          match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
-            LiveReceiptJoinsSupersededLine { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-superseded-line:", node as String], ""),
-              }
-            LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-does-not-match-declared-node:", node as String], ""),
-              }
-            LiveReceiptJoinsUndeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-undeclared-node:", node as String], ""),
-              }
-            LiveReceiptJoinsAmbiguousDeclaredNode { node: node } =>
-              FrontierSetsProjectionRefused {
-                detail: join(["live-receipt-on-ambiguous-declared-node:", node as String], ""),
-              }
-            LiveReceiptsJoinDeclared =>
-              FrontierSetsProjected {
-                accepted: accepted_node_ids_from_receipts(receipts: state.live),
-                withheld: node_ids_held_off_active_frontier(history: events),
+fn frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoad) -> FrontierSetsProjection {
+  match history {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+      FrontierSetsProjectionRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => {
+      match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
+        RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
+          FrontierSetsProjectionRefused {
+            detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
+          }
+        RemainsSupersededRevocationsJoined =>
+          match replay_acceptance_history(events: events) {
+            Absent =>
+              FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
+            Present { value: state } =>
+              match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
+                LiveReceiptJoinsSupersededLine { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+                  }
+                LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-does-not-match-declared-node:", node as String], ""),
+                  }
+                LiveReceiptJoinsUndeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-undeclared-node:", node as String], ""),
+                  }
+                LiveReceiptJoinsAmbiguousDeclaredNode { node: node } =>
+                  FrontierSetsProjectionRefused {
+                    detail: join(["live-receipt-on-ambiguous-declared-node:", node as String], ""),
+                  }
+                LiveReceiptsJoinDeclared =>
+                  FrontierSetsProjected {
+                    accepted: accepted_node_ids_from_receipts(receipts: state.live),
+                    withheld: node_ids_held_off_active_frontier(history: events),
+                  }
               }
           }
       }
-  }
-}
-
-fn frontier_sets_from_live_history() -> FrontierSetsProjection {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      FrontierSetsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      frontier_sets_from_events(events: events)
+    }
   }
 }
 
@@ -3423,26 +3473,12 @@ type WithheldNodeIdsProjection
   = WithheldNodeIdsProjected { ids: List<RoadmapNodeId> }
   | WithheldNodeIdsProjectionRefused { detail: String }
 
-fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
-  match frontier_sets_from_live_history() {
+fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> WithheldNodeIdsProjection {
+  match frontier_sets_projection(history: history) {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
       WithheldNodeIdsProjected { ids: withheld }
     FrontierSetsProjectionRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
-  }
-}
-
-fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      WithheldNodeIdsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_from_events(events: events) {
-        FrontierSetsProjected { accepted: _, withheld: withheld } =>
-          WithheldNodeIdsProjected { ids: withheld }
-        FrontierSetsProjectionRefused { detail: detail } =>
-          WithheldNodeIdsProjectionRefused { detail: detail }
-      }
   }
 }
 
@@ -3470,7 +3506,7 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3481,7 +3517,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3768,7 +3804,7 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3779,7 +3815,7 @@ fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjectio
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3799,7 +3835,7 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -3957,36 +3993,8 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
     |> map(n => n.node)
 }
 
-fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthorityProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      RoadmapAuthorityProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_from_events(events: events) {
-        FrontierSetsProjectionRefused { detail: detail } =>
-          RoadmapAuthorityProjectionRefused { detail: detail }
-        FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-          RoadmapAuthorityProjected {
-            doc: RoadmapDocument {
-              preamble: preamble(),
-              lead_lanes: [],
-              sections: [
-                active_section_for_acceptance(
-                  focus: roadmap_focus_selection,
-                  accepted: accepted,
-                  withheld: withheld,
-                ),
-              ],
-            },
-            accepted: accepted,
-            withheld: withheld,
-          }
-      }
-  }
-}
-
-fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
-  match frontier_sets_from_live_history() {
+fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
+  match frontier_sets_projection(history: history) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
@@ -4027,7 +4035,7 @@ fn roadmap_authority_for(focus: RoadmapFocus) -> RoadmapDocument {
 }
 
 fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       RoadmapSection {
         title: "Active deliverables — dependency order",
@@ -4681,7 +4689,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
 }
 
 // Operational consumers (belt, dispatch, forecast, page, spawn) match
-// roadmap_authority_projection() and propagate RoadmapAuthorityProjectionRefused.
+// roadmap_authority_projection and propagate RoadmapAuthorityProjectionRefused.
 // roadmap_authority() is retained for witnesses that run with a loaded carrier; on refusal it
 // returns an explicit unavailable document rather than a silent empty active graph.
 
@@ -4692,7 +4700,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
       ParagraphBlock {
         inlines: [TextInline {
           text: concat(
-            "Acceptance history projection refused; match roadmap_authority_projection() at operational boundaries: ",
+            "Acceptance history projection refused; match roadmap_authority_projection at operational boundaries: ",
             detail,
           ),
         }],
@@ -4704,7 +4712,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 }
 
 fn roadmap_authority() -> RoadmapDocument {
-  match roadmap_authority_projection() {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
@@ -4728,7 +4736,7 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
 }
 
 fn expected_roadmap_md() -> String {
-  expected_roadmap_md_for_projection(proj: roadmap_authority_projection())
+  expected_roadmap_md_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_drifted(committed: String) -> Bool {

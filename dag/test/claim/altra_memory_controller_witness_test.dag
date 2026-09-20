@@ -162,11 +162,23 @@ test fn w_production_qualification_separates_bringup_from_production() -> Bool {
 // re-denomination reds rather than rounding.
 test fn w_device_organization_matches_the_datasheet() -> Bool {
   list_length(items: altra_admitted_device_widths) == 2
-    && bit_width_count(b: altra_admitted_device_widths.first()) == 4
-    && bit_width_count(b: altra_admitted_device_widths.last()) == 8
     && list_length(items: altra_admitted_device_densities) == 2
-    && byte_size_count(b: altra_admitted_device_densities.first()) == 1073741824
-    && byte_size_count(b: altra_admitted_device_densities.last()) == 2147483648
+    && match altra_admitted_device_widths.first() {
+      Present { value: w } => bit_width_count(b: w) == 4
+      Absent => false
+    }
+    && match altra_admitted_device_widths.last() {
+      Present { value: w } => bit_width_count(b: w) == 8
+      Absent => false
+    }
+    && match altra_admitted_device_densities.first() {
+      Present { value: d } => byte_size_count(b: d) == 1073741824
+      Absent => false
+    }
+    && match altra_admitted_device_densities.last() {
+      Present { value: d } => byte_size_count(b: d) == 2147483648
+      Absent => false
+    }
 }
 
 // The channel facts, and the aggregate DERIVED from them rather than authored beside them.

@@ -6,7 +6,7 @@ The fabric DB is gunbc's own store for the fabric's durable state. The operator 
 
 Three facts, kept apart (DESIGN §3):
 
-- **Interface:** `std.fabric_db`. It has immutable content-addressed objects and compare-and-set named heads, built from `std.content_hash` keys and `std.durable_compare_and_set` rather than new vocabulary.
+- **Interface:** `std.fabric_storage`. It has immutable content-addressed objects and compare-and-set named heads, built from `std.content_hash` keys and `std.durable_compare_and_set` rather than new vocabulary.
   - **Links the store can see:** an object carries its links as data the store reads. That lets a closure read walk the whole chain where it is held.
   - **Refusals:** each has a typed arm:
     - `FabricStoreUnreachable`
@@ -17,11 +17,11 @@ Three facts, kept apart (DESIGN §3):
     - `FabricHeadNameRefused`
   - **Lost race:** a lost race is `FabricHeadMoved`, carrying both heads. It is an outcome, not a fault.
 - **Realization:** three pieces.
-  - `gunbc.fabric_db_file_store`: heads are `gunbc.durable_cas_file_store` slots, and objects are write-once files beside them.
-  - `gunbc.fabric_db_serve`: the served endpoint, one `gunbc serve` process on the placed host, loopback-bound behind `tailscale serve`.
-  - `gunbc.fabric_db_client`: the caller-side binding. It runs in process on the placed host and makes one bounded HTTPS POST anywhere else.
-  - **Wire:** `gunbc.fabric_db_wire` is the one text form every outcome crosses the hop in.
-- **Policy:** `gunbc.fabric_db_placement`, one host and one root. Nothing downstream names the host.
+  - `gunbc.fabric_storage_file_store`: heads are `gunbc.durable_cas_file_store` slots, and objects are write-once files beside them.
+  - `gunbc.fabric_storage_serve`: the served endpoint, one `gunbc serve` process on the placed host, loopback-bound behind `tailscale serve`.
+  - `gunbc.fabric_storage_client`: the caller-side binding. It runs in process on the placed host and makes one bounded HTTPS POST anywhere else.
+  - **Wire:** `gunbc.fabric_storage_wire` is the one text form every outcome crosses the hop in.
+- **Policy:** `gunbc.fabric_storage_placement`, one host and one root. Nothing downstream names the host.
 
 ## Steps 1–3 (this change)
 

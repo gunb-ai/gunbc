@@ -1,0 +1,235 @@
+module test.claim.authorization_pattern_selection_witness
+
+// THE SELECTION IS THE FACT THAT WAS MISSING, so the selection is what has to execute. Each probe
+// supplies one privileged effect at the interface (§3: a witness discriminates at one interface)
+// and asserts which pattern the fold selects; the census probes at the end run the real roster
+// through the real fold, which is the inhabitance claim the fixtures owe.
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, HumanSurfaceOnly,
+  WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
+  ReversibleByReapply, IrreversibleEffect,
+  BillsExternally, NoBillingConsequence,
+  FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
+  PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  AuthorizationPatternSelection,
+  select_authorization_pattern, witness_required,
+}
+import gunbc.auth.privileged_effect_census {
+  privileged_effect_census, census_verdicts, undecidable_sites,
+  unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
+  reasoned_divergences, reasoned_divergences_with_fired_triggers,
+  site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+}
+import std.human_intervention {
+  HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
+  NoDischargeSiteModeled,
+}
+import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
+import std.types { NonEmptyStr, String, Int, List }
+import std.logic { Bool }
+
+fn recurring_read() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a credential read on every provision" as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+fn one_off_irreversible_mint() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a one-off token mint whose value is returned once" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "the value" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+fn one_off_grant_unbindable() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a one-off accessor-cell grant the workload may not perform" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "grant administrator only" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+fn dashboard_step() -> HumanIntervention {
+  HumanIntervention {
+    identity: "fixture-dashboard-step" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "a checkout-only activation" as NonEmptyStr,
+    instruction: "click the button" as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn dashboard_only() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "an activation no API performs" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: HumanSurfaceOnly { step: dashboard_step() },
+    workload_identity: WorkloadIdentityUnbindable { cause: "no API" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: BillsExternally,
+  }
+}
+
+fn recurring_but_witnessed() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a per-provision effect that bills externally" as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: "serviceAccount:fixture@fixture.invalid" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: BillsExternally,
+  }
+}
+
+fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn selected_approved(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+// (a) A recurring, reversible, bindable read is federated -- zero human actions, and the approval
+// pattern is dominated rather than excluded.
+test fn a_recurring_reversible_bindable_read_is_federated() -> Bool {
+  selected_federated(s: select_authorization_pattern(e: recurring_read()))
+}
+
+// (b) An irreversible one-off is approved per effect, and the federated pattern is NOT selected
+// even though the identity is bindable: no human witnessed it.
+test fn an_irreversible_one_off_is_operator_approved_not_federated() -> Bool {
+  let s = select_authorization_pattern(e: one_off_irreversible_mint())
+  selected_approved(s: s) && !selected_federated(s: s)
+}
+
+// (b) A one-off grant the workload may not perform is approved -- this is what replaces the
+// operator's pasted token for the accessor-cell converges.
+test fn an_unbindable_one_off_grant_is_operator_approved() -> Bool {
+  selected_approved(s: select_authorization_pattern(e: one_off_grant_unbindable()))
+}
+
+// (c) A dashboard-only effect is a typed refusal naming the modeled step.
+test fn a_dashboard_only_effect_names_its_manual_step() -> Bool {
+  match select_authorization_pattern(e: dashboard_only()) {
+    ManualStepRequired { step: st, receipt: _ } => (st.identity as String) == "fixture-dashboard-step"
+    _ => false
+  }
+}
+
+// THE PASTED TOKEN IS NEVER SELECTED, and neither is the operator's own session: across every
+// fixture the selected pattern is one of the three admissible ones.
+fn selection_is_admissible(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: p, receipt: _ } =>
+      match p {
+        PastedOperatorToken => false
+        OperatorOwnSession => false
+        FederatedScopedGrant => true
+        OperatorApprovedCapability => true
+        HumanOnlyStep { step: _ } => true
+      }
+    ManualStepRequired { step: _, receipt: _ } => true
+    NoAdmissiblePattern { causes: _, scope: _ } => true
+    PatternSelectionNeedsEvidence { needs: _ } => false
+    PatternSelectionNeedsPolicy { survivors: _ } => false
+    PatternSelectionRefused { defects: _ } => false
+  }
+}
+
+test fn no_fixture_selects_a_pasted_token_or_an_operator_session() -> Bool {
+  all([recurring_read(), one_off_irreversible_mint(), one_off_grant_unbindable(), dashboard_only(), recurring_but_witnessed()],
+    e => selection_is_admissible(s: select_authorization_pattern(e: e)))
+}
+
+// A RECURRING EFFECT THAT OWES A WITNESS IS A DESIGN CONTRADICTION, and the fold refuses it rather
+// than picking the least bad pattern: the author makes it reversible or makes it one-off.
+test fn a_recurring_effect_that_owes_a_witness_has_no_admissible_pattern() -> Bool {
+  match select_authorization_pattern(e: recurring_but_witnessed()) {
+    NoAdmissiblePattern { causes: cs, scope: _ } => (cs |> count) > 0
+    _ => false
+  }
+}
+
+// THE WITNESS OBLIGATION IS DERIVED, and each of its four grounds fires on its own.
+test fn each_witness_ground_fires_alone() -> Bool {
+  let base = recurring_read()
+  let wide = PrivilegedEffect {
+    subject: base.subject, frequency: FleetOnce, reversibility: ReversibleByReapply, surface: ApiSurface,
+    workload_identity: base.workload_identity, minted_reach: MintsAccountWideCredential, billing: NoBillingConsequence,
+  }
+  let break_glass = PrivilegedEffect {
+    subject: base.subject, frequency: BreakGlassOnly, reversibility: ReversibleByReapply, surface: ApiSurface,
+    workload_identity: base.workload_identity, minted_reach: MintsNoCredential, billing: NoBillingConsequence,
+  }
+  !witness_required(e: base)
+    && witness_required(e: one_off_irreversible_mint())
+    && witness_required(e: wide)
+    && witness_required(e: dashboard_only())
+    && witness_required(e: break_glass)
+}
+
+// ── The census, run through the real fold ────────────────────────────────────────────────────
+test fn every_census_site_is_decidable() -> Bool {
+  (undecidable_sites() |> count) == 0
+}
+
+// THE FOLLOW-UP ROSTER IS AN IDENTITY JOIN IN BOTH DIRECTIONS: an unrostered unreasoned divergence
+// is undeclared debt; a rostered site that now conforms is a paid debt whose row must be retired.
+test fn unreasoned_divergences_join_the_follow_up_roster_exactly() -> Bool {
+  (unrostered_unreasoned_divergences() |> count) == 0 && (rostered_but_not_diverging() |> count) == 0
+}
+
+// THE TRIGGER'S ANSWER: the R2 mint selects per-effect operator approval, and its row states why it
+// diverges today.
+test fn the_r2_mint_selects_operator_approval_and_states_its_divergence() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.cloudflare.r2_token_mint_run::r2_mint_bootstrap"
+      && selected_approved(s: v.selection)
+      && match v.conformance {
+        DivergesWithReason { reason: _ } => true
+        Conforms => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+// THE CONFORMING POPULATION IS NON-EMPTY: at least one federated exemplar and the dashboard-only
+// exemplar conform, so the fold is not refusing everything and calling it rigor.
+test fn the_census_has_conforming_exemplars_of_two_patterns() -> Bool {
+  let federated = any(census_verdicts(), v =>
+    selected_federated(s: v.selection) && match v.conformance { Conforms => true _ => false })
+  let manual = any(census_verdicts(), v =>
+    match v.selection { ManualStepRequired { step: _, receipt: _ } => match v.conformance { Conforms => true _ => false } _ => false })
+  federated && manual
+}
+
+// EVERY STATED REASON CARRIES A DISSOLUTION, AND NONE HAS FIRED. A fired trigger means the site
+// belongs in follow_up_sites rather than behind a statement (review 68720).
+test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
+  (reasoned_divergences() |> count) > 0 && (reasoned_divergences_with_fired_triggers() |> count) == 0
+}

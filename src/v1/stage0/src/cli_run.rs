@@ -14160,6 +14160,14 @@ fn emit_floor_drain_receipt(
             .unwrap_or_else(|| "unreadable".into()),
         typed_module_cache_cap(index),
     );
+    // The ladder's RetentionUnobserved refusal is discharged by an OBSERVATION,
+    // not by a declaration, so the persistent tier reports its live occupancy
+    // beside its throughput on the same receipt the floor already emits. Absent
+    // when the tier is not armed: a run that never opened a store must not
+    // print a zero that reads as an empty one.
+    if let Some(line) = shared_typecheck_store::persistent_typed_store_receipt_line() {
+        eprintln!("{line}");
+    }
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -14204,9 +14212,72 @@ fn index_get_typed(
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
+        if let Some(hit) = index.typed_module_cache.borrow().get(typed_key).cloned() {
+            return Ok(Some(hit));
+        }
+        return persist_get_typed(index, typed_key);
     };
-    shared_get_typed(store, typed_key)
+    match shared_get_typed(store, typed_key)? {
+        Some(hit) => Ok(Some(hit)),
+        None => persist_get_typed(index, typed_key),
+    }
+}
+
+/// The host-persisted tier behind both in-process tiers
+/// (`gunbc.floor_materialization` `host_persisted_typecheck_store`). A hit here
+/// is served BEFORE `collect_parent_envs` and the typecheck compute at the one
+/// call site above, which is the expensive production computation this tier
+/// exists to skip; it is not a byte load placed after the work has been done.
+///
+/// A decode failure on a verified entry is a REFUSAL, not a miss: the entry
+/// passed the store's own magic/version/length/key verification, so a payload
+/// the transport cannot read is codec drift and the line stops here rather than
+/// widening into a silent recompute (DESIGN section 5). Absence, rejection at
+/// verification and IO failure are already counted misses inside the store.
+fn persist_get_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
+    else {
+        return Ok(None);
+    };
+    let Some(payload) = store.get(typed_key) else {
+        return Ok(None);
+    };
+    let decoded = SharedTypecheckCaches::decode_typed_snapshot(payload.as_slice()).map_err(|e| {
+        format!(
+            "persistent typed store refused: entry for key '{typed_key}' verified against its              header but its payload did not decode ({e}) -- this is codec drift between the              store format version and the transport, not a cache miss"
+        )
+    })?;
+    // Readmit into the in-process tier so the repeat within this process is a
+    // reference, not a second disk read.
+    if index.cross_worker_store.is_none() {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(typed_key.to_string(), decoded.clone());
+        enforce_typed_cache_entry_cap(index);
+    }
+    Ok(Some(decoded))
+}
+
+/// Write-through to the host-persisted tier. Publication failures (IO, ceiling
+/// reached) are counted inside the store and never fail the run: this tier is
+/// an optimization over a pure computation, so an unavailable store costs time
+/// and can never change a verdict.
+fn persist_put_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+    result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Result<(), String> {
+    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
+    else {
+        return Ok(());
+    };
+    let bytes = SharedTypecheckCaches::encode_typed_snapshot(result)?;
+    store.put(typed_key, bytes.as_slice());
+    Ok(())
 }
 
 fn check_index_module_source_identity(
@@ -14302,6 +14373,7 @@ fn index_insert_typed(
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
+        persist_put_typed(index, &typed_key, &result)?;
         index
             .typed_module_cache
             .borrow_mut()
@@ -14309,6 +14381,7 @@ fn index_insert_typed(
         enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
+    persist_put_typed(index, &typed_key, &result)?;
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&typed_key)
