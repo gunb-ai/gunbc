@@ -456,7 +456,23 @@ data attempt_stop_poll_interval: Second = second(count: 1)
 // the three happened.
 type StopQuiescence
   = CgroupQuiet
-  | CgroupStillHolding { readback: CgroupSubtreeReadback }
+  | CgroupStillHolding { holding: CgroupNotQuiet }
+
+// A SUBTREE THAT IS STILL HOLDING CANNOT BE AN EMPTY ONE, AND THAT IS NOW UNWRITABLE RATHER THAN
+// MERELY UNREACHED. `CgroupStillHolding` used to carry the whole `CgroupSubtreeReadback`, so the
+// pairing `CgroupStillHolding { readback: CgroupSubtreeEmpty }` was constructible even though
+// `cgroup_quiescence` never produces it -- and the fold that read it answered `StoppedByForce`
+// WITHOUT consulting `asked`, which is precisely the claim the ask rule three screens down says must
+// never be made when nothing was asked. The guard and the rule disagreed, and the only reason the
+// disagreement was invisible is that one caller happened not to reach it (review 69372).
+//
+// The two arms below are the two readings that can actually hold: tasks the poll still sees, or a
+// read that failed so nothing can be concluded. `CgroupSubtreeEmpty` has no arm here, so the fold
+// over this type has no empty case to answer wrongly -- the third arm is DELETED rather than
+// corrected, which is the §5 move: the state has no constructor instead of a check that catches it.
+type CgroupNotQuiet
+  = CgroupHoldsTasks { pids: List<Int>, cgroups: List<NonEmptyStr> }
+  | CgroupHoldReadFailed { reason: NonEmptyStr }
 
 fn cgroup_quiescence(slice: NonEmptyStr) -> StopQuiescence
   uses net: Network
@@ -464,8 +480,8 @@ fn cgroup_quiescence(slice: NonEmptyStr) -> StopQuiescence
   let r = observe_cgroup_subtree(slice: slice)
   match r {
     CgroupSubtreeEmpty => CgroupQuiet
-    CgroupSubtreePopulated { pids: _, cgroups: _ } => CgroupStillHolding { readback: r }
-    CgroupSubtreeReadFailed { reason: _ } => CgroupStillHolding { readback: r }
+    CgroupSubtreePopulated { pids: p, cgroups: c } => CgroupStillHolding { holding: CgroupHoldsTasks { pids: p, cgroups: c } }
+    CgroupSubtreeReadFailed { reason: reason } => CgroupStillHolding { holding: CgroupHoldReadFailed { reason: reason } }
   }
 }
 
@@ -478,9 +494,9 @@ fn poll_until_quiet(slice: NonEmptyStr, polls_remaining: Int) -> StopQuiescence
 {
   match cgroup_quiescence(slice: slice) {
     CgroupQuiet => CgroupQuiet
-    CgroupStillHolding { readback: r } =>
+    CgroupStillHolding { holding: h } =>
       if polls_remaining <= 0 {
-        CgroupStillHolding { readback: r }
+        CgroupStillHolding { holding: h }
       } else {
         let _slept = sleep_delay_seconds_second_carrier_projection(duration: attempt_stop_poll_interval)
         poll_until_quiet(slice: slice, polls_remaining: polls_remaining - 1)
@@ -497,7 +513,7 @@ fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
 {
   match cgroup_quiescence(slice: slice) {
     CgroupQuiet => StopFoundAlreadyQuiescent
-    CgroupStillHolding { readback: _ } => stop_a_running_cell(unit: unit, slice: slice)
+    CgroupStillHolding { holding: _ } => stop_a_running_cell(unit: unit, slice: slice)
   }
 }
 
@@ -517,7 +533,7 @@ fn stop_a_running_cell(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
       } else {
         force_stop_attempt(unit: unit, slice: slice)
       }
-    CgroupStillHolding { readback: _ } => force_stop_attempt(unit: unit, slice: slice)
+    CgroupStillHolding { holding: _ } => force_stop_attempt(unit: unit, slice: slice)
   }
 }
 
@@ -560,23 +576,22 @@ fn force_stop_outcome_after_ask(asked: Bool, ask_detail: String, q: StopQuiescen
       } else {
         ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
       }
-    CgroupStillHolding { readback: r } => force_stop_outcome_of_readback(asked: asked, ask_detail: ask_detail, r: r)
+    CgroupStillHolding { holding: h } => force_stop_outcome_of_holding(asked: asked, ask_detail: ask_detail, h: h)
   }
 }
 
-fn force_stop_outcome_of_readback(asked: Bool, ask_detail: String, r: CgroupSubtreeReadback) -> TeardownStop {
-  match r {
-    CgroupSubtreePopulated { pids: p, cgroups: _ } =>
+fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQuiet) -> TeardownStop {
+  match h {
+    CgroupHoldsTasks { pids: p, cgroups: _ } =>
       if asked {
         ForceStopBoundExceeded { survivors: p }
       } else {
         ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
       }
-    CgroupSubtreeReadFailed { reason: reason } =>
+    CgroupHoldReadFailed { reason: reason } =>
       ForceStopOutcomeUnobservable {
         reason: join(["the cell's cgroup subtree could not be read after the bounded force-stop: ", reason as String], "") as NonEmptyStr,
       }
-    CgroupSubtreeEmpty => StoppedByForce
   }
 }
 

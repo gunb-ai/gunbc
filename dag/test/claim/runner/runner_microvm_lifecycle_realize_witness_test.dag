@@ -12,7 +12,7 @@ import gunbc.runner_microvm_lifecycle {
   ForceStopBoundExceeded, ForceNotAsked, ForceStopOutcomeUnobservable,
 }
 import gunbc.runner_microvm_lifecycle_realize {
-  StopQuiescence, CgroupQuiet, CgroupStillHolding,
+  StopQuiescence, CgroupQuiet, CgroupStillHolding, CgroupNotQuiet, CgroupHoldsTasks, CgroupHoldReadFailed,
   force_stop_outcome_after_ask, absence_of_containment, parent_directory_of,
 }
 
@@ -38,11 +38,11 @@ fn force_label(asked: Bool, q: StopQuiescence) -> String {
 }
 
 fn populated() -> StopQuiescence {
-  CgroupStillHolding { readback: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] } }
+  CgroupStillHolding { holding: CgroupHoldsTasks { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] } }
 }
 
 fn unreadable_subtree() -> StopQuiescence {
-  CgroupStillHolding { readback: CgroupSubtreeReadFailed { reason: "cgroup.events: EIO" as NonEmptyStr } }
+  CgroupStillHolding { holding: CgroupHoldReadFailed { reason: "cgroup.events: EIO" as NonEmptyStr } }
 }
 
 // A FAILED cgroup.kill FOLLOWED BY A QUIET SUBTREE IS NOT A FORCE THAT WORKED.
