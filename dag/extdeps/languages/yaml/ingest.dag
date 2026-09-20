@@ -66,9 +66,10 @@ fn yaml_looks_like_int(s: String) -> Bool {
 }
 
 // COUNTED IN CHUNKS, NOT ONE RECURSIVE CALL PER SPACE. Recursing per space copied the remaining line
-// at every leading space and ran several times per line, so indentation dominated the parse -- about
-// 235 eval steps a line, which put a census of one 143-line workflow file past a whole claim's
-// budget (gunb-ai/gunbc#11587). Consuming the largest run of 8, 4, 2 or 1 spaces per call gives the
+// at every leading space and ran several times per line, so indentation dominated the parse and put
+// a census of one hand-authored workflow past a whole claim's budget (gunb-ai/gunbc#11587; the cost
+// is re-derived by claim_batch eval_steps over ingest_yaml_source on a .github/workflows file).
+// Consuming the largest run of 8, 4, 2 or 1 spaces per call gives the
 // identical count (spaces only; a tab still ends the indentation) in a handful of calls.
 fn yaml_indent_of(line: String) -> Int {
   if starts_with(s: line, prefix: "        ") {
@@ -91,9 +92,10 @@ fn yaml_strip_indent(line: String, indent: Int) -> String {
 // ONE LINE, READ ONCE. Every parse function asks the same three questions of a line -- its indent,
 // its text after that indent, and whether it is blank or a full-line comment -- and each used to
 // re-derive them from the raw string, several times per line and once more at every enclosing block
-// level that checks for its own end. That made the parse cost a large constant per line (measured at
-// 200-320 eval steps on this repository's workflows) for facts that never change after the line is
-// read. The table computes them once; every consumer reads the field.
+// level that checks for its own end. That made the parse cost a large constant per line for facts
+// that never change after the line is read; the constant is re-derived by claim_batch eval_steps
+// over ingest_yaml_source on .github/workflows/fleet-converge.yml. The table computes them once;
+// every consumer reads the field.
 type YamlLine {
   raw: String
   indent: Int
@@ -218,8 +220,7 @@ fn yaml_parse_scalar_text(text: String) -> YamlValue {
 
 // A BLOCK LITERAL IS A SLICE: every line after the indicator that is empty or indented to at least
 // the content column. Its end is found with one field test per line, and its text is built once
-// from the slice -- not by re-reading each line and copying the growing accumulator on every step,
-// which cost ~117 eval steps a literal line.
+// from the slice -- not by re-reading each line and copying the growing accumulator on every step.
 fn yaml_literal_end(lines: List<YamlLine>, index: Int, content_indent: Int) -> Int {
   let e = yaml_line_entry(lines: lines, index: index)
   if yaml_has_line_at(lines: lines, index: index) && ((e.raw == "") || (e.indent >= content_indent)) {
