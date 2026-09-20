@@ -1,0 +1,67 @@
+module test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test
+
+import std.types { Bool, String, List }
+import v2.workflow.ci_floor_peak_emit { ci_floor_peak_pre_script, ci_floor_peak_post_script }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-floor-peak-calibration-rows, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that the ci_floor_peak_*_command echo/sed rows of
+// v2.workflow.ci_floor_peak_emit — the module's own Phase-2 note names them — become typed
+// filesystem observation leaves whose consumers read typed values, never rendered shell. Today the
+// pre-reset row is `echo reset > "$d/memory.peak" 2>/dev/null`: a fire-and-forget echo whose
+// 2>/dev/null swallows exactly the absence the calibration must refuse on, rendered straight into
+// the pre script. The red arms below assert the rendered calibration surfaces carry no shell
+// control word (`set -e`, `||`, `&&`, `;`, `2>/dev/null`); they are red on the echo rows and turn
+// green only when the readings are typed observation leaves and a missing observed file refuses
+// with a typed cause instead of an empty reading. Enrolled in v2.workflow.floor_expected_red; the
+// transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (ci_floor_peak_pre_script and
+// ci_floor_peak_post_script, the emitted calibration surfaces) must survive the rebind, because
+// this witness cannot be re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+fn surface_carries_no_shell_control_word(rendered: String) -> Bool {
+  !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+}
+
+// RED TODAY: the pre-calibration surface renders the reset echo's 2>/dev/null. Greens when the
+// reset and peak reads are typed filesystem observation leaves with a typed refusal on a missing
+// file.
+test fn pre_calibration_surface_renders_no_shell_control_word() -> Bool {
+  surface_carries_no_shell_control_word(rendered: ci_floor_peak_pre_script())
+}
+
+// RED TODAY, the specific hazard named alone: the reset is a fire-and-forget echo whose stderr
+// swallow hides exactly the unsupported-reset case the pre_peak comparison needs to know about.
+// Greens when the reset observation refuses typed instead of swallowing.
+test fn pre_calibration_reset_is_not_a_swallowed_echo() -> Bool {
+  !string_contains(s: ci_floor_peak_pre_script(), pattern: "2>/dev/null")
+}
+
+// POSITIVE CONTROL, green today and after: both surfaces observe the cgroup v2 memory.peak file —
+// the rebind changes who constructs the reading, never what is read.
+test fn calibration_surfaces_still_read_the_cgroup_peak_file() -> Bool {
+  string_contains(s: ci_floor_peak_pre_script(), pattern: "memory.peak")
+    && string_contains(s: ci_floor_peak_post_script(), pattern: "memory.peak")
+}
+
+// POSITIVE CONTROL, green today and after: both surfaces keep their [calibration] observation
+// labels — the consumers present the same readings, from typed values after the rebind.
+test fn calibration_surfaces_keep_their_observation_labels() -> Bool {
+  string_contains(s: ci_floor_peak_pre_script(), pattern: "[calibration]")
+    && string_contains(s: ci_floor_peak_post_script(), pattern: "[calibration]")
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arms are red; green only when every clause holds over the typed rebind.
+test fn floor_peak_calibration_rows_acceptance_holds() -> Bool {
+  pre_calibration_surface_renders_no_shell_control_word()
+    && pre_calibration_reset_is_not_a_swallowed_echo()
+    && calibration_surfaces_still_read_the_cgroup_peak_file()
+    && calibration_surfaces_keep_their_observation_labels()
+}
