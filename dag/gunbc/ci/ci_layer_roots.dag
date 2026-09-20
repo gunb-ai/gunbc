@@ -909,9 +909,14 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "fabric_event_log_append_real_execution_witness_test.dag",
+    pattern: "fabric_db_file_store_wet_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_reason,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fabric_event_log_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "devboot_text_blob_real_execution_witness_test.dag",

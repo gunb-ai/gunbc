@@ -113,11 +113,9 @@ fn transition_required_retirees(t: RunnerWidthTransition) -> List<NonEmptyStr> {
 
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {
   let rows = transition_row_for_host(host: host)
-  if list_length(items: rows) == 0 {
-    HostHasNoOpenTransition { host: host }
-  } else {
-    let t = rows |> fold(init: rows.first(), f: (acc, r) => acc)
-    HostTransitionOpen { transition: t, required: transition_required_retirees(t: t) }
+  match rows.first() {
+    Absent => HostHasNoOpenTransition { host: host }
+    Present { value: t } => HostTransitionOpen { transition: t, required: transition_required_retirees(t: t) }
   }
 }
 
