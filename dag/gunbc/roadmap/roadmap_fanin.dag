@@ -1,0 +1,70 @@
+module gunbc.roadmap.roadmap_fanin
+
+import std.types { String, List }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.manifest_merge { ManifestPathConflict }
+import gunbc.scm.repository_envelope { RepositoryEnvelope }
+import gunbc.scm.squash_merge {
+  SquashMergeOutcome,
+  SquashMerged,
+  SquashMergeBaseRefused,
+  SquashMergeConflicted,
+  SquashMergeRootMissing,
+  SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode,
+  SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
+  SquashMergeAllocatorInvalid,
+  squash_merge,
+}
+
+// THE FANIN SEAM (docs/plans/harness-work-lifecycle.md, delivery structure): verified candidates of
+// one project's nodes merge into the project's ONE integration head, and a standalone task is the
+// degenerate project of one. This module is the workflow's name for that operation; the merge law,
+// the conflict vocabulary and the consumed-source refusal stay with gunbc.scm.*, which is the only
+// realization. Nothing here speaks git: the integration head is an SCM commit reference, and the
+// translation of that head into a git branch + push + PR is the publication edge's own machinery.
+//
+// THE CONFLICT IS A TYPED OUTCOME, NEVER A MERGE FAILURE. Two candidates that both moved a path the
+// base held are a fact about the batch -- the full conflict population is carried, so the workflow
+// routes it to an owner (a human decision, per the merge law's own note) instead of dying the way a
+// textual three-way git merge dies. A candidate refused because its source was ALREADY INTEGRATED
+// is likewise typed: re-merging an integrated candidate is a workflow defect, not a conflict.
+type FaninOutcome
+  = FaninIntegrated { repository: RepositoryEnvelope, head: RepositoryCommitRef }
+  | FaninConflicted { conflicts: List<ManifestPathConflict> }
+  | FaninRefused { detail: String }
+
+fn fanin_integrate_candidate(
+  repository: RepositoryEnvelope,
+  integration_head: RepositoryCommitRef,
+  candidate: RepositoryCommitRef,
+  message: String,
+) -> FaninOutcome {
+  match squash_merge(
+    repository: repository,
+    target: integration_head,
+    source: candidate,
+    message: message,
+  ) {
+    SquashMerged { repository: advanced, reference } =>
+      FaninIntegrated { repository: advanced, head: reference }
+    SquashMergeConflicted { conflicts } => FaninConflicted { conflicts: conflicts }
+    SquashMergeBaseRefused { refusal: _ } =>
+      FaninRefused {
+        detail: "the candidate's base could not be derived against the integration head (already integrated, disjoint histories, or unwalkable ancestry) -- the merge law's own refusal carries the case",
+      }
+    SquashMergeRootMissing { side: _, root: _ } =>
+      FaninRefused { detail: "a merge side names a manifest the store cannot produce, which is store damage" }
+    SquashMergeRootIsAuthoredSource { side: _, root: _ } =>
+      FaninRefused { detail: "a merge side's root is an authored source, which is store damage" }
+    SquashMergeRootIsSemanticNode { side: _, root: _ } =>
+      FaninRefused { detail: "a merge side's root is a semantic node, which is store damage" }
+    SquashMergeResultLocatorCollision { identity: _ } =>
+      FaninRefused { detail: "the merged manifest's identity is already held by a different manifest, which is store damage" }
+    SquashMergeSourceUnrecoverable { cause: _ } =>
+      FaninRefused { detail: "a merge side's sources are unrecoverable, so the integration must not be published into history" }
+    SquashMergeAllocatorInvalid =>
+      FaninRefused { detail: "the project envelope's commit allocator is invalid, which is envelope damage" }
+  }
+}

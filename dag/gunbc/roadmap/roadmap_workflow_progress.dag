@@ -41,6 +41,7 @@ import gunbc.roadmap_workflow_stage {
   EnvironmentWorkflowSegment,
   WorkspaceWorkflowSegment,
   AgentWorkflowSegment,
+  SubmissionWorkflowSegment,
   VerificationWorkflowSegment,
   PublicationWorkflowSegment,
   ReviewWorkflowSegment,
@@ -59,6 +60,7 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_short_label,
   workflow_segment_intent_revision,
   workflow_segment_state_key,
+  workflow_segment_detail_bounded,
 }
 import gunbc.workflow_reconcile {
   WorkflowFactState,
@@ -135,6 +137,33 @@ import gunbc.worker_lifecycle {
   WorkerProcessRunning,
   WorkerProcessExited,
 }
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCaptureObservation,
+  CaptureForHead,
+  CaptureAbsent,
+  CaptureUnreadable,
+  HandoffVerificationStanding,
+  VerificationOutstanding,
+  VerificationPassed,
+  VerificationDidNotPass,
+  VerificationStandingRefused,
+  HandoffPublicationStanding,
+  PublicationReceiptOwed,
+  PublicationReceiptBound,
+  PublicationReceiptRefused,
+  CandidateHandoffState,
+  HandoffAwaitingWorker,
+  HandoffYielded,
+  HandoffEvidenceRefused,
+  HandoffDeclaredBlocked,
+  HandoffSubmitted,
+  HandoffVerificationFailed,
+  HandoffPublicationOwed,
+  HandoffBlockedOnPublication,
+  HandoffPublished,
+  candidate_handoff_state,
+  submission_readiness_key,
+}
 import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
   legacy_attempt_supersedable_detail,
@@ -159,6 +188,7 @@ type WorkflowAttemptEvidence {
   verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
+  submission_capture: SubmissionCaptureObservation
   review: ReviewReport
   goal_audit: List<CriterionReviewEvidence>
 }
@@ -573,6 +603,199 @@ fn publication_segment(
   }
 }
 
+// THE SUBMISSION SEGMENT RENDERS THE HANDOFF LIFECYCLE (gunbc.roadmap.roadmap_submission), derived
+// fresh from the same receipts the belt's passes act on: the capture record (does a submission bind
+// this head), the verification receipt (did the captured candidate pass), and the publication
+// receipt (is the obligation discharged). Ready, verified, owed, blocked and published stay
+// distinct because the fold keeps them distinct; a restart changes nothing because nothing here is
+// remembered. The two standings below are projections of evidence this module already reads for its
+// own segments -- they decide over those judgments, never over the raw bytes a second time.
+fn handoff_verification_standing(
+  verification_subject: VerificationSubjectObservation,
+  verification_source: VerificationReceiptFileSource,
+) -> HandoffVerificationStanding {
+  match verification_subject {
+    VerificationSubjectUnobserved { reason } =>
+      VerificationStandingRefused {
+        reason: join(["the verification question cannot be constructed for this head: ", reason], ""),
+      }
+    VerificationSubjectObserved { subject } =>
+      match verification_file_evidence_for(expected: subject, source: verification_source) {
+        VerificationFileAbsent => VerificationOutstanding
+        VerificationFileUnreadable { reason } =>
+          VerificationStandingRefused { reason: reason }
+        VerificationFileDecoded { evidence } =>
+          match evidence {
+            VerificationEvidenceForSubject { receipt } =>
+              if verification_evidence_moves_lamp(evidence: evidence) {
+                VerificationPassed
+              } else if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+                VerificationOutstanding
+              } else {
+                VerificationDidNotPass { verdict_key: validation_verdict_key(verdict: receipt.verdict) }
+              }
+            VerificationEvidenceForAnotherSubject { field, expected, found } =>
+              VerificationStandingRefused {
+                reason: join([
+                  "a verification receipt was read for this attempt and it answers a different question: ",
+                  field as String, " should be ", expected, " and the receipt records ", found,
+                ], ""),
+              }
+            VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => VerificationOutstanding
+            VerificationEvidenceUnreadable { reason } =>
+              VerificationStandingRefused { reason: reason }
+            VerificationEvidenceV1LegacyExactHead { legacy: _ } =>
+              VerificationStandingRefused {
+                reason: "a v1 exact-head receipt at the exact path lacks change_window_identity and cannot satisfy the selected v2 subject",
+              }
+          }
+      }
+  }
+}
+
+fn handoff_publication_standing(
+  publication_subject: PublicationSubjectObservation,
+  publication_source: PublicationReceiptSource,
+) -> HandoffPublicationStanding {
+  match publication_subject {
+    PublicationSubjectUnobserved { reason } =>
+      PublicationReceiptRefused {
+        cause: join(["the publication question cannot be constructed for this head: ", reason], ""),
+      }
+    PublicationSubjectObserved { subject } =>
+      match publication_evidence_for(expected: subject, source: publication_source) {
+        EvidenceAbsent => PublicationReceiptOwed
+        EvidenceUnreadable { reason } =>
+          PublicationReceiptRefused {
+            cause: join(["a publication receipt for this head could not be read or does not decode: ", reason], ""),
+          }
+        EvidenceForAnotherSubject { field, expected, found } =>
+          PublicationReceiptRefused {
+            cause: join([
+              "a publication receipt at this head's own address is about another subject (",
+              field as String, " expected ", expected, ", found ", found, ")",
+            ], ""),
+          }
+        EvidenceForSubject { receipt } =>
+          match receipt.outcome {
+            ReceiptBound { pr_number, url, draft: _ } =>
+              PublicationReceiptBound { pr_number: pr_number, url: url as String }
+            ReceiptObservationRefused { detail } =>
+              PublicationReceiptRefused { cause: detail }
+            ReceiptBranchNotPublished { remote_branches_seen: _ } => PublicationReceiptOwed
+            ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => PublicationReceiptOwed
+            ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } =>
+              PublicationReceiptRefused {
+                cause: publication_outcome_segment_detail(outcome: receipt.outcome, expected_head: receipt.subject.expected_head),
+              }
+            ReceiptRemoteBranchHeadDiverged { remote_head: _ } =>
+              PublicationReceiptRefused {
+                cause: publication_outcome_segment_detail(outcome: receipt.outcome, expected_head: receipt.subject.expected_head),
+              }
+            ReceiptBindingAmbiguous { pr_numbers: _ } =>
+              PublicationReceiptRefused {
+                cause: publication_outcome_segment_detail(outcome: receipt.outcome, expected_head: receipt.subject.expected_head),
+              }
+            ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } =>
+              PublicationReceiptRefused {
+                cause: publication_outcome_segment_detail(outcome: receipt.outcome, expected_head: receipt.subject.expected_head),
+              }
+          }
+      }
+  }
+}
+
+fn submission_segment(
+  provider: ProviderExecutionState,
+  evidence: WorkflowAttemptEvidence,
+) -> WorkflowSegment {
+  let state = candidate_handoff_state(
+    provider: provider,
+    capture: evidence.submission_capture,
+    verification: handoff_verification_standing(
+      verification_subject: evidence.verification_subject,
+      verification_source: evidence.verification_source,
+    ),
+    publication: handoff_publication_standing(
+      publication_subject: evidence.publication_subject,
+      publication_source: evidence.publication_source,
+    ),
+  )
+  match state {
+    HandoffAwaitingWorker =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "the worker has not reached a terminal state, so there is no submission to capture",
+      }
+    HandoffYielded { reason } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentFailed,
+        detail: join(["yielded: ", reason], ""),
+      }
+    HandoffEvidenceRefused { reason } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: reason,
+      }
+    HandoffDeclaredBlocked { head_sha, readiness, explanation } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentFailed,
+        detail: join([
+          submission_readiness_key(r: readiness),
+          ": the worker ended the task at ", head_sha,
+          " without declaring readiness: ", explanation,
+        ], ""),
+      }
+    HandoffSubmitted { head_sha } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join([
+          "submitted: the candidate is captured at ", head_sha,
+          " and bound to the worker's declaration; awaiting authoritative verification",
+        ], ""),
+      }
+    HandoffVerificationFailed { head_sha, verdict_key } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join([
+          "submitted: the candidate at ", head_sha,
+          " was captured; verification ", verdict_key,
+          ", so only a fresh submission captures a revised candidate",
+        ], ""),
+      }
+    HandoffPublicationOwed { head_sha } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join([
+          "verified: ", head_sha,
+          " passed authoritative verification; the publication obligation is owed and stays outstanding until an observed pull-request receipt binds this head",
+        ], ""),
+      }
+    HandoffBlockedOnPublication { head_sha, cause } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join(["blocked on publication for ", head_sha, ": ", cause], ""),
+      }
+    HandoffPublished { head_sha, pr_number, url } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: join([
+          "published: the candidate at ", head_sha,
+          " is on offer as pull request #", to_string(pr_number), ": ", url,
+        ], ""),
+      }
+  }
+}
+
 fn verification_evidence_segment(
   evidence: VerificationFileEvidence,
 ) -> WorkflowSegment {
@@ -778,6 +1001,8 @@ fn workflow_segment_from_evidence(
       }
     AgentWorkflowSegment =>
       provider_workflow_segment(provider: provider)
+    SubmissionWorkflowSegment =>
+      submission_segment(provider: provider, evidence: evidence)
     VerificationWorkflowSegment =>
       verification_segment(
         provider: provider,
@@ -982,6 +1207,11 @@ fn workflow_attempt_progress(
   }
 }
 
+// The wire carries the BOUNDED detail (operator ruling 2026-09-20): the client paints seg.detail
+// verbatim into the obligation ledger, and an enumerated payload — the verification oracle's
+// source dump, the per-criterion review clauses — belongs behind the receipt pointer, not inline
+// in a status row. workflow_segment_detail_bounded is the one bound the server ledger, this wire,
+// and the presentation seam's located reason all consume, so the realizations cannot drift.
 fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
   json_object(members: [
     json_kv(
@@ -1000,7 +1230,7 @@ fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
       key: "state",
       value: json_string(s: workflow_segment_state_key(state: segment.state)),
     ),
-    json_kv(key: "detail", value: json_string(s: segment.detail)),
+    json_kv(key: "detail", value: json_string(s: workflow_segment_detail_bounded(detail: segment.detail))),
   ])
 }
 

@@ -1,17 +1,73 @@
 module test.claim.roadmap.roadmap_belt_commit_witness_test
 
 import std.types { Bool, String, Int }
-import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap.roadmap_submission { SubmissionAbsent, SubmissionDeclared, SubmissionUndecodable, WorkerSubmission, SubmissionReady, submission_digest }
 import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
 
-test fn commit_is_needed_for_a_completed_dirty_worktree() -> Bool {
+fn ready_submission() -> WorkerSubmission {
+  WorkerSubmission { readiness: SubmissionReady, explanation: "done", limitations: "none" }
+}
+
+test fn a_terminal_worktree_without_a_submission_is_a_checkpoint_not_a_candidate() -> Bool {
   match belt_commit_decision(
     provider: ProviderCompleted { activity: "done" },
     node_id: "n1",
     attempt_key: "abc",
     entries_nul: " M a.dag\0",
+    submission: SubmissionAbsent,
+    captures: [],
   ) {
-    CommitNeeded { message } => message == "dispatch: n1 aabc"
+    CheckpointCommitNeeded { message, note: _ } => message == "dispatch checkpoint: n1 aabc"
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
+    CommitNotNeeded { reason: _ } => false
+  }
+}
+
+test fn a_budget_spent_worktree_without_a_submission_is_preserved_as_a_checkpoint() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderBudgetSpent { activity: "stopped", detail: "" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+    submission: SubmissionAbsent,
+    captures: [],
+  ) {
+    CheckpointCommitNeeded { message: _, note } =>
+      match note {
+        _ => note != ""
+      }
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
+    CommitNotNeeded { reason: _ } => false
+  }
+}
+
+test fn a_fresh_ready_submission_makes_the_commit_a_candidate() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderCompleted { activity: "done" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+    submission: SubmissionDeclared { submission: ready_submission(), digest: submission_digest(submission: ready_submission()) },
+    captures: [],
+  ) {
+    CandidateCommitNeeded { message, submission: _, digest: _ } => message == "dispatch candidate: n1 aabc"
+    CheckpointCommitNeeded { message: _, note: _ } => false
+    CommitNotNeeded { reason: _ } => false
+  }
+}
+
+test fn an_undecodable_submission_is_not_a_declaration() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderCompleted { activity: "done" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+    submission: SubmissionUndecodable { reason: "not json" },
+    captures: [],
+  ) {
+    CheckpointCommitNeeded { message: _, note } => note != ""
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
     CommitNotNeeded { reason: _ } => false
   }
 }
@@ -22,21 +78,12 @@ test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool {
     node_id: "n1",
     attempt_key: "abc",
     entries_nul: "",
+    submission: SubmissionAbsent,
+    captures: [],
   ) {
     CommitNotNeeded { reason: _ } => true
-    CommitNeeded { message: _ } => false
-  }
-}
-
-test fn commit_is_needed_for_a_budget_spent_dirty_worktree() -> Bool {
-  match belt_commit_decision(
-    provider: ProviderBudgetSpent { activity: "stopped", detail: "" },
-    node_id: "n1",
-    attempt_key: "abc",
-    entries_nul: " M a.dag\0",
-  ) {
-    CommitNeeded { message } => message == "dispatch: n1 aabc"
-    CommitNotNeeded { reason: _ } => false
+    CheckpointCommitNeeded { message: _, note: _ } => false
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
   }
 }
 
@@ -46,15 +93,19 @@ test fn commit_is_not_needed_while_the_provider_runs() -> Bool {
     node_id: "n1",
     attempt_key: "abc",
     entries_nul: " M a.dag\0",
+    submission: SubmissionDeclared { submission: ready_submission(), digest: submission_digest(submission: ready_submission()) },
+    captures: [],
   ) {
     CommitNotNeeded { reason: _ } => true
-    CommitNeeded { message: _ } => false
+    CheckpointCommitNeeded { message: _, note: _ } => false
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
   }
 }
 
-test fn a_failed_provider_with_a_dirty_worktree_still_commits() -> Bool {
-  match belt_commit_decision(provider: ProviderFailed { activity: "agent turn failed", detail: "step budget exhausted" }, node_id: "n1", attempt_key: "abc", entries_nul: " M a.dag\0") {
-    CommitNeeded { message } => message as String == "dispatch: n1 aabc"
+test fn a_failed_provider_with_a_dirty_worktree_and_no_submission_still_checkpoints() -> Bool {
+  match belt_commit_decision(provider: ProviderFailed { activity: "agent turn failed", detail: "step budget exhausted" }, node_id: "n1", attempt_key: "abc", entries_nul: " M a.dag\0", submission: SubmissionAbsent, captures: []) {
+    CheckpointCommitNeeded { message, note: _ } => message as String == "dispatch checkpoint: n1 aabc"
+    CandidateCommitNeeded { message: _, submission: _, digest: _ } => false
     CommitNotNeeded { reason: _ } => false
   }
 }

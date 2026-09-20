@@ -1,0 +1,456 @@
+module test.claim.roadmap.roadmap_submission_witness_test
+
+// SLICE 2, docs/plans/harness-work-lifecycle.md rule 7: the handoff lifecycle at the real
+// execution boundary, on planted inputs. Each claim names the state it refutes: a terminal worker
+// read as ready, a passed candidate waiting on a discretionary ask, a disabled helper read as
+// discharged, a resumed publication duplicating its PR, a later edit wearing a prior head's
+// evidence, a fanin that loses a side or mints over a conflict.
+
+import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap.roadmap_submission {
+  WorkerSubmission,
+  SubmissionReadiness, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+  submission_readiness_key, submission_readiness_from_key,
+  submission_text, submission_decode, SubmissionDecoded, SubmissionNotDecodable,
+  submission_digest,
+  SubmissionCapture,
+  submission_capture_text, submission_capture_decode, CaptureDecoded, CaptureNotDecodable,
+  SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  CandidateDecision, CandidateFresh, CandidateCheckpoint, submission_candidate_decision,
+  CandidateHandoffState,
+  HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  HandoffSubmitted, HandoffVerificationFailed, HandoffPublicationOwed,
+  HandoffBlockedOnPublication, HandoffPublished,
+  HandoffVerificationStanding, VerificationOutstanding, VerificationPassed, VerificationDidNotPass, VerificationStandingRefused,
+  HandoffPublicationStanding, PublicationReceiptOwed, PublicationReceiptBound, PublicationReceiptRefused,
+  candidate_handoff_state,
+}
+import gunbc.roadmap_provider_events {
+  ProviderRunning, ProviderCompleted, ProviderBudgetSpent,
+}
+import gunbc.roadmap_publication_helper { publication_helper_publish_if_unpublished }
+import gunbc.roadmap_publish_observe { CredentialSourceAbsent }
+import gunbc.roadmap_publish { PublicationOutcome, PublicationBound }
+import gunbc.scm.worktree_inventory { worktree_inventory_parse }
+import gunbc.roadmap.roadmap_fanin {
+  FaninOutcome, FaninIntegrated, FaninConflicted, FaninRefused, fanin_integrate_candidate,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+import test.fixture.scm_repository_builder {
+  MbBuild, MbBuilt, MbSetupFailed,
+  mb_start, mb_stage, mb_commit, mb_at, mb_head,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ready_submission() -> WorkerSubmission {
+  WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "implemented the change and ran the acceptance route",
+    limitations: "no soak",
+  }
+}
+
+fn capture_at(head: String, submission: WorkerSubmission) -> SubmissionCapture {
+  SubmissionCapture {
+    head_sha: head,
+    scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
+    scm_commit_ordinal: 3,
+    digest: submission_digest(submission: submission),
+    submission: submission,
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The artifact and the record: codec round trips, the schema wall, digest stability.
+// ------------------------------------------------------------------------------------------------
+
+test fn the_submission_codec_round_trips() -> Bool {
+  match submission_decode(text: submission_text(submission: ready_submission())) {
+    SubmissionNotDecodable { reason: _ } => false
+    SubmissionDecoded { submission } =>
+      match submission.readiness {
+        SubmissionReady =>
+          submission.explanation == "implemented the change and ran the acceptance route"
+            && submission.limitations == "no soak"
+        _ => false
+      }
+  }
+}
+
+test fn the_capture_codec_round_trips_the_scm_binding() -> Bool {
+  let c = capture_at(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", submission: ready_submission())
+  match submission_capture_decode(text: submission_capture_text(capture: c)) {
+    CaptureNotDecodable { reason: _ } => false
+    CaptureDecoded { capture } =>
+      capture.head_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        && capture.scm_repository == "/instance/attempt-state/projects/n1.gunbc-repository.json"
+        && capture.scm_commit_ordinal == 3
+        && capture.digest == c.digest
+  }
+}
+
+test fn a_document_without_the_schema_is_not_a_submission() -> Bool {
+  match submission_decode(text: "{\"readiness\": \"ready\", \"explanation\": \"x\", \"limitations\": \"\"}") {
+    SubmissionNotDecodable { reason: _ } => true
+    SubmissionDecoded { submission: _ } => false
+  }
+}
+
+test fn readiness_keys_are_three_and_round_trip() -> Bool {
+  submission_readiness_key(r: SubmissionReady) == "ready"
+    && submission_readiness_key(r: SubmissionBlocked) == "blocked"
+    && submission_readiness_key(r: SubmissionNeedsContext) == "needs-context"
+    && match submission_readiness_from_key(key: "needs-context") {
+      Present { value: r } =>
+        match r {
+          SubmissionNeedsContext => true
+          _ => false
+        }
+      Absent => false
+    }
+    && match submission_readiness_from_key(key: "done") {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rule 2 + rule 7: capture freshness. A re-swept declaration is not a new act.
+// ------------------------------------------------------------------------------------------------
+
+test fn a_declaration_byte_identical_to_a_captured_one_is_a_checkpoint_naming_the_bound_head() -> Bool {
+  match submission_candidate_decision(
+    observation: SubmissionDeclared {
+      submission: ready_submission(),
+      digest: submission_digest(submission: ready_submission()),
+    },
+    captures: [capture_at(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: ready_submission())],
+  ) {
+    CandidateFresh { submission: _, digest: _ } => false
+    CandidateCheckpoint { note } =>
+      match note { _ => note != "" }
+        && (capture_at(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: ready_submission())).head_sha
+           == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}
+
+test fn a_revised_declaration_after_an_edit_is_a_fresh_candidate() -> Bool {
+  let revised = WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "second pass after the verdict",
+    limitations: "no soak",
+  }
+  match submission_candidate_decision(
+    observation: SubmissionDeclared { submission: revised, digest: submission_digest(submission: revised) },
+    captures: [capture_at(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: ready_submission())],
+  ) {
+    CandidateFresh { submission: _, digest } => digest == submission_digest(submission: revised)
+    CandidateCheckpoint { note: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rule 7, state by state: terminal-without-submission is not ready; pass discharges into the
+// obligation; the obligation is truthful with the helper off; a non-ready declaration binds but
+// does not advance.
+// ------------------------------------------------------------------------------------------------
+
+test fn a_running_worker_has_no_handoff_state() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderRunning { activity: "working" },
+    capture: CaptureAbsent,
+    verification: VerificationOutstanding,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffAwaitingWorker => true
+    _ => false
+  }
+}
+
+test fn terminal_without_a_capture_is_yielded_not_ready() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderBudgetSpent { activity: "stopped", detail: "round budget" },
+    capture: CaptureAbsent,
+    verification: VerificationOutstanding,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffYielded { reason } => reason != ""
+    _ => false
+  }
+}
+
+test fn a_later_head_inherits_no_prior_heads_evidence() -> Bool {
+  // The old head's capture and verdict exist; the CURRENT head has no capture, so it is yielded
+  // no matter what the old head established -- the evidence is preserved, not inherited.
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureAbsent,
+    verification: VerificationPassed,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffYielded { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_capture_awaiting_verification_is_submitted() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationOutstanding,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffSubmitted { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
+    _ => false
+  }
+}
+
+test fn a_passed_candidate_is_publication_owed_with_no_discretionary_ask() -> Bool {
+  // The state vocabulary has no arm for "waits on a human to ask": pass moves the candidate to
+  // PublicationOwed directly, and the obligation stands until an observed receipt discharges it.
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffPublicationOwed { head_sha } => head_sha == "cccccccccccccccccccccccccccccccccccccccc"
+    HandoffPublished { head_sha: _, pr_number: _, url: _ } => false
+    _ => false
+  }
+}
+
+test fn a_publication_refusal_is_blocked_on_publication_naming_the_cause() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    publication: PublicationReceiptRefused { cause: "no credential is configured to publish it" },
+  ) {
+    HandoffBlockedOnPublication { head_sha, cause } =>
+      head_sha == "cccccccccccccccccccccccccccccccccccccccc" && cause == "no credential is configured to publish it"
+    _ => false
+  }
+}
+
+test fn an_observed_pr_receipt_discharges_the_obligation() -> Bool {
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "cccccccccccccccccccccccccccccccccccccccc", submission: ready_submission()) },
+    verification: VerificationPassed,
+    publication: PublicationReceiptBound { pr_number: 41, url: "https://example/pr/41" },
+  ) {
+    HandoffPublished { head_sha, pr_number, url } =>
+      head_sha == "cccccccccccccccccccccccccccccccccccccccc" && pr_number == 41 && url == "https://example/pr/41"
+    _ => false
+  }
+}
+
+test fn a_blocked_declaration_binds_but_does_not_advance() -> Bool {
+  let blocked = WorkerSubmission {
+    readiness: SubmissionNeedsContext,
+    explanation: "the acceptance route for this module is undeclared",
+    limitations: "",
+  }
+  match candidate_handoff_state(
+    provider: ProviderCompleted { activity: "done" },
+    capture: CaptureForHead { capture: capture_at(head: "dddddddddddddddddddddddddddddddddddddddd", submission: blocked) },
+    verification: VerificationOutstanding,
+    publication: PublicationReceiptOwed,
+  ) {
+    HandoffDeclaredBlocked { head_sha, readiness, explanation } =>
+      head_sha == "dddddddddddddddddddddddddddddddddddddddd"
+        && match readiness {
+          SubmissionNeedsContext => true
+          _ => false
+        }
+        && explanation == "the acceptance route for this module is undeclared"
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rule 6: resumption discovers the existing PR rather than duplicating it. The helper observes
+// FIRST; an observation that the PR already exists is answered as observed, with no actuation,
+// and the credential is never consulted on that arm.
+// ------------------------------------------------------------------------------------------------
+
+test fn an_already_bound_publication_is_answered_as_observed_never_re_actuated() -> Bool {
+  let observed = PublicationBound {
+    branch: "dispatch-n1-aabc" as NonEmptyStr,
+    pr_number: 41,
+    pr_head: "cccccccccccccccccccccccccccccccccccccccc" as CommitSha,
+    url: "https://example/pr/41" as NonEmptyStr,
+    draft: false,
+  }
+  match publication_helper_publish_if_unpublished(
+    credential: CredentialSourceAbsent { reason: "no token" },
+    subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
+      node_id: "n1",
+      attempt_key: "abc",
+      repository: gunbc_repository,
+      branch: "dispatch-n1-aabc" as NonEmptyStr,
+      expected_base: "main" as NonEmptyStr,
+      expected_head: "cccccccccccccccccccccccccccccccccccccccc" as CommitSha,
+    },
+    worktree: "/wt",
+    observed: observed,
+  ) {
+    PublicationBound { branch: _, pr_number, pr_head: _, url: _, draft: _ } => pr_number == 41
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The bridge parse: NUL rows verbatim, the trailing row dropped.
+// ------------------------------------------------------------------------------------------------
+
+test fn the_inventory_parse_splits_nul_rows_and_drops_the_trailer() -> Bool {
+  let paths = worktree_inventory_parse(stdout_nul: "dag/a.dag\0dag/b.dag\0")
+  count(paths) == 2
+    && fold(paths, init: true, f: fn(ok, p) {
+      ok && ((p as String) == "dag/a.dag" || (p as String) == "dag/b.dag")
+    })
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rule 7, fanin: two candidates of one project produce ONE integration head carrying both sides;
+// a conflicting pair yields the typed conflict population and mints nothing.
+// ------------------------------------------------------------------------------------------------
+
+type FaninScene
+  = FaninScene { build: MbBuild, base: RepositoryCommitRef, first: RepositoryCommitRef, second: RepositoryCommitRef }
+  | FaninSceneUnavailable
+
+//   B    a = A0                        the project's base
+//   C1   a = A0, one = ONE  parent B   the first candidate
+//   C2   a = A0, two = TWO  parent B   the second candidate -- a disjoint path, so the batch merges
+fn fanin_scene() -> FaninScene {
+  let b = mb_commit(build: mb_stage(build: mb_start(), path: "a", text: "A0"), message: "base")
+  match mb_head(build: b) {
+    Absent => FaninSceneUnavailable
+    Present { value: base } =>
+      let c1 = mb_commit(build: mb_stage(build: b, path: "one", text: "ONE"), message: "candidate one")
+      match mb_head(build: c1) {
+        Absent => FaninSceneUnavailable
+        Present { value: first } =>
+          let c2 = mb_commit(build: mb_stage(build: mb_at(build: c1, target: base), path: "two", text: "TWO"), message: "candidate two")
+          match mb_head(build: c2) {
+            Absent => FaninSceneUnavailable
+            Present { value: second } =>
+              FaninScene { build: c2, base: base, first: first, second: second }
+          }
+      }
+  }
+}
+
+fn fanin_scene_repository(s: FaninScene) -> RepositoryEnvelope? {
+  match s {
+    FaninSceneUnavailable => none
+    FaninScene { build: b, base: _, first: _, second: _ } =>
+      match b {
+        MbSetupFailed => none
+        MbBuilt { repository: r, at: _ } => Present { value: r }
+      }
+  }
+}
+
+fn fanin_conflict_scene() -> FaninScene {
+  let b = mb_commit(build: mb_stage(build: mb_start(), path: "a", text: "A0"), message: "base")
+  match mb_head(build: b) {
+    Absent => FaninSceneUnavailable
+    Present { value: base } =>
+      let c1 = mb_commit(build: mb_stage(build: b, path: "a", text: "A1"), message: "candidate one")
+      match mb_head(build: c1) {
+        Absent => FaninSceneUnavailable
+        Present { value: first } =>
+          let c2 = mb_commit(build: mb_stage(build: mb_at(build: c1, target: base), path: "a", text: "A2"), message: "candidate two")
+          match mb_head(build: c2) {
+            Absent => FaninSceneUnavailable
+            Present { value: second } =>
+              FaninScene { build: c2, base: base, first: first, second: second }
+          }
+      }
+  }
+}
+
+fn holds_path(paths: List<String>, path: String) -> Bool {
+  fold(paths, init: false, f: fn(found, p) { found || p == path })
+}
+
+fn paths_at(repository: RepositoryEnvelope, at: RepositoryCommitRef) -> List<String> {
+  match commit_at_reference(commits: repository.commits, reference: at) {
+    Absent => []
+    Present { value: c } =>
+      match staged_entries(
+        repository: RepositoryEnvelope {
+          store: repository.store,
+          commits: repository.commits,
+          commit_allocator: repository.commit_allocator,
+          checked_out: repository.checked_out,
+          staged: Present { value: c.root },
+        }
+      ) {
+        StagedEntriesRefused { cause: _ } => []
+        StagedEntries { entries } => map(entries, e => e.path as String)
+      }
+  }
+}
+
+test fn two_candidates_fan_in_to_one_integration_head_carrying_both() -> Bool {
+  match fanin_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base, first, second } =>
+      match fanin_scene_repository(s: fanin_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
+            FaninConflicted { conflicts: _ } => false
+            FaninRefused { detail: _ } => false
+            FaninIntegrated { repository: repo1, head: h1 } =>
+              match fanin_integrate_candidate(repository: repo1, integration_head: h1, candidate: second, message: "integrate two") {
+                FaninConflicted { conflicts: _ } => false
+                FaninRefused { detail: _ } => false
+                FaninIntegrated { repository: repo2, head: h2 } => {
+                  let paths = paths_at(repository: repo2, at: h2)
+                  holds_path(paths: paths, path: "a")
+                    && holds_path(paths: paths, path: "one")
+                    && holds_path(paths: paths, path: "two")
+                }
+              }
+          }
+      }
+  }
+}
+
+test fn a_conflicting_pair_yields_the_typed_conflict_and_mints_no_head() -> Bool {
+  match fanin_conflict_scene() {
+    FaninSceneUnavailable => false
+    FaninScene { build: _, base, first, second } =>
+      match fanin_scene_repository(s: fanin_conflict_scene()) {
+        Absent => false
+        Present { value: repo } =>
+          match fanin_integrate_candidate(repository: repo, integration_head: base, candidate: first, message: "integrate one") {
+            FaninConflicted { conflicts: _ } => false
+            FaninRefused { detail: _ } => false
+            FaninIntegrated { repository: repo1, head: h1 } => {
+              let commits_before = count(repo1.commits)
+              match fanin_integrate_candidate(repository: repo1, integration_head: h1, candidate: second, message: "integrate two") {
+                FaninIntegrated { repository: _, head: _ } => false
+                FaninRefused { detail: _ } => false
+                FaninConflicted { conflicts } =>
+                  count(conflicts) == 1
+                    && (conflicts |> map(c => c.path as String)) == ["a"]
+                    && count(repo1.commits) == commits_before
+              }
+            }
+          }
+      }
+  }
+}

@@ -1,5 +1,7 @@
 module test.claim.verification_evidence_addressing_witness_test
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { Bool, String, NonEmptyStr, List, CommitSha }
@@ -372,6 +374,7 @@ fn fixture_evidence(
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   }
 }

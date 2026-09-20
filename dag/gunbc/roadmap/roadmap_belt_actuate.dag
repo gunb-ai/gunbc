@@ -390,7 +390,34 @@ import gunbc.fleet_desired_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
-import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.scm.object_store {
+  ObjectStore, CorpusManifestEntry, authored_source_target_of,
+  store_authored_source, SourceStored, SourceLocatorCollision,
+  store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
+import gunbc.scm.write_spine {
+  commit_staged,
+  StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
+}
+import gunbc.scm.repository_load { load_repository, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
+import gunbc.scm.repository_save {
+  save_repository,
+  RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
+}
+import gunbc.scm.worktree_inventory { worktree_inventory_args, worktree_inventory_parse }
+import std.minted_identity { minted_id_ordinal }
+import gunbc.roadmap.roadmap_submission {
+  WorkerSubmission, SubmissionCapture,
+  SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+  SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
+  submission_artifact_name, submission_digest, submission_decode,
+  submission_capture_basename, submission_capture_text, submission_capture_decode,
+}
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -448,6 +475,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
   filesystem_listing_observation,
+  filesystem_listing_names_entry,
   filesystem_entry_presence,
   filesystem_read_outcome,
   filesystem_file_observation,
@@ -4269,6 +4297,9 @@ fn belt_workflow_progress_for_attempt_ref(
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       publication_source: ReceiptSourceAbsent,
+      submission_capture: CaptureUnreadable {
+        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
+      },
       review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
       goal_audit: [],
     })
@@ -4378,6 +4409,23 @@ fn belt_workflow_progress_for_attempt_ref(
       WorktreeHeadObserved { revision } =>
         belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
     }
+    let submission_capture = match head {
+      WorktreeHeadUnobserved { reason } =>
+        CaptureUnreadable {
+          reason: join(["the attempt head is unobserved, so no submission capture lookup names it: ", reason], ""),
+        }
+      WorktreeHeadObserved { revision } =>
+        belt_submission_capture_for_head(
+          instance: instance,
+          worktree: worktree,
+          dir: belt_attempt_submission_dir_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: current_key,
+          ),
+          head_sha: revision as String,
+        )
+    }
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
@@ -4418,6 +4466,7 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
+      submission_capture: submission_capture,
       review: review_evidence,
       goal_audit: audit_evidence,
     })
@@ -4469,6 +4518,7 @@ fn belt_workflow_progress_for_attempt_ref(
 // severed. Typed, located, counted, siblings continue.
 type BeltCommitOutcome
   = CommitRecorded { node_id: String, message: String }
+  | CandidateCaptured { node_id: String, head_sha: String, message: String }
   | CommitSkipped { node_id: String, reason: String }
   | CommitFailed { node_id: String, detail: String }
   | CommitDeferred { node_id: String, reason: String }
@@ -4496,6 +4546,571 @@ fn belt_commit_exec_detail(step: String, outcome: BeltExecOutcome) -> String {
   }
 }
 
+// THE SUBMISSION OBSERVATION IS PART OF THE COMMIT DECISION'S INPUT, READ AT THE BOUNDARY. Absence
+// is established by a successful listing, never a failed read; an unlistable worktree or an
+// artifact that lists and then does not read is not "no submission" -- it is unknown, and the belt
+// refuses to commit on a guess, because the two commit kinds bind different obligations.
+type BeltSubmissionRead
+  = BeltSubmissionObserved { observation: SubmissionObservation }
+  | BeltSubmissionUnobservable { reason: String }
+
+fn belt_submission_observe(worktree: String) -> BeltSubmissionRead {
+  let listing = Filesystem.List(path: worktree)
+  if !listing.success {
+    BeltSubmissionUnobservable {
+      reason: join([
+        "the attempt worktree could not be listed, so whether a submission artifact exists is unknown: ",
+        worktree, " (", listing.error, ")",
+      ], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: submission_artifact_name as String) {
+    BeltSubmissionObserved { observation: SubmissionAbsent }
+  } else {
+    let read = Filesystem.Read(path: join([worktree, "/", submission_artifact_name as String], ""))
+    if !read.success {
+      BeltSubmissionUnobservable {
+        reason: join([
+          "the submission artifact was listed and then could not be read, so whether it declares a candidate is unknown: ",
+          read.error,
+        ], ""),
+      }
+    } else {
+      match submission_decode(text: read.content) {
+        SubmissionNotDecodable { reason } =>
+          BeltSubmissionObserved { observation: SubmissionUndecodable { reason: reason } }
+        SubmissionDecoded { submission } =>
+          BeltSubmissionObserved {
+            observation: SubmissionDeclared {
+              submission: submission,
+              digest: submission_digest(submission: submission),
+            },
+          }
+      }
+    }
+  }
+}
+
+// THE CAPTURE ROSTER READ IS FAIL-CLOSED: one undecodable record refuses the whole roster rather
+// than deciding freshness against a partial history, because the missing entry could be the very
+// capture this declaration would collide with.
+type BeltCaptureRoster
+  = CaptureRosterObserved { captures: List<SubmissionCapture> }
+  | CaptureRosterUnobservable { reason: String }
+
+// THE CAPTURE DIRECTORY LIVES BESIDE THE ATTEMPT STATE, and the belt ensures it at every use
+// rather than at staging: attempts dispatched before this lane existed have no `submissions/`
+// subdirectory, and `install -d` is idempotent, so ensuring it here keeps the old population
+// legible (absence established by a successful listing) instead of refused (an unlistable
+// directory that is simply absent on older attempts).
+fn belt_attempt_submission_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/submissions",
+  ], "")
+}
+
+fn belt_attempt_submission_dir_ensure(instance: HostDashboardInstance, worktree: String, dir: String) -> BeltExecOutcome {
+  belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: AttemptStateDirectoryCapability,
+      ),
+      args: ["-d", "-m", "0700", dir],
+    ),
+    workdir: worktree,
+  )
+}
+
+fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: String, dir: String) -> BeltCaptureRoster {
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      CaptureRosterUnobservable {
+        reason: belt_commit_exec_detail(
+          step: "submission-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      CaptureRosterUnobservable {
+        reason: belt_commit_exec_detail(step: "submission-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    CaptureRosterUnobservable {
+      reason: join([
+        "the submission capture directory could not be listed, so the capture history is unknown: ",
+        dir, " (", listing.error, ")",
+      ], ""),
+    }
+  } else {
+    fold(
+      split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != ""),
+      init: CaptureRosterObserved { captures: [] },
+      f: (acc, entry) =>
+        match acc {
+          CaptureRosterUnobservable { reason: _ } => acc
+          CaptureRosterObserved { captures } => {
+            let read = Filesystem.Read(path: join([dir, "/", trim(entry)], ""))
+            if !read.success {
+              CaptureRosterUnobservable {
+                reason: join([
+                  "a submission capture record was listed and then could not be read: ",
+                  trim(entry), " (", read.error, ")",
+                ], ""),
+              }
+            } else {
+              match submission_capture_decode(text: read.content) {
+                CaptureNotDecodable { reason } =>
+                  CaptureRosterUnobservable {
+                    reason: join(["the submission capture record ", trim(entry), " does not decode: ", reason], ""),
+                  }
+                CaptureDecoded { capture } =>
+                  CaptureRosterObserved { captures: concat(captures, [capture]) }
+              }
+            }
+          }
+        },
+    )
+  }
+  }
+}
+}
+
+// THE HEAD-GRAIN CAPTURE LOOKUP: the one read both the verify gate and the dashboard projection
+// make. Absence is listing-established; a record at the head's own address that decodes but names
+// a different head is unexplained state, refused rather than read as this head's binding.
+fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, dir: String, head_sha: String) -> SubmissionCaptureObservation {
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      CaptureUnreadable {
+        reason: belt_commit_exec_detail(
+          step: "submission-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      CaptureUnreadable {
+        reason: belt_commit_exec_detail(step: "submission-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    CaptureUnreadable {
+      reason: join([
+        "the submission capture directory could not be listed, so whether this head is a captured candidate is unknown: ",
+        dir, " (", listing.error, ")",
+      ], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: submission_capture_basename(head_sha: head_sha)) {
+    CaptureAbsent
+  } else {
+    let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
+    if !read.success {
+      CaptureUnreadable {
+        reason: join(["the submission capture for this head was listed and then could not be read: ", read.error], ""),
+      }
+    } else {
+      match submission_capture_decode(text: read.content) {
+        CaptureNotDecodable { reason } =>
+          CaptureUnreadable {
+            reason: join(["the submission capture at this head's own address does not decode: ", reason], ""),
+          }
+        CaptureDecoded { capture } =>
+          if capture.head_sha != head_sha {
+            CaptureUnreadable {
+              reason: join([
+                "the submission capture at this head's own address names ", capture.head_sha,
+                ", which is unexplained state rather than this head's binding",
+              ], ""),
+            }
+          } else {
+            CaptureForHead { capture: capture }
+          }
+      }
+    }
+  }
+  }
+}
+}
+
+type BeltStagedCommit
+  = StagedCommitRecorded
+  | StagedCommitFailed { detail: String }
+
+fn belt_commit_staged(instance: HostDashboardInstance, worktree: String, message: NonEmptyStr) -> BeltStagedCommit {
+  match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_add_all_args()) {
+    ExecOk { stdout: _ } =>
+      match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_commit_message_args(message: message as String)) {
+        ExecOk { stdout: _ } => StagedCommitRecorded
+        ExecFailed { program, exit_code, stderr } =>
+          StagedCommitFailed { detail: belt_commit_exec_detail(step: "commit", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+        ExecRefused { program, reason } =>
+          StagedCommitFailed { detail: belt_commit_exec_detail(step: "commit", outcome: ExecRefused { program: program, reason: reason }) }
+      }
+    ExecFailed { program, exit_code, stderr } =>
+      StagedCommitFailed { detail: belt_commit_exec_detail(step: "add", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      StagedCommitFailed { detail: belt_commit_exec_detail(step: "add", outcome: ExecRefused { program: program, reason: reason }) }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SCM CAPTURE (owner ruling 2026-09-20: gunbc SCM inside, git at the edge).
+//
+// The authoritative capture of a candidate is a commit minted into the PROJECT's SCM envelope, not
+// the git commit the belt still creates in the attempt worktree. The project is derived, not
+// configured: a standalone task is a project of one (docs/plans/harness-work-lifecycle.md, delivery
+// structure), so today the project key IS the node id, and the envelope for the ten sibling nodes
+// of a multi-node project lands here unchanged once the roadmap authority carries explicit project
+// parents. The envelope lives beside the attempt-state root so its lifetime is the dashboard
+// instance's, not one attempt's.
+// ------------------------------------------------------------------------------------------------
+
+fn belt_scm_projects_dir(instance: HostDashboardInstance) -> String {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/projects"], "")
+}
+
+fn belt_scm_project_repository_path(instance: HostDashboardInstance, project_key: String) -> String {
+  join([belt_scm_projects_dir(instance: instance), "/", project_key, ".gunbc-repository.json"], "")
+}
+
+fn belt_scm_project_entry_name(project_key: String) -> String {
+  join([project_key, ".gunbc-repository.json"], "")
+}
+
+type BeltScmCapture
+  = ScmCandidateCaptured { repository_path: String, commit_ordinal: Int }
+  | ScmCaptureRefused { detail: String }
+
+type BeltEnvelopeSource
+  = EnvelopeReady { envelope: RepositoryEnvelope }
+  | EnvelopeSourceRefused { detail: String }
+
+// A MISSING ENVELOPE IS AN EMPTY REPOSITORY; AN UNDECODABLE ONE STOPS THE LINE. Absence is
+// established by the directory listing, never by a failed read -- the same rule the capture
+// directory and the publication spool already carry, because a project envelope that exists but
+// does not decode is damage to report, not a fresh start to pave over.
+fn belt_scm_envelope_observe(projects_dir: String, path: String, entry_name: String) -> BeltEnvelopeSource {
+  let listing = Filesystem.List(path: projects_dir)
+  if !listing.success {
+    EnvelopeSourceRefused {
+      detail: join([
+        "the project envelope directory could not be listed, so whether an envelope exists is unknown: ",
+        projects_dir, " (", listing.error, ")",
+      ], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: entry_name) {
+    EnvelopeReady { envelope: empty_repository() }
+  } else {
+    match load_repository(path: path) {
+      RepositoryLoaded { path: _, envelope } => EnvelopeReady { envelope: envelope }
+      RepositoryLoadRefused { cause } =>
+        EnvelopeSourceRefused {
+          detail: join([
+            "the project SCM envelope at ", path,
+            " exists but could not be loaded, and the belt does not pave over a repository it cannot read: ",
+            belt_scm_load_refusal_detail(cause: cause),
+          ], ""),
+        }
+    }
+  }
+}
+
+fn belt_scm_load_refusal_detail(cause: RepositoryLoadRefusal) -> String {
+  match cause {
+    RepositoryFileUnreadable { path, error } =>
+      join(["the envelope file could not be read: ", path, " (", error, ")"], "")
+    RepositoryDocumentUnparseable { path, gap: _ } =>
+      join(["the envelope file is not JSON: ", path], "")
+    RepositoryDocumentRefused { path, cause: _ } =>
+      join(["the envelope document is refused by the repository schema: ", path], "")
+  }
+}
+
+// THE TREE IS STAGED WHOLE, ONE AUTHORED SOURCE PER TRACKED PATH, and the manifest is stored once.
+// The path population comes from the bridge (gunbc.scm.worktree_inventory): while the worktree is
+// git, its index is the inventory authority, and an unreadable tracked path stops the capture --
+// a partial manifest would mint a candidate that is not the tree the worker declared.
+type BeltManifestBuild
+  = ManifestEntriesBuilt { store: ObjectStore, entries: List<CorpusManifestEntry> }
+  | ManifestBuildRefused { detail: String }
+
+fn belt_scm_stage_tree(worktree: String, store: ObjectStore, paths: List<NonEmptyStr>) -> BeltManifestBuild {
+  fold(
+    paths,
+    init: ManifestEntriesBuilt { store: store, entries: [] },
+    f: (acc, path) =>
+      match acc {
+        ManifestBuildRefused { detail: _ } => acc
+        ManifestEntriesBuilt { store, entries } => {
+          let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
+          if !read.success {
+            ManifestBuildRefused {
+              detail: join([
+                "the tracked path ", path as String,
+                " could not be read from the worktree (", read.error,
+                "), so the tree cannot be captured whole",
+              ], ""),
+            }
+          } else {
+            match store_authored_source(store: store, text: read.content) {
+              SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                ManifestBuildRefused {
+                  detail: join([
+                    "the object store refuses ", path as String,
+                    ": a different source already holds its content identity, which is store damage, not a capture",
+                  ], ""),
+                }
+              SourceStored { store: next, source } =>
+                ManifestEntriesBuilt {
+                  store: next,
+                  entries: concat(
+                    [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }],
+                    entries,
+                  ),
+                }
+            }
+          }
+        }
+      },
+  )
+}
+
+// NOTHING-TO-FREEZE IS A RESUME, NOT A FAILURE. If an earlier tick minted the SCM capture and then
+// failed before writing the capture record (the git commit failed, or the process died), the tree
+// being captured now freezes to the manifest the envelope already selects -- so the selected commit
+// IS this tree's capture, and re-binding to it is the correct resumption, never a second mint.
+fn belt_scm_capture_from_selection(envelope: RepositoryEnvelope, path: String) -> BeltScmCapture {
+  match envelope.checked_out {
+    Present { value: reference } =>
+      ScmCandidateCaptured {
+        repository_path: path,
+        commit_ordinal: minted_id_ordinal(id: reference.identity),
+      }
+    Absent =>
+      ScmCaptureRefused {
+        detail: "the capture froze nothing and the envelope selects no commit, so no capture identity exists to bind",
+      }
+  }
+}
+
+fn belt_scm_capture_candidate_tree(
+  instance: HostDashboardInstance,
+  worktree: String,
+  project_key: String,
+  message: String,
+) -> BeltScmCapture {
+  let projects_dir = belt_scm_projects_dir(instance: instance)
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: AttemptStateDirectoryCapability,
+      ),
+      args: ["-d", "-m", "0700", projects_dir],
+    ),
+    workdir: worktree,
+  ) {
+    ExecFailed { program, exit_code, stderr } =>
+      ScmCaptureRefused {
+        detail: belt_commit_exec_detail(
+          step: "projects-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      ScmCaptureRefused {
+        detail: belt_commit_exec_detail(step: "projects-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
+      let path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+      match belt_scm_envelope_observe(
+        projects_dir: projects_dir,
+        path: path,
+        entry_name: belt_scm_project_entry_name(project_key: project_key),
+      ) {
+        EnvelopeSourceRefused { detail } => ScmCaptureRefused { detail: detail }
+        EnvelopeReady { envelope } =>
+          match belt_commit_git(instance: instance, worktree: worktree, args: worktree_inventory_args) {
+            ExecFailed { program, exit_code, stderr } =>
+              ScmCaptureRefused {
+                detail: belt_commit_exec_detail(
+                  step: "inventory",
+                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                ),
+              }
+            ExecRefused { program, reason } =>
+              ScmCaptureRefused {
+                detail: belt_commit_exec_detail(step: "inventory", outcome: ExecRefused { program: program, reason: reason }),
+              }
+            ExecOk { stdout } => {
+              let paths = worktree_inventory_parse(stdout_nul: stdout)
+              if count(paths) == 0 {
+                ScmCaptureRefused {
+                  detail: "the worktree tracks zero files, so capturing it would mint an empty tree as the worker's deliverable",
+                }
+              } else {
+                match belt_scm_stage_tree(worktree: worktree, store: envelope.store, paths: paths) {
+                  ManifestBuildRefused { detail } => ScmCaptureRefused { detail: detail }
+                  ManifestEntriesBuilt { store, entries } =>
+                    match store_corpus_manifest(store: store, entries: entries) {
+                      CorpusManifestDuplicatePath { path: p } =>
+                        ScmCaptureRefused {
+                          detail: join(["the inventory named ", p as String, " twice, so the tree cannot be captured whole"], ""),
+                        }
+                      CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+                        ScmCaptureRefused {
+                          detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
+                        }
+                      CorpusManifestStored { store: with_manifest, manifest } =>
+                        match commit_staged(
+                          repository: RepositoryEnvelope {
+                            store: with_manifest,
+                            commits: envelope.commits,
+                            commit_allocator: envelope.commit_allocator,
+                            checked_out: envelope.checked_out,
+                            staged: Present { value: manifest },
+                          },
+                          message: message,
+                        ) {
+                          StagedCommitCandidateRefused { cause: _ } =>
+                            ScmCaptureRefused {
+                              detail: "the SCM stage could not be compared against its base, so the capture was not minted",
+                            }
+                          StagedCommitNothingToFreeze =>
+                            belt_scm_capture_from_selection(envelope: envelope, path: path)
+                          StagedCommitAllocatorInvalid { next_ordinal } =>
+                            ScmCaptureRefused {
+                              detail: join([
+                                "the project envelope's commit allocator is invalid (next ordinal ",
+                                to_string(next_ordinal), "), which is envelope damage, not a capture",
+                              ], ""),
+                            }
+                          StagedCommitSourceUnrecoverable { cause: _ } =>
+                            ScmCaptureRefused {
+                              detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
+                            }
+                          StagedCommitMinted { repository: advanced, reference } =>
+                            match save_repository(path: path, repo: advanced) {
+                              RepositorySaved { path: _, written: _ } =>
+                                ScmCandidateCaptured {
+                                  repository_path: path,
+                                  commit_ordinal: minted_id_ordinal(id: reference.identity),
+                                }
+                              RepositorySaveRefusedByCodec { path: _, cause: _ } =>
+                                ScmCaptureRefused {
+                                  detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
+                                }
+                              RepositoryFileUnwritable { path: p, error } =>
+                                ScmCaptureRefused {
+                                  detail: join([
+                                    "the capture was minted but the envelope could not be written to ", p,
+                                    " (", error, "); the in-memory commit is lost and the capture must be re-taken",
+                                  ], ""),
+                                }
+                              RepositoryWriteByteCountUnrepresentable { path: _, reported } =>
+                                ScmCaptureRefused {
+                                  detail: join([
+                                    "the envelope write reported a nonsensical byte count (",
+                                    to_string(reported), "), so whether the capture persisted is unknown",
+                                  ], ""),
+                                }
+                            }
+                        }
+                    }
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
+// identity is minted into the project's envelope from the tree as it stands THEN, and only after
+// that binding exists does the belt create the git commit that realizes the same tree at the edge
+// (verification checkout and, later, the publication push). A failure anywhere is not swallowed
+// into a checkpoint -- a git commit with no SCM binding, or an SCM commit with no capture record,
+// is a defect to stop on, typed, never a silent unbound candidate. Because the SCM capture precedes
+// the git commit, a failure after it leaves the tree dirty, so the next tick re-attempts the whole
+// sequence and the nothing-to-freeze resume above keeps it idempotent.
+fn belt_commit_capture_candidate(
+  instance: HostDashboardInstance,
+  worktree: String,
+  node_id: String,
+  attempt_key: String,
+  message: NonEmptyStr,
+  submission: WorkerSubmission,
+  digest: String,
+) -> BeltCommitOutcome {
+  match belt_scm_capture_candidate_tree(
+    instance: instance,
+    worktree: worktree,
+    project_key: node_id,
+    message: message as String,
+  ) {
+    ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+    ScmCandidateCaptured { repository_path, commit_ordinal } =>
+      match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
+        StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+        StagedCommitRecorded =>
+          match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+            WorktreeHeadUnobserved { reason } =>
+              CommitFailed {
+                node_id: node_id,
+                detail: join([
+                  "the candidate commit was created but its head could not be observed, so no capture record binds it and it must not advance silently: ",
+                  reason,
+                ], ""),
+              }
+            WorktreeHeadObserved { revision } => {
+              let write = Filesystem.Write(
+                path: join([
+                  belt_attempt_submission_dir_for_instance(
+                    instance: instance,
+                    node_id: node_id,
+                    attempt_key: attempt_key,
+                  ),
+                  "/",
+                  submission_capture_basename(head_sha: revision as String),
+                ], ""),
+                content: submission_capture_text(capture: SubmissionCapture {
+                  head_sha: revision as String,
+                  scm_repository: repository_path,
+                  scm_commit_ordinal: commit_ordinal,
+                  digest: digest,
+                  submission: submission,
+                }),
+              )
+              if write.success {
+                CandidateCaptured {
+                  node_id: node_id,
+                  head_sha: revision as String,
+                  message: message as String,
+                }
+              } else {
+                CommitFailed {
+                  node_id: node_id,
+                  detail: join([
+                    "the candidate commit ", revision as String,
+                    " was created but its capture record could not be written (", write.error,
+                    "): the head is a candidate with no binding, and the belt refuses to let it advance silently",
+                  ], ""),
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
 fn belt_commit_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
@@ -4518,22 +5133,53 @@ fn belt_commit_attempt_for_instance(
     ExecRefused { program, reason } =>
       CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecRefused { program: program, reason: reason }) }
     ExecOk { stdout } =>
-      match belt_commit_decision(provider: progress.provider, node_id: node_id, attempt_key: progress.attempt_key, entries_nul: stdout) {
-        CommitNotNeeded { reason } => CommitSkipped { node_id: node_id, reason: reason as String }
-        CommitNeeded { message } =>
-          match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_add_all_args()) {
-            ExecOk { stdout: _ } =>
-              match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_commit_message_args(message: message as String)) {
-                ExecOk { stdout: _ } => CommitRecorded { node_id: node_id, message: message as String }
-                ExecFailed { program, exit_code, stderr } =>
-                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
-                ExecRefused { program, reason } =>
-                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecRefused { program: program, reason: reason }) }
+      match belt_submission_observe(worktree: worktree) {
+        BeltSubmissionUnobservable { reason } =>
+          CommitFailed {
+            node_id: node_id,
+            detail: join([
+              "the submission artifact could not be observed, so the belt cannot distinguish a candidate from a checkpoint and refuses to guess: ",
+              reason,
+            ], ""),
+          }
+        BeltSubmissionObserved { observation } =>
+          match belt_submission_captures_observe(
+            instance: instance,
+            worktree: worktree,
+            dir: belt_attempt_submission_dir_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: progress.attempt_key,
+            ),
+          ) {
+            CaptureRosterUnobservable { reason } =>
+              CommitFailed {
+                node_id: node_id,
+                detail: join([
+                  "the submission capture history could not be observed, so the belt cannot tell a fresh declaration from a re-swept one and refuses to guess: ",
+                  reason,
+                ], ""),
               }
-            ExecFailed { program, exit_code, stderr } =>
-              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
-            ExecRefused { program, reason } =>
-              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecRefused { program: program, reason: reason }) }
+            CaptureRosterObserved { captures } =>
+              match belt_commit_decision(provider: progress.provider, node_id: node_id, attempt_key: progress.attempt_key, entries_nul: stdout, submission: observation, captures: captures) {
+                CommitNotNeeded { reason } => CommitSkipped { node_id: node_id, reason: reason as String }
+                CheckpointCommitNeeded { message, note } =>
+                  match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
+                    StagedCommitRecorded =>
+                      CommitRecorded { node_id: node_id, message: join([message as String, " (", note, ")"], "") }
+                    StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+                  }
+                CandidateCommitNeeded { message, submission, digest } =>
+                  belt_commit_capture_candidate(
+                    instance: instance,
+                    worktree: worktree,
+                    node_id: node_id,
+                    attempt_key: progress.attempt_key,
+                    message: message,
+                    submission: submission,
+                    digest: digest,
+                  )
+              }
           }
       }
   }
@@ -4544,6 +5190,8 @@ fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
   match o {
     CommitRecorded { node_id, message } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "message", value: json_string(s: message))])
+    CandidateCaptured { node_id, head_sha, message } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "candidate-captured")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "head_sha", value: json_string(s: head_sha)), json_kv(key: "message", value: json_string(s: message))])
     CommitSkipped { node_id, reason } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
     CommitFailed { node_id, detail } =>
@@ -4577,6 +5225,7 @@ fn belt_verify_attempts_after_commit(
 fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
   match o {
     CommitRecorded { node_id: _, message: _ } => false
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => true
     CommitDeferred { node_id: _, reason: _ } => false
@@ -4587,6 +5236,7 @@ fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
 fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
   match o {
     CommitRecorded { node_id: _, message: _ } => true
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => true
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
     CommitDeferred { node_id: _, reason: _ } => false
@@ -4598,6 +5248,7 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
   let ledger_refusals = outcomes |> filter(o => match o {
     CommitDeferred { node_id: nid, reason: _ } => nid == ""
     CommitRecorded { node_id: _, message: _ } => false
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
     CommitSubjectUnaddressable { node_id: _, reason: _ } => false
@@ -5064,7 +5715,52 @@ fn belt_verify_attempt_for_instance(
             ) {
               WorktreeHeadUnobserved { reason } =>
                 VerifyDeferred { node_id: progress.node_id, reason: reason }
-              WorktreeHeadObserved { revision: revision } => {
+              WorktreeHeadObserved { revision: revision } =>
+              match belt_submission_capture_for_head(
+                instance: instance,
+                worktree: attempt_worktree,
+                dir: belt_attempt_submission_dir_for_instance(
+                  instance: instance,
+                  node_id: node_id,
+                  attempt_key: progress.attempt_key,
+                ),
+                head_sha: revision as String,
+              ) {
+                CaptureUnreadable { reason } =>
+                  VerifyRefused {
+                    node_id: progress.node_id,
+                    cause: join([
+                      "whether this head is a captured candidate is unknown (",
+                      reason,
+                      "), and the belt does not verify a head it cannot bind to a submission",
+                    ], ""),
+                  }
+                CaptureAbsent =>
+                  VerifyDeferred {
+                    node_id: progress.node_id,
+                    reason: "no submission capture binds this head: the belt's commit over it was a checkpoint (yielded, not ready), and only a captured candidate advances to authoritative verification",
+                  }
+                CaptureForHead { capture } =>
+              match capture.submission.readiness {
+                SubmissionBlocked =>
+                  VerifyDeferred {
+                    node_id: progress.node_id,
+                    reason: join([
+                      "the captured submission declares blocked, not ready: ",
+                      capture.submission.explanation,
+                      " -- no candidate advances to verification",
+                    ], ""),
+                  }
+                SubmissionNeedsContext =>
+                  VerifyDeferred {
+                    node_id: progress.node_id,
+                    reason: join([
+                      "the captured submission declares needs-context, not ready: ",
+                      capture.submission.explanation,
+                      " -- no candidate advances to verification",
+                    ], ""),
+                  }
+                SubmissionReady => {
                 let head_sha = revision as String
                 let worktree = belt_verify_detached_worktree(
                   instance: instance,
@@ -5201,6 +5897,8 @@ fn belt_verify_attempt_for_instance(
                     }
                   }
                 }
+              }
+              }
               }
             }
           }

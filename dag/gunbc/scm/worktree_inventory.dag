@@ -1,0 +1,34 @@
+module gunbc.scm.worktree_inventory
+
+import std.types { String, NonEmptyStr, List }
+
+// THE WORKTREE-TO-SCM BRIDGE THE LAYER DECLARES (owner ruling 2026-09-20: gunbc SCM inside, git
+// only at the final publish layer AND inside the bridge the SCM layer declares for as long as
+// workers still edit git worktrees).
+//
+// Capturing a worktree into the object store starts from an inventory of which paths the tree
+// tracks. While the attempt worktree is a git worktree, that inventory is git's index, asked one
+// question: `git ls-files -z`. This module is the whole of git's role in the capture path -- the
+// argv spelling and the row parse -- so the belt performs one exec and every later decision
+// (read, stage, manifest, commit) is an SCM verb. When the worktree itself stops being git, this
+// module is replaced by a traversal and nothing downstream changes shape.
+//
+// WHY `-z` AND NO QUOTING RULES. The NUL-separated form is the only ls-files output in which a
+// path cannot be mangled by git's own quoting: rows arrive raw, one per NUL. The parse is
+// therefore a split and nothing else -- a parser that "interpreted" the default quoted form would
+// be a heuristic standing in for an observation.
+//
+// AN EMPTY INVENTORY IS A FACT, NOT A REFUSAL AT THIS LAYER. A worktree tracking zero files is
+// representable (a fresh branch, a misrooted exec), and whether capturing it is admissible is the
+// CALLER's question -- the belt refuses it for a candidate, because a candidate commit over zero
+// paths would mint an empty tree as the worker's deliverable.
+data worktree_inventory_args: List<String> = ["ls-files", "-z"]
+
+// The trailing NUL yields one empty final row; every other row is a tracked path verbatim.
+// Mid-stream empty rows cannot occur in ls-files output, and filtering them rather than refusing
+// is safe only because an empty path names no file -- it cannot be mistaken for content.
+fn worktree_inventory_parse(stdout_nul: String) -> List<NonEmptyStr> {
+  split(s: stdout_nul, delimiter: "\0")
+    |> filter(row => row != "")
+    |> map(row => row as NonEmptyStr)
+}

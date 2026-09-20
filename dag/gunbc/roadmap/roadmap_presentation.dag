@@ -31,6 +31,7 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
+  SubmissionWorkflowSegment,
   VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
   workflow_segment_kind_label,
@@ -652,6 +653,7 @@ fn segment_kind_is_agent(kind: WorkflowSegmentKind) -> Bool {
     EnvironmentWorkflowSegment => false
     WorkspaceWorkflowSegment => false
     AgentWorkflowSegment => true
+    SubmissionWorkflowSegment => false
     VerificationWorkflowSegment => false
     PublicationWorkflowSegment => false
     ReviewWorkflowSegment => false

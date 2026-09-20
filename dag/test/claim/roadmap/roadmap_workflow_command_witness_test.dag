@@ -1,5 +1,7 @@
 module test.claim.roadmap_workflow_command_witness
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_workflow_command {
@@ -109,6 +111,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   })
   match activity_view_from_progress(progress: progress) {

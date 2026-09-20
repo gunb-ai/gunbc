@@ -1,5 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
@@ -1089,6 +1091,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   })
 }
@@ -1107,9 +1110,9 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
     progress: completed_attempt_progress(node_id: "belt-wire-activity-node")))
   string_contains(s: j, pattern: "\"activity\": {")
     && string_contains(s: j, pattern: "\"arm\": \"active\"")
-    && string_contains(s: j, pattern: "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining")
-    && string_contains(s: j, pattern: "\"remaining_obligation_count\": 4")
-    && string_contains(s: j, pattern: "\"attention\": \"routine\"")
+    && string_contains(s: j, pattern: "Submission failed")
+    && string_contains(s: j, pattern: "\"remaining_obligation_count\": 5")
+    && string_contains(s: j, pattern: "\"attention\": \"anomalous\"")
     && string_contains(s: j, pattern: "\"label\": \"session container\"")
     && string_contains(s: j, pattern: "\"value\": \"present\"")
     && string_contains(s: j, pattern: "\"label\": \"worker process\"")
@@ -1174,6 +1177,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       },
       publication_source: ReceiptSourceAbsent,
       review: review_report_absent(reason: "fixture"),
+      submission_capture: CaptureAbsent,
       goal_audit: [],
     }),
   ) {

@@ -3,6 +3,7 @@ module gunbc.harness.harness_guidance
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.roadmap.roadmap_submission { submission_artifact_name }
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -32,7 +33,7 @@ type HarnessWriteForm = HeredocWrite | InPlaceEdit
 
 type HarnessCapability = ReadTheTree | ChangeTheTree | CommitTheChange | PublishTheBranch | BuildOrTestOutsideTheProcess
 
-type HarnessCompletionTerm = FilesOnDiskDiffer | AcceptanceCheckPasses
+type HarnessCompletionTerm = FilesOnDiskDiffer | AcceptanceCheckPasses | SubmissionDeclared { artifact: String }
 
 // One premise is one clause. The test for whether it is atomic: its projection needs no conjunction.
 type HarnessPremise
@@ -108,6 +109,11 @@ fn harness_completion_term_text(term: HarnessCompletionTerm) -> String {
   match term {
     FilesOnDiskDiffer => "the files on disk differ"
     AcceptanceCheckPasses => "the acceptance check passes"
+    SubmissionDeclared { artifact } =>
+      join([
+        "you have written ", artifact,
+        " at the worktree root declaring how the task ends: readiness (ready | blocked | needs-context), an explanation, and your known limitations. Writing it is how you end the task -- the harness captures the tree as it stands then and binds your declaration to that capture. Ending without it is a yield, not a submission: your work is preserved as a checkpoint and never advances to authoritative verification",
+      ], "")
   }
 }
 
@@ -296,6 +302,8 @@ fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
              module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_workflow_progress_for_attempt_ref"),
     grounded(premise: CompletionRequires { term: AcceptanceCheckPasses },
              module_path: "gunbc.roadmap_execution_contract", decl_name: "ValidationOperation"),
+    grounded(premise: CompletionRequires { term: SubmissionDeclared { artifact: submission_artifact_name as String } },
+             module_path: "gunbc.roadmap.roadmap_submission", decl_name: "submission_artifact_name"),
     grounded(premise: CapabilityWithheld { capability: CommitTheChange },
              module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     grounded(premise: CapabilityWithheld { capability: PublishTheBranch },

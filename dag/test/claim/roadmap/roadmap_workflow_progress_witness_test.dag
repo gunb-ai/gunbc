@@ -1,5 +1,7 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent, review_plan, review_aggregate, review_subject_id, ReviewSubject, ReviewObservation }
 import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent, ReviewReceiptPresent, CriterionReviewEvidence }
 import std.types { Bool, List, NonEmptyStr }
@@ -146,6 +148,7 @@ fn fixture_evidence(
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   }
 }
@@ -168,17 +171,18 @@ test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
     process: WorkerProcessRunning { command: "node" as NonEmptyStr },
   ))
-  count(progress.segments) == 7
+  count(progress.segments) == 8
     && segment_state(progress.segments, "environment") == "complete"
     && segment_state(progress.segments, "workspace") == "complete"
     && segment_state(progress.segments, "agent") == "active"
+    && segment_state(progress.segments, "submission") == "pending"
     && segment_state(progress.segments, "verify") == "pending"
     && segment_state(progress.segments, "publish") == "pending"
     && segment_state(progress.segments, "review") == "pending"
     && segment_state(progress.segments, "audit") == "pending"
-    && progress.reconciliation.desired_count == 7
+    && progress.reconciliation.desired_count == 8
     && progress.reconciliation.observed_count == 3
-    && progress.reconciliation.remaining_count == 5
+    && progress.reconciliation.remaining_count == 6
     && progress.reconciliation.observed_failure_count == 0
     && progress.reconciliation.observed_refusal_count == 0
     && progress.reconciliation.plan_refusal_count == 0
@@ -205,7 +209,7 @@ test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
   match progress.provider {
     ProviderFailed { activity: _, detail } =>
       string_contains(s: detail, pattern: "exited 7")
-        && progress.reconciliation.observed_failure_count == 1
+        && progress.reconciliation.observed_failure_count == 2
         && workflow_reconcile_status_key(
           report: progress.reconciliation,
         ) == "failed"
@@ -398,6 +402,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    submission_capture: CaptureAbsent,
     goal_audit: base.goal_audit,
   }
   let progress = workflow_attempt_progress(evidence: forged)
@@ -430,6 +435,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    submission_capture: CaptureAbsent,
     goal_audit: base.goal_audit,
   })
   match progress.provider {
@@ -477,6 +483,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     },
     publication_source: ReceiptSourceAbsent,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   })
   match progress.provider {
@@ -515,6 +522,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    submission_capture: CaptureAbsent,
     goal_audit: base.goal_audit,
   })
   match progress.provider {
@@ -542,11 +550,11 @@ test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
     && string_contains(s: wire, pattern: "\"state\": \"pending\"")
     && string_contains(s: wire, pattern: "\"kind\": \"publish\"")
     && string_contains(s: wire, pattern: "\"kind\": \"audit\"")
-    && string_contains(s: wire, pattern: "\"workflow_status\": \"not_converged\"")
-    && string_contains(s: wire, pattern: "\"desired_obligations\": 7")
-    && string_contains(s: wire, pattern: "\"observed_obligations\": 3")
-    && string_contains(s: wire, pattern: "\"remaining_obligations\": 4")
-    && string_contains(s: wire, pattern: "\"failed_obligations\": 0")
+    && string_contains(s: wire, pattern: "\"workflow_status\": \"failed\"")
+    && string_contains(s: wire, pattern: "\"desired_obligations\": 8")
+    && string_contains(s: wire, pattern: "\"observed_obligations\": 4")
+    && string_contains(s: wire, pattern: "\"remaining_obligations\": 5")
+    && string_contains(s: wire, pattern: "\"failed_obligations\": 1")
     && string_contains(s: wire, pattern: "\"refused_obligations\": 0")
 }
 
@@ -654,6 +662,7 @@ fn publication_segment_of(
     publication_subject: subject,
     publication_source: source,
     review: review_report_absent(reason: "fixture"),
+    submission_capture: CaptureAbsent,
     goal_audit: [],
   })
   fold(progress.segments, init: WorkflowSegment {
