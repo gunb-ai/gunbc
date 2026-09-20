@@ -19,7 +19,7 @@ import extdeps.languages.json.parse {
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_authority { roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_site_surface_render { site_artifact_digest }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
@@ -415,7 +415,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_authority_projection(),
+    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     observed_at: observed_at,
   )
 }
