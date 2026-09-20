@@ -39,35 +39,67 @@ fn demand_restatement_follow_up_module_paths() -> List<String> {
   demand_restatement_follow_up_modules
 }
 
-// THE ROWS THE CRITERION CANNOT TYPE AT ALL, kept by cut (c) and distinct from the roster above:
-// those arrived after the census, these were IN it and came back untypeable. A `uses` row is
-// deletable when its function's DERIVED service demand is nonempty, and derived demand comes from
-// the module's registry entry -- so a module that does not resolve has no entry, and its rows have
-// nothing to compare against. Deleting on a refusal is deleting on ignorance, which is why they
-// stand. The two modules below refuse at PRE-EXISTING type errors this cut did not introduce and
-// does not repair (`gunbc.auth.patterns` at its own line 60, expected String got Secret). Note the
-// rows are ordinary `fn`s, NOT pattern declarations -- the reason they survive is the module, not
-// the declaration kind. TRIGGER: when a module here resolves, the criterion types its rows and the
-// next cut takes them by the same rule as every other row.
+// THE TEN ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
+// the alias the row binds, and the authored type. The grain matters because the earlier partition
+// here was by MODULE and was wrong in both directions: `gunbc.auth.patterns` holds two ordinary fns
+// AND a pattern, and `gunbc.assimilate.bmc_bootstrap_provision`'s row is a pattern rather than a
+// module-resolution casualty. Partitioning by module therefore attached a trigger to rows it is
+// false for -- "when the module resolves, the criterion types its rows" does not hold for a pattern,
+// because resolution only reveals the next blocker, which is that the criterion never ranged over
+// pattern declarations at all. Each row carries its own trigger instead.
+type RetainedRowTrigger
+  = ModuleResolutionBlocked
+  | CriterionDoesNotRangeOverPatterns
 
-data demand_restatement_untypeable_by_refusing_module: List<String> = [
-  "gunbc.auth.patterns",
-  "gunbc.assimilate.bmc_bootstrap_provision",
+type DemandRestatementRetainedRow {
+  module_path: NonEmptyStr
+  declaration: NonEmptyStr
+  alias: NonEmptyStr
+  authored_type: NonEmptyStr
+  trigger: RetainedRowTrigger
+}
+
+// THE TWO ORDINARY FUNCTIONS. Their module refuses to resolve at a pre-existing type error
+// (`gunbc.auth.patterns` line 60, expected String got Secret) that this cut neither introduced nor
+// repairs, so they have no registry entry and no derived demand to compare against. TRIGGER, per
+// row: the module resolves, and the criterion then executes on them like any other fn row.
+
+data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "github_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "metadata_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
 ]
 
-// THE PATTERN-DECLARATION ROWS, the other half of what cut (c) kept. `pattern` declarations are not
-// in the function registry, so the criterion does not range over them at all -- this is a scope
-// boundary rather than a measurement that came back empty. TRIGGER: derived demand covers pattern
-// declarations, or the rows are dispositioned under whatever authority owns patterns.
+// THE EIGHT PATTERN DECLARATIONS. These are outside the criterion's range rather than unmeasured
+// within it: a `pattern` is not in the function registry, so there is no ItemInfo to read
+// service_names from. Module resolution is not their blocker and would not discharge them.
+// TRIGGER, per row: derived demand ranges over pattern declarations.
 
-data demand_restatement_untypeable_by_declaration_kind: List<String> = [
-  "gunbc.auth.credentials",
-  "gunbc.tailscale_acl_phase2_credential",
+data demand_restatement_retained_pattern_rows: List<DemandRestatementRetainedRow> = [
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "credential_chain" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_secret_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_via_adc_refresh" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_adc_token_from_credentials" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_adc_for_path" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_operator_ephemeral_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_credential_with_operator_token" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.assimilate.bmc_bootstrap_provision" as NonEmptyStr, declaration: "bmc_bootstrap_provision_srv3" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
 ]
 
-// THE MODULES THE CRITERION COULD NOT TYPE, for the same prose consumer as the roster.
+// EACH RETAINED ROW AS PROSE, so every field of the row identity reaches a reader and the trigger
+// travels with the row it is true for.
 
-fn demand_restatement_untypeable_module_paths() -> List<String> {
-  concat(demand_restatement_untypeable_by_refusing_module, demand_restatement_untypeable_by_declaration_kind)
+fn retained_row_trigger_text(t: RetainedRowTrigger) -> String {
+  match t {
+    ModuleResolutionBlocked => "trigger: its module resolves, and the criterion executes on it"
+    CriterionDoesNotRangeOverPatterns => "trigger: derived demand ranges over pattern declarations"
+  }
+}
+
+fn retained_row_text(r: DemandRestatementRetainedRow) -> String {
+  join([r.module_path as String, "::", r.declaration as String, " (uses ", r.alias as String, ": ", r.authored_type as String, "; ", retained_row_trigger_text(t: r.trigger), ")"], "")
+}
+
+fn demand_restatement_retained_row_texts() -> List<String> {
+  concat(demand_restatement_retained_fn_rows, demand_restatement_retained_pattern_rows) |> map(r => retained_row_text(r: r))
 }
 
