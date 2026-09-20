@@ -595,7 +595,7 @@ fn force_stop_outcome_of_readback(asked: Bool, ask_detail: String, r: CgroupSubt
 // short of assembling a teardown (zesty-pike-444's review, relayed by sunny-ant-606).
 //
 // SO THE UNIT CARRIES THE ATTEMPT'S OWN ID AND THE CONTROLLER READS IT BACK FROM THE UNIT. The launch
-// sets it as an Environment property; teardown reads the unit's Environment before signalling. That
+// sets it as an Environment property and the teardown reads the unit's Environment. That
 // keeps the observed side an OBSERVATION rather than a second copy of the request: a value read off
 // the unit says which attempt THAT unit was started for, so a unit left over from a previous
 // incarnation answers with the previous attempt's id and the join refuses -- which is exactly the
@@ -604,6 +604,23 @@ fn force_stop_outcome_of_readback(asked: Bool, ask_detail: String, r: CgroupSubt
 // IT DEPENDS ON THE UNIT STILL BEING LOADED, which is why the launch uses systemd-run's RETAINED
 // form: --collect unloads the unit the moment it exits and takes its Environment, its Result and its
 // ExecMainStatus with it.
+//
+// WHAT IS NOT MODELED, STATED RATHER THAN ASSUMED: nothing in the program orders the Environment read
+// against the stop. In `perform_teardown_and_observe` the invocation reading and the stop outcome are
+// bound independently -- neither consumes the other -- so the only thing sequencing them is that the
+// seed interpreter evaluates eagerly in source position, which is a fact about THIS realization and
+// not about the model. An earlier revision of this comment said the read happens BEFORE signalling;
+// that asserted a guarantee the program does not carry, and is the class this module exists to remove.
+//
+// NO EDGE IS MANUFACTURED HERE, DELIBERATELY. The staging steps a few screens down are chained with an
+// explicit `after:` receipt because their order is causal in the world. This pair is not the same: the
+// stop does not consume the invocation, so an `after:` parameter would exist only to imply an ordering
+// the program has no other reason to have -- a construction claiming a property it does not possess,
+// which is the defect wearing the repair's clothes. The honest state is that the ordering is currently
+// a realization property, and it is recorded as such rather than papered over.
+data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DECLARED FRONTIER (DESIGN 3c/4b). std carries NO effect-sequencing authority: whether a workflow function's let-chain lowers to a Bind continuation -- which would order these effects structurally -- or whether source position is only a seed-realization property, is undecided and has no home module. The two lawful constructions gunbc.recurring_failure_mode readback_ordered_only_by_statement_position names are the effect's Bind continuation and an explicit after: receipt; statement position is neither. TRIGGER, at capability grain: an effect-sequencing authority in std that says whether a workflow let-chain orders its effects, sufficient to decide whether this read is ordered against the stop by construction. SUFFICIENT FOR deleting this row and stating the ordering as a guarantee. NOT satisfied by this comment, by the seed continuing to evaluate in source order, or by a witness that happens to observe the read first." as NonEmptyStr,
+)
 data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
 
 fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
@@ -843,6 +860,27 @@ fn run_teardown(
 
 // --- staging, and the one route to a running VMM ---
 
+// THE STAGING STEPS ARE CHAINED BY AN EXPLICIT `after:` RECEIPT, because the causal order is real and
+// the source was not expressing it. A jail root that was not created makes the copies meaningless and
+// a workspace that was not created cannot be formatted -- those edges exist in the world, and five
+// mutually independent `let`s stated none of them. Source position is not an ordering: the seed
+// interpreter happens to evaluate eagerly in source order, but that is a fact about THIS realization,
+// not about the model, and `gunbc.recurring_failure_mode` `readback_ordered_only_by_statement_position`
+// names the two lawful constructions as the effect's Bind continuation or an explicit `after:` receipt.
+// This is the second.
+//
+// IT CARRIES THE RECEIPT AND DOES NOT INSPECT IT, WHICH IS THE POINT: the step still runs and still
+// reports its own exit, so the verdict is unchanged for every input -- `jail_material_standing` and
+// `workspace_standing` read the same exits they read before. What changes is that the graph now says
+// the later step is downstream of the earlier one, so no realization may reorder them. Short-circuiting
+// on the prior exit would ALSO have ordered them, and was rejected: it would have to invent an exit for
+// a step that never ran, which is the fabricated-value class this module exists to remove.
+fn run_staged_after(after: ProcessOutcome, command: ArgvCommand) -> ProcessOutcome
+  uses net: Network
+{
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
 fn command_exit_code(outcome: ProcessOutcome) -> Int {
   match outcome {
     ProcessOutputPresent { text: _ } => 0
@@ -913,10 +951,10 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       jailer: _,
     } => {
       let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
-      let kernel_outcome = run_shell_command_capture(command: stage_kernel, transport: LocalExec)
-      let rootfs_outcome = run_shell_command_capture(command: stage_rootfs, transport: LocalExec)
-      let create_outcome = run_shell_command_capture(command: create, transport: LocalExec)
-      let format_outcome = run_shell_command_capture(command: format, transport: LocalExec)
+      let kernel_outcome = run_staged_after(after: root_outcome, command: stage_kernel)
+      let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
+      let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
+      let format_outcome = run_staged_after(after: create_outcome, command: format)
       AttemptStaged {
         verdict: attempt_staging_verdict(
           plan: plan,
