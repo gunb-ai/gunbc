@@ -864,7 +864,7 @@ fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) 
 
 // A REFUSED HOST IS NOT A HOST THAT WANTS ZERO SLOTS, AND THE DIFFERENCE IS A REMOVE-ALL PLAN.
 //
-// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_slots_per_host`, which answers 0 for a host
+// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_committed_width`, which REFUSES for a host
 // whose admission REFUSED -- srv2, whose session denominator is unestablished, is the live instance.
 // This family previously treated any found deploy row as an ordinary desired roster, so that refusal
 // arrived at `desired_runner_slot_members` as the empty list. Reconcile reads an empty desired set

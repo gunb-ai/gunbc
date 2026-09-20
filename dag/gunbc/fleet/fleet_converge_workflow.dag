@@ -18,6 +18,7 @@ import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
+import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
 }
@@ -85,6 +86,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_control_plane_converge_invoke,
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
+  gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
@@ -212,6 +214,7 @@ type FleetConvergeWorkflowMode
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
   | MtCollins1Boot
+  | MtCollins1FanObserve
   | OrgRunnerRosterObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
@@ -244,6 +247,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
+    MtCollins1FanObserve => "mtcollins1_fan_observe"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -269,7 +273,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, AppKeyVersionVerify]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, AppKeyVersionVerify]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -321,6 +325,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
+    MtCollins1FanObserve => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -376,6 +381,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyNotConsumed
+    MtCollins1FanObserve => FleetSshKeyNotConsumed
   }
 }
 
@@ -1385,6 +1391,38 @@ fn fleet_converge_app_key_version_verify_mint_step() -> Step {
   }
 }
 
+// THE MT. COLLINS FAN OBSERVATION MODE, WHICH IS READ-ONLY AND IS THE ONLY MODE IN THIS WORKFLOW
+// THAT TOUCHES THAT UNIT WITHOUT THE BOOT LANE'S KNOWLEDGE.
+//
+// WHY IT IS A MODE RATHER THAN A HAND-RUN. The question it answers - does this controller hold a
+// fixed fan output, and does that output move when the host starts publishing thermals - is a
+// MEASUREMENT, and a measurement pasted into a message is not a receipt anybody can re-derive. As a
+// mode it carries its own credential prelude, writes its series to an artifact the run uploads, and
+// can be dispatched again against a later revision to see whether the answer changed.
+//
+// WHY IT MUST NOT RUN BESIDE A BOOT DISPATCH. Nothing here writes chassis state, but the boot lane
+// does, and a fan series taken across somebody else's power cycle is a series whose power column
+// changed for a reason the series cannot see. That is a scheduling constraint between two dispatches
+// of one workflow, which this repository has no lock for, so it is stated and coordinated rather
+// than claimed as enforced.
+data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
+
+fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)" },
+    id: Present { value: "mtcollins1_fan_observe" },
+    run: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_app_key_version_verify_verdict_step() -> Step {
   RunStep {
     name: Present { value: "App key version verify: typed verdict and rotation-deadline standing" },
@@ -1407,6 +1445,24 @@ fn fleet_converge_app_key_version_verify_receipt_upload_step() -> Step {
     path: app_key_verify_receipt_path,
     if_condition: fleet_converge_app_key_version_verify_always_if
   )
+}
+
+fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins fan observation series" },
+    id: Present { value: "mtcollins1_fan_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-fan-observation")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_r2_mint_preflight_step() -> Step {
@@ -1925,6 +1981,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_key_version_verify_mint_step(),
         fleet_converge_app_key_version_verify_verdict_step(),
         fleet_converge_app_key_version_verify_receipt_upload_step(),
+        fleet_converge_mtcollins1_fan_observe_step(),
+        fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),
