@@ -494,7 +494,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_census_image.dag --function mtcollins1_census_image_publish_wet
           cat "$ROOT/target/mtcollins1-census-image.txt"
         if: github.event.inputs.mode == 'mtcollins1_census_image_publish'
-        timeout-minutes: 5
+        timeout-minutes: 30
       - name: Upload Mt. Collins census image receipt
         id: mtcollins1_census_image_publish_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

@@ -53,6 +53,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
+  gunbc_ci_mtcollins1_census_image_step_timeout_minutes,
   gunbc_ci_runner_host_file_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
@@ -1475,7 +1476,7 @@ fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
 }
 
