@@ -130,9 +130,15 @@ test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
     )
 }
 
-test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
+// THE SLOT KEY CARRIES THE RELATION'S SCOPE AND IS SLOT-ADDRESSABLE: it is not the bare escalation
+// id (a second relation on the shared root could then collide with it) and it carries no `/`
+// (which gunbc.durable_cas_file_store refuses). Both halves are reds: the bare id and a slashed key.
+test fn a_boot_claim_slot_key_is_scoped_and_slot_addressable() -> Bool {
   let eid = "mtcollins1-boot-1" as NonEmptyStr
-  (authorization_claim_key(escalation_id: eid) as String) == (eid as String)
+  let key = authorization_claim_key(escalation_id: eid) as String
+  key != (eid as String)
+    && string_contains(s: key, pattern: eid as String)
+    && !key.contains("/")
 }
 
 test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
