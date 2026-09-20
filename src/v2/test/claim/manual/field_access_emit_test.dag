@@ -193,15 +193,3 @@ test fn field_access_ingest_via_coerce_matches_canonical() -> Bool {
   }
 }
 
-test fn field_access_emit_holds_keystone() -> Bool {
-  field_access_emit_holds()
-}
-
-test fn field_access_grammar_inverse_holds_keystone() -> Bool {
-  field_access_grammar_inverse_holds()
-}
-
-test fn field_access_ingest_via_coerce_holds_keystone() -> Bool {
-  field_access_ingest_via_coerce_matches_canonical()
-}
-
