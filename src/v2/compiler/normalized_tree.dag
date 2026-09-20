@@ -17,12 +17,19 @@ import v2.std.diagnostic {
 import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node }
+import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
 // bare Node and was dropped there. Sealing the carrier makes the drop unwritable.
+//
+// `test_markers` is the authored `test` marker's channel (v2.std.declaration_marker), sealed
+// beside the root rather than inside it: `root` is byte-identical for a `test fn` and a plain `fn`,
+// and every consumer about Node structure reads `root` alone. Name resolution is the channel's
+// consumer, and refuses references to what it marks.
 type NormalizedTree sole_constructor {
   root: Node,
+  test_markers: TestMarkerChannel,
 }
 
 // Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
@@ -39,7 +46,11 @@ fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
-fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<NormalizedTree> {
+fn admit_normalized_tree(
+  root: Node,
+  test_markers: TestMarkerChannel,
+  diagnostics: Diagnostics
+) -> Outcome<NormalizedTree> {
   if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
     Rejected {
       diagnostics: rejected_with_pending(
@@ -48,7 +59,7 @@ fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<Normal
       )
     }
   } else {
-    Accepted { value: NormalizedTree { root: root }, diagnostics: diagnostics }
+    Accepted { value: NormalizedTree { root: root, test_markers: test_markers }, diagnostics: diagnostics }
   }
 }
 
@@ -63,6 +74,11 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
   )
 }
 
+// THE UNMARKED DOOR, AND ITS NAME SAYS SO. Its roots arrive as already-lowered Nodes, from which the
+// authored `test` marker cannot be recovered (lowering erases it by design), so every root is admitted
+// with an empty marker channel. That is a statement about the caller's input, not a default: a caller
+// holding source goes through v2.compiler.normalize, which captures the channel from the parse tree.
+//
 // The plural door: the same decision per element, refusing as a whole so a partially admitted list
 // has no representation.
 //
@@ -71,7 +87,7 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
 // would accumulate N+1 copies of one set. The decision is still per element (the same verdict each
 // time, reading only the shared diagnostics), the refusal carries its pending set exactly once via
 // admit_normalized_tree, and the accepted diagnostics attach once at the end.
-fn admit_normalized_roots(
+fn admit_unmarked_normalized_roots(
   roots: FreeMonoid<Node>,
   diagnostics: Diagnostics
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -82,7 +98,7 @@ fn admit_normalized_roots(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: admitted, diagnostics: _ } =>
-          match admit_normalized_tree(root: root, diagnostics: diagnostics) {
+          match admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), diagnostics: diagnostics) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: one, diagnostics: _ } =>
               Accepted {

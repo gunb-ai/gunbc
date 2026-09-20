@@ -1,4 +1,4 @@
-module gunbc.fabric_db_wire
+module gunbc.fabric_storage_wire
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.durable_compare_and_set {
@@ -7,35 +7,35 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.content_hash { serialize_content_hash, content_hash_from_structural_digest }
-import std.fabric_db {
+import std.fabric_storage {
   FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_preimage, fabric_object_ref_of, fabric_object_ref_eq,
   fabric_objects_decode_stream,
   FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
-  FabricDbFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused,
   FabricPut, FabricObjectStored, FabricPutRefused,
   FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
 
-// THE FABRIC DB WIRE: one text form for every std.fabric_db outcome, written by the store's side of
+// THE FABRIC DB WIRE: one text form for every std.fabric_storage outcome, written by the store's side of
 // a remote handler and read by the caller's side. Transport-agnostic -- whatever carries the bytes
 // (a served endpoint, a remote verb) carries this and nothing else, so the typed arms survive the
 // hop: a lost race, a missing object, a corrupt object and each store failure arrive as the arm they
 // left as. Store unreachable is never ON the wire: it is the carrier's own failure, decided by the
 // caller's side before any reply exists.
 //
-// SHAPE. The first line is `fabric_db/1 <outcome words>`; a closure reply continues with the stream
+// SHAPE. The first line is `fabric_storage/1 <outcome words>`; a closure reply continues with the stream
 // of held objects in their canonical preimage form, which is self-delimiting. A reply in any other
 // protocol, or with words this version does not name, decodes to FabricReplyUndecodable carrying the
 // line -- a version skew is its own arm, never guessed at.
 
-data fabric_db_wire_protocol: String = "fabric_db/1"
+data fabric_storage_wire_protocol: String = "fabric_storage/1"
 
 // ── ENCODE (store side) ──────────────────────────────────────────────────────────────────────
 
 fn wire_line(words: List<String>) -> String {
-  join([fabric_db_wire_protocol, " ", join(words, " ")], "")
+  join([fabric_storage_wire_protocol, " ", join(words, " ")], "")
 }
 
 fn ref_word(object: FabricObjectRef) -> String {
@@ -57,7 +57,7 @@ fn expectation_words(expected: FabricHeadExpectation) -> List<String> {
 }
 
 // A detail is free text and is always the LAST field, so it may hold spaces.
-fn fault_words(fault: FabricDbFault) -> List<String> {
+fn fault_words(fault: FabricStorageFault) -> List<String> {
   match fault {
     FabricStoreUnreachable { detail: d } => ["unreachable", d as String]
     FabricObjectMissing { object: o } => ["missing", ref_word(object: o)]
@@ -78,21 +78,21 @@ fn fault_words(fault: FabricDbFault) -> List<String> {
   }
 }
 
-fn fabric_db_wire_head(read: FabricHeadRead) -> String {
+fn fabric_storage_wire_head(read: FabricHeadRead) -> String {
   match read {
     FabricHeadObserved { reading: r } => wire_line(words: concat(["head"], reading_words(reading: r)))
     FabricHeadReadRefused { fault: f } => wire_line(words: concat(["head", "refused"], fault_words(fault: f)))
   }
 }
 
-fn fabric_db_wire_put(put: FabricPut) -> String {
+fn fabric_storage_wire_put(put: FabricPut) -> String {
   match put {
     FabricObjectStored { object: o } => wire_line(words: ["put", "stored", ref_word(object: o)])
     FabricPutRefused { fault: f } => wire_line(words: concat(["put", "refused"], fault_words(fault: f)))
   }
 }
 
-fn fabric_db_wire_advance(advance: FabricHeadAdvance) -> String {
+fn fabric_storage_wire_advance(advance: FabricHeadAdvance) -> String {
   match advance {
     FabricHeadAdvanced { object: o, generation: g } => wire_line(words: ["advance", "advanced", ref_word(object: o), to_string(cas_generation_count(g: g))])
     FabricHeadMoved { expected: e, observed: r } => wire_line(words: concat(concat(["advance", "moved"], expectation_words(expected: e)), concat(["observed"], reading_words(reading: r))))
@@ -100,7 +100,7 @@ fn fabric_db_wire_advance(advance: FabricHeadAdvance) -> String {
   }
 }
 
-fn fabric_db_wire_closure(read: FabricClosureRead) -> String {
+fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
   match read {
     FabricClosureRead { reading: r, newest_first: xs } =>
       join([wire_line(words: concat(["closure", "read"], reading_words(reading: r))), "\n", join(map(xs, s => fabric_object_preimage(object: s.content) as String), "")], "")
@@ -111,7 +111,7 @@ fn fabric_db_wire_closure(read: FabricClosureRead) -> String {
 
 // ── DECODE (caller side) ─────────────────────────────────────────────────────────────────────
 
-fn undecodable(line: String) -> FabricDbFault {
+fn undecodable(line: String) -> FabricStorageFault {
   FabricReplyUndecodable { detail: (if line == "" { "empty reply" } else { line }) as NonEmptyStr }
 }
 
@@ -127,7 +127,7 @@ fn wire_reply(text: String) -> WireReply? {
   let body = if length(line) >= length(text) { "" } else { substring(s: text, start: length(line) + 1, end: length(text)) }
   let ws = split(line, separator: " ")
   match first(ws) {
-    Present { value: p } => if p == fabric_db_wire_protocol { Present { value: WireReply { words: ws |> skip(n: 1), line: line, body: body } } } else { none }
+    Present { value: p } => if p == fabric_storage_wire_protocol { Present { value: WireReply { words: ws |> skip(n: 1), line: line, body: body } } } else { none }
     Absent => none
   }
 }
@@ -165,7 +165,7 @@ fn decode_reading(ws: List<String>, i: Int) -> FabricHeadReading? {
   }
 }
 
-fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricDbFault {
+fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricStorageFault {
   let detail = rest_from(ws: ws, i: i + 1)
   match word_at(ws: ws, i: i) {
     "missing" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectMissing { object: o }  Absent => undecodable(line: line) }
@@ -182,7 +182,7 @@ fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricDbFault {
   }
 }
 
-fn fabric_db_unwire_head(text: String) -> FabricHeadRead {
+fn fabric_storage_unwire_head(text: String) -> FabricHeadRead {
   match wire_reply(text: text) {
     Absent => FabricHeadReadRefused { fault: undecodable(line: text) }
     Present { value: r } =>
@@ -197,7 +197,7 @@ fn fabric_db_unwire_head(text: String) -> FabricHeadRead {
   }
 }
 
-fn fabric_db_unwire_put(text: String) -> FabricPut {
+fn fabric_storage_unwire_put(text: String) -> FabricPut {
   match wire_reply(text: text) {
     Absent => FabricPutRefused { fault: undecodable(line: text) }
     Present { value: r } =>
@@ -221,7 +221,7 @@ fn expectation_width(e: FabricHeadExpectation) -> Int {
   match e { ExpectHeadAbsent => 1  ExpectHeadAt { object: _ } => 2 }
 }
 
-fn fabric_db_unwire_advance(text: String) -> FabricHeadAdvance {
+fn fabric_storage_unwire_advance(text: String) -> FabricHeadAdvance {
   match wire_reply(text: text) {
     Absent => FabricHeadAdvanceRefused { fault: undecodable(line: text) }
     Present { value: r } =>
@@ -271,7 +271,7 @@ fn closure_tip_matches(reading: FabricHeadReading, stored: List<FabricStoredObje
   }
 }
 
-fn fabric_db_unwire_closure(text: String) -> FabricClosureRead {
+fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
   match wire_reply(text: text) {
     Absent => FabricClosureRefused { fault: undecodable(line: text) }
     Present { value: r } =>
