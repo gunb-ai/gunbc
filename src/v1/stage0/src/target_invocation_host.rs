@@ -879,10 +879,37 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
     }
 }
 
-/// `gunbc.instrument_targets` `floor_memory_qualification_source_roots` / `..._lane`. The subject
-/// is the instrument's own fact on the rule every sibling here follows: WHICH floor run is being
-/// qualified may not be an invocation option, or a run could quietly measure a different lane
-/// while reporting this target's standing.
+/// THE SUBJECT IS OWNED HERE, IN RUST, AND THAT IS A MEASURED DECISION RATHER THAN A SHORTCUT.
+///
+/// Every sibling instrument keeps its subject in `gunbc.instrument_targets` and mirrors it here,
+/// and this one was built that way first: two rows, `floor_memory_qualification_source_roots` and
+/// `floor_memory_qualification_lane`, read through the interpreter before spawning the child so
+/// the model would be the single authority for what gets measured.
+///
+/// IT CORRUPTS THE MEASUREMENT, AND THE COST WAS MEASURED RATHER THAN FEARED. Reading those rows
+/// means resolving a corpus graph, and this supervisor shares its cgroup with the child BY
+/// DESIGN — that sharing is what lets `memory.peak` survive the child's death. So the resolve
+/// lands in the very counter the instrument reports. Three runs of the same failing floor, same
+/// tree, same binary, differing only in whether the subject was read from the model:
+///
+///   Rust-owned subject   peak 15746146304  (14.66 GiB)
+///   Rust-owned subject   peak 15704227840  (14.63 GiB)   <- 0.2% apart, reproducible
+///   read from the model  peak 22293544960  (20.76 GiB)   <- +6.1 GiB, 42% inflation
+///
+/// An instrument may not consult the authority from inside the cgroup it is measuring; the act of
+/// reading perturbs the reading. Netting the supervisor's footprint back out is not available
+/// either — that would replace a measured number with an adjusted one, which is the whole habit
+/// `gunbc.floor_memory_demand` exists to refuse.
+///
+/// SO THE TWO `.dag` ROWS ARE DELETED RATHER THAN LEFT UNCONSUMED. A modeled subject nothing reads
+/// is the DESIGN section 3c dangling declaration, and keeping it while Rust silently owned the
+/// real fact would be worse than owning it openly: two authorities, one of them decorative. The
+/// honest state is one authority, here, saying plainly that it is here and why.
+///
+/// WHAT WOULD RESTORE THE MODELED SUBJECT: any route that reads the rows OUTSIDE the measured
+/// cgroup — a supervisor that resolves the subject before entering the scope, or a scope created
+/// after the read rather than around it. Both need the cgroup lifecycle to be modeled, which is
+/// the same capability `gunbc.target_invocation_seed_growth` names as this subset's trigger.
 fn floor_memory_qualification_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
@@ -916,6 +943,9 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
             ),
         };
     }
+
+    let measured_roots = floor_memory_qualification_source_roots();
+    let measured_lane = floor_memory_qualification_lane();
 
     let cgroup = match sup::resolve_measurement_cgroup() {
         Ok(dir) => dir,
@@ -978,9 +1008,9 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
     let mut args = vec![
         "--required-ci".to_string(),
         "--required-lane".to_string(),
-        floor_memory_qualification_lane(),
+        measured_lane.clone(),
     ];
-    for root in floor_memory_qualification_source_roots() {
+    for root in measured_roots.iter().cloned() {
         args.push("--source-root".to_string());
         args.push(root);
     }
@@ -1030,8 +1060,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
     // which `extdeps.linux.cgroup_v2_memory` already owns.
     const ENTRY: &str = "dag/gunbc/floor_memory_demand.dag";
     const FUNCTION: &str = "qualify_floor_memory_from_readings";
-    let roots = floor_memory_qualification_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&measured_roots, ENTRY) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
@@ -1127,7 +1156,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
             sup::SupervisedTermination::Exited { code } => format!("exited {code}"),
             sup::SupervisedTermination::Signalled { signal } => format!("signalled {signal}"),
         },
-        floor_memory_qualification_lane(),
+        measured_lane,
     );
 
     // WILDCARD-FREE ON PURPOSE: a fourth arm added to `FloorMemoryQualification` must land here
