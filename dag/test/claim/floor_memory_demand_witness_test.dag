@@ -157,3 +157,57 @@ test fn a_negative_count_refuses_through_the_host_entry_point_holds() -> Bool {
     DemandBounded { peak_lower_bound: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
   }
 }
+
+// THE FAIL-OPEN THIS SET DID NOT CATCH, now its own red. An unparseable limit body used to read as
+// "this line did not bind", so a clean exit with zero events published DemandObserved for a run
+// whose throttle line was UNKNOWN. Both limit files get a case, because the guard has to cover
+// each one separately and a single-file check would leave the other widening.
+test fn an_unparseable_high_limit_is_not_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_from_readings(
+      peak_bytes: 1073741824,
+      limit_max_body: "68719476736",
+      limit_high_body: "not-a-number",
+      high_events: 0,
+      max_events: 0,
+      oom_kills: 0,
+      terminated_by_signal: false,
+      exit_code: 0,
+    ),
+  ) == false
+}
+
+test fn an_unparseable_max_limit_is_not_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_from_readings(
+      peak_bytes: 1073741824,
+      limit_max_body: "garbage",
+      limit_high_body: "max",
+      high_events: 0,
+      max_events: 0,
+      oom_kills: 0,
+      terminated_by_signal: false,
+      exit_code: 0,
+    ),
+  ) == false
+}
+
+// AND IT REFUSES RATHER THAN MERELY DECLINING TO CALL IT A DEMAND. DemandBounded would also answer
+// false above, so without this the repair could have been a silent downgrade to "lower bound" for
+// a reading that cannot be interpreted at all.
+test fn an_unparseable_limit_lands_in_demand_unreadable_holds() -> Bool {
+  match qualify_floor_memory_from_readings(
+    peak_bytes: 1073741824,
+    limit_max_body: "68719476736",
+    limit_high_body: "not-a-number",
+    high_events: 0,
+    max_events: 0,
+    oom_kills: 0,
+    terminated_by_signal: false,
+    exit_code: 0,
+  ) {
+    DemandUnreadable { cause: _ } => true
+    DemandObserved { peak: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
+    DemandBounded { peak_lower_bound: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
+  }
+}
