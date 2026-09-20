@@ -993,6 +993,33 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
+// A service io field: the general field plus v1 parse_field's `[from "key"] [= default]` tail.
+// SCOPED TO THE SERVICE io_block ON PURPOSE. v1 admits the tail on every field, but the only
+// executing evidence here is inside a service, which normalize refuses before resolve. Admitting
+// it on the shared field_decl_block would widen `type` / variant declarations
+// (`dag/extdeps/browser/browser.dag` `BrowserConfig` declares defaults) with no evidence of what
+// resolve does with the extra child. So general field defaults and `from` stay a loud parse
+// refusal: named remainder for the type-declaration lane, not a silent widening (review 68343).
+fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_field_decl_expr(),
+    right: dag_grammar_sequence(
+      left: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^from),
+          right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+        )
+      ),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_eq),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_field_decl_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(item: dag_grammar_field_decl_expr())
@@ -1831,6 +1858,212 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
   )
 }
 
+// SERVICE FAMILY — stated difference from v1.compiler.parse.
+// v1 parse_service_def / parse_service_after_kw / parse_service_entries admit
+// `service` Name `{` (config | transport | operation)* `}`; parse_operation_def
+// then admits a braced v1 body (input/output/idempotent/readonly/hermetic/
+// transport/exit/response/mock_response) or the parenthesized v2-inline form.
+// G0 had none of those productions. Every marker word in this nest -- `service`, `operation`,
+// `input`, `output`, the modifiers, `transport`, `from`, `exit`, `response`, `mock_response` -- is
+// a LITERAL TERMINAL over `dag_token_ident` (`v2.std.grammar` `LiteralTerminal`), never a keyword
+// token class. That is a measured choice, not a preference: minting a class per word taxed EVERY
+// identifier the lexer reads and every name slot the grammar offers, and moved 192 witnesses'
+// eval-step cost up corpus-wide (gunbc#11622, measured against gunbc#11700's floor run). A literal
+// terminal costs only where it is authored, and the choice plan keys on (class, word), so these
+// ident-led clauses stay FIRST-disjoint and an unknown starter still refuses. Transport kinds stay
+// plain idents, as v1 parse_transport_binding matches rest/shell/file as ShIdent. io fields carry
+// v1's `Type [from "key"] [= default]` tail (extdeps.shell `Find` declares `max_depth: Int = 1`);
+// general type fields do not (see dag_grammar_io_field_decl_expr).
+// The v2-inline operation form and service-level `config` are v1-admitted and not yet in this
+// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
+// no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
+// (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
+// and normalized_tree admit_normalized_tree refuses it before resolve. The refusal moved from parse
+// to normalize; it did not disappear.
+fn dag_grammar_status_pattern_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+  )
+}
+
+fn dag_grammar_status_type_entry_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_status_pattern),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
+      right: dag_grammar_sequence(
+        left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+        right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_string_literal))
+      )
+    )
+  )
+}
+
+fn dag_grammar_status_expr_entry_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_status_pattern),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
+      right: dag_grammar_sequence(
+        left: dag_grammar_nonterminal(production: ^dag_production_expr),
+        right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_string_literal))
+      )
+    )
+  )
+}
+
+fn dag_grammar_io_block_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_choice(
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^input),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^output)
+    ),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(
+          element: dag_grammar_comma_list_expr(item: dag_grammar_io_field_decl_expr())
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+fn dag_grammar_op_modifier_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^readonly),
+    right: dag_grammar_choice(
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^idempotent),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^hermetic)
+    )
+  )
+}
+
+fn dag_grammar_transport_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^transport),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_field_init_list_helper(),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_exit_block_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^exit),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(
+          element: dag_grammar_nonterminal(production: ^dag_production_status_type_entry)
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+fn dag_grammar_response_block_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^response),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(
+          element: dag_grammar_nonterminal(production: ^dag_production_status_type_entry)
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^mock_response),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(
+          element: dag_grammar_nonterminal(production: ^dag_production_status_expr_entry)
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_io_block),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_transport),
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+            right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_operation_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^operation),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_repeat(
+            element: dag_grammar_nonterminal(production: ^dag_production_operation_body_entry)
+          ),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_service_body_entry_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_operation),
+    right: dag_grammar_nonterminal(production: ^dag_production_transport)
+  )
+}
+
+fn dag_grammar_service_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^service),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_repeat(
+            element: dag_grammar_nonterminal(production: ^dag_production_service_body_entry)
+          ),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
@@ -1842,7 +2075,10 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
           left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
           right: dag_grammar_choice(
             left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
-            right: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl)
+            right: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl),
+              right: dag_grammar_nonterminal(production: ^dag_production_service_decl)
+            )
           )
         )
       )
@@ -2096,6 +2332,71 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_test_fn_decl_expr(),
     emitted: ^dag_surface_test_fn_decl
   )
+  let service_decl = dag_grammar_production(
+    name: ^dag_production_service_decl,
+    expression: dag_grammar_service_decl_expr(),
+    emitted: ^dag_surface_service_decl
+  )
+  let service_body_entry = dag_grammar_production(
+    name: ^dag_production_service_body_entry,
+    expression: dag_grammar_service_body_entry_expr(),
+    emitted: ^dag_surface_service_body_entry
+  )
+  let operation = dag_grammar_production(
+    name: ^dag_production_operation,
+    expression: dag_grammar_operation_expr(),
+    emitted: ^dag_surface_operation
+  )
+  let operation_body_entry = dag_grammar_production(
+    name: ^dag_production_operation_body_entry,
+    expression: dag_grammar_operation_body_entry_expr(),
+    emitted: ^dag_surface_operation_body_entry
+  )
+  let transport = dag_grammar_production(
+    name: ^dag_production_transport,
+    expression: dag_grammar_transport_expr(),
+    emitted: ^dag_surface_transport
+  )
+  let io_block = dag_grammar_production(
+    name: ^dag_production_io_block,
+    expression: dag_grammar_io_block_expr(),
+    emitted: ^dag_surface_io_block
+  )
+  let op_modifier = dag_grammar_production(
+    name: ^dag_production_op_modifier,
+    expression: dag_grammar_op_modifier_expr(),
+    emitted: ^dag_surface_op_modifier
+  )
+  let exit_block = dag_grammar_production(
+    name: ^dag_production_exit_block,
+    expression: dag_grammar_exit_block_expr(),
+    emitted: ^dag_surface_exit_block
+  )
+  let response_block = dag_grammar_production(
+    name: ^dag_production_response_block,
+    expression: dag_grammar_response_block_expr(),
+    emitted: ^dag_surface_response_block
+  )
+  let mock_response_block = dag_grammar_production(
+    name: ^dag_production_mock_response_block,
+    expression: dag_grammar_mock_response_block_expr(),
+    emitted: ^dag_surface_mock_response_block
+  )
+  let status_pattern = dag_grammar_production(
+    name: ^dag_production_status_pattern,
+    expression: dag_grammar_status_pattern_expr(),
+    emitted: ^dag_surface_status_pattern
+  )
+  let status_type_entry = dag_grammar_production(
+    name: ^dag_production_status_type_entry,
+    expression: dag_grammar_status_type_entry_expr(),
+    emitted: ^dag_surface_status_type_entry
+  )
+  let status_expr_entry = dag_grammar_production(
+    name: ^dag_production_status_expr_entry,
+    expression: dag_grammar_status_expr_entry_expr(),
+    emitted: ^dag_surface_status_expr_entry
+  )
   let qualified_name = dag_grammar_production(
     name: ^dag_production_qualified_name,
     expression: dag_grammar_qualified_name_expr(),
@@ -2268,6 +2569,19 @@ fn dag_grammar_root() -> GrammarRoot {
       data_decl,
       fn_decl,
       test_fn_decl,
+      service_decl,
+      service_body_entry,
+      operation,
+      operation_body_entry,
+      transport,
+      io_block,
+      op_modifier,
+      exit_block,
+      response_block,
+      mock_response_block,
+      status_pattern,
+      status_type_entry,
+      status_expr_entry,
       qualified_name,
       generic_params,
       param_list,
