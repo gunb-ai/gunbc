@@ -3,6 +3,7 @@ module gunbc.namespace_reference_derived_residency_qualification
 import std.types { Bool, List }
 import v2.std.node { Symbol }
 import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // THE EVIDENCE TYPE FOR THE CONSUMPTION SIDE of
 // gunbc.recurring_failure_mode.semantic_independence_consumed_as_resource_independence, which is the
@@ -96,25 +97,32 @@ type ResidencyQualification
   = BoundedRealizationQualified { subject: DeclarationRef }
   | BoundedRealizationRefused { subject: DeclarationRef, failure: ResidencyBoundFailure }
 
-fn carrier_reading_is_undecidable(reading: ProducerCarrierReading) -> Bool {
-  match reading.readability {
-    CarrierTypeRecognized => false
-    CarrierTypeUnrecognized { spelling: _ } => true
-  }
-}
-
-fn first_undecidable_carrier(
+// THE UNDECIDABLE CAUSE IS BUILT WHERE IT IS DECIDED, in ONE fold, so there is no arm anywhere that
+// has to invent a cause for a carrier that was read fine. An earlier revision split this into a
+// Bool predicate over the coproduct, a filter for the first offending carrier, and a second match
+// that rebuilt the cause -- and that second match needed a CarrierTypeRecognized arm it could never
+// reach, filled with LifecycleReadingAbsent, which means something materially different ("the
+// producer supplied no carriers at all"). Unreachable by an upstream filter is VALIDATION; the state
+// stayed representable. A filler cause on the ignorance path is the wrong shape in this module even
+// when dead, since not fabricating an answer out of ignorance is the module's entire subject
+// (review 68747, and the same arm-no-fold-can-produce shape review 68699 removed from
+// CarrierPayloadGrain).
+fn first_undecidable_failure(
   readings: List<ProducerCarrierReading>,
-) -> ProducerCarrierReading? {
-  readings |> filter(r => carrier_reading_is_undecidable(reading: r)) |> first
-}
-
-fn undecidable_failure(reading: ProducerCarrierReading) -> ResidencyBoundFailure {
-  match reading.readability {
-    CarrierTypeRecognized => LifecycleReadingAbsent
-    CarrierTypeUnrecognized { spelling: spelling } =>
-      CarrierReadingUndecidable { carrier: reading.carrier, spelling: spelling }
-  }
+) -> Optional<ResidencyBoundFailure> {
+  fold(readings, init: optional_absent(), f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.readability {
+          CarrierTypeRecognized => acc
+          CarrierTypeUnrecognized { spelling: spelling } =>
+            optional_present(
+              value: CarrierReadingUndecidable { carrier: r.carrier, spelling: spelling },
+            )
+        }
+    }
+  })
 }
 
 fn carrier_holds_whole_corpus_syntax(reading: ProducerCarrierReading) -> Bool {
@@ -171,14 +179,11 @@ fn qualify_bounded_realization(
               // derivation could not read is checked LAST, after the definite failures, so a
               // known-bad producer still reports its specific carrier -- but it refuses, because
               // qualifying here would let a producer buy the admission by renaming a type.
-              match first_undecidable_carrier(
+              match first_undecidable_failure(
                 readings: concat(reading.constructed, reading.retained_at_return),
               ) {
-                Present { value: unreadable } =>
-                  BoundedRealizationRefused {
-                    subject: reading.subject,
-                    failure: undecidable_failure(reading: unreadable),
-                  }
+                Present { value: failure } =>
+                  BoundedRealizationRefused { subject: reading.subject, failure: failure }
                 Absent => BoundedRealizationQualified { subject: reading.subject }
               }
           }
