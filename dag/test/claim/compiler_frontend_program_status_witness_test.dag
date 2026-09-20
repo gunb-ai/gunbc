@@ -344,6 +344,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
       population: ["fixture"],
       restoration_trigger: "fixture",
     },
+    amendments: [],
   }
   let standing = RungDrop {
     identity: retired.identity,
@@ -351,6 +352,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     declared: retired.declared,
     standing: Standing,
     declaration: retired.declaration,
+    amendments: [],
   }
   let open = standing_rung_drop_outstanding(drop: standing)
   count(standing_rung_drop_outstanding(drop: retired)) == 0

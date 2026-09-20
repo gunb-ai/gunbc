@@ -158,5 +158,7 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
     reason: DeletedWithoutReplacement,
     population: [],
     restoration_trigger: "product.fabric.provider_route ProviderPathStanding carries a jurisdiction standing SUFFICIENT FOR a located path to declare its jurisdiction unread without the whole path becoming unread -- so that a consumer matching the located arm can see which of its three components were established -- and gunbc.spark.first_party_serving's telemetry path states the fact in its arm. Reading who operates the usage-stats service does NOT discharge this row: it fills one slot on one route and leaves every other located path with an undocumented counterparty in the same unexpressible position",
-  }
+  },
+
+  amendments: [],
 }

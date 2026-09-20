@@ -42,5 +42,7 @@ data roadmap_page_style_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: roadmap_page_style_new_witness_eval_step_cost_population,
     restoration_trigger: "THE CAPABILITY, BOTH CLAUSES. (i) gunbc.roadmap_style roadmap_css is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, or its derivation itself fits the budget; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the emitted page carries the real derived stylesheet does not re-derive it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, while still executing the real stylesheet path. Deleting the identity, supplying the stylesheet as a fixture, or relocating it to a home that does not execute it satisfies neither clause.",
-  }
+  },
+
+  amendments: [],
 }

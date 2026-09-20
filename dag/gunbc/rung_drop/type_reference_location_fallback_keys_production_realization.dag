@@ -55,5 +55,7 @@ data type_reference_location_fallback_keys_production_realization: RungDrop = Ru
       "applied type references whose Resolved node v1.compiler.infer_resolve builds on the reference's own span (split cause ResolvedNodeIsNotADeclaration)",
     ],
     restoration_trigger: "every production reader of a type reference's declaration identity -- v1.compiler.coercion type_reference_realization, the v1.compiler.infer native-numeric sites and the v1.compiler.emit_rust readers of type_reference_provenance -- asks type_reference_identity or a declaration-node or env-binding keyed authority and gives its refusal arm typed behaviour, so the own-span fallback arm of type_reference_provenance is deleted",
-  }
+  },
+
+  amendments: [],
 }

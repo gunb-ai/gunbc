@@ -50,5 +50,7 @@ data v2_native_route_off_the_merge_path: RungDrop = RungDrop {
     reason: DeletedWithoutReplacement,
     population: v2_native_route_off_the_merge_path_population,
     restoration_trigger: "A REQUIRED NATIVE-ROUTE JOB WHOSE WALL FITS THE ACCEPTANCE PATH, designed from the ground up against an operator-agreed contract and not re-added into the same envelope: the job must conclude on every merge candidate inside its declared timeout on the real runner class (a measured wall, not a cited one), a newer head of the same subject must supersede the older run so no head holds more than one native claimant, and its red must still discriminate every clause of native_route_admission — universe join, positive population, classified refusals, per-identity agreement with the floor reference, and all four controls. Whether that is reached by affected-set admission that runs only the universe a change touches, by a native run cheap enough to fit whole, or by a job that runs on a different cadence with its own row, is the design decision this drop waits on; the first two retire this row, the third replaces it with a differently-named drop. Re-adding `required-v2-native` with its 2026-09-10 shape does not retire this row and is refused by test.claim.witness_floor_workflow_consolidation_witness_test w_RED_the_deleted_lanes_do_not_return",
-  }
+  },
+
+  amendments: [],
 }

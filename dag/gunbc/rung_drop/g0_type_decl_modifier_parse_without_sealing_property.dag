@@ -31,5 +31,7 @@ data g0_type_decl_modifier_parse_without_sealing_property: RungDrop = RungDrop {
     },
     population: g0_type_decl_modifier_parse_without_sealing_property_population,
     restoration_trigger: "v2 parse mints the sole_constructor property from the captured modifier terminal on a type decl, sufficient for the construction wall v1 parsed_sole_constructor_properties enforces. Consuming the token without minting that property does not retire this row. Token consumption of nominal_opaque matches v1 and is not this drop."
-  }
+  },
+
+  amendments: [],
 }

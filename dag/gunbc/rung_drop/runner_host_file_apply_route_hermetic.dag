@@ -21,5 +21,7 @@ data runner_host_file_apply_route_hermetic: RungDrop = RungDrop {
       "test.claim.runner_host_file_converge_witness_test the_apply_route_refuses_what_the_host_did_not_report (deleted; observe_reports_what_apply_refuses and the file/slot classifiers remain)",
     ],
     restoration_trigger: "shell.PosixCommandV.Check carries mock_response coverage sufficient for a hermetic discovery member that calls run_runner_host_files to reach a terminal verdict rather than a Check route gap. Authoring that mock_response is the capability; restoring the witness without it does not retire this row, because the floor already classified that call as never reaching its subject",
-  }
+  },
+
+  amendments: [],
 }

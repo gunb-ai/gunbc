@@ -27,5 +27,7 @@ data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
       "the auto-dispatch splice that stood in gunbc.ci_spec until gunbc#11172 deleted it; the commit-and-push step that carried it is itself deleted by the gunbc#10958 cutover, so neither the splice nor its host resolves any more",
     ],
     restoration_trigger: "the gated pull_request run for a bot-pushed healed head starts and completes its required jobs with no human POST /actions/runs/<id>/approve and no workflow_dispatch on that SHA, so the name-keyed PR rollup sees those conclusions. SUFFICIENT FOR: HealProduced then statusCheckRollup showing real conclusions on that SHA with zero human approvals of that run and zero workflow_dispatch runs on that SHA. Approving the gated run is the standing remedy and does not restore an executed verdict without a human. Restoring tools.ci_heal_dispatch auto-invoke does not retire this row. THE CAPABILITY THAT WOULD SATISFY THIS TRIGGER HAS LANDED BUT NOT YET EXECUTED (gunbc#10958): heal no longer pushes at all, and gunbc.heal_publisher_workflow publishes the repair from the default branch under an App installation token, whose pushes GitHub does not gate. That changes what the receipt must show WITHOUT changing this trigger: a heal-published head, its statusCheckRollup carrying real conclusions, zero approvals of that run and zero workflow_dispatch runs on that sha. Until one such head exists, this row stays standing -- a mechanism that would produce the receipt is not the receipt",
-  }
+  },
+
+  amendments: [],
 }

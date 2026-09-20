@@ -55,5 +55,7 @@ data serving_offer_identity_is_the_exporter_process: RungDrop = RungDrop {
     "gunbc.harness.harness_seat harness_fence_grant (the post-acquisition re-read, which compares the exporter's launch and therefore cannot see an engine replacement beneath it)",
     ],
     restoration_trigger: "a launch receipt read from the running engine joins the metrics-exporting process to the engine-core incarnation and its rank population, so that the offer identity and the post-acquisition fence both name the incarnation that will execute the turn. An observation of the exporting process alone does NOT discharge this row: that is what stands today, and it is what lets a seat taken against one engine authorize a request against its replacement",
-  }
+  },
+
+  amendments: [],
 }

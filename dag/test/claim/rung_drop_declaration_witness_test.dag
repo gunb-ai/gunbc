@@ -11,6 +11,7 @@ import gunbc.rung_drop {
 }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
@@ -26,7 +27,8 @@ data control_rung_drop: RungDrop = RungDrop {
     reason: DeletedWithoutReplacement,
     population: ["control.population.one"],
     restoration_trigger: "control restoration trigger"
-  }
+  },
+  amendments: [],
 }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
@@ -92,4 +94,36 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// AN AMENDMENT IS NOT PART OF THE DECLARATION MESSAGE, AND THIS IS THE DISCRIMINATING RED FOR THE
+// DEFECT THE CARRIER REMOVES. The 2026-09-20 postscript was originally pasted into the RENDERED
+// restoration trigger, where it read as part of the one sentence DESIGN 4b(3) calls the whole
+// check. If anyone ever folds an amendment back into `rung_drop_declaration_message` -- or
+// re-appends its text to `restoration_trigger` -- this reds. Its positive control is the sibling
+// below: the same text must be reachable on the row.
+test fn an_amendment_does_not_leak_into_the_declaration_message() -> Bool {
+  let m = rung_drop_declaration_message(d: namespace_wave_admission_wall_removed)
+  !contains_text(haystack: m, needle: "carrier redesign")
+    && !contains_text(haystack: m, needle: "gunbc#11704")
+    && contains_text(haystack: m, needle: "Re-adding the deleted arms verbatim does NOT retire this row")
+}
+
+// THE POSITIVE CONTROL: the row carries the amendment, so the red above is about PLACEMENT and not
+// about the text having been deleted. A repair that dropped the postscript to make the drift go
+// away would green the claim above and red this one.
+test fn the_wall_removal_row_carries_its_2026_09_20_amendment() -> Bool {
+  match namespace_wave_admission_wall_removed.amendments.first() {
+    Present { value: a } =>
+      a.dated == "2026-09-20"
+        && contains_text(haystack: a.occasion, needle: "gunbc#11704")
+        && contains_text(haystack: a.consequence, needle: "prices the gate itself")
+    Absent => false
+  }
+}
+
+// THE ROW WITHOUT AN AMENDMENT HAS AN EMPTY LIST, NOT AN INVENTED ONE. A renderer or a fold that
+// fabricated an amendment for every row would be caught here rather than in the projected bytes.
+test fn a_row_with_no_later_ruling_carries_no_amendment() -> Bool {
+  floor_cut_heal.amendments.count() == 0
 }

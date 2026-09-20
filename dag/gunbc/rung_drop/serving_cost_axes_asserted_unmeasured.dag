@@ -65,5 +65,7 @@ data serving_cost_axes_asserted_unmeasured: RungDrop = RungDrop {
     "gunbc.serving.turn_admission serving_opportunity_cost (returns NoFeasibleAlternativeUse from gauges that establish no running turn and cannot enumerate competing fabric demands; the fail-closed arm AlternativeUseUnread is reachable and refuses)",
     ],
     restoration_trigger: "a selection policy instantiation exists that decides an admission-only placement from what such a placement knows -- fungibility, admission, quality-seat availability and the equal-cost tie policy -- and refuses to require any economic axis its caller did not observe, so that serving placement no longer routes through the priced selector's cost axes and these two functions have no question left to answer. A measured operating cost for a serving group does NOT discharge this row on its own: it leaves the opportunity axis asserted, and it leaves an admission-only placement answering a pricing question it has no standing to answer",
-  }
+  },
+
+  amendments: [],
 }

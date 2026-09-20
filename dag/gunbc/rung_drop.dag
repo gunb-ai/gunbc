@@ -301,12 +301,54 @@ type RungDropDeclaration
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
 
+// A DECLARED DROP IS NOT A CLOSED RECORD, AND UNTIL NOW IT HAD NO WAY TO SAY SO. DESIGN 4b(3)
+// fixes five fields for a declaration -- previous rung, temporary rung, reason, population,
+// restoration trigger -- and every one of them answers a question asked AT THE MOMENT THE DROP WAS
+// DECLARED. None of them answers the question a later ruling raises: the world moved under a
+// STANDING row, and a reader who re-derives the declaration from its five fields alone would now
+// reach it from a wrong premise. That is a different fact from retirement, which the row already
+// carries: retirement says the TRIGGER FIRED and the drop is over, whereas an amendment says the
+// drop stands and its reasoning has been corrected or extended. Forcing one into the other would
+// either fabricate a fired trigger or silently rewrite a field authored on a different date.
+//
+// THE RECEIPT IS THIS ROW ITSELF, AND IT COST TWO LANES BEFORE IT WAS MODELED.
+// `namespace_wave_admission_wall_removed` was amended by the operator's 2026-09-20 postscript, and
+// with no field to carry it the postscript was hand-appended to the PROJECTION (gunbc#11774) --
+// visible in the committed bytes as the doubled full stop the renderer's own "." produced after
+// the pasted sentence. docs/design-rung-drops.md is generated, so the next regeneration deleted it
+// (gunbc#11789 on main), and two further lanes met the deletion as unexplained drift in their own
+// diffs and reverted it rather than carry it. That is DESIGN 6's "manual application committed as
+// source", and its cause is not carelessness: the authority could not express the fact, so the
+// only place the author could put it was the one place a generator overwrites.
+//
+// WHY THIS IS TYPED AND NOT A COMMENTARY STRING. DESIGN 4c names a RULING among the things that
+// belong in a typed carrier, and a bare `note: String` on a row is exactly the "ordinary String
+// declaration whose sole purpose is commentary" that section refuses -- it would also become the
+// cheapest place to put anything, so every future field would be written into it instead. An
+// amendment has a shape: it happened on a DATE, some OCCASION in the world caused it, and it has a
+// CONSEQUENCE for how this row reads. Those three are separable without rewriting anything,
+// unlike the `authored` paragraphs this module declines to split, because an amendment is authored
+// INTO this shape rather than read back out of prose that predates it.
+//
+// WHAT AN AMENDMENT MAY NOT DO, which is what keeps it from becoming a second declaration. It does
+// not change `standing` -- a trigger fires through `Retired` and nowhere else -- and it does not
+// restate or supersede the five declared fields. It records an event and what that event means for
+// a reader of those fields. An amendment that would change a field IS an edit to that field, and
+// the diff is where a reviewer sees it.
+type RungDropAmendment {
+  dated: String
+  occasion: String
+  consequence: String
+}
+
 type RungDrop {
   identity: NonEmptyStr
   subject: String
   declared: String
   standing: RungDropStanding
   declaration: RungDropDeclaration
+
+  amendments: List<RungDropAmendment>
 }
 
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its

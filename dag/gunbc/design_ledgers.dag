@@ -74,7 +74,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
-import gunbc.rung_drop { rung_drop_declaration_message, RungDropStanding, Standing, Retired }
+import gunbc.rung_drop { rung_drop_declaration_message, RungDropStanding, Standing, Retired, RungDropAmendment }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
@@ -125,9 +125,9 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
       ],
       flat_map(rung_drop_roster, d => concat(concat([
         h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
-      ], rung_drop_standing_blocks(standing: d.standing)), concat([
+      ], rung_drop_standing_blocks(standing: d.standing)), concat(concat([
         p(text: rung_drop_declaration_message(d: d)),
-      ], if (d.identity as String) == "measurement_bankruptcy" {
+      ], rung_drop_amendment_blocks(amendments: d.amendments)), if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] }))),
     ],
@@ -159,6 +159,19 @@ fn rung_drop_standing_blocks(standing: RungDropStanding) -> List<MarkdownBlock> 
     Standing => []
     Retired { trigger_fired } => [p(text: concat("**RETIRED — TRIGGER FIRED.** ", (trigger_fired as String)))]
   }
+}
+
+// AN AMENDMENT RENDERS AS ITS OWN PARAGRAPH, AFTER THE DECLARATION AND NEVER INSIDE IT. The
+// hand-edit this field exists to replace was pasted into the TAIL of the declaration sentence,
+// where it read as part of the restoration trigger -- so the one sentence DESIGN 4b(3) calls the
+// whole check ended up carrying narrative about a different PR. Keeping the amendment in a
+// separate block keeps the trigger quotable as the trigger, and lets a reader see at a glance that
+// the row was revisited and when.
+fn rung_drop_amendment_blocks(amendments: List<RungDropAmendment>) -> List<MarkdownBlock> {
+  map(amendments, a => p(text: concat(
+    concat("**AMENDED ", concat(a.dated, ".** ")),
+    concat(a.occasion, concat(" ", a.consequence))
+  )))
 }
 
 fn failure_mode_document() -> MarkdownDocument {

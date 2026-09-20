@@ -70,5 +70,7 @@ data self_host_emit_derisk_claim_unobserved: RungDrop = RungDrop {
       "v2.test.long.self_host_module_emit_derisk self_host_frontier_emit_two_user_types_accepts",
     ],
     restoration_trigger: "an executing required or scheduled lane observes an isolated assemble-or-emit-from-ingest claim of a standalone one-module fixture: these two identities are planned by a live cadence, either as ordinary hold-claims that reach PASS on that run or as known-red controls whose red is read by that run. Observed at retirement, not asserted. A claim_batch invocation of the same entry is the declared unobserved state, not the trigger. Relocating the file onto per-PR discovery while the claims return false, or re-adding falsifier.yml in its 2026-08 shape, does not retire this row."
-  }
+  },
+
+  amendments: [],
 }

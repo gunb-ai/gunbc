@@ -44,5 +44,7 @@ data consumed_row_owner_charge_unenforced: RungDrop = RungDrop {
       "base-consumed transition-admission rows whose owning change authored no deletion_follow_up, on any merge_group composition that does not touch dag/gunbc/namespace/transition_admission/"
     ],
     restoration_trigger: "THE CAPABILITY: a required run that adjudicates a consumed transition-admission row WITHOUT depending on base == head or on the roster being touched -- that is, the consumed-row charge evaluated on the composition that actually lands, the way the merge queue now supplies the required verdict. Nothing smaller retires this row. In particular, re-adding a merge_group arm that refuses a BYSTANDER composition does not: that was the arm removed here, it billed a change for a debt its own comment said was not its own, and DESIGN section 5 names that externalization. Nor does authoring follow-up numbers on the rows standing today, which changes the population and not the coverage. The debt itself stays visible meanwhile: used_without_follow_up is still counted in the refusal message, and deletion_follow_up is still carried on every row.",
-  }
+  },
+
+  amendments: [],
 }

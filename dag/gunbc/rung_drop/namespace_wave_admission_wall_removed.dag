@@ -1,7 +1,7 @@
 module gunbc.rung_drop.namespace_wave_admission_wall_removed
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, RungDropAmendment, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
 // DECLARED 2026-09-19, beside the change that deletes the gate: operator ruling 2026-09-19 removed
@@ -53,5 +53,13 @@ data namespace_wave_admission_wall_removed: RungDrop = RungDrop {
       "the parse-environment-agreement tripwire on the merge path (a base revision read under its own grammar before adjudication): survives only inside the floor's own planning reconstruction (v1_compiler.cli_run.namespace_baseline), which is not a gate over namespace deltas",
     ],
     restoration_trigger: "THE CAPABILITY, BOTH HALVES AND NO SMALLER SET. (1) A debt-collection design for transition admissions that never charges bystanders: a row's consumption and deletion debt is adjudicated on the composition of the change that OWNS the row, and a merge_group run over bystanders cannot refuse on a row it did not touch -- the 2026-09-16 arm removals (gunbc#11481) and this deletion are the two measured costs of getting that billing wrong in either direction. (2) A landing-time enforcement run: the adjudication executes on the composition that actually lands (or on the push to the default branch), so a base-consumed row is observed then and not whenever the roster happens to be touched next. Both halves executing with a discriminating RED each, on the real acceptance path, re-enrol the phase and retire this row; the program interlock's NamespaceWaveAdmissionEnrolled milestone and ACT-0's release gate read this row's standing meanwhile, so the waves cannot be released while it stands. Re-adding the deleted arms verbatim does NOT retire this row: that is the loop the operator priced out.",
-  }
+  },
+
+  amendments: [
+    RungDropAmendment {
+      dated: "2026-09-20",
+      occasion: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion.",
+      consequence: "The ruling prices the gate itself, not only its billing, and removes the redesigned wall with the old one. The restoration trigger stated above stands whole.",
+    },
+  ],
 }
