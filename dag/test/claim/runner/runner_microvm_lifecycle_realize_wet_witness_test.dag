@@ -172,12 +172,30 @@ fn unit_signalled(outcome: HostOperationOutcome) -> Bool {
   }
 }
 
-fn freeze_unit(unit: NonEmptyStr) -> Bool {
-  unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlFreeze { unit: unit }))
+// EVERY STEP THAT CHANGES THE WORLD TAKES THE STEP BEFORE IT AS AN ARGUMENT, and that argument is
+// the only thing making these claims sequences at all.
+//
+// This file is evaluated as a dependency graph, so two `let`s with no edge between them are not
+// ordered by the order they are written in -- and every claim here is a SEQUENCE whose meaning is
+// destroyed by reordering: a sweep that ran before the controller's stop would kill the adversary
+// first and the stop would report StoppedGracefully, which is a green for a controller that did
+// nothing. The `after` parameter is a Bool derived from the observation the step must not precede,
+// so the edge exists and the claim reads in the order it runs. The same defect in the production
+// fold is filed as gunbc.recurring_failure_mode.readback_ordered_only_by_statement_position.
+fn freeze_unit(unit: NonEmptyStr, after: Bool) -> Bool {
+  if !after {
+    false
+  } else {
+    unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlFreeze { unit: unit }))
+  }
 }
 
-fn thaw_unit(unit: NonEmptyStr) -> Bool {
-  unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlThaw { unit: unit }))
+fn thaw_unit(unit: NonEmptyStr, after: Bool) -> Bool {
+  if !after {
+    false
+  } else {
+    unit_signalled(outcome: host_operation_exec(transport: LocalShell, operation: SystemctlThaw { unit: unit }))
+  }
 }
 
 // EVERY CLAIM ENDS BY LEAVING THE SLICE QUIET, and the sweep is part of the claim rather than the
@@ -203,9 +221,9 @@ fn cell_force_was_issued(outcome: CellForceOutcome) -> Bool {
 // kernel operation -- the service, the escapee scope beside it, and anything either forked. A
 // sweep that signalled the units one by one would be a second, weaker spelling of the thing this
 // file exists to test, and would miss exactly what the escapee RED proves it misses.
-fn sweep_slice_quiet(attempt: MicroVmAttempt, index: Int) -> Bool {
+fn sweep_slice_quiet(attempt: MicroVmAttempt, index: Int, after: Bool) -> Bool {
   let forced = cell_force_was_issued(outcome: force_kill_cell(slice: red_slice(index: index)))
-  sweep_found_no_process(index: index) && sweep_found_nothing_frozen(index: index)
+  forced && sweep_found_no_process(index: index) && sweep_found_nothing_frozen(index: index)
 }
 
 // A SLICE THAT IS GONE IS QUIET. Once the last unit in it exits, systemd removes the slice's cgroup
@@ -298,7 +316,15 @@ fn red_bound_attempt(attempt: MicroVmAttempt, generation: Int) -> CellBoundAttem
   }
 }
 
-fn red_settlement(attempt: MicroVmAttempt, generation: Int, trigger: TerminalTrigger) -> TeardownSettlement? {
+fn red_settlement(attempt: MicroVmAttempt, generation: Int, trigger: TerminalTrigger, after: Bool) -> TeardownSettlement? {
+  if !after {
+    none
+  } else {
+    red_settlement_now(attempt: attempt, generation: generation, trigger: trigger)
+  }
+}
+
+fn red_settlement_now(attempt: MicroVmAttempt, generation: Int, trigger: TerminalTrigger) -> TeardownSettlement? {
   match red_bound_attempt(attempt: attempt, generation: generation) {
     Absent => none
     Present { value: bound } =>
@@ -310,6 +336,16 @@ fn red_settlement(attempt: MicroVmAttempt, generation: Int, trigger: TerminalTri
             TeardownSettled { settlement: s } => Present { value: s }
           }
       }
+  }
+}
+
+// THE SUBTREE READ WITH AN EDGE, for the claims whose sequence is read-act-read: the second
+// reading must be able to say it was taken after the act, and a bare call cannot.
+fn read_slice_after(index: Int, after: Bool) -> CgroupSubtreeReadback {
+  if !after {
+    CgroupSubtreeReadFailed { reason: "the step this read must follow did not hold" as NonEmptyStr }
+  } else {
+    read_cell_cgroup_subtree(slice: red_slice(index: index))
   }
 }
 
@@ -326,11 +362,11 @@ fn red_a_child_that_ignores_sigterm_is_stopped_by_force() -> Bool {
           unit: runner_microvm_attempt_unit_name(attempt: a),
           slice: red_slice(index: 90),
         )
-        let swept = sweep_slice_quiet(attempt: a, index: 90)
-        swept && match stopped {
+        let forced = match stopped {
           StoppedByForce => true
           _ => false
         }
+        forced && sweep_slice_quiet(attempt: a, index: 90, after: forced)
       }
   }
 }
@@ -359,9 +395,11 @@ fn red_a_double_forked_escapee_is_found_by_the_subtree_read() -> Bool {
         ) {
           HostOperationRefused { operation: _, reason: _ } => false
           HostOperationObserved { stdout: _, success: _, stderr: _ } => {
-            let seen = read_cell_cgroup_subtree(slice: red_slice(index: 91))
-            let swept = sweep_slice_quiet(attempt: a, index: 91)
-            swept && red_escapee_was_found_beside_the_service(seen: seen, index: 91)
+            let found = red_escapee_was_found_beside_the_service(
+              seen: read_cell_cgroup_subtree(slice: red_slice(index: 91)),
+              index: 91,
+            )
+            found && sweep_slice_quiet(attempt: a, index: 91, after: found)
           }
         }
       }
@@ -385,19 +423,19 @@ fn red_a_frozen_task_survives_the_bounded_force_stop() -> Bool {
     Present { value: a } =>
       if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
         false
-      } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
+      } else if !freeze_unit(unit: red_escapee_unit(attempt: a), after: true) {
         false
       } else {
         let stopped = perform_bounded_stop(
           unit: runner_microvm_attempt_unit_name(attempt: a),
           slice: red_slice(index: 92),
         )
-        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a))
-        let swept = sweep_slice_quiet(attempt: a, index: 92)
-        thawed && swept && match stopped {
+        let survived = match stopped {
           ForceStopBoundExceeded { survivors: s } => list_length(items: s) > 0
           _ => false
         }
+        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a), after: survived)
+        survived && thawed && sweep_slice_quiet(attempt: a, index: 92, after: thawed)
       }
   }
 }
@@ -411,16 +449,15 @@ fn red_a_surviving_task_quarantines_the_cell() -> Bool {
     Present { value: a } =>
       if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
         false
-      } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
+      } else if !freeze_unit(unit: red_escapee_unit(attempt: a), after: true) {
         false
       } else {
-        let settled = red_settlement(attempt: a, generation: 3, trigger: DeadlineReached)
-        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a))
-        let swept = sweep_slice_quiet(attempt: a, index: 92)
-        thawed && swept && match settled {
+        let quarantined = match red_settlement(attempt: a, generation: 3, trigger: DeadlineReached, after: true) {
           Absent => false
           Present { value: s } => !cell_is_ready(readiness: s.readiness)
         }
+        let thawed = thaw_unit(unit: red_escapee_unit(attempt: a), after: quarantined)
+        quarantined && thawed && sweep_slice_quiet(attempt: a, index: 92, after: thawed)
       }
   }
 }
@@ -558,8 +595,8 @@ fn red_a_stale_incarnations_stop_is_refused_and_the_live_unit_survives() -> Bool
           UnitIsActiveCaptured { state: _, active: active } => active
           UnitIsActiveCaptureRefused { reason: _ } => false
         }
-        let swept = sweep_slice_quiet(attempt: a, index: 94)
-        refused && still_running && swept
+        let held = refused && still_running
+        held && sweep_slice_quiet(attempt: a, index: 94, after: held)
       }
   }
 }
@@ -580,14 +617,12 @@ fn red_a_successful_job_that_left_a_process_is_released_only_after_it_is_gone() 
       if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 95))) {
         false
       } else {
-        let before = read_cell_cgroup_subtree(slice: red_slice(index: 95))
-        let settled = red_settlement(attempt: a, generation: 6, trigger: RunnerExited { exit_code: 0 })
-        let after = read_cell_cgroup_subtree(slice: red_slice(index: 95))
-        let swept = sweep_slice_quiet(attempt: a, index: 95)
-        swept
-          && red_residue_was_alive(before: before)
-          && red_slice_is_empty(after: after)
-          && red_released_on_the_readback(settled: settled)
+        let alive = red_residue_was_alive(before: read_cell_cgroup_subtree(slice: red_slice(index: 95)))
+        let released = red_released_on_the_readback(
+          settled: red_settlement(attempt: a, generation: 6, trigger: RunnerExited { exit_code: 0 }, after: alive),
+        )
+        let emptied = red_slice_is_empty(after: read_slice_after(index: 95, after: released))
+        alive && released && emptied && sweep_slice_quiet(attempt: a, index: 95, after: emptied)
       }
   }
 }
