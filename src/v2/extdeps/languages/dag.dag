@@ -1079,20 +1079,45 @@ fn dag_grammar_let_expr() -> GrammarExpr {
   )
 }
 
+// THE ORDER IS THE MEANING HERE, SO IT IS ARGUED RATHER THAN LEFT TO READ AS ARBITRARY.
+//
+// `Choice` is ordered and the first alternative that succeeds is taken, so an alternative placed
+// above a longer one that shares its prefix denies the longer one. `binary_expr` descends to
+// `dag_grammar_primary_expr_core`, whose final alternatives are `match_expr`, `if_expr` and
+// `loop_expr` -- a block-shaped expression is therefore ALREADY a legal binary operand by
+// construction. While those three stood above `binary_expr`, `match a { ... } && b` committed to
+// `match_expr`, which succeeded having consumed the match alone and left `&& b` reaching no
+// production: the parse ended with tokens remaining. Nothing was unrepresentable; the alternative
+// that represents it was never offered.
+//
+// `fn_literal`, `block_expr` and `arrow_lambda` stay ABOVE `binary_expr`, where they already were.
+// That is not incidental: `primary_expr_core` admits a braced field-initializer list, so a
+// `block_expr` offered after `binary_expr` could be taken as a record literal instead. Their first
+// tokens are disjoint from `match`/`if`/`loop`, so moving those three below changes nothing
+// between them.
+//
+// WHAT IS NOT ESTABLISHED: whether the trailing `match_expr`/`if_expr`/`loop_expr` alternatives are
+// now unreachable, which they are exactly if `binary_expr` never fails where they would succeed.
+// That argument is not made here, so they are retained rather than deleted; establishing it is
+// what would license removing them.
+//
+// Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
+// (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
+// form standing alone, and an operand that was never block-shaped).
 fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_loop_expr),
+        left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
+          left: dag_grammar_nonterminal(production: ^dag_production_binary_expr),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
+            left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
             right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-              right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+              left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+              right: dag_grammar_nonterminal(production: ^dag_production_loop_expr)
             )
           )
         )
