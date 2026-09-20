@@ -70,8 +70,6 @@ fn bounded_nat_host_positive_bit_capacity() -> Int {
 // std.bignat's multi-limb naturals, SUFFICIENT FOR UInt64 and UInt128 to be ADMITTED widths whose
 // operations carry the same typed outcomes, at which point this arm's population is empty rather
 // than refused. std.bignat already carries the limbs and the Montgomery arithmetic that would serve.
-data bounded_nat_width_ceiling_trigger: String = "arbitrary-precision bounded arithmetic through std.bignat, SUFFICIENT FOR UInt64 and UInt128 to become admitted widths rather than refused ones; the 62-bit bound is a property of the host Int this family computes in, not of bounded naturals"
-
 // A reified width admitted, or refused with the reason. `bits` is what reification returns for a
 // MachineWidth<N> whose index is a literal; a MachineWidth<PointerWidth> has no constant to reify
 // and reaches this as WidthNotStatic, which is a caller's arm to answer rather than a default.

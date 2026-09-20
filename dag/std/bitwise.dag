@@ -48,6 +48,16 @@ fn nibble_and(a: Int, b: Int) -> Int {
     + 8 * nibble_bit(x: a, i: 3) * nibble_bit(x: b, i: 3)
 }
 
+// Per-bit exclusive or: a + b - 2ab is 0,1,1,0 over the four bit pairs, and every term here is a
+// single BIT, so nothing in this function approaches a word boundary.
+fn nibble_xor(a: Int, b: Int) -> Int {
+  let x0 = nibble_bit(x: a, i: 0) + nibble_bit(x: b, i: 0) - 2 * nibble_bit(x: a, i: 0) * nibble_bit(x: b, i: 0)
+  let x1 = nibble_bit(x: a, i: 1) + nibble_bit(x: b, i: 1) - 2 * nibble_bit(x: a, i: 1) * nibble_bit(x: b, i: 1)
+  let x2 = nibble_bit(x: a, i: 2) + nibble_bit(x: b, i: 2) - 2 * nibble_bit(x: a, i: 2) * nibble_bit(x: b, i: 2)
+  let x3 = nibble_bit(x: a, i: 3) + nibble_bit(x: b, i: 3) - 2 * nibble_bit(x: a, i: 3) * nibble_bit(x: b, i: 3)
+  x0 + 2 * x1 + 4 * x2 + 8 * x3
+}
+
 fn nibble_values() -> List<Int> {
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 }
@@ -55,6 +65,10 @@ fn nibble_values() -> List<Int> {
 // Row-major: entry 16a + b is (a and b). Derived, never transcribed.
 data nibble_and_table: List<Int> = fold(nibble_values(), init: [], f: (acc, a) =>
   fold(nibble_values(), init: acc, f: (row, b) => row |> list_push(nibble_and(a: a, b: b))))
+
+// Row-major: entry 16a + b is (a xor b). Derived, never transcribed.
+data nibble_xor_table: List<Int> = fold(nibble_values(), init: [], f: (acc, a) =>
+  fold(nibble_values(), init: acc, f: (row, b) => row |> list_push(nibble_xor(a: a, b: b))))
 
 // As with bitwise_pow2, the Absent arm is the definition itself and is unreachable for a, b < 16.
 fn nibble_and_lookup(a: Int, b: Int) -> Int {
@@ -64,29 +78,60 @@ fn nibble_and_lookup(a: Int, b: Int) -> Int {
   }
 }
 
+fn nibble_xor_lookup(a: Int, b: Int) -> Int {
+  match get(nibble_xor_table, a * 16 + b) {
+    Present { value: v } => v
+    Absent => nibble_xor(a: a, b: b)
+  }
+}
+
 // Conjunction over `digits` nibbles, least significant first.
 fn nibbles_and(a: Int, b: Int, digits: Int) -> Int {
   if digits <= 0 { 0 } else { nibble_and_lookup(a: a % 16, b: b % 16) + 16 * nibbles_and(a: a / 16, b: b / 16, digits: digits - 1) }
+}
+
+// Exclusive or over `digits` nibbles, least significant first. The accumulated value is bounded by
+// the digits consumed so far, so it never exceeds the word it is building.
+fn nibbles_xor(a: Int, b: Int, digits: Int) -> Int {
+  if digits <= 0 { 0 } else { nibble_xor_lookup(a: a % 16, b: b % 16) + 16 * nibbles_xor(a: a / 16, b: b / 16, digits: digits - 1) }
 }
 
 fn word32_and(a: UInt32, b: UInt32) -> UInt32 {
   nibbles_and(a: a, b: b, digits: 8)
 }
 
+// NO INTERMEDIATE HERE LEAVES [0, 2^32), AND THAT IS THE POINT RATHER THAN AN OPTIMISATION
+// (review 69054 of gunbc#11645). These were written as `a + b - 2 * and` and `a + b - and`, whose
+// answers are correct but whose SUM reaches 2^33 - 2 while typed UInt32 -- the population of
+// gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int, which that
+// row cites at this very line, and which DESIGN 4b places BELOW THE LADDER rather than on it.
+//
+// Nibble-wise exclusive or removes the oversized intermediate instead of declaring it: each lookup
+// is over values below 16 and the accumulator is bounded by the digits consumed, exactly as
+// word32_and already worked. Disjunction is then xor plus and, which are disjoint bit sets, so
+// their sum IS the disjunction and is bounded by it -- no wider than the result.
 fn word32_xor(a: UInt32, b: UInt32) -> UInt32 {
-  a + b - 2 * word32_and(a: a, b: b)
+  nibbles_xor(a: a, b: b, digits: 8)
 }
 
 fn word32_or(a: UInt32, b: UInt32) -> UInt32 {
-  a + b - word32_and(a: a, b: b)
+  word32_xor(a: a, b: b) + word32_and(a: a, b: b)
 }
 
 fn word32_not(a: UInt32) -> UInt32 {
   word32_modulus - 1 - a
 }
 
+// Addition modulo 2^32 decided BEFORE the sum is formed, so the wrap is computed rather than
+// recovered from an oversized value: when a would carry past the modulus, the answer is the
+// distance it travelled past it. `word32_modulus - b` is at least 1 for every b in range, and both
+// branches stay strictly below the modulus.
 fn word32_add(a: UInt32, b: UInt32) -> UInt32 {
-  (a + b) % word32_modulus
+  if a >= word32_modulus - b {
+    a - (word32_modulus - b)
+  } else {
+    a + b
+  }
 }
 
 fn word32_shr(a: UInt32, n: Int) -> UInt32 {
