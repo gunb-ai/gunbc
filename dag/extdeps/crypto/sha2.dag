@@ -1,0 +1,207 @@
+module extdeps.crypto.sha2
+
+import std.types { Int, List, String }
+import std.integer { UInt8, UInt32 }
+import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_encode_lower }
+
+// SHA-256 per FIPS 180-4 (Secure Hash Standard), computed in the substrate. extdeps.crypto.hash owns
+// the Digest carrier and cites the same standard; this module is the computation that produces the
+// bytes such a digest names. Every operation it needs is in std.bitwise.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
+  }
+}
+
+// §4.2.2: the first 32 bits of the fractional parts of the cube roots of the first 64 primes.
+data sha256_round_constants: List<UInt32> = [
+  1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221,
+  3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580,
+  3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986,
+  2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895,
+  666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037,
+  2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344,
+  430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779,
+  1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298,
+]
+
+// §5.3.3: the first 32 bits of the fractional parts of the square roots of the first 8 primes.
+type Sha256State {
+  a: UInt32
+  b: UInt32
+  c: UInt32
+  d: UInt32
+  e: UInt32
+  f: UInt32
+  g: UInt32
+  h: UInt32
+}
+
+data sha256_initial_state: Sha256State = Sha256State {
+  a: 1779033703, b: 3144134277, c: 1013904242, d: 2773480762,
+  e: 1359893119, f: 2600822924, g: 528734635, h: 1541459225,
+}
+
+// §4.1.2 functions.
+fn sha256_ch(x: UInt32, y: UInt32, z: UInt32) -> UInt32 {
+  word32_xor(a: word32_and(a: x, b: y), b: word32_and(a: word32_not(a: x), b: z))
+}
+
+fn sha256_maj(x: UInt32, y: UInt32, z: UInt32) -> UInt32 {
+  word32_xor(a: word32_xor(a: word32_and(a: x, b: y), b: word32_and(a: x, b: z)), b: word32_and(a: y, b: z))
+}
+
+fn sha256_big_sigma0(x: UInt32) -> UInt32 {
+  word32_xor(a: word32_xor(a: word32_rotr(a: x, n: 2), b: word32_rotr(a: x, n: 13)), b: word32_rotr(a: x, n: 22))
+}
+
+fn sha256_big_sigma1(x: UInt32) -> UInt32 {
+  word32_xor(a: word32_xor(a: word32_rotr(a: x, n: 6), b: word32_rotr(a: x, n: 11)), b: word32_rotr(a: x, n: 25))
+}
+
+fn sha256_small_sigma0(x: UInt32) -> UInt32 {
+  word32_xor(a: word32_xor(a: word32_rotr(a: x, n: 7), b: word32_rotr(a: x, n: 18)), b: word32_shr(a: x, n: 3))
+}
+
+fn sha256_small_sigma1(x: UInt32) -> UInt32 {
+  word32_xor(a: word32_xor(a: word32_rotr(a: x, n: 17), b: word32_rotr(a: x, n: 19)), b: word32_shr(a: x, n: 10))
+}
+
+// ── The message schedule, as a sliding window ────────────────────────────────────────────────
+// At round t the window holds W[t] .. W[t+15]. Round t reads w0 = W[t], and the window advances by
+// shifting in W[t+16] = σ1(W[t+14]) + W[t+9] + σ0(W[t+1]) + W[t] (§6.2.2 step 1). Every read is a
+// named field, so no index can fall outside it.
+type Sha256Window {
+  w0: UInt32
+  w1: UInt32
+  w2: UInt32
+  w3: UInt32
+  w4: UInt32
+  w5: UInt32
+  w6: UInt32
+  w7: UInt32
+  w8: UInt32
+  w9: UInt32
+  w10: UInt32
+  w11: UInt32
+  w12: UInt32
+  w13: UInt32
+  w14: UInt32
+  w15: UInt32
+}
+
+fn sha256_window_push(w: Sha256Window, next: UInt32) -> Sha256Window {
+  Sha256Window {
+    w0: w.w1, w1: w.w2, w2: w.w3, w3: w.w4, w4: w.w5, w5: w.w6, w6: w.w7, w7: w.w8,
+    w8: w.w9, w9: w.w10, w10: w.w11, w11: w.w12, w12: w.w13, w13: w.w14, w14: w.w15, w15: next,
+  }
+}
+
+fn sha256_window_next(w: Sha256Window) -> UInt32 {
+  word32_add(a: word32_add(a: sha256_small_sigma1(x: w.w14), b: w.w9), b: word32_add(a: sha256_small_sigma0(x: w.w1), b: w.w0))
+}
+
+// The block's sixteen big-endian words shifted in one by one: after sixteen pushes every field holds
+// a block word, so the empty window's zeros are never read.
+data sha256_empty_window: Sha256Window = Sha256Window {
+  w0: 0, w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, w6: 0, w7: 0, w8: 0, w9: 0, w10: 0, w11: 0, w12: 0, w13: 0, w14: 0, w15: 0,
+}
+
+type Sha256WordFold {
+  window: Sha256Window
+  word: Int
+  filled: Int
+}
+
+fn sha256_block_window(block: List<UInt8>) -> Sha256Window {
+  fold(block, init: Sha256WordFold { window: sha256_empty_window, word: 0, filled: 0 }, f: (acc, octet) =>
+    if acc.filled == 3 {
+      Sha256WordFold { window: sha256_window_push(w: acc.window, next: acc.word * 256 + octet), word: 0, filled: 0 }
+    } else {
+      Sha256WordFold { window: acc.window, word: acc.word * 256 + octet, filled: acc.filled + 1 }
+    }
+  ).window
+}
+
+// ── Compression (§6.2.2) ─────────────────────────────────────────────────────────────────────
+type Sha256Rounds {
+  state: Sha256State
+  window: Sha256Window
+}
+
+fn sha256_round(r: Sha256Rounds, k: UInt32) -> Sha256Rounds {
+  let s = r.state
+  let t1 = word32_add(a: word32_add(a: word32_add(a: s.h, b: sha256_big_sigma1(x: s.e)), b: word32_add(a: sha256_ch(x: s.e, y: s.f, z: s.g), b: k)), b: r.window.w0)
+  let t2 = word32_add(a: sha256_big_sigma0(x: s.a), b: sha256_maj(x: s.a, y: s.b, z: s.c))
+  Sha256Rounds {
+    state: Sha256State { a: word32_add(a: t1, b: t2), b: s.a, c: s.b, d: s.c, e: word32_add(a: s.d, b: t1), f: s.e, g: s.f, h: s.g },
+    window: sha256_window_push(w: r.window, next: sha256_window_next(w: r.window)),
+  }
+}
+
+fn sha256_compress(h: Sha256State, block: List<UInt8>) -> Sha256State {
+  let done = fold(sha256_round_constants, init: Sha256Rounds { state: h, window: sha256_block_window(block: block) }, f: (r, k) => sha256_round(r: r, k: k))
+  let s = done.state
+  Sha256State {
+    a: word32_add(a: h.a, b: s.a), b: word32_add(a: h.b, b: s.b), c: word32_add(a: h.c, b: s.c), d: word32_add(a: h.d, b: s.d),
+    e: word32_add(a: h.e, b: s.e), f: word32_add(a: h.f, b: s.f), g: word32_add(a: h.g, b: s.g), h: word32_add(a: h.h, b: s.h),
+  }
+}
+
+// ── Padding (§5.1.1) and block parsing (§5.2.1) ─────────────────────────────────────────────
+// The message, 0x80, the fewest zero octets that leave the length ≡ 56 (mod 64), then the bit length
+// as a 64-bit big-endian integer. Messages are bounded well below 2^53 bits here, so the length's
+// high octets are computed from an Int without overflow.
+fn sha256_zero_octets(n: Int, acc: List<UInt8>) -> List<UInt8> {
+  if n <= 0 { acc } else { sha256_zero_octets(n: n - 1, acc: acc |> list_push(0)) }
+}
+
+fn sha256_length_octets(bits: Int) -> List<UInt8> {
+  [0, 7, 6, 5, 4, 3, 2, 1] |> map(i => if i == 0 { 0 } else { (bits / bitwise_pow2(n: 8 * (i - 1))) % 256 })
+}
+
+fn sha256_padded(message: List<UInt8>) -> List<UInt8> {
+  let len = count(message)
+  let zeros = (119 - len % 64) % 64
+  list_append_octets(left: list_append_octets(left: message |> list_push(128), right: sha256_zero_octets(n: zeros, acc: [])), right: sha256_length_octets(bits: len * 8))
+}
+
+fn list_append_octets(left: List<UInt8>, right: List<UInt8>) -> List<UInt8> {
+  fold(right, init: left, f: (acc, o) => acc |> list_push(o))
+}
+
+type Sha256BlockFold {
+  state: Sha256State
+  block: List<UInt8>
+}
+
+// Compress each full 64-octet block as it completes.
+fn sha256_state_of(message: List<UInt8>) -> Sha256State {
+  fold(sha256_padded(message: message), init: Sha256BlockFold { state: sha256_initial_state, block: [] }, f: (acc, octet) => {
+    let block = acc.block |> list_push(octet)
+    if count(block) == 64 {
+      Sha256BlockFold { state: sha256_compress(h: acc.state, block: block), block: [] }
+    } else {
+      Sha256BlockFold { state: acc.state, block: block }
+    }
+  }).state
+}
+
+fn sha256_word_octets(w: UInt32) -> List<UInt8> {
+  [(w / 16777216) % 256, (w / 65536) % 256, (w / 256) % 256, w % 256]
+}
+
+// The 32-octet digest, big-endian words a..h.
+fn sha256(message: List<UInt8>) -> List<UInt8> {
+  let s = sha256_state_of(message: message)
+  fold([s.a, s.b, s.c, s.d, s.e, s.f, s.g, s.h], init: [], f: (acc, w) => list_append_octets(left: acc, right: sha256_word_octets(w: w)))
+}
+
+// The lowercase hex rendering extdeps.crypto.hash Digest.hex carries.
+fn sha256_hex(message: List<UInt8>) -> String {
+  base16_encode_lower(octets: sha256(message: message))
+}

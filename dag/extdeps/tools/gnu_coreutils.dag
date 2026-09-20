@@ -42,6 +42,9 @@ data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
 data readlink_program: NonEmptyStr = "readlink"
 data ls_program: NonEmptyStr = "ls"
+data install_program: NonEmptyStr = "install"
+data sort_program: NonEmptyStr = "sort"
+data cut_program: NonEmptyStr = "cut"
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -60,6 +63,17 @@ fn cat_command(path: String) -> ArgvCommand {
 
 fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program, arguments: [source, destination])
+}
+
+// install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
+// The point is the ORDER it makes possible: a file that will later hold a secret exists with its
+// restrictive mode before a single secret byte is written, so there is no window in which the bytes
+// sit under the default umask. Mode is an octal spelling because that is what -m documents.
+fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+  argv_command(
+    program: install_program,
+    arguments: ["-m", octal_mode as String, "-o", to_string(uid), "-g", to_string(gid), "/dev/null", path],
+  )
 }
 
 // -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which

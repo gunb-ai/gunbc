@@ -3,7 +3,8 @@ module gunbc.auth.approval_capability
 import std.types { NonEmptyStr, String, Int, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
-import std.encoding { base64_encode, base64_decode, UrlSafe }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
   MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
@@ -178,6 +179,7 @@ type CapabilityIssuanceRefusal
   = IssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
   | IssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | IssuanceImplementationTagNotHex { key_id: MacKeyId }
+  | IssuanceImplementationTagNotOctets { key_id: MacKeyId }
 
 type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
@@ -196,11 +198,15 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
           Present { value: octets } =>
-            CapabilityIssued {
-              capability: ApprovalCapability {
-                claims: claims,
-                tag_b64url: base64_encode(octets: octets, variant: UrlSafe) as NonEmptyStr,
-              }
+            match base64_octets(values: octets) {
+              QualifiedOctetsRefused { observed: _ } => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotOctets { key_id: t.key_id } }
+              QualifiedOctetsReady { value: qualified } =>
+                CapabilityIssued {
+                  capability: ApprovalCapability {
+                    claims: claims,
+                    tag_b64url: base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr,
+                  }
+                }
             }
         }
     }
@@ -216,10 +222,14 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   match base64_decode(s: presented, variant: UrlSafe) {
     Absent => none
     Present { value: octets } =>
-      if base64_encode(octets: octets, variant: UrlSafe) != presented || octets == [] {
-        none
-      } else {
-        Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+      match base64_octets(values: octets) {
+        QualifiedOctetsRefused { observed: _ } => none
+        QualifiedOctetsReady { value: qualified } =>
+          if base64_encode(octets: qualified, variant: UrlSafe) != presented || octets == [] {
+            none
+          } else {
+            Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+          }
       }
   }
 }

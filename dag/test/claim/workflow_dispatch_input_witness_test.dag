@@ -10,6 +10,7 @@ import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
+  ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
@@ -25,7 +26,7 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
@@ -149,17 +150,23 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
   }
 }
 
-// THE TRIGGER IS TAKEN THROUGH ITS OPTIONAL. `on[0]` is an Optional<WorkflowTrigger>, so passing it
-// straight into workflow_trigger_entry was a latent type defect that main's own newly landed
-// Optional checker now refuses -- a workflow declaring no trigger is a real (if absurd) shape, and
-// this claim has to say what it does with it rather than assume one is there.
+// THE FIRST TRIGGER IS AN OPTIONAL, AND THE GUARD IS THE MATCH. List indexing and `.first()` are
+// total operations declared `T?` (`v1.compiler.access` `check_index_access_node` types `xs[i]` as
+// `with_optional_cardinality(elem)`, and the interpreter answers `Null` past the end), so passing
+// `on[0]` where `workflow_trigger_entry` declares a required `WorkflowTrigger` was the witness
+// asserting a cardinality the language never granted. gunbc#11720's wall refuses that site
+// (`RefusedOptionalAtRequired`), which is correct; the witness is the earliest unjustified boundary
+// in that chain, so the repair is here and not at the indexing rule. This module sits outside the
+// required gate closure, so the refusal was invisible to the floor (DeclinedOutsideGateClosure)
+// and surfaced only from a local claim_batch run -- see
+// gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
+// specimen: the falsifier is the compiler wall, not another file).
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
   match fleet_converge_workflow.on.first() {
-    Absent => false
-    Present { value: trigger } => {
+    Present { value: trigger } =>
       let entry = workflow_trigger_entry(trigger: trigger)
       entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
-    }
+    Absent => false
   }
 }
 
@@ -258,6 +265,45 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet")
     && string_contains(s: invoke, pattern: join(["cat \"$ROOT/", spark_pair_apply_receipt_path, "\""], ""))
     && !string_contains(s: invoke, pattern: "spark-pair-serving-apply-receipt")
+}
+
+// ── THE DARK INSTALL REACHES srv1 UNDER THE RUNNER PRINCIPAL ────────────────────────────────
+// WHY THIS MODE EXISTS, and the claim is written against that reason rather than against its shape.
+// gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet binds ci_deploy_srv1_access, whose
+// expected principal is ghrunner; the operator attempt refused before mutation with
+// `deploy_access: principal mismatch expected=ghrunner actual=briansrls`. So the install needs a
+// runner-executed route, and the first assertion is that the step really invokes THAT fold -- not
+// the operator-local sibling beside it in the same module, which would reproduce the refusal from
+// inside CI, and not gunbc.apply apply_dispatch, which re-decides by string what the target row
+// decides by declaration.
+//
+// THE SECOND ASSERTION IS THE DISCRIMINATING ONE. gunbc.apply apply_dispatch exists, reaches the
+// same mutation, and would satisfy a reader checking only that the step runs "the dark install" --
+// so naming it as an ABSENCE is what makes this fail on the plausible wrong edit rather than only
+// on a missing one.
+//
+// A THIRD CONJUNCT WAS REMOVED HERE RATHER THAN KEPT (review 68991). It asserted the invoke does
+// not name approval_broker_dark_install_srv1_operator_local_wet -- an operator-principal twin of
+// the admitted fold. That fold IS NOW DELETED, so the assertion had become permanently green by
+// construction: a must-refuse probe over a spelling nothing in the corpus produces carries no
+// information and would be cited as coverage it does not provide. The door is closed by the
+// deletion, which is DESIGN section 5's construction over validation -- guarding a door that no
+// longer exists is the weaker half of the pair, not an addition to it.
+test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
+  let invoke = gunbc_ci_approval_broker_dark_install_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet")
+    && !string_contains(s: invoke, pattern: "apply_dispatch")
+}
+
+// AND THE JOB SELECTS ON THE MODE THAT THE MENU OFFERS. A roster row whose job guards on a
+// different mode renders a dispatch option that runs nothing -- green by every vocabulary claim
+// above, because those join options to wires and never reach a job. This joins the job's own
+// condition to the same derivation, so the two cannot drift apart silently.
+test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
+  fleet_converge_approval_broker_dark_install_step_if
+    == fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
+    && fleet_converge_approval_broker_dark_install_step_if
+      == "github.event.inputs.mode == 'approval_broker_dark_install'"
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {

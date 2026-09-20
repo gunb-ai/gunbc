@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_roadmap_serve_serve_page_response_page_render_refusal_body
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_roadmap_serve_serve_page_response_page_render_refusal_body: TransitionAdmission = TransitionAdmission {
+  label: "REQUALIFICATION `page_render_refusal_body` home gunbc.site.markup" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.roadmap_serve", "serve_page_response"),
+    spelling: "page_render_refusal_body" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.site.markup", "page_render_refusal_body")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11667 as UInt32,
+}

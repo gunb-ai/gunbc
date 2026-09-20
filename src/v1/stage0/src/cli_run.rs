@@ -204,6 +204,8 @@ mod required_regen_host;
 // `gunbc.target_invocation_seed_growth`.
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
+pub mod floor_memory_supervisor;
+
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
@@ -14158,6 +14160,14 @@ fn emit_floor_drain_receipt(
             .unwrap_or_else(|| "unreadable".into()),
         typed_module_cache_cap(index),
     );
+    // The ladder's RetentionUnobserved refusal is discharged by an OBSERVATION,
+    // not by a declaration, so the persistent tier reports its live occupancy
+    // beside its throughput on the same receipt the floor already emits. Absent
+    // when the tier is not armed: a run that never opened a store must not
+    // print a zero that reads as an empty one.
+    if let Some(line) = shared_typecheck_store::persistent_typed_store_receipt_line() {
+        eprintln!("{line}");
+    }
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -14202,9 +14212,72 @@ fn index_get_typed(
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
+        if let Some(hit) = index.typed_module_cache.borrow().get(typed_key).cloned() {
+            return Ok(Some(hit));
+        }
+        return persist_get_typed(index, typed_key);
     };
-    shared_get_typed(store, typed_key)
+    match shared_get_typed(store, typed_key)? {
+        Some(hit) => Ok(Some(hit)),
+        None => persist_get_typed(index, typed_key),
+    }
+}
+
+/// The host-persisted tier behind both in-process tiers
+/// (`gunbc.floor_materialization` `host_persisted_typecheck_store`). A hit here
+/// is served BEFORE `collect_parent_envs` and the typecheck compute at the one
+/// call site above, which is the expensive production computation this tier
+/// exists to skip; it is not a byte load placed after the work has been done.
+///
+/// A decode failure on a verified entry is a REFUSAL, not a miss: the entry
+/// passed the store's own magic/version/length/key verification, so a payload
+/// the transport cannot read is codec drift and the line stops here rather than
+/// widening into a silent recompute (DESIGN section 5). Absence, rejection at
+/// verification and IO failure are already counted misses inside the store.
+fn persist_get_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
+    else {
+        return Ok(None);
+    };
+    let Some(payload) = store.get(typed_key) else {
+        return Ok(None);
+    };
+    let decoded = SharedTypecheckCaches::decode_typed_snapshot(payload.as_slice()).map_err(|e| {
+        format!(
+            "persistent typed store refused: entry for key '{typed_key}' verified against its              header but its payload did not decode ({e}) -- this is codec drift between the              store format version and the transport, not a cache miss"
+        )
+    })?;
+    // Readmit into the in-process tier so the repeat within this process is a
+    // reference, not a second disk read.
+    if index.cross_worker_store.is_none() {
+        index
+            .typed_module_cache
+            .borrow_mut()
+            .insert(typed_key.to_string(), decoded.clone());
+        enforce_typed_cache_entry_cap(index);
+    }
+    Ok(Some(decoded))
+}
+
+/// Write-through to the host-persisted tier. Publication failures (IO, ceiling
+/// reached) are counted inside the store and never fail the run: this tier is
+/// an optimization over a pure computation, so an unavailable store costs time
+/// and can never change a verdict.
+fn persist_put_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+    result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Result<(), String> {
+    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
+    else {
+        return Ok(());
+    };
+    let bytes = SharedTypecheckCaches::encode_typed_snapshot(result)?;
+    store.put(typed_key, bytes.as_slice());
+    Ok(())
 }
 
 fn check_index_module_source_identity(
@@ -14300,6 +14373,7 @@ fn index_insert_typed(
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
+        persist_put_typed(index, &typed_key, &result)?;
         index
             .typed_module_cache
             .borrow_mut()
@@ -14307,6 +14381,7 @@ fn index_insert_typed(
         enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
+    persist_put_typed(index, &typed_key, &result)?;
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&typed_key)
@@ -19986,6 +20061,29 @@ fn release_revision_text_valid(text: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
+/// The liveness path this server answers WITHOUT entering the evaluator.
+///
+/// Seed realization of `gunbc.serve_liveness` `serve_liveness_path`. It is a constant here rather
+/// than a value read from the graph for the reason the endpoint exists at all: a path resolved by
+/// evaluating `.dag` would be unavailable in exactly the state this endpoint reports on.
+const SERVE_LIVENESS_PATH: &str = "/livez";
+
+/// The member name the liveness document publishes its release revision under.
+///
+/// THIS PROCESS IS THE ONLY PRODUCER OF THAT DOCUMENT, and that is a correction rather than a
+/// convenience (review 68036). The first cut also declared the document in `.dag` and called that
+/// declaration its authority, which gave one document two producers that could drift while the
+/// `.dag` one had no consumer and the claim over it asserted against bytes nobody served. The
+/// `.dag` side is now the READER — `gunbc.serve_liveness` `observe_serve_liveness` — so the
+/// producer here has exactly one counterpart and the counterpart executes over what this writes.
+///
+/// The NAME is `gunbc.running_release_identity` `running_release_revision_key`, the same member
+/// `/healthz` publishes its revision under, because "which release is this process" is one fact and
+/// a second spelling of it would be a nickname that drifts. It is duplicated here for the same
+/// reason the path is — no fold can run at this seam — and `release_revision_text_valid` already
+/// carries the precedent of one rule realized at two boundaries.
+const SERVE_LIVENESS_REVISION_KEY: &str = "revision";
+
 /// The process-wide evaluation budget this serve process enforces.
 ///
 /// PROCESS-WIDE, NOT PER-ROUTE, and the distinction is load-bearing rather than a simplification.
@@ -20295,6 +20393,45 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
+                // THE ONE ROUTE ANSWERED BEFORE THE EVALUATOR IS ENTERED.
+                //
+                // Seed realization of `gunbc.serve_liveness` — that module owns the path, the
+                // document and the single status, and states why the answer cannot live behind an
+                // evaluation. The short version, because it is the reason this branch is here and
+                // not a `.dag` row: the conditions that make a served process unhealthy are the
+                // conditions that make an expensive evaluation fail, so a health endpoint reachable
+                // only through the evaluator answers "healthy" or nothing — and "nothing" is
+                // indistinguishable from a dead host. Boot 15 was that outage (side-chat ruling
+                // 2026-09-19; the request is #11557).
+                //
+                // Every field is a value this process validated BEFORE it bound: the release
+                // revision was checked for shape and the process exited if it was not a revision,
+                // the entry is the armed contract's subject, and the address is the one
+                // `local_addr` reported. So there is nothing here that can be unavailable while
+                // the connection is writable, which is why the module declares exactly one status.
+                //
+                // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
+                // deadline around a `format!` would be ceremony, and reaching the evaluator at all
+                // would reintroduce the dependency this endpoint exists to remove.
+                Ok(Some((method, path, _body, _identity)))
+                    if method == "GET" && path == SERVE_LIVENESS_PATH =>
+                {
+                    serve_write_response(
+                        &mut stream,
+                        200,
+                        "application/json; charset=utf-8",
+                        &format!(
+                            "{{\"live\":true,\"{}\":{},\"entry_function\":{},\"bound_host\":{},\"bound_port\":{}}}",
+                            SERVE_LIVENESS_REVISION_KEY,
+                            serve_json_string(&release_revision),
+                            serve_json_string(serve_budget_refusal::serve_contract_entry(
+                                &armed_contract
+                            )),
+                            serve_json_string(&bound.ip().to_string()),
+                            bound.port(),
+                        ),
+                    )
+                }
                 Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),

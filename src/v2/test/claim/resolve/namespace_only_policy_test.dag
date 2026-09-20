@@ -1,6 +1,7 @@
 module v2.test.resolve.namespace_only_policy
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   ResolveContext,
   Namespace,
@@ -44,7 +45,10 @@ fn policy_pilot_namespace_with_index(
     bindings: empty_map(),
     canonical_symbols: empty_canonical_symbol_set(),
     symbol_index: symbol_index,
-    module_qn: module_qn
+    module_qn: module_qn,
+    test_code: test_code_index_empty(),
+    declared_in: module_qn,
+    imported_origins: empty_map()
   }
 }
 

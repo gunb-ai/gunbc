@@ -1,0 +1,372 @@
+module v2.test.claim.reference_derived_residency_reading
+
+import gunbc.namespace_reference_derived_residency_qualification {
+  BoundedRealizationQualified,
+  BoundedRealizationRefused,
+  CarrierKeyPopulation,
+  CarrierPayloadGrain,
+  carrier_holds_whole_corpus_syntax,
+  CarrierReadingUndecidable,
+  CarrierTypeRecognized,
+  CarrierTypeUnrecognized,
+  BoundedRealizationAdmitted,
+  BoundedRealizationSemanticDeliveryOutstanding,
+  BoundedRealizationResourceQualificationOutstanding,
+  admit_bounded_realization,
+  IdentityDigestPerKey,
+  KeyedBySingleSubject,
+  KeyedByWholePoolPopulation,
+  LifecycleReadingAbsent,
+  ProducerCarrierReading,
+  ProductionLifecycleReading,
+  SyntaxNodePerKey,
+  WholeCorpusSyntaxAtConstructionPeak,
+  WholeCorpusSyntaxRetainedAtReturn,
+  qualify_bounded_realization,
+}
+import std.decl_ref { decl_ref }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.lens.reference_derived_residency_reading { carrier_reading_from_type_decl }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_snoc }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.test.claim.reference_derived_graph_fixture { xl4_fixture_trees, xl4_item_at, consumer_field_bare_local_path }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+}
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE DERIVATION, at the one interface it answers at: given a type declaration, what
+// grain and population does the carrier hold. The declarations are SUPPLIED here rather than computed
+// (DESIGN section 3), because the subject of these claims is the derivation and not the ingest that
+// would produce a declaration.
+//
+// THE PAIRING OBLIGATION IS OPEN, AND IT IS STATED RATHER THAN QUIETLY OMITTED. DESIGN section 3
+// requires one inhabitance claim that the real producer emits these shapes, and this module does NOT
+// carry one, because a type declaration cannot be resolved from a live tree today. The two claims at
+// the foot of this module establish that by execution, with a function declaration as the control.
+// Attributed cause and dissolution trigger: gunbc#11574.
+//
+// A CORRECTION, KEPT RATHER THAN DELETED so a later reader knows why this module ever mentioned the
+// compile door. An earlier revision of this branch asserted here that "a normalized single-file root
+// carries names, not declared types, and normalizing a module with imports needs its closure",
+// and concluded the derivation had to move to the compile-door lens path. THAT WAS AN UNVERIFIED
+// INTERPRETATION OF A REAL READING, not a measurement, and it is withdrawn. The readings behind it
+// were real -- 27827 subtree nodes with zero Named edges labelled the declaration on the parse tree,
+// 1628 nodes and one ^Node atom on the normalized root -- but the account of WHY was wrong, and it
+// was published in a commit message and a PR comment before it was checked. What falsified it: the
+// same lookup fails on a seven-line fixture with no unresolved imports, and in that fixture the
+// module QN resolves and a FUNCTION declaration resolves while the type does not. The cause is not
+// single-file roots, not the closure, and not key construction; it is that type declarations never
+// become Named edges. No compile-door work is required.
+
+fn atom(identity: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn positional_to(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn named_to(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+// `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its
+// arguments.
+fn map_of(key: Symbol, value: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [positional_to(target: atom(identity: ^Map)), positional_to(target: atom(identity: key)), positional_to(target: atom(identity: value))],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
+fn record_of(fields: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
+}
+
+// The producer's tree map: syntax, held per member of the pool population.
+fn trees_like_declaration() -> Node {
+  record_of(fields: [named_to(name: ^trees, target: map_of(key: ^String, value: ^Node))])
+}
+
+// The second route to the same population, through the index.
+fn symbol_index_like_declaration() -> Node {
+  record_of(fields: [named_to(name: ^entries, target: map_of(key: ^QualifiedName, value: ^Node))])
+}
+
+// Syntax, but for ONE subject rather than a population.
+fn single_subject_declaration() -> Node {
+  record_of(fields: [named_to(name: ^root, target: atom(identity: ^Node))])
+}
+
+// A bounded population: a per-key digest instead of a tree. This is the shape a bounded realization
+// would have, and the derivation must distinguish it from the first two.
+fn name_table_declaration() -> Node {
+  record_of(fields: [named_to(name: ^entries, target: map_of(key: ^QualifiedName, value: ^ContentHash))])
+}
+
+// THE ALIAS FIXTURE. `trees: TreePool` is the reviewer's refactor of `trees: Map<String, Node>` into
+// a named type: same residency, a spelling this derivation cannot read. It must REFUSE, not qualify.
+fn alias_typed_declaration() -> Node {
+  record_of(fields: [named_to(name: ^trees, target: atom(identity: ^TreePool))])
+}
+
+fn reading_of(decl_name: String, decl: Node) -> ProducerCarrierReading {
+  carrier_reading_from_type_decl(
+    carrier: decl_ref(module_path: "v2.lens.module_graph", decl_name: decl_name),
+    decl: decl,
+  )
+}
+
+// PER-AXIS CLAIMS. An earlier revision asserted only the CONJUNCTION, through a hand-copy of the
+// authority's own predicate -- a second authority for one fact (DESIGN section 2, section 3) whose
+// concrete cost was that it CONCEALED a defect: the population axis was mislabelled on two of these
+// four fixtures and every conjunction claim still passed. The predicate is now imported from the
+// module that owns it, and each axis is asserted on its own so a mislabelled field cannot hide behind
+// a conjunction that happens to come out right (review 68711).
+
+fn grain_of(decl_name: String, decl: Node) -> CarrierPayloadGrain {
+  reading_of(decl_name: decl_name, decl: decl).grain
+}
+
+fn population_of(decl_name: String, decl: Node) -> CarrierKeyPopulation {
+  reading_of(decl_name: decl_name, decl: decl).population
+}
+
+fn grain_is_syntax(g: CarrierPayloadGrain) -> Bool {
+  match g {
+    SyntaxNodePerKey => true
+    IdentityDigestPerKey => false
+  }
+}
+
+fn population_is_whole_pool(p: CarrierKeyPopulation) -> Bool {
+  match p {
+    KeyedByWholePoolPopulation => true
+    KeyedBySingleSubject => false
+  }
+}
+
+test fn a_tree_map_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+}
+
+test fn a_tree_map_field_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+}
+
+test fn an_index_entries_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+}
+
+test fn an_index_entries_field_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+}
+
+// A bare Node field is SYNTAX for ONE subject: syntax grain, and not a population.
+test fn a_bare_node_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+}
+
+test fn a_bare_node_field_does_not_derive_a_population() -> Bool {
+  !population_is_whole_pool(p: population_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+}
+
+// THE TARGET SHAPE OF THE REPAIR, AND THE PAIR THAT WAS UNCONSTRUCTIBLE BEFORE review 68711. A
+// digest-keyed map over the whole pool is a POPULATION whose payload is BOUNDED. Under the earlier
+// conflated derivation population implied syntax, so this pair could not be expressed at all and the
+// module could not describe the producer shape it exists to admit. Asserting each axis directly is
+// what makes the shape reachable rather than argued for in a comment.
+test fn a_digest_keyed_map_derives_a_bounded_grain() -> Bool {
+  !grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+test fn a_digest_keyed_map_still_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+// THE CONJUNCTION, through the AUTHORITY'S OWN predicate rather than a copy of it. Only syntax held
+// per population member is whole-corpus residency; each of the other three fixtures fails exactly one
+// of the two conjuncts, which is what makes the conjunction do real work.
+test fn only_syntax_held_per_population_member_is_whole_corpus_residency() -> Bool {
+  carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+    && carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+    && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+    && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+fn readability_is_recognised(r: ProducerCarrierReading) -> Bool {
+  match r.readability {
+    CarrierTypeRecognized => true
+    CarrierTypeUnrecognized { spelling: _ } => false
+  }
+}
+
+// THE FOUR FIXTURES ABOVE ARE ALL READ, which is what makes their axis claims mean anything: an
+// unreadable carrier would refuse regardless of what the axes said.
+test fn the_four_recognised_fixtures_are_readable() -> Bool {
+  readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+    && readability_is_recognised(r: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+// THE ALIAS IS NOT READABLE, and that is the whole point: the derivation reads an UNRESOLVED type
+// expression, so a named type is a spelling it does not know rather than a bounded payload.
+test fn an_alias_typed_field_is_not_readable() -> Bool {
+  !readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration()))
+}
+
+// THE BLOCKING ARM. Under the earlier derivation this qualified -- both axes fell through to their
+// admitting values -- so a producer could buy the admission by renaming a type while the same corpus
+// stayed resident (review 68724). It must refuse, and it must refuse NAMING the carrier and the
+// spelling rather than with a generic cause.
+test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration())],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => false
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      match failure {
+        CarrierReadingUndecidable { carrier: _, spelling: spelling } => spelling == ^TreePool
+        WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => false
+        WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
+        LifecycleReadingAbsent => false
+      }
+  }
+}
+
+// AND THE ADMISSION CANNOT BE MINTED FROM IT EITHER, which is the harm stated at its real boundary:
+// semantic delivery plus an unreadable carrier is not a bounded-realization claim.
+test fn semantic_delivery_plus_an_unreadable_carrier_does_not_admit() -> Bool {
+  match admit_bounded_realization(
+    semantic_delivered: true,
+    resource: qualify_bounded_realization(
+      reading: lifecycle_from(
+        constructed: [reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration())],
+      ),
+    ),
+  ) {
+    BoundedRealizationAdmitted { subject: _ } => false
+    BoundedRealizationSemanticDeliveryOutstanding => false
+    BoundedRealizationResourceQualificationOutstanding { failure: _ } => true
+  }
+}
+
+fn lifecycle_from(constructed: List<ProducerCarrierReading>) -> ProductionLifecycleReading {
+  ProductionLifecycleReading {
+    subject: decl_ref(module_path: "v2.lens.module_graph", decl_name: "load_reference_derived_pool"),
+    constructed: constructed,
+    retained_at_return: [],
+  }
+}
+
+// THE DERIVATION FEEDS THE QUALIFIER, so the two halves are joined by execution rather than by
+// assertion: readings derived from declarations refuse, and readings derived from bounded
+// declarations qualify.
+test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [
+        reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()),
+        reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()),
+      ],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => false
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      match failure {
+        WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
+        WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
+        CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        LifecycleReadingAbsent => false
+      }
+  }
+}
+
+test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [
+        reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()),
+        reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()),
+      ],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => true
+    BoundedRealizationRefused { subject: _, failure: _ } => false
+  }
+}
+
+
+// THE FRONTIER, AS AN EXECUTING CLAIM RATHER THAN AN ANNOTATION. DESIGN 4c is explicit that no
+// Accepted program can read a comment, so prose explaining why there is no claim about the live
+// producer is not itself a claim. These two are, and together they say exactly what is true today:
+// the live route WORKS, and it does not carry type declarations.
+//
+// WHY THIS IS ADMISSIBLE NOW AND WAS NOT AN HOUR AGO. A claim that a route yields nothing is only
+// honest if its author can distinguish "the route cannot supply this" from "my code is wrong". FIVE
+// hypotheses died on this lookup, so that discrimination was exactly what I lacked and the claim was
+// correctly refused. The FUNCTION control below is what supplies it: same module, same tree, same
+// index, same key construction, and it RESOLVES. So the ingest, the fill, the qualified-name key and
+// the lookup are all proven working by execution, and the type declaration's absence is a fact about
+// the tree rather than about this module.
+//
+// ATTRIBUTED, NOT MERELY OBSERVED: gunbc#11574, "Declaration grafting: type/data decls never become
+// Named edges". THAT PR IS THIS PAIR'S DISSOLUTION TRIGGER. When it lands, the second claim below
+// goes RED -- deliberately -- and that red is the signal to wire the derivation to the producer's own
+// declaration and retire this frontier. It does not retire on anything else.
+
+// POSITIVE CONTROL, and the load-bearing half. A function declaration in the fixture resolves through
+// the live ingest, so every link the type lookup uses is proven to work.
+test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
+  live_fixture_lookup(segment: ^uses)
+}
+
+// THE FRONTIER CLAIM. A type declaration in the SAME module, through the SAME index, does not. This
+// is why this branch carries no reading of the live producer.
+test fn a_type_declaration_does_not_resolve_from_a_live_module_root_pending_11574() -> Bool {
+  !live_fixture_lookup(segment: ^LocalWrapper)
+}
+
+fn live_fixture_lookup(segment: Symbol) -> Bool {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: consumer_field_bare_local_path) {
+        Absent => false
+        Present { value: item } =>
+          match qualified_name_from_module_node(root: item.root) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: mqn, diagnostics: _ } =>
+              match symbol_index_lookup(
+                index: symbol_index_fill_module_root(index: empty_symbol_index(), root: item.root),
+                qualified_path: qualified_name_snoc(qn: mqn, segment: segment),
+              ) {
+                Absent => false
+                Present { value: _ } => true
+              }
+          }
+      }
+  }
+}

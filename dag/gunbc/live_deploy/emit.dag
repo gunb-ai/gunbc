@@ -7,7 +7,7 @@ import gunbc.fleet_converge_timer {
 import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
-import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
+import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
 import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_mode_octal,
@@ -61,17 +61,26 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
-import extdeps.crypto.hash { digest_shell_verify_line }
-import gunbc.fabric_db_placement { fabric_db_listen_port }
+import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program }
+import extdeps.tools.findutils { find_program, xargs_program }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+}
+import gunbc.fabric_storage_placement { fabric_storage_listen_port }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_db_unit_name, deployment_fabric_db_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
+  gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
+  deployment_owns_the_host_approval_broker,
+  gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricDbServeUnit, FabricDbServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -90,6 +99,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
+import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
   instance_receipts_dir,
@@ -107,7 +117,6 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
-  runner_slot_service_units_for_host,
 }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
@@ -417,68 +426,6 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
 // directive list the emission serializes, rather than re-parsing the rendered text. The doc
 // producers below delegate here; behaviour is unchanged.
-// THE DEPLOYMENT'S BOUND IS ITS OWN, AND THE SHARED-IDENTITY ARGUMENT THAT MADE IT THE RUNNER
-// SLOT'S IS FALSIFIED RATHER THAN OVERRULED (2026-09-12).
-//
-// WHAT THIS ROW USED TO SAY, and it was true when written: "the bound is the runner slot's, BY
-// IDENTITY OF WORKLOAD rather than by coincidence of number -- the deployment's oneshots run
-// `gunbc run` over the same corpus a CI job resolves, and the server is the same binary, so
-// gunbc_runner_slot_desired is the fleet's one authored allowance for that process and a second
-// literal here would be the section-3 fork."
-//
-// WHAT FALSIFIED IT: the runner row stopped being an allowance for "a gunbc process". The
-// 2026-09-12 demand ruling sizes it from the REQUIRED FLOOR'S measured peak -- one prepared subject
-// over the whole corpus, 22.74 GiB uncensored -- which is work this deployment never performs. The
-// same 2026-09-04 measurement the old note cited for scale is the refutation at this size: serve
-// peaked at 3.46 GB and the belt at 0.97 GB. Sharing one number with the floor was a coincidence of
-// magnitude that read as an identity of workload, and the moment the floor's number moved, the
-// coincidence ended while the sentence asserting the identity did not. That is the pattern this
-// corpus keeps finding -- a name that states a coincidence as a law.
-//
-// THE VALUES DO NOT CHANGE TODAY, deliberately. They are the bytes this deployment already runs
-// with, restated as its own fact with its own justification rather than re-derived to something
-// tighter in the same change that decouples them. Whether 16 GiB is the right bound for a 4.43 GB
-// workload is a separate question with its own evidence; this change only stops the answer being
-// decided by the floor's memory demand.
-//
-// IT ALSO CLOSES A CAP-WRITER BYPASS. `live_deploy` writes this slice with no host admission
-// consulted, so while the number was the runner row's, any move to that row propagated to a host
-// whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
-// gating it: there is no longer a runner-derived number here to leak.
-// THE ENVELOPE IS SIZED FROM THE UNIT'S OWN MEASURED PEAK, not from the 3.46 GB the 2026-09-12
-// note cited. With swap forbidden below, the bound stopped being decorative: at the 16 GiB bound the
-// serve process -- which systemd's unit accounting reported at "8.1G memory peak, 9.6G memory swap
-// peak" for its previous incarnation -- was OOM-killed inside the slice on 2026-09-18 23:07 UTC, and
-// the deployed-tree convergence oneshot ("5.2G memory peak") beside its restart at 23:44. Swap had
-// been absorbing the ~2 GB the serve workload exceeds the old bound by, silently. The instrument is
-// the unit's journal "Consumed ... memory peak, ... memory swap peak" line (systemd unit accounting)
-// for gunbc-roadmap.service and gunbc-tree-sync.service; re-derive there. 26 GiB max / 24 GiB high
-// (operator ruling 2026-09-18, the same envelope the runner slots moved to that day) covers serve
-// peak + convergence peak concurrently (~23 GB); why the serve footprint grew from 3.46 GB to ~18 GB
-// is a demand question (DESIGN section 2) this row does not answer and does not hide. That this
-// number EQUALS the runner slot's is a coincidence of two rulings on one day, not a derivation: the
-// row is authored here, and the witness pins that by reading this declaration, not by inequality.
-data live_deploy_slice_memory_max: ByteSize = byte_size(27917287424)
-
-data live_deploy_slice_memory_high: ByteSize = byte_size(25769803776)
-
-// THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
-// swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
-// runs the required floor's runners, whose working sets outrank an idle interpreter heap under
-// global reclaim; the observed state before this row was the serve process at VmSwap 9.7 GB against
-// VmRSS 0.4 GB, and every request after an idle gap paying the swap-in -- the 5-10 s /healthz and
-// /approvals stalls that refused a live deploy and two approval-gated boot transactions (GH runs
-// 35377916920 and 35380154698, both fail-closed on a poll that returned no bytes in 5 s). The
-// instrument is /proc/<serve pid>/status VmSwap beside the unit's journal gap; re-derive there, not
-// from this sentence. Zero rather than a bound: any admitted swap is admitted latency. Growth stays
-// bounded by MemoryHigh and MemoryMax above -- a hard kernel boundary (throttling, allocation
-// failure, or the cgroup's own OOM kill), not an application refusal value -- so the deployment
-// fails or restarts inside its declared envelope rather than becoming a silently swapped control
-// plane. Lowering swap.max below existing usage does NOT drain what is already paged out: the live
-// closure is a new service incarnation whose MainPID reads VmSwap 0 kB and answers /healthz and
-// one status GET inside the client bound.
-data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
-
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   SliceUnitFile {
     unit: [
@@ -536,7 +483,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
         " --host ", host, " --port ", port,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
@@ -549,14 +496,14 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
-// gunbc.fabric_db_serve fabric_db_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
-// route to it (FabricDbServeMapping), which is the deployment fact extdeps.tailscale.identity says
+// gunbc.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
+// route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
 // the identity header's trust rests on. Same principal, slice, tree, binary and declared evaluation
 // caps as the dashboard's unit: a request is one store operation on local files, and the caps turn an
 // unbounded hold of the serial accept loop into a typed refusal exactly as they do there. The process
 // keeps no state between requests -- the store is the files under the ensured fabric DB directory --
 // so Restart=on-failure loses nothing.
-fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
@@ -574,8 +521,8 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/fabric/fabric_db_serve.dag --function fabric_db_serve_handle",
-        " --host 127.0.0.1 --port ", to_string(fabric_db_listen_port),
+        " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
+        " --host 127.0.0.1 --port ", to_string(fabric_storage_listen_port),
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -586,15 +533,119 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
   }
 }
 
-fn apply_fabric_db_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
+fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fabric_db_unit_name(names: spec.names) as String,
-    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_db_unit_file(spec: spec, revision: revision))), proto: live_deploy_protocol),
+    stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision))), proto: live_deploy_protocol),
   ))
 }
 
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: revision)))
+}
+
+// ── THE APPROVAL BROKER'S SLICE AND UNIT ─────────────────────────────────────────────────────
+// The two byte bounds this unit carries are declared in gunbc.live_deploy.slice_bounds, and the
+// derivation of each number lives with the row rather than here.
+//
+// THE SWAP DENIAL IS THE DEPLOYMENT'S POLICY, CONSUMED, NOT RESTATED HERE (review 68287). This slice
+// used to inline byte_size(0) while the roadmap slice one function above consumed the declared row,
+// so "this deployment's served slices forbid swap" had two sources that could drift in either
+// direction invisibly -- admitting swap on the row would have left this one silently pinned at
+// zero, and the reverse edit would have been just as quiet.
+//
+// WHY IT IS ONE FACT AND NOT TWO EQUAL NUMBERS, which is the distinction this corpus keeps having
+// to make: the max and high bounds are PER-SLICE and genuinely differ, because they are sized from
+// each process's own demand. The swap denial is not sized from anything -- it follows from both
+// processes being latency-bound and operator-facing, which is one argument covering both. Declaring
+// a second zero beside this one would be two names for that argument.
+//
+// The receipt is the same receipt: boot 15 did not fail because the roadmap process was large, it
+// failed because that process was SWAPPED and then OOM-killed, and a swapped process is one whose
+// latency is unbounded while it still looks alive.
+fn approval_broker_slice_unit_file() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc approval broker cgroup bound (separate from the roadmap deployment slice)" as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: approval_broker_slice_memory_max),
+      slice_memory_high(bytes: approval_broker_slice_memory_high),
+      slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn emit_approval_broker_slice_unit_doc() -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: approval_broker_slice_unit_file()))
+}
+
+// THE BROKER UNIT IS THE ROADMAP UNIT WITH THREE FIELDS DIFFERENT AND ONE DIRECTIVE REMOVED, and
+// every difference is the split.
+//
+// Slice= names the broker's own slice, which is the whole construction: two cgroups means the
+// roadmap's resident set cannot evict the broker's.
+//
+// THE USER-MANAGER ENVIRONMENT IS ABSENT ON PURPOSE. The roadmap unit carries XDG_RUNTIME_DIR and
+// DBUS_SESSION_BUS_ADDRESS because POST /dispatch starts a user unit and the belt observes them.
+// The broker starts nothing and observes nothing: it files a request, renders a page, redeems a
+// capability and reads a standing. Handing it an address for the user manager would be handing it a
+// capability its routes have no use for, and a capability a process does not need is one more thing
+// a defect in it can reach.
+//
+// Restart=on-failure and a distinct MainPID are the other half of the availability property: a
+// broker that dies is restarted by systemd on its own lifecycle, rather than waiting for whoever
+// notices the dashboard is down.
+fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+}
+
+// THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
+// gunbc.auth.approval_broker_cutover installs this unit on the broker's one port, and stage 4's repoint
+// installs it on the serving port; if those were two unit producers, the process measured at stage
+// 2 would not be the process routed to at stage 5, and every reading taken would be about a build
+// nobody ran. One producer, one argument.
+fn live_deploy_approval_broker_unit_file_on(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  port: Port,
+) -> SystemdUnitFile {
+  let svc = spec.approval_broker
+  let release_dir = approval_broker_release_dir(root: svc.repo_root as String, revision: revision)
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
+      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      ExecStart { command: join([
+        approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
+        " serve --source-root dag --source-root src/v2",
+        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
+        " --host ", svc.listen.host, " --port ", to_string(port),
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
+        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
+}
+
+fn emit_approval_broker_unit_doc_on(spec: DeploymentSpec, revision: ReleaseRevisionBinding, port: Port) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: port)))
 }
 
 // OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
@@ -1471,6 +1522,306 @@ fn deploy_memory_cap_apply_steps(
 // step's existing emission on this plan's mutation, so the identity decides WHETHER the root is
 // installed and the step decides HOW. The DirectoryRoot arm below exists because the match is total
 // over ConvergedMember, and it is genuinely unreached from this function.
+// THE BROKER'S TWO FILES RIDE THE UNIT MEMBER, and that placement is the same one the deployment
+// slice already uses: the slice unit is written inside the tree-publication effect rather than
+// enrolled as an owned artifact step, because a cgroup bound is part of installing the units that
+// join it, not a separately reconciled resource. The broker's slice and service are the same kind
+// of fact, with the additional reason that gunbc_approval_broker_unit_name is a HOST singleton
+// (gunbc.live_deploy.spec): enrolling it as an owned member would make a twin's retract remove the
+// host's broker.
+//
+// THE SLICE IS WRITTEN BEFORE THE UNIT that joins it, in the same order the roadmap's is: a
+// [Service] carrying Slice= for a slice that does not exist yet starts under the default bound,
+// which is the unbounded state the bound exists to remove.
+// A NON-OWNING SPEC EMITS NOTHING (review 68094). The broker unit is a HOST singleton whose content
+// is instance-derived, and srv1-lab deploys to the same host as production -- so before this, a lab
+// apply overwrote the host's broker unit to point at the lab tree and restarted it, killing
+// production's broker. The steps are now CONSTRUCTED from the ownership predicate rather than
+// guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
+fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  if deployment_owns_the_host_approval_broker(spec: spec) {
+    approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+  } else {
+    []
+  }
+}
+
+// THE LIFECYCLE STEPS FOLLOW THE SAME OWNERSHIP, and they are separate because a restart is the
+// half that actually killed the other instance's process: writing an identical unit is idempotent,
+// restarting one is not. Both are empty for a non-owner.
+fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  if deployment_owns_the_host_approval_broker(spec: spec) {
+    [
+      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+    ]
+  } else {
+    []
+  }
+}
+
+// ── THE BROKER'S TREE, COPIED FROM THE CANDIDATE ────────────────────────────────────────────
+// STAGE A INSTALLED A UNIT WITH NO TREE BEHIND IT. WorkingDirectory pointed at the roadmap's
+// deployed tree, which is frozen at a release predating this module, so `gunbc serve --entry
+// dag/gunbc/auth/approval_broker_serve.dag` could not resolve its own entry and systemd
+// restart-looped the unit. The unit was correct; the bytes it was pointed at were not there.
+//
+// SCOPED DELIBERATELY NARROW (operator ruling 2026-09-20: "do not generalize it into a second
+// tree-sync"). This is not a sync: no unit, no timer, no reconciliation, no drift detection. It is
+// two source directories and one binary copied once, at install, from the checkout the dark install
+// is running in -- the same $PWD the existing tree-publication step already names as GUNBC_TREE_SRC.
+// What the broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches,
+// and a binary that can interpret them.
+//
+// THE BINARY IS COPIED INTO A PER-CANDIDATE RELEASE LOCUS, AND THE PREVIOUS TWO NOTES HERE WERE
+// BOTH WRONG IN OPPOSITE DIRECTIONS. The first asserted a copy the diff did not contain; the second
+// corrected it to "shared, and that is a real open hazard" and left the hazard standing. The hazard
+// was real: ExecStart took spec.approval_broker.serve_binary -- the instance's /opt/gunbc/bin/gunbc,
+// which is the ROADMAP's binary, frozen at its release by operator ruling. A seed binary older than
+// the sources it is handed refuses to parse constructs those sources use, and the broker's modules
+// are newer than that binary by construction, so the unit would have started, refused at parse and
+// restart-looped: the same symptom as the missing tree, from the other half of the pair.
+//
+// THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
+// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci_spec
+// ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
+// gunbc.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
+// the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
+// put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier
+// one. That is what makes the copy source a verified artifact rather than a file that happens to be
+// on disk: the verification and the copy are two steps of one job, and a failed verify stops the
+// job before the install step runs.
+//
+// THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
+// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci_deploy_access
+// ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
+// and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
+// copy is not reaching any further than the tree copy already does. Were the transport ever remote,
+// both would break together and loudly, rather than this one silently copying a file that is not
+// there.
+// The copy source is that artifact; gunbc.ci_release_bins gunbc_release_bin_name is the row both
+// the pack verification and this copy read, so the two spellings cannot drift.
+//
+// THE LOCUS IS PER-CANDIDATE AND IMMUTABLE, which is what makes the readback mean anything. Under a
+// single mutable root, "the tree is the candidate" is a claim about what the last rsync did, and a
+// redeploy of an older revision overwrites the evidence of the newer one in place. Under
+// releases/<sha>/ the installed digest, the binary and the sources are one directory that either
+// exists for this sha or does not, ExecStart names that directory, and /livez reporting the sha is
+// a statement about a locus a reader can go and hash. Requested-equals-installed becomes decidable
+// rather than asserted.
+//
+// WHAT THIS DELIBERATELY DOES NOT ADD: retention, garbage collection, a `current` symlink, or any
+// reconciliation between release directories. Each is a real obligation and none is needed to
+// observe one dark install; inventing a release-manager here would be the second tree-sync the
+// operator ruled out, arriving under a different name. The unbounded growth is named rather than
+// papered over -- see approval_broker_release_retention_note.
+//
+// UNBOUND REVISIONS REFUSE RATHER THAN NAMING A PATH. RevisionNotInstalled has no sha, so there is
+// no directory it could mean; the path folds emit a poison marker that is not a valid path, which
+// fails the stage loudly instead of installing a release into a directory literally named after a
+// diagnostic (DESIGN section 5: refuse, never widen).
+data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
+
+data approval_broker_release_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+
+// THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
+// today, and reading the row here would still be correct -- but it would make the broker's root a
+// fact this fold knows independently of the service it is emitting a unit for, so a deployment
+// whose config named a different root would install its tree under one path and start its unit from
+// another. The config is the parameter every other member of this unit comes from; the root is not
+// an exception to that.
+fn approval_broker_release_dir(root: String, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([root, "/releases/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_releases_dir(root: String) -> String {
+  join([root, "/releases"], "")
+}
+
+fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+}
+
+fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([approval_broker_release_dir(root: root, revision: revision), "/.gunbc-tree-receipt"], "")
+}
+
+data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
+
+// THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
+// paths agree regardless of how either was walked. sort -z before hashing is what makes that true:
+// find's order is filesystem order and differs between the source and the copy, so hashing the
+// concatenation without sorting would report a mismatch between identical trees -- a false refusal
+// at the stage whose whole job is to say the tree IS the candidate.
+// EVERY PROGRAM NAME HERE IS CONSUMED FROM THE MODULE THAT OWNS IT, not re-spelled (review 68927).
+// The first cut minted "find", "sha256sum", "sort", "xargs" and "cut" as bare literals inside this
+// join, which gave the digest relation a SECOND, POSITIONAL authority unreachable from the extdeps
+// modules that own those tools -- the section 3 fork, and the section 2 test it fails is "net
+// concepts must not grow by re-invention". find and xargs come from extdeps.tools.findutils
+// (xargs ships with findutils, not coreutils), sort and cut from extdeps.tools.gnu_coreutils, and
+// sha256sum from extdeps.crypto.hash. Two of those rows did not exist and were added to their
+// OWNING modules rather than declared here, which is the difference between consuming an authority
+// and minting a local one that happens to agree.
+//
+// 🟡 dissolve-on: this fold assembles shell SYNTAX -- a subshell, &&, and a pipeline -- as a string
+// rather than emitting a Node through grammar rows, which is the medium-as-string shape. It
+// dissolves when v2.workflow.bash_emit can render a piped command from modeled parts, at which
+// point the program rows above become the arguments to that emitter instead of substrings of a
+// join. The names are already correct by then; only the assembly changes.
+// IT RETURNS THE PIPELINE, NOT A SUBSHELL, and the caller wraps it. The first cut returned
+// "(cd ... | cut -d' ' -f1)" -- a BARE parenthesised group with no `$` -- and spliced it into
+// printf's argument position, where `(` is a bash SYNTAX ERROR. With
+// deploy_shell_strict_options_command at the head of the same script, that aborts the entire dark
+// install before any step runs: not a wrong digest, no install at all (review 69066).
+//
+// It shipped because nothing ever rendered it. The only witness over this script asked
+// string_contains for "rsync -a --delete" and the receipt path -- a SHAPE check over bytes nobody
+// executed, which is DESIGN section 5's "a .contains() grep is not a consumer" exactly. The marker
+// one declaration up names medium-as-string as a hazard; this is that hazard landing.
+//
+// Returning the pipeline and substituting at the use site also puts the quoting where a reader can
+// see it: one "$( ... )" at the caller rather than parentheses buried in a join.
+fn approval_broker_tree_digest_expr(root: String) -> String {
+  join([
+    "cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
+    " -type f -print0 | ", sort_program as String, " -z | ",
+    xargs_program as String, " -0 ", sha256sum_program as String, " | ",
+    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1",
+  ], "")
+}
+
+fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
+  join([
+    "rsync -a --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$PWD\"/", src_sub, "/ ", root, "/", src_sub, "/",
+  ], "")
+}
+
+// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2 -- and that second half was FALSE when
+// this note was written (review 68965). The receipt was written and nothing read it, while this
+// paragraph asserted the stage consumed it, so the only release evidence stage 2 actually had was
+// the revision the process reports on /livez: a launch argument this emitter writes into ExecStart,
+// echoed back whatever tree the unit loaded. The reader now exists
+// (gunbc.auth.approval_broker_cutover observe_broker_tree_receipt, consumed by
+// dark_install_release_discharged), which is what makes the sentence true rather than aspirational.
+//
+// WHAT IT ESTABLISHES, at its real strength: the copy for THIS candidate ran and recorded a digest,
+// which a stale tree from an earlier deploy fails. What it does NOT yet establish is that the
+// installed digest equals one computed independently over the deploying checkout -- that needs the
+// source-side digest at readback time and is named as the open half beside the reader. Without it the only evidence is the revision
+// the unit reports on /livez -- and that revision is a LAUNCH ARGUMENT this emitter wrote into
+// ExecStart, so the process echoes whatever it was told regardless of which bytes it loaded. A
+// control-plane fact standing in for the subject observation is the substitution
+// gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse; the
+// tree digest is the subject-side fact that closes it.
+//
+// ONLY THE INSTALLED DIGEST IS WRITTEN HERE, and that is a deliberate simplification over recording
+// both sides. The first cut of this command computed the SOURCE digest too, inside the emitted
+// shell, which meant a nested command substitution inside a printf inside an install -- four levels
+// of quoting hand-escaped in a string literal, unverifiable without rendering, and a malformed
+// quote fails the stage in a way that looks like a copy failure. The comparison does not need to
+// happen in shell: the readback runs IN the deploying checkout, so it computes the source digest
+// itself and compares against what it reads here. Shell reports one fact; the fold decides.
+// ONE ROOT IN, BOTH PATHS DERIVED. An earlier cut of this took the release directory AND the broker
+// root as separate parameters, which let a caller hand it a pair that did not correspond -- hash one
+// release and write the receipt into another -- and made the release directory a fact two folds knew
+// independently. The directory the digest covers and the directory the receipt lands in are the same
+// directory by construction now, which is a stronger statement than any check over two arguments.
+fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevisionBinding) -> String {
+  join([
+    printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    "\\ninstalled_digest=%s\\n' ",
+    "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+    " | ", install_program as String, " -m 0644 /dev/stdin ",
+    approval_broker_tree_receipt_path_for(root: base_root, revision: revision),
+  ], "")
+}
+
+// THE BINARY IS INSTALLED BEFORE THE RECEIPT AND AFTER THE SOURCES, and the order is the only thing
+// that makes a partially-installed locus distinguishable from a complete one. The receipt is the
+// last write, so a locus carrying a receipt carries everything the receipt describes; a locus
+// without one was interrupted. install -m 0755 rather than cp because the mode is part of what is
+// being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
+// that will not exec, several steps from the copy that caused it.
+//
+// THE PROGRAM NAME IS CONSUMED, AND THIS FORK ARRIVED BY MERGE RATHER THAN BY AUTHORING. main
+// minted extdeps.tools.gnu_coreutils install_program while this branch spelled "install" as a bare
+// literal in two commands; neither side was wrong when written, and the moment they composed there
+// were two spellings of one concept with only one of them reachable from the module that owns it.
+// That is the same defect review 68927 raised against find/sort/xargs/cut here, arriving through a
+// merge -- so it is repaired in the merge that creates it rather than left for the next reader to
+// find, which is the whole reason a merge is a place to look for defects and not only a place to
+// reconcile text.
+//
+// THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
+// binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
+// job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
+// fact already verified, while the sources -- which nothing else in the job checks -- are exactly
+// what the receipt exists to pin.
+fn approval_broker_binary_install_command(release_dir: String) -> String {
+  join([
+    install_program as String, " -m 0755 \"$PWD\"/target/release/", gunbc_release_bin_name, " ",
+    release_dir, "/", gunbc_release_bin_name,
+  ], "")
+}
+
+fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let base_root = spec.approval_broker.repo_root as String
+  let root = approval_broker_release_dir(root: base_root, revision: revision)
+  concat(
+    concat(
+      [
+        deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: base_root)),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: approval_broker_releases_dir(root: base_root))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: root)),
+      ],
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: install_d_owned_command(spec: spec, path: join([root, "/", sub], "")))
+      ),
+    ),
+    concat(
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
+      ),
+      [
+        deploy_raw(command: approval_broker_binary_install_command(release_dir: root)),
+        deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision)),
+      ],
+    ),
+  )
+}
+
+fn approval_broker_unit_write_steps_on(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  port: Port,
+) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_approval_broker_slice_unit_name as String,
+      content: render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_approval_broker_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_approval_broker_slice_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_approval_broker_unit_name as String,
+      content: render(doc: emit_approval_broker_unit_doc_on(spec: spec, revision: revision, port: port), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_approval_broker_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_approval_broker_unit_path() as String,
+    )),
+  ]
+}
+
 fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
@@ -1531,20 +1882,20 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       )),
     ] }
     UnitFile => concat(
-      if !plan_writes_unit(plan: plan) { [] } else { [
+      if !plan_writes_unit(plan: plan) { [] } else { concat([
         apply_systemd_unit_write_step(spec: spec, revision: revision),
         deploy_raw(command: deploy_stage_install_command(
           stage_name: spec.service.unit_name as String,
           mode: install_file_shared_mode,
           dest: deployment_systemd_unit_path(names: spec.names) as String,
         )),
-      ] },
+      ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
       concat(
         if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
-        if !plan_restarts_process(plan: plan) { [] } else { [
+        if !plan_restarts_process(plan: plan) { [] } else { concat([
           deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
           deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
-        ] },
+        ], approval_broker_lifecycle_steps(spec: spec)) },
       ),
     )
     UnitManager => []
@@ -1622,17 +1973,18 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ComputeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
-    SystemdUnit => [
+    SystemdUnit => concat(concat([
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.service.unit_name as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
+    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-    ]
+    ], approval_broker_lifecycle_steps(spec: spec)))
     PublicationHelperTimerUnit => concat(
       apply_publication_spool_steps(spec: spec),
       [
@@ -1680,20 +2032,20 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
-    FabricDbServeUnit => [
-      apply_fabric_db_unit_write_step(spec: spec, revision: revision),
+    FabricStorageServeUnit => [
+      apply_fabric_storage_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_fabric_db_unit_name(names: spec.names) as String,
+        stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_db_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_db_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
     ]
-    FabricDbServeMapping => [
+    FabricStorageServeMapping => [
       deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_db_serve_endpoint())),
+        argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
     DeployedTreeRemoteUnit => [
@@ -1739,13 +2091,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    FabricDbServeMapping => [
+    FabricStorageServeMapping => [
       deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_db_serve_endpoint())),
+        argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
-    FabricDbServeUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fabric_db_unit_name(names: spec.names), privileged: true),
+    FabricStorageServeUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -2070,6 +2422,70 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
     live_deploy_wholesale_refused_poison_prefix,
     concat(fold_label, concat(" refused-member-count=", to_string(count(refusals))))
   )
+}
+
+// ── THE ADDITIVE BROKER INSTALL: STAGE 1 OF THE CUTOVER ─────────────────────────────────────
+// IT TOUCHES gunbc-roadmap.service AND NOTHING IT DEPENDS ON, WHICH IS THE WHOLE REQUIREMENT
+// (operator directive 2026-09-19: roadmap redeploys are FROZEN at the current release until the
+// cutover completes). The ordinary apply path installs the broker beside the roadmap unit, and it
+// also reloads the manager and RESTARTS the roadmap -- correct for a release deploy, and exactly
+// wrong for a stage that is supposed to add a process without disturbing the one already serving.
+//
+// So stage 1 has its own intent: write the broker's slice, write its unit on its one port, reload
+// the manager, enable and start ONLY gunbc-approval-broker.service. A daemon-reload does not
+// restart running units, so the roadmap keeps its PID and its incarnation across this.
+//
+// IT IS A MODELED PIPELINE, NOT A HAND SCRIPT. DESIGN section 6 files a hand-authored deployment
+// script as out-of-band actuation; what makes this the other thing is that every command in it is
+// the same projection of the same unit value the byte oracles pin and the cutover plan reasons
+// about, so "what did stage 1 install" is answerable from the model rather than from a terminal
+// transcript.
+//
+// IT BINDS THE BROKER'S ONE PORT, the same one every later stage observes (side-chat HOLD item 1).
+// This stage and the ordinary release apply therefore write the SAME placement, which is what lets
+// the release readback, the MainPID and the measured demand taken here describe the process that
+// later serves. What makes this stage DARK is not the address: nothing routes the public paths to
+// the broker yet (gunbc.auth.approval_broker_cutover approval_route_ownership) and the broker does
+// not hold the store (gunbc.auth.approval_writer_authority), so a loopback client that finds the
+// port is REFUSED rather than merely unlikely to look.
+fn approval_broker_dark_install_intent(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      concat(
+        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
+        concat(
+          approval_broker_tree_copy_steps(spec: spec, revision: revision),
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        ),
+      ),
+      concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+// A NON-OWNING SPEC REACHING THE DARK INSTALL REFUSES LOUDLY RATHER THAN EMITTING A SCRIPT THAT
+// DOES NOTHING. With the ownership predicate constructing the steps, a twin's dark install would
+// otherwise render a well-formed script containing a strict-mode line, a mktemp and a daemon-reload
+// -- a stage that reports success having installed nothing, which is the absorbing fallback DESIGN
+// section 5 forbids at exactly the seam where the operator is being told a stage completed. The
+// marker is not valid shell, so the stage fails and names the owner.
+data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker DARK INSTALL was reached with a deployment that does not own this host's broker unit. gunbc-approval-broker.service is a HOST singleton owned by gunbc.live_deploy.spec gunbc_approval_broker_owning_instance; a twin apply installing it would point the host's broker at the twin's tree and restart it over production's process (review 68094). This marker is not valid deploy shell, so the stage fails loudly rather than emitting a script that installs nothing and reports success. instance="
+
+data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
+
+fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  if !deployment_owns_the_host_approval_broker(spec: spec) {
+    join([approval_broker_dark_install_not_owner_poison, spec.instance_id as String, "\n"], "")
+  } else {
+    emit_pipeline_or_poison(
+      p: approval_broker_dark_install_intent(spec: spec, revision: revision),
+      refused: approval_broker_dark_install_emit_refused_poison,
+    )
+  }
 }
 
 fn live_deploy_apply_script_for(
