@@ -2,7 +2,7 @@ module v2.std.grammar
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, fold_list_node, list_append, list_map, list_snoc_item, zip_eq }
+import v2.std.algebra { fold_list, fold_list_node, list_append, list_snoc_item, zip_eq }
 import v2.std.collection {
   List,
   Map,
