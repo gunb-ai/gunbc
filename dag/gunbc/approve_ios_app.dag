@@ -1,0 +1,34 @@
+module gunbc.approve_ios_app
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE iOS APPROVAL APP IS SEED-RETAINED HAND-AUTHORED SWIFT (operator ruling: apps/approve-ios/ in
+// this repository, SwiftUI, iOS 17+). It is a realization of gunbc.auth.approval_device_wire (the
+// byte contract) and gunbc.auth.approval_device_redemption (the server's admission)
+// and of extdeps.apple.{secure_enclave, app_attest, apns}; it declares no wire fact of its own. Its
+// byte builders are CHECKED against vectors the .dag witness emits into
+// dag/test/fixture/approval_device_redemption/vectors.json, which apps/approve-ios/project.yml
+// carries into the test bundle -- one authority, read from two sides, nothing hand-copied. THE
+// STANDING OF THAT CHECK, honestly (DESIGN 4b(1)): the XCTest is AUTHORED and UN-ENROLLED. No lane
+// in this repository compiles Swift, so it executes only when an operator runs it on a MacBook, and
+// nothing on the merge path has ever compiled the Swift under apps/approve-ios. The equivalence is
+// therefore a claim at the mitigation rung whose only evidence is operator-executed, not an
+// established hold; approve_ios_vector_check_unenrolled_frontier names what would enrol it. Every
+// section the suite reads is emitted by gunbc.auth.approval_device_redemption_fixtures (the
+// stored_request section by stored_request_specimens; the outcome envelopes through
+// redemption_response_of), so a fixture regenerated from that module carries all of it.
+//
+// WHY HAND-AUTHORED, stated as the §7 frontier row requires: extdeps.languages.swift carries a
+// subject citation and no emit transforms, so the substrate cannot emit this program today. The
+// trigger names the CAPABILITY: the Swift target gaining emission sufficient for this app, at which
+// point the Swift source is a generated artifact and this row retires with it.
+// The vector check's own next-rung trigger, separate from the hand-authoring trigger below because
+// the two dissolve differently: this one ends when the check EXECUTES on the merge path, which can
+// happen while the Swift is still hand-authored. Either arm of the trigger is sufficient.
+data approve_ios_vector_check_unenrolled_frontier: DissolutionCondition = unbound_dissolution(
+  description: "ApproveTests (apps/approve-ios/ApproveTests/ProtocolVectorTests.swift) checks the app's byte builders and wire envelopes against dag/test/fixture/approval_device_redemption/vectors.json but is executed by no lane: the witness_floor_workflow job roster is closed to growth and has no macOS runner, so the check runs only when an operator presses run on a MacBook. DISSOLVES WHEN either (a) an operator-admitted lane on a macOS runner compiles apps/approve-ios and runs ApproveTests on every pull request, SUFFICIENT FOR a drifted builder or envelope to red the merge path, or (b) the Swift target's emit transforms land and the emitter's own equivalence evidence covers the protocol layer, retiring approve_ios_hand_authored_swift_frontier and this row together",
+)
+
+data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_dissolution(
+  description: "apps/approve-ios is hand-authored Swift realizing gunbc.auth.approval_device_wire because extdeps.languages.swift has a subject citation and no emit transforms. DISSOLVES WHEN the Swift target gains emit transforms SUFFICIENT FOR emitting the app's protocol layer (the two byte builders, the wire records and the enclave/App Attest bindings) from the .dag authority, so that the Swift under apps/approve-ios/Approve is a generated artifact drift-gated like every other and the XCTest vector check becomes redundant with the emitter's own equivalence evidence",
+)

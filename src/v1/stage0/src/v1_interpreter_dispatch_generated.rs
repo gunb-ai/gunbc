@@ -108,6 +108,8 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagReferenceOccurrenceBindingCensus,
     FreeCallCompileDagImporterResolvedCallEdges,
     FreeCallCompileDagCallsiteResolvedCallEdges,
+    FreeCallBuiltinFunctionRegistryKeys,
+    FreeCallCompileDagPrimitiveCallEdges,
     FreeCallCompileDagCallFormLeafGuard,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
     FreeCallClassBImportClosureGateNotAffectedSkip,
@@ -254,6 +256,8 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
         "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
+        "builtin_function_registry_keys" => Some(EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys),
+        "compile_dag_primitive_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges),
         "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
         "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
@@ -398,6 +402,8 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
     ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
+    ("free_call.builtin_function_registry_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys };
+    ("free_call.compile_dag_primitive_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges };
     ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
     ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
