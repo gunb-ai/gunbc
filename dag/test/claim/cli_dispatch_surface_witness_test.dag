@@ -266,15 +266,18 @@ fn test_verb_rows() -> List<CliSubcommandRow> {
   gunbc_cli_subcommands() |> filter(sub => sub.verb == "test")
 }
 
-// THE VERB DECLARES EXACTLY ONE POSITIONAL LABEL OPERAND AND NO OPTIONS. The second conjunct is
-// the load-bearing one: it is what would go red if the interface were respelled as
-// `gunbc test --target //...` because the row carrier happened to have an option list ready.
-test fn the_test_verb_declares_one_absolute_label_operand_and_no_options() -> Bool {
+// THE VERB DECLARES EXACTLY ONE POSITIONAL TARGET-PATTERN OPERAND AND NO OPTIONS. The second
+// conjunct is the load-bearing one: it is what would go red if the interface were respelled as
+// `gunbc test --target //...` because the row carrier happened to have an option list ready. The
+// operand's authority is the pattern grammar, not the label grammar alone: the verb admits the
+// set forms (`:all`, `:*`, `/...`) and routes them to the witness machinery, while the
+// single-target form still delegates to the label grammar inside that authority.
+test fn the_test_verb_declares_one_target_pattern_operand_and_no_options() -> Bool {
   test_verb_rows() |> all(sub =>
     ((sub.operands |> count) == 1)
       && ((sub.options |> count) == 0)
       && (sub.operands |> all(operand =>
-           (operand.value == CliAbsoluteLabelOperand {})
+           (operand.value == CliTargetPatternOperand {})
              && (operand.arity == CliExactlyOneOperand {})))
   ) && ((test_verb_rows() |> count) == 1)
 }

@@ -1,0 +1,21 @@
+module test.claim.test_verb_pattern_fixture.fixture_passing_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// THE PLANTED SUBJECT OF THE VERB'S PATTERN ROUTE. The inhabitance witness one package up runs
+// `gunbc test //dag/test/claim/test_verb_pattern_fixture/...` against a real checkout, so this
+// module is the smallest thing that is a witness at all: one module, two planned functions, no
+// imports beyond the floor's own disposition declaration. Two functions rather than one because
+// the claim under test is that the pattern runs ALL matching witnesses -- a single function could
+// not distinguish "every selected function ran" from "any one ran". Its content is deliberately
+// trivial: what the inhabitance row proves is selection and execution, not arithmetic.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn fixture_first_holds() -> Bool {
+  true
+}
+
+test fn fixture_second_holds() -> Bool {
+  true
+}

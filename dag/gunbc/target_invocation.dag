@@ -17,6 +17,54 @@ import gunbc.target_binding {
 }
 import std.types { String }
 import std.integer { Int }
+import extdeps.bazel.target_pattern {
+  TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
+  TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
+  parse_target_pattern, target_pattern_refusal_text,
+}
+
+// THE VERB'S OPERAND IS A TARGET PATTERN, AND ADMISSION IS THE PATTERN AUTHORITY'S DECISION.
+//
+// The surface row (gunbc.cli_dispatch_surface) names `extdeps.bazel.target_pattern` as the
+// operand's authority; this function is where that authority's answer becomes the verb's route.
+// A SINGLE target folds to the label the grammar already spelled, and the exact-label route below
+// answers it unchanged -- registry lookup, bound producer, native standing. A SET form
+// (`PackageTargets`, `SubtreeTargets`) denotes a population of witness modules, and its selection
+// and execution are owned by `gunbc.compute.test_run`; nothing here re-decides either grammar --
+// no prefix check, no suffix list -- so the CLI cannot grow a second, weaker pattern grammar that
+// drifts from the one the worker process is keyed on.
+//
+// THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
+// `PatternAllTargetsUnsupported` have different remedies from each other and from every
+// `PatternLabelRefused` inner cause, and collapsing them into one malformed-operand arm would be
+// the state-space conflation this repository keeps finding.
+type TestOperandAdmission
+  = TestOperandExactTarget { label: Label }
+  | TestOperandWitnessSelection { pattern: TargetPattern }
+  | TestOperandRefused { operand: String, cause: TargetPatternRefusal }
+
+fn admit_test_operand(operand: String) -> TestOperandAdmission {
+  match parse_target_pattern(text: operand) {
+    TargetPatternRefused { cause: c } => TestOperandRefused { operand: operand, cause: c }
+    TargetPatternParsed { pattern: p } =>
+      match p {
+        SingleTarget { label: l } => TestOperandExactTarget { label: l }
+        PackageTargets { package: _ } => TestOperandWitnessSelection { pattern: p }
+        SubtreeTargets { package: _ } => TestOperandWitnessSelection { pattern: p }
+      }
+  }
+}
+
+// A REFUSED OPERAND TERMINATES AS REFUSED, AND THE RENDERING NAMES THE AUTHORITY'S CAUSE. The
+// inner text is `target_pattern_refusal_text` -- the pattern authority's own renderer -- rather
+// than a paraphrase here, for the same reason `label_canonicality_cause_rendered` declines to
+// decompose `LabelRefusal`: this layer names the class of repair, the authority names the cause.
+fn test_operand_refusal_rendered(operand: String, cause: TargetPatternRefusal) -> String {
+  concat(
+    concat("gunbc test: operand is not an admitted target pattern: ", operand),
+    concat("\n  cause: ", target_pattern_refusal_text(r: cause))
+  )
+}
 
 // THE ONE ROUTE FROM AN ARGV OPERAND TO A BOUND PRODUCER, AND IT KNOWS NO INSTRUMENT'S NAME.
 //

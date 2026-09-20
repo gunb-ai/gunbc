@@ -46,13 +46,13 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
-    /// Run one target by its absolute label and report the standing its own producer
-    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
-    /// unknown target refuses rather than reporting a pass.
+    /// Run targets named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing each subject's own producer answers in. An exact label
+    /// routes to its bound producer; a set form selects and runs every matching
+    /// witness module. An unadmitted form or an unknown target refuses.
     Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
+        /// Absolute label of one target, or a pattern denoting a set.
+        #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
 
@@ -778,7 +778,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // Deliberately no mode switch and no arm per instrument: which producer a label names is
         // decided by the registry in `target_invocation_host`, mirroring
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
-        // instrument adds a row there and nothing here.
+        // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
+        // is admitted by the same host's `parse_target_pattern` mirror and delegated to the
+        // `.dag` authority `gunbc.compute.test_run` — no witness selection is re-decided here.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
         // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
