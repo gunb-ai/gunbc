@@ -336,6 +336,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     identity: "fixture_native_route_drop" as NonEmptyStr,
     subject: "fixture",
     declared: "2026-09-12",
+    amendments: [],
     standing: Retired { trigger_fired: "fixture" as NonEmptyStr },
     declaration: TypedDeclaration {
       previous: MechanicallyPreventable,
@@ -349,6 +350,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
     identity: retired.identity,
     subject: retired.subject,
     declared: retired.declared,
+    amendments: retired.amendments,
     standing: Standing,
     declaration: retired.declaration,
   }

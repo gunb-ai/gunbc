@@ -37,6 +37,8 @@ data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop
 
   declared: "2026-09-16",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

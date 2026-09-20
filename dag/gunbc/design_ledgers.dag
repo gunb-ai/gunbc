@@ -74,7 +74,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
-import gunbc.rung_drop { rung_drop_declaration_message, RungDropStanding, Standing, Retired }
+import gunbc.rung_drop { rung_drop_declaration_message, RungDropStanding, RungDropAmendment, Standing, Retired }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
@@ -125,9 +125,9 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
       ],
       flat_map(rung_drop_roster, d => concat(concat([
         h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
-      ], rung_drop_standing_blocks(standing: d.standing)), concat([
+      ], rung_drop_standing_blocks(standing: d.standing)), concat(concat([
         p(text: rung_drop_declaration_message(d: d)),
-      ], if (d.identity as String) == "measurement_bankruptcy" {
+      ], map(d.amendments, a => rung_drop_amendment_block(a: a))), if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] }))),
     ],
@@ -152,6 +152,18 @@ fn rung_drop_standing_suffix(standing: RungDropStanding) -> String {
     Standing => ""
     Retired { trigger_fired: _ } => " · RETIRED"
   }
+}
+
+// AN AMENDMENT RENDERS AFTER THE DECLARATION AND BEFORE ANYTHING ELSE THE ROW CARRIES, because it
+// is the reason the declaration above it should be read the way it was written. It is not folded
+// into the declaration paragraph: the declaration is what was ruled on its own day, the amendment
+// is what a later day did to its premise, and a reader who cannot tell them apart cannot tell
+// whether the trigger has moved.
+fn rung_drop_amendment_block(a: RungDropAmendment) -> MarkdownBlock {
+  p(text: concat(
+    concat("**AMENDED, ", concat(a.amended, ".** ")),
+    concat(a.occasion, concat("; ", concat(a.consequence, ".")))
+  ))
 }
 
 fn rung_drop_standing_blocks(standing: RungDropStanding) -> List<MarkdownBlock> {

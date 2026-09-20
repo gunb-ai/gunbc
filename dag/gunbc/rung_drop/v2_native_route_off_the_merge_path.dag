@@ -42,6 +42,8 @@ data v2_native_route_off_the_merge_path: RungDrop = RungDrop {
 
   declared: "2026-09-11",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

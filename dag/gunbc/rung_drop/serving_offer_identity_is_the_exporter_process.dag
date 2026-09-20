@@ -44,6 +44,8 @@ data serving_offer_identity_is_the_exporter_process: RungDrop = RungDrop {
 
   declared: "2026-09-08",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

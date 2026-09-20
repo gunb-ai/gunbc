@@ -31,6 +31,8 @@ data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
 
   declared: "2026-09-13",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

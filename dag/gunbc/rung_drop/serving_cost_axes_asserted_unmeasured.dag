@@ -54,6 +54,8 @@ data serving_cost_axes_asserted_unmeasured: RungDrop = RungDrop {
 
   declared: "2026-09-07",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

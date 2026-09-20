@@ -11,6 +11,8 @@ import gunbc.rung_drop {
 }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.design_ledgers { expected_design_rung_drops_md }
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
@@ -19,6 +21,7 @@ data control_rung_drop: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
+  amendments: [],
   standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
@@ -92,4 +95,23 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// AN AMENDMENT REACHES THE PROJECTED DOCUMENT, WHICH IS THE ONLY PLACE IT MATTERS. This carrier was
+// added because the same sentence had already been written twice where no reader of the ledger
+// could reach it -- once as an annotation on the row (erased before any fold runs, DESIGN section
+// 4c) and once as a hand-edited paragraph in docs/design-rung-drops.md (deleted by the next
+// regeneration, twice over: gunbc#11774 wrote it, gunbc#11732 reverted its loss, gunbc#11789
+// carried the loss). So the claim is over the PRODUCTION FOLD's bytes and not over the field: a
+// field no renderer read would satisfy a shape assertion and fail this one. Both directions are
+// asserted in one evaluation of the fold -- the amended row's text is present, and the marker
+// appears EXACTLY ONCE, which is what a renderer emitting it unconditionally fails.
+test fn an_amendment_reaches_the_projected_ledger_exactly_where_it_is_declared() -> Bool {
+  let md = expected_design_rung_drops_md()
+  let amended_rows = count(filter(rung_drop_roster, d => count(d.amendments) > 0))
+  contains_text(haystack: md, needle: "**AMENDED, 2026-09-20.**")
+    && contains_text(haystack: md, needle: "gunbc#11704")
+    && contains_text(haystack: md, needle: "the ruling prices the gate itself")
+    && amended_rows == 1
+    && count(split(s: md, delimiter: "**AMENDED, ")) == amended_rows + 1
 }

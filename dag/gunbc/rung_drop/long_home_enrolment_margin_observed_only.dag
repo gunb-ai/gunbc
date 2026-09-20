@@ -50,6 +50,8 @@ data long_home_enrolment_margin_observed_only: RungDrop = RungDrop {
 
   declared: "2026-09-14",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

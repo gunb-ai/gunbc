@@ -28,6 +28,8 @@ data main_per_commit_floor_verdict: RungDrop = RungDrop {
 
   declared: "2026-09-11",
 
+  amendments: [],
+
   standing: Retired {
     trigger_fired: "2026-09-15 -- every landed main sha now obtains its terminal verdict from the merge_group run on the composed revision it lands as, in a per-sha concurrency group with no other member; and the superseded population is gone with the push-on-main trigger it was declared over" as NonEmptyStr
   },

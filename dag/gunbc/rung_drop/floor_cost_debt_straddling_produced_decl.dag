@@ -23,6 +23,8 @@ data floor_cost_debt_straddling_produced_decl: RungDrop = RungDrop {
 
   declared: "2026-09-04",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

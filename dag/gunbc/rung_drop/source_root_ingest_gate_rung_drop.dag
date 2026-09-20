@@ -44,6 +44,8 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
 
   declared: "2026-08-28",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

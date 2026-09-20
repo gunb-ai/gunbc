@@ -34,6 +34,8 @@ data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
 
   declared: "2026-09-13",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

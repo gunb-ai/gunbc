@@ -55,6 +55,8 @@ data slot_row_pinned_below_demonstrated_demand_unrefused: RungDrop = RungDrop {
 
   declared: "2026-09-19",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

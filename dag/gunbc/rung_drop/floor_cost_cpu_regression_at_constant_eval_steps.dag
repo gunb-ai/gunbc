@@ -42,6 +42,8 @@ data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
 
   declared: "2026-09-12",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

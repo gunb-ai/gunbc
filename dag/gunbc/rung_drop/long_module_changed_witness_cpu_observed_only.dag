@@ -61,6 +61,8 @@ data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
 
   declared: "2026-09-11",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

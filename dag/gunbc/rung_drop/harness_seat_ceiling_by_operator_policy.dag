@@ -65,6 +65,8 @@ data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
 
   declared: "2026-09-06",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

@@ -35,6 +35,8 @@ data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
 
   declared: "2026-09-01",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

@@ -13,6 +13,8 @@ data witness_deferral_freeze_forward_rule_rung_drop: RungDrop = RungDrop {
 
   declared: "2026-08-28",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

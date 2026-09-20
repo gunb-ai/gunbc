@@ -150,6 +150,8 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
 
   declared: "2026-09-11",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

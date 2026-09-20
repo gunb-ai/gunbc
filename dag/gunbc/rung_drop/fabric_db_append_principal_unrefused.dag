@@ -24,6 +24,8 @@ data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
 
   declared: "2026-09-19",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

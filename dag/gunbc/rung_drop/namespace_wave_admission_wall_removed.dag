@@ -1,7 +1,7 @@
 module gunbc.rung_drop.namespace_wave_admission_wall_removed
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, RungDropAmendment, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
 // DECLARED 2026-09-19, beside the change that deletes the gate: operator ruling 2026-09-19 removed
@@ -15,13 +15,10 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 // charges every bystander for one row's debt is the externalized degradation DESIGN section 5
 // names, and repairing the loop was ruled not worth its cost against the coverage the wall bought.
 //
-// THE REDESIGN THAT LANDED FIRST. gunbc#11704 (merged 2026-09-20, hours before this deletion)
-// rebuilt the wall to carry admissions in the change's own commit messages rather than the tree --
-// restoration half (1) below, executing: no bystander can be billed for a row it did not carry.
-// The ruling deletes THAT wall too: the operator priced the gate itself -- its fleet time, its
-// bookkeeping surface, its self-sealing repair history (gunbc.recurring_failure_mode
-// fail_closed_gate_refuses_its_own_repair) -- and not only the billing loop. Half (2), the
-// landing-time enforcement run, was never built under either design.
+// THE REDESIGN THAT LANDED FIRST IS CARRIED BY THIS ROW'S `amendments` FIELD AND NOT BY THIS
+// ANNOTATION. It is a ruling and a citation, so DESIGN section 4c puts it in a typed carrier; it
+// was tried here as prose and as a hand-edited paragraph in docs/design-rung-drops.md, and neither
+// surface reaches a reader of the projection.
 //
 // WHY THIS IS ONE ROW AND NOT THREE. The two earlier partial drops of this wall's arms --
 // gunbc.rung_drop owner_deletion_follow_up_charge_removed and consumed_row_owner_charge_unenforced
@@ -37,6 +34,14 @@ data namespace_wave_admission_wall_removed: RungDrop = RungDrop {
   subject: "the required namespace-wave-admission phase: merge-path adjudication of closure, subject-membership and occurrence-binding deltas between merge base and head",
 
   declared: "2026-09-19",
+
+  amendments: [
+    RungDropAmendment {
+      amended: "2026-09-20",
+      occasion: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion, which is restoration half (1) below, executing",
+      consequence: "the ruling prices the gate itself -- its fleet time, its bookkeeping surface, its self-sealing repair history (gunbc.recurring_failure_mode fail_closed_gate_refuses_its_own_repair) -- and not only its billing loop, so it removes the redesigned wall with the old one. Half (2), the landing-time enforcement run, was never built under either design, so the trigger below is unchanged and this row stays Standing",
+    },
+  ],
 
   standing: Standing,
 

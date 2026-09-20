@@ -301,10 +301,40 @@ type RungDropDeclaration
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
 
+// A LATER RULING OR LANDING THAT MOVES THE PREMISE AN ALREADY-DECLARED DROP WAS DECLARED UNDER,
+// WITHOUT RETIRING IT. A drop is declared on one day against the world as it stood that day, and
+// the world keeps moving: a redesign of the very wall being dropped lands hours before the
+// deletion, an operator states that the ruling prices something wider than the row's occasion.
+// That is not a retirement -- the trigger has not fired, and `standing` must not move -- and it is
+// not a correction of the declaration, which was accurate when written. It is a THIRD thing, and
+// until this carrier existed the corpus had nowhere to put it: the only surfaces available were an
+// annotation, which no `Accepted` program can read and which therefore never reaches the projected
+// ledger (DESIGN section 4c), or a hand-edited paragraph in the projection itself, which is
+// DESIGN section 6's manual application committed as source and is deleted by the next
+// regeneration. Both were tried on `namespace_wave_admission_wall_removed` and both failed in the
+// way their class predicts: the paragraph arrived with gunbc#11774, survived nothing, was reverted
+// once by gunbc#11732 and carried away by gunbc#11789.
+//
+// WHY IT IS NOT A GENERAL COMMENTARY FIELD. DESIGN section 4c rules that a ruling, event or
+// citation belongs in a typed carrier, and a carrier typed as "further remarks" would admit any of
+// them and discriminate none. The specific thing being modeled is narrower and has a shape:
+// `occasion` is the event that moved the premise -- the landing, the ruling, the measurement --
+// and `consequence` is what that event does to THIS row's declaration. Splitting the two is what
+// keeps an amendment from silently becoming a retirement: a consequence that ends the population
+// belongs in `standing`, and a row whose amendment says the drop is over while `standing` still
+// says `Standing` is exactly as readable a defect as the paragraph-versus-field drift this
+// module's note above already names. The residual risk is the same one and is not reduced here.
+type RungDropAmendment {
+  amended: String
+  occasion: String
+  consequence: String
+}
+
 type RungDrop {
   identity: NonEmptyStr
   subject: String
   declared: String
+  amendments: List<RungDropAmendment>
   standing: RungDropStanding
   declaration: RungDropDeclaration
 }

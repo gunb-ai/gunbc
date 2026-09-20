@@ -20,6 +20,7 @@ fn fixture_drop(id: String, standing: RungDropStanding, trigger: String) -> Rung
     identity: id as NonEmptyStr,
     subject: id,
     declared: "2026-01-01",
+    amendments: [],
     standing: standing,
     declaration: TypedDeclaration {
       previous: Mitigatable,
@@ -170,6 +171,7 @@ fn fixture_prose_drop(id: String, authored: String) -> RungDrop {
     identity: id as NonEmptyStr,
     subject: id,
     declared: "2026-01-01",
+    amendments: [],
     standing: Standing,
     declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored }
   }

@@ -19,6 +19,8 @@ data typescript_same_language_round_trip_leaves_off_required_floor: RungDrop = R
 
   declared: "2026-09-17",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

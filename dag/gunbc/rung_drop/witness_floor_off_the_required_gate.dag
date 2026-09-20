@@ -27,6 +27,8 @@ data witness_floor_off_the_required_gate: RungDrop = RungDrop {
 
   declared: "2026-09-20",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

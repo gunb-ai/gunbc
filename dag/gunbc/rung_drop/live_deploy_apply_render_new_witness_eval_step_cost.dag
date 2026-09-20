@@ -35,6 +35,8 @@ data live_deploy_apply_render_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-09-17",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

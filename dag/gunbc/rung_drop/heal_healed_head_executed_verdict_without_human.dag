@@ -16,6 +16,8 @@ data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
 
   declared: "2026-09-12",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

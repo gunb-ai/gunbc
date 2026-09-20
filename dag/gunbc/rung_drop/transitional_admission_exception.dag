@@ -49,6 +49,7 @@ fn transitional_admission_exception() -> RungDrop {
     identity: "transitional_admission_exception" as NonEmptyStr,
     subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
     declared: "2026-09-08",
+    amendments: [],
     standing: Standing,
     declaration: TypedDeclaration {
       previous: Mitigatable,

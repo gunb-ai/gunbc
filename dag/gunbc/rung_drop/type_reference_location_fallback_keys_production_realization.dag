@@ -44,6 +44,8 @@ data type_reference_location_fallback_keys_production_realization: RungDrop = Ru
 
   declared: "2026-09-17",
 
+  amendments: [],
+
   standing: Standing,
 
   declaration: TypedDeclaration {

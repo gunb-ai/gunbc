@@ -10,6 +10,8 @@ data emitted_bytes_witness_required_lane: RungDrop = RungDrop {
 
   declared: "2026-09-01",
 
+  amendments: [],
+
   standing: Standing,
 
 
