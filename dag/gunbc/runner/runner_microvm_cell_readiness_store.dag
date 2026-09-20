@@ -267,7 +267,7 @@ fn decode_unproven_step(acc: Decoded<List<UnprovenFact>>, v: JsonValue) -> Decod
 }
 
 fn no_unproven_yet() -> Decoded<List<UnprovenFact>> {
-  DecodeOk { value: [] }
+  DecodeOk { value: [] as List<UnprovenFact> }
 }
 
 fn decode_unproven_list(elements: List<JsonValue>) -> Decoded<List<UnprovenFact>> {
@@ -481,7 +481,7 @@ fn decode_record_step(acc: Decoded<List<CellReadinessRecord>>, v: JsonValue) -> 
 // --- the whole document ---
 
 fn no_records_yet() -> Decoded<List<CellReadinessRecord>> {
-  DecodeOk { value: [] }
+  DecodeOk { value: [] as List<CellReadinessRecord> }
 }
 
 fn encode_store(records: List<CellReadinessRecord>) -> String {

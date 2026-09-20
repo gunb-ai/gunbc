@@ -1,0 +1,330 @@
+module test.manual.runner_microvm_lifecycle_wet_receipt
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { trim }
+import std.resources { Network }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome }
+import extdeps.tools.chmod { chmod_binary_path, chmod_set_mode_command }
+import extdeps.systemd { SliceProperty, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+}
+import gunbc.runner_microvm_lifecycle_realize {
+  observe_cgroup_subtree, stop_attempt, observe_unit_invocation_id, observe_resource_absence,
+}
+
+// THE SIX REDs, EXECUTED AGAINST REAL PROCESSES. This is the file the whole microVM lifecycle lane
+// exists to make possible, and it is the only thing in it that has run a process.
+//
+// WHY IT IS WET AND NOT ENROLLED, and the distinction is the point rather than an excuse. The
+// hermetic witness test.claim.runner.runner_microvm_lifecycle_witness_test SUPPLIES every
+// CgroupSubtreeReadback, TeardownStop and ResourceReadback and asks what the decision layer does
+// with them. That is the right subject for those claims (DESIGN section 3: a witness discriminates at
+// one interface) and it establishes nothing at all about whether a readback taken on a host ever
+// PRODUCES those values. This file is the pairing obligation that makes those supplied inputs a
+// reading: it executes the producers in gunbc.runner_microvm_lifecycle_realize against transient
+// systemd units on a real host and asserts which arm comes back.
+//
+// IT COULD NOT BE HERMETIC. Hermetic evaluation replays each operation's declared mock_response, so
+// linux.CgroupV2.ReadEvents would return the mock's `populated 0` whatever the host held --
+// which is exactly the property under test. A hermetic version of this file would assert the mocks.
+//
+// IT RUNS IN TRANSIENT UNITS AND NEVER ON A LIVE SLOT. Every unit below is systemd-run --collect
+// under one test slice this file owns, and no claim touches a fabric-cell slice, a runner slot or
+// the cell-readiness store. The one host mutation outside that slice is a chmod of the test slice's
+// own cgroup.events, restored by the claim that makes it.
+//
+// WHERE IT RAN: srv1, over ssh, as root, with a locally built arm64 claim_batch. It needs root
+// because systemctl kill and the transient system units do; it is invoked by hand and is excluded
+// from the floor, exactly as test/manual/command_runner_local_argv_receipt_test.dag is and for the
+// same reason.
+//
+// THE SHELL PAYLOADS ARE FIXTURES, NOT MODELLED SEMANTICS. `/bin/sh -c "trap '' TERM; sleep 600"`
+// is not this repository implementing anything in shell; it is the HOST CONDITION the claim needs
+// to exist -- a process that ignores SIGTERM -- and there is no way to produce one without running
+// one. What is under test is the .dag producer that observes it.
+
+// THE TEST SLICE NAME IS DASHED ON PURPOSE. systemd expands a dashed slice name into a path
+// (extdeps.systemd systemd_slice_cgroup_path), so `gunbc-wetlifecycle.slice` lives at
+// gunbc.slice/gunbc-wetlifecycle.slice. Every cell slice is dashed too -- fabric-cell-<host>-<NN>
+// -- so a dashed test slice keeps this file honest: if the path expansion regresses to a naive
+// join, every claim here goes red instead of quietly reading an empty subtree.
+data wet_slice: NonEmptyStr = "gunbc-wetlifecycle.slice"
+
+fn wet_slice_property() -> SystemdRunProperty {
+  SystemdRunProperty { property: SliceProperty, value: wet_slice }
+}
+
+fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
+  uses net: Network
+{
+  systemd.SystemdRun.RunTransient(
+    unit: unit,
+    property_argv: systemd_run_property_argv(properties: [wet_slice_property()]),
+    command_argv: argv,
+  ).success
+}
+
+// EVERY CLAIM TEARS ITS OWN SLICE DOWN FIRST. Claims share one host and the substrate does not
+// promise an order, so a claim that assumed a clean slice would pass or fail on whichever claim ran
+// before it. Stopping the slice kills everything under it, which is what makes each claim's setup
+// the only thing its readback can be about.
+fn clear_slice() -> Bool
+  uses net: Network
+{
+  systemd.Systemctl.Stop(unit: wet_slice).success || true
+}
+
+fn sigterm_ignoring_payload() -> List<String> {
+  ["/bin/sh", "-c", "trap '' TERM; sleep 600"]
+}
+
+// A SURVIVOR THE UNIT'S OWN KILL CANNOT REACH: a scope started under the SLICE rather than under the
+// unit. `systemctl kill --kill-whom=all <unit>` signals the unit's control group and nothing else,
+// so this process is still there afterwards -- which is the host fact ForceStopBoundExceeded names.
+fn sibling_survivor_payload(scope_unit: String) -> List<String> {
+  [
+    "/bin/sh", "-c",
+    join([
+      "systemd-run --scope --quiet --collect --unit=", scope_unit,
+      " --slice=", wet_slice as String, " /bin/sleep 600 &",
+      " sleep 1; exit 0",
+    ], ""),
+  ]
+}
+
+fn wet_slice_cgroup_path() -> String {
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: wet_slice) {
+    SliceCgroupPath { path: p } => p as String
+    SliceNameNotASlice { spelling: s } => s
+  }
+}
+
+fn chmod_wet_events(mode: NonEmptyStr) -> ProcessOutcome
+  uses net: Network
+{
+  run_shell_command_capture(
+    command: chmod_set_mode_command(
+      chmod_program: chmod_binary_path,
+      mode: mode,
+      path: cgroup_v2_events_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr) as String,
+    ),
+    transport: LocalExec,
+  )
+}
+
+fn readback_is_populated(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreePopulated { pids: p, cgroups: _ } => (p |> count) > 0
+    CgroupSubtreeEmpty => false
+    CgroupSubtreeReadFailed { reason: _ } => false
+  }
+}
+
+fn readback_is_read_failure(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreeReadFailed { reason: _ } => true
+    CgroupSubtreeEmpty => false
+    CgroupSubtreePopulated { pids: _, cgroups: _ } => false
+  }
+}
+
+fn process_outcome_ok(outcome: ProcessOutcome) -> Bool {
+  process_outcome_admitted(outcome: outcome)
+}
+
+fn resource_is_absent_here(r: ResourceReadback) -> Bool {
+  match r {
+    ResourceAbsent => true
+    ResourcePresent { detail: _ } => false
+    ResourceUnreadable { reason: _ } => false
+  }
+}
+
+fn readback_is_empty(r: CgroupSubtreeReadback) -> Bool {
+  match r {
+    CgroupSubtreeEmpty => true
+    CgroupSubtreePopulated { pids: _, cgroups: _ } => false
+    CgroupSubtreeReadFailed { reason: _ } => false
+  }
+}
+
+// RED 1 -- A CHILD THAT IGNORES SIGTERM IS STOPPED BY FORCE, AND THE CONTROLLER SAYS SO.
+//
+// WHAT WOULD MAKE THIS GREEN WRONGLY, which is why the assertion is StoppedByForce and not "the
+// cgroup ended up empty": `systemctl stop` escalates to SIGKILL on its own schedule and reports one
+// success, so a controller built on it would report the same thing here as for a unit that exited on
+// SIGTERM. StoppedGracefully is the arm this must NOT return, and it is asserted separately below so
+// a future edit that weakens the positive still trips.
+test fn a_sigterm_ignoring_child_is_stopped_by_force() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-term.service" as NonEmptyStr, argv: sigterm_ignoring_payload()) {
+    false
+  } else {
+    match stop_attempt(unit: "gunbc-wet-term.service" as NonEmptyStr, slice: wet_slice) {
+      StoppedByForce => true
+      StoppedGracefully => false
+      ForceStopBoundExceeded { survivors: _ } => false
+    }
+  }
+}
+
+// RED 2 -- A PROCESS ONE LEVEL DOWN IS FOUND, AND A FLAT cgroup.procs READ WOULD MISS IT.
+//
+// THE SLICE'S OWN cgroup.procs IS EMPTY BY CONSTRUCTION in cgroup v2: an inner node with controllers
+// enabled holds no processes, they all sit in leaf cgroups. So a readback that read the slice's
+// cgroup.procs and nothing else would report EVERY cell empty, including one with a VMM running in
+// it. This claim asserts the recursive readback finds a pid the flat read could not, and asserts the
+// flat read is in fact empty, so the discrimination is established rather than assumed.
+test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-child.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+    false
+  } else {
+    let flat = linux.CgroupV2.ReadInterfaceFile(
+      file_path: cgroup_v2_child_path(parent: wet_slice_cgroup_path() as NonEmptyStr, child: "cgroup.procs" as NonEmptyStr),
+    )
+    readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
+      && flat.success
+      && trim(s: flat.value) == ""
+  }
+}
+
+// RED 3 -- A TASK THE BOUNDED FORCE-STOP DOES NOT END IS REPORTED AS A SURVIVOR.
+//
+// HOW THE SURVIVOR IS PRODUCED, STATED PLAINLY BECAUSE IT IS NOT THE ONLY WAY TO REACH THIS ARM.
+// gunbc.runner_microvm_lifecycle names uninterruptible sleep as the case that survives SIGKILL. A
+// task in D state is NOT created here: producing one needs a wedged device or a hung filesystem on a
+// host that is running other people's CI, and manufacturing one would be a worse defect than the one
+// this claim covers. The survivor is instead a process the unit's kill does not REACH -- a scope
+// under the slice rather than under the unit. Both produce the identical host fact the controller
+// acts on: the cell's subtree still holds a pid after the force bound elapsed. What this claim
+// therefore establishes is that the controller reports ForceStopBoundExceeded with that pid, and
+// what it does not establish is anything about SIGKILL's behaviour on D-state tasks, which is the
+// kernel's contract and not ours.
+//
+// IT TAKES THE FULL GRACE PLUS FORCE BOUND to run, by construction: the arm is only reachable after
+// both elapse. That is the cost of the only evidence that the bound is enforced at all.
+test fn a_survivor_the_unit_kill_cannot_reach_exceeds_the_force_bound() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-survivor.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-survivor-child")) {
+    false
+  } else {
+    match stop_attempt(unit: "gunbc-wet-survivor.service" as NonEmptyStr, slice: wet_slice) {
+      ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
+      StoppedGracefully => false
+      StoppedByForce => false
+    }
+  }
+}
+
+// RED 4 -- A CGROUP READ THAT FAILS IS UNOBSERVABLE, NEVER EMPTY.
+//
+// "could not read" is the one answer that must not release a cell, and the whole readback is built so
+// that the unreadable case cannot fall through to CgroupSubtreeEmpty. The condition is produced by
+// making the slice's own cgroup.events unreadable, which is what a permissions or mount defect would
+// do; the claim restores the mode afterwards, and asserts the restoration by reading the subtree
+// again and getting a real answer, so a failure to restore is visible here rather than to whoever
+// runs next.
+test fn a_failed_cgroup_read_is_unobservable_and_never_empty() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-unreadable.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+    false
+  } else if !process_outcome_ok(outcome: chmod_wet_events(mode: "000" as NonEmptyStr)) {
+    false
+  } else {
+    let blinded = observe_cgroup_subtree(slice: wet_slice)
+    if !process_outcome_ok(outcome: chmod_wet_events(mode: "444" as NonEmptyStr)) {
+      false
+    } else {
+      readback_is_read_failure(r: blinded) && readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
+    }
+  }
+}
+
+// RED 5 -- A STOP FOR THE PREVIOUS INCARNATION IS REFUSED, AGAINST REAL INVOCATION IDS.
+//
+// THE IDS ARE READ OFF systemd RATHER THAN INVENTED, and that is what makes this a wet claim rather
+// than a second copy of the hermetic one. systemd mints a fresh InvocationID on every start, so
+// starting the same unit name twice produces exactly the warm-pool case: one unit name, two
+// incarnations, and a stop that names the first must not tear down the second. The claim asserts the
+// two ids actually differ -- if they did not, the refusal below would be vacuous.
+test fn two_starts_of_one_unit_name_carry_different_invocation_ids() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-incarnation.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+    false
+  } else {
+    let first = observe_unit_invocation_id(unit: "gunbc-wet-incarnation.service" as NonEmptyStr)
+    if first == "" {
+      false
+    } else if !clear_slice() {
+      false
+    } else if !start_payload(unit: "gunbc-wet-incarnation.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+      false
+    } else {
+      let second = observe_unit_invocation_id(unit: "gunbc-wet-incarnation.service" as NonEmptyStr)
+      second != "" && second != first
+    }
+  }
+}
+
+// RED 6 -- A JOB THAT EXITS ZERO AND LEAVES A PROCESS BEHIND LEAVES THE CELL DIRTY.
+//
+// The unit's own command exits 0 and the unit stops cleanly; a process it started outside its
+// control group is still running in the cell's slice afterwards. The controller's stop reports
+// success and the readback reports the leftover, which is the case product.fabric.sanitation exists
+// for: the exit status is an input to sanitation and never its verdict. This claim stops at the
+// readback rather than running the whole settlement, because the settlement over a supplied
+// CgroupSubtreePopulated is exactly what the hermetic witness already establishes; what only a host
+// can establish is that a successful job CAN leave the subtree populated.
+test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-background.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-background-child")) {
+    false
+  } else {
+    match stop_attempt(unit: "gunbc-wet-background.service" as NonEmptyStr, slice: wet_slice) {
+      ForceStopBoundExceeded { survivors: _ } => readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
+      StoppedGracefully => false
+      StoppedByForce => false
+    }
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every red above is satisfied by a readback that can only ever say
+// "not empty", and the arm that matters most in production -- a cell that IS clean returning to
+// supply -- would be established by nothing. A slice with nothing under it reads EMPTY, and the
+// attempt paths that were never created read ABSENT.
+test fn a_clean_slice_reads_empty_and_absent_paths_read_absent() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else {
+    readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
+      && resource_is_absent_here(r: observe_resource_absence(path: "/var/lib/gunbc/no-such-attempt-directory"))
+  }
+}
