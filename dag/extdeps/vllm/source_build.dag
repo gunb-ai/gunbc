@@ -5,6 +5,7 @@ import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.vllm.runtime_defaults { defaults_source_revision, Vllm8d09804 }
 import extdeps.gpu.types {
   GpuComputeCapability, GpuCapabilityLabelOutcome, GpuCapabilityLabelOk, GpuCapabilityLabelRejected,
   UnsubstantiatedGpuCapabilityLabel,
@@ -51,10 +52,10 @@ data vllm_deepseek_v4_1_sm12_revision: VllmSourceRevision = vllm_source_revision
 // GLM-5.3-Flash's sparse-MLA path needs; the local image's base tag names it (`8d09804-sm121`) and
 // the image's layer history carries the matching Dockerfile build args. Read from the image and the
 // upstream commit 2026-09-17.
-data vllm_glm_5_3_flash_sm121_revision: VllmSourceRevision = vllm_source_revision(
-  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-  full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
-)
+// The commit itself is minted once, by extdeps.vllm.runtime_defaults defaults_source_revision; this
+// row names WHICH of those revisions this base image built from, and re-spelling the hash here would
+// be the second editable source that module's own annotation warns about.
+data vllm_glm_5_3_flash_sm121_revision: VllmSourceRevision = defaults_source_revision(r: Vllm8d09804)
 
 // A REPOSITORY IDENTITY IS NOT A CLONE LOCATOR, AND CONFLATING THEM BREAKS COLD ACQUISITION.
 // `VllmSourceRevision.repository` is `github.com/vllm-project/vllm` -- an identity, the spelling a

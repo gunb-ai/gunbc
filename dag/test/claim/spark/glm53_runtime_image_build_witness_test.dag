@@ -81,12 +81,16 @@ test fn the_prepare_plan_lands_files_then_runs_sh_path() -> Bool {
         && remote_operation_file_write_count(operations: map(steps, s => s.operation)) == 2
         && steps.first().identity == "derived-context-dir" as NonEmptyStr
         && steps.skip(n: 3).first().identity == "derived-prepare-run" as NonEmptyStr
-        && match remote_operation_argv(operation: steps.skip(n: 3).first().operation) {
+        && match steps.skip(n: 3).first() {
+          Absent => false
+          Present { value: run_step } =>
+        match remote_operation_argv(operation: run_step.operation) {
           Absent => false
           Present { value: argv } =>
             argv.length() == 2
               && argv.first() == "sh"
               && argv.skip(n: 1).first() == (glm53_derived_prepare_script_path() as String)
+        }
         }
         && string_contains(s: glm53_derived_dockerfile_path() as String, pattern: glm53_derived_context_dir() as String)
   }
@@ -147,9 +151,13 @@ test fn the_scp_operand_direction_is_fixed() -> Bool {
 // image would move 33GB to no end, and dropping any other member leaves a rank unable to start.
 test fn the_distribution_roster_excludes_exactly_the_source() -> Bool {
   let hosts = glm_native_ranked_hosts()
-  let source = hosts.first()
-  let targets = vllm_image_distribution_targets(source: source)
-  targets.length() == hosts.length() - 1
-    && !any(targets, h => host_identity_eq(a: h, b: source))
-    && all(hosts, h => host_identity_eq(a: h, b: source) || any(targets, t => host_identity_eq(a: t, b: h)))
+  match hosts.first() {
+    Absent => false
+    Present { value: source } => {
+      let targets = vllm_image_distribution_targets(source: source)
+      targets.length() == hosts.length() - 1
+        && !any(targets, h => host_identity_eq(a: h, b: source))
+        && all(hosts, h => host_identity_eq(a: h, b: source) || any(targets, t => host_identity_eq(a: t, b: h)))
+    }
+  }
 }
