@@ -1,0 +1,179 @@
+module gunbc.review_sheet_header_init
+
+import std.types { NonEmptyStr, String, Int, List, Bool }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import extdeps.google.sheets {
+  ValueRangeWrite,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+  sheets_major_dimension_wire,
+  DimensionRows,
+}
+import gunbc.review_sheet_projection {
+  ValidatedHeaderSchema,
+  review_sheet_header_names,
+  A1RowSpan,
+  a1_row_span,
+  a1_column_letters,
+}
+import gunbc.review_sheet_sheets { sheet_qualified_span }
+import gunbc.review_sheet_formula_observation {
+  FormulaWholeTabObservation,
+  FormulaWholeTabReading,
+  FormulaWholeTabEmpty,
+  FormulaWholeTabOccupied,
+  FormulaWholeTabRefused,
+  FormulaWholeTabRefusal,
+  OccupiedCell,
+  occupied_cell_text,
+  formula_whole_tab_refusal_text,
+}
+
+// HEADER INITIALISATION OF A TAB THAT HOLDS NO VALUE OR FORMULA. The locked live buyer-sheet
+// transaction (H2) writes a header row into a freshly created tab before the ordinary ensure pass
+// can run; that pass classifies rows under a header row and has nothing to classify until one
+// exists. A header row cannot be taken back once written, so the decision to write it is the one
+// place where "this tab is empty" is load-bearing, and the parked planner (gunbc#11613) got it
+// wrong in two ways this module is built against: it judged emptiness from a FORMATTED_VALUE
+// readback (finding 2, a blank-rendering formula is invisible), and it exported two routes to the
+// write authorisation that consulted no observation at all (finding 4).
+//
+// ONE INPUT, ONE MINT. plan_header_init takes the reading gunbc.review_sheet_formula_observation
+// produced -- its carrier is sole_constructor, exists only for a tab whose FORMULA read held no
+// value or formula, and its only mint performs that read -- and the landed ValidatedHeaderSchema,
+// whose only mint is validate_header_schema. It is the only function that writes
+// HeaderRowWriteAuthorization, which is itself sole_constructor. No helper here returns the
+// authorisation or a plan from caller-supplied parts: header_row_span answers a question about a
+// schema and confers nothing. The pieces H2 needs to perform the write are read off the
+// authorisation (header_row_value_range_write), never assembled beside it.
+//
+// EMPTINESS IS NOT DECIDED HERE, AND THAT IS A CORRECTION. An earlier cut of this module took an
+// observation that carried the grid and scanned it for the first occupied cell, and mutation M14
+// of gunbc#11769 -- ignore the grid, plan the write anyway -- survived every claim, because the
+// planner's input is sealed and no witness could hand it an occupied one: the safety arm was
+// asserted and never measured. Now the observation module decides emptiness inside its mint, the
+// carrier IS the proof of value/formula emptiness, and an occupied tab arrives here as the located
+// FormulaWholeTabOccupied arm with no carrier at all. There is no grid in this module to ignore:
+// the write arm is reachable only from the carrier, by construction.
+//
+// THE RUNG IS THE SAME AS THE OBSERVATION'S. sole_constructor is enforced on the v1 seed's
+// acceptance path and parsed without enforcement on the native v2 path (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), so the wall on the authorisation is real
+// on the seed only. WHO may call plan_header_init is not confined here: .dag has no module-private
+// and the consumer is in another repository, so the confinement of the mint's callers is the
+// private H2 caller's job (its write permit wraps this call), and this module states that
+// boundary rather than claiming it.
+
+type HeaderRowWriteAuthorization sole_constructor {
+  spreadsheet_id: NonEmptyStr
+  tab: NonEmptyStr
+  range: String
+  span: A1RowSpan
+  cells: List<String>
+}
+
+// The header row's span: A1 to the last header's column on row 1. The A1 column authority is the
+// enrolled letter roster (gunbc.review_sheet_projection a1_column_letters, A..Z), and a schema
+// wider than it has no address for its last header, which is a refusal rather than a truncated row.
+type HeaderRowSpan
+  = HeaderRowSpanned { span: A1RowSpan }
+  | HeaderRowUnaddressable { header_count: Int, addressable_columns: Int }
+
+fn header_row_span(validated: ValidatedHeaderSchema) -> HeaderRowSpan {
+  let n = count(review_sheet_header_names(validated: validated))
+  match a1_row_span(sheet_row: 1, cell_count: n) {
+    Present { value: s } => HeaderRowSpanned { span: s }
+    Absent => HeaderRowUnaddressable { header_count: n, addressable_columns: count(a1_column_letters) }
+  }
+}
+
+type HeaderInitPlan
+  = HeaderInitWriteHeaderRow { authorization: HeaderRowWriteAuthorization }
+  | HeaderInitTabOccupied { tab: NonEmptyStr, first: OccupiedCell }
+  | HeaderInitHeaderRowUnaddressable { tab: NonEmptyStr, header_count: Int, addressable_columns: Int }
+  | HeaderInitTabTitleUnquotable { tab: NonEmptyStr }
+  | HeaderInitObservationRefused { refusal: FormulaWholeTabRefusal }
+
+// THE ONLY MINT of HeaderRowWriteAuthorization. Order: the observation's own refusal and the
+// occupied reading first (neither holds a carrier); then the schema's address. The title encoding
+// is asked last and is unreachable in practice -- the observation's tab equals the tab the encoder
+// already admitted at request time -- but the codec's refusal is an arm of its result and the
+// fold is total over it.
+fn plan_header_init(reading: FormulaWholeTabReading, validated: ValidatedHeaderSchema) -> HeaderInitPlan {
+  match reading {
+    FormulaWholeTabRefused { refusal: r } => HeaderInitObservationRefused { refusal: r }
+    FormulaWholeTabOccupied { spreadsheet_id: _, tab: t, first: c } =>
+      HeaderInitTabOccupied { tab: t, first: c }
+    FormulaWholeTabEmpty { observation: o } =>
+      match header_row_span(validated: validated) {
+        HeaderRowUnaddressable { header_count: n, addressable_columns: a } =>
+          HeaderInitHeaderRowUnaddressable { tab: o.tab, header_count: n, addressable_columns: a }
+        HeaderRowSpanned { span: s } =>
+          match sheet_qualified_span(tab: o.tab, span: s) {
+            A1TitleApostropheUnsupported { title: t } => HeaderInitTabTitleUnquotable { tab: t }
+            A1RangeEncoded { wire: w } =>
+              HeaderInitWriteHeaderRow {
+                authorization: HeaderRowWriteAuthorization {
+                  spreadsheet_id: o.spreadsheet_id,
+                  tab: o.tab,
+                  range: w,
+                  span: s,
+                  cells: map(review_sheet_header_names(validated: validated), n => n as String),
+                }
+              }
+          }
+      }
+  }
+}
+
+// The one value range the authorisation lowers to: the encoded row-1 span, ROWS-major, the header
+// names as one row. A projection off the sealed carrier, so it cannot be reached without one.
+fn header_row_value_range_write(authorization: HeaderRowWriteAuthorization) -> ValueRangeWrite {
+  ValueRangeWrite {
+    range: authorization.range,
+    majorDimension: sheets_major_dimension_wire(d: DimensionRows),
+    values: [authorization.cells],
+  }
+}
+
+fn header_init_plan_text(plan: HeaderInitPlan) -> String {
+  match plan {
+    HeaderInitWriteHeaderRow { authorization: a } =>
+      join(["write the header row at ", a.range, ": ", join(a.cells, "|")], "")
+    HeaderInitTabOccupied { tab: t, first: c } =>
+      join(["tab ", t as String, " is occupied: ", occupied_cell_text(cell: c)], "")
+    HeaderInitHeaderRowUnaddressable { tab: t, header_count: n, addressable_columns: a } =>
+      join(["tab ", t as String, ": the header row has ", to_string(n), " names and only ", to_string(a), " columns are addressable"], "")
+    HeaderInitTabTitleUnquotable { tab: t } =>
+      join(["tab ", t as String, " cannot be quoted in A1 notation"], "")
+    HeaderInitObservationRefused { refusal: r } =>
+      join(["the FORMULA observation was refused: ", formula_whole_tab_refusal_text(refusal: r)], "")
+  }
+}
+
+// THE CONSUMER IS PRIVATE AND LATER. strategy.buyer_review_live (gunbc-private, H2) plans the
+// header row from the FORMULA reading and performs the write from header_row_value_range_write
+// under its transaction, with an independent readback. header_row_span is executed by
+// test.claim.review_sheet_header_init_witness with supplied schemas, and plan_header_init is
+// executed there against the hermetic values.get fixture and against supplied occupied and refused
+// readings; a witness is not a production consumer, so the routes below are frontier.
+data review_sheet_header_init_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "plan_header_init"),
+    reason: "the only mint of HeaderRowWriteAuthorization, over a FormulaWholeTabReading and a ValidatedHeaderSchema; its caller is the private transaction strategy.buyer_review_live (H2), whose write permit confines who may plan a header row",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "header_row_value_range_write"),
+    reason: "the lowering of an authorisation to the one ValueRangeWrite the private transaction sends",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "header_init_plan_text"),
+    reason: "the operator rendering of a plan, consumed by the same private transaction's report",
+    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
+  ),
+]

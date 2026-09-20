@@ -21,7 +21,8 @@ import gunbc.runner_host_grants {
   runner_host_wide_privileged_operations,
 }
 import gunbc.runner_slot_allocation {
-  gunbc_runner_slots_per_host,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   gunbc_runner_slot_cpu_quota,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
@@ -197,16 +198,27 @@ test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool
   }
 }
 
+// A HOST WITH NO RESOLVED WIDTH IS COVERED VACUOUSLY AND SAYS SO. The bound must exceed every width
+// the fleet COMMITS; a host that commits none imposes no lower bound, and the alternative -- reading
+// its unresolved width as 0 -- would make this conjunct true for the wrong reason on exactly the
+// host most likely to be re-grounded into a large width later.
+fn bound_covers(host: HostIdentity, bound: Int) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: _ } => true
+    RunnerWidthDerived { slots: n } => bound >= n
+  }
+}
+
 // THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each
 // host's committed width so a width change cannot outgrow its own teardown; and it is exact paths
 // only -- the highest grammar dir is named and the one past the bound is not.
 test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool {
   let bound = runner_slot_teardown_grant_index_bound
   let dirs = runner_slot_grammar_dirs_to_bound(host: operator_host_srv2, bound: bound)
-  bound >= gunbc_runner_slots_per_host(host: operator_host_srv1)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv2)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv3)
-    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv4)
+  bound_covers(host: operator_host_srv1, bound: bound)
+    && bound_covers(host: operator_host_srv2, bound: bound)
+    && bound_covers(host: operator_host_srv3, bound: bound)
+    && bound_covers(host: operator_host_srv4, bound: bound)
     && bound >= 12
     && dirs.length() == bound
     && any(dirs, d => (d as String) == "/opt/actions-runner/srv2-12")

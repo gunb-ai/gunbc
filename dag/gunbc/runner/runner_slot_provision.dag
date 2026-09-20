@@ -37,7 +37,12 @@ import extdeps.github.actions_runner {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_slot_allocation { identity_is_fabric_execution_member, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  identity_is_fabric_execution_member,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.command_runner {
   ProcessOutcome,
   ProcessOutputPresent,
@@ -57,7 +62,8 @@ import gunbc.runner_unit {
 }
 import extdeps.systemd.systemctl { systemctl_mask_now_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.shell_command_text { shell_command_text_of_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv, shell_command_text_of_node, shell_command_intent }
+import v2.extdeps.languages.bash_build { bash_build_with_redir }
 import gunbc.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
@@ -68,6 +74,7 @@ import gunbc.runner_slot_retirement {
   RemovalTeardownAuthorized,
   slot_removal_realization,
   transition_required_retiring,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
   retirement_unit,
 }
 
@@ -205,6 +212,32 @@ fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
   !any(removed, r => r == unit)
 }
 
+// EVERY WITHHELD LINE IS A COMMAND, NOT A SENTENCE, AND IT IS SERIALIZED BY THE AUTHORITY THAT
+// KNOWS THAT. These four renderers each spelled `echo '<text>' >&2` by concatenation, with the
+// diagnostic interpolated INSIDE the opening quote -- so a cause containing an apostrophe closes
+// the quoted argument and the emitted script stops being shell. Measured on the arm this change
+// added: with an ordinary host and an apostrophe-free cause, the fixed text "this host's
+// retirement obligation" alone made `/bin/bash -n` and `/bin/sh -n` both refuse with an
+// unterminated-quote error. The cause is DATA -- it comes from gunbc.session_reservation_policy,
+// whose sentences are prose -- and data interpolated into a quoted program is the injection shape
+// regardless of who wrote today's string.
+//
+// gunbc.shell_command_text is the single authority for "an argv this repository intends to run"
+// becoming shell text: the message is a WORD, quoting is the serializer's structural job (POSIX
+// single-quote, cited at extdeps.posix.shell_command_language), and the stderr redirection is the
+// modeled `^bash_production_fold_redir_stdout_to_stderr` rather than two characters appended to a
+// string. All four renderers route through it here rather than one being repaired -- the other
+// three carry the same defect for the same reason, and leaving them hand-spelled beside a
+// serialized sibling is the second spelling DESIGN 3 forbids.
+fn withheld_diagnostic_line(message: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_with_redir(
+      inner: shell_command_intent(words: ["echo", message]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    )
+  )
+}
+
 fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
   match read_runner_unit_name(observed: unit as NonEmptyStr) {
     RunnerUnitInstance { registration_name: n } =>
@@ -214,29 +247,21 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
         cause: cause,
       )]
     NotARunnerUnit { observed: o } =>
-      [join(
-        [
-          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
-          o as String,
-          " cause=the required identity is not a runner unit, so no slot tree is derived; ",
-          cause,
-          "' >&2",
-        ],
-        "",
-      )]
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        o as String,
+        " cause=the required identity is not a runner unit, so no slot tree is derived; ",
+        cause,
+      ], ""))]
     RunnerUnitInstanceMalformed { observed: o, cause: mc } =>
-      [join(
-        [
-          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
-          o as String,
-          " cause=",
-          mc as String,
-          "; ",
-          cause,
-          "' >&2",
-        ],
-        "",
-      )]
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        o as String,
+        " cause=",
+        mc as String,
+        "; ",
+        cause,
+      ], ""))]
   }
 }
 
@@ -247,13 +272,34 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
 // withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
 // this planner exists to reach (serving 13..21). Membership teardown already prints those
 // dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
+// THE UNRESOLVED ARM DOES NOT ROUTE THROUGH obligation_withheld_line, which reads a UNIT name to
+// derive a slot tree. Its subject is a HOST with no obligation at all, so there is no unit to name
+// and no tree to derive; handing it a host identity would report "the required identity is not a
+// runner unit", which is true of the string and wrong about the state.
 fn obligation_withheld_scripts(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
   evidence: SlotRetirementEvidence,
 ) -> List<String> {
   let removed = membership_removed_unit_names(membership: membership)
-  transition_required_retiring(host: deploy.host_label as HostIdentity)
+  match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      [withheld_diagnostic_line(message: join([
+        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
+        " cause=the retirement obligation for this host is not derivable, so no required retiree can be named and none may be torn down; ",
+        c,
+      ], ""))]
+    RetireesKnown { units: units } =>
+      obligation_withheld_scripts_over(units: units, removed: removed, evidence: evidence)
+  }
+}
+
+fn obligation_withheld_scripts_over(
+  units: List<NonEmptyStr>,
+  removed: List<String>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  units
     |> map(u => u as String)
     |> filter(u => membership_does_not_name(removed: removed, unit: u))
     |> flat_map(u =>
@@ -277,6 +323,10 @@ fn obligation_withheld_scripts(
     )
 }
 
+// AN UNRESOLVED OBLIGATION CONTRIBUTES NO ACTUATION, AND THE WITHHOLDING IS REPORTED BESIDE IT by
+// obligation_withheld_scripts rather than being that empty list's meaning. Acting on the other arm
+// -- treating "cannot derive the obligation" as "there is nothing to retire" -- is the silence this
+// whole change exists to remove; acting on it HERE would be a teardown.
 fn retirement_actuation_units(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
@@ -284,12 +334,16 @@ fn retirement_actuation_units(
 ) -> List<String> {
   let from_membership = membership_removed_unit_names(membership: membership)
     |> filter(u => realization_requires_actuation(evidence: evidence, unit: u))
-  let from_obligation = transition_required_retiring(host: deploy.host_label as HostIdentity)
-    |> map(u => u as String)
-    |> filter(u =>
-      evidence_has_standing_for(evidence: evidence, unit: u)
-        && realization_requires_actuation(evidence: evidence, unit: u)
-    )
+  let from_obligation = match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RetireesUnresolved { host: _, cause: _ } => []
+    RetireesKnown { units: units } =>
+      units
+        |> map(u => u as String)
+        |> filter(u =>
+          evidence_has_standing_for(evidence: evidence, unit: u)
+            && realization_requires_actuation(evidence: evidence, unit: u)
+        )
+  }
   first_occurrences(items: concat(from_membership, from_obligation))
 }
 
@@ -297,18 +351,17 @@ fn retirement_actuation_units(
 // leave a narrowing host quietly accumulating trees with no record of which units were waiting on
 // what, which is the silent-degradation arm DESIGN section 5 forbids.
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
-  join(
+  withheld_diagnostic_line(message: join(
     [
-      "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
+      "__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
       unit,
       " tree=",
       tree as String,
       " cause=",
       cause,
-      "' >&2",
     ],
     "",
-  )
+  ))
 }
 
 fn runner_slot_provenance_is_retired_incarnation(p: RunnerSlotProvenance) -> Bool {
@@ -401,7 +454,7 @@ fn runner_slot_member_observed(instance_name: String, provenance: RunnerSlotProv
 // rather than a restatement of the live fleet; routing desired through the global width authority
 // would have emptied them and turned four exact-count fixtures green-by-vacuity.
 //
-// So the width still comes from the deploy row, which derives it from gunbc_runner_slots_per_host,
+// So the width still comes from the deploy row, which derives it from gunbc_runner_committed_width,
 // and this function removes exactly the identities that are spoken for. Two questions, two answers:
 // how many slots does this host carry, and which are Actions runners.
 //
@@ -477,6 +530,9 @@ fn runner_slot_membership_reconcile(
   )
 }
 
+// A MISMATCH IS A COMPARISON AND A COMPARISON NEEDS TWO SIDES. With two arms, a host whose width
+// does not resolve compared its observation against a declared zero, so every unit it actually runs
+// reported as a surplus of that many -- an enumeration defect invented out of a missing denominator.
 type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
@@ -484,21 +540,29 @@ type RunnerSlotEnumerationPostcondition
       declared_count: Int
       observed_count: Int
     }
+  | RunnerSlotEnumerationWidthUnresolved { host: HostIdentity, cause: String }
 
 fn runner_slot_enumeration_postcondition(
   host: HostIdentity,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = gunbc_runner_slots_per_host(host: host)
   let observed_count = length(observed)
-  if observed_count == declared {
-    RunnerSlotEnumerationMatched
-  } else {
-    RunnerSlotEnumerationMismatch {
-      host: host,
-      declared_count: declared,
-      observed_count: observed_count,
-    }
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      RunnerSlotEnumerationWidthUnresolved {
+        host: host,
+        cause: runner_width_unresolved_cause_text(cause: c),
+      }
+    RunnerWidthDerived { slots: declared } =>
+      if observed_count == declared {
+        RunnerSlotEnumerationMatched
+      } else {
+        RunnerSlotEnumerationMismatch {
+          host: host,
+          declared_count: declared,
+          observed_count: observed_count,
+        }
+      }
   }
 }
 
