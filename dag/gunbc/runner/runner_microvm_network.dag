@@ -940,6 +940,22 @@ type SlotNetworkFact
   | ExpectationTableEmptyFact
   | RulesetMatchesConvergedFact
 
+// EACH FACT HAS ITS OWN WIRE WORD, because a consumer that folds this readback into one sanitation
+// fact (gunbc.runner_microvm_lifecycle maps it onto product.fabric.sanitation SlotNetworkQuiescent)
+// otherwise reports "the slot network is not quiescent" and sends an operator to look at all seven.
+// The label lives here, with the coproduct, rather than being spelled a second time by that consumer.
+fn slot_network_fact_label(fact: SlotNetworkFact) -> String {
+  match fact {
+    TapUnheldFact => "tap-unheld"
+    TapIpv6DisabledFact => "tap-ipv6-disabled"
+    GuestOriginatedConntrackEmptyFact => "guest-originated-conntrack-empty"
+    GuestDestinedConntrackEmptyFact => "guest-destined-conntrack-empty"
+    GuestNeighbourAbsentFact => "guest-neighbour-absent"
+    ExpectationTableEmptyFact => "expectation-table-empty"
+    RulesetMatchesConvergedFact => "ruleset-matches-converged"
+  }
+}
+
 type TapHolderObservation
   = TapPresentUnheld
   | TapHeld { holders: Int }
