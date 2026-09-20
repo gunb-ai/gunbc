@@ -10440,6 +10440,7 @@ pub enum WitnessRuntimeCause {
     ArgvExceedsHostArgMax,
     HostToolRelativePathAmbiguous,
     ShellOutputLimitExceeded,
+    ShellSpawnRefused,
     CallContractMismatch,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
@@ -10477,6 +10478,7 @@ impl WitnessRuntimeCause {
                 "host-tool-relative-path-ambiguous"
             }
             WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
+            WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
@@ -10512,6 +10514,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::HostToolRelativePathAmbiguous
             }
             E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
+            E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
             // The five that should never arrive. See the type comment.
