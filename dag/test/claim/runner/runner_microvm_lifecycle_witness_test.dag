@@ -13,7 +13,7 @@ import gunbc.runner_microvm_attempt {
 }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import std.nat { Nat }
-import extdeps.hash.sha256 { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.runner_microvm_network {
   BoundSlotNetworkReadback, slot_network_readback, slot_network_subject, SlotNetworkSubject,
   slot_network_sanitation_subject, SanitationSubjectResult, SanitationSubjectAdmitted, SanitationSubjectRefused,

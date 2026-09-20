@@ -274,10 +274,7 @@ type ResourceReadback
 // workspace. What must hold after an attempt is that the slot network is QUIESCENT -- no process holds
 // the tap, conntrack for the reused guest address is empty, the ruleset digest equals the converged
 // one -- which is product.fabric.sanitation's SlotNetworkQuiescent, owed by a SlotScopedNetwork
-// readback, and not NetworkNamespaceRemoved, which is the attempt-scoped contract. Its vocabulary is
-// quiet/active rather than absent/present for the same reason. Its typed producer is
-// gunbc.runner_microvm_network slot_network_readback (networking lane, gunbc#11675); until that lands
-// this type is the frontier where that readback is consumed.
+// readback, and not NetworkNamespaceRemoved, which is the attempt-scoped contract.
 // THE SLOT NETWORK RESULT IS CONSUMED AS THE BOUND READBACK, NEVER AS A BARE VERDICT.
 //
 // gunbc.runner_microvm_network slot_network_readback returns a sealed BoundSlotNetworkReadback: the
@@ -287,6 +284,12 @@ type ResourceReadback
 // readback is what ObservedTeardown carries, its slot is one of the subjects
 // attempt_teardown_readback joins against the attempt, and only a readback that survived that join
 // is mapped onto SlotNetworkQuiescent.
+type ObservedStop { unit: NonEmptyStr, invocation_id: NonEmptyStr, outcome: TeardownStop }
+
+type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
+
+type ObservedPath { path: String, readback: ResourceReadback }
+
 type ObservedTeardown {
   host: String
   generation: Int
