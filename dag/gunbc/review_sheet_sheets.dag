@@ -596,43 +596,59 @@ fn sheet_request_cause_text(cause: SheetRequestCause) -> String {
   }
 }
 
+// THE WHOLE-TAB REQUEST ADMISSION, ONCE. Two readers of a tab require the request to be the whole
+// tab -- the ensure assessment below, because an append past unobserved rows is data loss, and
+// gunbc.review_sheet_formula_observation, because emptiness of a bounded range says nothing about
+// the tab -- and the three request-shape refusals are one decision, made here, carried as the same
+// SheetRequestCause by both.
+type WholeTabRequestAdmission
+  = WholeTabRequestEncoded { wire: String }
+  | WholeTabRequestRejected { cause: SheetRequestCause }
+
+fn admit_whole_tab_request(requested: SheetA1Range) -> WholeTabRequestAdmission {
+  match sheet_a1_range_wire(range: requested) {
+    A1TitleApostropheUnsupported { title: _ } =>
+      WholeTabRequestRejected { cause: TitleNotEncodable { range: requested } }
+    A1RangeEncoded { wire: w } =>
+      match requested.end {
+        A1EndClosed { cell: _ } =>
+          WholeTabRequestRejected { cause: BoundedRequest { range: requested } }
+        A1EndOpen { column: _ } =>
+          WholeTabRequestRejected { cause: ColumnBoundedRequest { range: requested } }
+        A1EndWholeTab => WholeTabRequestEncoded { wire: w }
+      }
+  }
+}
+
 fn review_sheet_ensure_assess(
   requested: SheetA1Range,
   range: ValueRange,
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetEnsureAssessment {
-  match sheet_a1_range_wire(range: requested) {
-    A1TitleApostropheUnsupported { title: _ } =>
-      ReviewSheetRequestRejected { cause: TitleNotEncodable { range: requested } }
-    A1RangeEncoded { wire: _ } =>
-      match requested.end {
-        A1EndClosed { cell: _ } =>
-          ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
-        A1EndOpen { column: _ } =>
-          ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
-        A1EndWholeTab =>
-          match observed_sheet_from_value_range(range: range) {
-            ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
-            ReadbackObserved { observed: observed, tab: tab } =>
-              if (tab as String) != (requested.tab as String) {
-                ReviewSheetReadbackRejected {
-                  reason: concat(
-                    "readback tab ",
-                    concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
-                  ) as NonEmptyStr
-                }
-              } else {
-                ReviewSheetProjectionClassified {
-                  observed: observed,
-                  tab: tab,
-                  classification: classify_review_sheet(
-                    observed: observed,
-                    projection: projection,
-                    erasures: erasures,
-                  ),
-                }
-              }
+  match admit_whole_tab_request(requested: requested) {
+    WholeTabRequestRejected { cause: c } => ReviewSheetRequestRejected { cause: c }
+    WholeTabRequestEncoded { wire: _ } =>
+      match observed_sheet_from_value_range(range: range) {
+        ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
+        ReadbackObserved { observed: observed, tab: tab } =>
+          if (tab as String) != (requested.tab as String) {
+            ReviewSheetReadbackRejected {
+              reason: concat(
+                "readback tab ",
+                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
+              ) as NonEmptyStr
+            }
+          } else {
+            ReviewSheetProjectionClassified {
+              observed: observed,
+              tab: tab,
+              classification: classify_review_sheet(
+                observed: observed,
+                projection: projection,
+                erasures: erasures,
+              ),
+            }
           }
       }
   }
