@@ -30,7 +30,7 @@ import gunbc.runner_microvm_network {
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
 import extdeps.tools.stat { StatFieldRead, StatFieldUnread }
-import extdeps.posix.test_utility { PathPresent, PathAbsent, PathExistenceUnreadable }
+import extdeps.posix.test_utility { PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
   LaunchRefusedJitCredential, LaunchRefusedPriorResources,
@@ -582,8 +582,8 @@ test fn a_failed_or_missing_jail_material_does_not_admit_the_jailer() -> Bool {
   jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:jail root"
     && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:kernel"
     && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent }) == "step-failed:rootfs"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsent, rootfs: PathPresent }) == "missing:kernel"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsent }) == "missing:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsentOrUnstattable, rootfs: PathPresent }) == "missing:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsentOrUnstattable }) == "missing:rootfs"
     && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr } }) == "unobservable:rootfs"
     && jail_label(m: staged_jail_material()) == "admit"
 }

@@ -261,6 +261,19 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 // frozen cgroup, survives SIGKILL) is not "still stopping", it is a surviving process, and the cell
 // quarantines on it whatever the cgroup readback says afterwards.
 //
+// SIX ARMS, AND THE THREE ADDED SINCE THE FIRST CUT EACH REMOVED A CLAIM THE CODE HAD NOT ESTABLISHED.
+//
+// StopFoundAlreadyQuiescent: the stop was asked of a cell that was ALREADY empty. Reporting that as
+// StoppedGracefully claims a tenant was asked and complied when nothing was running to ask; reporting
+// it as StoppedByForce claims a kill ended something. It is neither, and it is the ordinary state of a
+// cell whose VMM exited on its own before the controller got there.
+//
+// ForceNotAsked: the force could not be REQUESTED -- the write to the cgroup's kill file did not land.
+// It is kept apart from ForceStopOutcomeUnobservable because the consequences differ: a force that
+// was never asked leaves the CGROUP evidence intact and an empty subtree still establishes that no
+// process survived, while a subtree that could not be READ establishes nothing at all. Folding them
+// would throw away a confirmable fact in the first case and fabricate one in the second.
+//
 // A FORCE WHOSE RESULT COULD NOT BE READ IS ITS OWN ARM, AND ADDING IT REMOVED A FABRICATED CAUSE.
 // There used to be three arms, and a controller whose cgroup readback FAILED after the force had
 // only ForceStopBoundExceeded to report -- with an empty survivor list, because there were no pids to
@@ -273,7 +286,9 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
+  | StopFoundAlreadyQuiescent
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | ForceNotAsked { reason: NonEmptyStr }
   | ForceStopOutcomeUnobservable { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
@@ -481,11 +496,21 @@ fn cgroup_observation(readback: CgroupSubtreeReadback) -> SanitationObservation 
 // NO SURVIVING PROCESS NEEDS BOTH HOST FACTS: the stop did not exceed its bound, AND the subtree
 // holds no pid. Either one alone is refuted by a case the other misses -- the unkillable task
 // that later leaves the cgroup listing, and the double-forked daemon the stop never waited for.
+// WHICH ARMS DEFER TO THE CGROUP AND WHICH OVERRIDE IT, AND THE SPLIT IS NOT ARBITRARY.
+//
+// The fact is about PROCESSES, so an empty subtree establishes it whenever the subtree could actually
+// be read -- including when the force was never asked, which is why ForceNotAsked defers rather than
+// refusing. What overrides the cgroup is a fact the cgroup cannot see: a task that outlived the
+// bounded force refutes even if the listing later reads empty, because the listing is a later instant.
+// And a subtree that could not be READ establishes nothing, so that one is unobservable whatever the
+// stop did.
 fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> SanitationObservation {
   match stop {
     ForceStopBoundExceeded { survivors: s } =>
       FactRefuted { fact: NoSurvivingProcesses, detail: force_stop_survivor_detail(survivors: s) }
     ForceStopOutcomeUnobservable { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
+    ForceNotAsked { reason: _ } => process_observation_of_cgroup(cgroup: cgroup)
+    StopFoundAlreadyQuiescent => process_observation_of_cgroup(cgroup: cgroup)
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
   }

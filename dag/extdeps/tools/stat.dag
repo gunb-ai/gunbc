@@ -75,6 +75,12 @@ fn stat_owner_user_name_command(path: String) -> ArgvCommand {
 // number. Both take `--` before the operand: a path beginning with a dash would otherwise be read as
 // an option, and these two are the probes whose operand comes from observed host state rather than
 // from a literal, which is exactly where that can happen.
+// WHAT `stat -c %F` PRINTS FOR AN ORDINARY FILE, in the upstream's own spelling. A consumer that
+// wrote the words itself would be a second authority for a string coreutils owns, and "regular file"
+// is the one a record must be: a symlink is refused whatever it points at, because the target's mode
+// says nothing about who may replace the link.
+data stat_regular_file_type: String = "regular file"
+
 fn stat_file_type_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%F", "--", path])
 }

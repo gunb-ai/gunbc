@@ -11,7 +11,9 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.posix.test_utility {
   test_exists_command,
-  PathExistenceReading, PathPresent, PathAbsent, PathExistenceUnreadable, path_existence_reading,
+  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
+  path_existence_reading, ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable,
+  contained_existence,
 }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.linux.cgroup_v2 {
@@ -47,7 +49,12 @@ import gunbc.runner_microvm_cell_readiness_store {
   read_cell_readiness_store, persist_cell_readiness_write,
   CellReadinessStorePersist, StorePersisted,
 }
-import gunbc.runner_microvm_network { BoundSlotNetworkReadback }
+import gunbc.runner_microvm_network {
+  BoundSlotNetworkReadback, slot_network_readback,
+  SlotNetworkSanitationSubject, SlotNetworkReadings,
+  TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
+  TapHoldersUnreadable, TapIpv6Unread, ResidueUnreadable, RulesetUnreadable,
+}
 import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
@@ -57,12 +64,14 @@ import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  StopFoundAlreadyQuiescent, ForceNotAsked,
   AttemptIdentity, CellBoundIdentity, CellBinding,
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
   UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
+  AttemptTeardownReadback,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
   TeardownReadbackSubjectUnobservable,
   UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
@@ -71,6 +80,54 @@ import gunbc.runner_microvm_lifecycle {
 
 data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
 
+// THE STOP-AND-OBSERVE REALIZATION OF THE microVM SLOT LIFECYCLE. IT IS NOT THE COMPLETE CONTROLLER,
+// AND THE DIFFERENCE IS ONE STEP THAT IS MISSING RATHER THAN ONE THAT IS WEAK.
+//
+// WHAT IT DOES: admits the cell, records the attempt in flight, stages and launches through the
+// sealed staging receipt, waits for a terminal condition, stops the cell and then force-stops its
+// subtree, reads back the cgroup and each attempt resource, joins every observed subject against the
+// attempt, and settles.
+//
+// WHAT IT DOES NOT DO: CLEAN UP. Between the stop and the readbacks there is no unmount, no delete of
+// the credential device, no delete of the workspace, no recursive delete of the attempt root, and no
+// network flush. The only host mutation in the whole teardown is the write to the cell slice's
+// cgroup.kill.
+//
+// SO A FIRST FULL RUN QUARANTINES, BY CONSTRUCTION, AND THAT IS NOT A BUG IN THE READBACKS. Staging
+// creates the jail root, the attempt directory and the credential device; nothing removes them; the
+// absence readbacks then find them present and refuse MountsRemoved, WritableLayersDeleted and
+// SecretsRemoved. The verdict is correct -- those resources ARE still there -- and the cell is
+// correctly not released. What it is not is a warm pool: no cell settles CellReady through this
+// module today, so nothing here can hand a cell to a second incarnation (side-chat ruling on
+// gunbc#11803, which offered the narrowing or the implementation; this is the narrowing, stated).
+//
+// DECLARED FRONTIER (DESIGN 3c) for the missing step, at capability grain. NAMED CONSUMER: this
+// module's teardown, between stop_attempt and the absence readbacks. TRIGGER: a cleanup realization
+// that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt
+// root, and flushes the slot's conntrack and neighbour entries -- each with its own readback, since a
+// delete that returns zero and a path that is gone are different facts. SUFFICIENT FOR deleting this
+// row and for this header's narrowing. NOT satisfied by a witness supplying absent readbacks, nor by
+// a cleanup whose result is taken on the tool's word.
+//
+// THE NETWORK FLUSH IS BLOCKED BEHIND THE SAME THING THE READINGS ARE (see
+// slot_network_readings_producer_frontier): there is no converged slot network on any host to flush.
+//
+// gunbc.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
+// is the other half that module deliberately cannot have: reaching the host. Each producer below
+// turns one host reading into one of that module's observation carriers, and a producer that decided
+// anything would be a second authority for a verdict (DESIGN section 3), so none of them does: the
+// arms they return are the arms that module declares.
+//
+// WHY THE PRODUCERS ARE SEPARATE FUNCTIONS RATHER THAN ONE OBSERVING FOLD. Each reads a different
+// interface -- the kernel's cgroup hierarchy, a path's existence, systemd's kill -- and each has its
+// own failure. Folding them into one would put every reading behind one refusal and lose which one
+// could not be taken, which is the distinction FactUnobservable exists to carry outward to an
+// operator.
+data attempt_cleanup_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize's teardown, between stop_attempt and the resource-absence readbacks. TRIGGER: a cleanup realization that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt root, and flushes the slot's conntrack and neighbour entries, each with its own readback. SUFFICIENT FOR deleting this row and for retiring this module's stop-and-observe narrowing. NOT satisfied by a witness supplying absent readbacks, nor by a cleanup whose result is taken on the tool's word." as NonEmptyStr,
+)
+
+// ORIGINAL HEADER, KEPT BECAUSE ITS CLAIM IS STILL TRUE OF WHAT IS HERE:
 // THE WET HALF OF THE microVM SLOT LIFECYCLE: THE PROCESS THE SLOT UNIT EXECS AS ITS MainPID.
 //
 // gunbc.runner_microvm_lifecycle owns every DECISION this controller makes and this module adds
@@ -268,27 +325,55 @@ fn populated_readback(path: NonEmptyStr) -> CgroupSubtreeReadback
 // cell holding the previous tenant's writable layer. Matching on stderr text instead would be the
 // heuristic DESIGN section 4 rules out where a total discriminator exists -- and one does, here, in
 // the utility's own documented status.
+// AN ABSENCE IS ESTABLISHED THROUGH ITS PARENT, NOT FROM `test -e` ALONE.
+//
+// `test -e` is false both for a path that is not there and for one that cannot be STATTED -- a parent
+// without search permission, a dead mount, an I/O error -- and the utility cannot tell them apart.
+// ABSENT is the answer that RELEASES A CELL, so reading a false as absent would let a directory whose
+// parent lost +x report the tenant's storage as gone while the files sit under it. So the readback
+// asks the PARENT too and inherits: a present, readable parent makes the child's false mean absent,
+// because the directory was searched; anything else leaves it unreadable (side-chat ruling on
+// gunbc#11803, the containment repair its failure-mode row names).
 fn observe_resource_absence(path: String) -> ResourceReadback
   uses net: Network
 {
   if path == "" {
     ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
   } else {
-    absence_of_existence(
+    absence_of_containment(
       path: path,
-      reading: path_existence_reading(
+      parent: parent_directory_of(path: path),
+      contained: contained_existence(
         path: path,
-        outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
+        parent: parent_directory_of(path: path),
+        parent_reading: observe_path_exists(path: parent_directory_of(path: path)),
+        child_reading: observe_path_exists(path: path),
       ),
     )
   }
 }
 
-// THE READING IS THE BOUNDARY'S AND THE DOMAIN FACT IS THIS MODULE'S. extdeps.posix.test_utility says
-// whether the path is there; sanitation asks the opposite question -- that it is NOT -- so the fold
-// from one to the other lives here, where "absent is good" is the domain's own reading and not the
-// utility's. An unreadable existence stays unreadable: the instrument did not answer, and a cell must
-// not be released on that.
+// THE PARENT IS THE PATH UP TO ITS LAST SEPARATOR, and a path with no separator has the working
+// directory as its parent -- which this controller never uses, since every path it proves absent is
+// absolute and derived from the attempt. A path that IS the root has itself as parent, which reads
+// present and therefore makes a child's false mean absent, correctly.
+fn parent_directory_of(path: String) -> String {
+  let segs = split(s: path, delimiter: "/")
+  if length(segs) < 3 {
+    "/"
+  } else {
+    join(segs.take(n: length(segs) - 1), "/")
+  }
+}
+
+fn absence_of_containment(path: String, parent: String, contained: ContainedExistence) -> ResourceReadback {
+  match contained {
+    ContainedAbsent => ResourceAbsent
+    ContainedPresent => ResourcePresent { detail: path as NonEmptyStr }
+    ContainedUnreadable { reason: r } => ResourceUnreadable { reason: r }
+  }
+}
+
 // THE SAME READING, ASKED FOR THE OPPOSITE DOMAIN FACT. Staging needs the jail's material to be
 // THERE; sanitation needs the attempt's resources to be GONE. One boundary reading, two folds.
 fn observe_path_exists(path: String) -> PathExistenceReading
@@ -298,14 +383,6 @@ fn observe_path_exists(path: String) -> PathExistenceReading
     path: path,
     outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
   )
-}
-
-fn absence_of_existence(path: String, reading: PathExistenceReading) -> ResourceReadback {
-  match reading {
-    PathAbsent => ResourceAbsent
-    PathPresent => ResourcePresent { detail: path as NonEmptyStr }
-    PathExistenceUnreadable { reason: r } => ResourceUnreadable { reason: r }
-  }
 }
 
 // THE GROUND CHECK IS THE SAME READING ASKED BEFORE THE ATTEMPT RUNS. gunbc.runner_attempt_launch
@@ -415,45 +492,21 @@ fn polls_for(bound: Second) -> Int {
   second_count(s: bound) / second_count(s: attempt_stop_poll_interval)
 }
 
-// THE FORCE'S OUTCOME IS DERIVED FROM THE READBACK'S OWN ARM, NOT FROM A PID LIST FLATTENED OUT OF
-// IT. This used to be a `survivors_of` that answered EMPTY for a read failure, and poll_until_quiet
-// correctly treats unreadable as not-quiet, so the two composed into an exceeded-bound carrying no
-// survivors -- a refutation whose cause nobody observed. The mapping is now total over the readback:
-// populated refutes, unreadable is unobservable, and empty cannot arrive here because
-// poll_until_quiet would have said quiet.
-fn force_stop_outcome(q: StopQuiescence) -> TeardownStop {
-  match q {
-    CgroupQuiet => StoppedByForce
-    CgroupStillHolding { readback: r } =>
-      match r {
-        CgroupSubtreePopulated { pids: p, cgroups: _ } => ForceStopBoundExceeded { survivors: p }
-        CgroupSubtreeReadFailed { reason: reason } =>
-          ForceStopOutcomeUnobservable {
-            reason: join(["the cell's cgroup subtree could not be read after the bounded force-stop: ", reason as String], "") as NonEmptyStr,
-          }
-        CgroupSubtreeEmpty => StoppedByForce
-      }
+fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  match cgroup_quiescence(slice: slice) {
+    CgroupQuiet => StopFoundAlreadyQuiescent
+    CgroupStillHolding { readback: _ } => stop_a_running_cell(unit: unit, slice: slice)
   }
 }
 
-// A GRACEFUL STOP IS CLAIMED ONLY WHEN THE GRACEFUL ASK WAS ACCEPTED, and the first cut claimed it
-// whenever the cgroup happened to be quiet afterwards.
-//
-// The TERM result was computed and discarded. `systemctl kill` REFUSES for a unit the manager never
-// heard of, or one already unloaded -- which this lane's own wet log produces routinely ("Unit ...
-// not loaded") -- and if the cell's cgroup then read empty, the controller reported
-// StoppedGracefully. Nothing was asked and nothing complied; the receipt claimed both. That is the
-// same defect as the discarded readback one function later, one function earlier: a field's honesty
-// must not rest on a sibling field, because the first consumer to read the stop alone reads a
-// fabricated claim (review 69001, relayed by sunny-ant-606).
-//
-// THE REPAIR ADDS NO ARM, AND DELIBERATELY. A refused ask over a quiet cell is not a fourth state to
-// model: it is simply not a graceful stop, so the controller goes on to the force step and reports
-// what that step did. StoppedByForce over an already-quiet cell says the force ran and the cell is
-// quiet, which is exactly what happened -- a weaker and true claim in place of a stronger and false
-// one. Both arms defer to the cgroup readback for the sanitation verdict, so the cell's disposition
-// is unchanged either way; what changes is whether the receipt describes the run.
-fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+// A CELL THAT WAS ALREADY EMPTY WAS NEITHER ASKED NOR FORCED, and saying otherwise claims a causality
+// the run did not have. The first cut reported StoppedGracefully for it -- a tenant asked and
+// complying, when nothing was running to ask. It is the ordinary state of a VMM that exited on its own
+// before the controller reached the stop, so it gets the neutral arm rather than the one that flatters
+// the controller (side-chat ruling on gunbc#11803).
+fn stop_a_running_cell(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
   let asked = systemd.Systemctl.KillUnitTerm(unit: unit).success
@@ -468,9 +521,6 @@ fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   }
 }
 
-// A CELL WHOSE CGROUP IS NOT THERE HAS NOTHING TO KILL, and that is not a failure to force-stop: the
-// subtree is gone, so the graceful ask ended everything. It is reported as a stop by force because
-// the force step ran and the cell is quiet, which is the honest reading of what happened.
 fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
@@ -483,30 +533,50 @@ fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   }
 }
 
-// A FORCE IS CLAIMED ONLY WHEN THE FORCE WAS ACTUALLY ASKED, and this is the same repair as the
-// graceful ask one function up, which I made there and left undone here (review 69117).
-//
-// The write to cgroup.kill used to be discarded. If it did not land -- EACCES, the cgroup removed
-// between resolving its path and writing it, cgroup.kill absent on a pre-5.14 kernel -- the poll
-// would still find the subtree populated and the verdict would read ForceStopBoundExceeded, which
-// this corpus defines as a task THE KERNEL COULD NOT END. Nothing was asked and nothing refused, and
-// the receipt would send an operator to hunt an unkillable task that does not exist. A verdict whose
-// cause was never observed is the fabricated cause DESIGN 5 forbids, and it is the fourth instance of
-// that shape in this change -- each one a computed result dropped on the floor.
-//
-// SO A FAILED WRITE IS UNOBSERVABLE, NOT AN EXCEEDED BOUND. The cell still quarantines either way, so
-// nothing is released on this; what changes is whether the receipt describes what happened.
 fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
   let kill_path = cgroup_v2_kill_path(cgroup_path: path) as String
   let killed = Filesystem.Write(path: kill_path, content: cgroup_v2_kill_trigger_value)
-  if killed.success == false {
-    ForceStopOutcomeUnobservable {
-      reason: join(["the cell's subtree kill could not be asked for: writing ", kill_path, " failed: ", killed.error], "") as NonEmptyStr,
-    }
-  } else {
-    force_stop_outcome(q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)))
+  force_stop_outcome_after_ask(
+    asked: killed.success,
+    ask_detail: join(["writing ", kill_path, " failed: ", killed.error], ""),
+    q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)),
+  )
+}
+
+// A FORCE THAT COULD NOT BE ASKED STILL LETS THE CGROUP SPEAK, and the first repair of this defect
+// went one step too far the other way. Discarding the write was wrong -- a populated subtree then
+// read as a task the KERNEL could not end. But refusing immediately on a failed write was also wrong:
+// the poll still runs, and a subtree that goes empty afterwards establishes that nothing survived,
+// whoever ended it. So a failed ask is ForceNotAsked, which carries the reason and lets the cgroup
+// answer the surviving-process fact; what it must never become is StoppedByForce, which would claim
+// this controller's kill did the ending (side-chat ruling on gunbc#11803).
+fn force_stop_outcome_after_ask(asked: Bool, ask_detail: String, q: StopQuiescence) -> TeardownStop {
+  match q {
+    CgroupQuiet =>
+      if asked {
+        StoppedByForce
+      } else {
+        ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
+      }
+    CgroupStillHolding { readback: r } => force_stop_outcome_of_readback(asked: asked, ask_detail: ask_detail, r: r)
+  }
+}
+
+fn force_stop_outcome_of_readback(asked: Bool, ask_detail: String, r: CgroupSubtreeReadback) -> TeardownStop {
+  match r {
+    CgroupSubtreePopulated { pids: p, cgroups: _ } =>
+      if asked {
+        ForceStopBoundExceeded { survivors: p }
+      } else {
+        ForceNotAsked { reason: join(["the cell's subtree kill could not be asked for: ", ask_detail], "") as NonEmptyStr }
+      }
+    CgroupSubtreeReadFailed { reason: reason } =>
+      ForceStopOutcomeUnobservable {
+        reason: join(["the cell's cgroup subtree could not be read after the bounded force-stop: ", reason as String], "") as NonEmptyStr,
+      }
+    CgroupSubtreeEmpty => StoppedByForce
   }
 }
 
@@ -600,9 +670,21 @@ fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvo
 //
 // THE FUNCTION MUTATES, AND ITS NAME SAYS SO. It signals the unit. Naming it `observe_` would hide
 // the one step in this module that changes the host.
+// THE NETWORK READBACK IS CONSTRUCTED HERE, AFTER THE STOP, AND TAKING IT PREBUILT WAS A HOLE THAT
+// SEALING COULD NOT CLOSE.
+//
+// This function used to receive a BoundSlotNetworkReadback as a parameter. That record is sealed, so
+// its SUBJECT cannot be forged -- and subject identity is not the property at risk. A readback taken
+// before the attempt ran describes the right slot at the wrong TIME: a caller could hand in a clean
+// reading, the attempt could leave conntrack entries behind, the stop could run, and the stale clean
+// value would certify SlotNetworkQuiescent over a dirty slot. Sealing protects WHICH slot, never
+// WHEN (side-chat ruling on gunbc#11803).
+//
+// So the controller takes the SUBJECT and builds the readback itself, after the stop, from readings
+// it takes then. There is no parameter through which a reading from before the attempt can arrive.
 fn perform_teardown_and_observe(
   bound: CellBoundAttempt,
-  network: BoundSlotNetworkReadback,
+  subject: SlotNetworkSanitationSubject,
 ) -> ObservedTeardown
   uses net: Network, fs: Filesystem
 {
@@ -622,43 +704,111 @@ fn perform_teardown_and_observe(
     mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
     attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
     credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
-    network: network,
+    network: observe_slot_network_after_stop(subject: subject, after: outcome),
   }
 }
 
-// THE RETAINED UNIT IS RELEASED ONLY AFTER EVERY READING HAS BEEN TAKEN, and it takes the readings
-// as its argument so it cannot be hoisted above them. The launch keeps the unit loaded on purpose --
-// its Environment, Result and ExecMainStatus are the evidence -- so something has to unload it, and
-// the only moment at which that is safe is when nothing will read it again. The reset is not
-// conditional on the teardown's verdict: a quarantined cell keeps its RECORD, which is where the
-// evidence lives durably, and leaving a failed unit loaded as well would accumulate one per attempt.
-fn release_retained_unit(after: ObservedTeardown) -> Bool
-  uses net: Network
-{
-  systemd.Systemctl.ResetFailedUnit(unit: after.stop.unit).success
+// DECLARED FRONTIER (DESIGN 3c) AND A HOST FACT, NOT A PLACEHOLDER: the slot network's readings
+// cannot be taken on any host this repository has.
+//
+// gunbc.runner_microvm_network owns the seven facts and the commands that would read them, and it is
+// pure decisions -- there is no producer. There cannot be one yet either: the readings need conntrack
+// and the converged gunbc-microvm nft table, and neither exists on srv1 (measured: no conntrack
+// binary, and nft lists only the stock ip/ip6 filter, nat and mangle tables). The slot-network
+// converge that would create them has not run on any host.
+//
+// SO EVERY READING IS Unreadable WITH THE REASON, WHICH QUARANTINES, AND THAT IS THE HONEST STATE.
+// SlotNetworkQuiescent is one of the required facts, so a teardown settled through this today can
+// only ever be CellQuarantined. That is not this function degrading -- it is the host being unable to
+// answer, reported as unable rather than as clean. The alternative, omitting the fact, is the
+// empty-observation narrow that product.fabric.sanitation exists to refuse.
+//
+// TRIGGER, at capability grain: the slot-network converge running on a host, so conntrack and the
+// gunbc-microvm ruleset exist to be read, and a readings producer in gunbc.runner_microvm_network
+// that takes them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying readings,
+// nor by this function returning anything other than what it read.
+fn observe_slot_network_after_stop(subject: SlotNetworkSanitationSubject, after: TeardownStop) -> BoundSlotNetworkReadback {
+  slot_network_readback(s: subject, readings: unreadable_slot_network_readings(s: subject, after: after))
 }
 
-// THE TERMINAL PATH, WHOLE: stop, read back, join against the attempt, settle, record.
+data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize observe_slot_network_after_stop, which builds the teardown's BoundSlotNetworkReadback after the stop. TRIGGER: the slot-network converge running on a host so conntrack and the gunbc-microvm nft ruleset exist to be read, plus a readings producer in gunbc.runner_microvm_network that reads them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying SlotNetworkReadings, nor by this consumer returning anything other than what it read." as NonEmptyStr,
+)
+
+// THE READINGS TAKE THE STOP'S OUTCOME AS AN ARGUMENT so they cannot be hoisted above it. Order in
+// this substrate is data dependence and nothing else, and a network reading taken before the stop is
+// the very staleness this restructuring removed.
+fn unreadable_slot_network_readings(s: SlotNetworkSanitationSubject, after: TeardownStop) -> SlotNetworkReadings {
+  let why = join([
+    "the slot network cannot be read on this host: no conntrack binary and no converged gunbc-microvm ruleset (stop outcome: ",
+    teardown_stop_label(stop: after),
+    ")",
+  ], "") as NonEmptyStr
+  SlotNetworkReadings {
+    tap: TapReading { subject: s.subject, observation: TapHoldersUnreadable { reason: why } },
+    tap_ipv6: TapIpv6Reading { subject: s.subject, observation: TapIpv6Unread { reason: why } },
+    guest_originated_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    guest_destined_conntrack: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    guest_neighbour: SlotResidueReading { subject: s.subject, observation: ResidueUnreadable { reason: why } },
+    expectations: HostResidueReading { host: s.subject.slot.host, generation: 0, observation: ResidueUnreadable { reason: why } },
+    ruleset: RulesetReading { host: s.subject.slot.host, generation: 0, observation: RulesetUnreadable { reason: why } },
+  }
+}
+
+fn teardown_stop_label(stop: TeardownStop) -> String {
+  match stop {
+    StoppedGracefully => "stopped-gracefully"
+    StoppedByForce => "stopped-by-force"
+    StopFoundAlreadyQuiescent => "already-quiescent"
+    ForceStopBoundExceeded { survivors: _ } => "force-bound-exceeded"
+    ForceNotAsked { reason: _ } => "force-not-asked"
+    ForceStopOutcomeUnobservable { reason: _ } => "force-outcome-unobservable"
+  }
+}
+
+// THE RETAINED UNIT IS RELEASED ONLY AFTER THE BINDING IS KNOWN, AND NEVER WHEN THE BINDING REFUSED.
 //
-// THERE IS NO ARM THAT SETTLES WITHOUT THE JOIN. attempt_teardown_readback is the only producer of
-// an AttemptTeardownReadback and settle_teardown takes nothing else, so a readback whose subject
-// disagrees with the attempt cannot reach a verdict here -- it leaves as
-// TeardownSubjectRefused, which records nothing and releases nothing. That is the fail-closed
-// direction: an unjoinable readback is evidence about some other subject, and a cell released on it
-// is a cell released on a reading of a different slot.
+// It used to be released as soon as the readings were taken, one line before the join. That destroyed
+// the evidence the refusing arm exists to preserve: an UNOBSERVABLE invocation leaves the in-flight
+// record standing so the next admission owes recovery -- and recovery would then arrive at a unit
+// this run had already unloaded, so it could not read the invocation either, and the cell would be
+// stuck in a loop whose every pass destroys what the next pass needs. That is absorbing, and it is
+// the shape this lane keeps removing (side-chat ruling on gunbc#11803).
+//
+// SO THE RELEASE IS A CONSEQUENCE OF A SETTLED BINDING, not a step beside it. A refused binding keeps
+// the unit loaded on purpose: it is the only place the attempt's invocation id still exists.
+fn release_retained_unit(after: AttemptTeardownReadback) -> Bool
+  uses net: Network
+{
+  systemd.Systemctl.ResetFailedUnit(unit: after.observed.stop.unit).success
+}
+
+// AND IT TAKES THE PERSIST RESULT, so it cannot run before the record that outlives it is durable.
+// If the settlement did not persist, the in-flight record still stands and recovery will need this
+// unit exactly as the refusing arms do.
+fn release_after_persist(readback: AttemptTeardownReadback, persisted: CellReadinessStorePersist) -> Bool
+  uses net: Network
+{
+  match persisted {
+    StorePersisted { record: _ } => release_retained_unit(after: readback)
+    refused => false
+  }
+}
+
+// THE RELEASE IS PART OF THE SETTLED ARM AND OF NO OTHER, so the type itself says that a refused
+// binding leaves the unit loaded.
 type TeardownRun
-  = TeardownSettled { settlement: TeardownSettlement, persisted: CellReadinessStorePersist }
+  = TeardownSettled { settlement: TeardownSettlement, persisted: CellReadinessStorePersist, unit_released: Bool }
   | TeardownSubjectRefused { binding: TeardownReadbackBinding }
 
 fn run_teardown(
   bound: CellBoundAttempt,
-  network: BoundSlotNetworkReadback,
+  subject: SlotNetworkSanitationSubject,
   trigger: TerminalTrigger,
 ) -> TeardownRun
   uses net: Network, fs: Filesystem
 {
-  let observed = perform_teardown_and_observe(bound: bound, network: network)
-  let _released = release_retained_unit(after: observed)
+  let observed = perform_teardown_and_observe(bound: bound, subject: subject)
   match attempt_teardown_readback(bound: bound, observed: observed) {
     TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
       TeardownSubjectRefused {
@@ -670,9 +820,11 @@ fn run_teardown(
       }
     TeardownReadbackBound { readback: rb } => {
       let settlement = settle_teardown(readback: rb, trigger: trigger)
+      let persisted = persist_cell_readiness_write(write: settlement.record)
       TeardownSettled {
         settlement: settlement,
-        persisted: persist_cell_readiness_write(write: settlement.record),
+        persisted: persisted,
+        unit_released: release_after_persist(readback: rb, persisted: persisted),
       }
     }
   }
@@ -963,7 +1115,7 @@ fn run_controller(
   identity: AttemptIdentity,
   allocation_generation: Int,
   plan: AttemptLaunchPlan,
-  network: BoundSlotNetworkReadback,
+  subject: SlotNetworkSanitationSubject,
 ) -> ControllerOutcome
   uses net: Network, fs: Filesystem
 {
@@ -978,8 +1130,8 @@ fn run_controller(
     StartBindingRefused { binding: b } => ControllerRefusedBinding { binding: b }
     StartQuarantineUnattributedResidue { trigger: _, record: r } =>
       ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
-    StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, network: network, trigger: t) }
-    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, network: network)
+    StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, subject: subject, trigger: t) }
+    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, subject: subject)
   }
 }
 
@@ -987,13 +1139,13 @@ fn run_started_attempt(
   bound: CellBoundIdentity,
   record: CellReadinessWrite,
   plan: AttemptLaunchPlan,
-  network: BoundSlotNetworkReadback,
+  subject: SlotNetworkSanitationSubject,
 ) -> ControllerOutcome
   uses net: Network, fs: Filesystem
 {
   let persisted = persist_cell_readiness_write(write: record)
   match persisted {
-    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, network: network)
+    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, subject: subject)
     refused => ControllerStartNotRecorded { persisted: refused }
   }
 }
@@ -1001,7 +1153,7 @@ fn run_started_attempt(
 fn run_launched_attempt(
   bound: CellBoundIdentity,
   plan: AttemptLaunchPlan,
-  network: BoundSlotNetworkReadback,
+  subject: SlotNetworkSanitationSubject,
 ) -> ControllerOutcome
   uses net: Network, fs: Filesystem
 {
@@ -1014,7 +1166,7 @@ fn run_launched_attempt(
   ControllerRanAttempt {
     launch: launch,
     trigger: trigger,
-    teardown: run_teardown(bound: bound.attempt, network: network, trigger: trigger),
+    teardown: run_teardown(bound: bound.attempt, subject: subject, trigger: trigger),
   }
 }
 

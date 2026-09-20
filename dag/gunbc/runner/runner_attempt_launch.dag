@@ -61,7 +61,7 @@ import gunbc.runner_microvm_network {
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsent, PathExistenceUnreadable }
+import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
 import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
 import std.resources { Network, Filesystem }
 import gunbc.command_runner { run_shell_command_capture }
@@ -738,10 +738,14 @@ fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceRe
   }
 }
 
+// STAGING NEEDS NO CONTAINMENT AND SANITATION DOES, which is why this arm folds the ambiguous reading
+// where the sanitation readback must open it. `test -e` false means the jailer cannot open the file,
+// whether it is missing or merely unstattable, and either way the launch must refuse. Absence is only
+// load-bearing in the direction that RELEASES something, and nothing is released here.
 fn jail_material_present(step: JailMaterialStep, reading: PathExistenceReading) -> JailMaterialStanding? {
   match reading {
     PathPresent => none
-    PathAbsent => Present { value: JailMaterialMissing { step: step } }
+    PathAbsentOrUnstattable => Present { value: JailMaterialMissing { step: step } }
     PathExistenceUnreadable { reason: r } => Present { value: JailMaterialUnobservable { step: step, reason: r } }
   }
 }

@@ -10,7 +10,7 @@ import std.resources { Filesystem, Network }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.stat {
-  stat_owner_uid_command, stat_mode_command,
+  stat_owner_uid_command, stat_mode_command, stat_file_type_command, stat_regular_file_type,
   StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading,
 }
 import extdeps.languages.json.emit {
@@ -41,6 +41,7 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessStoreRead, StoreRead, StoreUnreadable,
   CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
   CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
+  record_cell,
 }
 
 data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthority
@@ -700,10 +701,24 @@ fn read_cell_readiness_store() -> CellReadinessStoreRead
   }
 }
 
-// A RECORD FILE THAT CANNOT BE READ REFUSES THE WHOLE STORE, and so does a listing that fails. The
-// alternative is a store with fewer cells in it, and every missing cell then reads as never settled
-// -- the right direction at the wrong grain, pointing an operator at a cell instead of at the
-// store.
+// A RECORD FILE THAT CANNOT BE READ REFUSES THE WHOLE STORE, and so does a listing that fails, an
+// entry that is not a root-owned regular file, or a record whose FILENAME and BODY name different
+// cells.
+//
+// THE FILENAME IS PART OF THE RECORD'S IDENTITY AND THE FIRST CUT DISCARDED IT. One file per cell
+// makes a cross-cell write unwritable only if the READER enforces the correspondence: a reader that
+// takes the body's `cell` field and throws the filename away accepts srv1-07.json holding an
+// srv1-08 record, indexes it as srv1-08, and then the legitimate srv1-07 write lands in that same
+// file and erases it. Nothing refuses anywhere. So the filename's cell travels with the body's and
+// disagreement refuses at HOST grain, exactly as a duplicate does -- a store whose keys and contents
+// disagree is not a store one cell can be trusted out of (side-chat ruling on gunbc#11803).
+//
+// AND THE DIRECTORY'S MODE DOES NOT MAKE ITS CONTENTS ROOT-AUTHORITATIVE. A root-owned directory that
+// nobody else may write stops new files being CREATED there; it does nothing about a file that is
+// already inside and already writable, nor about a symlink pointing out of the store. So each entry
+// is checked on its own: a regular file, not a symlink, owned by root, and not group- or
+// other-writable. The directory check stays because it is the one that stops creation; this is the
+// one that stops a pre-existing file being the tenant's.
 fn read_store_records(ownership: CellReadinessStoreOwnership) -> CellReadinessStoreRead
   uses net: Network, fs: Filesystem
 {
@@ -713,50 +728,137 @@ fn read_store_records(ownership: CellReadinessStoreOwnership) -> CellReadinessSt
       reason: join(["the cell-readiness store at ", cell_readiness_store_dir, " could not be listed: ", listed.error], "") as NonEmptyStr,
     }
   } else {
-    match read_record_bodies(names: record_file_names(entries: listed.entries)) {
-      BodiesUnread { reason: r } => StoreUnreadable { reason: r }
-      BodiesRead { bodies: bodies } =>
-        match decode_store_documents(bodies: bodies) {
-          DecodeRefused { reason: r } => StoreUnreadable { reason: r }
-          DecodeOk { value: records } => StoreRead { ownership: ownership, records: records }
+    match read_named_records(names: record_file_names(entries: listed.entries)) {
+      NamedRecordsUnread { reason: r } => StoreUnreadable { reason: r }
+      NamedRecordsRead { records: records } => StoreRead { ownership: ownership, records: records }
+    }
+  }
+}
+
+fn record_file_names(entries: String) -> List<String> {
+  filter(split(s: entries, delimiter: "\n"), n => ends_with(s: trim(s: n), suffix: cell_record_suffix))
+}
+
+type NamedRecords
+  = NamedRecordsRead { records: List<CellReadinessRecord> }
+  | NamedRecordsUnread { reason: NonEmptyStr }
+
+fn no_named_records() -> NamedRecords {
+  NamedRecordsRead { records: [] as List<CellReadinessRecord> }
+}
+
+fn read_named_records(names: List<String>) -> NamedRecords
+  uses net: Network, fs: Filesystem
+{
+  fold(names, init: no_named_records(), f: (acc, name) => read_named_record_step(acc: acc, name: trim(s: name)))
+}
+
+// THE CELL A FILENAME NAMES is its stem, and it is derived through the same path builder the writer
+// uses -- so a name the writer could not have produced (one that does not round-trip to this very
+// path) is refused rather than indexed under whatever its stem happens to spell.
+fn cell_of_record_filename(name: String) -> CellId? {
+  let stem = substring(s: name, start: 0, end: string_length(s: name) - string_length(s: cell_record_suffix))
+  if stem == "" {
+    none
+  } else {
+    match cell_record_path(cell: stem as CellId) {
+      CellRecordNameRefused { spelling: _ } => none
+      CellRecordAt { path: p } =>
+        if p == join([cell_readiness_store_dir, "/", name], "") {
+          Present { value: stem as CellId }
+        } else {
+          none
         }
     }
   }
 }
 
-// ONLY THE RECORD FILES ARE READ, and an entry that is not one is skipped rather than refused. The
-// store's directory is the store's, but an editor's swap file or an operator's note is not a record
-// that failed to decode -- refusing on it would take a host out of service for a file nothing reads.
-// What is NOT skipped is a file that ends in the record suffix and does not decode: that one claims
-// to be a record.
-fn record_file_names(entries: String) -> List<String> {
-  filter(split(s: entries, delimiter: "\n"), n => ends_with(s: trim(s: n), suffix: cell_record_suffix))
-}
-
-type RecordBodies
-  = BodiesRead { bodies: List<String> }
-  | BodiesUnread { reason: NonEmptyStr }
-
-fn read_record_bodies(names: List<String>) -> RecordBodies
-  uses fs: Filesystem
-{
-  fold(names, init: BodiesRead { bodies: [] as List<String> }, f: (acc, name) => read_body_step(acc: acc, name: trim(s: name)))
-}
-
-fn read_body_step(acc: RecordBodies, name: String) -> RecordBodies
-  uses fs: Filesystem
+fn read_named_record_step(acc: NamedRecords, name: String) -> NamedRecords
+  uses net: Network, fs: Filesystem
 {
   match acc {
-    BodiesUnread { reason: r } => BodiesUnread { reason: r }
-    BodiesRead { bodies: bs } => {
-      let path = join([cell_readiness_store_dir, "/", name], "")
-      let body = Filesystem.Read(path: path)
-      if body.success == false {
-        BodiesUnread { reason: join(["the cell record at ", path, " could not be read: ", body.error], "") as NonEmptyStr }
-      } else {
-        BodiesRead { bodies: concat(bs, [body.content]) }
+    NamedRecordsUnread { reason: r } => NamedRecordsUnread { reason: r }
+    NamedRecordsRead { records: rs } =>
+      match cell_of_record_filename(name: name) {
+        Absent =>
+          NamedRecordsUnread {
+            reason: join(["the store holds `", name, "`, which is not a name this store's own path builder produces"], "") as NonEmptyStr,
+          }
+        Present { value: named } => read_entry_for_cell(rs: rs, name: name, named: named)
       }
+  }
+}
+
+fn read_entry_for_cell(rs: List<CellReadinessRecord>, name: String, named: CellId) -> NamedRecords
+  uses net: Network, fs: Filesystem
+{
+  let path = join([cell_readiness_store_dir, "/", name], "")
+  match entry_is_root_authoritative(path: path) {
+    Present { value: why } => NamedRecordsUnread { reason: why }
+    Absent => decode_entry_for_cell(rs: rs, path: path, named: named)
+  }
+}
+
+fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: CellId) -> NamedRecords
+  uses fs: Filesystem
+{
+  let body = Filesystem.Read(path: path)
+  if body.success == false {
+    NamedRecordsUnread { reason: join(["the cell record at ", path, " could not be read: ", body.error], "") as NonEmptyStr }
+  } else {
+    match decode_record_document(text: body.content) {
+      DecodeRefused { reason: r } => NamedRecordsUnread { reason: r }
+      DecodeOk { value: rec } =>
+        if (record_cell(record: rec) as String) == (named as String) {
+          NamedRecordsRead { records: concat(rs, [rec]) }
+        } else {
+          NamedRecordsUnread {
+            reason: join([
+              "the cell record at ", path, " is keyed for ", named as String,
+              " and its body names ", record_cell(record: rec) as String,
+              ", so the store's filenames and contents disagree",
+            ], "") as NonEmptyStr,
+          }
+        }
     }
+  }
+}
+
+// EACH ENTRY IS ROOT'S OR THE STORE IS REFUSED. Absent means the entry passed; Present carries why it
+// did not. A symlink is refused whatever it points at: the target's own mode says nothing about who
+// may replace the link, and a link out of the store is how a record becomes a file the store does not
+// own.
+fn entry_is_root_authoritative(path: String) -> NonEmptyStr?
+  uses net: Network
+{
+  match stat_field_reading(outcome: run_shell_command_capture(command: stat_file_type_command(path: path), transport: LocalExec)) {
+    StatFieldUnread { detail: d } =>
+      Present { value: join(["the cell record at ", path, " has no readable type: ", d], "") as NonEmptyStr }
+    StatFieldRead { value: kind } =>
+      if kind != stat_regular_file_type {
+        Present { value: join(["the cell record at ", path, " is a ", kind, ", not a regular file"], "") as NonEmptyStr }
+      } else {
+        entry_ownership_refusal(path: path)
+      }
+  }
+}
+
+fn entry_ownership_refusal(path: String) -> NonEmptyStr?
+  uses net: Network
+{
+  match read_store_ownership(path: path) {
+    OwnershipUnread { reason: r } => Present { value: r }
+    OwnershipRead { ownership: own } =>
+      match own {
+        StoreRootOwned => none
+        StoreNotRootOwned { owner_uid: u, mode: m } =>
+          Present {
+            value: join([
+              "the cell record at ", path, " is owned by uid ", to_string(u), " with mode ", m as String,
+              ", so it is not a record only root can have written",
+            ], "") as NonEmptyStr,
+          }
+      }
   }
 }
 
