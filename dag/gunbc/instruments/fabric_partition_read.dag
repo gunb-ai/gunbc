@@ -46,10 +46,11 @@ fn head_word(head: HeadExpectation) -> String {
 
 // One line per event, oldest first: its id and its wire text. The text is the event's own
 // serialization, so a reader sees exactly the bytes the store holds rather than a rendering minted
-// here.
+// here. Rendered by map-then-join rather than a fold over a copied accumulator: a readout is bounded
+// at partition_read_budget() events, and an accumulator re-copied per event is quadratic in bytes at
+// that bound (DESIGN section 6 -- a copied accumulator is fixed regardless of the realized n).
 fn readout_lines(readout: PartitionReadout) -> String {
-  fold(readout.events, init: "", f: (acc, env) =>
-    join([acc, env.id as String, " ", pool_event_wire_text(event: env.event), "\n"], ""))
+  join(map(readout.events, env => join([env.id as String, " ", pool_event_wire_text(event: env.event), "\n"], "")), "")
 }
 
 fn readout_text(partition: PartitionId, readout: PartitionReadout) -> String {
