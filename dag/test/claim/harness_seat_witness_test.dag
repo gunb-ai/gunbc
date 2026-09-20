@@ -135,7 +135,8 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // of the number: the harness pool's ceiling is the route's declared allocation (serving_route_ceiling),
 // not harness_interactive_quality_seats and not the engine's max_num_seqs. A build that re-read the
 // ceiling off the desired unit fails the last conjunct; one that fused the two classes fails the
-// second; the row moving no longer fails anything, which is the point of not copying it.
+// tolerant-differs-from-quality conjunct; the row moving no longer fails anything, which is the
+// point of not copying it.
 test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
   w_tolerant_ceiling(group: FabricGroupA) == w_route_ceiling(group: FabricGroupA)
     && w_tolerant_ceiling(group: FabricGroupB) == w_route_ceiling(group: FabricGroupB)
