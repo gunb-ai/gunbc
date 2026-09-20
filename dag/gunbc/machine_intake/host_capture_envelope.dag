@@ -1,6 +1,17 @@
 module gunbc.machine_intake_host_capture_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure {
+  Gibibyte,
+  Mebibyte,
+  gibibyte,
+  gibibyte_to_byte_size,
+  measure_fit_count_floor,
+  mebibyte,
+  mebibyte_count,
+  mebibyte_to_byte_size,
+}
 import v2.std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -91,21 +102,50 @@ data host_capture_workload_chunk_dir: String = "/dev/shm/gunbc"
 
 // THE CHUNKS ARE NAMED, NOT GLOBBED, and the expected count is DERIVED from the same row: a glob
 // silently shortens when a chunk is missing, and a separately authored count could disagree with the
-// list it counts.
-data host_capture_workload_chunk_paths: String = "/dev/shm/gunbc/chunk0 /dev/shm/gunbc/chunk1 /dev/shm/gunbc/chunk2 /dev/shm/gunbc/chunk3"
+// list it counts. ONLY THE STEMS ARE AUTHORED -- the directory is host_capture_workload_chunk_dir and
+// nothing else, for the reason the tty row states one screen up. Authored twice, an edit to the dir
+// row alone would leave mkdir and rm acting on one directory while dd and sha256sum act on another:
+// the census would write its whole footprint somewhere it never cleans and STILL emit the stable
+// token, because every fact the token requires would hold about the other directory.
+data host_capture_workload_chunk_stems: String = "chunk0 chunk1 chunk2 chunk3"
+
+fn host_capture_workload_chunk_paths() -> String {
+  let stems = split(s: host_capture_workload_chunk_stems, delimiter: " ")
+  fold(stems, init: "", f: (acc, stem) => match acc == "" {
+    true => concat(host_capture_workload_chunk_dir, "/", stem)
+    false => concat(acc, " ", host_capture_workload_chunk_dir, "/", stem)
+  })
+}
 
 fn host_capture_workload_chunk_count() -> Int {
-  split(s: host_capture_workload_chunk_paths, delimiter: " ").length()
+  split(s: host_capture_workload_chunk_stems, delimiter: " ").length()
+}
+
+// THE FOOTPRINT IS A MEASURE, not digits inside a shell string. dd's operands are rendered from
+// these rows, so the size written per chunk and the block size are one fact each and the count
+// operand is DERIVED by fitting one into the other -- a footprint edit cannot leave a stale
+// count= behind, and the total this stage exercises is readable without parsing shell text.
+data host_capture_workload_chunk_size: Gibibyte = gibibyte(16)
+
+data host_capture_workload_dd_block: Mebibyte = mebibyte(1)
+
+fn host_capture_workload_dd_count() -> Nat {
+  measure_fit_count_floor(
+    capacity: gibibyte_to_byte_size(g: host_capture_workload_chunk_size),
+    each: mebibyte_to_byte_size(m: host_capture_workload_dd_block),
+  )
 }
 
 
 fn host_capture_workload_command() -> NonEmptyStr {
   let dir = host_capture_workload_chunk_dir
-  let paths = host_capture_workload_chunk_paths
+  let paths = host_capture_workload_chunk_paths()
   let want = host_capture_workload_chunk_count() as String
+  let bs = concat(mebibyte_count(m: host_capture_workload_dd_block) as String, "M")
+  let count = host_capture_workload_dd_count() as String
   concat(
     "mkdir -p ", dir, " && rc=0; for f in ", paths, "; do ",
-    "dd if=/dev/urandom of=$f bs=1M count=16384 status=none || rc=1; done; ",
+    "dd if=/dev/urandom of=$f bs=", bs, " count=", count, " status=none || rc=1; done; ",
     "echo ", host_capture_workload_write_rc_token, "$rc; ",
     "a=$(sha256sum ", paths, "); sa=$?; b=$(sha256sum ", paths, "); sb=$?; ",
     "na=$(printf '%s\\n' \"$a\" | grep -c .); nb=$(printf '%s\\n' \"$b\" | grep -c .); ",

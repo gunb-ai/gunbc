@@ -214,7 +214,7 @@ test fn the_workload_requires_pass_status_and_full_coverage() -> Bool {
     && string_contains(s: body, pattern: "[ \"$sa\" = 0 ]")
     && string_contains(s: body, pattern: "[ \"$sb\" = 0 ]")
     && string_contains(s: body, pattern: concat("[ \"$na\" = ", host_capture_workload_chunk_count() as String, " ]"))
-    && string_contains(s: body, pattern: host_capture_workload_chunk_paths)
+    && string_contains(s: body, pattern: host_capture_workload_chunk_paths())
     && string_contains(s: body, pattern: "chunk*") == false
 }
 
