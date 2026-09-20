@@ -204,6 +204,7 @@ type FleetConvergeWorkflowMode
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
+  | MicrovmControllerAppKeyConverge
   | R2MintPreflight
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
@@ -237,6 +238,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SitePxeEdgeObserve => "site_pxe_edge_observe"
     SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
+    MicrovmControllerAppKeyConverge => "microvm_controller_app_key_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
@@ -267,7 +269,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MicrovmControllerAppKeyConverge]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -315,6 +317,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SitePxeEdgeObserve => none
     SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
+    MicrovmControllerAppKeyConverge => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
@@ -371,6 +374,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SitePxeEdgeObserve => FleetSshKeyConsumed
     SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
+    MicrovmControllerAppKeyConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
@@ -1136,6 +1140,50 @@ fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
   )
 }
 
+// THE CONTROLLER APP KEY MODE (gunbc.microvm_controller_app_key_converge). A step in the host-pinned
+// job like the password-session mode, but NOT through fleet_converge_runner_host_file_step: it reads
+// the key from Secret Manager in-process, so it carries the run's workload-identity token beside the
+// host binding. Dispatching it delivers custody only; nothing selects the microVM path for the floor
+// job.
+data fleet_converge_microvm_controller_app_key_converge_step_if: String = fleet_converge_mode_step_if(mode: MicrovmControllerAppKeyConverge)
+
+fn fleet_converge_microvm_controller_app_key_converge_step() -> Step {
+  RunStep {
+    name: Present { value: "MicroVM controller App key: deliver root:root 0400 from Secret Manager, read owner, mode, bytes and staging back" },
+    id: Present { value: "microvm_controller_app_key_converge" },
+    run: gunbc_ci_microvm_controller_app_key_converge_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_microvm_controller_app_key_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_microvm_controller_app_key_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload microVM controller App key custody receipt" },
+    id: Present { value: "microvm_controller_app_key_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "microvm-controller-app-key-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/microvm-controller-app-key-converge-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_controller_app_key_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 // THE SITE PXE EDGE (gunbc.site_pxe_edge_converge): the first onboarding segment's ProxyDHCP + TFTP
 // daemon on srv4, UEFI ARM64 chainloader only. It reuses the runner-host step shaper for the same
 // reason the password-session step does -- same host input binding, same timeout authority, same
@@ -1176,6 +1224,7 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
+
 
 fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
   UsesStep {
@@ -1991,6 +2040,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
+        fleet_converge_microvm_controller_app_key_converge_step(),
+        fleet_converge_microvm_controller_app_key_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
         fleet_converge_site_pxe_edge_observe_step(),
         fleet_converge_site_pxe_edge_converge_step(),
