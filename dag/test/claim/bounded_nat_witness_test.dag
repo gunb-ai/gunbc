@@ -1,0 +1,117 @@
+module test.claim.bounded_nat_witness_test
+
+import std.logic { Bool }
+import std.types { Int }
+import std.measure { BitWidth, bit_width }
+import std.bounded_nat {
+  BoundedNat, BoundedNatMint, Minted, OutOfWidth, WidthRefused,
+  BoundedNatAdmission, WidthAdmitted, WidthExceedsHostInt,
+  BoundedNatArith, Within, Overflows, NegativeResult, DividesByZero, WidthMismatch, ProductExceedsHostInt,
+  bounded_nat, bounded_nat_admit, bounded_nat_add, bounded_nat_sub, bounded_nat_mul,
+  bounded_nat_div, bounded_nat_rem, bounded_nat_add_mod, bounded_nat_mul_mod,
+}
+
+// The widths are SUPPLIED here, as every caller must supply one until reification can read a
+// declaration's own width (DESIGN 3's witness rule: the inputs belong at the boundary as values).
+fn w32() -> BitWidth { bit_width(count: 32) }
+fn w8() -> BitWidth { bit_width(count: 8) }
+
+// A mint or nothing. The witness never constructs a BoundedNat itself: the carrier is
+// sole-constructed, and fabricating one on a failed mint would be the fail-open this family removes.
+fn m(bits: BitWidth, value: Int) -> BoundedNat? {
+  match bounded_nat(bits: bits, value: value) {
+    Minted { n } => Present { value: n }
+    OutOfWidth { bits: _, value: _ } => none
+    WidthRefused { cause: _ } => none
+  }
+}
+
+// Applies an operation to two mints, or answers Absent if either did not mint. Absent is never a
+// pass in the tests below: each asserts the arm it expects.
+fn on2(a: BoundedNat?, b: BoundedNat?, f: fn(BoundedNat, BoundedNat) -> BoundedNatArith) -> BoundedNatArith? {
+  match a {
+    Absent => none
+    Present { value: x } =>
+      match b {
+        Absent => none
+        Present { value: y } => Present { value: f(x, y) }
+      }
+  }
+}
+
+fn arm_is_overflow(r: BoundedNatArith?) -> Bool {
+  match r { Present { value: Overflows { bits: _ } } => true _ => false }
+}
+
+fn arm_value(r: BoundedNatArith?) -> Int? {
+  match r {
+    Present { value: Within { n } } => Present { value: n.value }
+    _ => none
+  }
+}
+
+// ── The carrier admits only values inside its width ─────────────────────────────────────────
+test fn a_value_inside_the_width_mints_and_one_outside_it_does_not() -> Bool {
+  let inside = match bounded_nat(bits: w8(), value: 255) { Minted { n } => n.value == 255 _ => false }
+  let above = match bounded_nat(bits: w8(), value: 256) { OutOfWidth { bits: _, value: v } => v == 256 _ => false }
+  let below = match bounded_nat(bits: w8(), value: -1) { OutOfWidth { bits: _, value: v } => v == -1 _ => false }
+  inside && above && below
+}
+
+// A width the host integer cannot hold refuses at admission, and says which of the two refusals it is.
+test fn a_width_beyond_the_host_bound_is_refused_as_such() -> Bool {
+  let admitted = match bounded_nat_admit(bits: w32()) { WidthAdmitted { bits: _ } => true _ => false }
+  let refused = match bounded_nat_admit(bits: bit_width(count: 64)) { WidthExceedsHostInt { bits: _ } => true _ => false }
+  let mint_refused = match bounded_nat(bits: bit_width(count: 64), value: 1) { WidthRefused { cause: WidthExceedsHostInt { bits: _ } } => true _ => false }
+  admitted && refused && mint_refused
+}
+
+// ── Checked arithmetic refuses at the edge rather than wrapping ──────────────────────────────
+test fn addition_at_the_top_of_the_width_overflows_rather_than_wrapping() -> Bool {
+  let ok = arm_value(r: on2(a: m(bits: w32(), value: 4294967294), b: m(bits: w32(), value: 1), f: bounded_nat_add)) == Present { value: 4294967295 }
+  let over = arm_is_overflow(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 1), f: bounded_nat_add))
+  ok && over
+}
+
+test fn subtraction_below_zero_is_a_negative_result_not_a_wrap() -> Bool {
+  match on2(a: m(bits: w8(), value: 3), b: m(bits: w8(), value: 4), f: bounded_nat_sub) {
+    Present { value: NegativeResult { bits: _ } } => true
+    _ => false
+  }
+}
+
+test fn multiplication_overflowing_the_width_refuses_and_division_by_zero_refuses() -> Bool {
+  let over = arm_is_overflow(r: on2(a: m(bits: w8(), value: 16), b: m(bits: w8(), value: 16), f: bounded_nat_mul))
+  let ok = arm_value(r: on2(a: m(bits: w8(), value: 15), b: m(bits: w8(), value: 17), f: bounded_nat_mul)) == Present { value: 255 }
+  let div0 = match on2(a: m(bits: w8(), value: 5), b: m(bits: w8(), value: 0), f: bounded_nat_div) { Present { value: DividesByZero } => true _ => false }
+  let rem0 = match on2(a: m(bits: w8(), value: 5), b: m(bits: w8(), value: 0), f: bounded_nat_rem) { Present { value: DividesByZero } => true _ => false }
+  let div = arm_value(r: on2(a: m(bits: w8(), value: 7), b: m(bits: w8(), value: 2), f: bounded_nat_div)) == Present { value: 3 }
+  over && ok && div0 && rem0 && div
+}
+
+// ── Two widths are not the operands of one operation ─────────────────────────────────────────
+test fn operands_of_different_widths_refuse_rather_than_widening() -> Bool {
+  match on2(a: m(bits: w8(), value: 1), b: m(bits: w32(), value: 1), f: bounded_nat_add) {
+    Present { value: WidthMismatch { left: _, right: _ } } => true
+    _ => false
+  }
+}
+
+// ── Wrapping exists only under its own name ─────────────────────────────────────────────────
+// The same pair that OVERFLOWS under the checked operation WRAPS here: the discriminating pair for
+// the claim that no silent wrap exists.
+test fn the_mod_operations_wrap_where_the_checked_ones_refuse() -> Bool {
+  let wrapped = arm_value(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 1), f: bounded_nat_add_mod)) == Present { value: 0 }
+  let checked = arm_is_overflow(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 1), f: bounded_nat_add))
+  let mul_wrapped = arm_value(r: on2(a: m(bits: w8(), value: 16), b: m(bits: w8(), value: 16), f: bounded_nat_mul_mod)) == Present { value: 0 }
+  wrapped && checked && mul_wrapped
+}
+
+// A product needs twice the width, so a width the host can hold may still have no admissible product.
+test fn a_product_too_wide_for_the_host_refuses_on_its_own_arm() -> Bool {
+  let w40 = bit_width(count: 40)
+  match on2(a: m(bits: w40, value: 3), b: m(bits: w40, value: 3), f: bounded_nat_mul) {
+    Present { value: ProductExceedsHostInt { bits: _ } } => true
+    _ => false
+  }
+}
