@@ -51,6 +51,9 @@ import gunbc.typed_remote_file_write {
 }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, File }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { stat_file_type_command }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
 import gunbc.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
@@ -67,7 +70,17 @@ import gunbc.runner_host_file_converge {
   HostFileDiffers,
   HostFileAbsent,
   HostFileUnobservable,
-  classify_host_file_presence,
+  RunnerHostFileMetadataReading,
+  HostFileMetadataRead,
+  HostFileMetadataUnread,
+  classify_host_file_metadata,
+  RunnerHostFilePathStanding,
+  HostFilePathPresent,
+  HostFilePathAbsent,
+  HostFilePathUnreadable,
+  classify_host_file_path,
+  runner_host_file_settled_standing,
+  runner_host_file_metadata_probe_argv,
   RunnerHostFileStanding,
   RunnerHostPathMetadata,
   PathsRootOnly,
@@ -337,20 +350,117 @@ fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
   }
 }
 
-test fn presence_zero_continues_one_is_absent_other_is_unobservable() -> Bool {
-  let continues = match classify_host_file_presence(exit_code: 0, stderr: "") {
+fn path_is_present(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathPresent { file_type: _ } => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
+}
+
+fn path_is_absent(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathAbsent => true HostFilePathPresent { file_type: _ } => false HostFilePathUnreadable { cause: _ } => false }
+}
+
+fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
+  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent { file_type: _ } => false HostFilePathAbsent => false }
+}
+
+// A metadata read that FAILED is the outcome `test -e` could not distinguish from an absence: both
+// were exit 1 with an empty stderr. Here the same failed read reaches three different standings
+// depending on what the containing directory established, and the middle row is the discriminating
+// one: the parent HOLDS the entry, so the read failed for a reason that is not absence -- EACCES on
+// an ancestor, ELOOP, ENOTDIR, EIO -- and it must reach unreadable. A classifier that collapsed the
+// failed read back to absence reds on that row alone; one that merely separated exit 0 from exit 1
+// would pass every row here, which is why the unread cause is held constant across all three.
+test fn a_metadata_read_that_failed_is_absent_only_when_the_parent_lacks_the_entry() -> Bool {
+  let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
+  path_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
+    && path_is_unreadable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
+    && path_is_unreadable(st: classify_host_file_path(
+         reading: unread,
+         parent: EntryPresenceIndeterminate { cause: "listing /etc/needrestart/conf.d failed" },
+       ))
+}
+
+fn settled_is_unobservable(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
+    Absent => false
+    Present { value: s } => standing_is_unobservable(standing: s) && !standing_is_absent(standing: s)
+  }
+}
+
+fn settled_is_absent(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
+    Absent => false
+    Present { value: s } => standing_is_absent(standing: s)
+  }
+}
+
+fn settles_nothing(st: RunnerHostFilePathStanding) -> Bool {
+  match runner_host_file_settled_standing(st: st) {
     Absent => true
     Present { value: _ } => false
   }
-  let absent = match classify_host_file_presence(exit_code: 1, stderr: "") {
-    Present { value: st } => standing_is_absent(standing: st)
+}
+
+// THE BRIEF'S OWN SENTENCE, AT THE STANDING GRAIN: a metadata read that did not happen must reach
+// HostFileUnobservable carrying the failure and must NEVER reach HostFileAbsent. Under `test -e`
+// both of these rows were exit 1 and both became HostFileAbsent, which is the arm that plans a
+// write into a file this module exists to keep root-owned; a classifier that collapses them again
+// reds here. The present arm settles nothing because it continues into the byte comparison.
+test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
+  let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
+  settled_is_unobservable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
+    && settled_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
+    && settles_nothing(st: classify_host_file_path(
+         reading: HostFileMetadataRead { file_type: "regular file" },
+         parent: EntryPresent,
+       ))
+}
+
+// The read decides presence; the parent decides nothing when the read answered. An indeterminate
+// parent beside a successful read is still present, so the join cannot turn a read file unreadable.
+test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool {
+  let read = HostFileMetadataRead { file_type: "regular file" }
+  path_is_present(st: classify_host_file_path(reading: read, parent: EntryPresent))
+    && path_is_present(st: classify_host_file_path(reading: read, parent: EntryAbsent))
+    && path_is_present(st: classify_host_file_path(
+         reading: read,
+         parent: EntryPresenceIndeterminate { cause: "listing refused" },
+       ))
+}
+
+// Exit success is a fact about the CALL. A `stat` that exited zero and printed nothing answered no
+// question, so it is unread -- and unread beside a parent that holds the entry is unreadable, never
+// a nameless kind and never an absence.
+fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
+  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataRead { file_type: _ } => false }
+}
+
+test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
+  reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  \n", stderr: ""))
+    && reading_is_unread(r: classify_host_file_metadata(exit_code: 1, stdout: "", stderr: ""))
+    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "regular file\n", stderr: ""))
+    && match classify_host_file_metadata(exit_code: 0, stdout: " directory \n", stderr: "") {
+         HostFileMetadataRead { file_type: t } => t == "directory"
+         HostFileMetadataUnread { cause: _ } => false
+       }
+}
+
+// INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
+// ones extdeps.tools.stat derives from its cited GNU authority, over the production path of a
+// production desired file -- not a boolean test, and not a literal spelled here. The remote leg
+// itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
+// this is the deepest live route to the new probe: the same function the observer calls, over the
+// same path the population produces. It reds if the probe is respelled as any boolean test.
+test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
+  match teardown_desired() {
     Absent => false
+    Present { value: f } => {
+      let path = f.path as String
+      let sent = runner_host_file_metadata_probe_argv(path: path)
+      sent == argv_words(command: stat_file_type_command(path: path))
+        && sent == ["/usr/bin/stat", "-c", "%F", "--", path]
+        && !any(sent, w => w == "test" || w == "-e")
+    }
   }
-  let unobservable = match classify_host_file_presence(exit_code: 2, stderr: "test: extra argument") {
-    Present { value: st } => standing_is_unobservable(standing: st)
-    Absent => false
-  }
-  continues && absent && unobservable
 }
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
