@@ -35,7 +35,10 @@ import gunbc.systemctl_show_read {
   SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank,
   SystemdPropertyCaptureRefused, systemctl_show_property_read,
 }
+import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
 import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, CellBoundIdentity, ControllerStart, StartAttempt, StartRecovery,
+  StartQuarantineUnattributedResidue, StartRefused, StartBindingRefused, controller_start,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
   ObservedCgroup, ObservedPath, ObservedStop, ObservedTeardown,
@@ -60,7 +63,7 @@ import gunbc.runner_microvm_attempt {
   runner_microvm_attempt_jit_drive_path, runner_microvm_attempt_slice_property,
   runner_microvm_attempt_jail_entry_name, runner_microvm_attempt_jit_drive_entry_name,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_cell_converge { fabric_cell_attempt_root_path, fabric_cell_slice_name }
 
 data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
@@ -795,8 +798,8 @@ fn record_attempt_started(bound: CellBoundAttempt) -> CellReadinessWritten {
 }
 
 // DECLARED FRONTIER (DESIGN 3c). The consumer of everything above is the slot unit's MainPID: one
-// entry that proves the cell, records the attempt, stages and launches, waits for a terminal
-// trigger, and calls settle_and_record_attempt_teardown. It is not in this change, and it cannot
+// entry that calls begin_attempt, stages and launches, waits for a terminal trigger, and calls
+// settle_and_record_attempt_teardown. It is not in this change, and it cannot
 // be: the launch half reaches gunbc.runner_attempt_launch attempt_staging_verdict, which joins THIS
 // attempt's staged JIT device against the same plan's workspace readiness, and that fold lands in
 // gunbc#11677. Consuming it before it lands would fork it.
@@ -809,3 +812,67 @@ fn record_attempt_started(bound: CellBoundAttempt) -> CellReadinessWritten {
 data runner_microvm_lifecycle_realize_entry_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: the microVM slot unit's ExecStart entry, in the change that follows gunbc#11677. TRIGGER: that entry exists, the unit's ExecStart names it, and it reaches the jailer only through gunbc.runner_attempt_launch attempt_staging_verdict. SUFFICIENT FOR deleting this row. NOT satisfied by this module compiling or by the wet witness executing its folds." as NonEmptyStr,
 )
+
+// ── THE START: THE GROUND, THE ADMISSION, AND THE FIRST DURABLE ACT ───────────────────────────
+
+// THE GROUND IS THE HOST'S OWN ANSWER ABOUT PRIOR RESOURCES, AND IT FAILS CLOSED.
+// gunbc.runner_attempt_launch's AttemptGround is what outranks an admitting record: a store that
+// says Ready over a cell whose attempt directory is still present is a store that missed
+// something. So the ground is read the same way the teardown reads it -- a listing of the attempt
+// root that does not name this attempt -- and the UNREADABLE arm answers OCCUPIED. That is the
+// direction that costs a launch rather than a leak: a ground nobody could read is not a clear one,
+// and the controller's response to occupied ground is a quarantine, not an overwrite.
+fn observe_attempt_ground(attempt: MicroVmAttempt) -> AttemptGround {
+  match observe_attempt_resource(subject: attempt_storage_subject(attempt: attempt)).readback {
+    ResourceAbsent => GroundClear
+    ResourcePresent { detail: _ } => GroundOccupied
+    ResourceUnreadable { reason: _ } => GroundOccupied
+  }
+}
+
+// THE CELL AN IDENTITY IS ABOUT IS DERIVED FROM ITS OWN SLOT, never supplied beside it -- the same
+// derivation gunbc.runner_microvm_cell_readiness uses to bind an attempt to a cell, so the
+// admission this asks for and the binding the controller then performs cannot disagree.
+fn attempt_identity_cell(identity: AttemptIdentity) -> CellId {
+  runner_slot_instance_name(slot: identity.attempt.slot) as CellId
+}
+
+// THE FIRST DURABLE ACT IS THE RECORD, AND IT IS THE DECISION'S RECORD RATHER THAN ONE COMPOSED
+// HERE. Two of controller_start's arms carry the write they imply -- the in-flight record for a
+// launch, the unattributed-residue quarantine for occupied ground -- so this performs THAT write.
+// A controller that built its own would be free to record a start the decision refused.
+type AttemptStart
+  = AttemptStarted { bound: CellBoundIdentity, written: CellReadinessWritten }
+  | AttemptStartQuarantined { trigger: TerminalTrigger, written: CellReadinessWritten }
+  | AttemptRecoveryOwed { bound: CellBoundAttempt, trigger: TerminalTrigger }
+  | AttemptStartRefused { start: ControllerStart }
+
+// RECOVERY IS NOT A REFUSAL AND IT WRITES NOTHING. CellRecoveryRequired says the previous
+// incarnation never settled, so what is owed is the TERMINAL path for that attempt -- run to
+// completion, settled, recorded -- before this question may be asked again. Writing anything here
+// would replace the record that says cleanup is owed.
+fn begin_attempt(identity: AttemptIdentity) -> AttemptStart
+  uses net: Network
+{
+  match controller_start(
+    admission: admit_next_incarnation(
+      cell: attempt_identity_cell(identity: identity),
+      allocation_generation: identity.allocation_generation,
+    ),
+    ground: observe_attempt_ground(attempt: identity.attempt),
+    identity: identity,
+  ) {
+    StartAttempt { bound: b, record: r } =>
+      AttemptStarted {
+        bound: b,
+        written: write_cell_readiness_record(root: cell_readiness_store_root, write: r),
+      }
+    StartQuarantineUnattributedResidue { trigger: t, record: r } =>
+      AttemptStartQuarantined {
+        trigger: t,
+        written: write_cell_readiness_record(root: cell_readiness_store_root, write: r),
+      }
+    StartRecovery { bound: b, trigger: t } => AttemptRecoveryOwed { bound: b, trigger: t }
+    refused => AttemptStartRefused { start: refused }
+  }
+}
