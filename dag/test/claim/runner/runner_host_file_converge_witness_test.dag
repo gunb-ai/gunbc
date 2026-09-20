@@ -12,7 +12,7 @@ import extdeps.needrestart {
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
@@ -911,25 +911,41 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 
 // INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
-// the same functions: the subject's retired roster IS the obligation gunbc.runner_width_transition
-// declares for srv1 (an identity join, not a count -- DESIGN 5: a size literal copied from the
-// current tree is a change detector, and review 68841 found it already stale after srv1's target
-// width moved), it is non-empty, it is DISJOINT from the same subject's desired units, its real
-// ControlGroup paths carry systemd's escape, and one admitted argv still covers all of them.
+// the same functions: its retired roster, with the real ControlGroup paths systemd reports for those
+// units, reaches ONE transport-admitted argv covering all of them.
 //
-// The disjointness is the relation the stale 38 was standing in for. That number went wrong
-// precisely because slots 13-15 were still counted as retirees after the width authority made
-// them desired-live, and a non-empty check cannot see that: it catches an empty roster and not
-// an overlapping one, so the next width move could put a desired slot back into the retiree set
-// with the claim still green. From sharp-dove-876's reading of the same defect.
+// WHAT IS NOT ASSERTED HERE, AND WHY (review 69106). The stale count literal 38 was first replaced by
+// `retired == required_retirees_for_host(host: srv1)`, which is f(x) == f(x): the subject's
+// retired_units IS that call, so the conjunct was green by construction and its red was not
+// authorable (DESIGN 4b: a decoration). A test-side disjointness fold over retired and desired was the
+// same defect: both sets derive from gunbc_runner_slots_per_host, on opposite sides of it, so they are
+// disjoint by derivation and no production edit could make that conjunct red. A mutation run that
+// edits one side of such a comparison flips it and proves nothing about production.
+//
+// THE RELATION THE STALE 38 WAS STANDING IN FOR, WITH A RED THAT IS AUTHORABLE IN PRODUCTION. The
+// number went wrong because slots 13-15 were still counted as retirees after the width authority made
+// them desired-live. The wall against that class is production's own refusal: a roster that carries a
+// desired unit is a surplus OUTSIDE the transition's manifest, and transition_population_agreement must
+// report it as exactly that unit. The plant is the top desired slot, which comes from the deploy row's
+// runner_count through desired_runner_slot_members -- a different producer from the transition row --
+// so the two sides are independent. RED: derive the obligation from `gunbc_runner_slots_per_host`
+// instead of `+ 1` in transition_required_retirees (the off-by-one that would count a desired-live
+// slot as a retiree) and the plant is absorbed into the manifest, the fold answers Agrees, and this
+// claim fails. An always-Disagrees fold fails it too, because the unexpected list must name the plant
+// alone and not the retirees beside it.
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
-  let desired = srv1_desired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
+  let top_desired_refused = match srv1_desired().last() {
+    Absent => false
+    Present { value: d } =>
+      match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, [d])) {
+        TransitionPopulationAgrees => false
+        TransitionPopulationDisagrees { unexpected: u } => map(u, x => x as String) == [d as String]
+      }
+  }
   length(retired) > 0
-    && retired == required_retirees_for_host(host: operator_host_srv1)
-    && length(desired) > 0
-    && all(retired, u => !any(desired, d => (d as String) == (u as String)))
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
+    && top_desired_refused
 }
