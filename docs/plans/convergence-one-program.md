@@ -105,6 +105,24 @@ permanently green check is worse than none, because it gets cited as coverage.
 so a changed executable digest, tree revision, dirty tree, unit document, running release or root
 owner all left it unchanged. Caught by an external review after two approvals, including mine.
 
+## A first-apply risk C8 must clear before it touches srv1
+
+C7 models the provider-state root as an ensured directory, and the emitted command is
+`install -d -m 0755 -o <service user> -g <service user> <codex home>`. **`install -d` chmods and
+chowns a directory that already exists.** The mode is a constant of the ensured-directory arm,
+not a fact read from the host, and nothing in the model refuses a widening.
+
+So if srv1's provider-state root is currently `0700` — which is what a provider CLI creating its
+own state directory under a umask would plausibly leave — **the first real apply silently widens a
+credential directory to world-readable**, and the same command re-owns it if the live owner
+differs. This was never verified against a host, because no wet effects were permitted; it is an
+inference from reading both code paths, and its author flagged it rather than letting it pass as
+settled.
+
+**Before C8's first apply: stat the live directory** and compare its mode and owner against what
+the ensured step emits. If the observed mode is tighter, the ensured-directory arm needs a mode
+carried per subject — the `ManagedDirectory` derivation — **before** anything applies, not after.
+
 ## Process facts a later program will need
 
 - **The required CI check builds the compiler and runs no witnesses** (#11742), and the
@@ -123,5 +141,12 @@ owner all left it unchanged. Caught by an external review after two approvals, i
 - **A workflow run's branch column is not the ref it built.** `heal.yml` checks out an input SHA,
   so the branch column names where the dispatch fired. Reading it as the built ref produced a
   false "main is red" alarm and a dispatched repair lane against innocent substrate files.
+- **`git merge origin/main` in a session worktree is dangerous and looks fine.** The worktree is a
+  shallow clone, so the merge base is wrong. On one lane it reported two trivially additive
+  conflicts and produced a commit that reverted 99 files and 6,886 lines of other lanes' work —
+  including `witnesses.yml` back to a pre-#11742 revision, so CI then ran an old job roster and
+  went **green on a revision that had reverted main**. The safe recipe: `reset --hard origin/main`,
+  check out your own files, then assert that every deleted line in `git diff origin/main` is one
+  you wrote.
 - **Merge order is not a preference.** Out-of-order merges broke sibling cuts four times, and none
   of it was a defect in the changes.
