@@ -693,6 +693,83 @@ fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
+// SHELL→DAG MIGRATION BATCH 1 execution contracts. The ten shell-dag-* nodes were authored
+// without contracts, so launch admission refused them execution_contract_missing; these ten rows
+// bind each one at authoring time. Each names a worker-authored witness file that does NOT exist
+// yet — the dispatched worker authors it under its node's M0. Verification runs only after the
+// worker commits, when the file exists; until then an unauthored witness fails verification as
+// oracle-missing, which is the truthful outcome for work not yet done.
+
+fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag" as FilePath,
+    function: "cron_entry_line_builder_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_floor_peak_calibration_rows_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness_test.dag" as FilePath,
+    function: "floor_peak_calibration_rows_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness_test.dag" as FilePath,
+    function: "ci_fmt_gate_line_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_ci_deploy_invoke_prelude_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness_test.dag" as FilePath,
+    function: "ci_deploy_invoke_prelude_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_ci_heal_regen_invoke_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness_test.dag" as FilePath,
+    function: "ci_heal_regen_invoke_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_compile_pool_slice_install_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness_test.dag" as FilePath,
+    function: "compile_pool_slice_install_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_slot_population_census_read_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_slot_population_census_read_witness_test.dag" as FilePath,
+    function: "slot_population_census_read_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_codex_app_server_trip_script_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness_test.dag" as FilePath,
+    function: "codex_app_server_trip_script_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_live_deploy_install_owned_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness_test.dag" as FilePath,
+    function: "live_deploy_install_owned_acceptance_holds" as NonEmptyStr,
+  )
+}
+
+fn shell_dag_live_deploy_restart_tailscale_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness_test.dag" as FilePath,
+    function: "live_deploy_restart_tailscale_acceptance_holds" as NonEmptyStr,
+  )
+}
+
 // THE RETENTION-KERNEL CLOSING DISCRIMINATOR. REBOUND 2026-08-11 (gunbc#8146, review 51209) from
 // legacy_test_behavior_unclassified_frontier_is_zero, which bound this node to the BEHAVIOR-grain
 // disposition graph. That model is retired: the cutover inverted the authority from classifying
@@ -2278,7 +2355,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     )
     ),
 
-    active_small(
+    with_execution(
+      e: shell_dag_cron_entry_line_builder_execution_contract(),
+      rn: active_small(
       identity: "rn_K7P3X9Q2MN8R6WTH5JVD4MCZ1G",
       id: "shell-dag-cron-entry-line-builder",
       owner: "shell",
@@ -2287,13 +2366,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Build the cron entry line from typed intent, not string concat",
         boundary: "gunbc.tools.cron_tag build_cron_entry_line routes its fields (schedule, command, tag) through a typed cron-entry intent realized by the bash-grammar rows of v2.workflow.orchestration_bash_emit_support, never by concatenation. Cron stays the foreign executor and the emitted line stays a crontab line — the change is who decides its bytes.",
         displaced_cost: "A crontab line assembled by concat in decision code cannot be checked before cron runs it — a quoting or metacharacter defect detonates inside the scheduler, not at the refusal — and the entry shape cannot be reused by any other scheduler-facing surface.",
-        first_slice: "M0: plant the acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag (red today). M1: model the typed entry intent over the existing grammar rows, following v2.workflow.orchestration_bash_emit_support. M2: rebind build_cron_entry_line onto the intent and DELETE the concat — not stubbed to return an empty string. M3: witness green by execution and the node binds its gunbc_claim_execution_contract.",
+        first_slice: "M0: plant the acceptance witness dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag (red today) with acceptance fn cron_entry_line_builder_acceptance_holds that conjoins the clause witnesses. M1: model the typed entry intent over the existing grammar rows, following v2.workflow.orchestration_bash_emit_support. M2: rebind build_cron_entry_line onto the intent and DELETE the concat — not stubbed to return an empty string. M3: witness green by execution.",
         red_control: "The rendered entry line contains no shell control word (set -e, ||, &&, ;, 2>/dev/null); a typed-form control asserts the entry is built from declared schedule/command/tag fields; a malformed field refuses before any line is produced.",
         out_of_scope: "Cron remains the executor and a crontab line remains genuinely shell-shaped output. A posix_sh_program_command wrapping the old concatenated text is not a described operation; an empty-string stub is not a deletion.",
         handback: "The described builder, the deleted concat, and the witness green by execution on the named test process."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_floor_peak_calibration_rows_execution_contract(),
+      rn: active_small(
       identity: "rn_Q8F2R5L9BN4X7WPK3HJD6MCZTG",
       id: "shell-dag-floor-peak-calibration-rows",
       owner: "shell",
@@ -2302,13 +2384,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Turn the floor-peak calibration echo rows into typed filesystem observations",
         boundary: "The ci_floor_peak_*_command rows of v2.workflow.ci_floor_peak_emit — the echo/sed/2>/dev/null rows the module's own Phase-2 note names — are replaced by typed filesystem observation leaves; the consumers of those rows read typed values, never rendered shell.",
         displaced_cost: "Each calibration row is shell text authored inside a decision fold and handed to the runner as an opaque string: a bad path or a metacharacter is invisible until the runner executes it, and 2>/dev/null swallows exactly the absence the calibration needs to refuse on.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness_test.dag (red today). M1: model the calibration readings as typed filesystem observation leaves per the module's own Phase-2 declaration. M2: rebind every ci_floor_peak_*_command row and its consumers to the typed leaves and delete the echo-row text. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness_test.dag (red today) with acceptance fn floor_peak_calibration_rows_acceptance_holds that conjoins the clause witnesses. M1: model the calibration readings as typed filesystem observation leaves per the module's own Phase-2 declaration. M2: rebind every ci_floor_peak_*_command row and its consumers to the typed leaves and delete the echo-row text. M3: witness green by execution.",
         red_control: "No rendered calibration surface carries set -e, ||, &&, ; or 2>/dev/null; a positive control asserts the typed observation leaves resolve on a planted fixture; a missing observed file refuses with a typed cause instead of an empty reading.",
         out_of_scope: "The runner-facing workflow may still receive shell for genuinely foreign steps; a posix_sh_program_command wrapping the old rows is not a described operation.",
         handback: "Typed observation leaves in place of the echo rows, consumers rebound, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_ci_fmt_gate_line_execution_contract(),
+      rn: active_small(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
       id: "shell-dag-ci-fmt-gate-line",
       owner: "shell",
@@ -2317,13 +2402,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Render the fmt gate line from typed cargo.Build.Fmt",
         boundary: "gunbc.ci_spec ci_fmt_gate_line stops spelling `cargo fmt --all --check` as a string and is realized by the typed extdeps.rust.cargo_build cargo.Build.Fmt operation; ci_fmt_gate_note's dissolve-on names exactly this migration.",
         displaced_cost: "The fmt gate is a check we run before every merge, and its command exists only as a string inside ci_spec: a drift between the string and the typed cargo model is invisible until the gate runs the wrong thing or the model gains a surface the string can't express.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness_test.dag (red today). M1: confirm extdeps.rust.cargo_build cargo.Build.Fmt covers the --all --check shape (extend the extdeps row if genuinely missing, never fork it). M2: rebind ci_fmt_gate_line to the typed operation and retire ci_fmt_gate_note with it. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness_test.dag (red today) with acceptance fn ci_fmt_gate_line_acceptance_holds that conjoins the clause witnesses. M1: confirm extdeps.rust.cargo_build cargo.Build.Fmt covers the --all --check shape (extend the extdeps row if genuinely missing, never fork it). M2: rebind ci_fmt_gate_line to the typed operation and retire ci_fmt_gate_note with it. M3: witness green by execution.",
         red_control: "The rendered gate line contains no shell control word; a positive control asserts the typed cargo.Build.Fmt form renders the same check the gate has always run; an argument the typed operation cannot express refuses rather than falling back to concat.",
         out_of_scope: "GitHub Actions still receives a shell line — the executor is foreign; a posix_sh_program_command around the old string is not a described operation.",
         handback: "The gate line derived from the typed cargo model, the note dissolved, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_ci_deploy_invoke_prelude_execution_contract(),
+      rn: active_small(
       identity: "rn_X9N4W7P3KQ6R2TF8JHL5MZCBD",
       id: "shell-dag-ci-deploy-invoke-prelude",
       owner: "shell",
@@ -2332,13 +2420,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Replace the deploy thin-invoke `ROOT=$(git rev-parse || pwd)` with typed git.Core.ShowToplevel",
         boundary: "gunbc.ci_spec gunbc_ci_deploy_invoke stops deriving its ROOT prelude with ROOT=$(git rev-parse --show-toplevel || pwd) and reads the toplevel through typed git.Core.ShowToplevel with a nonzero-refuse arm. The `|| pwd` is an absorbing fallback (DESIGN §5: degradation disguised as fail-open) and is deleted, not preserved.",
         displaced_cost: "When git rev-parse fails, the fallback silently substitutes the working directory as the repo root — every later deploy step then acts on the wrong tree with no diagnostic, the exact absorbing-fallback failure: nothing is missed, nothing is reported, the wrong thing deploys.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness_test.dag (red today). M1: bind the toplevel read to git.Core.ShowToplevel with a typed refusal on nonzero exit. M2: rebind gunbc_ci_deploy_invoke and delete the fallback spelling. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness_test.dag (red today) with acceptance fn ci_deploy_invoke_prelude_acceptance_holds that conjoins the clause witnesses. M1: bind the toplevel read to git.Core.ShowToplevel with a typed refusal on nonzero exit. M2: rebind gunbc_ci_deploy_invoke and delete the fallback spelling. M3: witness green by execution.",
         red_control: "The rendered invoke carries no || fallback and no shell control word; a positive control asserts the typed ShowToplevel read; a nonzero git exit refuses with a typed cause instead of substituting pwd.",
         out_of_scope: "The rest of the deploy thin-invoke stays as is; a posix_sh_program_command wrapping the old prelude is not a described operation.",
         handback: "The typed toplevel read, the deleted fallback, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_ci_heal_regen_invoke_execution_contract(),
+      rn: active_small(
       identity: "rn_P2K8X5W9RQ3N7TF4JHL6MZCDB",
       id: "shell-dag-ci-heal-regen-invoke",
       owner: "shell",
@@ -2347,13 +2438,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Replace the heal-regen thin-invoke prelude with typed git.Core.ShowToplevel",
         boundary: "gunbc.ci_spec gunbc_ci_heal_regen_invoke takes the same migration as the deploy thin-invoke: typed git.Core.ShowToplevel with a nonzero-refuse arm in place of ROOT=$(git rev-parse || pwd), the absorbing fallback deleted.",
         displaced_cost: "Identical defect to the deploy prelude: a failed toplevel read silently becomes the working directory, and a heal-regen acting on the wrong root regenerates against the wrong tree.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness_test.dag (red today). M1: consume the SAME typed ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude — never a second spelling. M2: rebind gunbc_ci_heal_regen_invoke and delete the fallback. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness_test.dag (red today) with acceptance fn ci_heal_regen_invoke_acceptance_holds that conjoins the clause witnesses. M1: consume the SAME typed ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude — never a second spelling. M2: rebind gunbc_ci_heal_regen_invoke and delete the fallback. M3: witness green by execution.",
         red_control: "No || fallback and no shell control word in the rendered invoke; the typed-form control asserts the shared ShowToplevel authority; nonzero git exit refuses.",
         out_of_scope: "Not a duplicate of the typed authority — if shell-dag-ci-deploy-invoke-prelude has landed it, this node consumes it. STAGGERING: shares dag/gunbc/ci/ci_spec.dag with shell-dag-ci-deploy-invoke-prelude and must not be dispatched concurrently with it.",
         handback: "The typed toplevel read, the deleted fallback, witness green by execution."
       )
+    )
     ),
-    active(
+    with_execution(
+      e: shell_dag_compile_pool_slice_install_execution_contract(),
+      rn: active(
       identity: "rn_R6Q3X8K2WP9N5TF7JHL4MZCBD",
       id: "shell-dag-compile-pool-slice-install",
       owner: "shell",
@@ -2362,13 +2456,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Realize the compile-pool slice install as a typed systemd unit-file install",
         boundary: "gunbc.host.host_effect_realize compile_pool_slice_install_body, stage_directory_line and stage_trap_line stop assembling install/staging shell text; the unit file lands through a typed systemd unit-file install and the staging through typed argv. The retained site and the trigger the module already declares beside them name the same migration.",
         displaced_cost: "An install script concatenated inside the effect-realization fold cannot be checked before it runs on the host, and a trap line authored as text re-implements cleanup semantics the systemd unit already owns — two authorities for one machine state.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness_test.dag (red today). M1: model the typed systemd unit-file install and typed staging argv. M2: rebind the three construction sites, retire the retained site per the module's own declared trigger, and delete the shell text assembly. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness_test.dag (red today) with acceptance fn compile_pool_slice_install_acceptance_holds that conjoins the clause witnesses. M1: model the typed systemd unit-file install and typed staging argv. M2: rebind the three construction sites, retire the retained site per the module's own declared trigger, and delete the shell text assembly. M3: witness green by execution.",
         red_control: "No set -e, ||, &&, ; or 2>/dev/null in the rendered install surface; a positive control asserts the typed unit-file install and staging argv forms; a staging path the typed argv cannot express refuses.",
         out_of_scope: "systemd remains the executor and a unit file remains genuinely unit-file-shaped; a posix_sh_program_command around the old script is not a described operation; the retained site's removal happens only under its declared trigger.",
         handback: "The typed install and staging realizations, the shell assembly deleted, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_slot_population_census_read_execution_contract(),
+      rn: active_small(
       identity: "rn_L5T9X3K8WQ2N6RF7JHP4MZCBD",
       id: "shell-dag-slot-population-census-read",
       owner: "shell",
@@ -2377,13 +2474,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Read the slot-population census through typed argv, not a re-joined shell string",
         boundary: "gunbc.host.host_effect_realize observe_slot_population_over_host_effect_transport builds typed argv and then throws the typing away by re-joining it via shell_command_text_of_argv; it instead executes the typed-argv read directly, following the same file's own build_cache_typed_argv_read precedent.",
         displaced_cost: "The argv is already typed at the point of construction — re-joining it into one shell string discards exactly the checking the typing bought, so a quoting defect in the join re-opens the injection surface the argv form exists to close.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_slot_population_census_read_witness_test.dag (red today). M1: confirm build_cache_typed_argv_read's transport shape fits the census read. M2: rebind observe_slot_population_over_host_effect_transport onto the typed-argv read and delete the shell_command_text_of_argv call. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_slot_population_census_read_witness_test.dag (red today) with acceptance fn slot_population_census_read_acceptance_holds that conjoins the clause witnesses. M1: confirm build_cache_typed_argv_read's transport shape fits the census read. M2: rebind observe_slot_population_over_host_effect_transport onto the typed-argv read and delete the shell_command_text_of_argv call. M3: witness green by execution.",
         red_control: "The census read renders no shell text at all — the no-control-word assertion is vacuous only if the join still exists, so the witness asserts the argv form directly; the positive control asserts the typed read over a planted host fixture.",
         out_of_scope: "The transport itself is unchanged; a posix_sh_program_command wrapping the re-joined text is not a described operation.",
         handback: "The typed-argv census read, the deleted re-join, witness green by execution."
       )
+    )
     ),
-    active(
+    with_execution(
+      e: shell_dag_codex_app_server_trip_script_execution_contract(),
+      rn: active(
       identity: "rn_N8X5T2K9WQ3R6PF7JHL4MZCBD",
       id: "shell-dag-codex-app-server-trip-script",
       owner: "shell",
@@ -2392,13 +2492,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Realize the codex app-server trip as a typed ArgvCommand with a stdin payload",
         boundary: "gunbc.codex_app_server_press codex_press_account_trip_script and split_gunbc_stdio_capture — retained_foreign over shell.Exec.Run with a sentinel-muxed stdio capture, scaffold per the module's own note — are replaced by a typed ArgvCommand carrying the payload on stdin; the sentinel mux is deleted with the scaffold.",
         displaced_cost: "The sentinel mux exists only to multiplex two streams through shell text; it cannot be checked before it runs, its sentinel can collide with real output, and the scaffold note already names the typed form that dissolves it.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness_test.dag (red today). M1: model the typed ArgvCommand with the stdin payload and separate stream capture. M2: rebind the trip script, delete codex_press_account_trip_script and split_gunbc_stdio_capture, and retire the scaffold row per its own trigger. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness_test.dag (red today) with acceptance fn codex_app_server_trip_script_acceptance_holds that conjoins the clause witnesses. M1: model the typed ArgvCommand with the stdin payload and separate stream capture. M2: rebind the trip script, delete codex_press_account_trip_script and split_gunbc_stdio_capture, and retire the scaffold row per its own trigger. M3: witness green by execution.",
         red_control: "No shell control word and no sentinel string in the rendered trip surface; the positive control asserts the typed ArgvCommand carries the payload on stdin; a capture that cannot separate streams refuses rather than muxing.",
         out_of_scope: "The codex app-server is a foreign executor and the invocation remains an argv it accepts; a posix_sh_program_command wrapping the old script is not a described operation.",
         handback: "The typed ArgvCommand realization, the sentinel mux deleted, the scaffold retired, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_live_deploy_install_owned_execution_contract(),
+      rn: active_small(
       identity: "rn_F4X9T6K2WQ8N3RP7JHL5MZCBD",
       id: "shell-dag-live-deploy-install-owned",
       owner: "shell",
@@ -2407,13 +2510,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Realize live_deploy's install-owned leaves as typed fs writes with an ownership effect",
         boundary: "gunbc.live_deploy.emit install_d_owned_command and its install_directory_owned_command callers stop rendering install/chown shell text; the file lands through a typed filesystem write and the ownership through a typed ownership effect.",
         displaced_cost: "An install -d -o line authored as text carries a permission decision — who owns what on a production host — that no type can check, so a transposed owner or mode detonates on the host, not at the fold.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness_test.dag (red today). M1: model the typed fs write plus ownership effect. M2: rebind install_d_owned_command and every install_directory_owned_command caller, deleting the rendered text. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness_test.dag (red today) with acceptance fn live_deploy_install_owned_acceptance_holds that conjoins the clause witnesses. M1: model the typed fs write plus ownership effect. M2: rebind install_d_owned_command and every install_directory_owned_command caller, deleting the rendered text. M3: witness green by execution.",
         red_control: "No shell control word in the rendered install surface; the positive control asserts the typed write and ownership effect over a planted deploy fixture; an ownership the typed effect cannot express refuses.",
         out_of_scope: "The host still receives real filesystem effects; a posix_sh_program_command around the old install line is not a described operation. STAGGERING: shares dag/gunbc/live_deploy/emit.dag with shell-dag-live-deploy-restart-tailscale and must not be dispatched concurrently with it.",
         handback: "The typed write and ownership realizations, the install text deleted, witness green by execution."
       )
+    )
     ),
-    active_small(
+    with_execution(
+      e: shell_dag_live_deploy_restart_tailscale_execution_contract(),
+      rn: active_small(
       identity: "rn_H7X2T9K5WQ8N3RF6JLP4MZCBD",
       id: "shell-dag-live-deploy-restart-tailscale",
       owner: "shell",
@@ -2422,11 +2528,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Realize live_deploy's restart and tailscale steps as typed privileged argv",
         boundary: "gunbc.live_deploy.emit tree_sync_restart_step_with_diagnosis and tailscale_serve_apply_step stop rendering privileged shell through shell_privileged_command_text_of_argv and execute the same file's own sudo_elevate_argv pattern as typed privileged argv.",
         displaced_cost: "Both steps already build typed argv and then re-join it into privileged shell text, discarding the typing at the last step — the same defect as the census read, one privilege level higher.",
-        first_slice: "M0: plant dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness_test.dag (red today). M1: confirm sudo_elevate_argv covers the restart and tailscale argv shapes. M2: rebind both steps to typed privileged argv and delete the shell_privileged_command_text_of_argv calls. M3: witness green and the contract bound.",
+        first_slice: "M0: plant dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness_test.dag (red today) with acceptance fn live_deploy_restart_tailscale_acceptance_holds that conjoins the clause witnesses. M1: confirm sudo_elevate_argv covers the restart and tailscale argv shapes. M2: rebind both steps to typed privileged argv and delete the shell_privileged_command_text_of_argv calls. M3: witness green by execution.",
         red_control: "No shell control word in the rendered step surface; the positive control asserts the typed privileged argv for both steps over planted fixtures; an elevation the typed form cannot express refuses.",
         out_of_scope: "sudo remains the elevation mechanism and the services remain the executors; a posix_sh_program_command around the old text is not a described operation. STAGGERING: shares dag/gunbc/live_deploy/emit.dag with shell-dag-live-deploy-install-owned and must not be dispatched concurrently with it.",
         handback: "The typed privileged argv realizations, the rendered text deleted, witness green by execution."
       )
+    )
     ),
 
     active_large(
