@@ -17,11 +17,11 @@ data served_slice_charge_authority: Disposition = Terminal {
 // ── THE SLICES WERE UNCHARGED, AND THAT IS A REAL HOLE RATHER THAN A TIDINESS GAP ────────────
 // gunbc.fleet_host_budget host_allocation_tree charges the runner pool, the session pool, the
 // compile pool, the fabric control plane, a fixed overhead and headroom against a host's usable
-// RAM, and concludes whether the host is oversubscribed. The roadmap deployment's slice -- a
-// declared 16 GiB MemoryMax that systemd will actually let the serve, belt, publication and
-// convergence units consume -- appeared in none of those terms. So the conservation verdict was
-// answered for a host on which 16 GiB of allowance had been written by a different lane, and the
-// sum could conserve while the machine could not.
+// RAM, and concludes whether the host is oversubscribed. The roadmap deployment's slice -- the
+// MemoryMax at gunbc.live_deploy.slice_bounds live_deploy_slice_memory_max, which systemd will
+// actually let the serve, belt, publication and convergence units consume -- appeared in none of
+// those terms. So the conservation verdict was answered for a host on which that allowance had
+// already been written by a different lane, and the sum could conserve while the machine could not.
 //
 // THE SPLIT MAKES IT WORSE BEFORE IT MAKES IT BETTER, which is exactly why the charge lands with
 // it: a second served process is a second slice and a second allowance, and adding an uncharged
@@ -55,7 +55,7 @@ type ServedDeploymentPlacement
 
 // THE PLACEMENT IS srv1 AND IT IS A LIVE ROW, NOT A PLACEHOLDER. Unlike the fabric control plane,
 // which is genuinely deployed nowhere, this deployment IS running: gunbc-roadmap.service has been
-// serving on srv1 continuously, under the 16 GiB slice this charge accounts for. Writing Unplaced
+// serving on srv1 continuously, under the slice whose bound this charge accounts for. Writing Unplaced
 // here to avoid disturbing the conservation arithmetic would author a false row about a machine
 // whose memory is demonstrably committed -- the exact inversion of the reasoning that keeps the
 // fabric row honest at Unplaced.
@@ -63,12 +63,26 @@ data served_deployment_placement: ServedDeploymentPlacement = ServedDeploymentPi
 
 // THE ALLOWANCE IS THE DECLARED CAP, NOT THE MEASURED RESIDENT, and the difference is the whole
 // point of charging it. A budget asks what a host may be REQUIRED to provide, and what systemd will
-// let these units hold is MemoryMax -- 16 GiB for the roadmap deployment slice plus 6 GiB for the
-// broker slice. Charging measured residents instead would charge what the processes happen to use
+// let these units hold is MemoryMax: live_deploy_slice_memory_max for the roadmap deployment slice
+// plus approval_broker_slice_memory_max for the broker slice, both from
+// gunbc.live_deploy.slice_bounds and both summed by served_deployment_slice_allowance below.
+//
+// THE SYMBOLS ARE NAMED HERE BECAUSE THE NUMBERS WERE WRONG WHEN THIS LANDED (review 69160). This
+// paragraph read "16 GiB for the roadmap deployment slice plus 6 GiB for the broker slice" while
+// live_deploy_slice_memory_max was already 26 GiB, so the note asserted 22 GiB against a charge
+// this module computes as 32 GiB -- in the one module whose entire job is to say how much of srv1
+// has been committed, where a reader reconciling the conservation verdict would have been ten
+// gibibytes out. DESIGN section 6 names the instrument rather than transcribing its output for
+// exactly this reason, and the transcription here rotted BEFORE IT LANDED: the bound was raised in
+// the same PR that wrote the sentence. Naming the two symbols cannot drift from them.
+//
+// Charging measured residents instead would charge what the processes happen to use
 // today and would conserve on a host that cannot survive them using what they were permitted to --
 // and the roadmap deployment is the receipt for that: its serve process sat near 3.46 GB when the
 // bound was first written and was OOM-killed at a 16 GiB bound on 2026-09-18 with an 8.1 GB
-// resident peak against 9.6 GB of swap. A budget charging the smaller number would have called that
+// resident peak against 9.6 GB of swap. THAT 16 GiB IS HISTORICAL AND CORRECT AS WRITTEN -- it is
+// the bound in force at the kill, which is why the bound was raised afterwards; it is not a claim
+// about what the slice holds today. A budget charging the smaller number would have called that
 // host conservative right up to the kill.
 //
 // MemoryHigh IS NOT CHARGED, deliberately: High throttles and Max kills, so High is a pressure
