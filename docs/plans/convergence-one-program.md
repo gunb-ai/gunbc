@@ -41,6 +41,18 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 `fleet-converge mode=mtcollins1_boot`: if that mode does need the fleet key, it fails at the
 point of use, and discovering that on main is strictly worse than discovering it before.
 
+**C9b's verifier has never run against the live surface.** All fifteen witnesses supply an
+observation record; none executes the real mint, which needs the fleet-converge runner, the
+federated principal and the live App. Three shapes are therefore *readings* of upstream rather than
+observations: that the Secret Manager response carries the resolved version in its name field, that
+`curl -D` writes a status line whose second word is the code, and that the mint step's refusal arms
+leave their record lines before exiting. **The first dispatch of `app_key_version_verify` is the
+inhabitance claim for that whole cut**, and it is cheap — read-only, one installation-token mint, no
+mutation. If it refuses with an absent mint observation on a version that plainly exists, suspect
+the record wire before the mint. Its actuation half (add-version, disable-prior) is blocked on
+`gunbc.github_actions_wif` being absent from main: on a runner there is no federated identity for a
+Secret Manager write, so the only honest route today is an operator workstation.
+
 ## Still held, and on what
 
 - **C8 — wet apply.** Held until three proofs close: temporal order (control 6), Baseline vs
@@ -65,11 +77,31 @@ point of use, and discovering that on main is strictly worse than discovering it
 
 - **C5's poll Ready-exit** is recorded unproven. It closes when a fixture can supply `Ready`
   into the poll outcome without materializing the live site.
-- **The org-admin credential admission surface** (`admit_org_admin_credential` and its capability
-  model) has had no production consumer since the 2026-09-05 supersession. Its census concluded
-  DELETE: obligations 1–8 are met or dissolved by the live path, and the App-token migration
-  **raised** the rung — a serial mint where each link exits on failure is construction where the
-  dead surface had validation. The deletion was dispatched and not finished.
+- **The org-admin credential admission surface** was censused and the answer is DELETE, but the
+  deletion was never written: that lane produced analysis only and has **no PR**. Its findings
+  exist nowhere else, so they are here.
+  - Obligations 1–8 are met or dissolved by the live App-token path, and two carry the argument.
+    **Genealogy is enforced by construction**: the mint is serial and each link exits on failure,
+    so a token cannot exist with an incomplete genealogy — deleting a rung-2 validation that a
+    rung-4 construction replaced. **Capability sufficiency is enforced better**: an unconditional
+    probe that refuses on the real response proves more than a declared capability list, which is
+    exactly why the dead model carried `CredentialOperationProbeRequired`.
+  - **The sharpest fact in the census**: `ci_spec`'s own annotation says the interim PAT step *"was
+    never taken, and it was never necessary."* So the whole `SecretMaterial` surface — custody,
+    genealogy, rotation contract, continuity due-dates — modelled the lifecycle of a credential
+    **that was never minted at all**. Not superseded; never inhabited. That turns the deletion from
+    a cleanup into evidence about how the model got there.
+  - **The delete set is grep-verified, not refusal-verified.** Under §3 the deletion *is* the
+    census, so treat the set as a hypothesis and let the compiler refuse. Six declarations are
+    already dangling on main today with no consumer at all, including the witness.
+  - **Keep** `org_admin_app_key_unreadable_message`, `org_admin_installation_token_refused_message`
+    and the two arms they name: `ci_spec`'s prelude renders them and a witness checks it. They are
+    a declared frontier with a stated trigger, not dead code, and a dead-code sweep would wrongly
+    take them. Do not touch `extdeps.github.org_admin_auth` — faithful upstream modeling with four
+    live importers.
+  - **Open, for the operator**: `docs/plans/org-admin-credential-acquisition.md` is the prose home
+    of this model. Deleting it orphans two live annotations that cite it; keeping it leaves a plan
+    document for a credential that was never minted.
 - **A read-write-re-read fold is unfalsifiable under the current replay harness**, and this is a
   frame-level gap rather than a defect in any subject. REST replay keys a fixture by exact
   invocation, and the first read and the re-read of such a fold are the *same* invocation — same
@@ -167,5 +199,20 @@ only then declare the outcome.
   went **green on a revision that had reverted main**. The safe recipe: `reset --hard origin/main`,
   check out your own files, then assert that every deleted line in `git diff origin/main` is one
   you wrote.
+- **A session worktree is a shallow clone, and git lies about it confidently.** Two lanes hit this
+  with different symptoms: one was told it was 231 commits *ahead* of main and not an ancestor
+  (truth after `git fetch --deepen=200`: 0 ahead, 26 behind, ancestor yes), the other had a merge
+  refuse with *unrelated histories* while GitHub's compare API reported eleven ahead and four
+  behind. It also re-shallows, so the false readings come back. Run
+  `git rev-parse --is-shallow-repository` before believing any ancestor or count answer — a missing
+  merge base here is a fetch-depth artifact, never a force-pushed main.
+- **Do not revert main's generated-artifact drift out of your own PR.** The auto-heal bot pushes
+  exactly that regeneration back onto your branch, and its commit **resets the approval tally**. The
+  only real choice is whose commit carries the bytes, and the bot's is better because it is
+  attributable.
+- **`extdeps.time.rfc3339` models no arithmetic and no parse**, only a conditional lexical
+  comparator. So a period-shaped deadline (`create_time + N days`) is not expressible, which is why
+  C9b's rotation contract carries an absolute `rotate_by` that a completed rotation must move
+  forward by hand. A period first owes rfc3339 parse and arithmetic.
 - **Merge order is not a preference.** Out-of-order merges broke sibling cuts four times, and none
   of it was a defect in the changes.
