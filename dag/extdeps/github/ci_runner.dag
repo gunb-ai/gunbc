@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.shell { ShellOutcome }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,12 +42,21 @@ data organization_self_hosted_runner_get_citation: ExternalAuthority = ExternalA
 // composed by the caller from org_self_hosted_runners_first_page_target, and every later one is the
 // rel="next" target the authority itself returned. Composing page N client-side would be the
 // offset protocol, which the cited pagination page does not promise to be the one it continues by.
+//
+// outcome IS THE TRANSPORT'S ANSWER TO WHETHER gh RAN AT ALL (extdeps.transports.shell ShellOutcome).
+// Declaring it is what lets a gh that is absent, or that disappears between two pages of one walk,
+// reach the caller as ShellSpawnRefused { program, cause } instead of aborting the evaluation with
+// no receipt; on ShellSpawnRefused the other three fields are absent, not fabricated, so a reader
+// matches outcome before it reads them. An executor prerequisite observed before the read
+// (gunbc.host_cli_dependency) is not this fact: it is a reading taken earlier, not the result of the
+// spawn that later failed.
 service github.CliOrgSelfHostedRunners {
   operation ListOrgRunnersPage {
     input {
       target: NonEmptyStr
     }
     output {
+      outcome: ShellOutcome
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
@@ -63,6 +73,7 @@ service github.CliOrgSelfHostedRunners {
       runner_id: Int
     }
     output {
+      outcome: ShellOutcome
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
