@@ -59,7 +59,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_toolchain_step,
   witness_floor_build_step,
   witness_floor_required_bins,
-  witness_floor_run_script,
+  required_lane_run_script,
   witness_floor_precondition,
   witness_toolchain_homes_isolated_guard_step,
   witness_step_status_guard,
@@ -71,6 +71,7 @@ import gunbc.witness_floor_workflow {
   required_floor_cross_claim_demand_path,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
+import gunbc.fabric_witness_run { witnesses_lane_run_command }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
@@ -348,13 +349,23 @@ fn compiler_gate_floor_checkout_step() -> Step {
   }
 }
 
-// The floor's own step carries continue-on-error so a separate aggregate could adjudicate its
-// receipt; here a refused claim refuses the lane.
+// A REFUSED FLOOR REFUSES THIS LANE, AND THE COMMAND IS WHAT CARRIES THAT. The witness floor
+// workflow ran the fold with `--measurement-receipt`, under which claim_executor writes every
+// blocker to the receipt and returns 0 BY DESIGN -- the measure/seal split -- because a separate
+// aggregate job adjudicated the receipt. This lane has no adjudicating job: the aggregate reads job
+// conclusions only. Emitting the receipt-bearing command here therefore made the floor job green over
+// `verdict=FloorRefused` (measured on #11647, job 106052312074: `required-ci: FAILED PHASE floor`,
+// step success). The lane runs the plain lane command, under which a phase failure is the process
+// exit; no receipt is written because nothing in this workflow reads one.
+fn compiler_gate_floor_command_script() -> String {
+  required_lane_run_script(command: witnesses_lane_run_command())
+}
+
 fn compiler_gate_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "Nominal witnesses (one prepared subject, one fold)" },
     id: Present { value: "required_ci_measure" },
-    run: concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n"),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_floor_command_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -558,7 +569,7 @@ fn compiler_gate_floor_capability_closure_holds() -> Bool {
 }
 
 fn compiler_gate_floor_scripts_are_renderable() -> Bool {
-  wrap_command_is_renderable(command: witness_floor_run_script())
+  wrap_command_is_renderable(command: compiler_gate_floor_command_script())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
 }
 
