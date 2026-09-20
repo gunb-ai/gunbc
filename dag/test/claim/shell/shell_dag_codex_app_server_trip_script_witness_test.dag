@@ -1,0 +1,76 @@
+module test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test
+
+import std.types { Bool, String, List, FilePath }
+import gunbc.codex_app_server_press { codex_press_account_trip_script, codex_app_server_initialize_request_line }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-codex-app-server-trip-script, RED BY DESIGN UNTIL THE NODE
+// IS DONE. The node's bar is that gunbc.codex_app_server_press codex_press_account_trip_script —
+// retained_foreign over shell.Exec.Run, scaffold per the module's own note — is realized as a
+// typed ArgvCommand carrying the JSON-RPC payload on stdin with separate stream capture, and the
+// sentinel mux (split_gunbc_stdio_capture) is deleted with the scaffold: a capture that cannot
+// separate streams refuses, never muxes. Today the trip script is one concatenated line of shell
+// carrying `;` throughout and the literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR---
+// sentinels — sentinels that can collide with real output and cannot be checked before they run.
+// The red arms assert the rendered trip surface carries no shell control word (`set -e`, `||`,
+// `&&`, `;`, `2>/dev/null`) and no sentinel; they turn green only over the typed realization.
+// Enrolled in v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. ONE SANCTIONED EXCEPTION, inherited from the exemplar
+// (test.claim.shell.shell_typed_invocation_witness_test): the node row's M2 DELETES
+// codex_press_account_trip_script, the surface these claims read. If that deletion lands, this
+// file's import is re-pointed at the typed ArgvCommand realization's rendering of the SAME trip —
+// same executable, same codex_home, same payload — and nothing else moves: the fn names and the
+// claims do not change, because the node's contract names the acceptance fn.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+data stdio_sentinels: List<String> = ["---GUNBC_EXIT---", "---GUNBC_STDOUT---", "---GUNBC_STDERR---"]
+
+fn trip_surface(codex_home: String) -> String {
+  codex_press_account_trip_script(
+    executable: "/usr/bin/codex" as FilePath,
+    codex_home: codex_home as FilePath
+  )
+}
+
+// RED TODAY: the trip surface is one concatenated shell line and carries command separators
+// throughout. Greens when the trip is a typed ArgvCommand with the payload on stdin.
+test fn trip_surface_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: w))
+}
+
+// RED TODAY: the stdio capture is muxed through literal sentinels that can collide with real
+// output. Greens when streams are captured separately — a capture that cannot separate streams
+// refuses rather than muxing.
+test fn trip_surface_carries_no_stdio_sentinel() -> Bool {
+  !any(stdio_sentinels, s => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: s))
+}
+
+// RED TODAY: a codex_home carrying a command separator is interpolated raw into the export line.
+// Greens when the typed realization refuses it or carries it as data, never as shell.
+test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: trip_surface(codex_home: "/tmp/codex-home; reboot"), pattern: w))
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the trip surface carries the declared
+// payload — the initialize request line is the first frame of the stdin payload — and addresses
+// the declared executable and codex_home. The rebind changes who constructs the invocation,
+// never what the app-server is asked.
+test fn trip_surface_carries_the_declared_payload_and_subject() -> Bool {
+  string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: codex_app_server_initialize_request_line() as String)
+    && string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: "/usr/bin/codex")
+    && string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: "/tmp/codex-home")
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arms are red; green only when every clause holds over the typed rebind.
+test fn codex_app_server_trip_script_acceptance_holds() -> Bool {
+  trip_surface_renders_no_shell_control_word()
+    && trip_surface_carries_no_stdio_sentinel()
+    && adversarial_codex_home_renders_no_shell_control_word()
+    && trip_surface_carries_the_declared_payload_and_subject()
+}
