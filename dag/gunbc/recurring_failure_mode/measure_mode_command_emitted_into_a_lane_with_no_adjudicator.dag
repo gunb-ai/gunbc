@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.measure_mode_command_emitted_into_a_lane_with_no_adjudicator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data measure_mode_command_emitted_into_a_lane_with_no_adjudicator: RecurringFailureMode = RecurringFailureMode {
+  identity: "measure_mode_command_emitted_into_a_lane_with_no_adjudicator" as NonEmptyStr,
+
+  receipts: [
+    "**a measure-mode command is emitted into a lane that has no job adjudicating its receipt, so the lane is green over a refused verdict** (INVALID STATE: a required job concludes success while the instrument it ran printed a refusal). HARM: silent wrongness at the merge gate -- every PR's floor reads as passed, so a refused floor lands. This is not a denominator defect and not an adjudicator-routing defect: the instrument measured the right population and reached the right verdict; the verdict simply had no reader." as NonEmptyStr,
+
+    "MECHANISM, stated at the seed: claim_executor --required-ci has two exits. Without a receipt path it returns ExitCode 1 when phase_failures is nonempty. With --measurement-receipt it writes every blocker to the receipt and returns ExitCode::SUCCESS BY DESIGN -- the measure/seal split, where a separate adjudicating job reads the receipt and decides. gunbc.witness_floor_workflow carried that adjudicator; gunbc.compiler_gate_workflow (the fleet lane restored by gunbc#11791) copied the witness floor's receipt-bearing command and carried no adjudicator, and its aggregate reads job conclusions only." as NonEmptyStr,
+
+    "MEASURED INSTANCE: gunbc#11647 fleet-lane run 35500881228, job 106052312074. The log prints `required-floor: verdict=FloorRefused` and `required-ci: lane=witnesses phases_run=2 phases_failed=1`; the step concluded success; the job concluded success; the aggregate required floor=success and passed. Audit of every floor=success since gunbc#11791: gunbc#11822 genuinely FloorClean; gunbc#11788 merged with phases_failed=2 in its floor log (main's own parse refusal at the time); gunbc#11744 phases_failed=1 (a real refusal, repaired by gunbc#11834)." as NonEmptyStr,
+
+    "RECOGNITION RULE: a job whose script captures the instrument's exit is not thereby fail-closed; ask WHICH exit the instrument's mode returns. A receipt-bearing flag on any command whose consumer is a job conclusion is the tell. Read the job log for the verdict line, never the job colour, until the wall below is present." as NonEmptyStr,
+
+    "BOUNDARY AGAINST required_lane_green_over_a_population_it_never_offered and green_reported_over_a_population_the_instrument_does_not_own: those are denominator defects -- the verdict is honest about a wrong population. Here the population and the verdict are both right and the verdict is unread. BOUNDARY AGAINST routing_a_subject_to_an_unverified_adjudicator and downstream_upload_failure_read_as_adjudication_cause: those concern an adjudicator that exists and is wrong or unreached; here no adjudicator exists in the workflow at all." as NonEmptyStr,
+
+    "RUNG FOUND AT: silent wrongness (below the ladder). REPAIR (gunbc#11836): the fleet lane emits the plain lane command (witnesses_lane_run_command, no receipt) so the process exit carries phase failures. CEILING: structurally guaranteed -- the workflow generator refuses to generate a lane whose floor command carries the receipt flag while the workflow has no adjudicating job (gunbc.compiler_gate_workflow floor_command_carries_no_measurement_receipt gates generation; the drift gate reds on a regeneration refusal). NEXT-RUNG TRIGGER: the receipt flag becomes a typed field of the lane command rather than an operand string, so a lane's adjudication requirement is a declared fact of the workflow model and the invalid pairing has no constructor." as NonEmptyStr,
+  ],
+
+  evidence: [],
+}

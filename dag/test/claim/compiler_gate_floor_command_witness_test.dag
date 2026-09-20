@@ -1,0 +1,39 @@
+module test.claim.compiler_gate_floor_command_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compiler_gate_workflow { compiler_gate_floor_command, floor_command_carries_no_measurement_receipt, compiler_gate_floor_scripts_are_renderable }
+import gunbc.fabric_witness_run { witnesses_lane_measurement_command, witnesses_lane_run_command, measurement_receipt_flag }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FAIL-OPEN CLASS HAS AN AUTHORABLE RED (gunbc.recurring_failure_mode
+// measure_mode_command_emitted_into_a_lane_with_no_adjudicator): the receipt-bearing spelling of the
+// witnesses lane command is exactly what gunbc#11791's fleet lane emitted, and it is refused here by
+// identity of the flag, not by a copied string.
+test fn the_receipt_bearing_lane_command_is_refused() -> Bool {
+  !floor_command_carries_no_measurement_receipt(
+    command: witnesses_lane_measurement_command(measurement_receipt: "required_ci_measurement_receipt.json"),
+  )
+}
+
+// POSITIVE CONTROL: the plain lane command carries no receipt operand and is admitted.
+test fn the_plain_lane_command_is_admitted() -> Bool {
+  floor_command_carries_no_measurement_receipt(command: witnesses_lane_run_command())
+}
+
+// THE LANE EMITS THE ADMITTED COMMAND, and the generation gate consumes the same predicate, so a
+// regression to the receipt-bearing command cannot regenerate the artifact.
+test fn the_fleet_lane_floor_command_carries_no_receipt() -> Bool {
+  floor_command_carries_no_measurement_receipt(command: compiler_gate_floor_command())
+    && compiler_gate_floor_scripts_are_renderable()
+}
+
+// THE FLAG SPELLING IS THE ONE THE COMMAND BUILDER USES: if the operand spelling drifted from the
+// data row the predicate keys on, the RED above would go green for the wrong reason.
+test fn the_receipt_flag_is_the_builders_spelling() -> Bool {
+  count(filter(
+    witnesses_lane_measurement_command(measurement_receipt: "r.json").arguments,
+    a => a == measurement_receipt_flag,
+  )) == 1
+}

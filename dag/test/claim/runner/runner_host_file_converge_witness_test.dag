@@ -11,9 +11,7 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner_width_transition { required_retirees_for_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
@@ -605,29 +603,31 @@ fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
 // below partition a supplied 21-slot listing into live and masked; where the cut falls is srv1's
 // declared width, which moved once already (12 -> 15) and turned every claim that spelled it as
 // `12`/`13` red for a reason none of them was about (review 68841).
-fn srv1_width() -> Int {
-  match gunbc_runner_committed_width(host: "srv1" as HostIdentity) {
-    RunnerWidthDerived { slots: n } => n
-    RunnerWidthUnresolved { cause: _ } => 0 - 1
-  }
+// THE BOUNDARY IS THE CANONICAL WIDTH ANSWER, CARRIED AS THE RESOLUTION IT IS. #11762 deleted the
+// Int-returning gunbc_runner_slots_per_host this file imported and made gunbc_runner_committed_width
+// the one answer: derived, or unresolved with its cause. Every claim below that partitions a listing
+// on srv1's width matches that resolution and is FALSE on the unresolved arm -- it neither reads the
+// per-axis arithmetic around the standing checks nor fabricates a scalar for a width the authority
+// refused, so a witness built to follow the committed boundary cannot stay green while the boundary
+// has no answer (side-chat HOLD on 43b46973).
+fn srv1_committed_width() -> RunnerWidthResolution {
+  gunbc_runner_committed_width(host: "srv1" as HostIdentity)
 }
 
-fn srv1_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width())
+fn srv1_live_names(width: Int) -> List<String> {
+  srv1_unit_names(slot: 1, limit: width)
 }
 
-fn srv1_retiring_names(limit: Int) -> List<String> {
-  srv1_unit_names(slot: srv1_width() + 1, limit: limit)
+fn srv1_retiring_names(width: Int, limit: Int) -> List<String> {
+  srv1_unit_names(slot: width + 1, limit: limit)
 }
 
-// The last declared-live slot: the one the REDs below mask or lose to show that retirement never
-// excuses a live slot.
-fn srv1_last_live_names() -> List<String> {
-  srv1_unit_names(slot: srv1_width(), limit: srv1_width())
+fn srv1_last_live_names(width: Int) -> List<String> {
+  srv1_unit_names(slot: width, limit: width)
 }
 
-fn srv1_all_but_last_live_names() -> List<String> {
-  srv1_unit_names(slot: 1, limit: srv1_width() - 1)
+fn srv1_all_but_last_live_names(width: Int) -> List<String> {
+  srv1_unit_names(slot: 1, limit: width - 1)
 }
 
 fn every_unit_holds(pop: RunnerSlotPopulation, units: List<String>, wire: String) -> Bool {
@@ -664,37 +664,57 @@ fn srv1_drained() -> List<RunnerRetirementStanding> {
 // the retirement authority's COMPLETE verdict, and the route is the join: every masked unit reads
 // retired, and the same reading with no retirement standing refuses.
 test fn srv1_declared_live_and_retiring_masked_is_effective() -> Bool {
-  let units = srv1_unit_names(slot: 1, limit: 21)
-  let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
-  let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
-  runner_slot_population_effective(population: pop)
-    && every_unit_holds(pop: pop, units: srv1_retiring_names(limit: 21), wire: "retired")
-    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: [], show: show))
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let units = srv1_unit_names(slot: 1, limit: 21)
+      let show = srv1_show_reading(live: srv1_live_names(width: width), masked: srv1_retiring_names(width: width, limit: 21))
+      let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
+      runner_slot_population_effective(population: pop)
+        && every_unit_holds(pop: pop, units: srv1_retiring_names(width: width, limit: 21), wire: "retired")
+        && !runner_slot_population_effective(population: srv1_population(units: units, retirements: [], show: show))
+    }
+  }
 }
 
 // RED: masked is the inhibit, not the drain. A retiree masked while its worker still runs -- service
 // active, or its cgroup still populated -- is the orphan the retirement exists to prevent, and refuses.
 test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
-  let units = srv1_unit_names(slot: 1, limit: 21)
-  let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
-  let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
-  !runner_slot_population_effective(population: running)
-    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated), show: show))
-    && every_unit_holds(pop: running, units: srv1_retiring_names(limit: 21), wire: "retirement-incomplete")
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let units = srv1_unit_names(slot: 1, limit: 21)
+      let show = srv1_show_reading(live: srv1_live_names(width: width), masked: srv1_retiring_names(width: width, limit: 21))
+      let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
+      !runner_slot_population_effective(population: running)
+        && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated), show: show))
+        && every_unit_holds(pop: running, units: srv1_retiring_names(width: width, limit: 21), wire: "retirement-incomplete")
+    }
+  }
 }
 
 // RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
 test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
-  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_all_but_last_live_names(), masked: concat(srv1_last_live_names(), srv1_retiring_names(limit: 21))))
-  !runner_slot_population_effective(population: pop)
-    && every_unit_holds(pop: pop, units: srv1_last_live_names(), wire: "not-loaded:masked")
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_all_but_last_live_names(width: width), masked: concat(srv1_last_live_names(width: width), srv1_retiring_names(width: width, limit: 21))))
+      !runner_slot_population_effective(population: pop)
+        && every_unit_holds(pop: pop, units: srv1_last_live_names(width: width), wire: "not-loaded:masked")
+    }
+  }
 }
 
 // RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
 test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
-  let missing = join(map(srv1_last_live_names(), u => show_block_of(unit: u, load: "not-found")), "\n\n")
-  let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(), masked: srv1_retiring_names(limit: 21)), missing], "\n\n")
-  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let missing = join(map(srv1_last_live_names(width: width), u => show_block_of(unit: u, load: "not-found")), "\n\n")
+      let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(width: width), masked: srv1_retiring_names(width: width, limit: 21)), missing], "\n\n")
+      !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+    }
+  }
 }
 
 // RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
@@ -729,29 +749,44 @@ fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bo
 }
 
 test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
-  let omitted = "actions-runner@srv1-21.service"
-  let healthy = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))
-  let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
-    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
-  } else { st })
-  let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
-  population_holds(pop: running_pop, unit: omitted, wire: "retirement-incomplete")
-    && !runner_slot_population_effective(population: running_pop)
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let omitted = "actions-runner@srv1-21.service"
+      let healthy = srv1_show_reading(live: srv1_live_names(width: width), masked: srv1_retiring_names(width: width, limit: 50))
+      let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
+        runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
+      } else { st })
+      let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
+      population_holds(pop: running_pop, unit: omitted, wire: "retirement-incomplete")
+        && !runner_slot_population_effective(population: running_pop)
+    }
+  }
 }
 
 // The other half of the same omission, split because the floor prices a claim as a whole and a
 // conjunction of independent cases forces every case through one budget (DESIGN 3): the omitted
 // retiree with NO reading of its own is unread, and refuses.
 test fn an_unread_omitted_retiree_refuses() -> Bool {
-  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
-  population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
-    && !runner_slot_population_effective(population: unread_pop)
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(width: width), masked: concat(srv1_retiring_names(width: width, limit: 20), srv1_unit_names(slot: 22, limit: 50))))
+      population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
+        && !runner_slot_population_effective(population: unread_pop)
+    }
+  }
 }
 
 // THE POSITIVE CONTROL for the two REDs above, and what makes them discriminating: the SAME listing
 // that omits slot 21, with every retiree read and drained, IS effective.
 test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> Bool {
-  runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))))
+  match srv1_committed_width() {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: width } => {
+      runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(width: width), masked: srv1_retiring_names(width: width, limit: 50))))
+    }
+  }
 }
 
 // ── Every retiree read from the population's two batched reads (review 68628) ────────────────────

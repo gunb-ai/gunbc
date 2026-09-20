@@ -195,7 +195,7 @@ jobs:
           'set' '-o' 'pipefail'
           ('sh' '-e' '-c' 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          '\''target/release/claim_executor'\'' '\''--required-ci'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\'' '\''--required-lane'\'' '\''witnesses'\'' '\''--measurement-receipt'\'' '\''required_ci_measurement_receipt.json'\''
+          '\''target/release/claim_executor'\'' '\''--required-ci'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\'' '\''--required-lane'\'' '\''witnesses'\''
           ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
