@@ -2,7 +2,6 @@ module gunbc.spark.vllm_runtime_image_build
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -432,7 +431,6 @@ fn glm53_derived_build_spec(base_tag: NonEmptyStr, base_key: ContentHash) -> Doc
 // already present is adopted under its expected tag with source equality unestablished; a build
 // that reports success is not believed until the digest reads back.
 fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, base: VllmImageIdentity) -> VllmImageBuild
-  uses net: Network
 {
   let tag = glm53_derived_tag(base_key: base.build_key)
   match vllm_docker_leg(ctx: ctx, step: "derived-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
@@ -486,7 +484,6 @@ fn converge_glm53_derived_image(target: SshTarget, context: FleetSshExecutionCon
 // runs it: the GLM base is not servable without the nightly override, so the stage follows the
 // recipe's source revision. A recipe with no stage builds as before.
 fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
-  uses net: Network
 {
   match converge_vllm_runtime_image(target: target, context: context, ctx: ctx, r: r) {
     VllmImageBuildRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
@@ -595,7 +592,6 @@ type ImageLegOutcome
 // So the docker legs bind to gunbc.spark.model_snapshot_materialize spark_remote_run, the one route
 // the corpus models for that daemon, and this leg keeps the git work, which needs no root.
 fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
-  uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } => ImageLegFailed { step: step, cause: why }
@@ -684,7 +680,6 @@ fn vllm_image_run_steps(target: SshTarget, context: FleetSshExecutionContext, st
 }
 
 fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
-  uses net: Network
 {
   match vllm_image_leg(target: target, context: context, step: "source-clean" as NonEmptyStr, command: git_status_porcelain_command(repository_dir: vllm_source_dir() as String)) {
     ImageLegFailed { step: st, cause: why } =>
@@ -720,7 +715,6 @@ fn vllm_source_after_revision(
   already_present: Bool,
   working_tree: VllmWorkingTreeRequirement,
 ) -> VllmSourceState
-  uses net: Network
 {
   match working_tree {
     VllmWorkingTreeMayBeDirty => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
@@ -738,7 +732,6 @@ fn converge_vllm_source_to_revision(
   r: VllmContainerBuildRecipe,
   working_tree: VllmWorkingTreeRequirement,
 ) -> VllmSourceState
-  uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
     Present { value: head } =>
@@ -772,7 +765,6 @@ fn converge_vllm_source_to_revision(
 }
 
 fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
-  uses net: Network
 {
   converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMustBeClean)
 }
@@ -827,13 +819,11 @@ type VllmImageBuild
   | VllmImageBuildRefused { step: NonEmptyStr, cause: String }
 
 fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
-  uses net: Network
 {
   converge_vllm_image_keyed(ctx: ctx, r: r, key: vllm_image_build_key(r: r))
 }
 
 fn converge_vllm_image_keyed(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe, key: ContentHash) -> VllmImageBuild
-  uses net: Network
 {
   let tag = vllm_image_tag_for_key(r: r, key: key)
   match vllm_docker_leg(ctx: ctx, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
@@ -901,7 +891,6 @@ fn vllm_image_build_succeeded(b: VllmImageBuild) -> Bool {
 }
 
 fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
-  uses net: Network
 {
   if !vllm_recipe_arch_is_buildable(r: r) {
     VllmImageBuildRefused {
@@ -943,7 +932,6 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // reads off the recipe itself. The v41 fallback and the GLM SM121 image are the two current
 // callers; a third family adds a recipe row and a one-line entry, not a copy of this body.
 fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
@@ -1029,7 +1017,6 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
 }
 
 fn vllm_runtime_image_build_ci_wet() -> ProcessExit
-  uses net: Network
 {
   vllm_runtime_image_build_entry(r: v41_gb10_recipe())
 }
@@ -1038,7 +1025,6 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
 // vllm_8d09804_sm121_recipe) and the derived stage follows it; the product is the image the GLM
 // native arm's declared reference is repointed to once a build through this lane has served.
 fn glm53_runtime_image_build_wet() -> ProcessExit
-  uses net: Network
 {
   vllm_runtime_image_build_entry(r: vllm_8d09804_sm121_recipe)
 }
@@ -1071,7 +1057,6 @@ fn vllm_source_acquired(s: VllmSourceState) -> Bool {
 }
 
 fn vllm_source_acquire_wet(host: String) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match admit_unplaced_host(raw: host, purpose: vllm_build_host_purpose) {
@@ -1197,7 +1182,6 @@ fn vllm_image_deliver_to_host(
   tag: NonEmptyStr,
   expected_digest: NonEmptyStr,
 ) -> VllmImageHostDelivery
-  uses net: Network
 {
   match vllm_docker_leg(ctx: ctx, step: "deliver-digest-pre" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
     ImageLegFailed { step: st, cause: why } =>
@@ -1248,7 +1232,6 @@ type VllmImageDistributionAcc {
 }
 
 fn vllm_image_deliver_fold_step(acc: VllmImageDistributionAcc, host: HostIdentity) -> VllmImageDistributionAcc
-  uses net: Network
 {
   match spark_reach_endpoint(host: host, path: acc.path) {
     Absent => VllmImageDistributionAcc {
@@ -1334,7 +1317,6 @@ fn distribute_vllm_image(
   tag: NonEmptyStr,
   build_key: ContentHash,
 ) -> VllmImageDistribution
-  uses net: Network
 {
   let tar = vllm_image_transfer_tar_path(build_key: build_key)
   let trust_words = serialize_ssh_client_options(options: fleet_openssh_trust_options(policy: trust))
@@ -1388,7 +1370,6 @@ data vllm_image_distribute_receipt_path: String = "target/vllm-image-distribute-
 // is derived from the recipe and derived-stage keys -- the same fold the build used -- so the tag
 // this distributes is the tag the build's receipt printed, not a re-typed string.
 fn glm53_image_distribute_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let base_key = vllm_image_build_key(r: vllm_8d09804_sm121_recipe)
@@ -1562,7 +1543,6 @@ fn classify_reported_hostname(host: HostIdentity, endpoint: NonEmptyStr, reporte
 }
 
 fn probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
-  uses net: Network
 {
   match spark_reach_endpoint(host: host, path: ReachManagementLan) {
     Absent => SparkHostUnresolved { host: host }
@@ -1640,7 +1620,6 @@ fn spark_reachability_verdict(readings: List<SparkHostReachability>) -> SparkRea
 // arm widening into silence. It now succeeds only when every admissible host answered AND its answer
 // joined to the identity it was asked about.
 fn spark_build_host_reachability_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match fleet_ssh_attempt_identity(raw: spark_reachability_attempt_raw) {

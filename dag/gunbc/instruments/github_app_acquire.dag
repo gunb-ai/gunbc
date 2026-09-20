@@ -8,7 +8,6 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -146,7 +145,7 @@ type ManifestHandoffValue
   | HandoffValueMissing { path: String, cause: String }
   | HandoffValueEmpty { path: String }
 
-fn read_handoff_value(path: String) -> ManifestHandoffValue uses fs: std.resources.Filesystem {
+fn read_handoff_value(path: String) -> ManifestHandoffValue {
   let read = Filesystem.Read(path: path)
   if read.success {
     let trimmed = trim(read.content)
@@ -220,7 +219,7 @@ fn intervention_text(intervention: HumanIntervention) -> String {
 // created before this converge existed. Two answers naming different Apps is a Conflict rather than
 // a precedence rule (DESIGN 3), and an unparseable handoff refuses rather than reading as "never
 // acquired" -- which would authorize a registration duplicating the App the file is about.
-fn observed_acquisition_reading() -> AcquisitionRecordReading uses fs: std.resources.Filesystem {
+fn observed_acquisition_reading() -> AcquisitionRecordReading {
   match custody_handoff_addressing(name: census_app_identity.name) {
     CustodyNameNotPathSafe { name: s } =>
       AcquisitionRecordUnparseable {
@@ -263,7 +262,7 @@ fn acquisition_reading_exit(reading: AcquisitionRecordReading) -> ProcessExit {
 // App is not converged when this is the answer, and a zero here would report an acquisition that has
 // not happened. When the App IS already acquired it exits zero and produces no registration URL at
 // all - which is the adoption path seen from the human's side.
-fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+fn census_app_registration_instruction_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
       acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
@@ -300,7 +299,7 @@ fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.res
 // recorded slug with the ordinary fleet PAT. When the record says the App was never acquired there is
 // no slug to address, so the observation is AppNotYetAddressable and NO request is made - guessing a
 // slug and reading a 404 would manufacture "absent" out of "we do not know where to look".
-fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation uses net: Network {
+fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation {
   match address {
     ReadNotAddressable => AppNotYetAddressable
     ReadAddressedAt { slug: slug } => {
@@ -328,7 +327,7 @@ fn verdict_text(verdict: ObservationVerdict) -> String {
 // ENTRY TWO: OBSERVE AND DECIDE, WITHOUT ACTUATING. EnsureObserveOnly is passed as a literal here
 // because that is what this entry point IS - the policy is the instrument's identity, not a knob.
 // The acquiring entry below passes EnsureMayApply for the same reason.
-fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_observe_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
       acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
@@ -340,7 +339,6 @@ fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -362,7 +360,7 @@ fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessE
 
 // THE EXCHANGE, PERFORMED. github.AppManifests.ConvertManifestCode carries no credential: the code
 // authenticates it, which is why this half of the flow runs in-process at all.
-fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome uses net: Network {
+fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome {
   let result = github.AppManifests.ConvertManifestCode(code: code as String)
   classify_census_app_exchange(conversion: result.result, outcome: result.outcome)
 }
@@ -373,7 +371,7 @@ fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
   }
 }
 
-fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback uses net: Network {
+fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback {
   census_app_readback(
     issuance: issuance,
     observation: observe_census_app_live(
@@ -444,7 +442,6 @@ fn persist_issued_credentials(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> IssuedCredentialCustody
-  uses fs: std.resources.Filesystem
 {
   match issuance {
     CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
@@ -500,7 +497,7 @@ fn custody_path_occupied(path: String) -> Bool {
   Filesystem.Read(path: path).success
 }
 
-fn custody_preflight(name: NonEmptyStr) -> CustodyPreflight uses fs: std.resources.Filesystem {
+fn custody_preflight(name: NonEmptyStr) -> CustodyPreflight {
   match custody_handoff_addressing(name: name) {
     CustodyNameNotPathSafe { name: s } => CustodyPreflightNameUnsafe { name: s }
     CustodyAddressed { paths: paths } =>
@@ -577,7 +574,7 @@ fn readback_exit(readback: CensusAppReadback, paths: CustodyHandoffPaths) -> Pro
 // ENTRY THREE: THE WHOLE CONVERGE. observe -> decide -> actuate -> INDEPENDENT READBACK, with the
 // readback addressed at the slug the exchange returned and performed through the same public-record
 // read the observation used, not through the exchange's own reply.
-fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_acquire_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
       acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
@@ -588,7 +585,6 @@ fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -636,7 +632,7 @@ fn census_app_acquire_with_code(
   record: GitHubAppAcquisitionRecord,
   observation: CensusAppObservation,
   code: GitHubAppManifestCode,
-) -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+) -> ProcessExit {
   let classified = classify_census_app(
     policy: EnsureMayApply,
     record: record,
@@ -692,7 +688,7 @@ data inhabitance_probe_app_slug: NonEmptyStr = "dependabot"
 
 data inhabitance_probe_absent_app_slug: NonEmptyStr = "gunbc-slug-that-no-app-holds"
 
-fn public_app_record_wire_receipt() -> ProcessExit uses net: Network {
+fn public_app_record_wire_receipt() -> ProcessExit {
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_app_slug }) {
     AppNotYetAddressable =>
       exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
@@ -711,7 +707,7 @@ fn public_app_record_wire_receipt() -> ProcessExit uses net: Network {
 // THE ABSENT ARM IS READ FOR REAL TOO. A 404 reaching AppRecordAbsent rather than an exception is the
 // arm the duplicate-mint guard is built on, so it is established by a live read of a slug no App
 // holds, not by supplying a RestStatusRefused value to the fold.
-fn public_app_absence_receipt() -> ProcessExit uses net: Network {
+fn public_app_absence_receipt() -> ProcessExit {
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_absent_app_slug }) {
     AppRecordAbsent => ExitSuccess
     AppRecordObserved { record: r } =>
@@ -789,7 +785,7 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
   ], "")
 }
 
-fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_installations_receipt() -> ProcessExit {
   let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
   match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
     RestExchangeStatusRefused { status: status, body: body } =>
@@ -836,7 +832,6 @@ fn installations_report(installations: List<GitHubAppInstallation>) -> String {
 }
 
 fn installations_read_exit(installations: List<GitHubAppInstallation>) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   let path = installations_report_path()
   let wrote = Filesystem.Write(path: path, content: installations_report(installations: installations))
@@ -904,7 +899,7 @@ fn custody_probe_cleanup(paths: CustodyHandoffPaths) -> Bool {
     && shell.Remove.RecursiveForce(path: paths.identity).success
 }
 
-fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+fn custody_write_receipt() -> ProcessExit {
   match persist_issued_credentials(custody_name: custody_probe_slug, issuance: custody_probe_issuance) {
     CredentialNameUnsafe { name: s } =>
       exit_failure(reason: join(["the probe slug was refused as unsafe: ", s as String], ""))
@@ -949,7 +944,6 @@ fn persist_then_read_back(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
     CredentialNameUnsafe { name: s } =>
@@ -975,7 +969,7 @@ fn persist_then_read_back(
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function custody_preflight_receipt
-fn custody_preflight_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+fn custody_preflight_receipt() -> ProcessExit {
   match custody_handoff_addressing(name: custody_probe_slug) {
     CustodyNameNotPathSafe { name: n } =>
       exit_failure(reason: join(["the probe name was refused as unsafe: ", n as String], ""))

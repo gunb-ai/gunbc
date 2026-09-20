@@ -1,7 +1,6 @@
 module gunbc.review_sheet_spreadsheet_actuator
 
 import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -50,7 +49,7 @@ type SpreadsheetConvergeOutcome
 fn read_spreadsheet(
   drive_id: NonEmptyStr,
   marker_value: NonEmptyStr,
-) -> ReviewSpreadsheetObservation uses net: Network {
+) -> ReviewSpreadsheetObservation {
   let read = drive.Files.ListFiles(
     drive_id: drive_id as String,
     query: review_sheet_search_query(marker_value: marker_value),
@@ -85,7 +84,7 @@ fn verify_created_spreadsheet(
   drive_id: NonEmptyStr,
   marker_value: NonEmptyStr,
   create_detail: NonEmptyStr,
-) -> SpreadsheetConvergeOutcome uses net: Network {
+) -> SpreadsheetConvergeOutcome {
   match read_spreadsheet(drive_id: drive_id, marker_value: marker_value) {
     SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
     SheetAbsent =>
@@ -119,7 +118,7 @@ fn verify_created_spreadsheet(
 
 fn perform_spreadsheet_create(
   plan: SpreadsheetCreatePlan,
-) -> SpreadsheetConvergeOutcome uses net: Network {
+) -> SpreadsheetConvergeOutcome {
   let created = drive.Files.CreateFile(
     name: plan.name as String,
     mime_type: google_sheet_mime_type as String,
@@ -159,7 +158,7 @@ fn converge_review_spreadsheet(
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network {
+) -> SpreadsheetConvergeOutcome {
   let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
   match ensure_review_spreadsheet(
     policy: policy,

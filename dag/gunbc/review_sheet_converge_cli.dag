@@ -17,7 +17,6 @@ import gunbc.review_sheet_projection {
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
@@ -161,7 +160,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport uses net: Network {
+) -> ReviewSheetConvergeReport {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -321,7 +320,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport uses net: Network {
+) -> DriveHalfReport {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -347,7 +346,7 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   )
 }
 
-fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+fn converge_drive_half_cli() -> ProcessExit {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>
@@ -386,7 +385,7 @@ type FormatDisposition
 // The composition order is the cheap refusal first: validating the schema costs nothing and
 // reaches no network, while locating the tab is a spreadsheets.get. A run that cannot format
 // anyway should not spend a request discovering that.
-fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: Network {
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition {
   match validate_header_schema(schema: ci_prospect_sheet_schema()) {
     HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
     HeaderSchemaValidated { validated: v } => format_located_tab(file_id: id, validated: v)
@@ -400,7 +399,7 @@ fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: 
 // asks Sheets about, and only a TabLocated reaches the formatter. Absent, ambiguous and unreadable
 // each skip formatting with the locator's own account of why, because formatting the wrong tab is
 // a silent wrong answer and skipping is a loud one.
-fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
+fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition {
   match o {
     SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
@@ -409,7 +408,7 @@ fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposit
   }
 }
 
-fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition uses net: Network {
+fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition {
   let standing = locate_review_tab(spreadsheet_id: file_id)
   match standing {
     TabLocated { tab: t } =>
@@ -434,7 +433,7 @@ fn format_disposition_is_applied(d: FormatDisposition) -> Bool {
   }
 }
 
-fn drive_half_exit(report: DriveHalfReport) -> ProcessExit uses net: Network {
+fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
   if drive_half_is_converged(r: report) {
     let formatting = format_converged_spreadsheet(o: report.spreadsheet)
     if format_disposition_is_applied(d: formatting) {

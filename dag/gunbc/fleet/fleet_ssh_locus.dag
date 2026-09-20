@@ -19,7 +19,6 @@ module gunbc.fleet_ssh_locus
 
 
 import std.types { String, Bool, NonEmptyStr }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
@@ -121,7 +120,6 @@ fn fleet_ssh_agent_socket() -> NonEmptyStr? {
 // no context, and since `fleet_locus_transport` is the only way to a transport and it
 // requires one, zero SSH legs execute -- a property of the types rather than a discipline.
 fn prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPreparation
-  uses net: Network
 {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent =>
@@ -178,7 +176,6 @@ fn fleet_ssh_context_from_verified_binding(
   attempt: FleetSshAttemptIdentity,
   binding: FleetSshCredentialBinding,
 ) -> FleetSshContextPreparation
-  uses net: Network
 {
   let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
   match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {

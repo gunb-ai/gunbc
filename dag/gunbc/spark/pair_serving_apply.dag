@@ -3,7 +3,6 @@ module gunbc.spark.pair_serving_apply
 import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
@@ -290,7 +289,6 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
 }
 
 fn spark_pair_serving_apply_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let plans = spark_pair_apply_plans()

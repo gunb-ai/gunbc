@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Secret, List, Timestamp }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -62,7 +61,7 @@ type PermissionGroupListing
   = PermissionGroupsListed { rendered: String }
   | PermissionGroupListingRefused { cause: NonEmptyStr }
 
-fn observe_account_permission_groups_standing() -> PermissionGroupListing uses net: Network {
+fn observe_account_permission_groups_standing() -> PermissionGroupListing {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: _ } =>
       PermissionGroupListingRefused { cause: "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for" as NonEmptyStr }
@@ -263,7 +262,7 @@ data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = 
 // mint's own identical refusal is the same wall one step later and on a path where a Create COULD
 // follow, which is precisely why the evidence is taken here first: a discriminating red is worth
 // more when observing it cannot cost a token.
-fn observe_account_permission_groups_wet() -> ProcessExit uses net: Network {
+fn observe_account_permission_groups_wet() -> ProcessExit {
   match observe_account_permission_groups_standing() {
     PermissionGroupListingRefused { cause: cause } => exit_failure(reason: cause as String)
     PermissionGroupsListed { rendered: rendered } => {

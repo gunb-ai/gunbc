@@ -1,7 +1,6 @@
 module gunbc.ci_workflow_source_read
 
 import std.types { Bool, CommitSha, commit_sha_text_holds, Int, List, NonEmptyStr, String, Secret }
-import std.resources { Network }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -90,7 +89,7 @@ fn perform_code_search_page(
   q: String,
   per_page: Int,
   page: Int,
-) -> CodeSearchPageRead uses net: Network {
+) -> CodeSearchPageRead {
   let got = github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
     RestExchangeSucceeded => classify_code_search_page(page: got.page)
@@ -166,7 +165,7 @@ fn perform_workflow_source_read(
   repo: String,
   path: String,
   ref: CommitSha,
-) -> WorkflowSourceRead uses net: Network {
+) -> WorkflowSourceRead {
   let request = WorkflowSourceRequest { owner: owner, repo: repo, path: path, ref: ref }
   let got = github.RepositoryContents.GetContent(
     auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)

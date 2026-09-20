@@ -14,7 +14,6 @@ import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, Surp
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
-import std.resources { Network }
 
 // THE POPULATION A SHRINK ACTS ON, READ RATHER THAN ASSUMED.
 //
@@ -260,7 +259,6 @@ fn observe_slot_population_over_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
 ) -> SlotCensus
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(
     target: target,

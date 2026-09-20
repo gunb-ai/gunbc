@@ -217,7 +217,6 @@ fn probe_agent_socket() -> NonEmptyStr? {
 // second time on this one. The identity now comes from a binding that exists only because the agent
 // was observed to hold the declared fingerprint.
 fn probe_agent_credential_verification(attempt: FleetSshAttemptIdentity) -> FleetSshCredentialVerification
-  uses net: Network
 {
   match probe_agent_socket() {
     Absent =>
@@ -390,7 +389,6 @@ fn fleet_multi_principal_probe_wet() -> ProcessExit {
 // boundary (trusted anchor + exact IdentityFile). NOT valid on GHA runner slots — use
 // fleet_multi_principal_probe_wet for CI.
 fn fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let token_source = GcloudPrintToken
@@ -531,7 +529,6 @@ fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantRepo
 }
 
 fn spark_exact_grant_probe_wet(attempt_raw: String) -> ProcessExit
-  uses net: Network
 {
   run_with_materialized_fleet_ssh_binding(
     attempt_raw: attempt_raw,
@@ -625,7 +622,6 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 data spark_standing_hosts: List<String> = ["srv5", "srv6"]
 
 fn spark_managed_access_standing_wet() -> ProcessExit
-  uses net: Network
 {
   match fleet_ssh_attempt_raw_from_env() {
     Absent =>
@@ -672,7 +668,6 @@ fn spark_managed_access_standing_for_attempt(
   attempt_raw: String,
   attempt: FleetSshAttemptIdentity,
 ) -> ProcessExit
-  uses net: Network
 {
   match probe_agent_credential_verification(attempt: attempt) {
     FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
@@ -700,7 +695,6 @@ fn spark_managed_access_standing_with_verified_credential(
   attempt_raw: String,
   credential_identity: ContentHash,
 ) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   let observations = flat_map(spark_standing_hosts, h =>

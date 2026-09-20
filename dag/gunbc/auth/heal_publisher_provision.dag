@@ -2,7 +2,6 @@ module gunbc.auth.heal_publisher_provision
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.types { NonEmptyStr, String, Secret, List, Bool }
-import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
@@ -93,7 +92,6 @@ fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
 }
 
 fn bind_publisher_impersonation(token: Secret) -> ProcessExit
-  uses net: Network
 {
   let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
     access_token: token,
@@ -242,7 +240,6 @@ fn bound_verdict(unverified: String, bound: ProcessExit) -> ProcessExit {
 }
 
 fn provision_federation(token: Secret) -> FederationOutcome
-  uses net: Network
 {
   let pool = gcp.IamAdmin.CreateWorkloadIdentityPool(
     access_token: token,
@@ -304,7 +301,6 @@ fn provision_federation(token: Secret) -> FederationOutcome
 // made before that account exists; running it against a missing principal would write a policy for a
 // member that is not there, and setIamPolicy is a whole-policy replace.
 fn grant_publisher_read_of_the_app_key(token: Secret) -> ProcessExit
-  uses net: Network
 {
   secret_access_ensure_for_member(
     grant: secret_accessor_grant(target: gunbai_bot_app_pem_secret),
@@ -325,7 +321,6 @@ fn grant_publisher_read_of_the_app_key(token: Secret) -> ProcessExit
 // reports its own cause, because that cause is what the operator needs and the unverified wording
 // must never replace it.
 fn provision_publisher_identity(token: Secret) -> ProcessExit
-  uses net: Network
 {
   match provision_federation(token: token) {
     FederationHalted { reason: r } => exit_failure(reason: r)
@@ -342,7 +337,6 @@ fn provision_publisher_identity(token: Secret) -> ProcessExit
 }
 
 fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
-  uses net: Network
 {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)

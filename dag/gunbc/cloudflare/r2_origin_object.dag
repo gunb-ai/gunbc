@@ -3,7 +3,6 @@ module gunbc.cloudflare.r2_origin_object
 import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus, http_status_of }
 import std.citation { http_status_is_success }
 import std.algebra { trim }
-import std.resources { Network }
 import std.decl_ref { DeclarationRef }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.shell
@@ -303,7 +302,7 @@ fn put_origin_object(
   local_path: FilePath,
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginPut uses net: Network {
+) -> OriginPut {
   match origin_transport_present() {
     OriginTransportAbsent { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
     OriginTransportPresent =>
@@ -382,7 +381,7 @@ data origin_staged_object_basename: String = "object"
 fn fetch_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginFetchOutcome uses net: Network {
+) -> OriginFetchOutcome {
   match origin_transport_present() {
     OriginTransportAbsent { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
     OriginTransportPresent =>

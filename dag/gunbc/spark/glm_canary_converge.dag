@@ -59,7 +59,6 @@ import gunbc.artifact_acquisition {
 }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.spark.fabric_reach {
@@ -665,7 +664,6 @@ fn cutover_text(c: CanaryCutover) -> String {
 // container becomes one this model started and can restart, instead of one a person started by hand and
 // nothing owns.
 fn glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
-  uses net: Network
 {
   match agreement {
     ServeUnreadable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the running launch line could not be read, so there is nothing to compare and no rollback to record: ", c], "") }
@@ -752,7 +750,6 @@ fn glm_canary_health_wait(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollb
 // so it is a different entry point that an operator names deliberately. Folding it into convergence
 // would mean every future scheduled run carried the authority to restart a server.
 fn glm_canary_cutover_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match observe_executor_reach() {
@@ -1012,7 +1009,6 @@ fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
 }
 
 fn glm_canary_converge_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match observe_executor_reach() {

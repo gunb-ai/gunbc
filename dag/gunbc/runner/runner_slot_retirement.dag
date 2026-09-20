@@ -28,7 +28,6 @@ import extdeps.linux.cgroup_v2 {
   CgroupEventsUnparseable,
   decode_cgroup_events_populated,
 }
-import std.resources { Network }
 import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup, systemd_name_component_is_escaped }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
@@ -872,7 +871,6 @@ fn observe_transition_retirement_evidence(
   host: HostIdentity,
   auth: InterruptionAuthorization,
 ) -> SlotRetirementEvidence
-  uses net: Network
 {
   match transition_required_retiring(host: host) {
     RetireesUnresolved { host: uh, cause: c } =>

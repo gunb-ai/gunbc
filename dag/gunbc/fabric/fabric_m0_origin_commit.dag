@@ -1,7 +1,6 @@
 module gunbc.fabric_m0_origin_commit
 
 import std.types { NonEmptyStr, FilePath, List, Bool, String }
-import std.resources { Network }
 import std.process { ProcessExit, exit_failure }
 import std.content_hash { Sha256Digest, ContentHash, Sha256Hash }
 import std.scoped_authorization { AttemptIdentity }
@@ -143,7 +142,7 @@ fn commit_manifest_to_origin(
   manifest_path: FilePath,
   manifest_digest: Sha256Digest,
   token_source: AccessTokenSource,
-) -> OriginCommitObservation uses net: Network {
+) -> OriginCommitObservation {
   let slot = commit_slot_key(namespace: namespace, attempt: attempt)
   let put = put_origin_object(local_path: manifest_path, key: slot, token_source: token_source)
   let fetch = fetch_origin_object(key: slot, token_source: token_source)
@@ -276,7 +275,7 @@ type OriginObjectWrite
   = OriginObjectWritten { commit: OriginObjectCommit }
   | OriginObjectWriteRefused { standing: OriginWritePermitStanding }
 
-fn commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {
+fn commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectWrite {
   match origin_write_permit_standing(permit: permit) {
     PermitAuthorisesThisOrigin => {
       let put = put_origin_object(local_path: permit.value, key: key, token_source: token_source)

@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -254,7 +253,6 @@ fn executor_home_wet() -> String? {
 // failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to
 // the wrong module, which is the state-space conflation this repository refuses elsewhere.
 fn runner_microvm_boot_probe_wet() -> ProcessExit
-  uses net: Network
 {
   match executor_home_wet() {
     Absent => exit_failure(reason: "runner_microvm_boot_probe: HOME is unset, so neither the image root nor the Firecracker install root can be named")

@@ -2,7 +2,6 @@ module gunbc.fleet.printer_project_delivery
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
-import std.resources { Network }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.tools.sha256sum {
@@ -643,7 +642,6 @@ fn deliver_project_to_printer(
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
-  uses net: Network
 {
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>

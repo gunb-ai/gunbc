@@ -2,7 +2,6 @@ module gunbc.ci_workflow_scan_producer
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
-import std.resources { Network }
 import extdeps.github.code_search {
   CodeSearchPageSize,
   CodeSearchPage,
@@ -154,7 +153,7 @@ fn advance_scan(
   page: Int,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanWalkState uses net: Network {
+) -> ScanWalkState {
   match state.stop {
     Present { value: _ } => state
     Absent =>
@@ -297,7 +296,7 @@ fn scan_partition(
   page_size: CodeSearchPageSize,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanOutcome uses net: Network {
+) -> ScanOutcome {
   let per_page = page_size.size
   let bound = deepest_retrievable_page(page_size: page_size)
   let walked = fold(
