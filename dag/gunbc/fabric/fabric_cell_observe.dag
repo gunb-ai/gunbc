@@ -11,9 +11,7 @@ import gunbc.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet_runner_connectivity {
-  fleet_hosts,
   fleet_committed_slot_identities,
-  FleetCommittedSlotPopulation,
   FleetHostWidthUnresolved,
 }
 import std.string_type { string_is_lexicographically_before }
@@ -557,21 +555,6 @@ fn fabric_cell_named_among(
   )
 }
 
-// THE FLEET SEARCH READS THE FLEET POPULATION STANDING RATHER THAN REBUILDING IT WITHOUT ITS
-// UNRESOLVED HALF. An earlier revision of this change folded the per-host populations here and
-// dropped every unresolved host, then searched the shortened list and initialized the answer to
-// DiscoveredForeignArtifact -- which is the ORIGINAL MISLABEL REPRODUCED ACROSS A HOST BOUNDARY: an
-// artifact named srv2-02 observed on srv4 bypasses the local unresolved arm (srv4 resolves),
-// matches no srv4 member, misses the shortened fleet list, and comes out foreign. The annotation
-// beside that fold said an incomplete enumeration removes the right to conclude that no host
-// committed the name; the fold then made exactly that conclusion.
-//
-// gunbc.fleet_runner_connectivity already carries the standing, so this reads it instead of
-// maintaining a second fold that strips its unresolved half (DESIGN 3).
-fn fabric_cell_fleet_population() -> FleetCommittedSlotPopulation {
-  fleet_committed_slot_identities()
-}
-
 // THE SAME NECESSARY CONDITION THE REGISTRATION DECODER USES, AND NOW THE SAME RELATION. A name an
 // unresolved host's naming authority could NOT have produced is still decidably foreign; only a
 // name it could have produced is undecidable. So srv2-02 observed anywhere is undecidable while
@@ -658,12 +641,25 @@ fn fabric_cell_classify_discovered_name(
   }
 }
 
+// THE FLEET SEARCH READS THE FLEET POPULATION STANDING RATHER THAN REBUILDING IT WITHOUT ITS
+// UNRESOLVED HALF. An earlier revision of this change folded the per-host populations here and
+// dropped every unresolved host, then searched the shortened list and initialized the answer to
+// DiscoveredForeignArtifact -- which is the ORIGINAL MISLABEL REPRODUCED ACROSS A HOST BOUNDARY: an
+// artifact named srv2-02 observed on srv4 bypasses the local unresolved arm (srv4 resolves),
+// matches no srv4 member, misses the shortened fleet list, and comes out foreign. The annotation
+// beside that fold said an incomplete enumeration removes the right to conclude that no host
+// committed the name; the fold then made exactly that conclusion.
+//
+// gunbc.fleet_runner_connectivity already carries the standing, so this reads it directly instead
+// of maintaining a second fold that strips its unresolved half. A one-line wrapper around that
+// read would have been the other half of the same rule: a second name for one concept is what this
+// change deleted gunbc_runner_pool_budget_for for (DESIGN 3).
 fn fabric_cell_classify_uncommitted_here(
   host: HostIdentity,
   name: String,
   rendering: FabricCellNamespaceRendering,
 ) -> FabricCellDiscoveredSubject {
-  let population = fabric_cell_fleet_population()
+  let population = fleet_committed_slot_identities()
   fold(
     fabric_cell_named_among(members: population.members, name: name, rendering: rendering),
     init: match fabric_cell_unresolved_host_could_own(
