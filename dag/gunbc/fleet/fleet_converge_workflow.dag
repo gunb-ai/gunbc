@@ -1472,7 +1472,9 @@ fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
     id: Present { value: "mtcollins1_census_image_publish" },
     run: gunbc_ci_mtcollins1_census_image_publish_invoke(),
     shell: none,
-    env: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
     continue_on_error: none,

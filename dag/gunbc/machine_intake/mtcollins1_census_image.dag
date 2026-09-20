@@ -3,6 +3,8 @@ module gunbc.machine_intake_mtcollins1_census_image
 import std.types { List, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.fleet_intent_network { operator_host_srv2 }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -166,8 +168,10 @@ fn mtcollins1_census_image_resolve() -> SeededImageResolution {
 
 data mtcollins1_census_image_receipt_path: String = "target/mtcollins1-census-image.txt"
 
-// THE RECEIPT IS THE PUBLISHED NAME AND THE MEASURED DIGEST, one line each, so the boot lane's 0D
-// binding can be read from the run artifact without re-measuring the export. Already-published is a
+// THE RECEIPT IS THE PUBLISHED NAME AND THE MEASURED DIGEST, one line each. It is the publication-time
+// fact 0D authors into the boot medium row; it does NOT stand in for the boot-time proof that the
+// served file still holds those bytes, which stays with mtcollins1_census_image_resolve (or an
+// equally strong srv2-side remeasurement) as its declared frontier says. Already-published is a
 // success: publication is create-only and the name is the digest, so a second run over the same
 // derivation finds its own bytes and reports them.
 fn mtcollins1_render_census_image_receipt(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> String {
@@ -179,7 +183,37 @@ fn mtcollins1_render_census_image_receipt(built: UbuntuSeededInstallMediaBuilt, 
   )
 }
 
+// BUILT WHERE IT IS SERVED MEANS SRV2 AND NOTHING ELSE. The dispatch names a host and the runner is
+// pinned to it, so a run dispatched at srv1, srv3 or srv4 would remaster into THAT runner's /srv/bmc
+// -- a file no controller reads, published under a name the boot lane would then trust. The host is
+// admitted from the run environment before the build, the publication or the receipt write.
+type MtCollins1CensusPublishHostAdmission
+  = CensusPublishHostAdmitted
+  | CensusPublishHostRefused { reason: String }
+
+fn mtcollins1_census_publish_host_admission(expected_host: String) -> MtCollins1CensusPublishHostAdmission {
+  if expected_host == (operator_host_srv2 as String) {
+    CensusPublishHostAdmitted
+  } else {
+    CensusPublishHostRefused { reason: concat("mtcollins1 census image: the dispatch names host ", expected_host, " but the census image is built where it is served, on ", operator_host_srv2 as String, "; refusing before any build or write") }
+  }
+}
+
 fn mtcollins1_census_image_publish_wet() -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["mtcollins1 census image: ", v, " ", d, "; one host per run, named by the dispatch; refusing before any build or write"], ""))
+    ActionsVariablePresent { value: raw_host } =>
+      match mtcollins1_census_publish_host_admission(expected_host: raw_host) {
+        CensusPublishHostRefused { reason: r } => exit_failure(reason: r)
+        CensusPublishHostAdmitted => mtcollins1_census_image_publish_admitted()
+      }
+  }
+}
+
+fn mtcollins1_census_image_publish_admitted() -> ProcessExit
   uses fs: std.resources.Filesystem
 {
   match mtcollins1_census_image_publish() {
