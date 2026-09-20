@@ -64,6 +64,7 @@ import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontie
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier_rows }
+import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
@@ -139,6 +140,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_manifest_broker_frontier_rows,
+    machine_word_consumer_frontier_rows,
   ]
 }
 

@@ -92,16 +92,21 @@ type TypedRemoteFileWriteOutcome
 // deliberately moved FAR-SIDE into `cmp -s -`, so what a witness exercises is the classification of
 // cmp's exit vocabulary plus the whole route over a hermetic fixture, not a near-side byte compare.
 // For a unit file the transfer is a few hundred bytes.
+// OWNER-READ-ONLY IS ITS OWN ARM, not a caller-supplied octal: a signing key read by root alone
+// (gunbc.microvm_controller_app_key_converge) has no reason to be writable even by its owner, and an
+// open octal parameter would let any consumer spell a group- or world-readable key.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
   | RemoteFileModeOwnerReadWriteGroupRead
   | RemoteFileModeOwnerReadWriteWorldRead
+  | RemoteFileModeOwnerRead
 
 fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   match mode {
     RemoteFileModeOwnerReadWrite => "600"
     RemoteFileModeOwnerReadWriteGroupRead => "640"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
+    RemoteFileModeOwnerRead => "400"
   }
 }
 

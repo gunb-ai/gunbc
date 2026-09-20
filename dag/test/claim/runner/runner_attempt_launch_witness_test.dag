@@ -185,7 +185,9 @@ fn fixture_shape() -> RunnerMicroVmShape {
 }
 
 // NEITHER A DEVICE NOR A VMM. The device and the jailer are fields of the one LaunchAuthorized arm,
-// so the law is carried by the plan's shape: zero launches IS zero devices. This helper counts
+// so a plan from THIS PLANNER carries both or neither: zero launches IS zero devices. That is a
+// fact about plans this planner builds, not a construction wall -- LaunchAuthorized is assemblable
+// elsewhere and exposes its jailer field. This helper counts
 // launches and says nothing more; a second count read off the same arm would be green by
 // construction (DESIGN §4b).
 fn no_device_no_vmm(plan: AttemptLaunchPlan) -> Bool {

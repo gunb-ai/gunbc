@@ -76,9 +76,21 @@ type JitMintStep
   | GenerateJitConfigStep
 
 // EVERY NON-DELIVERY IS ITS OWN ARM. In particular a generate-jitconfig whose response never
-// arrived is RestExchangeCommitAmbiguous, NOT a refusal: GitHub may have created the registration.
-// It is carried with its step so an operator can reconcile the orphan by the runner name, which is
-// the attempt's unit name (gunbc.runner_jit_mint jit_runner_name_for).
+// arrived is RestExchangeCommitAmbiguous, NOT a refusal: GitHub may have created the registration,
+// and calling that a refusal would assert a fact nobody observed. That classification is correct
+// and is the part worth keeping.
+//
+// WHAT THE ARM DOES NOT CARRY, corrected from an earlier claim here: JitMintStepNotSucceeded holds
+// only the step and the performance. It DROPS the attempt, the JIT runner name, the dispatch and
+// the organization, so it does not give an operator what reconciling a possibly-created
+// registration needs, and the earlier sentence promising reconciliation BY RUNNER NAME was not
+// backed by the value.
+//
+// No live orphan can result while no PRODUCTION route consumes this function.
+// Before such a consumer lands, this arm must retain a reconciliation subject:
+// preferably the authorized dispatch, or an equivalent sealed carrier containing
+// at least the attempt, the organization, and the runner name derived from that
+// attempt.
 type JitMintPerformance
   = JitMintReceived { delivery: JitCredentialDelivery }
   | JitMintAppKeyNotCustodied { app: DeclaredGitHubApp }
