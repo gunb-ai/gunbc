@@ -2,8 +2,46 @@ module std.machine_constraints
 
 import std.constructors { Phantom }
 
-type MachineWidth<bits>
+// A TYPE ARGUMENT IS NOT A QUANTITY AND NOT A VALUE. What stands in MachineWidth's parameter
+// position is WHICH width this type is -- a type-level index. std.measure BitWidth
+// (Measure<Information, One, Nat>) is the measured amount of bits and is what REIFYING a width
+// PRODUCES, not what the argument denotes; putting it here was this declaration's first draft and a
+// category error. A value-carrying coproduct was its second: see the enumeration below.
+//
+// WHAT THIS POSITION ADMITS: a Nat literal, or the named type PointerWidth. The wall checks the
+// NAMED half against this declared kind; literal admissibility is a language-level rule rather than
+// a per-kind fact, which is a DECLARED FRONTIER stated at machine_width_literal_roster_frontier
+// below rather than a silent gap.
+//
+// FIVE CARRIERS WERE TRIED FOR A PER-KIND LITERAL ROSTER AND EVERY ONE FAILED ON THE SAME AXIS.
+// Recorded so the next reader does not re-walk it:
+//   payload (StaticWidth { bits: Nat })  -- value-level in a type-level position: E0573 at the 4
+//     live MachineWidth<PointerWidth> sites, a generated panic! arm on the field accessor, and a
+//     record nothing ever constructs because the corpus writes a bare 32.
+//   arm named for the type      -- a coproduct arm PointerWidth beside `type PointerWidth` puts two
+//     claimants on one name in one module; which wins decides the emission, so it is
+//     resolution-order dependent.
+//   alias                       -- carries named inhabitants cleanly but cannot carry Nat without
+//     minting arms, which is the collision above.
+//   data row                    -- no resolver reads data initializers: ModuleItemDataValue appears
+//     nowhere in v1.compiler.infer_resolve, infer_env or infer, and the one precedent that consumes
+//     a symbol-index hit reads decl.inferred, the declared TYPE, not the initializer.
+//   bare unit variants          -- EMITS AND COMPILES, verified cross-module with markers minted and
+//     a correctly qualified use line, and STILL cannot express per-kind literal admissibility: a
+//     bare 32 is a literal, not a name, so admitting it needs a compiler-held convention mapping
+//     literals to an arm spelled StaticWidth. That is the stringly proxy this wall exists to remove.
+// The last entry is the one worth reading: it is the option that looks viable and is not.
 
 type PointerWidth
+
+// THE KIND. Its alias target is the roster of admissible NAMED inhabitants, so the check compares an
+// argument against a DECLARED DECLARATION rather than against a shape -- which is the difference
+// between this and the variant-shape proxy it replaced: a kind naming PointerWidth cannot be
+// satisfied by an unrelated declaration that happens to have the right shape.
+// CEILING, STATED: an alias carries exactly ONE named inhabitant, and the comparison is nominal
+// against that target. Both are narrower than the truth and narrow in the REFUSING direction.
+type WidthResolution = PointerWidth
+
+type MachineWidth<bits: WidthResolution>
 
 type Compose<Algebra, MachineConstraint> = Phantom

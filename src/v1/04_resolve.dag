@@ -15,7 +15,7 @@ import v1.std.core { Unmarked,
   field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
+  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -29,6 +29,7 @@ import v1.std.core { Unmarked,
   make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
   expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
+  find_property, expr_literal_int_optional, type_param_kind_property_name,
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
@@ -81,6 +82,176 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitV
         } else { UnitVariantPhantomAbsent }
       Absent => UnitVariantPhantomAbsent
     }
+  }
+}
+
+// KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
+// mean something. It sits beside the arity check in resolve_node_bounded's generic-use-site branch
+// because that is the ONE place an applied user generic is judged, so every occurrence is reached
+// rather than only the field-access route alias_chain_arity_diagnostics covers.
+//
+// THREE ADMITTING ARMS, AND THE HONEST CEILING OF EACH. A type variable or an in-scope generic
+// parameter is admitted here and judged at INSTANTIATION instead -- this position cannot know the
+// argument yet, and refusing it would refuse every generic function over a kinded parameter. A name
+// that is a declared variant of the kind is admitted by identity. A non-negative integer literal is
+// admitted when the kind declares a variant carrying exactly ONE field, on the reading that the
+// literal inhabits that variant's payload.
+//
+// THE THIRD ARM IS THE WEAK ONE AND IS STATED RATHER THAN DRESSED UP: it does not judge that the
+// literal inhabits the field's TYPE, only that a one-field variant exists to carry it. So a kind
+// whose sole single-field variant carried a String would still admit `32` here. That is
+// MECHANICALLY PREVENTABLE, not structural, and its next-rung trigger is a decidable
+// literal-inhabits-declared-type judgment usable from resolve -- the same judgment
+// v1.compiler.infer's declared-type conformance wall documents as unsound for general use today
+// (node_type_compatible's four measured false-positive classes). Claiming the stronger rung here
+// would be rung inflation; the arm refuses everything that is neither a variant nor a literal,
+// which is what closes the class this wall was built for.
+fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  decl.params |> enumerate |> flat_map(pair =>
+    match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
+      Absent => []
+      Present { value: kind_node } =>
+        match carrier.children |> skip(pair.first) |> first {
+          Absent => []
+          Present { value: arg } =>
+            let kind_name = authored_name(env: env, node: kind_node)
+            let param_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
+            match type_arg_kind_inhabitance(arg: arg, kind_node: kind_node, env: env) {
+              KindInhabited => []
+              KindNotInhabited =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat(type_arg_display_spelling(n: arg, env: env), " [", kind_lookup_trace(kind_decl: kind_decl_for_message(kind_node: kind_node, env: env), env: env), "]"), span: arg.span
+                  },
+                  module_name: module_name
+                )]
+              KindDeclarationUnresolved =>
+                [make_error_node(
+                  diagnostic: TypeArgumentKindMismatch {
+                    type_name: type_name, param_name: param_name, kind_name: kind_name,
+                    supplied: concat("(kind declaration '", kind_name, "' did not resolve, so inhabitance could not be established)"),
+                    span: arg.span
+                  },
+                  module_name: module_name
+                )]
+            }
+        }
+    }
+  )
+}
+
+fn type_arg_display_spelling(n: Node, env: TypeEnv) -> String {
+  match expr_literal_int_optional(expr: n) {
+    Present { value: v } => to_string(value: v)
+    Absent => authored_name(env: env, node: n)
+  }
+}
+
+// THREE ANSWERS, NOT TWO, AND THE THIRD IS WHY THIS IS A COPRODUCT. The first version returned Bool
+// with `Absent => true` when the kind declaration did not resolve -- an absorbing fallback that
+// ADMITTED EVERYTHING exactly where it could establish nothing, which is the failure arm DESIGN
+// section 5 forbids by name. A Bool cannot tell "this argument inhabits the kind" apart from "I
+// could not look the kind up", so both answered true and the fail-open had somewhere to hide.
+type KindInhabitance
+  = KindInhabited
+  | KindNotInhabited
+  | KindDeclarationUnresolved
+
+// WHAT THIS CHECKS, AND WHAT IT DELIBERATELY DOES NOT. The NAMED half is identity-keyed against the
+// kind's declared alias target, so a kind naming PointerWidth cannot be satisfied by an unrelated
+// declaration of the same shape -- that is the difference from the variant-shape proxy this
+// replaced, which admitted any argument so long as the kind happened to own a one-field variant and
+// never consulted the kind's identity at all.
+//
+// A NAT LITERAL IS ADMITTED IN ANY KINDED POSITION, and that is a LANGUAGE-LEVEL rule rather than a
+// per-kind fact. Stated rather than hidden: this wall does not ground the literal half. It is NOT a
+// regression -- before this change the check did not fire at all, so a literal was admitted in every
+// kinded position already and still is. The per-kind literal roster is a declared frontier; every
+// carrier available today fails to express it, enumerated at std.machine_constraints.
+// RUNG HONESTY: a class's rung is the minimum across its paths, so this position's rung is set by
+// the LITERAL axis, not by the named one. The position is NOT fully grounded and must not be cited
+// as such.
+fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv) -> KindInhabitance {
+  let arg_is_type_var = match arg.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
+  }
+  if arg_is_type_var { KindInhabited }
+  else if expr_literal_int_optional(expr: arg) != none { KindInhabited }
+  else {
+    match lookup_type_by_name(env: env, name: authored_name(env: env, node: kind_node)) {
+      Absent => KindDeclarationUnresolved
+      Present { value: kind_decl } =>
+        let arg_name = authored_name(env: env, node: arg)
+        if kind_names_admissible_inhabitant(kind_decl: kind_decl, arg_name: arg_name, env: env) { KindInhabited }
+        else if type_arg_name_is_bound_generic_parameter(name: arg_name, env: env) { KindInhabited }
+        else { KindNotInhabited }
+    }
+  }
+}
+
+// The kind's alias target IS the roster of admissible named inhabitants. CEILING, STATED: an alias
+// carries exactly one target, so exactly one named inhabitant is expressible, and the comparison is
+// NOMINAL against that target rather than a resolved-node identity. Both are narrower than the truth
+// and narrow in the REFUSING direction, which is the correct direction for a wall to be wrong in.
+fn kind_names_admissible_inhabitant(kind_decl: Node, arg_name: String, env: TypeEnv) -> Bool {
+  kind_admissible_inhabitant_name(kind_decl: kind_decl, env: env) == arg_name
+}
+
+// AUTHORED NAME, ELSE THE NODE'S OWN NAME. authored_name reads the SOURCE TEXT at a node's
+// ident_span and answers "" for a synthetic or span-less node, which is what the alias target of a
+// resolved kind declaration is -- so comparing authored names alone refused the kind's OWN declared
+// inhabitant and made the wall refuse everything, positive control included. This is the corpus's
+// existing idiom for the same problem (v1.compiler.emit_rust type_leaf_name_for_collapse), not a new
+// one. Applied to BOTH sides so the comparison cannot be lopsided.
+fn kind_admissible_inhabitant_name(kind_decl: Node, env: TypeEnv) -> String {
+  match kind_decl.inferred {
+    Present { value: Resolved { node: target } } => node_authored_or_own_name(n: target, env: env)
+    _ => ""
+  }
+}
+
+// A DIAGNOSTIC THAT NAMES WHAT IT LOOKED AT. The refusal reported an empty declared inhabitant and
+// could not say WHY -- whether the kind declaration carried no resolved target, or carried one whose
+// name read empty. Those have different repairs, so the message carries both facts rather than
+// costing another build cycle to distinguish them.
+fn kind_lookup_trace(kind_decl: Node, env: TypeEnv) -> String {
+  concat(
+    "decl='", node_authored_or_own_name(n: kind_decl, env: env),
+    "' inferred=", match kind_decl.inferred { Present { value: _ } => "present"  Absent => "absent" },
+    " resolved_target='", kind_admissible_inhabitant_name(kind_decl: kind_decl, env: env),
+    "' children=", to_string(value: kind_decl.children |> count)
+  )
+}
+
+// The refusal names what it COMPARED AGAINST, not just what was supplied. A wall that says only
+// "X is not an inhabitant" makes its own misbehaviour unreadable -- this one refused its own declared
+// inhabitant and the message could not distinguish that from a correct refusal.
+fn kind_decl_for_message(kind_node: Node, env: TypeEnv) -> Node {
+  match lookup_type_by_name(env: env, name: authored_name(env: env, node: kind_node)) {
+    Present { value: d } => d
+    Absent => kind_node
+  }
+}
+
+fn node_authored_or_own_name(n: Node, env: TypeEnv) -> String {
+  let a = authored_name(env: env, node: n)
+  if a == "" { n.name } else { a }
+}
+
+// An argument spelled as a bare name that is not an admitted inhabitant may still be a generic
+// parameter of the ENCLOSING declaration (`fn f<N>(x: Compose<UInt, MachineWidth<N>>)`), which
+// reaches this position as a plain leaf rather than as an inferred type variable. Admitting it here
+// is the same deferral the type-variable arm makes, for the same reason.
+fn type_arg_name_is_bound_generic_parameter(name: String, env: TypeEnv) -> Bool {
+  match lookup_type_by_name(env: env, name: name) {
+    Absent => false
+    Present { value: bound } =>
+      match bound.inferred {
+        Present { value: inf } => is_type_variable(inferred: inf)
+        Absent => false
+      }
   }
 }
 
@@ -520,6 +691,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     let arity_diags = if expected_arity != actual_arity {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
     } else { [] }
+    let kind_diags = type_param_kind_diagnostics(carrier: n, decl: decl, type_name: type_name, env: env, module_name: module_name)
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
@@ -541,7 +713,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data }
       let resolved_node = Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data }
-      NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
+      NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, kind_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
         substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
@@ -550,7 +722,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data }
       let result = NodeResolveResult {
         resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data },
-        diagnostics: concat(arity_diags, arg_diags)
+        diagnostics: concat(arity_diags, kind_diags, arg_diags)
       }
       result
     }

@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_resolve
 
 use self::AliasKind::*;
+use self::KindInhabitance::*;
 use self::UnitVariantPhantomLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -27,7 +28,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::divergent_type;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
+    ArityMismatch, InternalError, TypeArgumentKindMismatch, UnlistedImportUse, UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -45,9 +46,10 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_method_name_at, field_from_key_property_name, field_init_node_name_at,
-    field_init_node_value, field_node_cardinality, field_node_default_value, field_node_from_key,
-    field_node_name_at, field_node_type_expr, foreach_variable_at, generic_param_name_at, intern,
+    expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
+    field_from_key_property_name, field_init_node_name_at, field_init_node_value,
+    field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
+    field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
     is_compiler_error, is_container_type, is_kernel_type, is_local_transport,
     join_optional_cardinality, kernel_span, let_binding_name_at, local_transport_node,
     make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
@@ -56,8 +58,8 @@ pub use crate::v1_std_core::{
     make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
     qualified_last_segment, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    resource_use_resource, string_type, transport_request_body, type_param_kind_property_name,
+    unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
@@ -136,6 +138,175 @@ pub fn lookup_unit_variant_phantom_type(
                 Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
             }
         }
+    }
+}
+
+pub fn type_param_kind_diagnostics(
+    carrier: Rc<Node>,
+    decl: Rc<Node>,
+    type_name: String,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new(
+            decl.params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.extend((*match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(kind_node) => match carrier.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(arg) => {
+        let kind_name = crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone());
+let param_name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), pair.1.clone());
+match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone()) {
+    KindInhabitance::KindInhabited => Rc::new(vec![]),
+    KindInhabitance::KindNotInhabited => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat(v1_rt::concat(type_arg_display_spelling(arg.clone(), env.clone()), " (the kind's declared inhabitant is '".to_string()), kind_admissible_inhabitant_name(kind_decl_for_message(kind_node.clone(), env.clone()), env.clone())), "')".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+    KindInhabitance::KindDeclarationUnresolved => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
+    type_name: type_name.clone(),
+    param_name: param_name.clone(),
+    kind_name: kind_name.clone(),
+    supplied: v1_rt::concat(v1_rt::concat("(kind declaration '".to_string(), kind_name.clone()), "' did not resolve, so inhabitance could not be established)".to_string()),
+    span: arg.span.clone(),
+}), module_name.clone())]),
+}
+},
+},
+}).iter().cloned());
+        }
+        __result
+    })
+}
+
+pub fn type_arg_display_spelling(n: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    match crate::v1_std_core::expr_literal_int_optional(n.clone()) {
+        Some(v) => (v.clone()).to_string(),
+        std::option::Option::None => {
+            crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum KindInhabitance {
+    KindInhabited,
+    KindNotInhabited,
+    KindDeclarationUnresolved,
+}
+
+pub fn type_arg_kind_inhabitance(
+    arg: Rc<Node>,
+    kind_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> KindInhabitance {
+    {
+        let arg_is_type_var = match arg.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
+            std::option::Option::None => false,
+        };
+        if arg_is_type_var.clone() {
+            KindInhabitance::KindInhabited
+        } else {
+            if (crate::v1_std_core::expr_literal_int_optional(arg.clone())
+                != std::option::Option::None)
+            {
+                KindInhabitance::KindInhabited
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    env.clone(),
+                    crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()),
+                ) {
+                    std::option::Option::None => KindInhabitance::KindDeclarationUnresolved,
+                    Some(kind_decl) => {
+                        let arg_name =
+                            crate::v1_compiler_infer_env::authored_name(env.clone(), arg.clone());
+                        if kind_names_admissible_inhabitant(
+                            kind_decl.clone(),
+                            arg_name.clone(),
+                            env.clone(),
+                        ) {
+                            KindInhabitance::KindInhabited
+                        } else {
+                            if type_arg_name_is_bound_generic_parameter(
+                                arg_name.clone(),
+                                env.clone(),
+                            ) {
+                                KindInhabitance::KindInhabited
+                            } else {
+                                KindInhabitance::KindNotInhabited
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn kind_names_admissible_inhabitant(
+    kind_decl: Rc<Node>,
+    arg_name: String,
+    env: Rc<TypeEnv>,
+) -> bool {
+    (kind_admissible_inhabitant_name(kind_decl.clone(), env.clone()) == arg_name.clone())
+}
+
+pub fn kind_admissible_inhabitant_name(kind_decl: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    match kind_decl.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: target, .. }) => {
+            node_authored_or_own_name(target.clone(), env.clone())
+        }
+        _ => "".to_string(),
+    }
+}
+
+pub fn kind_decl_for_message(kind_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
+        env.clone(),
+        crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()),
+    ) {
+        Some(d) => d.clone(),
+        std::option::Option::None => kind_node.clone(),
+    }
+}
+
+pub fn node_authored_or_own_name(n: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    {
+        let a = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+        if (a.clone() == "".to_string()) {
+            n.name.clone()
+        } else {
+            a.clone()
+        }
+    }
+}
+
+pub fn type_arg_name_is_bound_generic_parameter(name: String, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
+        std::option::Option::None => false,
+        Some(bound) => match bound.inferred.clone() {
+            Some(inf) => is_type_variable(inf.clone()),
+            std::option::Option::None => false,
+        },
     }
 }
 
@@ -1254,6 +1425,13 @@ Rc::new(NodeResolveResult {
                         } else {
                             Rc::new(vec![])
                         };
+                        let kind_diags = type_param_kind_diagnostics(
+                            n.clone(),
+                            decl.clone(),
+                            type_name.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                        );
                         let arg_results = Rc::new({
                             let mut __result = Vec::new();
                             for child in n.children.clone().iter().cloned() {
@@ -1423,7 +1601,10 @@ Rc::new(NodeResolveResult {
                                 Rc::new(NodeResolveResult {
                                     resolved: resolved_node.clone(),
                                     diagnostics: v1_rt::concat(
-                                        v1_rt::concat(arity_diags.clone(), arg_diags.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(arity_diags.clone(), kind_diags.clone()),
+                                            arg_diags.clone(),
+                                        ),
                                         target_result.diagnostics.clone(),
                                     ),
                                 })
@@ -1499,7 +1680,7 @@ Rc::new(NodeResolveResult {
                                         ident: None,
                                     }),
                                     diagnostics: v1_rt::concat(
-                                        arity_diags.clone(),
+                                        v1_rt::concat(arity_diags.clone(), kind_diags.clone()),
                                         arg_diags.clone(),
                                     ),
                                 });
@@ -3964,6 +4145,12 @@ pub fn resolve_item_types(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KindInhabited;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KindNotInhabited;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KindDeclarationUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasParameterized;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

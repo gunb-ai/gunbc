@@ -96,7 +96,8 @@ pub use crate::v1_std_core::{
     shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
     transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
+    type_param_kind_property_name, variant_node_fields, variant_node_name_at,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
@@ -6929,8 +6930,10 @@ pub fn collect_type_param_names(
             let type_mint = mint_parsed_node_identity(ctx.clone());
             let type_expr =
                 leaf_type_node(type_mint.identity.clone(), r.name.clone(), span.clone());
-            let param_mint = mint_parsed_node_identity(type_mint.ctx.clone());
-            let param = crate::v1_std_core::make_param_node(
+            let kind_result =
+                parse_optional_type_param_kind(r.tokens.clone(), type_mint.ctx.clone());
+            let param_mint = mint_parsed_node_identity(kind_result.ctx.clone());
+            let bare_param = crate::v1_std_core::make_param_node(
                 param_mint.identity.clone(),
                 r.name.clone(),
                 type_expr.clone(),
@@ -6938,8 +6941,14 @@ pub fn collect_type_param_names(
                 span.clone(),
                 span.clone(),
             );
+            let param = with_type_param_kind_property(bare_param.clone(), kind_result.kind.clone());
             let next_params = v1_rt::rc_list_push(params.clone(), param.clone());
-            match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+            match (*eat(
+                kind_result.tokens.clone(),
+                Rc::new(ExpectedToken::ExpectComma),
+            ))
+            .clone()
+            {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
                     let __tco_0 = __ec.clone();
                     let __tco_1 = param_mint.ctx.clone();
@@ -6952,7 +6961,7 @@ pub fn collect_type_param_names(
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
                     break Rc::new(TypeParamsResult {
                         params: next_params.clone(),
-                        tokens: r.tokens.clone(),
+                        tokens: kind_result.tokens.clone(),
                         ctx: param_mint.ctx.clone(),
                     });
                 }
@@ -6963,6 +6972,77 @@ pub fn collect_type_param_names(
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
             });
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeParamKindResult {
+    pub kind: Option<Rc<Node>>,
+    pub tokens: Rc<TokenStream>,
+    pub ctx: Rc<ParseContext>,
+}
+
+pub fn parse_optional_type_param_kind(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<TypeParamKindResult> {
+    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
+        EatResult::EatConsumed { tokens: __ec, .. } => {
+            let r = expect_ident(__ec.clone());
+            let kind_mint = mint_parsed_node_identity(ctx.clone());
+            Rc::new(TypeParamKindResult {
+                kind: Some(leaf_type_node(
+                    kind_mint.identity.clone(),
+                    r.name.clone(),
+                    r.span.clone(),
+                )),
+                tokens: r.tokens.clone(),
+                ctx: kind_mint.ctx.clone(),
+            })
+        }
+        EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(TypeParamKindResult {
+            kind: std::option::Option::None,
+            tokens: tokens.clone(),
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn with_type_param_kind_property(param: Rc<Node>, kind: Option<Rc<Node>>) -> Rc<Node> {
+    match kind.clone() {
+        std::option::Option::None => param.clone(),
+        Some(k) => {
+            let prop = crate::v1_std_core::make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                crate::v1_std_core::type_param_kind_property_name(),
+                k.clone(),
+                k.span.clone(),
+                crate::v1_std_core::no_span(),
+            );
+            Rc::new(Node {
+                occurrence_identity: param.occurrence_identity.clone(),
+                name: param.name.clone(),
+                span: param.span.clone(),
+                ident_span: param.ident_span.clone(),
+                children: param.children.clone(),
+                connective: param.connective.clone(),
+                params: param.params.clone(),
+                inferred: param.inferred.clone(),
+                return_cardinality: param.return_cardinality.clone(),
+                uses: param.uses.clone(),
+                body: param.body.clone(),
+                transport: param.transport.clone(),
+                properties: v1_rt::rc_list_push(param.properties.clone(), prop.clone()),
+                type_annotation: param.type_annotation.clone(),
+                is_self_recursive: param.is_self_recursive.clone(),
+                has_non_tail_self_call: param.has_non_tail_self_call.clone(),
+                match_pattern: param.match_pattern.clone(),
+                module_item_kind: param.module_item_kind.clone(),
+                declaration_marker: param.declaration_marker.clone(),
+                expr_data: param.expr_data.clone(),
+                ident: None,
+            })
         }
     }
 }

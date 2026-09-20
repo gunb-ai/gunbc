@@ -247,8 +247,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -10123,14 +10123,28 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
-    std::option::Option::None => {
-                let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+    std::option::Option::None => if binding_resolves_to_type_parameter(binding.clone()) {
+                Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+    binding_kind: std::option::Option::None,
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: error_type(),
+})), span.clone(), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
+    name: name.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
+            } else {
+                {
+                    let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
 ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: binding.resolved.clone(),
 })), span.clone(), span.clone()))
-},
+}
+            },
 }
 },
     std::option::Option::None => match (*crate::v1_compiler_infer_lookup::lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())).clone() {
@@ -10175,8 +10189,21 @@ match scope_parent.clone() {
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
-    std::option::Option::None => {
-                let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+    std::option::Option::None => if binding_resolves_to_type_parameter(gbinding.clone()) {
+                Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+    binding_kind: std::option::Option::None,
+}), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
+    node: error_type(),
+})), span.clone(), span.clone()),
+    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeParameterInValuePosition {
+    name: name.clone(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+})
+            } else {
+                {
+                    let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
@@ -10185,7 +10212,8 @@ Rc::new(InferResult {
 })), span.clone(), span.clone()),
     diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
 })
-},
+}
+            },
 },
 }
 },
@@ -20515,6 +20543,13 @@ pub fn split_sig_params(
             __result
         }),
     })
+}
+
+pub fn binding_resolves_to_type_parameter(binding: Rc<TypeBinding>) -> bool {
+    match binding.resolved.clone().inferred.clone() {
+        Some(inf) => is_type_variable(inf.clone()),
+        std::option::Option::None => false,
+    }
 }
 
 pub fn param_is_generic_decl(

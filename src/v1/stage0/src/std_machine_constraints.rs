@@ -10,10 +10,12 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MachineWidth<Bits>(pub std::marker::PhantomData<Bits>);
+pub struct PointerWidth(pub std::marker::PhantomData<()>);
+
+pub type WidthResolution = PointerWidth;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PointerWidth(pub std::marker::PhantomData<()>);
+pub struct MachineWidth<Bits>(pub std::marker::PhantomData<Bits>);
 
 pub type Compose<Algebra, MachineConstraint> =
     std::marker::PhantomData<(Algebra, MachineConstraint)>;

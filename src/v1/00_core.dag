@@ -451,6 +451,8 @@ type CompilerDiagnostic
   | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
+  | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | TypeParameterInValuePosition { name: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
   | ServiceConfigReferenceJudgmentDeferred {
@@ -676,6 +678,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
+    TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    TypeParameterInValuePosition { name: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
       match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
         Present { value: span } => span
@@ -785,6 +789,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
       concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
+    TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("type argument does not inhabit the declared kind applying '", t, "': parameter '", p, "' is declared '", k, "', and '", sup, "' is not one of its inhabitants")
+    TypeParameterInValuePosition { name: n, span: _ } =>
+      concat("'", n, "' is a type parameter, not a value: a name bound as a type may not stand in an expression position")
     OccurrenceTransportViolation { refusal: refusal } =>
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
@@ -912,6 +920,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeParameterInValuePosition { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     OccurrenceTransportViolation { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
@@ -1996,6 +2006,14 @@ fn file_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_path: N
     Absent => [path_field]
   }
   make_transport_node(occurrence_identity: occurrence_identity, properties: props, children: [], body: none, span: span)
+}
+
+// The property channel a type parameter's KIND annotation rides on. Named once here because the
+// parser writes it (v1.compiler.parse collect_type_param_names) and the resolver reads it
+// (v1.compiler.resolve), and a property key spelled at both ends is the same literal standing in
+// two authorities -- DESIGN section 3.
+fn type_param_kind_property_name() -> String {
+  "__param_kind"
 }
 
 fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {

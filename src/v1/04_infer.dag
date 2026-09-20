@@ -51,7 +51,7 @@ import v1.std.core { Unmarked,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -6544,6 +6544,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
               }
             Absent =>
+              if binding_resolves_to_type_parameter(binding: binding) {
+                InferResult {
+                  typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                    name: name,
+                    expr_data: ExprVar { binding_kind: none },
+                    children: [],
+                    inferred: Present { value: Resolved { node: error_type } },
+                    span: span,
+                    name_span: span
+                  ),
+                  diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
+                }
+              } else {
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
               ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: name,
@@ -6553,6 +6566,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 span: span,
                 name_span: span
               ))
+              }
           }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
@@ -6613,6 +6627,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                             diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                           }
                         Absent =>
+                          if binding_resolves_to_type_parameter(binding: gbinding) {
+                            InferResult {
+                              typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                                name: name,
+                                expr_data: ExprVar { binding_kind: none },
+                                children: [],
+                                inferred: Present { value: Resolved { node: error_type } },
+                                span: span,
+                                name_span: span
+                              ),
+                              diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
+                            }
+                          } else {
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
                           InferResult {
                             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -6624,6 +6651,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               name_span: span
                             ),
                             diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span)
+                          }
                           }
                       }
                   }
@@ -11645,6 +11673,26 @@ fn split_sig_params(params: List<Node>, source_indices: Map<String, NewlineIndex
     generic_names: params
       |> filter(p => param_is_generic_decl(p: p, source_indices: source_indices))
       |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+  }
+}
+
+// THE FLOOR CHECK THIS ARM WAS MISSING. A generic type parameter is inserted into the environment
+// by env_with_type_variable_bindings as an ordinary str_bindings entry whose resolved node carries
+// inferred = TypeVariable. So the name RESOLVES, lookup_binding_by_name succeeds, and the
+// undefined-variable refusal below never sees it -- measured: `fn f() -> Int { ZZZ }` refuses with
+// one blocking error while `fn width_of<N>(..) -> Int { N }` and `fn any_param<T>(x: T) -> Int { T }`
+// both compile with ZERO and emit an undefined lowercased identifier (`n`, `t`) into a crate that
+// fails E0425. The wall was never missing; it was DEFEATED by the binding, one link earlier than the
+// undefined-name check, which is doing its job correctly.
+//
+// This is the ORDINARY COMPILER FLOOR -- names resolve, values inhabit declared types -- so the gap
+// is below baseline rather than a missing differentiator. Reification of a width-kinded parameter is
+// the one admitted EXCEPTION to this refusal and is added at this same arm; every other type
+// parameter refuses here.
+fn binding_resolves_to_type_parameter(binding: TypeBinding) -> Bool {
+  match binding.resolved.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
   }
 }
 

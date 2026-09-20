@@ -7,7 +7,7 @@ import v1.std.core { Unmarked, TestMarked,
   Cardinality, Required, CardOptional,
   make_param_node, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  field_from_key_property_name,
+  field_from_key_property_name, type_param_kind_property_name,
   make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -3097,23 +3097,77 @@ fn parse_optional_type_params(tokens: TokenStream, ctx: ParseContext) -> TypePar
   }
 }
 
+// A KIND ANNOTATION IS CARRIED AS A PROPERTY, NEVER AS THE PARAMETER TYPE-EXPR. The type-expr of a
+// generic parameter is a leaf bearing the parameter's own name, and that self-naming IS the marker
+// every downstream consumer keys on to recognise a generic declaration (v1.compiler.infer
+// param_is_generic_decl requires pname == tname). Writing the kind there would make `bits: Width`
+// stop being a generic parameter at all, so the kind rides the existing property channel and the
+// parameter keeps its identity.
 fn collect_type_param_names(tokens: TokenStream, ctx: ParseContext, params: List<Node>) -> TypeParamsResult {
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let r = expect_ident(tokens: tokens)
     let span = r.span
     let type_mint = mint_parsed_node_identity(ctx: ctx)
     let type_expr = leaf_type_node(occurrence_identity: type_mint.identity, name: r.name, span: span)
-    let param_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
-    let param = make_param_node(occurrence_identity: param_mint.identity, name: r.name, type_expr: type_expr, default_value: none, span: span, name_span: span)
+    let kind_result = parse_optional_type_param_kind(tokens: r.tokens, ctx: type_mint.ctx)
+    let param_mint = mint_parsed_node_identity(ctx: kind_result.ctx)
+    let bare_param = make_param_node(occurrence_identity: param_mint.identity, name: r.name, type_expr: type_expr, default_value: none, span: span, name_span: span)
+    let param = with_type_param_kind_property(param: bare_param, kind: kind_result.kind)
     let next_params = list_push(params, param)
-    match eat(tokens: r.tokens, expected: ExpectComma) {
+    match eat(tokens: kind_result.tokens, expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>
       collect_type_param_names(tokens: __ec, ctx: param_mint.ctx, params: next_params)
     EatUnchanged { tokens: __eu } =>
-      TypeParamsResult { params: next_params, tokens: r.tokens, ctx: param_mint.ctx }
+      TypeParamsResult { params: next_params, tokens: kind_result.tokens, ctx: param_mint.ctx }
     }
   } else {
     TypeParamsResult { params: params, tokens: tokens, ctx: ctx }
+  }
+}
+
+type TypeParamKindResult {
+  kind: Node?
+  tokens: TokenStream
+  ctx: ParseContext
+}
+
+fn parse_optional_type_param_kind(tokens: TokenStream, ctx: ParseContext) -> TypeParamKindResult {
+  match eat(tokens: tokens, expected: ExpectColon) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = expect_ident(tokens: __ec)
+    let kind_mint = mint_parsed_node_identity(ctx: ctx)
+    TypeParamKindResult {
+      kind: Present { value: leaf_type_node(occurrence_identity: kind_mint.identity, name: r.name, span: r.span) },
+      tokens: r.tokens,
+      ctx: kind_mint.ctx
+    }
+  EatUnchanged { tokens: __eu } =>
+    TypeParamKindResult { kind: none, tokens: tokens, ctx: ctx }
+  }
+}
+
+// THE KIND PROPERTY'S name_span MUST BE no_span(), AND THE REASON IS A TRAP WORTH NAMING. Property
+// lookup goes through find_property -> field_init_node_name_at -> authored_name_at, which reads the
+// SOURCE TEXT at the property node's ident_span and falls back to the node's `name` field ONLY when
+// that span's file is absent from source_indices. Passing the kind token's own span therefore made
+// this property answer its own name as "WidthResolution" rather than "__param_kind", every lookup
+// missed, and the kind wall compiled, shipped and never fired -- green on every probe including the
+// ones written to go red. The existing sole_constructor property passes no_span() for exactly this
+// reason. A synthetic property is keyed by what its span reads, not by what it is called.
+fn with_type_param_kind_property(param: Node, kind: Node?) -> Node {
+  match kind {
+    Absent => param
+    Present { value: k } =>
+      let prop = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: type_param_kind_property_name(), value: k, span: k.span, name_span: no_span())
+      Node {
+        occurrence_identity: param.occurrence_identity, name: param.name, span: param.span, ident_span: param.ident_span,
+        children: param.children, connective: param.connective, params: param.params, inferred: param.inferred,
+        return_cardinality: param.return_cardinality, uses: param.uses, body: param.body, transport: param.transport,
+        properties: list_push(param.properties, prop), type_annotation: param.type_annotation,
+        is_self_recursive: param.is_self_recursive, has_non_tail_self_call: param.has_non_tail_self_call,
+        match_pattern: param.match_pattern, module_item_kind: param.module_item_kind,
+        declaration_marker: param.declaration_marker, expr_data: param.expr_data
+      }
   }
 }
 
