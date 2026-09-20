@@ -406,7 +406,13 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // exit, including refusals — an operation that failed still allocated the session that carried it.
 //
 // THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
-// password@FILE keeps the secret out of argv; every later call carries only the cookie.
+// password@FILE keeps the secret out of argv; every later call carries only the cookie. THE FILE IS
+// THE PASSWORD BYTES EXACTLY: curl(1) documents name@file as URL-encoding the file's content
+// INCLUDING any newline, so a file ending in \n posts password=...%0A and the controller refuses the
+// login as a wrong password with no hint (review 68456). The caller's prelude writes the Secret
+// Manager payload bytes verbatim (base64-decoded, no trailer), so the contract lives on the stored
+// payload: it is minted without a trailing newline, and boot 22 (run 35447067113) is the executed
+// positive control that the stored bytes log in.
 //
 // StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
 // on the operation row above records that omitting it makes the firmware refuse with codes
@@ -428,16 +434,16 @@ service megarac.Media {
     }
   }
 
-  operation GetSession {
+  operation ProbeSessionOnMediaRoute {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%{http_code}", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
-      nonzero => String "megarac session GET failed"
+      nonzero => String "megarac session probe on the media route failed"
     }
   }
 

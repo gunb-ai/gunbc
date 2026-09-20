@@ -16,9 +16,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization {
   AttemptIdentity, AuthorizationRequest,
   authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
-  claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
-  authorization_claim_outcome, AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided,
+  ClaimHeld, ClaimLost, ClaimUndecided,
 }
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
   MtCollins1BootSubject,
@@ -41,7 +41,7 @@ import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc, mtcollins1_edac_topology }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
@@ -58,14 +58,9 @@ import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
-import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set, authorization_claim_store_root,
-  CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-}
-import std.durable_compare_and_set {
-  ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration,
-  CasCommitted, CasPreconditionFailed, CasStoreRefused,
-}
+import std.durable_compare_and_set { CasGeneration }
+
+data mtcollins1_boot_label: String = "mtcollins1 boot"
 
 data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
 
@@ -83,7 +78,11 @@ data mtcollins1_boot_sol_settle: Second = second(count: 2)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
 
+data mtcollins1_boot_issue_allowance: Second = second(count: 120)
+
 data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
+
+data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
 data mtcollins1_boot_submit_timeout: Second = second(count: 30)
 
@@ -94,7 +93,9 @@ fn mtcollins1_boot_approval_window() -> Second {
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_approval_window())
+    + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: mtcollins1_boot_actuation_allowance)
+    + second_count(s: mtcollins1_boot_cleanup_allowance)
   minute(count: (secs + 59) / 60)
 }
 
@@ -335,16 +336,96 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
     / (second_count(s: mtcollins1_boot_poll_cadence) as Int)
 }
 
+fn mtcollins1_host_capture_section(capture: String, name: String) -> String? {
+  fold(
+    split(s: capture, delimiter: "----SECTION "),
+    init: none,
+    f: (acc, part) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if starts_with(s: part, prefix: concat(name, "----")) {
+          Present { value: part }
+        } else {
+          none
+        }
+    },
+  )
+}
+
+fn mtcollins1_host_capture_section_exit_zero(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+  }
+}
+
+fn mtcollins1_host_capture_has_envelope_marker(capture: String, machine: NonEmptyStr, kind: String) -> Bool {
+  fold(
+    split(s: capture, delimiter: "\n"),
+    init: false,
+    f: (acc, line) =>
+      acc || (
+        string_contains(s: line, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
+          && string_contains(s: line, pattern: concat(" ", concat(kind, " ")))
+      ),
+  )
+}
+
+fn mtcollins1_host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
+  mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "begin")
+    && mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "end")
+}
+
+fn mtcollins1_host_capture_nproc_exact(capture: String, threads: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "nproc") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT nproc: 0")
+        && string_contains(s: section, pattern: concat("\n", concat(threads, "\n----EXIT nproc: 0")))
+  }
+}
+
+fn mtcollins1_host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
+  string_contains(
+    s: section,
+    pattern: concat("/sys/devices/system/edac/mc/mc0/", concat(counter, concat(" == ", value))),
+  )
+}
+
+fn mtcollins1_host_capture_edac_clean_section(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ce_count", value: "0")
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ue_count", value: "0")
+  }
+}
+
+fn mtcollins1_host_capture_workload_stable(capture: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "workload") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT workload: 0")
+        && string_contains(s: section, pattern: "workload-write-rc=0")
+        && string_contains(s: section, pattern: "workload-digest-stable=yes")
+  }
+}
+
 fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
-  string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", subject.machine as String))
-    && string_contains(s: capture, pattern: " end ")
-    && string_contains(s: capture, pattern: "----SECTION nproc----")
-    && string_contains(
-      s: capture,
-      pattern: concat("\n", concat(hardware_thread_count_value(t: mtcollins1_nproc) as String, "\n")),
-    )
-    && string_contains(s: capture, pattern: mtcollins1_edac_topology.driver_name as String)
-    && string_contains(s: capture, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
+  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
+  mtcollins1_host_capture_envelope_complete(capture: capture, machine: subject.machine)
+    && mtcollins1_host_capture_nproc_exact(capture: capture, threads: threads)
+    && mtcollins1_host_capture_section_exit_zero(capture: capture, name: "boot-media")
+    && match mtcollins1_host_capture_section(capture: capture, name: "boot-media") {
+      Absent => false
+      Present { value: media } =>
+        string_contains(s: media, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
+    }
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-before")
+    && mtcollins1_host_capture_workload_stable(capture: capture)
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-after")
 }
 
 fn mtcollins1_boot_await_capture_terminal(
@@ -369,13 +450,15 @@ fn mtcollins1_boot_await_capture_terminal(
   }
 }
 
-fn mtcollins1_boot_release_sol(password_file: String) -> Bool
+fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
   uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
-    Absent => false
-    Present { value: user } =>
-      mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+    Absent => LeaseInaccessible
+    Present { value: user } => {
+      let _attempted = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+      mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
+    }
   }
 }
 
@@ -389,12 +472,14 @@ fn mtcollins1_boot_settle_from_fresh_clock(
 {
   match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
     Absent =>
-      mtcollins1_unterminated_claim_exit(
+      unterminated_claim_exit(
+        label: mtcollins1_boot_label,
         outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable at the terminal; refusing to stamp completion or abort with the pre-actuation instant"),
         detail: "clock unreadable at claim terminal",
       )
     Present { value: at } =>
-      mtcollins1_settle_boot_claim(
+      settle_authorization_claim(
+        label: mtcollins1_boot_label,
         outcome: outcome,
         escalation_id: escalation_id,
         attempt: attempt,
@@ -424,7 +509,7 @@ fn mtcollins1_boot_after_gate(
             AuthorizationRefused { cause: c } =>
               exit_failure(reason: concat("mtcollins1 boot: ", authorization_refusal_reason(cause: c)))
             AuthorizationPermitted { grant: g } =>
-              match mtcollins1_claim_boot_authorization(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
+              match claim_authorization_slot(escalation_id: g.escalation_id, attempt: g.attempt, at: at) {
                 ClaimLost { holder: who } =>
                   exit_failure(reason: concat("mtcollins1 boot: operator grant already claimed: ", who as String))
                 ClaimUndecided { reason: why } =>
@@ -458,9 +543,20 @@ fn mtcollins1_boot_after_gate(
                           )
                         other => other
                       }
-                      let _released = mtcollins1_boot_release_sol(password_file: password_file)
+                      let teardown = mtcollins1_boot_release_sol(password_file: password_file, pid_path: sol_pid_path)
+                      let terminal = match observed {
+                        ExitSuccess =>
+                          match teardown {
+                            LeaseRunningExpected =>
+                              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
+                            LeaseRunningStale =>
+                              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
+                            _ => ExitSuccess
+                          }
+                        other => other
+                      }
                       mtcollins1_boot_settle_from_fresh_clock(
-                        outcome: observed,
+                        outcome: terminal,
                         escalation_id: g.escalation_id,
                         attempt: g.attempt,
                         held_at: held_at,
@@ -472,85 +568,6 @@ fn mtcollins1_boot_after_gate(
       }
     _ => mtcollins1_boot_refusal(gate: gate)
   }
-}
-
-fn mtcollins1_claim_boot_authorization(
-  escalation_id: NonEmptyStr,
-  attempt: AttemptIdentity,
-  at: Timestamp,
-) -> AuthorizationClaimOutcome
-  uses fs: std.resources.Filesystem
-{
-  let proposed = claim_transition_claimed(attempt: attempt, at: at)
-  match admit_cas_attempt(
-    attempt: claim_authorization(
-      escalation_id: escalation_id,
-      expected: ExpectSlotAbsent,
-      proposed: proposed,
-    ),
-  ) {
-    CasAttemptAdmitted { verified: v } =>
-      authorization_claim_outcome(
-        proposed: proposed,
-        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v),
-      )
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      ClaimUndecided { reason: "claim digest families are incomparable" as NonEmptyStr }
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
-      ClaimUndecided { reason: "authorization claim key is not slot-addressable" as NonEmptyStr }
-  }
-}
-
-fn mtcollins1_settle_boot_claim(
-  outcome: ProcessExit,
-  escalation_id: NonEmptyStr,
-  attempt: AttemptIdentity,
-  held_at: CasGeneration,
-  at: Timestamp,
-) -> ProcessExit
-  uses fs: std.resources.Filesystem
-{
-  let terminal = match outcome {
-    ExitSuccess => claim_transition_completed(attempt: attempt, at: at)
-    ExitFailure { code: _, reason: r } =>
-      claim_transition_aborted(attempt: attempt, at: at, cause: r as NonEmptyStr)
-  }
-  match admit_cas_attempt(
-    attempt: claim_authorization(
-      escalation_id: escalation_id,
-      expected: ExpectSlotGeneration { generation: held_at },
-      proposed: terminal,
-    ),
-  ) {
-    CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
-        CasCommitted { committed: _ } => outcome
-        CasPreconditionFailed { expected: _, observed: _ } =>
-          mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "claim slot moved under us")
-        CasStoreRefused { cause: _ } =>
-          mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "claim store refused the terminal write")
-      }
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "terminal payload and its digest disagree")
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "terminal digest families are incomparable")
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
-      mtcollins1_unterminated_claim_exit(outcome: outcome, detail: "authorization claim key is not slot-addressable")
-  }
-}
-
-fn mtcollins1_unterminated_claim_exit(outcome: ProcessExit, detail: String) -> ProcessExit {
-  exit_failure(
-    reason: concat(
-      "mtcollins1 boot: the step finished but its authorization claim was left unterminated (",
-      concat(detail, concat("); step outcome was: ", match outcome {
-        ExitSuccess => "success"
-        ExitFailure { code: _, reason: r } => concat("failure: ", r)
-      })),
-    ),
-  )
 }
 
 fn mtcollins1_boot_poll_ticks(

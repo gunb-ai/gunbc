@@ -2,7 +2,15 @@ module gunbc.machine_intake_oob_boot_handoff
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, ipmi_boot_selection_options_token }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection,
+  ipmi_boot_device_label,
+  ipmi_boot_selection_options_token,
+  ipmi_boot_expected_flag_rendering,
+  ipmi_boot_expected_device_rendering,
+  ipmi_boot_expected_mode_rendering,
+  ipmi_boot_expected_persistence_rendering,
+}
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
@@ -137,13 +145,13 @@ data ipmi_boot_flag_invalid_rendering: NonEmptyStr = "Boot Flag Invalid"
 fn boot_readback_verdict(readback: String, selection: IpmiBootSelection) -> BootReadbackVerdict {
   if readback |> contains(ipmi_boot_flag_invalid_rendering as String) {
     BootReadbackFlagInvalid
-  } else if !(readback |> contains(selection.expected_flag_rendering as String)) {
+  } else if !(readback |> contains(ipmi_boot_expected_flag_rendering(selection: selection) as String)) {
     BootReadbackFlagInvalid
-  } else if !(readback |> contains(selection.expected_persistence_rendering as String)) {
+  } else if !(readback |> contains(ipmi_boot_expected_persistence_rendering(selection: selection) as String)) {
     BootReadbackNotOneShot
-  } else if !(readback |> contains(selection.expected_mode_rendering as String)) {
+  } else if !(readback |> contains(ipmi_boot_expected_mode_rendering(selection: selection) as String)) {
     BootReadbackFirmwareMismatch
-  } else if readback |> contains(selection.expected_device_rendering as String) {
+  } else if readback |> contains(ipmi_boot_expected_device_rendering(selection: selection) as String) {
     BootReadbackConfirmed
   } else {
     BootReadbackSelectorAbsent
@@ -198,7 +206,7 @@ fn oob_boot_handoff(
     return BootHandoffNotAdmitted { admission: admission }
   }
   let bmc_host = observation.endpoint.host
-  let device = selection.device_wire
+  let device = ipmi_boot_device_label(device: selection.device)
 
   set = diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
     bmc_host: bmc_host,

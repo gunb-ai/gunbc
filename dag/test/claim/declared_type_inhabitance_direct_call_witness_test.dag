@@ -125,15 +125,9 @@ test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
   violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
-data optional_value_at_required_source: String = "module probe_inhabit_optional_at_required\nimport std.types { Int, String }\nfn maybe_text() -> String? { none }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: maybe_text()) }\n"
-
-test fn w_optional_value_at_required_binding_is_admitted_only_at_the_counted_boundary() -> Bool {
-  violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
-    && violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeNotInhabited") == 0
-}
-
 // The syntax contrast that exposed the application hole. The cast seam already refused the same
-// optional-to-required transition; keep that independently typed refusal beside the binding RED
+// optional-to-required transition; the binding seam now refuses it too, and that RED lives at
+// test.claim.optional_at_required_position_witness_test an_optional_at_a_string_parameter_must_refuse,
 // so neither seam can accidentally stand in as evidence for the other.
 data optional_value_cast_to_required_source: String = "module probe_inhabit_optional_cast_required\nimport std.types { String }\nfn maybe_text() -> String? { none }\nfn probe() -> String { maybe_text() as String }\n"
 

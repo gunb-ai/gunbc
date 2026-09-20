@@ -7,6 +7,7 @@ import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
+  mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
   mtcollins1_boot_submit_timeout,
   mtcollins1_status_from_get, mtcollins1_boot_instant_from_probe,   mtcollins1_boot_sol_is_held,
   mtcollins1_boot_sol_held_from_observations,
@@ -45,7 +46,9 @@ test fn the_submit_timeout_is_a_second_not_a_bare_literal() -> Bool {
 test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() -> Bool {
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_approval_window()) as Int)
+    + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 
@@ -127,9 +130,15 @@ test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
     )
 }
 
-test fn a_spent_boot_claim_slot_is_the_escalation_id_on_the_shared_claim_root() -> Bool {
+// THE SLOT KEY CARRIES THE RELATION'S SCOPE AND IS SLOT-ADDRESSABLE: it is not the bare escalation
+// id (a second relation on the shared root could then collide with it) and it carries no `/`
+// (which gunbc.durable_cas_file_store refuses). Both halves are reds: the bare id and a slashed key.
+test fn a_boot_claim_slot_key_is_scoped_and_slot_addressable() -> Bool {
   let eid = "mtcollins1-boot-1" as NonEmptyStr
-  (authorization_claim_key(escalation_id: eid) as String) == (eid as String)
+  let key = authorization_claim_key(escalation_id: eid) as String
+  key != (eid as String)
+    && string_contains(s: key, pattern: eid as String)
+    && !key.contains("/")
 }
 
 test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
@@ -187,14 +196,114 @@ test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
 
 test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
   let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-  mtcollins1_boot_terminal_observed(
-    capture: concat(
-      "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION nproc----\n160\n----SECTION edac----\nghes_edac\nUbuntu-Server 24.04.3 LTS arm64\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
-      "",
+  let clean = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
     ),
-    subject: subject,
   )
+  let ghes_ce = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\nghes_edac\n== /sys/devices/system/edac/mc/mc0/ce_count == 1\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let ue = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 1\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let nproc_elsewhere = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----EXIT nproc: 1\n----SECTION lscpu----\nCPU(s):                               160\n----EXIT lscpu: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let digest_mismatch = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    concat(
+      "----SECTION boot-media----\nLABEL=\"Ubuntu-Server 24.04.3 LTS arm64\"\n----EXIT boot-media: 0\n",
+      concat(
+        "----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n",
+        concat(
+          "----SECTION edac-before----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n",
+          concat(
+            "----SECTION workload----\nworkload-write-rc=0\nworkload-digest-stable=no\n----EXIT workload: 0\n",
+            concat(
+              "----SECTION edac-after----\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n",
+              "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z=====",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+  let begin_only = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION nproc----\n160\n"
+  let begin_with_spurious_end = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    "console said the process reached the end of its run\n----SECTION nproc----\n160\n",
+  )
+  mtcollins1_boot_terminal_observed(capture: clean, subject: subject)
     && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: ue, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: subject)
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {

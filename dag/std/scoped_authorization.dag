@@ -395,14 +395,18 @@ fn authorize<Subject>(
 //
 // The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
 // exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
-// nothing, which is the shape of the race rather than its resolution. The key is the escalation
-// id itself -- a slash-prefixed path is not slot-addressable in gunbc.durable_cas_file_store.
+// nothing, which is the shape of the race rather than its resolution. The key CARRIES ITS SCOPE:
 // `authorization_claim_store_root` is one shared authorization-claim domain (srv3 boot-once and
-// Mt. Collins boot both publish there); the root does not per-workflow-namespace the key, so
-// callers mint globally unique escalation ids rather than relying on a path prefix.
+// Mt. Collins boot both publish there), and the scope prefix is what keeps this relation's slots
+// from colliding with any other relation that may share the root. The separator is `-` rather than
+// `/` because a slash is not slot-addressable in gunbc.durable_cas_file_store (cas_key_is_slot_
+// addressable) -- the earlier repair for that refusal deleted the prefix and moved the scoping into
+// caller convention (review 68728); this restores it as a property of the key.
 fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
-  escalation_id
+  concat(authorization_claim_key_scope, escalation_id as String) as NonEmptyStr
 }
+
+data authorization_claim_key_scope: String = "scoped-authorization-"
 
 // THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization
 // (gunbc.durable_cas_file_store) reads and writes NonEmptyStr, so a claim typed over
