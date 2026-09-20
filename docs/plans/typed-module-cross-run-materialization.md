@@ -76,14 +76,26 @@ What does *not* exist: any retention beyond process exit, and any content key.
 ```
 data floor_runner_host_frame: Frame = Frame {
   name: "runner-host",
-  kind: SharedStateFrame
+  kind: UnboundedSiblingsFrame
 }
 ```
 
-`SharedStateFrame` is the honest kind: sibling processes and successive runs on one runner host
-share the store's mutable state. It is broader than `floor_executor_process_frame()` and narrower
-than the fleet — a host's store is never read by another host, so no cross-host coherence question
-arises.
+**The kind is load-bearing, and the first draft had it wrong** (review of this design, 2026-09-20).
+`SharedStateFrame` would have defeated the whole row. The ladder's plurality rules read:
+
+> (1) Redundancy visible in the graph whose LCA frame is shared-state (one workspace/process —
+> rewireable) = AUTHORED duplication = error; the fix is rewire/Share, **never a cache**. …
+> (3) EXPECTED-emergent redundancy — a single demand today, but an enclosing frame declares
+> re-demand (`ReplayedFrame` attempts>1 = retry/restart replay; **`UnboundedSiblingsFrame` = server
+> loop / recurring CI invocations over time**) — obligates UP FRONT: prepare-before-demand, so
+> checkpointing and **cross-run caches are derived, not bolted on** after the incident.
+
+Successive CI invocations are state (3), not state (1): they execute apart by construction and
+cannot be rewired into one another. Declared as `SharedStateFrame` the ladder would classify them as
+authored duplication and answer that a cache is the wrong fix; declared as `UnboundedSiblingsFrame`
+it derives the obligation this row exists to discharge. The frame is broader than
+`floor_executor_process_frame()` and narrower than the fleet — a host's store is never read by
+another host, so no cross-host coherence question arises.
 
 ### 4.2 One new provider row
 
@@ -92,7 +104,7 @@ data floor_typecheck_store_persist_provider: CacheProvider = provider_row(
   id: "host_persisted_typecheck_store",
   scope: [floor_runner_host_frame],
   coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
-  tier: CasTier { keying: ContentKeyed },
+  tier: ArtifactTier { keying: ContentKeyed },
   retention: persistent_retention(capacity: CapacityBounded {
     limit: <entry-count limit, §8>,
     at_capacity: <eviction, §8>
@@ -103,6 +115,13 @@ data floor_typecheck_store_persist_provider: CacheProvider = provider_row(
 It covers the **same identity** as the in-process provider, `union-typecheck-store(dag,src/v2)`.
 The in-process row stays exactly as it is; this row says where the value lives when the process
 that computed it is gone.
+
+**`ArtifactTier`, not `CasTier`** (review, 2026-09-20). `tier_axes` grounds the tiers in placement:
+`ArtifactTier` is `LocalFilesystem` and `CasTier` is `RemoteNetwork`. The implementation here is a
+per-host directory, so `CasTier` would have declared a placement nothing implements and contradicted
+this row's own no-cross-host boundary. Both tiers are `KeyAddressed`, so the content keying below is
+unchanged. A fleet-wide store, if it is ever wanted, is the `CasTier` row — a different provider with
+a coherence question this one does not have.
 
 **The ladder forces two properties, and that is the point of modelling it here rather than adding a
 disk cache:** `retention_admission` refuses `ReleasedNever` with `CapacityUnbounded`
@@ -130,13 +149,49 @@ The key is therefore everything the computation reads:
 
 ### 4.4 Where it attaches in the code
 
-At the seam the cross-worker store already uses — `index_insert_typed` writes through, a miss
-decodes from the store — so there is no second cache layer and no new representation. The existing
-transport is reused as-is; only its backing changes from an in-process map to a host directory of
-content-addressed entries.
+**The first draft's "reuse the existing seam" does not reach the fold, and that was the design's
+worst error** (review, 2026-09-20). The shared store is armed only when the adaptive worker width
+exceeds one, and `floor_materialization` says width 1 keeps the private per-index `Rc` cache. The
+read path says it plainly:
+
+```rust
+let Some(store) = index.cross_worker_store.as_ref() else {
+    shared_typecheck_store::record_private_store_fallback();
+    return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
+};
+```
+
+The nominal fold runs at width 1. So every read it performs takes that fallback — there is even a
+counter for it — and a persistent backing behind the shared store would never be consulted or
+populated. No warm relief could occur.
+
+**So the store must be armed independently of worker width**, and that is a change to arming, not
+only to backing:
+
+| | Today at width 1 | This design |
+|---|---|---|
+| Read | private `Rc` map | L1 private `Rc` map, then L2 persistent entry on an L1 miss |
+| Write | private `Rc` map only | L1 as today, plus one L2 encode per newly resolved module |
+| Arming | `scheduled_width > 1` | independent of width; the persistent provider is its own arm |
+
+**Two levels, not one, and the store's "sole authority" rule has to relax.** The cross-worker store
+documents that when armed it becomes the only typed-cache authority and `index_insert_typed` stops
+writing the per-index map, so reads decode bytes — which avoids double retention but pays a decode
+on **every** read. At width 1 that would replace a cheap `Rc` clone with a decode on thousands of
+reads and could make a warm run *slower* than a cold one. The persistent provider therefore sits
+BEHIND the in-process map rather than replacing it: L1 answers repeat reads within a run, L2 answers
+the first read of a module that a previous run resolved.
+
+**The serialization cost is a first-class unknown, not an assumption.** Width 1 encodes nothing
+today, so this design adds encode work that did not exist: one encode per newly resolved module and
+one decode per warm hit. Step 3 of the rollout measures exactly this — cold-run wall time with the
+provider armed but empty (encode cost, no benefit) against cold-run time with it disarmed, and warm
+against cold. If the encode cost on a cold run exceeds the warm saving on a typical PR, the design
+fails its own test and the provider stays disarmed.
 
 The counters already in `SharedTypecheckStoreCounters` become the observation the ladder demands,
-emitted into the floor's measurement receipt so a run reports hits, misses, bytes and evictions.
+emitted into the floor's measurement receipt so a run reports hits, misses, bytes and evictions —
+and, with the above, L1 hits separately from L2 hits.
 
 ## 5. Soundness, and how each failure mode ends
 
@@ -156,9 +211,22 @@ the typed results differ. It runs in a scheduled job, not per push, because it c
 preparation by definition. Without it, "the cache is sound" is a claim with no discriminating test,
 which DESIGN §5 names spec-without-execution.
 
-A second, cheaper check belongs in CI itself: the fold already prints a subject digest
-(`digest=96e8b36e00b61c7a`). A warm run and a cold run of the same commit must print the same
-digest.
+**The subject digest cannot serve as that check** (review, 2026-09-20). `PreparedSubject.subject_digest`
+is computed by `subject_digest_for_closure` BEFORE strict resolution, over the closure's source
+content and the compiler transform content — it hashes the *inputs*. Warm and cold runs of one commit
+therefore print the same digest even if the store returned a wrong typed result, so comparing it
+would be a check that cannot fail for the reason it is written: precisely the
+spec-without-execution shape DESIGN section 5 forbids.
+
+The CI check must compare **outputs**:
+- a digest over the typed results of the resolved closure (the fold already holds every
+  `TypecheckModuleResult` it produced), emitted into the measurement receipt; and
+- the floor's existing receipts, which are output artifacts — `required_floor_disposition.tsv`,
+  `required_floor_claim_cost.tsv`, `required_floor_cross_claim_demand.tsv`. A warm run and a cold
+  run of one commit must produce byte-identical dispositions and per-claim verdicts.
+
+The first is the direct falsifier; the second is available today with no new emission and would
+catch any divergence that changes a claim's disposition.
 
 ## 7. Non-goals
 
@@ -183,6 +251,9 @@ digest.
 3. **Warm-seeding.** Whether a post-merge run on `main` populates the store so PR runs start warm,
    or PRs warm it themselves.
 4. **Whether verify mode is a scheduled job** (§6) or an operator-invoked instrument.
+5. **Whether the width-1 arming is acceptable as its own provider arm** (§4.4), given it adds encode
+   work to every cold run. The alternative is to arm only where a warm store already exists for the
+   closure, which is cheaper on a first run and more state to reason about.
 
 ## 9. Rollout, and the relief each step buys
 
@@ -190,7 +261,7 @@ digest.
 |---|---|---|
 | 1. Model rows: frame, provider, capacity, eviction, counters-as-observation | today | the authority exists; ladder admission passes or refuses loudly |
 | 2. Persistent backing behind `GUNBC_TYPED_STORE_PERSIST`, default **off** | today | nothing changes until armed |
-| 3. Measure on one host: cold vs warm fold, digests equal | tomorrow | the number this design is worth |
+| 3. Measure on one host: cold armed-but-empty vs cold disarmed (the encode cost), then warm vs cold, comparing typed-output digest and the floor's receipts | tomorrow | the number this design is worth, and whether the encode cost eats it |
 | 4. Arm in the workflow env | tomorrow | the relief lands in CI |
 | 5. Widen `required_gate_prefixes` back toward the full roster | after | the claims dropped for cost come back |
 
