@@ -658,13 +658,20 @@ fn observed_stored_artifact(
               detail: concat("the store did not report a usable object size: ", bytes_text),
             }
           } else {
-            ArtifactAvailable {
-              artifact: StoredArtifact {
-                subject_digest: build_subject_digest(subject: subject),
-                blob_oid: blob,
-                sha256: digest,
-                bytes: byte_size(count: parse_int(trim(s: bytes_text))),
-              },
+            match parse_int(trim(s: bytes_text)) {
+              Absent =>
+                ArtifactUnreadable {
+                  detail: concat("the store did not report a usable object size: ", bytes_text),
+                }
+              Present { value: size } =>
+                ArtifactAvailable {
+                  artifact: StoredArtifact {
+                    subject_digest: build_subject_digest(subject: subject),
+                    blob_oid: blob,
+                    sha256: digest,
+                    bytes: byte_size(count: size),
+                  },
+                }
             }
           }
       }

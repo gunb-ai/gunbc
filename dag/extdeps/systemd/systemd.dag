@@ -274,9 +274,14 @@ fn parse_systemd_cpu_quota_per_sec_show(raw: String) -> SystemdCpuQuotaPerSec {
 
 // COMPARABLE ARMS HAVE AN IDENTITY STRING; UNDECODABLE HAS NONE. Desired never produces Undecodable:
 // it renders through systemd_cpu_quota_per_sec_magnitude_identity of of_threads, which is total.
+// THE UNBOUNDED IDENTITY IS A NAMED CONSTANT because a DESIRED side that declares no ceiling has to
+// spell it the same way the observed side does, and reaching that spelling through the identity
+// function would hand the desired side an Optional it can never see Absent on.
+data systemd_cpu_quota_unbounded_identity: String = "infinity"
+
 fn systemd_cpu_quota_per_sec_identity(q: SystemdCpuQuotaPerSec) -> String? {
   match q {
-    CpuQuotaUnbounded => Present { value: "infinity" }
+    CpuQuotaUnbounded => Present { value: systemd_cpu_quota_unbounded_identity }
     CpuQuotaPerSec { usec: u } => Present { value: systemd_cpu_quota_per_sec_magnitude_identity(usec: u) }
     CpuQuotaAbsent => Present { value: "" }
     CpuQuotaUndecodable { raw: _ } => none
