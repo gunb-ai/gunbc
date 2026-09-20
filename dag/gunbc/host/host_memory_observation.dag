@@ -194,8 +194,11 @@ data gunbc_ci_host_usable_ram_disposition: Disposition = Terminal {
   reason: "DISCHARGED 2026-08-23: every enrolled host now carries its own measured /proc/meminfo MemTotal, which is precisely what this scaffold named as its dissolution condition. srv3 and srv4 were read on 2026-08-22 and srv1 and srv2 on 2026-08-23; the borrowed fleet-wide lower bound they were all standing on is deleted (gunbc_ci_conservative_lower_bound_retired_note). This is a real climb and not a re-labelling: the carrier no longer has any arm in which one host's measurement answers for another's, so the state this scaffold was registered against is unreachable rather than merely unoccupied. The sibling overhead obligation gunbc_ci_managed_host_fixed_overhead_disposition is NOT discharged by this and is deliberately left standing -- it binds a QUIESCENT MemAvailable read, which is a different observation with a different provenance requirement, and gunbc_ci_host_usable_ram_disposition_note exists to say why the two were never one obligation."
 }
 
-// THE FIRST MemTotal READS THIS FLEET HAS EVER CARRIED (2026-08-22), which retires the
-// conservative lower bound on two hosts and leaves it standing on the other two.
+// THE FIRST MemTotal READS THIS FLEET HAS EVER CARRIED. srv3 and srv4 were read on 2026-08-22 and
+// srv1 and srv2 on 2026-08-23, at which point the borrowed fleet-wide lower bound had no host left
+// to lend to and was deleted -- gunbc_ci_conservative_lower_bound_retired_note above records that,
+// and gunbc_ci_host_usable_ram_disposition is Terminal on the strength of it. The paragraphs below
+// describe the 2026-08-22 pair, which is why they speak of "both hosts".
 //
 // Taken over SSH on the hosts themselves -- /proc/meminfo MemTotal, the figure the kernel
 // reports after firmware and kernel reservations -- which is exactly the read
@@ -228,14 +231,12 @@ data gunbc_ci_srv4_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
   provenance: "srv4 /proc/meminfo MemTotal = 526643092 kB, read over SSH 2026-08-22 while the host was serving (5 actions-runner units active, uptime 2h52m, kernel 6.8.0-138-generic), against the 8 x 64 GiB Samsung population installed the same day",
 }
 
-// srv1 AND srv2 KEEP THE BOUND, FOR TWO DIFFERENT REASONS, and collapsing them would lose one.
-// srv1 WAS upgraded and is reported at 502 GB by the operator, but this lane holds no read of it
-// -- its host refuses the fleet-automation key and no BMC credential for it exists in Secret
-// Manager -- so promoting it here on a relayed figure would be exactly the borrowed premise the
-// unknown-host arm refuses. srv2's 64 GiB upgrade FAILED and was reverted the same day, so it
-// genuinely still carries 8 x 16 GiB and the 125 GiB bound is very nearly its real figure.
-// Same arm, same value, opposite reasons: one is unmeasured-and-bigger, the other is
-// unmeasured-and-accurate.
+// THE UNKNOWN-HOST ARM REFUSES RATHER THAN BORROWING, WHICH IS THE ONLY THING THIS DISPATCH
+// DECIDES THAT ITS ROWS DO NOT SAY FOR THEMSELVES. Every enrolled host answers from its own
+// /proc/meminfo read, and each row's provenance carries why that read is admissible; a host with
+// no row gets HostUsableRamUnmeasured, never another machine's figure. That is the whole rationale
+// -- lending one host's MemTotal to a second is what the retired fleet-wide bound did, and
+// gunbc_ci_conservative_lower_bound_retired_note records why it was deleted rather than loosened.
 fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   if (host as String) == (operator_host_srv1 as String) {
     gunbc_ci_srv1_memtotal_measured
