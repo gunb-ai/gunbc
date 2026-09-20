@@ -102,6 +102,7 @@ import gunbc.ci_spec {
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
+  gunbc_ci_approval_broker_dark_install_invoke,
   gunbc_ci_rlm_launch_deployment_receipt_invoke,
   gunbc_live_deploy_receipt_artifact_name,
   gunbc_live_deploy_receipt_artifact_dir,
@@ -198,6 +199,7 @@ type FleetConvergeWorkflowMode
   | RlmLaunchDeploymentReceipt
   | HostResetReturn
   | RunnerHostFileObserve
+  | ApprovalBrokerDarkInstall
   | RunnerHostFileConverge
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
@@ -230,6 +232,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
     HostResetReturn => "host_reset_return"
     RunnerHostFileObserve => "runner_host_file_observe"
+    ApprovalBrokerDarkInstall => "approval_broker_dark_install"
     RunnerHostFileConverge => "runner_host_file_converge"
     SitePxeEdgeObserve => "site_pxe_edge_observe"
     SitePxeEdgeConverge => "site_pxe_edge_converge"
@@ -264,7 +267,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -304,6 +307,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkNativeServingApply => none
     SparkRuntimeImageProbe => none
     DashboardDeploy => Present { value: LiveDeploy }
+    ApprovalBrokerDarkInstall => none
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
     RunnerHostFileObserve => none
@@ -359,6 +363,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkNativeServingApply => FleetSshKeyConsumed
     SparkRuntimeImageProbe => FleetSshKeyConsumed
     DashboardDeploy => FleetSshKeyConsumed
+    ApprovalBrokerDarkInstall => FleetSshKeyConsumed
     RlmLaunchDeploymentReceipt => FleetSshKeyConsumed
     HostResetReturn => FleetSshKeyConsumed
     RunnerHostFileObserve => FleetSshKeyConsumed
@@ -1707,6 +1712,79 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
   }
 }
 
+// ── THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1) ────────────────────────────────────
+// WHY THIS MODE EXISTS AT ALL: gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet binds
+// ci_deploy_srv1_access, whose expected principal is ghrunner. An operator invoking the same fold
+// from a session refuses BEFORE any mutation -- `deploy_access: principal mismatch
+// expected=ghrunner actual=briansrls` -- which is the access model doing its job. The install
+// therefore reaches srv1 the way every other host mutation does, as a dispatched job on the
+// host-pinned runner, rather than by widening the expected principal to admit an operator.
+//
+// IT IS ADDITIVE AND MUST NOT RESTART THE ROADMAP. The unit and slice it writes are the broker's
+// own (gunbc-approval-broker.service / .slice); srv1's roadmap unit is frozen at its current
+// release by operator ruling until the cutover, so an install that bounced it would break that
+// freeze while appearing to succeed. The fold it calls installs and starts only the broker's unit.
+//
+// NO PLAN RECEIPT AND NO APPLY RECEIPT DOWNLOAD, which is what makes this job's shape differ from
+// dashboard-deploy beside it. That job binds a live-deploy transaction to a plan run and an apply
+// run because it REPLACES a running service; this one adds a unit that nothing yet routes to, so
+// there is no prior state for a transaction to be bound against. What proves the install is the
+// NEXT cutover stage rather than this job's exit: ProveRelease reads the broker's own /livez back
+// and compares it to the candidate (gunbc.auth.approval_broker_cutover release_admission). An
+// installer asserting it installed is the control-plane fact standing in for the subject
+// observation that gunbc.recurring_failure_mode
+// control_plane_acknowledgement_minted_as_effect exists to refuse.
+data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
+
+fn fleet_converge_approval_broker_dark_install_step() -> Step {
+  RunStep {
+    name: Present { value: "Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)" },
+    id: Present { value: "approval_broker_dark_install" },
+    run: gunbc_ci_approval_broker_dark_install_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+// IT SHARES fleet_host_mutation_concurrency_group_expression WITH dashboard-deploy, and sharing is
+// the point rather than an inherited default: both jobs mutate srv1's systemd, so serializing them
+// against one another is what stops a broker install landing in the middle of a roadmap deploy.
+// QueueNotMax with cancel_in_progress false, for the reason the dashboard-deploy annotation gives
+// -- a queued install must never interrupt the one holding the host mutation window.
+fn fleet_converge_approval_broker_dark_install_job() -> Job {
+  Job {
+    id: "approval-broker-dark-install",
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      fleet_converge_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+        fleet_converge_approval_broker_dark_install_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: none,
+  }
+}
+
 fn fleet_converge_spark_grants_step() -> Step {
   RunStep {
     name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
@@ -2141,7 +2219,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_approval_broker_dark_install_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome

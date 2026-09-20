@@ -74,6 +74,20 @@ type ServiceNotReady {
 // the entry's closure, at which point this number falls back to seconds without touching the margin.
 data live_deploy_roadmap_unit_expected_startup: Second = second(count: 240)
 
+// THE BROKER'S OWN EXPECTED STARTUP, DECLARED BESIDE THE ROADMAP'S SO THE TWO CANNOT BE CONFUSED.
+// It is NOT derived from the roadmap's 240 s and must not be: the broker compiles and serves four
+// routes that consult no roadmap, no plan, no site bundle and no attempt evidence, which is the
+// work the roadmap's cold start is made of. 60 s is a DECLARED POLICY BUDGET WITH AN UNMEASURED
+// SUBJECT -- what supports it is that qualitative containment argument, not a reading, and saying
+// so is DESIGN section 4d rather than modesty. Stage C of the cutover replaces it with a
+// measurement; until then a broker that is genuinely slower than this refuses the stage LOUDLY
+// (the poll reports unreachable at the bound) rather than being admitted on a lucky probe.
+//
+// THE MARGIN FACTOR BELOW IS SHARED RATHER THAN RESTATED, because the uncertainty it encodes is a
+// property of polling a unit through a restart -- scheduling, disk, a cold page cache -- and not a
+// property of which unit is restarting.
+data approval_broker_expected_startup: Second = second(count: 60)
+
 data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 
 data live_deploy_service_ready_poll_bound_reason: String = "Cold-start bound for gunbc-roadmap.service after systemctl restart, and the SECOND correction of this rationale -- the previous one was measured against the wrong phase and is the reason the srv1 deploy refused on every run for a day. Recorded plainly, because the failure mode is more instructive than the number.
