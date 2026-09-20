@@ -3,7 +3,7 @@ module tools.roadmap_denominator_probe
 import std.types { Bool, List, String, Int, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
 import gunbc.roadmap_status {
   RoadmapItem, TicketLine, SupersededLine, AuthoredLine, PlainLine, DerivableLine,
   line_ticket, item_is_done, signoff_is_present, TicketFields,
@@ -38,11 +38,11 @@ fn line_kind(i: RoadmapItem) -> String {
   }
 }
 
-fn sizing_kind(s: NodeSizing) -> String {
-  match s {
-    Unsized => "unsized"
-    Sized { intricacy: _, volume: _, repo: r, acceptance: a } =>
-      join(["sized(", r, ",", if a == ManualAcceptance { "manual" } else { "other" }, ")"], "")
+fn dispatch_kind(d: WorkItemDispatch) -> String {
+  match d {
+    NotDispatchable => "not-dispatchable"
+    Dispatchable { repo: r, acceptance: a } =>
+      join(["dispatchable(", r, ",", if a == ManualAcceptance { "manual" } else { "other" }, ")"], "")
   }
 }
 
@@ -57,9 +57,9 @@ fn admissible(n: RoadmapNode) -> Bool {
     && (match line_ticket(item: n.line) { Present { value: t } => ticket_complete(t: t)  Absent => false })
     && count(n.carriers) > 0
     && !(n.owner == "")
-    && (match n.sizing {
-      Sized { intricacy: _, volume: _, repo: r, acceptance: a } => r == "gunbc" && a == ManualAcceptance
-      Unsized => false
+    && (match n.dispatch {
+      Dispatchable { repo: r, acceptance: a } => r == "gunbc" && a == ManualAcceptance
+      NotDispatchable => false
     })
 }
 
@@ -67,7 +67,7 @@ fn row_line(n: RoadmapNode) -> String {
   join([
     "  ", n.node as String,
     " line=", line_kind(i: n.line),
-    " sizing=", sizing_kind(s: n.sizing),
+    " dispatch=", dispatch_kind(d: n.dispatch),
     " carriers=", to_string(count(n.carriers)),
     " owner=", if n.owner == "" { "(empty)" } else { n.owner },
     " done=", if item_is_done(item: n.line, merged: []) { "yes" } else { "no" },
