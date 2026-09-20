@@ -9,7 +9,7 @@ import extdeps.systemd.unit_file {
   SystemdServiceDirective, SystemdDropIn, DropInUnitSection,
   SystemdInstallSection, Installable, NotInstallable,
   Description, After, Before, Requires,
-  ServiceType, ExecStart, Restart, Environment, ServiceUser, ServiceGroup, ServiceSlice,
+  ServiceType, SimpleMode, ExecStart, Restart, Environment, ServiceUser, ServiceGroup, ServiceSlice,
   slice_memory_max, slice_memory_high,
   WantedBy,
   serialize_systemd_unit_file,
@@ -205,7 +205,7 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
       compile_pool_service_directives(placement: instance.intended_compile_pool),
       concat(
       [
-        ServiceType { mode: "simple" as NonEmptyStr },
+        ServiceType { mode: SimpleMode },
         ServiceUser { name: instance.intended_principal },
         ServiceGroup { name: instance.intended_principal },
         Environment {
