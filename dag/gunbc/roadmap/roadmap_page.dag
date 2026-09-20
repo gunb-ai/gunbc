@@ -43,6 +43,7 @@ import gunbc.roadmap_component {
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
   activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
+  node_attempt_stale_class,
 }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
@@ -80,6 +81,7 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
+  workflow_segment_detail_bounded,
 }
 import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted, v1_finish_lines_accepted_count }
 
@@ -585,20 +587,22 @@ fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
 // The SERVER realization of the activity region — the same semantic DOM the emitted client paints
 // from the decided /workflow.json view (node-activity container with arm/attention data, one
 // summary line via activity_summary_line, the obligation ledger and evidence rows behind the
-// activity disclosure, the located reason on the refused arm; anomalous or refused opens the
-// disclosure — the attention rule's server half). Two realizations, ONE deciding module; the parity
+// activity disclosure, the located reason on the refused arm; only a LIVE attempt opens the
+// disclosure — refusals and anomalies read on their labels, per the 2026-09-20 status-surface
+// ruling). Two realizations, ONE deciding module; the parity
 // witness holds their semantic regions and labels equal (operator blocker 7). A NoActiveWork view
 // renders NOTHING, which is why a served page whose rows carry no observed attempt still ships zero
 // workflow furniture.
 
 fn activity_obligation_node(s: WorkflowSegment) -> Fragment {
   let state = workflow_segment_state_key(state: s.state)
+  let detail = workflow_segment_detail_bounded(detail: s.detail)
   el_attrs("div", [
     attr(name: "class", value: activity_obligation_class ),
     attr(name: "data-state", value: state ),
   ], [ txt(join([
     workflow_segment_kind_label(kind: s.kind), activity_state_sep, state,
-    if s.detail == "" { "" } else { join([activity_detail_sep, s.detail], "") },
+    if detail == "" { "" } else { join([activity_detail_sep, detail], "") },
   ], "")) ])
 }
 
@@ -689,9 +693,12 @@ fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
 // round strip; the obligation ledger and evidence rows sit behind the disclosure. The previous rule
 // opened every anomalous row, and a board of eight spent attempts was eight open ledgers of identical
 // text (operator, 2026-09-05: "show the bar only, collapse the information, unless the worker is
-// working"). Anomaly still reads on the container's attention data and in the summary line; the
-// refused arm keeps its located reason open, because a refusal is the loud stop DESIGN section 5 asks
-// for and its reason is the one thing the reader must not have to click for.
+// working"). Anomaly still reads on the container's attention data and in the summary line. The
+// refused arm once kept its located reason open because a refusal is the loud stop DESIGN section 5
+// asks for; the 2026-09-20 status-surface ruling moves that loudness into the LABEL (a state word
+// plus a short, aggregated reason on the summary line) and puts the reason text behind the
+// disclosure like every other payload, so fourteen identical refusals read as one line each rather
+// than fourteen open error dumps.
 fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   match a {
     NoActiveWork => []
@@ -705,7 +712,7 @@ fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool
     }
     ActiveWorkRefused { summary: _, located_reason, evidence } =>
       [ activity_container(a: a, attention: "", children: [
-          activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: true),
+          activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: false),
         ]) ]
     LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
       [ activity_container(a: a, attention: "", children: [
@@ -716,7 +723,7 @@ fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool
               [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
             ),
             located_reason: located_reason,
-            open: true,
+            open: false,
           ),
         ]) ]
     CompletedWork { outcome: _, evidence } =>
@@ -770,15 +777,23 @@ fn render_work_row(view: WorkRowView) -> List<Fragment> {
 }
 
 fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
-  [
-    attr(name: "class", value: concat("node node-", work_lifecycle_key(l: view.lifecycle))),
-    attr(name: "data-node", value: view.node_id),
-    attr(name: "tabindex", value: "0"),
-  ]
+  concat(
+    [
+      attr(name: "class", value: concat(
+        concat("node node-", work_lifecycle_key(l: view.lifecycle)),
+        if view.attempt_stale { concat(" ", node_attempt_stale_class) } else { "" })),
+      attr(name: "data-node", value: view.node_id),
+      attr(name: "tabindex", value: "0"),
+    ],
+    if view.attempt_stale {
+      [ attr(name: "data-attempt-revision", value: "stale") ]
+    } else {
+      []
+    })
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1058,6 +1073,7 @@ fn daily_workspace_view_of_for_accepted(
   attempts_refused: String?,
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
+  stale_nodes: List<String>,
 ) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
@@ -1069,7 +1085,8 @@ fn daily_workspace_view_of_for_accepted(
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     standing: standing_for_node(standings: standings, node_id: rn.node as String),
-    launch: ctx))
+    launch: ctx,
+    attempt_stale: any(stale_nodes, s => s == rn.node as String)))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   daily_workspace_view(
@@ -1090,6 +1107,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   attempts_refused: String?,
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
+  stale_nodes: List<String>,
 ) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
@@ -1099,6 +1117,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     attempts: attempts,
     attempts_refused: attempts_refused, standings: standings,
     launch: launch,
+    stale_nodes: stale_nodes,
   )
   let program_strip = match ws.program {
     Present { value: v } => [ program_progress_markup_of(v: v) ]
@@ -1280,11 +1299,11 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // own "the event carrier is not consulted" already claimed and did not deliver.
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render(), stale_nodes: [])
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [])
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it.
@@ -1294,6 +1313,31 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   attempts_refused: String?,
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
+) -> Fragment {
+  roadmap_daily_workspace_page_for_projection_observed_stale(
+    proj: proj,
+    attempts: attempts,
+    attempts_refused: attempts_refused,
+    standings: standings,
+    launch: launch,
+    stale_nodes: [],
+  )
+}
+
+// THE STALE-AWARE ENTRY: the tick's observing authority (gunbc.roadmap_served_observation) reads
+// each attempt's recorded launch identity and compares its revision against the deployed-tree head
+// the launch host standing observed, passing the stale node ids decided by
+// gunbc.roadmap_presentation.stale_attempt_nodes. A stale attempt keeps every typed fact — its
+// activity arm, its evidence, its disclosure — and renders them dimmed (the node-attempt-stale
+// class): evidence for a superseded question stays reachable and stops shouting. Every other entry
+// supplies the empty set, so a static or plan-fixture render dims nothing it cannot compare.
+fn roadmap_daily_workspace_page_for_projection_observed_stale(
+  proj: RoadmapAuthorityProjection,
+  attempts: List<WorkflowAttemptProgress>,
+  attempts_refused: String?,
+  standings: RoadmapStandings,
+  launch: LaunchHostStanding,
+  stale_nodes: List<String>,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -1310,6 +1354,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         attempts_refused: attempts_refused,
         standings: standings,
         launch: launch,
+        stale_nodes: stale_nodes,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -1324,6 +1369,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         attempts_refused: attempts_refused,
         standings: standings,
         launch: launch,
+        stale_nodes: stale_nodes,
       )
   }
 }

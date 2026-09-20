@@ -16,9 +16,19 @@ import extdeps.languages.json.parse {
 }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
 import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import gunbc.roadmap_launch_admission {
+  LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
+  launch_identity_of_json, LaunchIdentityDecoded, LaunchIdentityUnreadable, launch_identity_revision_hex,
+}
+import gunbc.fleet_desired_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_presentation { AttemptRevisionObservation, stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page_over,
@@ -160,6 +170,55 @@ fn served_observation_status_of_label(label: String) -> ServedObservationStatusD
   else { ServedObservationStatusUnknown { label: label } }
 }
 
+// THE STALE-ATTEMPT REVISION COMPARISON (operator ruling 2026-09-20). The tick already reads each
+// attempt's recorded launch identity (written by the actuation path beside the admission receipt);
+// comparing its revision to the deployed-tree head the launch host standing observed decides which
+// attempts answer a superseded question. The DECISION lives in
+// gunbc.roadmap_presentation.stale_attempt_nodes; what lives here is only the effectful read of the
+// two facts. An unreadable or undecodable launch record yields an empty observation — never a
+// fabricated revision — and the decision arm for an empty fact dims nothing.
+fn served_current_revision_hex(launch: LaunchHostStanding) -> String {
+  match launch {
+    LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision, sessions: _, capacity: _, mode: _ } =>
+      match revision {
+        LocalTreeRevisionObserved { revision: oid } => git_object_id_wire_hex(oid: oid) as String
+        LocalTreeRevisionUnobserved { cause: _ } => ""
+      }
+    LaunchHostObserveOnly { instance_id: _ } => ""
+    LaunchHostHalted { instance_id: _, gate: _, refusal: _ } => ""
+    LaunchHostUnobserved { reason: _ } => ""
+  }
+}
+
+fn attempt_launch_revision_hex(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String {
+  let read = Filesystem.Read(
+    path: dispatch_attempt_launch_path_for_instance(
+      instance: instance,
+      node_id: node_id as NonEmptyStr as RoadmapNodeId,
+      attempt_key: attempt_key,
+    ),
+  )
+  if !read.success {
+    ""
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: _ } => ""
+      JsonDocumentParsed { value: doc } =>
+        match launch_identity_of_json(doc: doc) {
+          LaunchIdentityDecoded { identity } => launch_identity_revision_hex(id: identity)
+          LaunchIdentityUnreadable { reason: _ } => ""
+        }
+    }
+  }
+}
+
+fn served_attempt_revision_observations(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>) -> List<AttemptRevisionObservation> {
+  map(attempts, p => AttemptRevisionObservation {
+    node_id: p.node_id,
+    launch_revision_hex: attempt_launch_revision_hex(instance: instance, node_id: p.node_id, attempt_key: p.attempt_key),
+  })
+}
+
 // The daily page is RENDERED HERE, at the tick, and only read back at request time -- so this is
 // where the plan a snapshot is about has to arrive. It is the same parameter the serve entry takes,
 // travelling the other route into the same page fold.
@@ -168,7 +227,16 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
   let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: attempts, attempts_refused: none, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed_stale(
+        proj: plan,
+        attempts: attempts,
+        attempts_refused: none,
+        standings: standings,
+        launch: launch,
+        stale_nodes: stale_attempt_nodes(
+          observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
+          current_revision_hex: served_current_revision_hex(launch: launch)),
+      )
     WorkflowAttemptsRefused { reason } =>
       roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
   }

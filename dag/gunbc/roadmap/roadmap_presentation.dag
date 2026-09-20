@@ -35,6 +35,7 @@ import gunbc.roadmap_workflow_stage {
   VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
   workflow_segment_kind_label,
+  workflow_segment_state_key, workflow_segment_detail_bounded, workflow_segment_detail_entries,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command {
@@ -81,9 +82,11 @@ import gunbc.harness.harness_throughput {
 // landing with the client-realization slice, not as prose.
 
 // The attention axis drives expand/collapse (routine collapses, active work is legible, anomaly
-// expands): Routine renders the one-line summary with the ledger behind disclosure; Anomalous
-// auto-expands the located evidence — the row-level twin of gunbc.roadmap_altitude's section law.
-// A NeedsUser arm was REMOVED (operator review 2026-08-01, minimality): no producer in the corpus
+// reads on its label): Routine renders the one-line summary with the ledger behind disclosure;
+// Anomalous marks the container's attention data and the summary sentence, and the disclosure
+// itself opens only while the worker is live — the 2026-09-20 status-surface ruling put every
+// payload, refusal reasons included, behind the disclosure. A NeedsUser arm was REMOVED (operator
+// review 2026-08-01, minimality): no producer in the corpus
 // yields a waiting-on-human fact yet, and an unconstructible attention state is future
 // vocabulary — the arm returns WITH its producer.
 
@@ -403,6 +406,34 @@ type WorkRowView {
   rounds: HarnessRoundLedger
   worker_alive: Bool
   standing: RoadmapNodeStanding?
+  attempt_stale: Bool
+}
+
+// STALENESS DIMS (operator ruling 2026-09-20): an attempt launched against a revision that is no
+// longer the deployed tree's head is evidence for a superseded question, and evidence for a
+// superseded question renders collapsed and dimmed rather than at full voice. The decision here is
+// a REVISION COMPARISON, never a wall-clock age: the current revision is the deployed-tree head the
+// launch host standing observed at the tick (the same authority the revision gate consumes), and an
+// attempt is stale exactly when its recorded launch revision is readable and differs. An
+// unobservable current revision dims nothing (no comparison, no claim), and an unreadable launch
+// record dims nothing either -- the attempt's own evidence arms already narrate that gap, and a dim
+// is a statement, not a suspicion.
+type AttemptRevisionObservation {
+  node_id: String
+  launch_revision_hex: String
+}
+
+fn stale_attempt_nodes(observations: List<AttemptRevisionObservation>, current_revision_hex: String) -> List<String> {
+  if current_revision_hex == "" {
+    []
+  } else {
+    flat_map(observations, o =>
+      if o.launch_revision_hex != "" && o.launch_revision_hex != current_revision_hex {
+        [o.node_id]
+      } else {
+        []
+      })
+  }
 }
 
 fn intricacy_code(i: Intricacy) -> String {
@@ -606,45 +637,38 @@ fn action_view(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> ActionVi
 // pair projects as its consequence — 'the retained session is no longer running' — with the raw
 // container/process facts demoted to evidence rows; the reader never joins tmux semantics manually.
 
+// Segment-state classification goes through the state KEY, never a coproduct match (operator
+// ruling 2026-09-20, slice-2 forward-compatibility: lane states render generically so a new state
+// — Yielded, BlockedOnPublication — needs no presentation change to keep the ladder painting). An
+// unlisted key classifies as non-complete: it surfaces as the next obligation in the summary and
+// renders its own key word in the ledger, and no arm here has to name it.
+fn segment_state_is(state: WorkflowSegmentState, key: String) -> Bool {
+  workflow_segment_state_key(state: state) == key
+}
+
 fn first_non_complete(segments: List<WorkflowSegment>) -> WorkflowSegment? {
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
-    Absent => match s.state {
-      WorkflowSegmentComplete => none
-      WorkflowSegmentStopped => none
-      WorkflowSegmentPending => Present { value: s }
-      WorkflowSegmentActive => Present { value: s }
-      WorkflowSegmentFailed => Present { value: s }
-      WorkflowSegmentRefused => Present { value: s }
-    }
+    Absent =>
+      if segment_state_is(state: s.state, key: "complete") || segment_state_is(state: s.state, key: "stopped") {
+        none
+      } else {
+        Present { value: s }
+      }
   })
 }
 
 fn first_refused(segments: List<WorkflowSegment>) -> WorkflowSegment? {
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
-    Absent => match s.state {
-      WorkflowSegmentRefused => Present { value: s }
-      WorkflowSegmentFailed => none
-      WorkflowSegmentComplete => none
-      WorkflowSegmentStopped => none
-      WorkflowSegmentPending => none
-      WorkflowSegmentActive => none
-    }
+    Absent => if segment_state_is(state: s.state, key: "refused") { Present { value: s } } else { none }
   })
 }
 
 fn first_failed(segments: List<WorkflowSegment>) -> WorkflowSegment? {
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
-    Absent => match s.state {
-      WorkflowSegmentFailed => Present { value: s }
-      WorkflowSegmentRefused => none
-      WorkflowSegmentComplete => none
-      WorkflowSegmentStopped => none
-      WorkflowSegmentPending => none
-      WorkflowSegmentActive => none
-    }
+    Absent => if segment_state_is(state: s.state, key: "failed") { Present { value: s } } else { none }
   })
 }
 
@@ -728,14 +752,25 @@ fn activity_evidence_rows(
 }
 
 fn activity_summary(segments: List<WorkflowSegment>, remaining: Int, process: WorkerProcessEvidence) -> String {
-  match agent_segment_state(segments: segments) {
-    WorkflowSegmentActive => "Agent working"
-    WorkflowSegmentComplete =>
+  let agent_key = workflow_segment_state_key(state: agent_segment_state(segments: segments))
+  if agent_key == "active" {
+    "Agent working"
+  } else {
+    if agent_key == "complete" || agent_key == "stopped" {
       match first_non_complete(segments: segments) {
-        Absent => "All obligations complete"
+        Absent =>
+          if agent_key == "stopped" {
+            "Agent stopped at its round budget · all obligations complete"
+          } else {
+            "All obligations complete"
+          }
         Present { value: next } =>
           join([
-            agent_completion_claim(process: process),
+            if agent_key == "stopped" {
+              "Agent stopped at its round budget"
+            } else {
+              agent_completion_claim(process: process)
+            },
             " · ",
             workflow_segment_kind_label(kind: next.kind),
             " next · ",
@@ -743,21 +778,104 @@ fn activity_summary(segments: List<WorkflowSegment>, remaining: Int, process: Wo
             " remaining",
           ], "")
       }
-    WorkflowSegmentStopped =>
-      match first_non_complete(segments: segments) {
-        Absent => "Agent stopped at its round budget · all obligations complete"
-        Present { value: next } =>
-          join([
-            "Agent stopped at its round budget · ",
-            workflow_segment_kind_label(kind: next.kind),
-            " next · ",
-            to_string(remaining),
-            " remaining",
-          ], "")
+    } else {
+      if agent_key == "failed" {
+        "Agent run failed"
+      } else {
+        if agent_key == "refused" {
+          "Agent evidence refused"
+        } else {
+          if agent_key == "pending" {
+            "Attempt admitted · agent not yet started"
+          } else {
+            join(["Agent ", agent_key], "")
+          }
+        }
       }
-    WorkflowSegmentPending => "Attempt admitted · agent not yet started"
-    WorkflowSegmentFailed => "Agent run failed"
-    WorkflowSegmentRefused => "Agent evidence refused"
+    }
+  }
+}
+
+// THE REFUSAL LABEL (operator ruling 2026-09-20): a typed refusal renders on the surface as a
+// state word plus a short reason — "Verification · refused — oracle missing", never the raw error
+// text. The full payload stays behind the activity disclosure, itself bounded by
+// workflow_segment_detail_bounded; the receipt artifact holds the unbounded list. The short reason
+// is the payload's first entry, character-capped; an empty payload yields the bare state label.
+data activity_short_reason_char_budget: Int = 96
+
+fn activity_short_reason(detail: String) -> String {
+  let entries = workflow_segment_detail_entries(detail: detail)
+  match entries.first() {
+    Absent => ""
+    Present { value: head } =>
+      if string_length(s: head) <= activity_short_reason_char_budget {
+        head
+      } else {
+        concat(substring(s: head, start: 0, end: activity_short_reason_char_budget), " …")
+      }
+  }
+}
+
+// REPEATED IDENTICAL LANE FAILURES AGGREGATE. The review reconciliation joins one "key: message"
+// clause per criterion lane with " · "; when every lane failed the same way (fourteen reviewers
+// each exiting 1 without a verdict), enumerating the clauses is one fact stated fourteen times.
+// The decided aggregate names the uniformity — "14/14 lanes — reviewer exited 1 without a verdict"
+// — and the per-lane clauses remain behind the disclosure, bounded. Multi-line payloads (dumps)
+// and mixed-message payloads do not aggregate: non-uniformity is itself information the label may
+// not erase.
+fn activity_lane_message(entry: String) -> String? {
+  let parts = split(s: entry, delimiter: ": ")
+  if count(parts) > 1 {
+    match parts.first() {
+      Absent => none
+      Present { value: key } =>
+        Present { value: substring(s: entry, start: string_length(s: key) + 2, end: string_length(s: entry)) }
+    }
+  } else {
+    none
+  }
+}
+
+fn activity_uniform_lane_summary(detail: String) -> String? {
+  if string_contains(s: detail, pattern: "\n") {
+    none
+  } else {
+    let lanes = split(s: detail, delimiter: " · ")
+    if count(lanes) < 4 {
+      none
+    } else {
+      let messages = fold(lanes, init: [], f: (acc, lane) => match activity_lane_message(entry: lane) {
+        Absent => concat(acc, [lane])
+        Present { value: m } => concat(acc, [m])
+      })
+      let distinct = fold(messages, init: [], f: (acc, m) => if any(acc, x => x == m) { acc } else { concat(acc, [m]) })
+      if count(distinct) == 1 {
+        match distinct.first() {
+          Absent => none
+          Present { value: message } =>
+            Present { value: join([
+              to_string(value: count(lanes)),
+              "/",
+              to_string(value: count(lanes)),
+              " lanes — ",
+              activity_short_reason(detail: message),
+            ], "") }
+        }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+fn activity_refusal_summary(kind: WorkflowSegmentKind, detail: String) -> String {
+  let label = join([workflow_segment_kind_label(kind: kind), " · refused"], "")
+  match activity_uniform_lane_summary(detail: detail) {
+    Present { value: aggregate } => join([label, " — ", aggregate], "")
+    Absent => {
+      let short = activity_short_reason(detail: detail)
+      if short == "" { label } else { join([label, " — ", short], "") }
+    }
   }
 }
 
@@ -771,8 +889,8 @@ fn activity_view_from_parts(
   let evidence = activity_evidence_rows(process: process, throughput: throughput)
   match first_refused(segments: segments) {
     Present { value: refused } => ActiveWorkRefused {
-      summary: join([workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
-      located_reason: refused.detail,
+      summary: activity_refusal_summary(kind: refused.kind, detail: refused.detail),
+      located_reason: workflow_segment_detail_bounded(detail: refused.detail),
       evidence: evidence,
     }
     Absent =>
@@ -810,7 +928,7 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
       if activity == legacy_attempt_supersedable_label {
         LegacySupersedableAttempt {
           summary: legacy_attempt_supersedable_label,
-          located_reason: detail,
+          located_reason: workflow_segment_detail_bounded(detail: detail),
           attempt_key: attempt_key_short_form(key: progress.attempt_key),
           evidence: activity_evidence_rows(process: progress.process, throughput: harness_throughput_from_ledger(ledger: progress.rounds)),
         }
@@ -876,6 +994,7 @@ fn work_row_view(
   launch: LaunchRowContext,
   worker_alive: Bool,
   standing: RoadmapNodeStanding?,
+  attempt_stale: Bool,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges)
@@ -893,6 +1012,7 @@ fn work_row_view(
     rounds: rounds,
     worker_alive: worker_alive,
     standing: standing,
+    attempt_stale: attempt_stale,
   }
 }
 
@@ -1257,6 +1377,7 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     rounds: row.rounds,
     worker_alive: row.worker_alive,
     standing: row.standing,
+    attempt_stale: row.attempt_stale,
   }
 }
 

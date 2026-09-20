@@ -349,6 +349,14 @@ data activity_round_remaining_class: String = "activity-round-remaining"
 data activity_located_reason_class: String = "activity-located-reason"
 data session_facts_class: String = "session-facts"
 
+// The stale-attempt dim (operator ruling 2026-09-20): a row whose attempt was launched against a
+// revision that is no longer the deployed tree's head carries this class on its li (set by the
+// server render from the revision comparison in gunbc.roadmap_presentation.stale_attempt_nodes)
+// plus data-attempt-revision="stale" as the machine-readable fact. The stylesheet dims the row's
+// activity region; the client poll never mints or clears the class because the wire carries no
+// revision fact — the next tick's server render re-decides it from the same comparison.
+data node_attempt_stale_class: String = "node-attempt-stale"
+
 // The client realization of the archetype's UnderHead ActivityRegion (A2 —
 // roadmap_row_archetype_note records the falsifier that forced it; the lamp strip, seven
 // pre-rendered stage chips, and 'waiting' text it replaces are deleted, not hidden). The container
@@ -358,12 +366,14 @@ data session_facts_class: String = "session-facts"
 // activity.summary/outcome/reason are final strings, data-arm and data-attention are the decided
 // keys the stylesheet materializes, the obligation ledger renders the wire's canonical segment
 // rows, and evidence rows are label/value pairs. The client holds NO composition policy — a summary
-// sentence assembled in TypeScript is the two-authorities defect this region dissolved. The detail
-// disclosure auto-opens ONCE per anomaly transition (data-auto-opened guard), honoring both the
-// attention rule's auto-expand and reason_surface_producers_note's ruling that a poll tick must
-// never fight the operator's hands. Session-observation facts (/sessions.json, the independent
-// presence source) render into the row disclosure's session-facts line, never into the actuator
-// cell and never onto the dispatch button — the button is an action, not a status report.
+// sentence assembled in TypeScript is the two-authorities defect this region dissolved. The
+// disclosure no longer auto-opens on a refused arm (the 2026-09-20 status-surface ruling: the
+// refusal's loudness lives in the decided LABEL, its payload behind the disclosure, so a board of
+// refusals is a board of one-line labels); the former auto-open-once-per-anomaly-transition
+// (data-auto-opened guard) is deleted in both realizations, and a poll tick never fights the
+// operator's hands because it never opens anything. Session-observation facts (/sessions.json, the
+// independent presence source) render into the row disclosure's session-facts line, never into the
+// actuator cell and never onto the dispatch button — the button is an action, not a status report.
 
 data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
@@ -2540,36 +2550,6 @@ fn activity_paint_stmts() -> List<TsStmt> {
         left: ts_member(object: ts_ident(name: "asum"), property: "textContent"),
         op: "=",
         right: activity_summary_text_expr()))),
-    ts_const(name: "adet", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join(["details.", activity_detail_class], ""))])),
-    ts_const(name: "anom", value: ts_binop(
-      left: ts_member(object: ts_ident(name: "av"), property: "arm"),
-      op: "===",
-      right: ts_lit_str(value: "refused"))),
-    ts_if(
-      cond: ts_binop(
-        left: ts_binop(
-          left: ts_ident(name: "adet"),
-          op: "&&",
-          right: ts_ident(name: "anom")),
-        op: "&&",
-        right: ts_prefix(op: "!", expr: ts_member(
-          object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
-          property: "autoOpened"))),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "adet"), property: "open"),
-          op: "=",
-          right: ts_ident(name: "true"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(
-            object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
-            property: "autoOpened"),
-          op: "=",
-          right: ts_lit_str(value: "1"))),
-      ]),
-      else_stmt: none),
     ts_const(name: "aled", value: ts_call(
       callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
       args: [ts_lit_str(value: join([".", activity_ledger_class], ""))])),

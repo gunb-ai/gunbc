@@ -555,7 +555,7 @@ test fn witness_overlong_lead_reds() -> Bool {
     && lead_budget_violations(nodes: [ready_dispatch_node()]).length() == 0
 }
 
-data parity_witness_note: String = "The server/client semantic parity obligation (operator blocker 7, 2026-08-01), discharged over the SAME constructed facts across every executable link: (1) the SERVER realization — render_work_row over the falsifier specimen view — is serialized and its semantic regions asserted exactly (arm and attention data, the decided summary sentence, each obligation label · state — detail line, each evidence label: value row, and on the refused arm the located reason inside an OPEN disclosure); (2) the WIRE — activity_view_json_value over the same view — carries the identical summary string, so the client receives byte-what the server rendered; (3) the CLIENT realization is pinned verbatim-paint: it reads av.summary / av.arm / av.attention and composes obligation and evidence lines from the SAME seam constants (activity_state_sep / activity_detail_sep / activity_evidence_kv_sep / activity_disclosure_label are data the emitted program embeds), so its composed strings equal the server's by one-authority construction. The DOM-mutation link the interpreter cannot execute is covered by the playwright specimen receipt (falsifier fixture intercepted, real emitted client, three widths). RED directions: a server renderer that drops a region reds (1); a seam change that moves the summary reds (1) and (2) together or not at all; a client that re-derives its own composition loses the shared-constant literals and reds (3)."
+data parity_witness_note: String = "The server/client semantic parity obligation (operator blocker 7, 2026-08-01), discharged over the SAME constructed facts across every executable link: (1) the SERVER realization — render_work_row over the falsifier specimen view — is serialized and its semantic regions asserted exactly (arm and attention data, the decided summary sentence, each obligation label · state — detail line, each evidence label: value row, and on the refused arm the label on the surface with the located reason inside a CLOSED disclosure, per the 2026-09-20 status-surface ruling); (2) the WIRE — activity_view_json_value over the same view — carries the identical summary string, so the client receives byte-what the server rendered; (3) the CLIENT realization is pinned verbatim-paint: it reads av.summary / av.arm / av.attention and composes obligation and evidence lines from the SAME seam constants (activity_state_sep / activity_detail_sep / activity_evidence_kv_sep / activity_disclosure_label are data the emitted program embeds), so its composed strings equal the server's by one-authority construction. The DOM-mutation link the interpreter cannot execute is covered by the playwright specimen receipt (falsifier fixture intercepted, real emitted client, three widths). RED directions: a server renderer that drops a region reds (1); a seam change that moves the summary reds (1) and (2) together or not at all; a client that re-derives its own composition loses the shared-constant literals and reds (3)."
 
 fn parity_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
   [
@@ -595,6 +595,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
     standing: none,
+    attempt_stale: false,
   }
 }
 
@@ -646,9 +647,9 @@ test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
     && string_contains(s: js, pattern: "'activity'")
 }
 
-data parity_refused_note: String = "The refused arm's parity: the server realization carries the located reason inside an OPEN activity disclosure (the attention rule's auto-expand, realized as the open attribute at render), and the client pins the same auto-open decision through data-auto-opened. A refusal whose reason failed to reach either surface is the title-only world the anomaly witnesses forbid."
+data parity_refused_note: String = "The refused arm's parity, post the 2026-09-20 status-surface ruling: the server realization carries the refusal's LABEL as its summary (state word plus the short reason) and keeps the located reason inside a CLOSED activity disclosure — evidence behind disclosure, not an open error dump — and the client no longer auto-opens on the refused arm (the data-auto-opened guard is deleted in both realizations). A refusal whose label or reason failed to reach the surface is the title-only world the anomaly witnesses forbid; a refusal that renders open again is the overwhelming-dump regression this ruling closed."
 
-test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
+test fn witness_parity_refused_arm_labels_and_discloses() -> Bool {
   let refused = gunbc.roadmap_presentation.activity_view_from_parts(
     segments: [
       gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
@@ -662,10 +663,53 @@ test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "data-arm=\"refused\"")
+        && string_contains(s: h, pattern: "Agent · refused — turn.completed with process unobserved: no exit was established")
         && string_contains(s: h, pattern: "class=\"activity-located-reason\"")
         && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
-        && string_contains(s: h, pattern: " open")
+        && !string_contains(s: h, pattern: " open")
   }
+}
+
+// The stale-attempt dim (operator ruling 2026-09-20): a row whose attempt_stale fact is set renders
+// the dim class and the machine-readable data-attempt-revision on its li; the same row without the
+// fact renders neither. The revision comparison that SETS the fact is witnessed in
+// test.claim.roadmap_presentation_witness (stale_attempt_nodes); this pin is the rendering half.
+test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
+  let stale_view = gunbc.roadmap_presentation.WorkRowView {
+    node_id: "parity-stale",
+    headline: "Record which generator actually produced each result",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: parity_specimen_activity(),
+    action: gunbc.roadmap_presentation.action_view(
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "parity-stale", cause: Operator, mode: ManualReady) }),
+    supporting_facts: [],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
+    standing: none,
+    attempt_stale: true,
+  }
+  match try_serialize_html_source(node: Element {
+    tag: "li",
+    attributes: gunbc.roadmap_page.node_li_attributes(view: stale_view),
+    children: gunbc.roadmap_page.render_work_row(view: stale_view),
+  }) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "node-attempt-stale")
+        && string_contains(s: h, pattern: "data-attempt-revision=\"stale\"")
+  }
+    && match parity_row_html(activity: parity_specimen_activity()) {
+      EmitRejected { reason: _ } => false
+      EmitOk { html: h } =>
+        !string_contains(s: h, pattern: "node-attempt-stale")
+          && !string_contains(s: h, pattern: "data-attempt-revision")
+    }
+    && string_contains(s: roadmap_css(), pattern: ".node-attempt-stale .node-activity")
 }
 
 data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02; S0 amendments, operator recalibration 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection through the click channel; Escape clears; exactly the selected row's primary action earns action-focal, the class renamed from action-live because live means sessions/observation elsewhere in this product); selection has KEYBOARD PARITY (rows carry tabindex, keyboard focus is gated on :focus-visible so pointer clicks on inner controls cannot move selection through the focus channel, Enter/Space on the focused row toggles, and every path funnels through the one gunbcSelectRow); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-focal band restore on the family's DERIVED rest-band vars, the li.node:focus-visible outline, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above. The action-live spellings below are DISCRIMINATING NEGATIVES: the retired name reappearing means the rename regressed or a second prominence authority stood up."

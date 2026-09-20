@@ -53,6 +53,7 @@ import gunbc.roadmap_component {
   activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
   activity_located_reason_class, session_facts_class,
   dashboard_instance_class,
+  node_attempt_stale_class,
 }
 import extdeps.color.srgb { Srgb8 }
 import std.integer { uint8_channel_inclusive_max_value_derived }
@@ -564,6 +565,10 @@ fn roadmap_instance_rules() -> List<BuildRule> {
         roadmap_instance_rules_tail())))
 }
 
+// The stale-attempt dim rules in the head list below (operator ruling 2026-09-20): an attempt
+// whose launch revision is no longer the deployed head is evidence for a superseded question — its
+// region dims to the pending-obligation's recession and its summary drops to the dim role. The row
+// keeps every fact behind its disclosure; only the volume changes.
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -1012,6 +1017,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: node_activity_class }, decls: [
       decl(prop: MarginTop, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", node_attempt_stale_class, " .", node_activity_class,
+    ], "") }, decls: [
+      decl(prop: Opacity, value: "0.55"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", node_attempt_stale_class, " .", activity_summary_class,
+    ], "") }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: RawSelector { text: join([
       ".", node_activity_class, "[data-arm=\"refused\"], .",
