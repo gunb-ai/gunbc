@@ -33,6 +33,8 @@ import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import gunbc.action_use_admission { realized_workflow_projection_frontier_rows }
 import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
 import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
+import gunbc.review_sheet_formula_observation { review_sheet_formula_observation_consumer_frontier_rows }
+import gunbc.review_sheet_header_init { review_sheet_header_init_consumer_frontier_rows }
 import gunbc.review_sheet_batch_actuator { review_sheet_batch_write_consumer_frontier_rows }
 import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
 import extdeps.pricing.github_actions { actions_allowance_consumer_frontier_rows }
@@ -77,6 +79,8 @@ import gunbc.instruments.github_app_acquire {
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     review_sheet_whole_estate_consumer_frontier_rows,
+    review_sheet_formula_observation_consumer_frontier_rows,
+    review_sheet_header_init_consumer_frontier_rows,
     review_sheet_batch_write_consumer_frontier_rows,
     review_sheet_identity_consumer_frontier_rows,
     sheets_bootstrap_project_consumer_frontier_rows,

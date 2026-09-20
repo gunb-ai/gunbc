@@ -148,9 +148,24 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
   }
 }
 
+// THE FIRST TRIGGER IS AN OPTIONAL, AND THE GUARD IS THE MATCH. List indexing and `.first()` are
+// total operations declared `T?` (`v1.compiler.access` `check_index_access_node` types `xs[i]` as
+// `with_optional_cardinality(elem)`, and the interpreter answers `Null` past the end), so passing
+// `on[0]` where `workflow_trigger_entry` declares a required `WorkflowTrigger` was the witness
+// asserting a cardinality the language never granted. gunbc#11720's wall refuses that site
+// (`RefusedOptionalAtRequired`), which is correct; the witness is the earliest unjustified boundary
+// in that chain, so the repair is here and not at the indexing rule. This module sits outside the
+// required gate closure, so the refusal was invisible to the floor (DeclinedOutsideGateClosure)
+// and surfaced only from a local claim_batch run -- see
+// gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
+// specimen: the falsifier is the compiler wall, not another file).
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
-  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+  match fleet_converge_workflow.on.first() {
+    Present { value: trigger } =>
+      let entry = workflow_trigger_entry(trigger: trigger)
+      entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+    Absent => false
+  }
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a

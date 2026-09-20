@@ -63,7 +63,7 @@ import gunbc.live_deploy.member_identity {
 }
 import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program }
 import extdeps.tools.findutils { find_program, xargs_program }
-import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -1735,7 +1735,8 @@ fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevi
     printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
     "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
-    " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path_for(root: base_root, revision: revision),
+    " | ", install_program as String, " -m 0644 /dev/stdin ",
+    approval_broker_tree_receipt_path_for(root: base_root, revision: revision),
   ], "")
 }
 
@@ -1746,6 +1747,15 @@ fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevi
 // being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
 // that will not exec, several steps from the copy that caused it.
 //
+// THE PROGRAM NAME IS CONSUMED, AND THIS FORK ARRIVED BY MERGE RATHER THAN BY AUTHORING. main
+// minted extdeps.tools.gnu_coreutils install_program while this branch spelled "install" as a bare
+// literal in two commands; neither side was wrong when written, and the moment they composed there
+// were two spellings of one concept with only one of them reachable from the module that owns it.
+// That is the same defect review 68927 raised against find/sort/xargs/cut here, arriving through a
+// merge -- so it is repaired in the merge that creates it rather than left for the next reader to
+// find, which is the whole reason a merge is a place to look for defects and not only a place to
+// reconcile text.
+//
 // THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
 // binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
 // job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
@@ -1753,7 +1763,7 @@ fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevi
 // what the receipt exists to pin.
 fn approval_broker_binary_install_command(release_dir: String) -> String {
   join([
-    "install -m 0755 \"$PWD\"/target/release/", gunbc_release_bin_name, " ",
+    install_program as String, " -m 0755 \"$PWD\"/target/release/", gunbc_release_bin_name, " ",
     release_dir, "/", gunbc_release_bin_name,
   ], "")
 }

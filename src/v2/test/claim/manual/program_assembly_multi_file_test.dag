@@ -1,7 +1,7 @@
 module v2.test.manual.program_assembly_multi_file
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -115,7 +115,7 @@ fn pa_subject_with_import_use() -> Node {
 }
 
 fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: pa_graft_module_root(root: pa_subject_with_import_use()),
     tail: Cons {
@@ -134,7 +134,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
 }
 
 fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_normalized_roots(
+  admit_unmarked_normalized_roots(
     roots: Cons {
     head: pa_graft_module_root(
       root: pa_module_root(

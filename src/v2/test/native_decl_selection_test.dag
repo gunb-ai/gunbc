@@ -41,9 +41,13 @@ import extdeps.communication.medium { Lossless, Medium }
 // declaration of the prepared module, so a same-named NESTED edge — the graft spine segment
 // v2.test.collision itself — must never be selected and evaluated under the requested identity.
 // The synthetic module declares no top-level collision; its only collision-named edge is the
-// spine segment (plus a record field, which infer erases).
+// spine segment. (An earlier revision also carried `type Probe { collision: Int }` and relied on
+// the graft silently dropping the record; since gunbc#11574 a record survives as a residual
+// shell and refuses in a closure without a parse-phase declaration index -- the standing
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft -- so the
+// incidental field is gone rather than the fixture standing on a silent drop.)
 
-data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\nimport v2.std.integer { Int }\n\ntest fn real_test() -> Bool { true }\n\ntype Probe { collision: Int }\n"
+data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntest fn real_test() -> Bool { true }\n"
 
 data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 
