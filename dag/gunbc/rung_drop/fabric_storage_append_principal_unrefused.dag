@@ -1,4 +1,4 @@
-module gunbc.rung_drop.fabric_db_append_principal_unrefused
+module gunbc.rung_drop.fabric_storage_append_principal_unrefused
 
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
@@ -17,8 +17,8 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // before that reading would either refuse every real writer or admit every one -- a guess standing
 // where an observation belongs.
 
-data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
-  identity: "fabric_db_append_principal_unrefused" as NonEmptyStr,
+data fabric_storage_append_principal_unrefused: RungDrop = RungDrop {
+  identity: "fabric_storage_append_principal_unrefused" as NonEmptyStr,
 
   subject: "an append to the fabric event log by a principal that is not a fleet writer",
 
@@ -29,12 +29,12 @@ data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "gunbc.fabric_db_serve fabric_db_serve_handle, reached only through tailscale serve on srv1 (tailnet membership is the only boundary)" },
+    reason: ReplacementStaged { replacement: "gunbc.fabric_storage_serve fabric_storage_serve_handle, reached only through tailscale serve on srv1 (tailnet membership is the only boundary)" },
     population: [
-      "gunbc.fabric_db_serve fabric_db_serve_handle",
+      "gunbc.fabric_storage_serve fabric_storage_serve_handle",
       "gunbc.fabric_event_log event_log_append",
       "gunbc.fabric_event_log fabric_seat_acquire",
     ],
-    restoration_trigger: "a modeled roster of fabric writer principals, grounded in an observed reading of the identity each fleet writer presents through tailscale serve on srv1 -- SUFFICIENT FOR fabric_db_serve_handle to refuse a put or advance from any identity outside the roster, including an absent identity, with a discriminating RED over the real handler",
+    restoration_trigger: "a modeled roster of fabric writer principals, grounded in an observed reading of the identity each fleet writer presents through tailscale serve on srv1 -- SUFFICIENT FOR fabric_storage_serve_handle to refuse a put or advance from any identity outside the roster, including an absent identity, with a discriminating RED over the real handler",
   }
 }
