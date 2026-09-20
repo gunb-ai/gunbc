@@ -17,20 +17,22 @@ import std.types { NonEmptyStr, List, String }
 // module (`gunbc.machine_intake_mtcollins1_boot_run`), so a single unmeasured deletion there would
 // be nine silent flips, not one.
 //
-// THE NEXT CUT TAKES THEM: re-resolve these five modules, apply the same criterion, and delete the
+// THE NEXT CUT TAKES THEM: re-resolve these modules, apply the same criterion, and delete the
 // rows whose derived demand is nonempty. Nothing about the criterion changes -- only the population
 // is new.
 
 data demand_restatement_follow_up_commit_range: NonEmptyStr =
-  "5ff323b6d29..374d0ce4cdd" as NonEmptyStr
+  "5ff323b6d29..af316cc415d" as NonEmptyStr
 
 // Each entry carries its own row count, so the population's size is derived from the roster rather
-// than restated beside it. Twenty-one rows in total; nine sit in one module, which is why an
+// than restated beside it. Twenty-six rows in total; nine sit in one module, which is why an
 // unmeasured deletion here would be nine silent flips rather than one.
 data demand_restatement_follow_up_modules: List<String> = [
   "gunbc.machine_intake_mtcollins1_boot_run (9 rows)",
   "gunbc.auth.approval_keyring_converge (5 rows)",
   "gunbc.review_sheet_batch_actuator (4 rows)",
+  "test.probe.review_sheet_tab_forged_probe (4 rows)",
   "gunbc.authorization_claim_slot (2 rows)",
   "gunbc.machine_intake_megarac_media_attach (1 row)",
+  "gunbc.review_sheet_tab_locator (1 row)",
 ]
