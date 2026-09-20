@@ -483,14 +483,31 @@ fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   }
 }
 
+// A FORCE IS CLAIMED ONLY WHEN THE FORCE WAS ACTUALLY ASKED, and this is the same repair as the
+// graceful ask one function up, which I made there and left undone here (review 69117).
+//
+// The write to cgroup.kill used to be discarded. If it did not land -- EACCES, the cgroup removed
+// between resolving its path and writing it, cgroup.kill absent on a pre-5.14 kernel -- the poll
+// would still find the subtree populated and the verdict would read ForceStopBoundExceeded, which
+// this corpus defines as a task THE KERNEL COULD NOT END. Nothing was asked and nothing refused, and
+// the receipt would send an operator to hunt an unkillable task that does not exist. A verdict whose
+// cause was never observed is the fabricated cause DESIGN 5 forbids, and it is the fourth instance of
+// that shape in this change -- each one a computed result dropped on the floor.
+//
+// SO A FAILED WRITE IS UNOBSERVABLE, NOT AN EXCEEDED BOUND. The cell still quarantines either way, so
+// nothing is released on this; what changes is whether the receipt describes what happened.
 fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network, fs: Filesystem
 {
-  let _killed = Filesystem.Write(
-    path: cgroup_v2_kill_path(cgroup_path: path) as String,
-    content: cgroup_v2_kill_trigger_value,
-  )
-  force_stop_outcome(q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)))
+  let kill_path = cgroup_v2_kill_path(cgroup_path: path) as String
+  let killed = Filesystem.Write(path: kill_path, content: cgroup_v2_kill_trigger_value)
+  if killed.success == false {
+    ForceStopOutcomeUnobservable {
+      reason: join(["the cell's subtree kill could not be asked for: writing ", kill_path, " failed: ", killed.error], "") as NonEmptyStr,
+    }
+  } else {
+    force_stop_outcome(q: poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound)))
+  }
 }
 
 // --- the teardown observation, assembled for one bound attempt ---
@@ -762,9 +779,18 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
 
 // THE VMM STARTS FROM THE RECEIPT AND FROM NOWHERE ELSE.
 //
-// This is the consumption gunbc.runner_attempt_launch's workspace_staging_consumer_frontier and
-// jit_mint_lifecycle_controller_consumer_frontier were waiting for, and it is the whole reason the
-// receipt is sealed. AttemptStagingReceipt is constructible only inside attempt_staging_verdict's
+// This is the consumption gunbc.runner_attempt_launch's workspace_staging_consumer_frontier was
+// waiting for -- that row named this step, and this step executes the plan's workspace create and
+// format, stages the JIT device, and reaches the jailer only through attempt_staging_verdict -- so
+// the row is deleted with this change rather than left standing over its own met trigger.
+//
+// IT IS NOT THE CONSUMPTION gunbc.github_effect_perform's jit_mint_lifecycle_controller_consumer_
+// frontier IS WAITING FOR, and an earlier revision of this annotation claimed both (review 69117).
+// That row's trigger is an attempt on srv1 MINTING through the App key and a runner registering
+// under the attempt's unit name. This controller does not mint: it takes an AttemptLaunchPlan as a
+// parameter, so the mint happened before it was called, and nothing here discharges that row.
+//
+// The sealed receipt is the whole reason the jailer cannot be reached another way. AttemptStagingReceipt is constructible only inside attempt_staging_verdict's
 // admitting arm, and the jailer argv is reachable only out of a receipt -- so there is no path from
 // this function to a running VMM that does not pass through a JIT device staged FOR THIS ATTEMPT and
 // a workspace read back as this plan's. Workspace readiness alone cannot release the jailer, because
@@ -884,6 +910,32 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 // failed to boot from one that booted and is idle, and it will reach the deadline in both cases.
 data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
+)
+
+// DECLARED FRONTIER (DESIGN 3c): NOTHING CALLS run_controller, AND THIS MODULE HAD NOT SAID SO.
+//
+// Everything below is reachable only from this entry, and `git grep "run_controller("` finds no
+// caller at all -- not a witness, not an instrument, not a unit file. That is the honest state of the
+// lane and it was visible only in a plan document and obliquely in another module's mint row, which
+// is not a declaration on the thing itself (review 69117 surfaced the gap while pointing at a
+// neighbouring row). §3c admits exactly this arm -- a named consumer landing in a named later change
+// -- and it is red only if the trigger is missing, so here it is.
+//
+// NAMED CONSUMER: the slot unit's ExecStart, which execs this controller as the unit's MainPID --
+// gunbc.runner_microvm's VmmUnderLifecycleController topology, where the unit's ExitType=main and
+// KillMode=control-group make systemd's stop reach the whole cgroup once this process exits.
+//
+// TRIGGER, at capability grain: a slot unit file whose ExecStart names this entry, emitted by the
+// same converge route that writes the other slot units, so the controller is what systemd starts for
+// a microVM slot rather than something a person runs by hand. SUFFICIENT FOR deleting this row. NOT
+// satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a
+// hand-run invocation on a host -- each of those proves the function evaluates and none of them makes
+// it the slot's MainPID, which is the whole claim the topology rests on.
+//
+// WHY THAT IS SAFE TO DECLARE RATHER THAN RUSH: the cutover that makes a slot unit select this path
+// is sunny-ant-606's, not this lane's, and nothing here may make the floor CI job take it.
+data controller_main_pid_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microVM slot unit's ExecStart, which execs gunbc.runner_microvm_lifecycle_realize run_controller as the unit's MainPID (gunbc.runner_microvm VmmUnderLifecycleController). TRIGGER: a slot unit file whose ExecStart names this entry, emitted by the converge route that writes the other slot units. SUFFICIENT FOR deleting this row. NOT satisfied by a witness calling run_controller, by an instrument label invoking it, nor by a hand-run invocation on a host -- none of those makes it the slot's MainPID." as NonEmptyStr,
 )
 
 // THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.

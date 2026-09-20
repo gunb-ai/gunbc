@@ -54,7 +54,7 @@ import gunbc.runner_attempt_launch {
   attempt_staging_verdict, runner_attempt_workspace_bytes,
   StagingRefusedJitDevice, StagingRefusedForeignJitDevice,
   JitDeviceStaged, JitDeviceStagingOutcome, JitDeviceStagingRefused, JitDeviceCreateStep,
-  workspace_readback_command, workspace_staging_consumer_frontier,
+  workspace_readback_command,
 }
 import extdeps.github.actions_jit_runner {
   EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome,
@@ -689,14 +689,21 @@ test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
   staging_for(obs: good_workspace(), ground: GroundOccupied) == "unauthorized"
 }
 
-// THE READBACK READS THE PLANNED IMAGE'S SUPERBLOCK, AND ITS CONSUMER IS STILL A FRONTIER. The red
-// for the first half is a readback of any path but the one the plan formatted.
-test fn the_workspace_readback_reads_the_planned_image_and_its_consumer_is_a_frontier() -> Bool {
+// THE READBACK READS THE PLANNED IMAGE'S SUPERBLOCK. The red is a readback of any path but the one
+// the plan formatted.
+//
+// THE FRONTIER HALF OF THIS CLAIM IS GONE BECAUSE THE FRONTIER IS. workspace_staging_consumer_frontier
+// asserted that its own row still stood, and that row named this file's staging step as its consumer
+// with the trigger "that step executes workspace_create and workspace_format, executes
+// stage_jit_device and reaches the jailer only through attempt_staging_verdict". gunbc.runner_microvm
+// _lifecycle_realize stage_attempt is that step and does exactly those three things, so the row is
+// discharged and deleted in the same change (review 69117: a row whose trigger the author says is met,
+// kept standing, is the roster ceasing to mean what it says). What retires with it is the assertion
+// that it was UNBOUND -- which could only ever be true while the consumer was missing -- not the argv
+// assertion beside it, which is evidence about the command and survives (DESIGN 4b(4): a climb deletes
+// the obsolete production machinery, never the discriminating evidence).
+test fn the_workspace_readback_reads_the_planned_image() -> Bool {
   argv_words(command: workspace_readback_command(workspace_path: "/jail/work.img")) == ["dumpe2fs", "-h", "/jail/work.img"]
-    && match workspace_staging_consumer_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
 }
 
 // ANOTHER IMAGE'S READBACK DOES NOT AUTHORIZE THIS PLAN. A clean ext superblock of the right size, read
