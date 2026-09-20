@@ -1,5 +1,6 @@
 module test.claim.site_uefi_arm64_pxe_edge_witness
 
+import extdeps.network.ipv4 { ipv4_address }
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_address }
 import std.content_hash { content_hash_of_value }
@@ -8,7 +9,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
-import extdeps.network.ipv4 { ipv4_address }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import extdeps.provisioning.network_boot { ProxyDhcp }
 import gunbc.network_boot_delivery {
@@ -248,13 +248,15 @@ test fn the_landed_roster_parses_to_the_measured_host_nic() -> Bool {
 }
 
 test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
-  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: roster_of(macs: [known_mac]))
+  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: roster_of(macs: [known_mac]), tftp_directory: "/srv/edge-tftp")
   contains(cfg, "port=0")
     && contains(cfg, "dhcp-range=192.168.1.0,proxy")
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
     && contains(cfg, "dhcp-host=02:00:00:00:0c:01,set:onboarding-known")
     && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi,srv4,192.168.1.196")
     && contains(cfg, "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading")
+    && contains(cfg, "enable-tftp")
+    && contains(cfg, "tftp-root=/srv/edge-tftp")
     && length(split(cfg, "dhcp-boot=")) == 2
 }
 

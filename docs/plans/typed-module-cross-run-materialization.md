@@ -9,6 +9,12 @@
 > **Authority it answers to:** `DESIGN.md`; the ladder's admission rules in
 > `std.materialization_ladder`; the retention vocabulary in `std.cache_interface`.
 > **Framing:** relief during the v1 → v2 migration. Not a parallelism project.
+> **Supersedes the design landed in #11779**, which this file replaced in place, as that design's
+> own status line prescribed for acceptance. Three of its claims did not survive implementation and
+> are withdrawn rather than quietly dropped: the `SharedStateFrame` and `CasTier` choices (§5), the
+> statement that no content key existed, and the cross-push relief its key could not deliver (§2).
+> Its projected figures — 8.3 min → ~1 min, 32 min → ~20 min per push — were never measurements and
+> are not carried forward; §3 is what would establish them.
 
 ---
 

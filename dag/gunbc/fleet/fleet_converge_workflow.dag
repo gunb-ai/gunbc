@@ -69,6 +69,7 @@ import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.ci_spec {
+  site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
@@ -85,6 +86,8 @@ import gunbc.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_site_pxe_edge_observe_invoke,
+  gunbc_ci_site_pxe_edge_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_grant_install_invoke,
@@ -190,6 +193,8 @@ type FleetConvergeWorkflowMode
   | HostResetReturn
   | RunnerHostFileObserve
   | RunnerHostFileConverge
+  | SitePxeEdgeObserve
+  | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
   | R2MintPreflight
   | R2ObjectWriteMint
@@ -218,6 +223,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     HostResetReturn => "host_reset_return"
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
+    SitePxeEdgeObserve => "site_pxe_edge_observe"
+    SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
@@ -248,7 +255,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -291,6 +298,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     HostResetReturn => none
     RunnerHostFileObserve => none
     RunnerHostFileConverge => none
+    SitePxeEdgeObserve => none
+    SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
@@ -312,9 +321,12 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Only those two modes are established API-only by this declaration;
-// every other mode keeps the key it held before, which is the status quo rather than a finding
-// that it needs it.
+// authority it never uses. Three modes are established as not consuming it: the two API-only reads,
+// and the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
+// SSH operation. Every mode that predates this declaration keeps the key it held before, which is
+// the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
+// to keep, so its arm is derived from its operation route (the approval keyring converge executes
+// over fleet SSH to srv1 and consumes it).
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
@@ -339,11 +351,13 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     HostResetReturn => FleetSshKeyConsumed
     RunnerHostFileObserve => FleetSshKeyConsumed
     RunnerHostFileConverge => FleetSshKeyConsumed
+    SitePxeEdgeObserve => FleetSshKeyConsumed
+    SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    MtCollins1Boot => FleetSshKeyConsumed
+    MtCollins1Boot => FleetSshKeyNotConsumed
   }
 }
 
@@ -739,6 +753,12 @@ data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_m
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
+data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeObserve)
+
+data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
+
+data fleet_converge_site_pxe_edge_any_step_if: String = fleet_converge_any_mode_step_if(modes: [SitePxeEdgeObserve, SitePxeEdgeConverge])
+
 // THE MODE THAT CLOSES #11061'S REFUSAL. That change made a password-session leg refuse with a
 // typed cause naming sshpass; this mode is the route that makes the refusal stop being true. It is
 // a STEP in the existing host-pinned fleet-converge job rather than a job of its own, because the
@@ -1058,6 +1078,47 @@ fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
     invoke: gunbc_ci_runner_password_session_tool_converge_invoke(),
     if_condition: fleet_converge_runner_password_session_tool_converge_step_if,
   )
+}
+
+// THE SITE PXE EDGE (gunbc.site_pxe_edge_converge): the first onboarding segment's ProxyDHCP + TFTP
+// daemon on srv4, UEFI ARM64 chainloader only. It reuses the runner-host step shaper for the same
+// reason the password-session step does -- same host input binding, same timeout authority, same
+// fleet-key reach as the administrator -- and differs only in id, sentence and mode gate. Observe and
+// converge are two modes so the gate's causes can be read before anything on the /24 changes.
+fn fleet_converge_site_pxe_edge_observe_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "site_pxe_edge_observe",
+    name: "Site PXE edge: observe the chainloader digest, dnsmasq, the edge config and unit (no writes)",
+    invoke: gunbc_ci_site_pxe_edge_observe_invoke(),
+    if_condition: fleet_converge_site_pxe_edge_observe_step_if,
+  )
+}
+
+fn fleet_converge_site_pxe_edge_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "site_pxe_edge_converge",
+    name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back",
+    invoke: gunbc_ci_site_pxe_edge_converge_invoke(),
+    if_condition: fleet_converge_site_pxe_edge_converge_step_if,
+  )
+}
+
+fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload site PXE edge converge receipt" },
+    id: Present { value: "site_pxe_edge_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "site-pxe-edge-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: site_pxe_edge_converge_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
@@ -1721,6 +1782,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
+        fleet_converge_site_pxe_edge_observe_step(),
+        fleet_converge_site_pxe_edge_converge_step(),
+        fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
