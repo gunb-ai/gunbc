@@ -496,24 +496,6 @@ import v2.std.collection { List }
 // v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
 // site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
 // values are Nodes; no closure.
-// v2.test.claim.parse.test_marker_channel test_marker_projection_parsed EARNS ITS ROW ON PLURAL
-// DEMAND: BOTH projection claims read this one parse --
-// marked_and_plain_declaration_share_one_semantic_projection_holds (the 4c equality, the marked shell
-// against the declaration inside it) and a_different_declaration_moves_the_semantic_projection_holds
-// (its red-capable control, the module's two declarations against each other). Two claims re-deriving
-// one parse is the recurrence the row removes, not one claim's setup moved into preparation. The
-// parse is most of each claim's cost, and on the floor each measured just over the 72,300-step
-// new-witness budget. Re-derive with claim_batch --entry on that file
-// ([witness] eval_steps for the claim) and the floor run's COMPLETED-OVER-COST line for it. Serving the
-// parse leaves the claim paying only what it is about, the two normalize_node calls and their hashes.
-// The value is Outcome<ParseArtifact>, Nodes and the span index, portable to the bottom -- which
-// establishes that it CAN be served, not that serving is cheaper. THIS ROW RESTS ON PLURAL DEMAND,
-// NOT ON A MEASURED COST COMPARISON: the instrument that decides serve-below-recompute is the
-// required floor's own shared-fill ledger for this row ([floor-shared-fill] marginal vs fill cost,
-// beside required_floor_claim_cost.tsv for the two claim identities). If that ledger does not show
-// both identities hitting one stored fill below their recompute, the row is measured again or
-// removed. WARM: nullary, source inline in the witness. The claims are about lowering, not parsing,
-// so sharing the parse does not hand them their answer.
 //
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
@@ -595,7 +577,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
-  "v2.test.claim.parse.test_marker_channel.test_marker_projection_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map"
 ]
 

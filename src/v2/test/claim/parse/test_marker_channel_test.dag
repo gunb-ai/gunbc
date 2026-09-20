@@ -139,12 +139,13 @@ fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> Tes
   }
 }
 
-// THE SHARE POINT FOR BOTH PROJECTION CLAIMS: one real parse of `projection_source`, read by the 4c
+// ONE PARSE FOR BOTH PROJECTION CLAIMS: the real parse of `projection_source`, read by the 4c
 // equality (the marked shell against the declaration inside it) AND by its discrimination control
-// (the two declarations of that same module against each other). Two claims, one parse, so the row is
-// a real recurrence rather than one claim's setup moved into preparation. Enrolled WARM in
-// v2.workflow.floor_pure_producer_share; each claim then pays only the two lowerings and hashes it is
-// about.
+// (the two declarations of that same module against each other), so neither claim re-derives what the
+// other already established. It carries NO warm-share row: a row's admission is decided by the
+// required floor's shared-fill ledger and claim-cost table, and gunbc#11742 took those lanes off the
+// merge path, so no figure for one could be produced on any head. A row can be added when the lanes
+// return and can measure it.
 fn test_marker_projection_parsed() -> Outcome<ParseArtifact> {
   test_marker_parsed(src: projection_source, file: ^test_marker_projection_subject)
 }
