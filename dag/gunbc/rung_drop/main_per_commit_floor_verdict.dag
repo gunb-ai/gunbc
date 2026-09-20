@@ -23,6 +23,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data main_per_commit_floor_verdict: RungDrop = RungDrop {
   identity: "main_per_commit_floor_verdict" as NonEmptyStr,
+  amendments: [],
 
   subject: "every landed main SHA obtains its own terminal verdict for every required acceptance obligation on the workflow",
 

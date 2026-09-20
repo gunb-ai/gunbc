@@ -37,6 +37,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // not to occur -- absence of an occurrence is not the capability.
 data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
   identity: "floor_cost_cpu_regression_at_constant_eval_steps" as NonEmptyStr,
+  amendments: [],
 
   subject: "CPU-time regressions at CONSTANT eval_steps, ACROSS BOTH TIERS of the claim ceiling (the grandfathered 500ms-equivalent budget and the new-witness 100ms-equivalent budget -- the loss is a property of the CLOCK, so splitting the ceiling in two did not split it and neither tier refuses this class) -- a step getting more expensive rather than a claim performing more steps. The required floor's per-claim ceiling now gates on eval_steps and observes CPU only, so this class has no refusing wall on the acceptance path",
 

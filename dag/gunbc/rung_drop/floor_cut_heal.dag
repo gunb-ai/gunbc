@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Retired, AuthoredProse, FloorCutHeal }
 
 data floor_cut_heal: RungDrop = RungDrop {
   identity: "floor_cut_heal" as NonEmptyStr,
+  amendments: [],
 
   subject: "Heal job for generated artifacts",
 

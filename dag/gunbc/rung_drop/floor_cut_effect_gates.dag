@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutEffectGates 
 
 data floor_cut_effect_gates: RungDrop = RungDrop {
   identity: "floor_cut_effect_gates" as NonEmptyStr,
+  amendments: [],
 
   subject: "Six of the seven effect gates (one restored)",
 

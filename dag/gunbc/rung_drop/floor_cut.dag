@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCut }
 
 data floor_cut: RungDrop = RungDrop {
   identity: "floor_cut" as NonEmptyStr,
+  amendments: [],
 
   subject: "CI required-run composition",
 

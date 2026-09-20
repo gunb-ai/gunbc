@@ -20,6 +20,7 @@ data g0_type_decl_modifier_parse_without_sealing_property_population: List<Strin
 
 data g0_type_decl_modifier_parse_without_sealing_property: RungDrop = RungDrop {
   identity: "g0_type_decl_modifier_parse_without_sealing_property" as NonEmptyStr,
+  amendments: [],
   subject: "native G0 path records sole_constructor as a type-item property, the way v1 parsed_sole_constructor_properties does",
   declared: "2026-09-18",
   standing: Standing,

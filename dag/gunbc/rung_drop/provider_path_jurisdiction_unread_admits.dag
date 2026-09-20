@@ -145,6 +145,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // two are discharged together rather than separately.
 data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
   identity: "provider_path_jurisdiction_unread_admits" as NonEmptyStr,
+  amendments: [],
 
   subject: "one ProviderPathLocated whose jurisdiction upstream does not document, admitted rather than refused because the path carries no route material, with the unread fact reachable from the cited field and not from the arm -- both by product.fabric.provider_route's resolution fold, which reads it as Located, and by product.fabric.provider_admission TransferOrLocationUnresolved, which cannot compare a non-jurisdiction against a permitted-jurisdiction population",
 

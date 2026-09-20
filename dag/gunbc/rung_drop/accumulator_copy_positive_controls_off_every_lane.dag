@@ -50,6 +50,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // this row declares.
 data accumulator_copy_positive_controls_off_every_lane: RungDrop = RungDrop {
   identity: "accumulator_copy_positive_controls_off_every_lane" as NonEmptyStr,
+  amendments: [],
 
   subject: "the green positive controls of the accumulator-copy lens's fold-shape evidence (v2.lens.complexity_accumulator_copy.analyze over fold_shape_visible_to_no_lens): ingest-reaching witnesses that no lane plans",
 

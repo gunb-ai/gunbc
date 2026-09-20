@@ -8,6 +8,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 
 data witness_deferral_freeze_forward_rule_rung_drop: RungDrop = RungDrop {
   identity: "witness_deferral_freeze_forward_rule" as NonEmptyStr,
+  amendments: [],
 
   subject: "gunbc.witness_deferral_freeze forward admission rule",
 

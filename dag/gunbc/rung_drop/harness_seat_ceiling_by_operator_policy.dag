@@ -60,6 +60,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data harness_seat_ceiling_by_operator_policy: RungDrop = RungDrop {
   identity: "harness_seat_ceiling_by_operator_policy" as NonEmptyStr,
+  amendments: [],
 
   subject: "the harness seat pool ceiling per serving group: an operator-chosen count standing where a derivation from the engine's resolved KV layout belongs",
 

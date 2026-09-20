@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, LensEnforcementCensu
 
 data lens_enforcement_censuses: RungDrop = RungDrop {
   identity: "lens_enforcement_censuses" as NonEmptyStr,
+  amendments: [],
 
   subject: "Corpus-wide lens enforcement censuses",
 

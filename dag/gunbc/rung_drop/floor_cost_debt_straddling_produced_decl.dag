@@ -18,6 +18,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 // two assert over. Calling it a staged replacement would inflate what remains.
 data floor_cost_debt_straddling_produced_decl: RungDrop = RungDrop {
   identity: "floor_cost_debt_straddling_produced_decl" as NonEmptyStr,
+  amendments: [],
 
   subject: "two passing produced-declaration emission witnesses whose charged CPU straddles the required floor's 500ms per-claim ceiling",
 

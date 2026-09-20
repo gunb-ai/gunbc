@@ -301,12 +301,49 @@ type RungDropDeclaration
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
 
+// A LATER EVENT THAT MOVED THE WORLD UNDER A STANDING DROP WITHOUT MOVING ITS TRIGGER.
+//
+// THE GAP THIS CLOSES WAS MEASURED, NOT ANTICIPATED. gunbc#11774 declared the
+// namespace-wave-admission drop and then needed to record that the wall's redesigned form had
+// landed hours earlier -- a fact that makes the declaration READ WRONG without it, because a
+// reader who knows gunbc#11704 landed restoration half (1) concludes the trigger is half
+// satisfied. There was no field for that, so the note was written into docs/design-rung-drops.md,
+// which is a PROJECTION of this authority. gunbc#11789's regeneration deleted it, and two lanes
+// (gunbc#11732, gunbc#11786) burned their time reverting the deletion first. That is DESIGN
+// section 6's manual-application-committed-as-source, and the cause was a missing carrier rather
+// than a careless author.
+//
+// WHAT THIS IS NOT, AND THE THIRD FIELD IS WHAT ENFORCES IT. This is not a commentary field. An
+// event that SATISFIES the trigger retires the row through `RungDropStanding` `Retired`; an event
+// that changes what is uncovered edits `population`; an event that changes what would restore the
+// guarantee edits `restoration_trigger`. This carrier is for the remaining case ONLY -- the world
+// moved, a reader would now misread the declaration, and the five 4b(3) fields are all still
+// exactly right -- so an amendment must SAY WHY THE TRIGGER IS UNAFFECTED. An author who cannot
+// write that sentence is looking at one of the other three cases and must edit the row instead.
+type RungDropAmendment {
+  amended: String
+  occasion: NonEmptyStr
+  trigger_unaffected_because: NonEmptyStr
+}
+
 type RungDrop {
   identity: NonEmptyStr
+  amendments: List<RungDropAmendment>
   subject: String
   declared: String
   standing: RungDropStanding
   declaration: RungDropDeclaration
+}
+
+// THE ONE RENDERING OF AN AMENDMENT, for the same reason the declaration has one: a consumer that
+// spelled its own would be a second authority that drifts from the row. The trigger clause is not
+// optional in the rendering either -- it is the sentence that stops the amendment being read as a
+// partial retirement.
+fn rung_drop_amendment_message(a: RungDropAmendment) -> String {
+  concat(
+    concat("AMENDED ", concat(a.amended, concat(": ", a.occasion as String))),
+    concat(". THE RESTORATION TRIGGER STANDS WHOLE: ", concat(a.trigger_unaffected_because as String, "."))
+  )
 }
 
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its

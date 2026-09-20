@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, TextBoundaryIdentity
 
 data text_boundary_identity_wall: RungDrop = RungDrop {
   identity: "text_boundary_identity_wall" as NonEmptyStr,
+  amendments: [],
 
   subject: "Non-literal kernel-String refusal at the structural text boundary",
 

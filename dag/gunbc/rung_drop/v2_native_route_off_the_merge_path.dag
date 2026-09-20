@@ -37,6 +37,7 @@ data v2_native_route_off_the_merge_path_population: List<String> = [
 
 data v2_native_route_off_the_merge_path: RungDrop = RungDrop {
   identity: "v2_native_route_off_the_merge_path" as NonEmptyStr,
+  amendments: [],
 
   subject: "The v2 native route (emitted-native compiler over the derived v2.test.* universe) as a required CI lane",
 

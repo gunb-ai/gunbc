@@ -26,6 +26,7 @@ data seam_monolith_control_unmeasured_derived_root_population: List<String> = [
 
 data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
   identity: "seam_monolith_control_unmeasured_derived_root" as NonEmptyStr,
+  amendments: [],
 
   subject: "The cross-shard seam probe's monolith control as an executing whole-root compile of a derived root",
 

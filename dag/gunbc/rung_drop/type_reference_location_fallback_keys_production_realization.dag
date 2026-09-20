@@ -39,6 +39,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 // gate read the same key.
 data type_reference_location_fallback_keys_production_realization: RungDrop = RungDrop {
   identity: "type_reference_location_fallback_keys_production_realization" as NonEmptyStr,
+  amendments: [],
 
   subject: "the declaration identity key production realization decides on at a type reference (v1.std.core type_reference_provenance feeding v1.compiler.coercion type_realization_decision): a location stands in where no declaration was recovered",
 

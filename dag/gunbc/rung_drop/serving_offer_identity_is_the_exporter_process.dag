@@ -39,6 +39,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 data serving_offer_identity_is_the_exporter_process: RungDrop = RungDrop {
   identity: "serving_offer_identity_is_the_exporter_process" as NonEmptyStr,
+  amendments: [],
 
   subject: "a serving offer's identity and its post-acquisition fence are the metrics-exporting process, so an engine-core or rank replacement behind a surviving exporter keeps the offer identity, its readiness evidence and its fence",
 

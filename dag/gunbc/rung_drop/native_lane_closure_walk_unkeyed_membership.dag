@@ -41,6 +41,7 @@ data native_lane_closure_walk_unkeyed_membership_population: List<String> = [
 
 data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
   identity: "native_lane_closure_walk_unkeyed_membership" as NonEmptyStr,
+  amendments: [],
   subject: "constructed membership for the route's import-closure walk",
   declared: "2026-09-12",
   standing: Retired {

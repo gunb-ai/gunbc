@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, RustUnitTestsOffTheM
 
 data rust_unit_tests_off_the_merge_path: RungDrop = RungDrop {
   identity: "rust_unit_tests_off_the_merge_path" as NonEmptyStr,
+  amendments: [],
 
   subject: "The v1 crate's Rust unit tests, and their job, on every CI path",
 

@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Retired, AuthoredProse, DirectCallArgSeamV2Ex
 
 data direct_call_arg_seam_v2_exemption: RungDrop = RungDrop {
   identity: "direct_call_arg_seam_v2_exemption" as NonEmptyStr,
+  amendments: [],
 
   subject: "Direct-call argument TYPE-COMPAT judgment inside v2.* modules (one of two arms; inhabitance still runs)",
 

@@ -47,6 +47,7 @@ data transitional_admission_exception_identities: List<String> = [
 fn transitional_admission_exception() -> RungDrop {
   RungDrop {
     identity: "transitional_admission_exception" as NonEmptyStr,
+    amendments: [],
     subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
     declared: "2026-09-08",
     standing: Standing,

@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutReceiptDiscr
 
 data floor_cut_receipt_discriminating_arms: RungDrop = RungDrop {
   identity: "floor_cut_receipt_discriminating_arms" as NonEmptyStr,
+  amendments: [],
 
   subject: "The receipt machinery's own discriminating arms",
 

@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Retired, AuthoredProse, RegenProducer }
 
 data regen_producer: RungDrop = RungDrop {
   identity: "regen_producer" as NonEmptyStr,
+  amendments: [],
 
   subject: "Regen candidate-tree producer",
 

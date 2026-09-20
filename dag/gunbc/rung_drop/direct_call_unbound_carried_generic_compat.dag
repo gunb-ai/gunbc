@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, DirectCallUnboundCar
 
 data direct_call_unbound_carried_generic_compat: RungDrop = RungDrop {
   identity: "direct_call_unbound_carried_generic_compat" as NonEmptyStr,
+  amendments: [],
 
   subject: "Direct-call argument TYPE-COMPAT when a declaration-bound formal or produced value still carries an unbound generic",
 

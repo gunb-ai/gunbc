@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, ConcatBinarySignatur
 
 data concat_binary_signature_exempt_from_arg_binding: RungDrop = RungDrop {
   identity: "concat_binary_signature_exempt_from_arg_binding" as NonEmptyStr,
+  amendments: [],
 
   subject: "n-ary concat call sites judged against concat's binary declared signature",
 

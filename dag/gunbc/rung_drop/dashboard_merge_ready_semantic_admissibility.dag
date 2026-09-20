@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, DashboardMergeReadyS
 
 data dashboard_merge_ready_semantic_admissibility: RungDrop = RungDrop {
   identity: "dashboard_merge_ready_semantic_admissibility" as NonEmptyStr,
+  amendments: [],
 
   subject: "Dashboard MergeReady omits repository-semantic admissibility",
 

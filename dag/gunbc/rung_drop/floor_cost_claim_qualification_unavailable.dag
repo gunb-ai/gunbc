@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCostClaimQualif
 
 data floor_cost_claim_qualification_unavailable: RungDrop = RungDrop {
   identity: "floor_cost_claim_qualification_unavailable" as NonEmptyStr,
+  amendments: [],
 
   subject: "Per-claim cost qualification is unavailable at the subject grain the gate consumes",
 

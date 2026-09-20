@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutBehaviouralR
 
 data floor_cut_behavioural_regression_differential: RungDrop = RungDrop {
   identity: "floor_cut_behavioural_regression_differential" as NonEmptyStr,
+  amendments: [],
 
   subject: "Behavioural regression between a changed target's committed build and its candidate emission, by execution",
 

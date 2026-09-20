@@ -29,6 +29,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data consumed_row_owner_charge_unenforced: RungDrop = RungDrop {
   identity: "consumed_row_owner_charge_unenforced" as NonEmptyStr,
+  amendments: [],
 
   subject: "a transition-admission row consumed at the base, whose owning change authored no deletion_follow_up, is refused on some required run before the roster is next touched",
 

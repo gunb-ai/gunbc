@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutRegenSecondG
 
 data floor_cut_regen_second_generation_agreement: RungDrop = RungDrop {
   identity: "floor_cut_regen_second_generation_agreement" as NonEmptyStr,
+  amendments: [],
 
   subject: "Second-generation agreement: the required path refuses when a generation produced from the same authority transaction differs from the referenced first generation",
 

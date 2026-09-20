@@ -106,6 +106,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // an artifact answers directly is the recurring shape this row keeps producing.
 data determinism_transitive_reachability: RungDrop = RungDrop {
   identity: "determinism_transitive_reachability" as NonEmptyStr,
+  amendments: [],
 
   subject: "Transitive determinism reachability over the fn-arrow call graph",
 

@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Retired, AuthoredProse, CitedSymbolCensus }
 
 data cited_symbol_census: RungDrop = RungDrop {
   identity: "cited_symbol_census" as NonEmptyStr,
+  amendments: [],
 
   subject: "Cited-symbol resolution as a required check",
 

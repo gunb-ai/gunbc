@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, EmittedBytesWitnessR
 
 data emitted_bytes_witness_required_lane: RungDrop = RungDrop {
   identity: "emitted_bytes_witness_required_lane" as NonEmptyStr,
+  amendments: [],
 
   subject: "Emitted-bytes fixture witnesses in a required lane",
 

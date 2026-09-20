@@ -30,6 +30,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
   identity: "spark_serving_fleet_global_configuration" as NonEmptyStr,
+  amendments: [],
 
   subject: "the serving groups' admission count (max-num-seqs), applied to every group from single-realization evidence",
 

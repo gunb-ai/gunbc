@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, BuiltinSignatureArit
 
 data builtin_signature_arity_pairing_fabricates: RungDrop = RungDrop {
   identity: "builtin_signature_arity_pairing_fabricates" as NonEmptyStr,
+  amendments: [],
 
   subject: "Arity agreement between a declared builtin parameter name and its derived algebra template",
 

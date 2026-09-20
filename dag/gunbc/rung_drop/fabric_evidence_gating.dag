@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FabricEvidenceGating
 
 data fabric_evidence_gating: RungDrop = RungDrop {
   identity: "fabric_evidence_gating" as NonEmptyStr,
+  amendments: [],
 
   subject: "Fabric CI evidence lane as a required merge block, and then as a lane at all",
 

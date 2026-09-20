@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, EmitCopyQualificatio
 
 data emit_copy_qualification_without_a_consumer: RungDrop = RungDrop {
   identity: "emit_copy_qualification_without_a_consumer" as NonEmptyStr,
+  amendments: [],
 
   subject: "The EMIT-COST-QUAL-0 wet battery's only sanctioned executing consumer",
 

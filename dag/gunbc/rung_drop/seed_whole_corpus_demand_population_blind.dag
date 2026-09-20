@@ -29,6 +29,7 @@ data seed_whole_corpus_demand_population_blind_population: List<String> = [
 
 data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
   identity: "seed_whole_corpus_demand_population_blind" as NonEmptyStr,
+  amendments: [],
 
   subject: "The v1 seed's whole-corpus compile admission as a realization of gunbc.whole_corpus_compile_admission's per-root demand join",
 

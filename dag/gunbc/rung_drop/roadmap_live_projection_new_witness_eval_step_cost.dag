@@ -46,6 +46,7 @@ data roadmap_live_projection_new_witness_eval_step_cost_population: List<String>
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
+  amendments: [],
 
   subject: "new-witness eval-step cost gate over four live-roadmap projection identities: they still execute, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
 

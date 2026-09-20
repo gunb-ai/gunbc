@@ -1,7 +1,7 @@
 module gunbc.rung_drop.namespace_wave_admission_wall_removed
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, RungDropAmendment, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
 // DECLARED 2026-09-19, beside the change that deletes the gate: operator ruling 2026-09-19 removed
@@ -33,6 +33,13 @@ import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
 data namespace_wave_admission_wall_removed: RungDrop = RungDrop {
   identity: "namespace_wave_admission_wall_removed" as NonEmptyStr,
+  amendments: [
+    RungDropAmendment {
+      amended: "2026-09-20",
+      occasion: "main landed the carrier redesign (gunbc#11704 -- admissions carried in the change's own commit messages, never the tree, so no bystander is ever billed) hours before this deletion, so restoration half (1) was executing at the moment the wall was removed" as NonEmptyStr,
+      trigger_unaffected_because: "the ruling prices the gate ITSELF -- its fleet time, its bookkeeping surface, its self-sealing repair history -- and not only its billing, so it removes the redesigned wall together with the old one. Half (1) landing does not partially satisfy a trigger that requires BOTH halves executing with a discriminating RED on the real acceptance path, and half (2), the landing-time enforcement run, was never built under either design. A reader who knows gunbc#11704 landed would otherwise conclude this row is half retired; it is not" as NonEmptyStr,
+    },
+  ],
 
   subject: "the required namespace-wave-admission phase: merge-path adjudication of closure, subject-membership and occurrence-binding deltas between merge base and head",
 

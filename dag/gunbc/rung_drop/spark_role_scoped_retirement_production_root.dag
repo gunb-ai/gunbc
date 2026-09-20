@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, SparkRoleScopedRetir
 
 data spark_role_scoped_retirement_production_root: RungDrop = RungDrop {
   identity: "spark_role_scoped_retirement_production_root" as NonEmptyStr,
+  amendments: [],
 
   subject: "Spark serving role-scoped retirement evidence at the production plan root",
 

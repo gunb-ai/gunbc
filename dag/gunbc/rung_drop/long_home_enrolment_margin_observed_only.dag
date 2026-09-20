@@ -45,6 +45,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // re-arms for LongHome ground and this arm and this row retire together.
 data long_home_enrolment_margin_observed_only: RungDrop = RungDrop {
   identity: "long_home_enrolment_margin_observed_only" as NonEmptyStr,
+  amendments: [],
 
   subject: "the 302ms enrolment-margin line over a newly enrolled witness whose expensiveness declaration ground is long home: a wall removed so this gate reports CPU and does not decide, matching ChangedCostDebtVerdictOnly for that home",
 

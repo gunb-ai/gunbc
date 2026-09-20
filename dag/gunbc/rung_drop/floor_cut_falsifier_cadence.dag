@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutFalsifierCad
 
 data floor_cut_falsifier_cadence: RungDrop = RungDrop {
   identity: "floor_cut_falsifier_cadence" as NonEmptyStr,
+  amendments: [],
 
   subject: "Falsifier cadence: exposure open, disposition NOT decided",
 

@@ -19,6 +19,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
   identity: "fabric_db_append_principal_unrefused" as NonEmptyStr,
+  amendments: [],
 
   subject: "an append to the fabric event log by a principal that is not a fleet writer",
 

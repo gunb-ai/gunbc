@@ -22,6 +22,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // operator's call and this row records its cost rather than arguing it.
 data witness_floor_off_the_required_gate: RungDrop = RungDrop {
   identity: "witness_floor_off_the_required_gate" as NonEmptyStr,
+  amendments: [],
 
   subject: "The witness floor as a required merge gate",
 

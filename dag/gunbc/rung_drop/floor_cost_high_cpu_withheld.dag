@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCostHighCpuWith
 
 data floor_cost_high_cpu_withheld: RungDrop = RungDrop {
   identity: "floor_cost_high_cpu_withheld" as NonEmptyStr,
+  amendments: [],
 
   subject: "Required-floor merge-blocking authority for witnesses at or above 219 cpu-ms",
 

@@ -10,6 +10,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 data deleted_cadence_reference_drop: RungDrop = RungDrop {
   identity: "deleted_cadence_reference" as NonEmptyStr,
+  amendments: [],
 
   subject: "authority rows whose stated enforcement, audit or backstop was the affected-set falsifier cadence",
 

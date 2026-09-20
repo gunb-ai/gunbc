@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutFmtGate }
 
 data floor_cut_fmt_gate: RungDrop = RungDrop {
   identity: "floor_cut_fmt_gate" as NonEmptyStr,
+  amendments: [],
 
   subject: "Rust fmt as a merge-path gate",
 

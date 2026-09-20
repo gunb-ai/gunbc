@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutMergeAdmissi
 
 data floor_cut_merge_admission_stamping: RungDrop = RungDrop {
   identity: "floor_cut_merge_admission_stamping" as NonEmptyStr,
+  amendments: [],
 
   subject: "Merge-admission stamping: the receipt has no producer",
 

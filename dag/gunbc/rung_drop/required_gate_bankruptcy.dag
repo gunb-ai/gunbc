@@ -14,6 +14,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, RequiredGateBankrupt
 
 data required_gate_bankruptcy: RungDrop = RungDrop {
   identity: "required_gate_bankruptcy" as NonEmptyStr,
+  amendments: [],
 
   subject: "Required gate reduced to the compiler floor",
 

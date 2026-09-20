@@ -11,6 +11,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
   identity: "heal_healed_head_executed_verdict_without_human" as NonEmptyStr,
+  amendments: [],
 
   subject: "executed verdict on a healed head without a human",
 

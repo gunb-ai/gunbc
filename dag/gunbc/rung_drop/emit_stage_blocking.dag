@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, EmitStageBlocking }
 
 data emit_stage_blocking: RungDrop = RungDrop {
   identity: "emit_stage_blocking" as NonEmptyStr,
+  amendments: [],
 
   subject: "Blocking emit-stage diagnostics on main",
 

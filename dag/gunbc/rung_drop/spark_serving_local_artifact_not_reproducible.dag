@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, SparkServingLocalArt
 
 data spark_serving_local_artifact_not_reproducible: RungDrop = RungDrop {
   identity: "spark_serving_local_artifact_not_reproducible" as NonEmptyStr,
+  amendments: [],
 
   subject: "Reproduction of a Spark serving group's model artifact from desired state",
 

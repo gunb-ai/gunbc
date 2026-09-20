@@ -38,6 +38,7 @@ data v1_consumer_census_live_population_identities: List<String> = [
 fn v1_consumer_census_live_population_off_the_merge_path() -> RungDrop {
   RungDrop {
     identity: "v1_consumer_census_live_population_off_the_merge_path" as NonEmptyStr,
+    amendments: [],
     subject: "the v1 consumer census's live population -- v1_consumer_population(), v1_blocking_consumer_count() and the bankruptcy admission gate over them -- executed on the merge path",
     declared: "2026-09-11",
     standing: Standing,

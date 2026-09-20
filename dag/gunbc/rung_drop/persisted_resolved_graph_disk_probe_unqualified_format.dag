@@ -32,6 +32,7 @@ fn persisted_resolved_graph_disk_probe_restoration() -> String {
 
 data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop {
   identity: "persisted_resolved_graph_disk_probe_unqualified_format" as NonEmptyStr,
+  amendments: [],
 
   subject: "Availability of a resolved-graph disk hit, and Hit/WrongArtifact/WrongContent discrimination, on the unqualified legacy cache format (identity/correctness of that door improved: FNV-only objects cannot be served as exact equality)",
 

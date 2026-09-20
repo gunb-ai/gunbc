@@ -6,6 +6,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 data runner_host_file_apply_route_hermetic: RungDrop = RungDrop {
   identity: "runner_host_file_apply_route_hermetic" as NonEmptyStr,
+  amendments: [],
 
   subject: "the hermetic apply-route witness for gunbc.runner_host_file_converge run_runner_host_files, which used to drive the whole remote plan against the fleet-ssh mock and refuse a host that reported no path and no unit",
 

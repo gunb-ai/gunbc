@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, MeasurementBankruptc
 
 data measurement_bankruptcy: RungDrop = RungDrop {
   identity: "measurement_bankruptcy" as NonEmptyStr,
+  amendments: [],
 
   subject: "Self-host emission board measurement",
 

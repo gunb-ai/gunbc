@@ -42,6 +42,7 @@ data native_lane_second_textual_production_reading_population: List<String> = [
 
 data native_lane_second_textual_production_reading: RungDrop = RungDrop {
   identity: "native_lane_second_textual_production_reading" as NonEmptyStr,
+  amendments: [],
   subject: "single authority over the `module` and `import` productions, for the route's universe derivation",
   declared: "2026-09-12",
   standing: Standing,

@@ -56,6 +56,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // producer) then failed at consumption, which is the serve-boundary defect this trigger also names.
 data long_module_changed_witness_cpu_observed_only: RungDrop = RungDrop {
   identity: "long_module_changed_witness_cpu_observed_only" as NonEmptyStr,
+  amendments: [],
 
   subject: "the 500ms per-claim CPU ceiling over a CHANGED witness in a test/claim/long module: a wall removed for a population whose cost is a shared fixed front end rather than the witness's own work",
 

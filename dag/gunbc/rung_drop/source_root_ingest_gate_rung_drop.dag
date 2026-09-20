@@ -39,6 +39,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
   identity: "source_root_ingest_gate" as NonEmptyStr,
+  amendments: [],
 
   subject: "v2.workflow.source_root_ingest_gate",
 

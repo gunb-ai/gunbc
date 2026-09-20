@@ -1,22 +1,28 @@
 module test.claim.rung_drop_declaration_witness_test
 
 import std.types { String, Bool, NonEmptyStr }
+import v2.std.optional { Absent, Present }
 import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable, guarantee_rung_label,
 }
 import gunbc.rung_drop {
   RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
   rung_drop_declaration_message, rung_drop_off_ladder_judgment,
+  rung_drop_amendment_message, RungDropAmendment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.namespace_wave_admission_wall_removed {
+  namespace_wave_admission_wall_removed,
+}
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
 // predicate that answered a constant, would agree with the live row here and be caught.
 data control_rung_drop: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
+  amendments: [],
   subject: "control.subject",
   declared: "2026-01-01",
   standing: Standing,
@@ -92,4 +98,44 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// A CONTROL AMENDMENT, differing from the live one in both prose fields, so the assertions below
+// cannot be satisfied by a renderer that ignores its argument.
+data control_amendment: RungDropAmendment = RungDropAmendment {
+  amended: "2026-01-02",
+  occasion: "control.occasion" as NonEmptyStr,
+  trigger_unaffected_because: "control.because" as NonEmptyStr,
+}
+
+// AN AMENDMENT RENDERS BOTH ITS OCCASION AND ITS TRIGGER CLAUSE, AND THE TRIGGER CLAUSE IS NOT
+// OPTIONAL. The whole reason this carrier exists rather than a commentary string is that a note
+// about a later event, rendered WITHOUT the sentence saying the trigger is untouched, reads as a
+// partial retirement -- which is exactly the misreading gunbc#11774's projection-only postscript
+// was written to prevent. A renderer that dropped `trigger_unaffected_because` would satisfy a
+// weaker assertion and reintroduce the defect, so it is asserted by name here.
+test fn an_amendment_renders_its_occasion_and_its_trigger_clause() -> Bool {
+  let m = rung_drop_amendment_message(a: control_amendment)
+  contains_text(haystack: m, needle: "control.occasion")
+    && contains_text(haystack: m, needle: "control.because")
+    && contains_text(haystack: m, needle: "THE RESTORATION TRIGGER STANDS WHOLE")
+    && contains_text(haystack: m, needle: "2026-01-02")
+}
+
+// THE LIVE AMENDMENT IS CARRIED BY THE ROW IT AMENDS, AND SAYS WHAT IT WAS WRITTEN TO SAY. This is
+// the inhabitance claim for the carrier: the namespace-wave-admission row really holds one
+// amendment, it names the redesign that landed first, and the whole of it reaches the renderer the
+// projection calls. A regeneration that dropped the field, or a row that lost the amendment, reds
+// here rather than silently shortening docs/design-rung-drops.md again.
+test fn the_wall_removal_row_carries_the_carrier_redesign_amendment() -> Bool {
+  match namespace_wave_admission_wall_removed.amendments.first() {
+    Absent => false
+    Present { value: a } =>
+      let m = rung_drop_amendment_message(a: a)
+      contains_text(haystack: m, needle: "gunbc#11704")
+        && contains_text(haystack: m, needle: "hours before this deletion")
+        && contains_text(haystack: m, needle: "not only its billing")
+        && contains_text(haystack: m, needle: "THE RESTORATION TRIGGER STANDS WHOLE")
+        && !contains_text(haystack: m, needle: "control.occasion")
+  }
 }

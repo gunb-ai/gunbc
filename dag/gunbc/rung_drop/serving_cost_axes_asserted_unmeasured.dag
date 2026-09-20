@@ -49,6 +49,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 data serving_cost_axes_asserted_unmeasured: RungDrop = RungDrop {
   identity: "serving_cost_axes_asserted_unmeasured" as NonEmptyStr,
+  amendments: [],
 
   subject: "two of the six priced axes for a serving offer -- operating and opportunity -- answered with asserting arms from facts this repository has not observed, so that an admission-only placement can reach a priced selector",
 

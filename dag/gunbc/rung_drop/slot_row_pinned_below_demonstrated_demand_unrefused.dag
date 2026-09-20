@@ -50,6 +50,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // ceiling folds over, satisfies neither clause.
 data slot_row_pinned_below_demonstrated_demand_unrefused: RungDrop = RungDrop {
   identity: "slot_row_pinned_below_demonstrated_demand_unrefused" as NonEmptyStr,
+  amendments: [],
 
   subject: "the slot wall's floor-demand conjunct (gunbc.runner_slot_allocation gunbc_runner_slot_allocation_wall_holds over gunbc.floor_demand gunbc_floor_measured_peak_observation): a per-slot MemoryHigh below the floor's demonstrated demand is not refused when the demonstration is a throttle pin at the declared line",
 

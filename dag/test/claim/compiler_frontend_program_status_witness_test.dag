@@ -334,6 +334,7 @@ test fn the_native_route_milestone_is_wired_to_its_drop_row() -> Bool {
 test fn the_native_route_fold_answers_both_ways() -> Bool {
   let retired = RungDrop {
     identity: "fixture_native_route_drop" as NonEmptyStr,
+    amendments: [],
     subject: "fixture",
     declared: "2026-09-12",
     standing: Retired { trigger_fired: "fixture" as NonEmptyStr },
@@ -347,6 +348,7 @@ test fn the_native_route_fold_answers_both_ways() -> Bool {
   }
   let standing = RungDrop {
     identity: retired.identity,
+    amendments: [],
     subject: retired.subject,
     declared: retired.declared,
     standing: Standing,

@@ -5,6 +5,7 @@ import gunbc.rung_drop { RungDrop, Retired, AuthoredProse, NamespaceAdmissionCon
 
 data namespace_admission_consumed_row_deletion: RungDrop = RungDrop {
   identity: "namespace_admission_consumed_row_deletion" as NonEmptyStr,
+  amendments: [],
 
   subject: "Consumed-row deletion obligation on the namespace transition-admission roster",
 

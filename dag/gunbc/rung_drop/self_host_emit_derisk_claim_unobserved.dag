@@ -54,6 +54,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // the state it declares. Re-adding falsifier.yml in its 2026-08 shape does not retire it.
 data self_host_emit_derisk_claim_unobserved: RungDrop = RungDrop {
   identity: "self_host_emit_derisk_claim_unobserved" as NonEmptyStr,
+  amendments: [],
 
   subject: "the enrolled emit-derisk hold-claims over emit_compiler_import_closure_from_ingest of a standalone module (v2.test.long.self_host_module_emit_derisk), which are red and planned by no lane",
 
