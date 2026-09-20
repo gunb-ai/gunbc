@@ -92,35 +92,39 @@ fn site_is_exit_status(sig: InfraSignature) -> Bool {
 
 // A wall-clock timeout kill is a fact about the RUN, not a verdict about the corpus.
 //
-// THE RED THIS DISCRIMINATES: before extdeps.process.gnu_coreutils_timeout_exit was consulted,
-// 124 matched no signature, classify_failure_reason fell through to its Structural initial value,
-// and floor_failure_blocks_merge read TRUE -- a run that never reached a verdict blocked the merge
-// as though the subject had failed. Delete the timeout_kill_invocation_infra arm from
+// THE RED THIS DISCRIMINATES: before extdeps.tools.gnu_coreutils's 124 was consulted here, that
+// status matched no signature, classify_failure_reason fell through to its Structural initial
+// value, and floor_failure_blocks_merge read TRUE -- a run that never reached a verdict was
+// classified as though the subject had failed. Delete the timeout_kill_invocation_infra arm from
 // classify_failure_exit and the first two conjuncts below go red.
+//
+// floor_failure_blocks_merge is the VERDICT SURFACE, not a live gate: gating is deferred
+// (witness_verdict_computed_but_gating_deferred), so this claim pins what the classifier ANSWERS,
+// which is what receipts and wires carry today and what a future gate would consume.
 //
 // THE POSITIVE CONTROL, in the same claim so it cannot be dropped separately: an ordinary subject
 // failure still classifies Structural and STILL BLOCKS. This arm is reached only by the one status
 // GNU coreutils reserves for the timeout path, so it cannot be widened into admitting real reds.
 test fn witness_wall_clock_timeout_kill_is_infra_not_a_subject_verdict() -> ProcessExit {
-  let timed_out = ExitFailure { code: timeout_exit_code_command_timed_out, reason: "" }
+  let timed_out = ExitFailure { code: coreutils_timeout_expired_exit_code, reason: "" }
   let subject_red = ExitFailure { code: 101, reason: "error[E0599]: no method named `frobnicate`" }
-  if class_is_infra(c: classify_failure_exit(code: timeout_exit_code_command_timed_out, reason: ""))
-    && (floor_failure_blocks_merge(c: classify_failure_exit(code: timeout_exit_code_command_timed_out, reason: "")) == false)
+  if class_is_infra(c: classify_failure_exit(code: coreutils_timeout_expired_exit_code, reason: ""))
+    && (floor_failure_blocks_merge(c: classify_failure_exit(code: coreutils_timeout_expired_exit_code, reason: "")) == false)
     && (floor_outcome_wire(o: classify_floor_exit(e: timed_out)) == floor_outcome_wire_infra)
     && class_is_structural(c: classify_failure_exit(code: 101, reason: "error[E0599]: no method named `frobnicate`"))
     && floor_failure_blocks_merge(c: classify_failure_exit(code: 101, reason: "error[E0599]: no method named `frobnicate`"))
     && outcome_is_structural(o: classify_floor_exit(e: subject_red))
-    && (timeout_exit_code_command_timed_out == 124)
+    && (coreutils_timeout_expired_exit_code == 124)
     && site_is_exit_status(sig: GnuCoreutilsTimeoutKill)
-    && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "extdeps.process.gnu_coreutils_timeout_exit")
+    && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "extdeps.tools.gnu_coreutils coreutils_timeout_expired_exit_code")
     && string_contains(s: infra_signature_origin(sig: GnuCoreutilsTimeoutKill), pattern: "CANNOT-TELL")
     && (list_has_signature(xs: verdict_infra_signatures, target: GnuCoreutilsTimeoutKill) == false)
-    && (infra_signature_match_substring(sig: GnuCoreutilsTimeoutKill) == timeout_kill_class_name) {
+    && (infra_signature_match_substring(sig: GnuCoreutilsTimeoutKill) == "GnuCoreutilsTimeoutKill") {
     ExitSuccess
   } else {
     ExitFailure {
       code: 1,
-      reason: "wall-clock timeout kill (GNU coreutils status 124) must classify Infra and not block merge, while an ordinary subject failure still classifies Structural and still blocks"
+      reason: "wall-clock timeout kill (GNU coreutils status 124) must classify Infra and answer non-blocking on the verdict surface, while an ordinary subject failure still classifies Structural and still answers blocking"
     }
   }
 }

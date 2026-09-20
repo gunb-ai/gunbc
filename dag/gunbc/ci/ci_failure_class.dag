@@ -31,10 +31,7 @@ import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
 }
-import extdeps.process.gnu_coreutils_timeout_exit {
-  timeout_exit_code_command_timed_out,
-  timeout_kill_class_name,
-}
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import gunbc.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -98,7 +95,7 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "command invoked cannot execute"
     CommandNotFound => "command not found"
     MemoryStallRefusedPageThrash => memory_stall_refusal_page_thrash_class_name
-    GnuCoreutilsTimeoutKill => timeout_kill_class_name
+    GnuCoreutilsTimeoutKill => "GnuCoreutilsTimeoutKill"
     ClassWireOnly => "ClassWireOnly"
   }
 }
@@ -118,7 +115,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
       command_not_found_exit_cannot_distinguish_eviction_from_misnaming.identity as String
     )
     MemoryStallRefusedPageThrash => "gunbc.host.memory_stall_refusal memory_stall_refusal_pressure_text (typed floor refusal, not a subject defect; positive control)"
-    GnuCoreutilsTimeoutKill => "extdeps.process.gnu_coreutils_timeout_exit (GNU coreutils timeout(1) status 124: the wall-clock bound was reached and the command was killed; carries no cause, so it is a CANNOT-TELL about the subject and never a verdict about the corpus)"
+    GnuCoreutilsTimeoutKill => "extdeps.tools.gnu_coreutils coreutils_timeout_expired_exit_code (status 124 from the same module's timeout_command: the wall-clock bound was reached and the command was killed; carries no cause, so it is a CANNOT-TELL about the subject and never a verdict about the corpus)"
     ClassWireOnly => "gunbc.ci_failure_class floor_outcome_wire_infra (job output carries class only; signature is on the attempt receipt file, not this wire)"
   }
 }
@@ -225,14 +222,17 @@ fn posix_shell_invocation_infra(code: Int) -> InfraSignature? {
 
 // 124 is GNU coreutils `timeout`'s own status, not POSIX's, so it is read by its own authority
 // rather than widening posix_shell_invocation_infra -- holding one function's name constant while
-// changing which upstream defines its codes is the meaning fork DESIGN section 3 forbids.
+// changing which upstream defines its codes is the meaning fork DESIGN section 3 forbids. The code
+// is CONSUMED from extdeps.tools.gnu_coreutils, which already owns it beside timeout_command, the
+// builder that produces the invocation whose status this is; a second row for it here would be the
+// nicknaming section 3 forbids (review 68975 caught exactly that in this change's first draft).
 //
 // Keyed on the CODE and never on a log substring: `timeout` prints no diagnostic on the timeout
 // path, so there is no upstream text to match. GnuCoreutilsTimeoutKill is therefore deliberately
 // NOT a member of verdict_infra_signatures, exactly as 126 and 127 are not -- that roster is the
 // log-substring arm, and putting a code-keyed class in it would mean matching an invented string.
 fn timeout_kill_invocation_infra(code: Int) -> InfraSignature? {
-  if code == timeout_exit_code_command_timed_out {
+  if code == coreutils_timeout_expired_exit_code {
     Present { value: GnuCoreutilsTimeoutKill }
   } else {
     none
@@ -240,11 +240,19 @@ fn timeout_kill_invocation_infra(code: Int) -> InfraSignature? {
 }
 
 // WHY A TIMEOUT KILL IS INFRA AND NOT STRUCTURAL. Before this arm existed, 124 matched no
-// signature, so classify_failure_reason returned its Structural initial value and
-// floor_failure_blocks_merge read true: a run that never reached a verdict blocked the merge as
-// though the corpus had failed. That is a CANNOT-TELL read as a verdict about the subject, which
-// DESIGN section 5 forbids outright. The subject's standing after a wall-clock kill is UNOBSERVED,
-// and the honest classification is a fact about the run.
+// signature, so classify_failure_reason returned its Structural initial value: a run that never
+// reached a verdict was classified as though the corpus had failed. That is a CANNOT-TELL recorded
+// as a verdict about the subject, which DESIGN section 5 forbids outright. The subject's standing
+// after a wall-clock kill is UNOBSERVED, and the honest classification is a fact about the run.
+//
+// WHAT THAT MISCLASSIFICATION COSTS TODAY, STATED AT ITS REAL GRAIN AND NOT ABOVE IT. It does NOT
+// block a merge. gunbc.plans.ci_merge_freshness records that this verdict is COMPUTED AND SURFACED
+// WITH GATING DEFERRED -- nothing consumes floor_exit_blocks_merge to block anything, and
+// witness_verdict_computed_but_gating_deferred pins that. So the harm is a wrong class on a
+// surfaced verdict: infra_signature_wire and floor_attempt_receipt_body carry it to the operators
+// and automated readers who read an attempt receipt, and those readers are told a contended runner
+// was a subject defect. An earlier draft of this annotation claimed the merge was blocked; that was
+// wrong and review 68975 caught it.
 //
 // This does not admit real reds. The arm is reached only by the exact status GNU coreutils
 // reserves for the timeout path; an ordinary subject failure carries its own code and reason and
@@ -308,7 +316,7 @@ fn infra_signature_wire(sig: InfraSignature) -> String {
     CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
     CommandNotFound => "CommandNotFound"
     MemoryStallRefusedPageThrash => memory_stall_refusal_page_thrash_class_name
-    GnuCoreutilsTimeoutKill => timeout_kill_class_name
+    GnuCoreutilsTimeoutKill => "GnuCoreutilsTimeoutKill"
     ClassWireOnly => "ClassWireOnly"
   }
 }
