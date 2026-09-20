@@ -1590,7 +1590,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The durable queue, one run held under a lease from start to finish, and its result carrying the exact subject it tested."
       )
     ),
-    active(
+    with_execution(active(
       identity: "rn_8XBLW9DKZH5NCQ0RTVPMGJ4F2",
       id: "ci-executed-coverage-receipt",
       owner: "ci-control",
@@ -1604,7 +1604,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Not what the corpus contains or how it is selected, and not per-witness enrolment — only that a verdict names the work that produced it.",
         handback: "One required check carrying its executed population, with the empty-population refusal and the distinct upstream-failure outcome both demonstrated."
       )
-    ),
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/closing/ci_executed_coverage_receipt_closing_contract_witness_test.dag" as FilePath,
+      function: "a_run_whose_executed_population_is_zero_refuses_rather_than_reporting_pass_or_fail" as NonEmptyStr,
+    )),
     active_small(
       identity: "rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L",
       id: "floor-ceiling-roster-cut-completeness",
