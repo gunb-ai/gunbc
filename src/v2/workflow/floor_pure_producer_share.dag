@@ -525,8 +525,11 @@ import v2.std.collection { List }
 // when the assertions changed). So no in-fold first touch can land inside a claim's budget,
 // which is the dag_prepared_grammar / rust_module_emission_population ground. The share point
 // is Outcome<Node> (the grafted, resolved root, or the typed refusal), the same seam as
-// native_decl_selection.collision_resolved. The combined producer serves eight claims off one
-// tree; the one-member sources (empty, fn-only, type-only, where-alias-only) are the
+// native_decl_selection.collision_resolved. The combined producer serves SIX claims off one
+// tree (combined_accepts, silent_drop_control, coproduct_beside_fn, variant_reference_construct
+// _and_match, dag_prefix_user_fn, import_beside_fn -- nine call sites; the type-only producer
+// serves two, every other one exactly one); the one-member sources (empty, fn-only, type-only,
+// where-alias-only) are the
 // containment-spine controls of gunbc#11694 and cannot be combined; the two collided-alias
 // sources cannot join the combined module because two where-refinement aliases in one module
 // refuse resolve_reason_ambiguous_symbol on main (measured, independent of #11574); and the
@@ -536,8 +539,12 @@ import v2.std.collection { List }
 // collided-alias rows red; with Conj-targeted members dropped from the flatten, the
 // silent-drop control reds and the combined producer refuses on the conservation check.
 // WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as every row above. The instrument
-// that decides it is the [floor-shared-fill] ledger: ten fills with disposition=Stored at
-// preparation, and every one of the sixteen claims under the line.
+// that decides it is the [floor-shared-fill] ledger, and it has been read (floor run
+// 35509977276 on gunbc#11574 head 2fdc7f7863): ten fills disposition=Stored at
+// pure-producer-share-warm, consumer_claims 6 / 2 / 1 as stated above, all sixteen claims
+// admitted at 0-2ms against the 302ms margin, zero over-cost. An earlier revision of this note
+// said eight for the combined producer -- a count from before the two collided-alias sources
+// were given their own rows -- and the ledger is what corrected it.
 // THE WHOLE-TREE CENSUS PROBE ROW IS THE native_decl_selection GROUND A THIRD TIME, ON THE SAME
 // PRODUCER. v2.test.claim.native_census.whole_tree_census_resolve drives
 // v2.compiler.compile native_test_context_from_ingest over one three-specimen supplied ingest, and
