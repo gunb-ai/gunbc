@@ -60,7 +60,7 @@ import gunbc.runner_throughput_qualification_route {
   route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
   route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing, mtcollins1_capacity_class_candidate, stage_egress, BootHostUnderApprovalGate,
   RegisterEphemeralRunnerSlot, DispatchFloorToSlot, CollectInstruments, DeregisterRunnerSlot,
-  CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire,
+  CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner.runner_host_filtered_egress { DefaultDrop, DefaultAccept }
 
@@ -549,15 +549,38 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
   )
 }
 
-// THE COLLECT STAGE OWES THE TWO INSTRUMENTS THE ADMISSION TURNS ON: the specimen line the rate is
-// floored from and the cgroup rows the peak and bound are read from, each naming its producer.
+// THE COLLECT STAGE OWES THE TWO INSTRUMENTS THE ADMISSION TURNS ON, AND EACH NAMES ITS PRODUCER
+// BY DECLARATION: the specimen line's producer is the calibration this witness already reads the
+// pin from, and the cgroup rows' producer is the resolution the memory standing is decided over.
+// The refs resolve in the parse phase; here the claim checks they name what this file consumes.
 test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
   route() |> any(s =>
     match s {
       CollectInstruments { instruments: is } =>
-        (is |> any(i => match i { CalibrationSpecimenWitnessLine => true _ => false }))
-          && (is |> any(i => match i { FloorCgroupRows => true _ => false }))
-          && (is |> all(i => string_contains(s: qualification_instrument_wire(i: i) as String, pattern: " ")))
+        (is |> any(i =>
+          match i {
+            CalibrationSpecimenWitnessLine => {
+              let p = qualification_instrument_producer(i: i)
+              (p.module_path as String) == "v2.workflow.floor_eval_step_calibration"
+                && (p.decl_name as String) == "floor_eval_step_calibration"
+            }
+            _ => false
+          }
+        ))
+          && (is |> any(i =>
+            match i {
+              FloorCgroupRows => {
+                let p = qualification_instrument_producer(i: i)
+                (p.module_path as String) == "gunbc.host_budget_source"
+                  && (p.decl_name as String) == "HostBudgetResolution"
+              }
+              _ => false
+            }
+          ))
+          && (is |> all(i => {
+            let p = qualification_instrument_producer(i: i)
+            string_contains(s: qualification_instrument_wire(i: i) as String, pattern: p.decl_name as String)
+          }))
       _ => false
     }
   )

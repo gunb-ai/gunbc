@@ -135,8 +135,10 @@ fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr 
 
 // ── THE INSTRUMENTS THE COLLECT STAGE OWES ────────────────────────────────────────────────────
 //
-// Each arm names a producer the required run already has, so the receipt module's reading has a
-// re-derivation rather than a number. None is a benchmark added for this route.
+// Each instrument names the PRODUCER that re-derives its reading as a DeclarationRef, resolved by
+// the declaration index in the parse phase like every other citation (review 68775: a producer
+// named in prose is a citation nothing can check). The arm says what is read; the ref says who
+// owns the vocabulary the reading is denominated in. None is a benchmark added for this route.
 type QualificationInstrument
   = FloorPhaseRows
   | FloorCgroupRows
@@ -144,14 +146,31 @@ type QualificationInstrument
   | CalibrationSpecimenWitnessLine
   | GuestIdleMeminfoAndNproc
 
-fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
+fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationRef {
   match i {
-    FloorPhaseRows => "[floor-phase] rows of claim_executor --required-ci: wall_ms per gunbc.required_ci_phase_roster phase" as NonEmptyStr
-    FloorCgroupRows => "[floor-cgroup] rows of the same run at the slot cgroup level: memory.high as the bound, memory.peak as the peak" as NonEmptyStr
-    ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact: eval_steps summed over the floor phase" as NonEmptyStr
-    CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the producer v2.workflow.floor_eval_step_calibration pinned the rate from" as NonEmptyStr
-    GuestIdleMeminfoAndNproc => "the guest's idle /proc/meminfo MemTotal and MemAvailable, nproc and uname -m, read before the job starts" as NonEmptyStr
+    FloorPhaseRows =>
+      decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
+    FloorCgroupRows =>
+      decl_ref(module_path: "gunbc.host_budget_source", decl_name: "HostBudgetResolution")
+    ClaimCostArtifactEvalSteps =>
+      decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv")
+    CalibrationSpecimenWitnessLine =>
+      decl_ref(module_path: "v2.workflow.floor_eval_step_calibration", decl_name: "floor_eval_step_calibration")
+    GuestIdleMeminfoAndNproc =>
+      decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_field_names")
   }
+}
+
+fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
+  let producer = qualification_instrument_producer(i: i)
+  let what = match i {
+    FloorPhaseRows => "[floor-phase] rows of claim_executor --required-ci: wall_ms per phase of"
+    FloorCgroupRows => "[floor-cgroup] rows of the same run at the slot cgroup level, memory.high as the bound and memory.peak as the peak, resolved through"
+    ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact, eval_steps summed over the floor phase, parsed by"
+    CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the sample behind"
+    GuestIdleMeminfoAndNproc => "the guest's idle MemTotal and MemAvailable (fields of) plus nproc and uname -m, read before the job starts:"
+  }
+  join([what, " ", producer.module_path as String, " ", producer.decl_name as String], "") as NonEmptyStr
 }
 
 data qualification_instruments: List<QualificationInstrument> = [
