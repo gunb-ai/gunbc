@@ -54,6 +54,7 @@ import gunbc.runner_microvm_lifecycle {
 import gunbc.runner_microvm_lifecycle_realize {
   AttemptTeardownOutcome, TeardownSettled, TeardownObservationForeign,
   UnitSignalOutcome, UnitSignalled, UnitSignalRefused,
+  ForceKillOutcome, ForceKillIssued, ForceKillNotIssued,
   SliceFreezeReadback, SliceThawed, SliceHoldsFrozenCgroups, SliceFreezeUnreadable,
   perform_bounded_stop, read_cell_cgroup_subtree, settle_attempt_teardown,
   read_slice_freeze_state, runner_microvm_attempt_stop_properties, force_kill_unit,
@@ -167,10 +168,10 @@ fn thaw_unit(unit: NonEmptyStr) -> Bool {
 // EVERY CLAIM ENDS BY LEAVING THE SLICE QUIET, and the sweep is part of the claim rather than the
 // script's job: a RED that proved a survivor and then left it running would have converted a
 // receipt into a leak on a host other people are using.
-fn signal_was_sent(outcome: UnitSignalOutcome) -> Bool {
+fn signal_was_sent(outcome: ForceKillOutcome) -> Bool {
   match outcome {
-    UnitSignalled => true
-    UnitSignalRefused { detail: _ } => false
+    ForceKillIssued { outcome: _ } => true
+    ForceKillNotIssued { detail: _ } => false
   }
 }
 

@@ -523,22 +523,31 @@ fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   uses net: Network
 {
   match request_unit_stop(unit: unit) {
-    UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
-    UnitSignalled =>
+    StopRequestNotIssued { detail: d } => StopOutcomeUnobserved { reason: d }
+    StopRequestIssued { outcome: issued } =>
       match read_cell_cgroup_subtree(slice: slice) {
         CgroupSubtreeEmpty => StoppedGracefully
         CgroupSubtreeReadFailed { reason: r } => StopOutcomeUnobserved { reason: r }
-        CgroupSubtreePopulated { pids: _, cgroups: _ } => force_stop_after_graceful(unit: unit, slice: slice)
+        CgroupSubtreePopulated { pids: _, cgroups: _ } => force_stop_after_graceful(unit: unit, slice: slice, after: issued)
       }
   }
 }
 
-fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+// THE KILL IS READ THE SAME WAY THE STOP IS, and for the same reason: `systemctl kill` reports the
+// MANAGER'S status, not the signalled process's, so a nonzero exit says the signal may not have
+// been sent and says nothing about what died. Only a command that never reached the manager is
+// unobserved; everything else is settled by the cgroup.
+//
+// THE MATCH IS ALSO THE ORDERING. Reading the subtree inside the arm of a match on the kill's
+// result makes the read depend on that result, which is what puts it after the kill in a graph --
+// the same edge observe_attempt_teardown has to pass explicitly because its readbacks are siblings
+// in a record rather than arms of a match.
+fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr, after: UnitSignalOutcome) -> TeardownStop
   uses net: Network
 {
   match force_kill_unit(unit: unit) {
-    UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
-    UnitSignalled =>
+    ForceKillNotIssued { detail: d } => StopOutcomeUnobserved { reason: d }
+    ForceKillIssued { outcome: _ } =>
       match await_quiet_subtree(slice: slice, reads_left: runner_microvm_force_stop_reads) {
         CgroupSubtreeEmpty => StoppedByForce
         CgroupSubtreeReadFailed { reason: r } => StopOutcomeUnobserved { reason: r }
