@@ -214,5 +214,11 @@ only then declare the outcome.
   comparator. So a period-shaped deadline (`create_time + N days`) is not expressible, which is why
   C9b's rotation contract carries an absolute `rotate_by` that a completed rotation must move
   forward by hand. A period first owes rfc3339 parse and arithmetic.
+- **A one-arm coproduct is not a coproduct.** `type X = OnlyArm` — a name, equals, a single bare
+  arm, no pipe — parses as a type *alias* to an unknown name and fails with *name not found in
+  module*, attributed to the importing module rather than to the declaration. It cost a lane a
+  cycle. C9b's restore cadence became a record naming the consumer that discharges it, which is
+  better anyway: the intent builds its roster from that record, so the field is read rather than
+  declared beside the thing it describes.
 - **Merge order is not a preference.** Out-of-order merges broke sibling cuts four times, and none
   of it was a defect in the changes.
