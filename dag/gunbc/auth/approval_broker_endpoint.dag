@@ -1,0 +1,203 @@
+module gunbc.auth.approval_broker_endpoint
+
+import std.types { NonEmptyStr, String, Port }
+import extdeps.tailscale.serve {
+  TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
+}
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.serve_liveness { serve_liveness_path }
+
+// ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
+// ONE FACT, FOUR READERS. The four approval paths are read by the broker's route table
+// (gunbc.auth.approval_broker_serve), by the notification link the filing fold issues
+// (gunbc.auth.approval_request_submission), by the front door that maps them onto the broker's
+// loopback port, and by the boot client that posts a submission and polls a status. While the
+// routes lived in the roadmap's table there was one reader that mattered and the literals were
+// spelled at it; with the broker split out, a path spelled once per reader would agree exactly
+// until one of them moved -- and the one that moves silently is the one nothing reads back
+// (review 63317, and the same class the roadmap's served-path de-fork already fixed).
+//
+// So this module is the path authority, and everything that needs an approval path consumes it.
+
+data approval_broker_confirm_path_prefix: NonEmptyStr = "/approve/"
+
+data approval_broker_confirm_path_template: NonEmptyStr = "/approve/\{capability\}"
+
+// THE PAIR IS TWO ROUTES ON ONE PATH and therefore ONE literal read twice, not two literals that
+// happen to agree: the GET renders the confirmation page and the POST on the SAME path commits.
+// Spelling the decide path separately would make "same path, different consequence" a coincidence
+// of two strings rather than a construction.
+data approval_broker_decide_path_template: NonEmptyStr = approval_broker_confirm_path_template
+
+data approval_broker_submit_path: NonEmptyStr = "/approvals"
+
+data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalation_id\}"
+
+// ── The broker's own listener ────────────────────────────────────────────────────────────────
+// A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that
+// shared a socket would be a lie the first `ss` would expose; the broker binds its own loopback
+// port, and the front door is what joins the public path contract to it.
+// ONE PORT FOR THE PROCESS'S WHOLE LIFE, and the alternative was tried and refused (side-chat HOLD
+// item 1). An earlier cut bound the broker to a second "dark" port until the front door moved,
+// deriving the port from the cutover's ownership row. Two things broke. The front-door mounts named
+// the serving port while the unit bound the other, so the repoint stage would have pointed
+// /approve at nothing and the probes that gate retirement could never pass -- a cutover graph with
+// no path to its own last stage. And more fundamentally, a port is not an authority: a client on
+// the host reaches loopback whatever the front door says, so "bound somewhere unrouted" never meant
+// "unable to write".
+//
+// DARK IS NOW A PROPERTY OF ROUTING AND AUTHORITY, NOT OF THE ADDRESS. The broker binds this port
+// from its first dark install to its last, so every stage observes the same process at the same
+// address; what changes is whether the front door names it (gunbc.auth.approval_broker_cutover
+// approval_route_ownership) and whether it holds the store (gunbc.auth.approval_writer_authority).
+// A process whose address never moves is also the only kind whose release readback, MainPID and
+// measured demand mean the same thing at every stage.
+data approval_broker_listen_port: Port = 8085
+
+// ── THE LOOPBACK BASE A LOCAL CLIENT POSTS TO, PARAMETERIZED BY PORT ────────────────────────
+// THE PORT IS AN ARGUMENT SO A CALLER NAMES WHICH PROCESS IT MEANS, not because the broker moves.
+// It binds one port for its whole life (approval_broker_listen_port above), so a boot run reaches
+// the same address before and after the cutover; what changes is whether the write is ADMITTED
+// (gunbc.auth.approval_writer_authority). The parameter remains because a claim, a probe and a
+// rehearsal may each need to name a port explicitly rather than inherit one.
+//
+// IT IS LOOPBACK AND NOT THE TAILNET NAME because the client and the broker are the same host. The
+// address a CLIENT ON THE HOST dials and the address a PHONE dials are different facts with
+// different authentication stories -- the second goes through tailscale serve, which is what
+// injects the identity header the decide route requires -- and each is asserted for its own job
+// (the same split gunbc.auth.approval_ntfy_deployment already draws for the ntfy listener).
+// ── THE ADDRESS THE BROKER BINDS, AND IT IS ONE FACT WITH TWO READERS ───────────────────────
+// THE UNIT'S BIND ADDRESS AND THE URL A CLIENT DIALS MUST BE THE SAME STRING OR THE PROBE IS
+// MEANINGLESS. The stage-A run found the unit binding 0.0.0.0 because the broker's service config
+// inherited the ROADMAP instance's listen_host, while this module was separately spelling
+// 127.0.0.1 into the loopback URL. Two literals, agreeing by luck until one moved -- and the way
+// they disagree is the worst one: the readiness probe dials 127.0.0.1, something answers because
+// 0.0.0.0 includes loopback, and the deployment reports a correct bind while the broker is in fact
+// reachable from every interface on the host.
+//
+// BINDING 0.0.0.0 IS NOT A COSMETIC DEFECT HERE. The whole authentication story for the approval
+// routes is that the tailnet front door injects the identity header the decide route requires; a
+// broker listening on every interface can be reached by anything that can route to the host,
+// bypassing the front door and therefore the identity. The loopback bind is what makes "the front
+// door is the only public path" true rather than merely intended.
+data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
+
+fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
+  join(["http://", approval_broker_listen_host as String, ":", to_string(port)], "") as NonEmptyStr
+}
+
+fn approval_broker_submit_url(port: Port) -> NonEmptyStr {
+  join([approval_broker_loopback_base_url(port: port) as String, approval_broker_submit_path as String], "") as NonEmptyStr
+}
+
+// THE STATUS URL IS BUILT FROM THE SUBMIT PATH RATHER THAN FROM A SECOND "/approvals/" LITERAL,
+// because they are one collection and its member: the status route IS the submit path plus an
+// escalation segment, which is exactly what approval_broker_status_path_template declares. Two
+// literals would agree until one of them moved.
+// THE URL THE CUTOVER'S RELEASE READBACK PROBES, and it lives here with the other loopback builders
+// rather than in the plan that consumes it (review 68306). It was declared in
+// gunbc.auth.approval_broker_cutover as "THE URL STAGE 2 PROBES" while the production probe in
+// gunbc.live_deploy.readiness hand-joined the same host, port and path -- two producers of one
+// string, with the surviving one having no production consumer and a claim asserting the join
+// through the fold production does not call.
+//
+// THAT IS THE THIRD TIME THIS EXACT CLASS APPEARED IN THIS CHANGE (reviews 68036, 68172, and this
+// one), which is why the repair is placement and not just a call: a builder that sits with the
+// plan invites a consumer elsewhere to rebuild it, while one that sits with
+// approval_broker_loopback_base_url is found by anyone already composing a broker address.
+fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
+  join([
+    approval_broker_loopback_base_url(port: port) as String,
+    serve_liveness_path as String,
+  ], "") as NonEmptyStr
+}
+
+fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmptyStr {
+  join([
+    approval_broker_loopback_base_url(port: port) as String,
+    approval_broker_submit_path as String,
+    "/",
+    escalation_id as String,
+  ], "") as NonEmptyStr
+}
+
+// ── The front door ───────────────────────────────────────────────────────────────────────────
+// THE PUBLIC ROUTE CONTRACT DOES NOT MOVE. An approval link already issued to a phone names
+// https://<srv1>.<tailnet>/approve/<capability>, and a capability outlives the deployment that
+// issued it -- so the split must be invisible to every URL that exists. The front door is what
+// makes it invisible: tailscale serve keeps proxying / to the roadmap port and additionally mounts
+// the two approval prefixes onto the broker port.
+//
+// THE MOUNT KEY IS (listener port x mount path x service), which extdeps.tailscale.serve models
+// because a bare `serve --bg <port>` binds the ROOT mount and silently rebinds whatever was there.
+// These two endpoints differ from the roadmap's in mount path, so they add mappings rather than
+// replacing one -- which is exactly the collision the endpoint key exists to make expressible.
+fn approval_broker_backend(port: Port) -> NonEmptyStr {
+  to_string(port) as NonEmptyStr
+}
+
+fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: https_port,
+    mount: ServeSetPath { path: "/approve" as NonEmptyStr },
+    backend: approval_broker_backend(port: backend_port),
+  }
+}
+
+fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: https_port,
+    mount: ServeSetPath { path: approval_broker_submit_path },
+    backend: approval_broker_backend(port: backend_port),
+  }
+}
+
+// ── WHAT THIS MODULE DOES NOT KNOW, SAID SO IT CAN BE SETTLED RATHER THAN ASSUMED ────────────
+// DOES A --set-path MOUNT PRESENT THE FULL PATH TO THE BACKEND, OR THE PATH WITH THE MOUNT PREFIX
+// STRIPPED? The broker's route table matches `/approve/<capability>`; if the mount strips, the
+// backend sees `/<capability>` and every approval link 404s at the broker while the roadmap's own
+// routes have already been removed. That is the whole risk of the cutover and it is a fact about
+// the upstream, not about this corpus.
+//
+// The tailscale documentation this corpus cites models the mount as the configuration KEY and does
+// not state the backend-side path rewrite either way (extdeps.tailscale.serve records what the
+// `off` form establishes about the key and nothing more). DESIGN section 4d forbids asserting as
+// deduced what is only inferred, so the standing is carried as a typed bet naming the reading that
+// would close it, rather than as a modeled behaviour some consumer would then trust.
+//
+// IT IS SETTLED BY A PROBE, NOT BY A READ, and the cutover is staged around that: ProbeRouteClasses
+// -- the FIFTH stage, after RepointFrontDoor and before RetireRoadmapRoutes -- exercises all four
+// route classes THROUGH the front door against the broker, so the discriminating answer is obtained
+// while the roadmap is still serving and still able to take the traffic back.
+//
+// WHAT MAKES THE PROBE DISCRIMINATING IS THE MARKER AND NOT THE STATUS, which is the correction the
+// cutover HOLD's item 4 forced. A 404 alone cannot tell a stripped prefix from a front door that
+// never repointed, and a 200 alone cannot tell the broker from the roadmap, which is still mounted
+// at that stage and answers these paths exactly like a success. Every broker response carries a
+// marker naming the fold that produced it (gunbc.auth.approval_broker_marker), so an ANSWER MARKED
+// approval-broker/no-route-matched is the prefix-strip reading -- the request reached the broker and
+// its table refused it -- while an UNMARKED answer of any status means the broker never saw it.
+//
+// The plan refuses at that stage with the cause named; the repair is then a modeled one (a broker
+// route table mounted at the stripped prefix, or a root mount on a second https listener), never an
+// edit made under an outage.
+data approval_broker_front_door_path_preservation: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Whether `tailscale serve --set-path=/approve --https=443 <backend>` presents `/approve/<rest>` or `/<rest>` to the backend. Close it by reading tailscale.com/kb/1242 on set-path backend rewriting, or by the ProbeRouteClasses front-door probe in gunbc.auth.approval_broker_cutover (the fifth stage), which discriminates it against the broker before the roadmap routes are removed: a body marked approval-broker/no-route-matched on a path the broker routes IS the strip, and gunbc.auth.approval_broker_marker is what makes that readable." as NonEmptyStr,
+}
+
+// ── The link base ────────────────────────────────────────────────────────────────────────────
+// THE LINK NOW NAMES THE BROKER'S ENDPOINT AUTHORITY, and the rendered bytes are deliberately
+// unchanged. Before the split, gunbc.auth.approval_request_submission grounded the link base on
+// "the roadmap server's tailnet name ... where tailscale serve proxies / to the roadmap server",
+// and that sentence was the whole grounding: it was true, and after the split it is false, while
+// the STRING it produces is byte-identical because the front door keeps the public host and port.
+//
+// A grounding that has become false while its output stays right is precisely the fact that rots
+// without anyone touching either end. So the base is re-derived here, from the broker's own front
+// door, and the byte-identity is a consequence of the front door rather than a coincidence two
+// modules maintain separately.
+fn approval_broker_base_url() -> NonEmptyStr {
+  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
+}
