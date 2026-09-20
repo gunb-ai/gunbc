@@ -336,6 +336,10 @@ fn megarac_attach_remote_image(
   }
 }
 
+// THE CLOSE IS OWED, THE PROBES ARE NOT. With a sentinel X-CSRFTOKEN no probe outcome can prove the
+// cookie is gone -- the release fold refuses on SessionCsrfUnreadable before reading either
+// observation -- so this arm closes and refuses without spending two round-trips on the one
+// transport already known to be misbehaving (review 68750).
 fn megarac_release_unreadable_session(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -343,14 +347,14 @@ fn megarac_release_unreadable_session(
 ) -> MegaRacAttachResult
   uses net: std.resources.Network
 {
+  let _closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: "unreadable" as NonEmptyStr,
+  )
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: megarac_close_and_reobserve(
-      bmc_host: bmc_host,
-      cookie_jar: cookie_jar,
-      csrf_token: "unreadable" as NonEmptyStr,
-      csrf: SessionCsrfUnreadable,
-    ),
+    session_release: SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" },
   }
 }
 
