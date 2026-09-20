@@ -7,10 +7,10 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
-  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import v2.std.optional { Present, Absent }
@@ -30,10 +30,16 @@ import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict,
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
 }
+import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
+import gunbc.spark.rendezvous_participation {
+  rendezvous_epoch, RendezvousEpoch, GroupHostsNotAllConnected, GroupHostsAllConnected, GroupRendezvousReachUnobserved,
+  DeclaredRankHostNotConnected, DeclaredRankHostConnected,
+}
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
   ServingObserved,
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
+  ServiceRanksAdriftFromTheRendezvous, ServiceRendezvousEvidenceFromAnotherEpoch,
   ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
   spark_serving_route_hosts_unreadable_obligation, spark_serving_route_service_identity_obligation,
@@ -85,7 +91,7 @@ fn t_declared_path() -> String {
 // THE REALIZATION WHOSE REPORTED CONFIGURATION MATCHES, which is NOT the same as one whose service
 // is established -- an earlier spelling of this comment said it was, and that sentence is the defect
 // in one line. The engine reports exactly the path the pair-serving launch is declared to serve, so
-// the identity join answers RealizationMatchesPairServingConfiguration; that is configuration agreement, and a second
+// the identity join answers RealizationMatchesDeclaredConfiguration; that is configuration agreement, and a second
 // deployment configured the same way reports the same string. This fixture therefore drives the
 // MOTIVATING case rather than a happy path: the one where everything a consumer might mistake for
 // identity is present and the service still may not be named.
@@ -100,6 +106,7 @@ fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -118,6 +125,7 @@ fn t_foreign_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
     },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -130,6 +138,7 @@ fn t_unreadable_realization(hosts: List<HostIdentity>) -> SparkServingRealizatio
     readback: ModelsRouteDocumentUnreadable { cause: "the fixture supplies an undecodable models document, which is the case the service half must refuse on" as NonEmptyStr },
     endpoint: t_launch(),
     incarnation: t_incarnation_unobserved(),
+    declared_model_path: Present { value: t_declared_path() },
   }
 }
 
@@ -157,7 +166,7 @@ fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
 // ServiceDeclaredUnitDigestUnavailable and the incarnation and region arms they exist to exercise
 // would never be reached. the_declared_unit_is_refused_before_the_incarnation is the row for that.
 fn t_standing(realization: SparkServingRealization) -> SparkServingRoute {
-  spark_serving_route_standing(realization: realization, declared_unit: t_declared())
+  spark_serving_route_standing(realization: realization, declared_unit: t_declared(), participation: none)
 }
 
 fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizationIdentity? {
@@ -167,6 +176,8 @@ fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizat
     ServiceIncarnationOutsideRealization { incarnation: _ } => none
     ServiceDeclaredUnitDigestUnavailable { obligation: _ } => none
     ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => none
+    ServiceRanksAdriftFromTheRendezvous { detail: _ } => none
+    ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: _, answering_invocation: _ } => none
     ServiceConfigurationDisagrees { configuration: _ } => none
   }
 }
@@ -329,7 +340,7 @@ fn t_cause_is_matched_configuration(cause: SparkServiceIdentityCause) -> Bool {
   match t_unobserved_configuration(cause: cause) {
     Absent => false
     Present { value: identity } => match identity {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
+    RealizationMatchesDeclaredConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
@@ -342,7 +353,7 @@ fn t_cause_is_unresolved_readback(cause: SparkServiceIdentityCause) -> Bool {
     Absent => false
     Present { value: identity } => match identity {
     RealizationReadbackUnresolved => true
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => false
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
   }
@@ -355,7 +366,7 @@ fn t_cause_is_reported_path_differs(cause: SparkServiceIdentityCause) -> Bool {
     Present { value: identity } => match identity {
     RealizationReportedPathDiffers { reported: rep, declared: dec } =>
       (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
-    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationMatchesDeclaredConfiguration { configured_model_path: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
   }
@@ -518,7 +529,7 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 // refuses, and asserts the constructor that yields. If the harness could not reach the refusal arms
 // this change adds, the join would be dangling.
 test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_declared()) {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_declared(), participation: none) {
     ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
       match c {
         ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
@@ -527,6 +538,8 @@ test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Boo
         ServiceIncarnationOutsideRealization { incarnation: _ } => false
         ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
         ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
+        ServiceRanksAdriftFromTheRendezvous { detail: _ } => false
+        ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: _, answering_invocation: _ } => false
         ServiceConfigurationDisagrees { configuration: _ } => false
       }
     ServingRouteObserved { route: _ } => false
@@ -623,18 +636,24 @@ fn t_incarnation() -> VllmServingLaunch {
   t_launch_with_unit(unit: t_declared_digest())
 }
 
+// THE FIXTURE ENV CARRIES THE DISABLE ASSIGNMENT, because the offer's route standing now feeds the
+// telemetry reading from the same observation: an observed incarnation whose effective environment
+// does not disable the reporter resolves the telemetry path as ENABLED, which is a different route
+// fact than these claims exist to pin. The assignment is spelled by upstream's own row
+// (extdeps.vllm.usage_stats), never re-typed here.
 fn t_observed(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch) -> EndpointIncarnationStanding {
   EndpointIncarnationObserved {
     observation: endpoint_incarnation_observation(
       endpoint: endpoint,
       launch: launch,
+      container_env: [vllm_usage_stats_disable_assignment_wire()],
       receipt: "test.claim.spark.spark_serving_offer_route_witness_test fixture" as ObservationReceiptRef,
     ),
   }
 }
 
 fn t_with_incarnation(base: SparkServingRealization, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
-  SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation }
+  SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation, declared_model_path: base.declared_model_path }
 }
 
 fn t_cause(route: SparkServingRoute) -> SparkServiceIdentityCause? {
@@ -656,7 +675,7 @@ fn t_covered_matching() -> SparkServingRealization {
 test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation() -> Bool {
   match spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   ) {
     ServingRouteOperatorAsserted { route: r, allocation: a, answered_by: obs } =>
       (r.service as String) == (spark_first_party_route().service as String)
@@ -672,7 +691,7 @@ test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_ob
 test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
   match t_bind(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     SparkOfferBound { bound: _ } => true
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
@@ -684,7 +703,7 @@ test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
 // observation's reason. This is the row that keeps a declaration-side fact from satisfying the
 // answering-side one.
 test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool {
-  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared())) {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared(), participation: none)) {
     Present { value: ServiceIncarnationUnobserved { configuration: _, obligation: _ } } => true
     _ => false
   }
@@ -696,7 +715,7 @@ test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool {
   let replaced = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "2" as NonEmptyStr)
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: replaced, launch: t_incarnation())),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } } => true
     _ => false
@@ -712,7 +731,7 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
   )
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: elsewhere)),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationOutsideRealization { incarnation: _ } } => true
     _ => false
@@ -725,7 +744,7 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
 // after an incarnation observer lands. The same realization with a fixture digest reports the
 // incarnation instead (an_agreeing_unit_digest_without_an_observation_refuses).
 test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
-  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable())) {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable(), participation: none)) {
     Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
     _ => false
   }
@@ -735,7 +754,7 @@ test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
 test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_unit_unavailable(),
+    declared_unit: t_unit_unavailable(), participation: none,
   )) {
     Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
     _ => false
@@ -746,7 +765,7 @@ test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool
 test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(unit: t_sha256(hex: t_other_unit_hex)))),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: _, declared: _ } } } => true
     _ => false
@@ -771,7 +790,7 @@ test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bo
         unit: content_hash_of_value(value: "fixture: a structural fingerprint is the wrong family" as NonEmptyStr),
       )),
     ),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable } } => true
     _ => false
@@ -782,7 +801,7 @@ test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bo
 test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
     _ => false
@@ -795,11 +814,150 @@ test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -
 // RED: a harness that ignored its incarnation argument would return ServiceIncarnationUnobserved
 // here, because the digest is supplied and that arm is reachable.
 test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared()) {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: none) {
     ServingRouteOperatorAsserted { route: r, allocation: _, answered_by: _ } =>
       (r.service as String) == (spark_first_party_route().service as String)
     ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteObserved { route: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+// RED -- EVERY DECLARATION-SIDE FACT AGREES AND THE ARM IS NOT ASSEMBLED. This is the state that held
+// live on 2026-09-16: the answering incarnation was our declared unit, launched from the digest we
+// rendered, serving the model path we declared -- and three of its four ranks were attached to a torch
+// store that no longer existed. Every check above this one passed, which is exactly why the gate had
+// to be added rather than inferred from the ones that were already there.
+//
+// THE GREEN CONTROL IS THE `none` ARM the rows above all use: with no roster supplied, the same
+// realization reaches ServiceConfigurationDisagrees or a match, so this assertion is discriminating
+// on the roster alone and not on any other fixture change.
+test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
+  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+  let adrift = GroupHostsNotAllConnected {
+    epoch: epoch,
+    adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
+    attached: 1,
+    expected: 2,
+  }
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(), participation: Present { value: adrift },
+  )) {
+    Present { value: ServiceRanksAdriftFromTheRendezvous { detail: d } } =>
+      contains(d as String, "srv6") && contains(d as String, "not assembled")
+    _ => false
+  }
+}
+
+// RED -- AN UNREADABLE ROSTER IS NOT AN INTACT ONE. The absorbing fallback here would be to treat a
+// rendezvous we could not read as a rendezvous we found whole, which fails open on precisely the
+// hosts that are unreachable. `none` (no roster modeled for this arm) and GroupRendezvousReachUnobserved
+// (a roster we failed to read) are different facts and only the second stops the line.
+test fn a_roster_that_could_not_be_read_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(),
+    participation: Present { value: GroupRendezvousReachUnobserved { cause: "the head unit's InvocationID was not read" as NonEmptyStr } },
+  )) {
+    Present { value: ServiceRanksAdriftFromTheRendezvous { detail: d } } => contains(d as String, "could not be read")
+    _ => false
+  }
+}
+
+// GREEN -- A FULLY ATTACHED ROSTER DOES NOT BLOCK ANYTHING. Without this the gate could be a wall that
+// refuses every arm, which would pass the two reds above and break production.
+test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check() -> Bool {
+  let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+  let attached = GroupHostsAllConnected {
+    epoch: epoch,
+    ranks: [
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
+    ],
+  }
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(), participation: Present { value: attached },
+  )) {
+    Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
+    _ => false
+  }
+}
+
+// ================= PARTICIPATION IS READ AT ONE EPOCH =================
+//
+// The harness mints participation once per bind and a bind spans placement rounds, between which the
+// head can restart. These rows drive the PRODUCTION route (gunbc.harness.harness_seat
+// harness_serving_route, the call both the incarnation-memo hit and miss arms of
+// harness_add_serving_candidate make with the roster's value) with a reading from epoch E1 against a
+// candidate answering from E2. The same-epoch controls are the rows above, whose fixture epoch is the
+// answering incarnation's own invocation (fixture-invocation-1): they still reach the adrift refusal and
+// the configuration check, so the refusals below are discriminating on the epoch alone.
+
+fn t_epoch_one() -> RendezvousEpoch {
+  rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-0" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
+}
+
+fn t_is_epoch_mismatch(route: SparkServingRoute) -> Bool {
+  match t_cause(route: route) {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: e, answering_head: _, answering_invocation: i } } =>
+      (e.head_invocation as String) == "fixture-invocation-0" && (i as String) == "fixture-invocation-1"
+    _ => false
+  }
+}
+
+// (a) RED -- E1 ALL-CONNECTED DOES NOT CLEAR AN E2 CANDIDATE. With a matching readback, the same-epoch
+// reading would reach ServingRouteOperatorAsserted (the_production_route_consumes_an_observed_incarnation).
+test fn an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: t_epoch_one(),
+    ranks: [
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
+    ],
+  }
+  t_is_epoch_mismatch(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached }))
+}
+
+// (b) RED -- E1 DETACHED DOES NOT DIAGNOSE E2'S RANKS. The refusal is the epoch mismatch, never
+// ServiceRanksAdriftFromTheRendezvous naming hosts from a store the candidate is not attached to.
+test fn an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation() -> Bool {
+  let adrift = GroupHostsNotAllConnected {
+    epoch: t_epoch_one(),
+    adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
+    attached: 1,
+    expected: 2,
+  }
+  t_is_epoch_mismatch(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: adrift }))
+}
+
+// (c) GREEN CONTROL ON THE PRODUCTION ROUTE -- the same attached reading at the candidate's own epoch
+// admits, so (a) is discriminating on the epoch and not on the roster shape.
+test fn a_same_epoch_attached_reading_admits_on_the_production_route() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
+    ranks: [
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
+    ],
+  }
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached }) {
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => true
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
+    ServingRouteObserved { route: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+// RED -- SAME INVOCATION STRING, DIFFERENT HEAD. The epoch is (head, invocation), not the string alone.
+test fn a_reading_from_another_head_is_another_epoch() -> Bool {
+  let attached = GroupHostsAllConnected {
+    epoch: rendezvous_epoch(head: operator_host_srv6, head_invocation: "fixture-invocation-1" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr),
+    ranks: [DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 0, connections: 1 }],
+  }
+  match t_cause(route: harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: Present { value: attached })) {
+    Present { value: ServiceRendezvousEvidenceFromAnotherEpoch { evidence: _, answering_head: h, answering_invocation: _ } } => host_identity_eq(a: h, b: operator_host_srv5)
+    _ => false
   }
 }

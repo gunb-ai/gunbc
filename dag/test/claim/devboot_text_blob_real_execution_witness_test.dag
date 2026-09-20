@@ -5,6 +5,9 @@ import std.types { String, FilePath }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 import extdeps.shell
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import gunbc.command_runner { run_shell_commands, LocalExec }
+import std.process { ExitSuccess, ExitFailure }
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress, GitDirectoryAt }
@@ -84,7 +87,13 @@ test fn a_path_routed_hash_under_a_clobbered_path_publishes_the_empty_blob_red_c
     let store = join([dir as String, "/store.git"], "") as FilePath
     let scratch = join([dir as String, "/scratch-object"], "") as FilePath
     let ready = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: store).exit_code == 0
-    let planted = shell.Symlink.AtomicReplace(target: "/dev/null" as FilePath, link: scratch).success
+    let planted = match run_shell_commands(
+      commands: [ln_symbolic_force_command(target: "/dev/null", link_name: scratch as String)],
+      transport: LocalExec,
+    ) {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
     if !(ready && planted) { false } else {
       let written = Filesystem.Write(path: scratch as String, content: "producer=witness")
       let hashed = git.Plumbing.HashObjectWrite(address: GitDirectoryAt { path: store, run_in: dir }, path: scratch)
