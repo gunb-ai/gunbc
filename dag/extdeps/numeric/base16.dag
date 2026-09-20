@@ -90,10 +90,21 @@ fn base16_encode_lower(octets: List<UInt8>) -> String {
 }
 
 // THE ALPHABET'S OWN MEMBERSHIP TEST, derived from the digit rows rather than from a second
-// spelling of them. Four consumers each carried `(cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)`
-// -- the 0-9a-f alphabet re-encoded as code-point ranges, which is this table said twice more
-// (DESIGN section 3). Deriving the predicate from base16_digit_rows means a change to the alphabet
-// cannot leave a consumer reading the old one.
+// spelling of them. Consumers each carried `(cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)` --
+// the 0-9a-f alphabet re-encoded as code-point ranges, which is this table said again (DESIGN
+// section 3). THREE are migrated: extdeps.network.mac, gunbc.auth.approval_decision_store and
+// extdeps.git.object_store.
+//
+// ONE IS NOT, AND SAYING SO IS THE POINT -- prose may not assert a consolidation the corpus does
+// not have (DESIGN section 4c; review 69121 caught this sentence claiming all of them).
+// std.content_hash content_hash_is_lower_hex_code_point still carries the identical spelling, and
+// it is the only consumer in the stage0 population (gunbc.stage0 stage0_crate_partition_generated
+// "std_content_hash"): its seed realization src/v1/stage0/src/std_content_hash.rs open-codes the
+// same ranges, so a .dag-only edit would leave the fork alive in the committed realization, and
+// regenerating that mirror would pull THIS module into the seed's emitted population, which DESIGN
+// section 7 requires to be a declared row with a reason and a migration trigger rather than a
+// silent one (review 69058). TRIGGER: that consumer migrates in the cut that carries the mirror
+// regeneration together with the declared population change.
 fn base16_is_lower_digit_code_point(cp: Int) -> Bool {
   any(base16_digit_rows, row => code_point(row.lower) == cp)
 }
