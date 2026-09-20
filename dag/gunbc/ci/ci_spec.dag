@@ -978,6 +978,17 @@ data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main",
 }
 
+// THE REPAIR WRITES AND THEN PROVES THE TREE IT WROTE, in one process. main_wet_verified runs
+// main_wet and then the drift gate body over the result, so a repair is sealed only if the rewritten
+// tree is a FIXED POINT with every artifact's extra validation passing. The pre-write gate proves the
+// COMMITTED bytes were stale, which says nothing about the new ones; an order-dependent generator or
+// a refusing validation would otherwise produce a candidate the publisher pushes. Verifying in the
+// same process is free at this grain: 6:01 for write+verify against 6:08 for the write alone.
+data gunbc_ci_heal_regen_verified_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "main_wet_verified",
+}
+
 // THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
 // regeneration overwrites every committed projection from this checkout's authorities, so after it
 // no reader can report what the write repaired -- the defect and the evidence for it disappear
@@ -2416,6 +2427,29 @@ fn gunbc_ci_heal_regen_invoke() -> String {
       claim_run: false,
       receipt_rel: none
     )
+  )
+}
+
+// The gate half and the repair half name one run each: gunbc_ci_heal_regen_invoke concatenates the
+// write and the verify, paying a second whole-corpus load (~6 min) for a verdict the write already
+// settled. The required job runs the verify on every push and the write only where it refused.
+fn gunbc_ci_generated_artifact_verify_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_verify_target.entry,
+    function: gunbc_ci_heal_verify_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_generated_artifact_regen_verified_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_regen_verified_target.entry,
+    function: gunbc_ci_heal_regen_verified_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
