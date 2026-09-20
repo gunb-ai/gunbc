@@ -12,6 +12,7 @@ import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  StopFoundAlreadyQuiescent, ForceNotAsked,
   UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
@@ -188,7 +189,9 @@ test fn a_sigterm_ignoring_child_is_stopped_by_force() -> Bool
     match stop_attempt(unit: "gunbc-wet-term.service" as NonEmptyStr, slice: wet_slice) {
       StoppedByForce => true
       StoppedGracefully => false
+      StopFoundAlreadyQuiescent => false
       ForceStopBoundExceeded { survivors: _ } => false
+      ForceNotAsked { reason: _ } => false
       ForceStopOutcomeUnobservable { reason: _ } => false
     }
   }
@@ -462,7 +465,9 @@ test fn the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup() -> Bool
     match stop_attempt(unit: "gunbc-wet-reach.service" as NonEmptyStr, slice: wet_slice) {
       StoppedByForce => readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
       StoppedGracefully => false
+      StopFoundAlreadyQuiescent => false
       ForceStopBoundExceeded { survivors: _ } => false
+      ForceNotAsked { reason: _ } => false
       ForceStopOutcomeUnobservable { reason: _ } => false
     }
   }

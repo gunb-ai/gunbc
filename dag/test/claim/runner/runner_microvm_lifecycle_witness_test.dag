@@ -47,6 +47,7 @@ import gunbc.runner_microvm_lifecycle {
   UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  StopFoundAlreadyQuiescent, ForceNotAsked,
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent,
   SubjectSlotNetwork,
@@ -453,6 +454,34 @@ fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: Unit
     credential_disk: base.credential_disk,
     network: base.network,
   }
+}
+
+// THE TWO ARMS ADDED FOR CAUSALITY DEFER TO THE CGROUP, AND THE PAIR IS WHAT MAKES THAT MEANINGFUL.
+//
+// StopFoundAlreadyQuiescent (nothing was running to ask) and ForceNotAsked (the kill could not be
+// requested) both leave the surviving-process fact to the cgroup, because that fact is about
+// PROCESSES and an empty subtree establishes it however the cell got empty. What must NOT happen is
+// either one overriding a populated subtree into a pass, or either one being treated like
+// ForceStopBoundExceeded, which refutes even over an empty listing because the listing is a later
+// instant. So each arm is asserted over BOTH cgroup readings.
+test fn the_already_quiescent_and_force_not_asked_arms_defer_to_the_cgroup() -> Bool {
+  let quiescent_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty))
+  let quiescent_dirty = readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] }))
+  let not_asked_clean = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty))
+  let not_asked_dirty = readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice" as NonEmptyStr] }))
+  is_ready(r: quiescent_clean)
+    && is_quarantined(r: quiescent_dirty)
+    && is_ready(r: not_asked_clean)
+    && is_quarantined(r: not_asked_dirty)
+}
+
+// AND NEITHER IS AN EXCEEDED BOUND. The exceeded arm refutes over an EMPTY cgroup -- that is its
+// whole point, the task outlived the kill and the listing is later -- so a claim that only checked
+// the dirty cases above would pass with these three arms collapsed into one.
+test fn an_exceeded_bound_refutes_where_the_deferring_arms_do_not() -> Bool {
+  is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
+    && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceNotAsked { reason: "writing cgroup.kill failed: EACCES" as NonEmptyStr }, cgroup: CgroupSubtreeEmpty)))
+    && is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StopFoundAlreadyQuiescent, cgroup: CgroupSubtreeEmpty)))
 }
 
 // A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
