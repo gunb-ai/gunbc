@@ -1,0 +1,68 @@
+module extdeps.tools.conntrack
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/bookworm/conntrack/conntrack.8.en.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.conntrack",
+      decl_name: "conntrack_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// conntrack(8) from conntrack-tools, the userspace reader and writer of the kernel's connection
+// tracking table. Only deleting and listing flows by an original-tuple address are modeled. For a
+// masqueraded guest the original tuple carries the guest's own address -- the translated address
+// appears only on the reply tuple, so filtering on it would miss every flow a guest opened.
+data conntrack_program: NonEmptyStr = "conntrack"
+
+// A FLOW HAS TWO ADDRESSES IN ITS ORIGINAL TUPLE AND conntrack(8) FILTERS EACH SEPARATELY: `-s` is
+// the original source, `-d` the original destination. A guest that opened a flow is its original
+// source; a flow the HOST opened toward the guest has the guest as original destination. Flushing by
+// one filter leaves every flow of the other kind, so the filter is a parameter rather than a choice
+// baked into the command.
+type ConntrackOriginalAddress
+  = ConntrackOriginalSource
+  | ConntrackOriginalDestination
+
+fn conntrack_original_address_flag(f: ConntrackOriginalAddress) -> String {
+  match f {
+    ConntrackOriginalSource => "-s"
+    ConntrackOriginalDestination => "-d"
+  }
+}
+
+// `-D` WITH NO MATCHING ENTRY EXITS NONZERO ("0 flow entries have been deleted"), so its exit status
+// is not a success signal a caller may gate on. The deletion's outcome is established by the list
+// that follows it, never by this command's exit.
+fn conntrack_delete_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-D", conntrack_original_address_flag(f: filter), address])
+}
+
+// `-L` prints one line per flow on stdout and a summary on stderr, so the count of stdout lines is
+// the number of surviving flows and an empty stdout with exit zero is the empty reading.
+fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-L", conntrack_original_address_flag(f: filter), address])
+}
+
+// THE EXPECTATION TABLE, WHOLE. Expectations are the related-flow entries a conntrack helper creates
+// (an FTP data channel, a SIP media stream); `-L expect` prints one line per entry. The table has no
+// original-source filter in conntrack(8), so this lists every expectation on the host.
+fn conntrack_list_expectations_command() -> ArgvCommand {
+  argv_command(program: conntrack_program, arguments: ["-L", "expect"])
+}

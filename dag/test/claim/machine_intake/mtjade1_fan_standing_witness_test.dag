@@ -1,0 +1,71 @@
+module test.claim.mtjade1_fan_standing_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved }
+import gunbc.machine_intake_mtjade1_fan_standing {
+  AwaitingFirstPostWithDimms,
+  ChassisHostPowerOff,
+  FailsafeFullDutyAdmitted,
+  FailsafeWindowUnbounded,
+  FamilyUnobservedNoFanRealizer,
+  FirstPostFanCaptured,
+  HostThermalAbsentBeforePost,
+  HostThermalPresentAfterPost,
+  MegaRacFanProfileUnexecuted,
+  OpenBmcPidControlRows,
+  UnboundedFailsafeFullDutyNotTolerated,
+  jade_current_fan_policy_convergence,
+  jade_fan_policy_convergence,
+  mtjade1_failsafe_window_close,
+  mtjade1_first_post_fan_capture,
+  mtjade1_host_thermal_before_next_power_on,
+  mtjade1_residence_acoustic_intent,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// BOTH COPRODUCTS CARRY A TOLERATING ARM, so these matches have an authorable RED: the claim goes
+// red if either standing row is re-bound to FailsafeFullDutyAdmitted or FailsafeWindowUnbounded.
+// The arm names ARE the assertion, so the witness matches them directly rather than through a
+// Bool predicate that would restate them (DESIGN §3c).
+test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
+  match mtjade1_residence_acoustic_intent {
+    UnboundedFailsafeFullDutyNotTolerated { site: _, cited_act: _ } => true
+    FailsafeFullDutyAdmitted { site: _, cited_act: _ } => false
+  }
+    && match mtjade1_failsafe_window_close {
+      ChassisHostPowerOff => true
+      FailsafeWindowUnbounded => false
+    }
+}
+
+test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
+  match mtjade1_first_post_fan_capture {
+    AwaitingFirstPostWithDimms => true
+    FirstPostFanCaptured { finding: _ } => false
+  }
+    && match mtjade1_host_thermal_before_next_power_on {
+      HostThermalAbsentBeforePost => true
+      HostThermalPresentAfterPost => false
+    }
+}
+
+test fn w_mtjade1_fan_convergence_awaits_family_then_openbmc_pid_or_megarac_unexecuted() -> Bool {
+  match jade_current_fan_policy_convergence() {
+    FamilyUnobservedNoFanRealizer => true
+    OpenBmcPidControlRows => false
+    MegaRacFanProfileUnexecuted { reason: _ } => false
+  }
+    && match jade_fan_policy_convergence(family: FamilyObserved { family: OpenBmc }) {
+      OpenBmcPidControlRows => true
+      MegaRacFanProfileUnexecuted { reason: _ } => false
+      FamilyUnobservedNoFanRealizer => false
+    }
+    && match jade_fan_policy_convergence(family: FamilyObserved { family: AmiMegaRac }) {
+      MegaRacFanProfileUnexecuted { reason: _ } => true
+      OpenBmcPidControlRows => false
+      FamilyUnobservedNoFanRealizer => false
+    }
+}
