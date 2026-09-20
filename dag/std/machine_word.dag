@@ -185,17 +185,16 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // boundary takes those carriers and therefore CANNOT be handed an unqualified value -- not because
 // a wall stops it, but because the call does not typecheck.
 //
-// HONEST ABOUT WHAT THIS IS, AND THIS IS THE ONE PLACE IT IS SAID. A record with public fields is
-// still constructible, so this is a sealed-wrapper convention rather than a private constructor,
-// and a caller determined to forge QualifiedWord { word: ... } can. Every consumer that has an arm
-// reachable only by that forgery CITES this paragraph rather than restating it -- std.encoding
-// base64_encode is the current one. A fact with two statements is a fact that can disagree with
-// itself, and it did: an earlier cut had this annotation calling the carrier forgeable while the
-// encoder called its own arm unreachable, in the same change (review 68594). What it changes is the DEFAULT: the failure mode stops being
-// "a helper forgot to qualify" and becomes "someone deliberately forged the proof", which is a
-// different and far rarer mistake. Rung unchanged -- mitigatable -- and the next-rung trigger is
-// still sole construction, which would make the forgery unwritable and delete word_qualified's
-// range arm along with it.
+// SEALED, AND THIS IS THE ONE PLACE IT IS SAID. QualifiedWord is sole_constructor: its only literal
+// is inside word_qualified below, in this module, so a caller outside it cannot forge
+// QualifiedWord { word: ... } -- the same wall RealizableWidth and std.integer QualifiedOctets carry,
+// with the same measured refusal ("cannot be constructed outside its defining module"). An earlier
+// cut left this record ordinary and named sole construction as a PENDING trigger while using it two
+// declarations below (review 69249): a climb available in the same file is "can climb now", and
+// naming it as future work is the rung inflation DESIGN 4b(1) describes. Every consumer that once
+// had an arm reachable only by that forgery cites this paragraph rather than restating it -- a fact
+// with two statements can disagree with itself, and it did (review 68594). No admit_callers roster
+// is needed: nothing outside this module constructs the carrier.
 //
 // THE WALL IS WITNESSED, AND THE WITNESS IS A DIRECT CALL RATHER THAN A FIXTURE. Everything above
 // rests on one property: handing the wrong carrier where a declared one is expected does not
@@ -235,7 +234,7 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // statements is a fact that can disagree with itself, and this pair already did so twice. This
 // module is a CONSUMER of that carrier, so it is one of the places that must not restate it.
 
-type QualifiedWord {
+type QualifiedWord sole_constructor {
   word: Word
 }
 
