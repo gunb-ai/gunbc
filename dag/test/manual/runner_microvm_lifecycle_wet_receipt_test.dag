@@ -195,30 +195,28 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
   }
 }
 
-// RED 3 -- A TASK THE BOUNDED FORCE-STOP CANNOT END IS REPORTED AS A SURVIVOR.
+// RED 3 -- THE ONE THAT DOES NOT EXIST, AND THIS IS WHAT IS THERE INSTEAD.
 //
-// WHAT CHANGED AND WHY, because the first cut of this claim passed for the wrong reason. It started a
-// scope BESIDE the service under the same slice and asserted ForceStopBoundExceeded -- and it passed,
-// because the force was `systemctl kill` against the UNIT, which never reached a sibling cgroup. The
-// claim was green over a defect rather than over a guarantee: a cell that a correct force would have
-// cleaned was being quarantined. A review (vivid-stag-809, relayed by sunny-ant-606) named it, the
-// controller now writes the CELL slice's cgroup.kill, and that claim would now correctly fail.
+// ForceStopBoundExceeded HAS NO WET PRODUCER ON THIS HOST, and saying so is the point of this block.
+// The arm means a task the KERNEL could not end. Its two producers are uninterruptible sleep and --
+// on cgroup v1 -- a frozen cgroup. D state needs a wedged device or a hung filesystem on a host
+// running other people's CI, and manufacturing one is a worse defect than the one it would cover.
 //
-// SO THE SURVIVOR HAS TO BE ONE THE KERNEL ITSELF CANNOT END, and there are exactly two: a task in
-// uninterruptible sleep, and a FROZEN cgroup. D state needs a wedged device or a hung filesystem on a
-// host running other people's CI and is not something to manufacture. The freezer is the kernel's own
-// documented mechanism, it is real -- a frozen task takes the SIGKILL and does not act on it until
-// thawed -- it is reversed by its own inverse verb, and a run that dies between the freeze and the
-// thaw leaves a cgroup whose own cgroup.freeze says so.
+// THE FREEZER WAS OFFERED AS THE SAFE PRODUCER AND IT DOES NOT WORK ON v2. A review
+// (vivid-stag-809, relayed by sunny-ant-606) proposed freezing the cgroup, which is real on cgroup
+// v1. cgroup v2 deliberately reversed it: the admin guide states that unlike the v1 freezer, tasks
+// in a frozen v2 cgroup CAN be killed. Measured on srv1 rather than taken from the page -- freeze a
+// slice holding a live sleep, confirm `frozen 1`, write cgroup.kill, and the slice reads
+// `populated 0` three seconds later. So the claim that was written against it FAILED, and it failed
+// because its premise was wrong rather than because the controller was.
 //
-// WITHOUT THIS CLAIM THAT ARM HAS NEVER EXECUTED, which is the question the review asked and the
-// reason the claim is worth its cost: ForceStopBoundExceeded is the arm that keeps a cell quarantined
-// when teardown could not finish, and an arm with no producer is specification without execution.
-//
-// IT TAKES THE FULL GRACE PLUS FORCE BOUND, by construction: the arm is only reachable after both
-// elapse. The thaw runs afterwards and is asserted, so a failure to restore the host is visible here
-// rather than to whoever runs next.
-test fn a_frozen_task_survives_the_bounded_force_stop() -> Bool
+// SO THE ARM STAYS UNEXECUTED AND IS DECLARED THAT WAY. What is claimed below is the fact the
+// experiment DID establish, which is worth keeping on its own: the cell-wide force is not defeated
+// by a frozen cgroup. Its hermetic counterpart --
+// test.claim.runner.runner_microvm_lifecycle_witness_test
+// an_exceeded_bound_still_refutes_and_still_names_its_pids -- supplies the arm and checks what the
+// controller does with it; nothing has produced it against a real kernel.
+test fn a_frozen_cell_is_still_ended_by_the_cell_wide_force() -> Bool
   uses net: Network, fs: Filesystem
 {
   if !clear_slice() {
@@ -232,16 +230,16 @@ test fn a_frozen_task_survives_the_bounded_force_stop() -> Bool
   } else {
     let stopped = stop_attempt(unit: "gunbc-wet-frozen.service" as NonEmptyStr, slice: wet_slice)
     let thawed = write_freeze_after(value: cgroup_v2_thawed_value, after: stopped)
-    thawed && stop_exceeded_the_bound(stop: stopped)
+    thawed && stop_was_by_force(stop: stopped) && readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
   }
 }
 
-fn stop_exceeded_the_bound(stop: TeardownStop) -> Bool {
+fn stop_was_by_force(stop: TeardownStop) -> Bool {
   match stop {
-    ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
-    StoppedGracefully => false
-    StoppedByForce => false
+    StoppedByForce => true
+    ForceStopBoundExceeded { survivors: _ } => false
     ForceStopOutcomeUnobservable { reason: _ } => false
+    StoppedGracefully => false
   }
 }
 
@@ -256,7 +254,9 @@ fn write_freeze(value: String) -> Bool
 
 // THE THAW TAKES THE STOP AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this substrate is
 // data dependence and nothing else; a thaw that took no argument would be a node the evaluator may
-// run before the stop, which would unfreeze the cgroup the claim depends on being frozen.
+// run before the stop, which would unfreeze the cgroup the claim depends on being frozen. It runs
+// whatever the stop returned, so a failure to restore the host is visible here rather than to
+// whoever runs next.
 fn write_freeze_after(value: String, after: TeardownStop) -> Bool
   uses fs: Filesystem
 {
