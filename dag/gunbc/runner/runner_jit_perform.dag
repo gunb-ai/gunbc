@@ -142,7 +142,6 @@ fn dispatch_jit_mint(
       }
     JitMintAuthorized {
       attempt: attempt,
-      endpoint_path: _,
       request: request,
     } =>
       match authority_installation(authority: authority) {

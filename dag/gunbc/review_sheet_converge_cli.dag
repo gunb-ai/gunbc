@@ -7,7 +7,12 @@ import gunbc.review_sheet_format_actuator {
   format_converge_text,
   format_converge_is_converged,
 }
-import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_projection {
+  ci_prospect_sheet_schema,
+  validate_header_schema,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+}
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -355,10 +360,21 @@ type FormatDisposition
   = FormatAttempted { outcome: FormatConvergeOutcome }
   | FormatSkipped { cause: NonEmptyStr }
 
+// THE SCHEMA IS VALIDATED BEFORE THE FORMATTER IS REACHED, and a refusal SKIPS the format rather
+// than formatting to a guessed extent: converge_review_sheet_format takes ValidatedHeaderSchema,
+// so there is no arm of this fold that can hand it a schema whose header row is malformed.
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: Network {
+  match validate_header_schema(schema: ci_prospect_sheet_schema()) {
+    HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
+    HeaderSchemaValidated { validated: v } =>
+      FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, validated: v) }
+  }
+}
+
 fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
   match o {
-    SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
-    SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
+    SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
   }

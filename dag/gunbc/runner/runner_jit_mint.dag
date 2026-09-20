@@ -5,7 +5,6 @@ import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
-  org_generate_jitconfig_path,
 }
 import gunbc.runner.runner_jit_admission {
   attempt_binding_admits_mint_name, JitAdmissionAxisStanding,
@@ -39,7 +38,6 @@ data runner_jit_mint_disposition: Disposition = SingleAuthority
 type JitMintPlan
   = JitMintAuthorized {
       attempt: MicroVmAttempt
-      endpoint_path: String
       request: JitRunnerConfigRequest
     }
   | JitMintRefusedCellNotOwned { cause: String }
@@ -109,7 +107,6 @@ fn plan_jit_mint(
             RegistrationLabelsResolved { labels: labels } =>
               JitMintAuthorized {
                 attempt: attempt,
-                endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
                 request: jit_config_request_for(
                   attempt: attempt,
                   runner_group_id: runner_group_id,

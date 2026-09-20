@@ -73,11 +73,6 @@ type JitConfigMintOutcome
   | JitConfigMintConflict { reason: String }
   | JitConfigMintValidationFailed { reason: String }
 
-// THE ENDPOINT PATH IS DERIVED FROM THE ORG, never concatenated at a call site, so a caller cannot
-// address a different organization's runners by assembling the path itself.
-fn org_generate_jitconfig_path(org_login: NonEmptyStr) -> String {
-  join(["/orgs/", org_login as String, "/actions/runners/generate-jitconfig"], "")
-}
 
 fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
   l.value as String
@@ -141,6 +136,11 @@ type JitConfigCreatedBody {
   encoded_jit_config: String
 }
 
+// THE ORGANIZATION IS AN OPERATION INPUT AND THE PATH INTERPOLATES IT, so a caller cannot address
+// another organization's runners by assembling a path: there is no path to assemble. A builder
+// function beside this template would be a second spelling of one endpoint that the transport can
+// never call -- the template language interpolates, it does not invoke -- so the citation for this
+// path is extdeps_external_authority_anchor above and this operation is its only consumer.
 service github.ActionsJitRunners {
   config {
     endpoint: default_api_base
