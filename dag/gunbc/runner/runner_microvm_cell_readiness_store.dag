@@ -1,0 +1,670 @@
+module gunbc.runner_microvm_cell_readiness_store
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.disposition { Disposition, SingleAuthority }
+import std.resources { Filesystem, Network }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command }
+import extdeps.languages.json.emit {
+  JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString,
+  json_object, json_array, json_kv, json_string, json_int, serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_field, json_field_string, json_field_int,
+  FieldAbsent, FieldRead, FieldMalformed,
+}
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+  attempt_segment_refusal_text,
+}
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined,
+  SanitationFact, NoSurvivingProcesses, CgroupEmpty, MountsRemoved, NetworkNamespaceRemoved,
+  SlotNetworkQuiescent, WritableLayersDeleted, SecretsRemoved, sanitation_fact_label,
+  SanitationObservation, FactConfirmed, FactRefuted, FactUnobservable,
+  UnprovenFact, FactNotObserved, FactObservedFailing,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessRecord, CellAttemptInFlight, CellSettled,
+  InFlightAttempt,
+  CellReadinessStoreRead, StoreRead, StoreUnreadable,
+  CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
+  CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
+}
+
+data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthority
+
+// THE ON-DISK REALIZATION OF gunbc.runner_microvm_cell_readiness's STORE.
+//
+// That module owns what a record MEANS -- the (cell, generation) unit, the in-flight arm, the
+// monotone write rule, the two withdrawal grains. This module owns the one thing it deliberately
+// does not: how a record becomes bytes on a host and back. DESIGN section 3 separates interface
+// from realization, and a codec authored inside the semantic module would make every future
+// consumer of the semantics a consumer of one encoding.
+//
+// EVERY DECODE FAILURE IS StoreUnreadable, AND THAT IS THE FAIL-CLOSED DIRECTION RATHER THAN A
+// CONVENIENCE. A record this module cannot read is not a record that says Ready and is not a record
+// that is absent: it is a store whose evidence nobody may rest an admission on, which is exactly
+// what StoreUnreadable withdraws at HOST grain. Decoding "as much as parsed" and dropping the rest
+// would turn a corrupt store into a store with fewer cells in it, and every missing cell would then
+// read as CellNeverSettled -- a refusal, but at the wrong grain and with the wrong remedy.
+
+// THE STORE HAS ONE PATH AND IT IS ROOT'S. It is not under the runner user's tree: a store the
+// tenant's own uid can write is a store the tenant can mark Ready, which is the case
+// CellReadinessStoreOwnership exists to observe. The path is stated once here and read by both the
+// reader and the writer, so the two cannot drift onto different files.
+data cell_readiness_store_path: String = "/var/lib/gunbc/microvm-cell-readiness.json"
+
+// THE WIRE NAME OF A FACT IS product.fabric.sanitation's OWN LABEL, not a second spelling minted
+// here. The decoder is the structural inverse of that projection: it walks the closed fact list and
+// matches the label each one renders to, so adding an eighth fact makes the decoder cover it with
+// no edit, and a label this module invented could never disagree with the one an operator reads.
+fn sanitation_facts_all() -> List<SanitationFact> {
+  [
+    NoSurvivingProcesses,
+    CgroupEmpty,
+    MountsRemoved,
+    NetworkNamespaceRemoved,
+    SlotNetworkQuiescent,
+    WritableLayersDeleted,
+    SecretsRemoved,
+  ]
+}
+
+fn decode_sanitation_fact(label: String) -> SanitationFact? {
+  filter(sanitation_facts_all(), f => sanitation_fact_label(fact: f) == label).first()
+}
+
+// ONE REFUSAL CARRIER FOR THE WHOLE CODEC, so a nested failure travels outward with the reason it
+// failed rather than collapsing into an absent optional at each level. A `T?` return at every step
+// would make "the cell key was missing" and "the readiness object was malformed" the same value at
+// the top, and the reason is the entire remedy.
+type Decoded<T>
+  = DecodeOk { value: T }
+  | DecodeRefused { reason: NonEmptyStr }
+
+fn decoded_string(obj: JsonValue, key: String) -> Decoded<String> {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: v } => DecodeOk { value: v }
+    FieldAbsent => DecodeRefused { reason: join(["a record has no `", key, "` member"], "") as NonEmptyStr }
+    FieldMalformed { cause: c } => DecodeRefused { reason: join(["a record's `", key, "` member is unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+fn decoded_nonempty(obj: JsonValue, key: String) -> Decoded<NonEmptyStr> {
+  match decoded_string(obj: obj, key: key) {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: v } =>
+      if v == "" {
+        DecodeRefused { reason: join(["a record's `", key, "` member is empty"], "") as NonEmptyStr }
+      } else {
+        DecodeOk { value: v as NonEmptyStr }
+      }
+  }
+}
+
+fn decoded_int(obj: JsonValue, key: String) -> Decoded<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: v } => DecodeOk { value: v }
+    FieldAbsent => DecodeRefused { reason: join(["a record has no `", key, "` member"], "") as NonEmptyStr }
+    FieldMalformed { cause: c } => DecodeRefused { reason: join(["a record's `", key, "` member is unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+fn decoded_object(obj: JsonValue, key: String) -> Decoded<JsonValue> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => DecodeOk { value: v }
+    FieldAbsent => DecodeRefused { reason: join(["a record has no `", key, "` member"], "") as NonEmptyStr }
+    FieldMalformed { cause: c } => DecodeRefused { reason: join(["a record's `", key, "` member is unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+fn decoded_array_elements(v: JsonValue) -> Decoded<List<JsonValue>> {
+  match v {
+    JsonArray { elements: es } => DecodeOk { value: es }
+    JsonNull => DecodeRefused { reason: "a member that must be an array is null" as NonEmptyStr }
+    JsonBool { value: _ } => DecodeRefused { reason: "a member that must be an array is a boolean" as NonEmptyStr }
+    JsonNumber { lexeme: _ } => DecodeRefused { reason: "a member that must be an array is a number" as NonEmptyStr }
+    JsonString { value: _ } => DecodeRefused { reason: "a member that must be an array is a string" as NonEmptyStr }
+    JsonObject { members: _ } => DecodeRefused { reason: "a member that must be an array is an object" as NonEmptyStr }
+  }
+}
+
+// --- the fact / observation / unproven codec ---
+
+fn encode_fact(fact: SanitationFact) -> JsonValue {
+  json_string(s: sanitation_fact_label(fact: fact))
+}
+
+fn decoded_fact(obj: JsonValue, key: String) -> Decoded<SanitationFact> {
+  match decoded_string(obj: obj, key: key) {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: label } =>
+      match decode_sanitation_fact(label: label) {
+        Present { value: f } => DecodeOk { value: f }
+        Absent => DecodeRefused { reason: join(["`", label, "` is not a sanitation fact this corpus declares"], "") as NonEmptyStr }
+      }
+  }
+}
+
+data observation_verdict_key: String = "verdict"
+data observation_confirmed_tag: String = "confirmed"
+data observation_refuted_tag: String = "refuted"
+data observation_unobservable_tag: String = "unobservable"
+
+fn encode_observation(o: SanitationObservation) -> JsonValue {
+  match o {
+    FactConfirmed { fact: f } =>
+      json_object(members: [
+        json_kv(key: observation_verdict_key, value: json_string(s: observation_confirmed_tag)),
+        json_kv(key: "fact", value: encode_fact(fact: f)),
+      ])
+    FactRefuted { fact: f, detail: d } =>
+      json_object(members: [
+        json_kv(key: observation_verdict_key, value: json_string(s: observation_refuted_tag)),
+        json_kv(key: "fact", value: encode_fact(fact: f)),
+        json_kv(key: "detail", value: json_string(s: d as String)),
+      ])
+    FactUnobservable { fact: f, reason: r } =>
+      json_object(members: [
+        json_kv(key: observation_verdict_key, value: json_string(s: observation_unobservable_tag)),
+        json_kv(key: "fact", value: encode_fact(fact: f)),
+        json_kv(key: "reason", value: json_string(s: r as String)),
+      ])
+  }
+}
+
+fn decode_observation(v: JsonValue) -> Decoded<SanitationObservation> {
+  match decoded_fact(obj: v, key: "fact") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: f } =>
+      match decoded_string(obj: v, key: observation_verdict_key) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: verdict } => decode_observation_of_verdict(v: v, fact: f, verdict: verdict)
+      }
+  }
+}
+
+fn decode_observation_of_verdict(v: JsonValue, fact: SanitationFact, verdict: String) -> Decoded<SanitationObservation> {
+  if verdict == observation_confirmed_tag {
+    DecodeOk { value: FactConfirmed { fact: fact } }
+  } else if verdict == observation_refuted_tag {
+    match decoded_nonempty(obj: v, key: "detail") {
+      DecodeRefused { reason: r } => DecodeRefused { reason: r }
+      DecodeOk { value: d } => DecodeOk { value: FactRefuted { fact: fact, detail: d } }
+    }
+  } else if verdict == observation_unobservable_tag {
+    match decoded_nonempty(obj: v, key: "reason") {
+      DecodeRefused { reason: r } => DecodeRefused { reason: r }
+      DecodeOk { value: rr } => DecodeOk { value: FactUnobservable { fact: fact, reason: rr } }
+    }
+  } else {
+    DecodeRefused { reason: join(["`", verdict, "` is not one of the three sanitation verdicts"], "") as NonEmptyStr }
+  }
+}
+
+data unproven_kind_key: String = "kind"
+data unproven_not_observed_tag: String = "not_observed"
+data unproven_observed_failing_tag: String = "observed_failing"
+
+fn encode_unproven(u: UnprovenFact) -> JsonValue {
+  match u {
+    FactNotObserved { fact: f } =>
+      json_object(members: [
+        json_kv(key: unproven_kind_key, value: json_string(s: unproven_not_observed_tag)),
+        json_kv(key: "fact", value: encode_fact(fact: f)),
+      ])
+    FactObservedFailing { observation: o } =>
+      json_object(members: [
+        json_kv(key: unproven_kind_key, value: json_string(s: unproven_observed_failing_tag)),
+        json_kv(key: "observation", value: encode_observation(o: o)),
+      ])
+  }
+}
+
+fn decode_unproven(v: JsonValue) -> Decoded<UnprovenFact> {
+  match decoded_string(obj: v, key: unproven_kind_key) {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: kind } =>
+      if kind == unproven_not_observed_tag {
+        match decoded_fact(obj: v, key: "fact") {
+          DecodeRefused { reason: r } => DecodeRefused { reason: r }
+          DecodeOk { value: f } => DecodeOk { value: FactNotObserved { fact: f } }
+        }
+      } else if kind == unproven_observed_failing_tag {
+        match decoded_object(obj: v, key: "observation") {
+          DecodeRefused { reason: r } => DecodeRefused { reason: r }
+          DecodeOk { value: ov } =>
+            match decode_observation(v: ov) {
+              DecodeRefused { reason: r } => DecodeRefused { reason: r }
+              DecodeOk { value: o } => DecodeOk { value: FactObservedFailing { observation: o } }
+            }
+        }
+      } else {
+        DecodeRefused { reason: join(["`", kind, "` is not one of the two unproven-fact shapes"], "") as NonEmptyStr }
+      }
+  }
+}
+
+// A LIST DECODE IS ALL-OR-REFUSED. The fold carries the first refusal outward instead of skipping
+// the element it could not read: a quarantine that loses one unproven fact is a quarantine with a
+// shorter list, and a shorter list is exactly what a reader would take as progress.
+fn decode_unproven_step(acc: Decoded<List<UnprovenFact>>, v: JsonValue) -> Decoded<List<UnprovenFact>> {
+  match acc {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: xs } =>
+      match decode_unproven(v: v) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: u } => DecodeOk { value: concat(xs, [u]) }
+      }
+  }
+}
+
+fn no_unproven_yet() -> Decoded<List<UnprovenFact>> {
+  DecodeOk { value: [] }
+}
+
+fn decode_unproven_list(elements: List<JsonValue>) -> Decoded<List<UnprovenFact>> {
+  fold(elements, init: no_unproven_yet(), f: (acc, v) => decode_unproven_step(acc: acc, v: v))
+}
+
+// --- the readiness codec ---
+
+data readiness_state_key: String = "state"
+data readiness_ready_tag: String = "ready"
+data readiness_quarantined_tag: String = "quarantined"
+
+fn encode_readiness(r: CellReadiness) -> JsonValue {
+  match r {
+    CellReady { cell: c } =>
+      json_object(members: [
+        json_kv(key: readiness_state_key, value: json_string(s: readiness_ready_tag)),
+        json_kv(key: "cell", value: json_string(s: c as String)),
+      ])
+    CellQuarantined { cell: c, unproven: u } =>
+      json_object(members: [
+        json_kv(key: readiness_state_key, value: json_string(s: readiness_quarantined_tag)),
+        json_kv(key: "cell", value: json_string(s: c as String)),
+        json_kv(key: "unproven", value: json_array(elements: map(u, x => encode_unproven(u: x)))),
+      ])
+  }
+}
+
+// THE READINESS CARRIES ITS OWN CELL AND IT IS DECODED AS WRITTEN, NEVER REPAIRED FROM THE KEY.
+// gunbc.runner_microvm_cell_readiness record_incoherence exists precisely to catch a settled record
+// whose readiness names a different cell than its key, and a decoder that substituted the key for
+// the encoded cell would make that check permanently green by construction -- a wall dismantled from
+// underneath by the codec that feeds it (DESIGN 4b: an inert check is worse than an absent one).
+fn decode_readiness(v: JsonValue) -> Decoded<CellReadiness> {
+  match decoded_nonempty(obj: v, key: "cell") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: c } =>
+      match decoded_string(obj: v, key: readiness_state_key) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: state } =>
+          if state == readiness_ready_tag {
+            DecodeOk { value: CellReady { cell: c as CellId } }
+          } else if state == readiness_quarantined_tag {
+            decode_quarantined(v: v, cell: c as CellId)
+          } else {
+            DecodeRefused { reason: join(["`", state, "` is not a cell-readiness state"], "") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn decode_quarantined(v: JsonValue, cell: CellId) -> Decoded<CellReadiness> {
+  match decoded_object(obj: v, key: "unproven") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: arr } =>
+      match decoded_array_elements(v: arr) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: es } =>
+          match decode_unproven_list(elements: es) {
+            DecodeRefused { reason: r } => DecodeRefused { reason: r }
+            DecodeOk { value: us } => DecodeOk { value: CellQuarantined { cell: cell, unproven: us } }
+          }
+      }
+  }
+}
+
+// --- the in-flight attempt codec ---
+
+// THE ATTEMPT IS PERSISTED AS ITS CONSTRUCTOR'S INPUTS AND REBUILT THROUGH THAT CONSTRUCTOR.
+// MicroVmAttempt is sealed and its segment refuses traversal (gunbc.runner_microvm_attempt); a
+// decoder that assembled the record directly would be a second constructor and would let a store
+// edited by hand reintroduce `../shared` as an attempt id. So the bytes carry host, slot index and
+// the segment's spelling, and microvm_attempt is asked to accept them exactly as the live path does.
+fn encode_attempt(a: InFlightAttempt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "host", value: json_string(s: a.attempt.slot.host as String)),
+    json_kv(key: "slot_index", value: json_int(n: a.attempt.slot.slot_index as Int)),
+    json_kv(key: "attempt_id", value: json_string(s: a.attempt.attempt_id.value as String)),
+    json_kv(key: "invocation_id", value: json_string(s: a.invocation_id as String)),
+    json_kv(key: "jit_registration_id", value: json_string(s: a.jit_registration_id as String)),
+    json_kv(key: "credential_device_path", value: json_string(s: a.credential_device_path)),
+  ])
+}
+
+fn decode_attempt(v: JsonValue) -> Decoded<InFlightAttempt> {
+  match decoded_nonempty(obj: v, key: "host") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: host } =>
+      match decoded_int(obj: v, key: "slot_index") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: idx } =>
+          if idx < 0 {
+            DecodeRefused { reason: "a record's `slot_index` is negative, so it names no slot" as NonEmptyStr }
+          } else {
+            decode_attempt_after_slot(v: v, slot: RunnerSlotIdentity { host: host as HostIdentity, slot_index: idx as Nat })
+          }
+      }
+  }
+}
+
+fn decode_attempt_after_slot(v: JsonValue, slot: RunnerSlotIdentity) -> Decoded<InFlightAttempt> {
+  match decoded_string(obj: v, key: "attempt_id") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: id } =>
+      match microvm_attempt(slot: slot, attempt_id: id) {
+        MicroVmAttemptRefused { refusal: ref } =>
+          DecodeRefused { reason: join(["a record's attempt id is not a usable segment: ", attempt_segment_refusal_text(r: ref)], "") as NonEmptyStr }
+        MicroVmAttemptAccepted { attempt: at } => decode_attempt_after_identity(v: v, attempt: at)
+      }
+  }
+}
+
+fn decode_attempt_after_identity(v: JsonValue, attempt: MicroVmAttempt) -> Decoded<InFlightAttempt> {
+  match decoded_nonempty(obj: v, key: "invocation_id") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: inv } =>
+      match decoded_nonempty(obj: v, key: "jit_registration_id") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: reg } =>
+          match decoded_string(obj: v, key: "credential_device_path") {
+            DecodeRefused { reason: r } => DecodeRefused { reason: r }
+            DecodeOk { value: dev } =>
+              DecodeOk {
+                value: InFlightAttempt {
+                  attempt: attempt,
+                  invocation_id: inv,
+                  jit_registration_id: reg,
+                  credential_device_path: dev,
+                },
+              }
+          }
+      }
+  }
+}
+
+// --- the record codec ---
+
+data record_kind_key: String = "kind"
+data record_in_flight_tag: String = "in_flight"
+data record_settled_tag: String = "settled"
+
+fn encode_record(r: CellReadinessRecord) -> JsonValue {
+  match r {
+    CellAttemptInFlight { cell: c, generation: g, attempt: a } =>
+      json_object(members: [
+        json_kv(key: record_kind_key, value: json_string(s: record_in_flight_tag)),
+        json_kv(key: "cell", value: json_string(s: c as String)),
+        json_kv(key: "generation", value: json_int(n: g)),
+        json_kv(key: "attempt", value: encode_attempt(a: a)),
+      ])
+    CellSettled { cell: c, generation: g, readiness: rd } =>
+      json_object(members: [
+        json_kv(key: record_kind_key, value: json_string(s: record_settled_tag)),
+        json_kv(key: "cell", value: json_string(s: c as String)),
+        json_kv(key: "generation", value: json_int(n: g)),
+        json_kv(key: "readiness", value: encode_readiness(r: rd)),
+      ])
+  }
+}
+
+fn decode_record(v: JsonValue) -> Decoded<CellReadinessRecord> {
+  match decoded_nonempty(obj: v, key: "cell") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: c } =>
+      match decoded_int(obj: v, key: "generation") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: g } => decode_record_of_kind(v: v, cell: c as CellId, generation: g)
+      }
+  }
+}
+
+fn decode_record_of_kind(v: JsonValue, cell: CellId, generation: Int) -> Decoded<CellReadinessRecord> {
+  match decoded_string(obj: v, key: record_kind_key) {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: kind } =>
+      if kind == record_in_flight_tag {
+        match decoded_object(obj: v, key: "attempt") {
+          DecodeRefused { reason: r } => DecodeRefused { reason: r }
+          DecodeOk { value: av } =>
+            match decode_attempt(v: av) {
+              DecodeRefused { reason: r } => DecodeRefused { reason: r }
+              DecodeOk { value: a } => DecodeOk { value: CellAttemptInFlight { cell: cell, generation: generation, attempt: a } }
+            }
+        }
+      } else if kind == record_settled_tag {
+        match decoded_object(obj: v, key: "readiness") {
+          DecodeRefused { reason: r } => DecodeRefused { reason: r }
+          DecodeOk { value: rv } =>
+            match decode_readiness(v: rv) {
+              DecodeRefused { reason: r } => DecodeRefused { reason: r }
+              DecodeOk { value: rd } => DecodeOk { value: CellSettled { cell: cell, generation: generation, readiness: rd } }
+            }
+        }
+      } else {
+        DecodeRefused { reason: join(["`", kind, "` is not one of the two cell-readiness record shapes"], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn decode_record_step(acc: Decoded<List<CellReadinessRecord>>, v: JsonValue) -> Decoded<List<CellReadinessRecord>> {
+  match acc {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: xs } =>
+      match decode_record(v: v) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: rec } => DecodeOk { value: concat(xs, [rec]) }
+      }
+  }
+}
+
+// --- the whole document ---
+
+fn no_records_yet() -> Decoded<List<CellReadinessRecord>> {
+  DecodeOk { value: [] }
+}
+
+fn encode_store(records: List<CellReadinessRecord>) -> String {
+  serialize_json(v: json_array(elements: map(records, r => encode_record(r: r))))
+}
+
+fn decode_store(text: String) -> Decoded<List<CellReadinessRecord>> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      DecodeRefused { reason: join(["the store body is ", json_document_gap_text(gap: gap)], "") as NonEmptyStr }
+    JsonDocumentParsed { value: doc } =>
+      match decoded_array_elements(v: doc) {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: es } =>
+          fold(es, init: no_records_yet(), f: (acc, v) => decode_record_step(acc: acc, v: v))
+      }
+  }
+}
+
+// --- the wet half: the store as a file on this host ---
+
+// OWNERSHIP IS TWO READINGS AND BOTH ARE REQUIRED. uid 0 alone admits mode 0666, which is a store
+// every tenant may mark Ready; a restrictive mode alone admits a store the runner user owns and may
+// chmod at will. gunbc.runner_microvm_cell_readiness StoreNotRootOwned carries both because the
+// remedy names both, so both are read here rather than folded into one verdict.
+type StoreStatReading
+  = StatRead { value: String }
+  | StatUnread { detail: String }
+
+fn store_stat_reading(outcome: ProcessOutcome) -> StoreStatReading {
+  match outcome {
+    ProcessOutputPresent { text: t } => StatRead { value: trim(s: t) }
+    ProcessOutputAbsent => StatUnread { detail: "stat printed nothing" }
+    ProcessRefused { exit_code: _, stderr: e } => StatUnread { detail: trim(s: e) }
+  }
+}
+
+// A WRITE BIT OUTSIDE ROOT IS READ OFF THE OCTAL DIGIT, not off a whole-mode equality. Pinning the
+// mode to one spelling would refuse 0400 -- a store root may read and not write, which is stricter
+// and not less safe -- and would call a legitimate tightening a defect. What matters is the one
+// fact the store's soundness rests on: nobody but root may write it.
+fn octal_digit_grants_write(d: String) -> Bool {
+  d == "2" || d == "3" || d == "6" || d == "7"
+}
+
+type StoreModeReading
+  = ModeAdmitsOnlyRoot
+  | ModeAdmitsOthers
+  | ModeUnintelligible { detail: String }
+
+fn store_mode_reading(mode: String) -> StoreModeReading {
+  let n = mode.length()
+  if n < 2 {
+    ModeUnintelligible { detail: join(["stat reported the mode as `", mode, "`, which carries no group and other digits"], "") }
+  } else if octal_digit_grants_write(d: substring(s: mode, start: n - 2, end: n - 1))
+      || octal_digit_grants_write(d: substring(s: mode, start: n - 1, end: n)) {
+    ModeAdmitsOthers
+  } else {
+    ModeAdmitsOnlyRoot
+  }
+}
+
+type StoreOwnershipReading
+  = OwnershipRead { ownership: CellReadinessStoreOwnership }
+  | OwnershipUnread { reason: NonEmptyStr }
+
+fn read_store_ownership(path: String) -> StoreOwnershipReading
+  uses net: Network
+{
+  match store_stat_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
+    StatUnread { detail: d } =>
+      OwnershipUnread { reason: join(["the store's owner could not be read: ", d], "") as NonEmptyStr }
+    StatRead { value: uid_text } =>
+      match store_stat_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec)) {
+        StatUnread { detail: d } =>
+          OwnershipUnread { reason: join(["the store's mode could not be read: ", d], "") as NonEmptyStr }
+        StatRead { value: mode_text } => ownership_of_readings(uid_text: uid_text, mode_text: mode_text)
+      }
+  }
+}
+
+fn ownership_of_readings(uid_text: String, mode_text: String) -> StoreOwnershipReading {
+  match parse_int(s: uid_text) {
+    Absent =>
+      OwnershipUnread { reason: join(["stat reported the store's owner as `", uid_text, "`, which is not a uid"], "") as NonEmptyStr }
+    Present { value: uid } =>
+      match store_mode_reading(mode: mode_text) {
+        ModeUnintelligible { detail: d } => OwnershipUnread { reason: d as NonEmptyStr }
+        ModeAdmitsOthers =>
+          OwnershipRead { ownership: StoreNotRootOwned { owner_uid: uid, mode: mode_text as NonEmptyStr } }
+        ModeAdmitsOnlyRoot =>
+          if uid == 0 {
+            OwnershipRead { ownership: StoreRootOwned }
+          } else {
+            OwnershipRead { ownership: StoreNotRootOwned { owner_uid: uid, mode: mode_text as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+// THE READ, AND AN ABSENT STORE IS UNREADABLE RATHER THAN EMPTY.
+//
+// "There is no store" and "the store holds no records" are different facts with different remedies,
+// and only the second is a reading. A host with no store is a host where nothing has ever
+// established a cell's emptiness, so admitting its cells from an empty list would hand every cell on
+// a freshly imaged host to the first incarnation with no readback behind it. StoreUnreadable
+// withdraws the HOST and names the absence, which sends an operator at the one thing that is
+// missing instead of at every cell in turn.
+fn read_cell_readiness_store() -> CellReadinessStoreRead
+  uses net: Network, fs: Filesystem
+{
+  match read_store_ownership(path: cell_readiness_store_path) {
+    OwnershipUnread { reason: r } => StoreUnreadable { reason: r }
+    OwnershipRead { ownership: own } => {
+      let body = Filesystem.Read(path: cell_readiness_store_path)
+      if body.success == false {
+        StoreUnreadable {
+          reason: join(["the cell-readiness store at ", cell_readiness_store_path, " could not be read: ", body.error], "") as NonEmptyStr,
+        }
+      } else {
+        match decode_store(text: body.content) {
+          DecodeRefused { reason: r } => StoreUnreadable { reason: r }
+          DecodeOk { value: records } => StoreRead { ownership: own, records: records }
+        }
+      }
+    }
+  }
+}
+
+// THE WRITE IS DECIDED BY THE STORE'S OWN AUTHORITY AND THEN READ BACK.
+//
+// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write decides whether the write may
+// happen at all; this module never re-decides it and never writes past a refusal. What it adds is
+// the half that authority cannot have: the bytes reaching the disk, and an INDEPENDENT reading that
+// they did. A successful Filesystem.Write is the filesystem's claim; the record read back out of a
+// re-decoded store is the host's observation of the result, and the two are separated in time by
+// exactly the failures -- a full disk, a truncated write, a concurrent writer -- that make the claim
+// wrong. The readback compares the record through its own encoding, because the codec above is the
+// single authority for what a record's bytes are.
+type CellReadinessStorePersist
+  = StorePersisted { records: List<CellReadinessRecord> }
+  | StorePersistRefusedByStore { result: CellReadinessWriteResult }
+  | StorePersistWriteFailed { path: String }
+  | StorePersistReadbackFailed { reason: NonEmptyStr }
+  | StorePersistReadbackMissingRecord { path: String }
+
+fn persist_cell_readiness_write(write: CellReadinessWrite) -> CellReadinessStorePersist
+  uses net: Network, fs: Filesystem
+{
+  match read_cell_readiness_store() {
+    StoreUnreadable { reason: r } => StorePersistReadbackFailed { reason: r }
+    StoreRead { ownership: _, records: records } =>
+      match apply_cell_readiness_write(records: records, write: write) {
+        WriteAccepted { records: next } => persist_records(next: next, write: write)
+        refused => StorePersistRefusedByStore { result: refused }
+      }
+  }
+}
+
+fn persist_records(next: List<CellReadinessRecord>, write: CellReadinessWrite) -> CellReadinessStorePersist
+  uses net: Network, fs: Filesystem
+{
+  let wrote = Filesystem.Write(path: cell_readiness_store_path, content: encode_store(records: next))
+  if wrote.success == false {
+    StorePersistWriteFailed { path: cell_readiness_store_path }
+  } else {
+    confirm_persisted(write: write)
+  }
+}
+
+fn record_bytes_equal(a: CellReadinessRecord, b: CellReadinessRecord) -> Bool {
+  serialize_json(v: encode_record(r: a)) == serialize_json(v: encode_record(r: b))
+}
+
+fn confirm_persisted(write: CellReadinessWrite) -> CellReadinessStorePersist
+  uses net: Network, fs: Filesystem
+{
+  match read_cell_readiness_store() {
+    StoreUnreadable { reason: r } => StorePersistReadbackFailed { reason: r }
+    StoreRead { ownership: _, records: back } =>
+      match filter(back, r => record_bytes_equal(a: r, b: record_of_write(write: write))).first() {
+        Absent => StorePersistReadbackMissingRecord { path: cell_readiness_store_path }
+        Present { value: _ } => StorePersisted { records: back }
+      }
+  }
+}
