@@ -8,7 +8,10 @@ import std.disposition { Disposition, SingleAuthority }
 import std.resources { Filesystem, Network }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command }
+import extdeps.tools.stat {
+  stat_owner_uid_command, stat_mode_command,
+  StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading,
+}
 import extdeps.languages.json.emit {
   JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString,
   json_object, json_array, json_kv, json_string, json_int, serialize_json,
@@ -56,11 +59,66 @@ data runner_microvm_cell_readiness_store_disposition: Disposition = SingleAuthor
 // would turn a corrupt store into a store with fewer cells in it, and every missing cell would then
 // read as CellNeverSettled -- a refusal, but at the wrong grain and with the wrong remedy.
 
-// THE STORE HAS ONE PATH AND IT IS ROOT'S. It is not under the runner user's tree: a store the
-// tenant's own uid can write is a store the tenant can mark Ready, which is the case
-// CellReadinessStoreOwnership exists to observe. The path is stated once here and read by both the
-// reader and the writer, so the two cannot drift onto different files.
-data cell_readiness_store_path: String = "/var/lib/gunbc/microvm-cell-readiness.json"
+// THE STORE IS A DIRECTORY OF ONE FILE PER CELL, AND THAT SHAPE IS THE WHOLE ANSWER TO A DEFECT
+// A REVIEW FOUND IN ITS FIRST CUT (review 69037).
+//
+// THE DEFECT. The store was ONE FILE per host, read-modify-written: read every record, fold the new
+// one in, rewrite the document. But a controller is the MainPID of a SLOT unit and a host runs many
+// slots, so concurrent writers on one host are the ordinary case and not an exotic one. Two
+// controllers reading before either writes means the second rewrites the first's cell FROM ITS OWN
+// STALE SNAPSHOT. The reachable direction is the one this whole lane exists to prevent: cell C's
+// controller quarantines C, a sibling controller that read before that write rewrites the document,
+// and C reverts to a settled CellReady -- a dirty cell readmitted, with no refusal anywhere. The
+// readback could not see it either, because it confirmed only that the WRITER'S OWN record came
+// back.
+//
+// WHY ONE FILE PER CELL RATHER THAN A LOCK. A lock makes the bad write refuse; this makes it
+// UNWRITABLE, which DESIGN 5 ranks above it -- a writer never holds another cell's bytes, so there
+// is nothing to lose. It is also the shape that matches who writes what: the store is read
+// HOST-WIDE, because the host-grain soundness checks need every record, and written PER CELL,
+// because a cell's record has exactly one writer, the controller of that cell's slot. A lock would
+// have matched the write scope to the read scope instead, and it would have introduced the failure
+// this lane is about: a controller that dies holding it wedges every other slot on the host until
+// something reclaims it, which needs a lease, a clock and a stale-hold protocol -- machinery with
+// its own races, bought to guard a critical section that does not have to exist.
+//
+// DIVERGENCE, STATED (DESIGN 3b's middle value). The conformance row for leasing/locking names
+// std.durable_compare_and_set and std.durable_exclusive_hold as the homes for exclusive use, and
+// this module inhabits neither. The reason is that after this change there is no cross-cell critical
+// section to hold: the shared mutable document is gone. What remains is a read-then-act window on
+// the ADMISSION -- a controller admits its cell from a store that another controller may make
+// unsound a moment later -- and that window is bounded rather than closed: it can only affect the
+// admitting controller's OWN cell, whose evidence it read itself, and the teardown readback re-reads
+// the store before settling. Closing it would need the hold, and the hold needs the lease.
+//
+// THE DIRECTORY IS ROOT'S, WHICH IS WHAT MAKES THE RECORDS ROOT'S. A store any tenant can write is
+// a store any tenant can mark Ready. Ownership is observed on the DIRECTORY rather than on each
+// file, because a directory no one else may write is a directory in which no one else may create,
+// replace or rename a record, whatever a single file's own mode happens to say.
+data cell_readiness_store_dir: String = "/var/lib/gunbc/microvm-cell-readiness"
+
+data cell_record_suffix: String = ".json"
+
+// A CELL NAMES ITS OWN FILE, SO A CELL WHOSE NAME IS NOT A FILENAME IS REFUSED RATHER THAN JOINED.
+// The path is derived from the cell id; a separator in that id would address a record outside the
+// store, and "." or ".." would address the directory itself. This is the same refusal
+// gunbc.runner_microvm_attempt attempt_segment makes for an attempt id, for the same reason and at
+// the same grain: the identity is what every path is derived from, so it is checked where it is
+// turned into one.
+type CellRecordPath
+  = CellRecordAt { path: String }
+  | CellRecordNameRefused { spelling: String }
+
+fn cell_record_path(cell: CellId) -> CellRecordPath {
+  let name = cell as String
+  if name == "." || name == ".." {
+    CellRecordNameRefused { spelling: name }
+  } else if string_contains(s: name, pattern: "/") {
+    CellRecordNameRefused { spelling: name }
+  } else {
+    CellRecordAt { path: join([cell_readiness_store_dir, "/", name, cell_record_suffix], "") }
+  }
+}
 
 // THE WIRE NAME OF A FACT IS product.fabric.sanitation's OWN LABEL, not a second spelling minted
 // here. The decoder is the structural inverse of that projection: it walks the closed fact list and
@@ -481,36 +539,43 @@ fn decode_record_of_kind(v: JsonValue, cell: CellId, generation: Int) -> Decoded
   }
 }
 
-fn decode_record_step(acc: Decoded<List<CellReadinessRecord>>, v: JsonValue) -> Decoded<List<CellReadinessRecord>> {
-  match acc {
-    DecodeRefused { reason: r } => DecodeRefused { reason: r }
-    DecodeOk { value: xs } =>
-      match decode_record(v: v) {
-        DecodeRefused { reason: r } => DecodeRefused { reason: r }
-        DecodeOk { value: rec } => DecodeOk { value: concat(xs, [rec]) }
-      }
-  }
-}
-
 // --- the whole document ---
 
 fn no_records_yet() -> Decoded<List<CellReadinessRecord>> {
   DecodeOk { value: [] as List<CellReadinessRecord> }
 }
 
-fn encode_store(records: List<CellReadinessRecord>) -> String {
-  serialize_json(v: json_array(elements: map(records, r => encode_record(r: r))))
+// ONE RECORD IS ONE DOCUMENT, because one record is one file. The array codec this replaced was the
+// host-wide document whose rewrite lost other cells' records; there is no whole-store document to
+// encode any more, and keeping one would be a second representation of a store that is now a
+// directory.
+fn encode_record_document(record: CellReadinessRecord) -> String {
+  serialize_json(v: encode_record(r: record))
 }
 
-fn decode_store(text: String) -> Decoded<List<CellReadinessRecord>> {
+fn decode_record_document(text: String) -> Decoded<CellReadinessRecord> {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: gap } =>
-      DecodeRefused { reason: join(["the store body is ", json_document_gap_text(gap: gap)], "") as NonEmptyStr }
-    JsonDocumentParsed { value: doc } =>
-      match decoded_array_elements(v: doc) {
+      DecodeRefused { reason: join(["a cell record is ", json_document_gap_text(gap: gap)], "") as NonEmptyStr }
+    JsonDocumentParsed { value: doc } => decode_record(v: doc)
+  }
+}
+
+// THE STORE IS ALL-OR-REFUSED ACROSS ITS FILES, exactly as it was across a document's elements, and
+// for the same reason: a store that dropped the one record it could not read would report that cell
+// as never settled -- a refusal, but at the wrong grain and with the wrong remedy. The fold carries
+// the first refusal outward rather than skipping the file it came from.
+fn decode_store_documents(bodies: List<String>) -> Decoded<List<CellReadinessRecord>> {
+  fold(bodies, init: no_records_yet(), f: (acc, body) => decode_document_step(acc: acc, body: body))
+}
+
+fn decode_document_step(acc: Decoded<List<CellReadinessRecord>>, body: String) -> Decoded<List<CellReadinessRecord>> {
+  match acc {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: xs } =>
+      match decode_record_document(text: body) {
         DecodeRefused { reason: r } => DecodeRefused { reason: r }
-        DecodeOk { value: es } =>
-          fold(es, init: no_records_yet(), f: (acc, v) => decode_record_step(acc: acc, v: v))
+        DecodeOk { value: rec } => DecodeOk { value: concat(xs, [rec]) }
       }
   }
 }
@@ -518,20 +583,14 @@ fn decode_store(text: String) -> Decoded<List<CellReadinessRecord>> {
 // --- the wet half: the store as a file on this host ---
 
 // OWNERSHIP IS TWO READINGS AND BOTH ARE REQUIRED. uid 0 alone admits mode 0666, which is a store
-// every tenant may mark Ready; a restrictive mode alone admits a store the runner user owns and may
+// every tenant may write; a restrictive mode alone admits a directory the runner user owns and may
 // chmod at will. gunbc.runner_microvm_cell_readiness StoreNotRootOwned carries both because the
 // remedy names both, so both are read here rather than folded into one verdict.
-type StoreStatReading
-  = StatRead { value: String }
-  | StatUnread { detail: String }
-
-fn store_stat_reading(outcome: ProcessOutcome) -> StoreStatReading {
-  match outcome {
-    ProcessOutputPresent { text: t } => StatRead { value: trim(s: t) }
-    ProcessOutputAbsent => StatUnread { detail: "stat printed nothing" }
-    ProcessRefused { exit_code: _, stderr: e } => StatUnread { detail: trim(s: e) }
-  }
-}
+//
+// THE READING ITSELF IS extdeps.tools.stat's, not this module's. It used to be a StoreStatReading
+// declared here -- the same three arms and the same fold that gunbc.runner_attempt_launch had also
+// minted for its own stat readback, one concept invented twice in one change (review 69037). The
+// fact's layer is the stat boundary both callers already import from.
 
 // A WRITE BIT OUTSIDE ROOT IS READ OFF THE OCTAL DIGIT, not off a whole-mode equality. Pinning the
 // mode to one spelling would refuse 0400 -- a store root may read and not write, which is stricter
@@ -565,14 +624,14 @@ type StoreOwnershipReading
 fn read_store_ownership(path: String) -> StoreOwnershipReading
   uses net: Network
 {
-  match store_stat_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
-    StatUnread { detail: d } =>
-      OwnershipUnread { reason: join(["the store's owner could not be read: ", d], "") as NonEmptyStr }
-    StatRead { value: uid_text } =>
-      match store_stat_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec)) {
-        StatUnread { detail: d } =>
-          OwnershipUnread { reason: join(["the store's mode could not be read: ", d], "") as NonEmptyStr }
-        StatRead { value: mode_text } => ownership_of_readings(uid_text: uid_text, mode_text: mode_text)
+  match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
+    StatFieldUnread { detail: d } =>
+      OwnershipUnread { reason: join(["the store directory's owner could not be read: ", d], "") as NonEmptyStr }
+    StatFieldRead { value: uid_text } =>
+      match stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec)) {
+        StatFieldUnread { detail: d } =>
+          OwnershipUnread { reason: join(["the store directory's mode could not be read: ", d], "") as NonEmptyStr }
+        StatFieldRead { value: mode_text } => ownership_of_readings(uid_text: uid_text, mode_text: mode_text)
       }
   }
 }
@@ -596,51 +655,107 @@ fn ownership_of_readings(uid_text: String, mode_text: String) -> StoreOwnershipR
   }
 }
 
-// THE READ, AND AN ABSENT STORE IS UNREADABLE RATHER THAN EMPTY.
+// THE READ IS HOST-WIDE, because host-grain soundness is a property of every record together: a
+// duplicate, or a record whose readiness names a different cell than its key, makes the store
+// unsound for the cell being asked about too. The store is a directory now, so reading it whole is
+// listing that directory and reading each record; the WRITE is the half that narrowed to one cell.
 //
-// "There is no store" and "the store holds no records" are different facts with different remedies,
-// and only the second is a reading. A host with no store is a host where nothing has ever
-// established a cell's emptiness, so admitting its cells from an empty list would hand every cell on
-// a freshly imaged host to the first incarnation with no readback behind it. StoreUnreadable
-// withdraws the HOST and names the absence, which sends an operator at the one thing that is
-// missing instead of at every cell in turn.
+// AN ABSENT STORE IS UNREADABLE RATHER THAN EMPTY. "There is no store" and "the store holds no
+// records" are different facts with different remedies, and only the second is a reading. A host
+// with no store is a host where nothing has ever established a cell's emptiness, so admitting its
+// cells from an empty list would hand every cell on a freshly imaged host to the first incarnation
+// with no readback behind it. StoreUnreadable withdraws the HOST and names the absence, which sends
+// an operator at the one thing that is missing instead of at every cell in turn.
 fn read_cell_readiness_store() -> CellReadinessStoreRead
   uses net: Network, fs: Filesystem
 {
-  match read_store_ownership(path: cell_readiness_store_path) {
+  match read_store_ownership(path: cell_readiness_store_dir) {
     OwnershipUnread { reason: r } => StoreUnreadable { reason: r }
-    OwnershipRead { ownership: own } => {
-      let body = Filesystem.Read(path: cell_readiness_store_path)
-      if body.success == false {
-        StoreUnreadable {
-          reason: join(["the cell-readiness store at ", cell_readiness_store_path, " could not be read: ", body.error], "") as NonEmptyStr,
-        }
-      } else {
-        match decode_store(text: body.content) {
+    OwnershipRead { ownership: own } => read_store_records(ownership: own)
+  }
+}
+
+// A RECORD FILE THAT CANNOT BE READ REFUSES THE WHOLE STORE, and so does a listing that fails. The
+// alternative is a store with fewer cells in it, and every missing cell then reads as never settled
+// -- the right direction at the wrong grain, pointing an operator at a cell instead of at the
+// store.
+fn read_store_records(ownership: CellReadinessStoreOwnership) -> CellReadinessStoreRead
+  uses net: Network, fs: Filesystem
+{
+  let listed = Filesystem.List(path: cell_readiness_store_dir)
+  if listed.success == false {
+    StoreUnreadable {
+      reason: join(["the cell-readiness store at ", cell_readiness_store_dir, " could not be listed: ", listed.error], "") as NonEmptyStr,
+    }
+  } else {
+    match read_record_bodies(names: record_file_names(entries: listed.entries)) {
+      BodiesUnread { reason: r } => StoreUnreadable { reason: r }
+      BodiesRead { bodies: bodies } =>
+        match decode_store_documents(bodies: bodies) {
           DecodeRefused { reason: r } => StoreUnreadable { reason: r }
-          DecodeOk { value: records } => StoreRead { ownership: own, records: records }
+          DecodeOk { value: records } => StoreRead { ownership: ownership, records: records }
         }
+    }
+  }
+}
+
+// ONLY THE RECORD FILES ARE READ, and an entry that is not one is skipped rather than refused. The
+// store's directory is the store's, but an editor's swap file or an operator's note is not a record
+// that failed to decode -- refusing on it would take a host out of service for a file nothing reads.
+// What is NOT skipped is a file that ends in the record suffix and does not decode: that one claims
+// to be a record.
+fn record_file_names(entries: String) -> List<String> {
+  filter(split(s: entries, delimiter: "\n"), n => ends_with(s: trim(s: n), suffix: cell_record_suffix))
+}
+
+type RecordBodies
+  = BodiesRead { bodies: List<String> }
+  | BodiesUnread { reason: NonEmptyStr }
+
+fn read_record_bodies(names: List<String>) -> RecordBodies
+  uses fs: Filesystem
+{
+  fold(names, init: BodiesRead { bodies: [] as List<String> }, f: (acc, name) => read_body_step(acc: acc, name: trim(s: name)))
+}
+
+fn read_body_step(acc: RecordBodies, name: String) -> RecordBodies
+  uses fs: Filesystem
+{
+  match acc {
+    BodiesUnread { reason: r } => BodiesUnread { reason: r }
+    BodiesRead { bodies: bs } => {
+      let path = join([cell_readiness_store_dir, "/", name], "")
+      let body = Filesystem.Read(path: path)
+      if body.success == false {
+        BodiesUnread { reason: join(["the cell record at ", path, " could not be read: ", body.error], "") as NonEmptyStr }
+      } else {
+        BodiesRead { bodies: concat(bs, [body.content]) }
       }
     }
   }
 }
 
-// THE WRITE IS DECIDED BY THE STORE'S OWN AUTHORITY AND THEN READ BACK.
+// THE WRITE IS DECIDED BY THE STORE'S OWN AUTHORITY, TOUCHES ONE CELL'S FILE, AND IS THEN READ BACK.
 //
 // gunbc.runner_microvm_cell_readiness apply_cell_readiness_write decides whether the write may
 // happen at all; this module never re-decides it and never writes past a refusal. What it adds is
 // the half that authority cannot have: the bytes reaching the disk, and an INDEPENDENT reading that
-// they did. A successful Filesystem.Write is the filesystem's claim; the record read back out of a
-// re-decoded store is the host's observation of the result, and the two are separated in time by
-// exactly the failures -- a full disk, a truncated write, a concurrent writer -- that make the claim
-// wrong. The readback compares the record through its own encoding, because the codec above is the
-// single authority for what a record's bytes are.
+// they did. A successful Filesystem.Write is the filesystem's claim; the record read back out of the
+// re-decoded file is the host's observation of the result, and the two are separated in time by the
+// failures -- a full disk, a truncated write -- that make the claim wrong.
+//
+// THE RESULT OF apply_cell_readiness_write IS CONSUMED FOR ITS VERDICT AND NOT FOR ITS RECORDS. It
+// returns the whole next store, which is what the host-wide document used to write; taking those
+// bytes is what lost other cells' records. What is written here is record_of_write's single record,
+// into the file the write's own cell names -- so a writer holding a stale snapshot of some OTHER
+// cell has nothing to write it with.
 type CellReadinessStorePersist
-  = StorePersisted { records: List<CellReadinessRecord> }
+  = StorePersisted { record: CellReadinessRecord }
   | StorePersistRefusedByStore { result: CellReadinessWriteResult }
+  | StorePersistCellNotAddressable { spelling: String }
   | StorePersistWriteFailed { path: String }
   | StorePersistReadbackFailed { reason: NonEmptyStr }
-  | StorePersistReadbackMissingRecord { path: String }
+  | StorePersistReadbackMismatch { path: String }
 
 fn persist_cell_readiness_write(write: CellReadinessWrite) -> CellReadinessStorePersist
   uses net: Network, fs: Filesystem
@@ -649,36 +764,54 @@ fn persist_cell_readiness_write(write: CellReadinessWrite) -> CellReadinessStore
     StoreUnreadable { reason: r } => StorePersistReadbackFailed { reason: r }
     StoreRead { ownership: _, records: records } =>
       match apply_cell_readiness_write(records: records, write: write) {
-        WriteAccepted { records: next } => persist_records(next: next, write: write)
+        WriteAccepted { records: _ } => persist_one_record(write: write)
         refused => StorePersistRefusedByStore { result: refused }
       }
   }
 }
 
-fn persist_records(next: List<CellReadinessRecord>, write: CellReadinessWrite) -> CellReadinessStorePersist
+fn persist_one_record(write: CellReadinessWrite) -> CellReadinessStorePersist
   uses net: Network, fs: Filesystem
 {
-  let wrote = Filesystem.Write(path: cell_readiness_store_path, content: encode_store(records: next))
-  if wrote.success == false {
-    StorePersistWriteFailed { path: cell_readiness_store_path }
-  } else {
-    confirm_persisted(write: write)
+  match cell_record_path(cell: write_cell(write: write)) {
+    CellRecordNameRefused { spelling: sp } => StorePersistCellNotAddressable { spelling: sp }
+    CellRecordAt { path: path } => {
+      let record = record_of_write(write: write)
+      let wrote = Filesystem.Write(path: path, content: encode_record_document(record: record))
+      if wrote.success == false {
+        StorePersistWriteFailed { path: path }
+      } else {
+        confirm_persisted(path: path, record: record)
+      }
+    }
   }
 }
 
 fn record_bytes_equal(a: CellReadinessRecord, b: CellReadinessRecord) -> Bool {
-  serialize_json(v: encode_record(r: a)) == serialize_json(v: encode_record(r: b))
+  encode_record_document(record: a) == encode_record_document(record: b)
 }
 
-fn confirm_persisted(write: CellReadinessWrite) -> CellReadinessStorePersist
-  uses net: Network, fs: Filesystem
+// THE READBACK IS OF THE ONE FILE THAT WAS WRITTEN, and it compares the record rather than merely
+// finding one. A file that came back holding a DIFFERENT record is not a missing record: it is a
+// write that landed somewhere other than where this one meant it to, or bytes that changed under
+// it, and reporting it as absent would send a reader to look for a file that is right there.
+fn confirm_persisted(path: String, record: CellReadinessRecord) -> CellReadinessStorePersist
+  uses fs: Filesystem
 {
-  match read_cell_readiness_store() {
-    StoreUnreadable { reason: r } => StorePersistReadbackFailed { reason: r }
-    StoreRead { ownership: _, records: back } =>
-      match filter(back, r => record_bytes_equal(a: r, b: record_of_write(write: write))).first() {
-        Absent => StorePersistReadbackMissingRecord { path: cell_readiness_store_path }
-        Present { value: _ } => StorePersisted { records: back }
-      }
+  let back = Filesystem.Read(path: path)
+  if back.success == false {
+    StorePersistReadbackFailed {
+      reason: join(["the cell record at ", path, " could not be read back: ", back.error], "") as NonEmptyStr,
+    }
+  } else {
+    match decode_record_document(text: back.content) {
+      DecodeRefused { reason: r } => StorePersistReadbackFailed { reason: r }
+      DecodeOk { value: seen } =>
+        if record_bytes_equal(a: seen, b: record) {
+          StorePersisted { record: record }
+        } else {
+          StorePersistReadbackMismatch { path: path }
+        }
+    }
   }
 }

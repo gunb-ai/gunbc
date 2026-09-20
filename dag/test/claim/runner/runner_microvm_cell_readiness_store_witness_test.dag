@@ -17,7 +17,8 @@ import gunbc.runner_microvm_cell_readiness {
 }
 import gunbc.runner_microvm_cell_readiness_store {
   Decoded, DecodeOk, DecodeRefused,
-  encode_store, decode_store, encode_record,
+  encode_record_document, decode_store_documents, decode_record_document,
+  CellRecordPath, CellRecordAt, CellRecordNameRefused, cell_record_path,
 }
 
 // THE STORE'S CODEC, AND THE ONE THING A CODEC WITNESS MUST NOT DO.
@@ -68,16 +69,24 @@ fn witness_in_flight() -> InFlightAttempt? {
   }
 }
 
+fn documents_of(records: List<CellReadinessRecord>) -> List<String> {
+  map(records, r => encode_record_document(record: r))
+}
+
 fn round_trips(records: List<CellReadinessRecord>) -> Bool {
-  match decode_store(text: encode_store(records: records)) {
+  match decode_store_documents(bodies: documents_of(records: records)) {
     DecodeRefused { reason: _ } => false
     DecodeOk { value: back } =>
-      (back |> count) == (records |> count) && encode_store(records: back) == encode_store(records: records)
+      (back |> count) == (records |> count)
+        && join(documents_of(records: back), "|") == join(documents_of(records: records), "|")
   }
 }
 
+// A REFUSAL IS ASSERTED OVER THE STORE FOLD, not over one document, because the store's contract is
+// that ONE unreadable record refuses the WHOLE store -- a decoder that refused a single document and
+// a decoder that dropped it from a set are indistinguishable at the single-document grain.
 fn refuses(text: String) -> Bool {
-  match decode_store(text: text) {
+  match decode_store_documents(bodies: [text]) {
     DecodeRefused { reason: r } => (r as String) != ""
     DecodeOk { value: _ } => false
   }
@@ -98,7 +107,7 @@ test fn an_in_flight_record_keeps_its_credential_device_path() -> Bool {
     Absent => false
     Present { value: a } => {
       let record = CellAttemptInFlight { cell: witness_cell, generation: 4, attempt: a }
-      match decode_store(text: encode_store(records: [record])) {
+      match decode_store_documents(bodies: documents_of(records: [record])) {
         DecodeRefused { reason: _ } => false
         DecodeOk { value: back } =>
           match back.first() {
@@ -150,7 +159,7 @@ test fn a_body_that_is_not_json_refuses() -> Bool {
 // RED -- A BODY THAT IS JSON BUT NOT AN ARRAY REFUSES, rather than reading as a store with no
 // records. An empty store and a store whose shape nobody understands are different facts, and only
 // the first may ever admit anything.
-test fn a_json_object_at_the_top_refuses() -> Bool {
+test fn a_document_that_is_not_a_record_refuses() -> Bool {
   refuses(text: "{\"records\": []}")
 }
 
@@ -159,7 +168,7 @@ test fn a_json_object_at_the_top_refuses() -> Bool {
 // version that knew a fact this one does not, and quietly mapping it onto a known fact would put a
 // verdict under a name nobody established.
 test fn an_unknown_sanitation_fact_label_refuses() -> Bool {
-  refuses(text: "[{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"quarantined\",\"cell\":\"srv1-07\",\"unproven\":[{\"kind\":\"not_observed\",\"fact\":\"something-nobody-declared\"}]}}]")
+  refuses(text: "{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"quarantined\",\"cell\":\"srv1-07\",\"unproven\":[{\"kind\":\"not_observed\",\"fact\":\"something-nobody-declared\"}]}}")
 }
 
 // RED -- ONE UNREADABLE ELEMENT REFUSES THE WHOLE STORE, and this is the claim that separates a
@@ -168,7 +177,13 @@ test fn an_unknown_sanitation_fact_label_refuses() -> Bool {
 // and look successful, and the cell whose record it dropped would then read as never settled -- a
 // refusal at the wrong grain, pointing an operator at a cell instead of at the store.
 test fn one_unreadable_record_refuses_the_whole_store() -> Bool {
-  refuses(text: "[{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"ready\",\"cell\":\"srv1-07\"}},{\"kind\":\"settled\",\"cell\":\"srv1-08\",\"generation\":1,\"readiness\":{\"state\":\"who-knows\",\"cell\":\"srv1-08\"}}]")
+  match decode_store_documents(bodies: [
+    "{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"ready\",\"cell\":\"srv1-07\"}}",
+    "{\"kind\":\"settled\",\"cell\":\"srv1-08\",\"generation\":1,\"readiness\":{\"state\":\"who-knows\",\"cell\":\"srv1-08\"}}",
+  ]) {
+    DecodeRefused { reason: r } => (r as String) != ""
+    DecodeOk { value: _ } => false
+  }
 }
 
 // RED -- AN ATTEMPT ID THAT ESCAPES ITS OWN DIRECTORY REFUSES, because the decoder rebuilds the
@@ -177,7 +192,7 @@ test fn one_unreadable_record_refuses_the_whole_store() -> Bool {
 // path the controller derives -- the jail, the attempt directory, the subtree teardown proves empty
 // -- would move together onto another attempt's storage.
 test fn an_attempt_id_with_a_separator_refuses() -> Bool {
-  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"../shared\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]")
+  refuses(text: "{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"../shared\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}")
 }
 
 // RED -- A NEGATIVE SLOT INDEX REFUSES AT THE DECODER. A slot index is a Nat, and `as Nat` refuses
@@ -185,7 +200,7 @@ test fn an_attempt_id_with_a_separator_refuses() -> Bool {
 // other claim here, and abort mid-run on a store someone hand-edited. The check is in the decoder
 // and this is what holds it there.
 test fn a_negative_slot_index_refuses() -> Bool {
-  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":-1,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]")
+  refuses(text: "{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":-1,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}")
 }
 
 // RED -- A RECORD MISSING THE CREDENTIAL DEVICE PATH REFUSES rather than decoding with an empty one.
@@ -193,14 +208,14 @@ test fn a_negative_slot_index_refuses() -> Bool {
 // join would refuse every readback with a confusing message about a path that was never staged;
 // refusing at the decoder puts the failure where the defect is.
 test fn a_record_without_the_credential_device_path_refuses() -> Bool {
-  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\"}}]")
+  refuses(text: "{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\"}}")
 }
 
 // THE POSITIVE CONTROL FOR THE REFUSALS ABOVE. Every red in this file is `refuses(...)`, so a
 // decoder that refused EVERYTHING would pass all of them. This is the document the reds are
 // perturbations of, and it must decode.
 test fn the_document_the_reds_perturb_decodes() -> Bool {
-  match decode_store(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]") {
+  match decode_store_documents(bodies: ["{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}"]) {
     DecodeOk { value: rs } => (rs |> count) == 1
     DecodeRefused { reason: _ } => false
   }
@@ -209,9 +224,36 @@ test fn the_document_the_reds_perturb_decodes() -> Bool {
 // AN EMPTY STORE IS A STORE WITH NO RECORDS, AND IT DECODES. It is not the same fact as an absent
 // store -- gunbc.runner_microvm_cell_readiness_store read_cell_readiness_store reports the absent
 // one as StoreUnreadable at host grain -- and this keeps the two distinguishable at the codec.
-test fn an_empty_array_decodes_to_no_records() -> Bool {
-  match decode_store(text: "[]") {
+test fn a_store_with_no_record_files_decodes_to_no_records() -> Bool {
+  match decode_store_documents(bodies: [] as List<String>) {
     DecodeOk { value: rs } => (rs |> count) == 0
     DecodeRefused { reason: _ } => false
+  }
+}
+
+// THE CELL NAMES ITS OWN FILE, SO A CELL THAT IS NOT A FILENAME IS REFUSED RATHER THAN JOINED. Every
+// record's path is derived from its cell id; a separator would address a record outside the store and
+// a relative marker would address the directory itself. The positive half is asserted beside the reds
+// so a path builder that refused everything could not pass.
+test fn a_cell_whose_name_is_not_a_filename_is_refused() -> Bool {
+  addressing_refused(cell: "../../etc/passwd" as CellId)
+    && addressing_refused(cell: "srv1/07" as CellId)
+    && addressing_refused(cell: ".." as CellId)
+    && addressing_refused(cell: "." as CellId)
+    && !addressing_refused(cell: witness_cell)
+}
+
+fn addressing_refused(cell: CellId) -> Bool {
+  match cell_record_path(cell: cell) {
+    CellRecordNameRefused { spelling: _ } => true
+    CellRecordAt { path: _ } => false
+  }
+}
+
+// AN ORDINARY CELL ADDRESSES A FILE INSIDE THE STORE DIRECTORY AND NOWHERE ELSE.
+test fn an_ordinary_cell_addresses_a_file_in_the_store_directory() -> Bool {
+  match cell_record_path(cell: witness_cell) {
+    CellRecordAt { path: p } => p == "/var/lib/gunbc/microvm-cell-readiness/srv1-07.json"
+    CellRecordNameRefused { spelling: _ } => false
   }
 }

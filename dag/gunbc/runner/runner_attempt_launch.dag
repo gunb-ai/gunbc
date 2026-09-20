@@ -61,7 +61,7 @@ import gunbc.runner_microvm_network {
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
 import std.resources { Network, Filesystem }
 import gunbc.command_runner { run_shell_command_capture }
 
@@ -536,24 +536,11 @@ type JitDeviceStagingOutcome
   = JitDeviceStaged { host_path: String }
   | JitDeviceStagingRefused { step: JitDeviceStagingStep, detail: String }
 
-type JitDeviceStatReading
-  = StatRead { value: String }
-  | StatUnread { detail: String }
-
-fn jit_device_stat_reading(outcome: ProcessOutcome) -> JitDeviceStatReading {
-  match outcome {
-    ProcessOutputPresent { text: t } => StatRead { value: trim(s: t) }
-    ProcessOutputAbsent => StatUnread { detail: "stat printed nothing" }
-    ProcessRefused { exit_code: code, stderr: e } =>
-      StatUnread { detail: join(["stat exit ", to_string(code), ": ", trim(s: e)], "") }
-  }
-}
-
-fn jit_device_fact(name: String, reading: JitDeviceStatReading, expected: String) -> JitDeviceStagingOutcome? {
+fn jit_device_fact(name: String, reading: StatFieldReading, expected: String) -> JitDeviceStagingOutcome? {
   match reading {
-    StatUnread { detail: d } =>
+    StatFieldUnread { detail: d } =>
       Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " unread: ", d], "") } }
-    StatRead { value: v } =>
+    StatFieldRead { value: v } =>
       if v == expected {
         none
       } else {
@@ -563,9 +550,9 @@ fn jit_device_fact(name: String, reading: JitDeviceStatReading, expected: String
 }
 
 fn jit_device_readback(
-  uid: JitDeviceStatReading,
-  mode: JitDeviceStatReading,
-  size: JitDeviceStatReading,
+  uid: StatFieldReading,
+  mode: StatFieldReading,
+  size: StatFieldReading,
   content: String,
 ) -> JitDeviceStagingOutcome? {
   match jit_device_fact(name: "owner uid", reading: uid, expected: to_string(attempt_unprivileged_uid)) {
@@ -595,9 +582,9 @@ fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
         JitDeviceStagingRefused { step: JitDeviceWriteStep, detail: device.host_path }
       } else {
         match jit_device_readback(
-          uid: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
-          mode: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
-          size: jit_device_stat_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
+          uid: stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
+          mode: stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
+          size: stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
           content: device.content,
         ) {
           Present { value: refused } => refused

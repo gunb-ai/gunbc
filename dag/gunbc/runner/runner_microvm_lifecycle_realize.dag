@@ -860,7 +860,7 @@ fn run_started_attempt(
 {
   let persisted = persist_cell_readiness_write(write: record)
   match persisted {
-    StorePersisted { records: _ } => run_launched_attempt(bound: bound, plan: plan, network: network)
+    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, network: network)
     refused => ControllerStartNotRecorded { persisted: refused }
   }
 }

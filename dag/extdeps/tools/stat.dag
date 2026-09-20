@@ -1,6 +1,8 @@
 module extdeps.tools.stat
 
-import std.types { Bool, NonEmptyStr, List, Unit }
+import std.types { Bool, NonEmptyStr, List, Unit, Int }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -137,5 +139,33 @@ service stat.File {
     mock_response {
       0 => { file_type: "directory", success: true } "hermetic coreutils stat -c %F"
     }
+  }
+}
+
+// WHAT A stat INVOCATION READ, OR WHY IT READ NOTHING -- ONE DECLARATION, BECAUSE IT IS ONE CONCEPT.
+//
+// Every builder above prints exactly one field on stdout, so every caller faces the same three-way
+// question: the field, no output at all, or a refusal. Two callers in one change each minted their
+// own coproduct for it with the same arm names and the same fold -- `JitDeviceStatReading` in
+// gunbc.runner_attempt_launch and `StoreStatReading` in gunbc.runner_microvm_cell_readiness_store --
+// which is DESIGN 2's failed decomposition: net concepts grew by re-invention rather than by
+// consuming the authority that already owned the boundary (review 69037). The fact's layer is this
+// module, which owns the commands whose output it describes.
+//
+// THE THIRD ARM IS WHY THIS IS NOT A `String?`. "stat printed nothing" and "stat refused" have
+// different remedies -- the first is a field this build of stat does not emit, the second is a path
+// that is not there or cannot be reached -- and a caller that collapsed them would report a missing
+// file and a missing format as one thing. The refusal's text carries the exit status and stderr
+// because that is the only place the cause survives.
+type StatFieldReading
+  = StatFieldRead { value: String }
+  | StatFieldUnread { detail: String }
+
+fn stat_field_reading(outcome: ProcessOutcome) -> StatFieldReading {
+  match outcome {
+    ProcessOutputPresent { text: t } => StatFieldRead { value: trim(s: t) }
+    ProcessOutputAbsent => StatFieldUnread { detail: "stat printed nothing" }
+    ProcessRefused { exit_code: code, stderr: e } =>
+      StatFieldUnread { detail: join(["stat exit ", to_string(code), ": ", trim(s: e)], "") }
   }
 }
