@@ -1,11 +1,13 @@
 module gunbc.seed_growth_admission
 
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
+import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
 import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
   persisted_resolved_graph_format_wall_seed_growth_justification,
   resolved_graph_provider_ctx_reuse_seed_growth_justification
 }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
+import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.closure_edge_demand_seed_growth { closure_edge_demand_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
@@ -85,6 +87,7 @@ import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_gr
 import gunbc.cross_claim_demand_census_seed_growth { cross_claim_demand_census_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
+import gunbc.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_growth_justification }
 import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
@@ -232,6 +235,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
+    floor_cost_debt_edit_seed_growth_justification,
     listing_completeness_seed_growth_justification,
     derived_row_roster_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
@@ -283,7 +287,9 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     param_binder_seed_growth_justification,
     live_tree_stamp_detector_seed_growth_justification,
     joint_claim_join_seed_growth_justification,
-    floor_arm_set_consumer_seed_growth_justification
+    floor_arm_set_consumer_seed_growth_justification,
+    scope_rank_view_seed_growth_justification,
+    primitive_egress_census_seed_growth_justification
   ]
 }
 

@@ -1,6 +1,6 @@
 module gunbc.runner_slot_retirement
 
-import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
@@ -13,14 +13,18 @@ import gunbc.host_operation_exec {
   HostOperation,
   SystemctlMaskNow,
   CgroupPathIsDirectory,
-  CgroupReadInterfaceFile,
+  CgroupReadEvents,
   HostOperationObserved,
   HostOperationRefused,
   HostOperationOutcome,
   host_operation_exec,
 }
-import gunbc.host_converge { gunbc_cgroup_v2_root }
-import extdeps.linux.cgroup_v2 { cgroup_v2_child_path }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point,
+  CgroupEventsDecoded,
+  CgroupEventsUnparseable,
+  decode_cgroup_events_populated,
+}
 import std.resources { Network }
 import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup }
 import gunbc.systemctl_show_read {
@@ -64,9 +68,21 @@ import gunbc.systemctl_show_read {
 // stopped has had its cgroup removed by systemd, and a positively-read absence is stronger evidence of
 // quiescence than a zero count. `CgroupUnobserved` keeps blocking, which is the fail-closed direction
 // the sentinel was reaching for without the ambiguity.
+//
+// THE OCCUPANCY IS THE SUBTREE'S, NOT THE DIRECTORY'S, AND THAT IS WHY `CgroupObservedPopulated`
+// CARRIES NO COUNT. The revision before this one read `<ControlGroup>/cgroup.procs` and counted its
+// lines. `cgroup.procs` lists the processes attached to THAT cgroup and nothing below it, and
+// systemd places a service's children in scoped child cgroups -- so a runner whose Runner.Worker and
+// claim_executor were still alive one level down read as an EMPTY parent, the fold accepted it, and
+// the directory teardown and capacity release it gates were permitted over live work. The kernel's
+// own answer to "is anything alive under here" is the `populated` key of `cgroup.events`
+// (extdeps.linux.cgroup_v2 decode_cgroup_events_populated: "1 if the cgroup or its descendants
+// contains any live processes; otherwise, 0"). That key is a bit, not a count; a count would have to
+// be summed over a subtree walk that the kernel already did, and carrying one would invite the next
+// consumer to decide something from a number that was never the subtree's.
 type CgroupOccupancy
   = CgroupObservedEmpty
-  | CgroupObservedPopulated { count: Int }
+  | CgroupObservedPopulated
   | CgroupAbsent
   | CgroupUnobserved { cause: String }
 
@@ -114,10 +130,10 @@ fn runner_retirement_standing(o: RunnerRetirementObservation) -> RunnerRetiremen
         unit: o.unit,
         cause: join(["the slot's workload cgroup could not be read (", c, "), so whether work is still running under it is unknown"], ""),
       }
-    CgroupObservedPopulated { count: n } =>
+    CgroupObservedPopulated =>
       RetirementPendingDrain {
         unit: o.unit,
-        cause: join(["the slot's cgroup still holds ", to_string(n), " process(es), which is the orphan state the teardown drop-in exists to prevent; the capacity stays charged"], ""),
+        cause: "the slot's cgroup or a descendant still holds live processes (cgroup.events populated 1), which is the orphan state the teardown drop-in exists to prevent; the capacity stays charged",
       }
     CgroupObservedEmpty => runner_retirement_standing_over_quiesced_workload(o: o)
     CgroupAbsent => runner_retirement_standing_over_quiesced_workload(o: o)
@@ -518,8 +534,9 @@ fn surplus_observation_after_attempts(attempts: List<RetirementAttempt>) -> Surp
 //                     under which a drain never completes.
 //   LoadState      -> unit_present. `not-found` is the only reading that means the unit is gone; a
 //                     loaded-but-inactive unit is still present.
-//   TasksCurrent   -> cgroup_process_count. This is the orphan check, and it is the one fact
-//                     `systemctl list-units` cannot supply at any grain.
+//   ControlGroup   -> occupancy, via `cgroup.events` `populated` on the unit's cgroup. This is the
+//                     orphan check, and it is the one fact `systemctl list-units` cannot supply at
+//                     any grain.
 //
 // EVERY REFUSED READ LANDS ON `cgroup_readable: false`, WHICH IS THE UNOBSERVED ARM. That is
 // deliberate and it is the fail-closed direction: `runner_retirement_standing` tests
@@ -606,9 +623,15 @@ fn retirement_active_state_is_running(state: String) -> Bool {
   state == "active" || state == "activating" || state == "deactivating" || state == "reloading"
 }
 
+// THE DECISION, OVER THE TWO READINGS. The directory test answers ABSENT or not; only under an
+// existing directory does `cgroup.events` get consulted, and its `populated` key decides EMPTY or
+// POPULATED for the whole subtree. Every other reading -- a refused test, a refused or failed read,
+// a body the kernel's documented form does not admit -- is UNOBSERVED, which blocks. There is no
+// arm that reads `cgroup.procs`: a procs-only decision is the defect this fold replaced, and a
+// second path beside the events read would be a second authority for one question (DESIGN 3).
 fn cgroup_occupancy_from_reads(
   directory_test: HostOperationOutcome,
-  procs_read: HostOperationOutcome,
+  events_read: HostOperationOutcome,
 ) -> CgroupOccupancy {
   match directory_test {
     HostOperationRefused { operation: _, reason: why } =>
@@ -617,18 +640,18 @@ fn cgroup_occupancy_from_reads(
       if !exists {
         CgroupAbsent
       } else {
-        match procs_read {
+        match events_read {
           HostOperationRefused { operation: _, reason: why } =>
-            CgroupUnobserved { cause: join(["cgroup.procs could not be read: ", why], "") }
-          HostOperationObserved { stdout: procs, success: ok, stderr: _ } =>
+            CgroupUnobserved { cause: join(["cgroup.events could not be read: ", why], "") }
+          HostOperationObserved { stdout: body, success: ok, stderr: _ } =>
             if !ok {
-              CgroupUnobserved { cause: "reading cgroup.procs exited unsuccessfully, so occupancy is unknown" }
+              CgroupUnobserved { cause: "reading cgroup.events exited unsuccessfully, so subtree occupancy is unknown" }
             } else {
-              let pids = split(s: trim(s: procs), delimiter: "\n") |> filter(l => trim(s: l) != "")
-              if list_length(items: pids) == 0 {
-                CgroupObservedEmpty
-              } else {
-                CgroupObservedPopulated { count: list_length(items: pids) }
+              match decode_cgroup_events_populated(body: body) {
+                CgroupEventsUnparseable { cause: c } =>
+                  CgroupUnobserved { cause: join(["cgroup.events could not be decoded: ", c], "") }
+                CgroupEventsDecoded { populated: p } =>
+                  if p { CgroupObservedPopulated } else { CgroupObservedEmpty }
               }
             }
         }
@@ -647,7 +670,9 @@ fn control_group_property_means_cgroup_absent(value: String) -> Bool {
 
 // THE I/O HALF. It performs at most two reads and decides nothing: the second read is skipped when the
 // directory test says the cgroup is gone, because there is no file to read and a refusal there would
-// be reported as doubt about a question already answered.
+// be reported as doubt about a question already answered. The second read is `cgroup.events` of the
+// unit's own cgroup, whose `populated` key the kernel computes over the descendants too -- so one
+// read covers the subtree without this module walking it.
 fn observe_slot_cgroup_occupancy(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
@@ -662,22 +687,20 @@ fn observe_slot_cgroup_occupancy(
       if control_group_property_means_cgroup_absent(value: relative) {
         CgroupAbsent
       } else {
-        let cgroup_path = join([gunbc_cgroup_v2_root, relative], "") as NonEmptyStr
+        let cgroup_path = join([cgroup_v2_mount_point as String, relative], "") as NonEmptyStr
         let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
         match dir {
           HostOperationRefused { operation: _, reason: _ } =>
-            cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
+            cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
           HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
             if !exists {
-              cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
+              cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
             } else {
               cgroup_occupancy_from_reads(
                 directory_test: dir,
-                procs_read: host_operation_exec(
+                events_read: host_operation_exec(
                   transport: transport,
-                  operation: CgroupReadInterfaceFile {
-                    file_path: cgroup_v2_child_path(parent: cgroup_path, child: "cgroup.procs" as NonEmptyStr),
-                  },
+                  operation: CgroupReadEvents { cgroup_path: cgroup_path },
                 ),
               )
             }

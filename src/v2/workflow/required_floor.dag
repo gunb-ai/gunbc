@@ -670,6 +670,107 @@ fn required_gate_prefixes() -> List<String> {
   ]
 }
 
+// THE GATE HAS TWO SELECTOR KINDS, AND THE ROSTER ABOVE IS ONLY ONE OF THEM.
+//
+// `required_gate_prefixes` is matched TEXTUALLY: `test.claim.namespace_` is a row there and is
+// not a segment, and `v2.test.` admits a whole family. That is the right rule for a family and
+// the wrong rule for a single module -- a row spelled as a module name admits every module whose
+// name merely begins with it, so "admitted at exact module grain" was never what the selector
+// enforced (review on gunbc#11708, RF-1): `test.claim.runner_slot_provision` also admits a
+// `test.claim.runner_slot_provision_extra`, and the two rows this change first added the same way
+// would have too. Switching the matcher to equality would repair those rows by silently
+// narrowing every family selector beside them, which is the shape review 11256 already refused
+// once for module seeds.
+//
+// SO THE SECOND KIND IS DECLARED AS ITS OWN ROSTER WITH ITS OWN RULE, and the rule is not new
+// and is NOT string equality: it is NAMED-MODULE SUBTREE ADMISSION, the authored-module-name
+// rule `v2.workflow.floor_subject_seed` already states for every non-prefix seed -- a name
+// admits itself and every module it contains by name at a segment boundary (`a.b` admits `a.b`
+// and `a.b.c`, never `a.bc`) -- which is exactly the rule the
+// host's `closure_module_seeds` realizes in preparation (`v1_compiler.cli_run`
+// `module_name_is_or_is_contained_by`). Reusing it is what makes preparation and disposition
+// agree by construction: a module this roster names is seeded into the prepared subject by the
+// module-seed list and is `Planned` by the disposition below under ONE rule, so neither can admit
+// what the other declines. A third rule minted for "exact" would have been a second authority
+// for the same question.
+//
+// THE FIRST TWO ROWS ARE THE RUNNER CAPACITY PLANNER AND ITS APPLY SEAM, admitted for the reason
+// `runner_slot_provision` was: they are the executable statement of the convergence planner
+// `gunbc.apply` drives, and their reds were invisible. On run 35439332979 (green, 2026-09-19)
+// the disposition artifact listed every identity in both modules
+// `declined_outside_gate_closure / not_executed` while two claims in the first and two in the
+// second were FALSE on main: #11204 deleted srv2's committed width, the pinned org roster's srv2
+// registrations stopped decoding, the planner refused every whole-org plan, and nothing asked.
+// A partial climb under `gunbc.rung_drop` `required_gate_bankruptcy`, not its retirement; the
+// drop's trigger is unchanged. Preparation growth beyond what `runner_slot_provision` already
+// carries is `gunbc.runner_capacity_plan`, `gunbc.runner_capacity_realize` and
+// `gunbc.fleet_runner_connectivity`; both modules declare SubstrateInputsOnly and their controls
+// run against authored rosters. The first required run after admission is the priced receipt,
+// and its identity-grained disposition -- not its overall verdict -- is what shows them executed.
+//
+// THE PREFIX ROSTER'S SINGLE-MODULE ROWS ARE NOT MOVED HERE IN THIS CHANGE. Each of them admits
+// its own suffix neighbours today, and re-homing them is a per-row decision about whether such a
+// neighbour exists or is wanted, owed by a change that reads each one; this change adds no new
+// row to the wrong roster and states the rule the right one carries.
+fn required_gate_authored_modules() -> List<String> {
+  [
+    "test.claim.runner_capacity_plan_witness",
+    "test.claim.runner_capacity_realize_witness",
+  ]
+}
+
+// ONE SELECTOR, TWO RULES, THE RULE NAMED ON THE ARM: a family is a textual prefix, an
+// authored module is a named-module subtree. The disposition folds over this coproduct,
+// so a match reports WHICH kind admitted the module and a reader of the disposition row can tell
+// a family admission from a named one.
+type RequiredGateSelector
+  = GateModuleFamily { prefix: String }
+  | GateAuthoredModule { module_path: String }
+
+fn required_gate_selectors() -> List<RequiredGateSelector> {
+  concat(
+    map(required_gate_prefixes(), p => GateModuleFamily { prefix: p }),
+    map(required_gate_authored_modules(), m => GateAuthoredModule { module_path: m }),
+  )
+}
+
+fn module_name_is_or_is_contained_by(module_path: String, name: String) -> Bool {
+  module_path == name || starts_with(s: module_path, prefix: join([name, "."], ""))
+}
+
+fn required_gate_selector_admits(module_path: String, selector: RequiredGateSelector) -> Bool {
+  match selector {
+    GateModuleFamily { prefix: p } => starts_with(s: module_path, prefix: p)
+    GateAuthoredModule { module_path: m } => module_name_is_or_is_contained_by(module_path: module_path, name: m)
+  }
+}
+
+type RequiredGateMatch =
+    GateUnmatched
+  | GateMatched { selector: RequiredGateSelector }
+
+fn first_required_gate_match(module_path: String, selectors: List<RequiredGateSelector>) -> RequiredGateMatch {
+  match selectors {
+    Empty {} => GateUnmatched {}
+    Cons { head: h, tail: t } =>
+      if required_gate_selector_admits(module_path: module_path, selector: h) {
+        GateMatched { selector: h }
+      } else {
+        first_required_gate_match(module_path: module_path, selectors: t)
+      }
+  }
+}
+
+// THE ONE ADMISSION DECISION, read by the site disposition below and mirrored by the host's two
+// seed lists and its `inside_required_gate` check. A module is inside the gate when SOME selector
+// admits it; which one is reported by `first_required_gate_match`.
+fn required_gate_admits(module_path: String) -> Bool {
+  match first_required_gate_match(module_path: module_path, selectors: required_gate_selectors()) {
+    GateUnmatched => false
+    GateMatched { selector: _ } => true
+  }
+}
+
 // THE ALLOCATION-TO-DEPLOY SEAM IS ADMITTED AT MODULE GRAIN, AND THE ROW THAT FORCED IT IS
 // `no_deploy_row_out_commits_the_memory_budget`.
 //
@@ -865,9 +966,9 @@ fn required_floor_site_disposition(
           if floor_cost_debt_holds(name: identity) {
             DeclinedCostDebt {}
           } else {
-            match first_module_prefix_match(module_path: module_path, prefixes: required_gate_prefixes()) {
-              ModulePrefixUnmatched => DeclinedOutsideRequiredGate {}
-              ModulePrefixMatched { prefix: _ } => Planned {}
+            match first_required_gate_match(module_path: module_path, selectors: required_gate_selectors()) {
+              GateUnmatched => DeclinedOutsideRequiredGate {}
+              GateMatched { selector: _ } => Planned {}
             }
           }
       }
@@ -1168,6 +1269,15 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 // `v2.workflow.floor_grandfathered_roster` carries, cut once, whose rows leave by typed
 // disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
 // -- a toggle whose only effect is "proceed as if the refusal had not fired".
+//
+// ONE OTHER ROUTE REACHES THE GRANDFATHERED BUDGET, AND IT IS NOT THIS SELECTOR (operator ruling,
+// 2026-09-19). A CHANGED identity on the cost-debt roster (`v2.workflow.floor_cost_debt`) has no
+// tier of its own, and `v2.workflow.floor_cost_debt_edit` `cost_debt_edit_tier` gives it
+// `GrandfatheredTier` when -- and only when -- its edit is a pure deletion of test-fn call conjuncts,
+// decided from the base and head tokens of the declaration; every other edit takes
+// `NewWitnessTier`. It is not a caller-supplied toggle either: nothing an author writes selects it,
+// it admits only identities already on a shrink-only roster, and it can only weaken a body that was
+// withheld against that budget. This selector remains the only route for every other identity.
 //
 // THAT THE ROSTER MAY ONLY SHRINK IS NOT A PROPERTY TO CITE FROM HERE (review 65720). An earlier
 // revision of this sentence said it "may only shrink" as though the refusal were established.

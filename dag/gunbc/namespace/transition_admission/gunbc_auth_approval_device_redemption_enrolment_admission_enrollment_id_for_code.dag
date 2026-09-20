@@ -1,0 +1,24 @@
+module gunbc.namespace.transition_admission.gunbc_auth_approval_device_redemption_enrolment_admission_enrollment_id_for_code
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+// enrollment_id_for_code moved from the server module into the wire module, so the iOS app can
+// derive the readback key from the code it holds. Same function, one definition; the bare name in
+// enrolment_admission now resolves to its new home. Consumer: namespace-wave-admission on gunbc#11660.
+data gunbc_auth_approval_device_redemption_enrolment_admission_enrollment_id_for_code: TransitionAdmission = TransitionAdmission {
+  label: "enrollment_id_for_code moved into approval_device_wire so the app can mirror it" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.auth.approval_device_redemption", "enrolment_admission"),
+    spelling: "enrollment_id_for_code" as NonEmptyStr,
+    expected_candidates: [
+      decl_ref("gunbc.auth.approval_device_wire", "enrollment_id_for_code"),
+    ],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11660 as UInt32,
+}

@@ -10,7 +10,7 @@ import gunbc.runner_capacity_plan {
   parse_positive_width,
   runner_capacity_plan,
 }
-import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.runner_capacity_realize { runner_capacity_apply_wet_exit }
 
 // TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child
@@ -88,7 +88,7 @@ fn apply_runner_capacity_plan(
                 plan: runner_capacity_plan(
                   srv3_width: w3,
                   srv4_width: w4,
-                  roster: organization_runner_roster_evidence(),
+                  roster: organization_runner_roster_live_read(),
                 )
               )
           }
