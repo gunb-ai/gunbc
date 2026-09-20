@@ -270,9 +270,6 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
 // obsoletes while the discriminating evidence STAYS ENROLLED, and an
 // expecting-red probe that greens flips to a permanent regression control rather
 // than retiring. The obligation is carried by that clause, not by this comment.
-// THIS ROW GOES RED WHEN RECORD REHOME LANDS. Class
-// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-// DESIGN 4b(4): expecting-red that greens flips to a permanent regression control.
 test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
   let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
   let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false

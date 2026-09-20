@@ -17,7 +17,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
 import v2.std.compilers.lexing { symbol_lexeme }
 
@@ -56,13 +56,6 @@ fn declaration_graft_assemble_for(src: String) -> Outcome<Node> {
     admission: declaration_graft_admission(),
     lm: dag_language_model()
   )
-}
-
-fn declaration_graft_assemble_accepts(src: String) -> Bool {
-  match declaration_graft_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 fn declaration_graft_label_present(root: Node, lexeme: String) -> Bool {
@@ -105,132 +98,179 @@ fn declaration_graft_atom_present(root: Node, lexeme: String) -> Bool {
   )
 }
 
-fn declaration_graft_named_reachable(src: String, lexeme: String) -> Bool {
-  match declaration_graft_assemble_for(src: src) {
-    Accepted { value: root, diagnostics: _ } =>
-      declaration_graft_label_present(root: root, lexeme: lexeme)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-data src_a: String = "module p\n"
-data src_b: String = "module p\n\nfn f(x: Int) -> Int { x }\n"
-data src_c: String = "module p\n\ntype Flag = On | Off\n"
-data src_h: String = "module p\n\ntype Name = String where brand(\"Name\")\n"
-data src_i: String = "module p\n\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\n"
-data src_d: String = "module p\n\ntype Flag = On | Off\nfn g(f: Flag) -> Flag { f }\n"
-data src_e: String = "module p\n\ntype Flag = On | Off\nfn h() -> Flag { On }\n"
-data src_f: String = "module p\n\ntype Flag = On | Off\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
-data src_g: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
-data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
-data src_dag_user_fn: String = "module p\n\nfn dag_user(x: Int) -> Int { x }\n"
-data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
-
-data src_flag_and_fn: String = "module p\n\ntype Flag = On | Off\nfn f(x: Int) -> Int { x }\n"
+// ONE ASSEMBLE PER SOURCE, SHARED, NOT ONE PER CLAIM. Every claim here inspects the
+// graft's RESULT over a tiny source, and the producer of that result is the whole real
+// path (tokenize -> parse -> normalize/graft -> resolve). Measured on the required floor
+// (run 35467726264): one assemble is 74k-149k eval steps against the 72,300 new-witness
+// line, so the cheapest one-member control could not clear it -- DESIGN section 3's
+// diagnostic exactly (the cost does not move when the assertions change). The nullary
+// producers below are enrolled WARM in v2.workflow.floor_pure_producer_share: forced once
+// at strict preparation, outside every per-claim budget, and each claim is handed the
+// Outcome. Supplying never removes the real path: the producers ARE
+// assemble_program_from_ingest, deleting it fails every fill, and the refusing producers
+// keep their claims asserting the REASON (the route), not only the shape.
+//
+// The accepted shapes that are not about a ONE-MEMBER body share one combined module:
+// the coproduct, the where-alias beside fns (the silent-drop control), the `dag_`-prefixed
+// user fn, the import, and the referencing / constructing / matching fns. The two
+// collided-alias spellings CANNOT join it: two where-refinement aliases in one module refuse
+// resolve_reason_ambiguous_symbol on main today (measured on a clean origin/main snapshot
+// with the same binary, independent of this change), so each keeps its own producer -- a
+// share that would cost a witness its red is refused. The one-member sources (empty,
+// fn-only, type-only, where-alias-only) are the containment-spine controls (gunbc#11694)
+// and stay separate, as do the three refusing record sources.
+data src_combined: String = "module p\n\nimport v2.std.logic { Bool }\n\ntype Flag = On | Off\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\nfn dag_user(x: Int) -> Int { x }\nfn g(q: Flag) -> Flag { q }\nfn h() -> Flag { On }\nfn flip(q: Flag) -> Flag { match q { On => Off } }\nfn b() -> Bool { true }\n"
 data src_alias_spelled_as_emitted_id: String = "module p\n\ntype dag_surface_type_expr = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n"
 data src_alias_spelled_as_production_name: String = "module p\n\ntype dag_production_type_decl = String where brand(\"N\")\nfn f(x: Int) -> Int { x }\n"
-data src_import_and_fn: String = "module p\n\nimport v2.std.logic { Bool }\n\nfn f() -> Bool { true }\n"
+data src_empty: String = "module p\n"
+data src_fn_only: String = "module p\n\nfn f(x: Int) -> Int { x }\n"
+data src_type_only: String = "module p\n\ntype Flag = On | Off\n"
+data src_where_alias_only: String = "module p\n\ntype Name = String where brand(\"Name\")\n"
+data src_record_construct: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
+data src_record_type_only: String = "module p\n\ntype Rec { n: Int }\n"
+data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
 
-test fn declaration_graft_empty_module_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_a)
-}
+fn declaration_graft_combined_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_combined) }
+fn declaration_graft_alias_spelled_as_emitted_id_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_alias_spelled_as_emitted_id) }
+fn declaration_graft_alias_spelled_as_production_name_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_alias_spelled_as_production_name) }
+fn declaration_graft_empty_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_empty) }
+fn declaration_graft_fn_only_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_fn_only) }
+fn declaration_graft_type_only_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_type_only) }
+fn declaration_graft_where_alias_only_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_where_alias_only) }
+fn declaration_graft_record_construct_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_record_construct) }
+fn declaration_graft_record_type_only_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_record_type_only) }
+fn declaration_graft_flag_and_rec_assembled() -> Outcome<Node> { declaration_graft_assemble_for(src: src_flag_and_rec) }
 
-test fn declaration_graft_fn_only_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_b)
-}
-
-test fn declaration_graft_type_only_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_c)
-}
-
-test fn declaration_graft_type_only_flag_is_named() -> Bool {
-  declaration_graft_named_reachable(src: src_c, lexeme: "Flag")
-}
-
-test fn declaration_graft_where_alias_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_h)
-}
-
-test fn declaration_graft_silent_drop_control_type_is_named() -> Bool {
-  declaration_graft_named_reachable(src: src_i, lexeme: "Name")
-}
-
-test fn declaration_graft_fn_referencing_type_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_d)
-}
-
-test fn declaration_graft_variant_construct_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_e)
-}
-
-test fn declaration_graft_match_variants_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_f)
-}
-
-test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
-  declaration_graft_named_reachable(src: src_dag_user_fn, lexeme: "dag_user")
-}
-
-// Partial graft must not drop a sibling fn: Flag Named and f Named on the same
-// Accepted assemble. Rejected is not agreement.
-test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool {
-  match declaration_graft_assemble_for(src: src_flag_and_fn) {
+fn declaration_graft_accepts(out: Outcome<Node>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      declaration_graft_label_present(root: root, lexeme: "Flag")
-        && declaration_graft_label_present(root: root, lexeme: "f")
   }
 }
 
-// A record beside a graftable coproduct is carried as a residual shell, not
-// dropped (main dropped it silently). The shell is UNLOWERED -- body_lower_type_decl
-// rehomes a type_decl only with a where-clause -- so its surface tokens reach
-// resolve as bare mentions and a closure without a parse-phase declaration
-// index refuses resolve_reason_unbound_symbol (measured: even `type Rec { }`).
-// Standing RED of gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft;
-// flips to an Accepted-with-Rec-Named control when the rehome lands.
-test fn declaration_graft_coproduct_beside_record_refuses_unbound_today() -> Bool {
-  match declaration_graft_assemble_for(src: src_flag_and_rec) {
-    Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_unbound_symbol
+fn declaration_graft_named_in(out: Outcome<Node>, lexeme: String) -> Bool {
+  match out {
+    Accepted { value: root, diagnostics: _ } => declaration_graft_label_present(root: root, lexeme: lexeme)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn declaration_graft_refuses_with(out: Outcome<Node>, reason: Symbol) -> Bool {
+  match out {
+    Rejected { diagnostics: d } => d.head.reason == reason
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-// Record assemble standing RED (one spelling of the field_decl_block skip):
-// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-// Not asserted via !named_reachable: that is true on every Rejected.
-test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
-  !declaration_graft_assemble_accepts(src: src_g_type_only)
+test fn declaration_graft_empty_module_accepts() -> Bool {
+  declaration_graft_accepts(out: declaration_graft_empty_assembled())
 }
 
-test fn declaration_graft_record_construct_does_not_accept_today() -> Bool {
-  !declaration_graft_assemble_accepts(src: src_g)
+test fn declaration_graft_fn_only_accepts() -> Bool {
+  declaration_graft_accepts(out: declaration_graft_fn_only_assembled())
 }
 
-// An import_decl unit dissolves at the partition (admitted upstream as
-// Admission.imports): it is neither Named nor a residual shell. The control is a
-// one-module ingest whose closure does NOT contain v2.std.logic: carried as a
-// residual shell, resolve walks `logic` / `Bool` as bare mentions and refuses
-// (v2.test.native_decl_selection went red on exactly this). Green on main via
-// the flatten; red on the partition until the UnitDissolved arm.
-test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() -> Bool {
-  match declaration_graft_assemble_for(src: src_import_and_fn) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      declaration_graft_label_present(root: root, lexeme: "f")
-        && !declaration_graft_atom_present(root: root, lexeme: "logic")
-  }
+test fn declaration_graft_type_only_accepts() -> Bool {
+  declaration_graft_accepts(out: declaration_graft_type_only_assembled())
+}
+
+// The headline: a one-member module whose member targets a Conj reads as module `p`
+// (gunbc#11694) and its coproduct is a Named containment edge.
+test fn declaration_graft_type_only_flag_is_named() -> Bool {
+  declaration_graft_named_in(out: declaration_graft_type_only_assembled(), lexeme: "Flag")
+}
+
+test fn declaration_graft_where_alias_accepts() -> Bool {
+  declaration_graft_accepts(out: declaration_graft_where_alias_only_assembled())
+}
+
+test fn declaration_graft_combined_accepts() -> Bool {
+  declaration_graft_accepts(out: declaration_graft_combined_assembled())
+}
+
+// The silent-drop control: a where-alias beside fns used to be dropped by the flatten.
+test fn declaration_graft_silent_drop_control_type_is_named() -> Bool {
+  declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "Name")
+}
+
+// Partial graft must not drop a sibling: Flag Named and f Named on the same Accepted tree.
+test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool {
+  declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "Flag")
+    && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "f")
+}
+
+// Referencing, constructing and matching the coproduct's variants all live in the same
+// accepted module (g, h, flip): one Accepted covers the three former per-source rows.
+test fn declaration_graft_variant_reference_construct_and_match_accept() -> Bool {
+  declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "g")
+    && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "h")
+    && declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "flip")
+}
+
+// Prefix-heuristic control: a user fn spelled `dag_...` is a member.
+test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
+  declaration_graft_named_in(out: declaration_graft_combined_assembled(), lexeme: "dag_user")
 }
 
 // A where-alias is rehomed by body lowering as `Conj { Name: host }` with no unit
 // identity, so it reaches the graft through the FLATTEN, not the partition. The
 // flatten must not decide membership by spelling (review 68542): a user alias whose
 // name spells an emitted identity or a production name is still a declaration.
-// RED while namespace_graft_keep_flattened_member_edge asks the lexeme.
 test fn declaration_graft_alias_spelled_as_emitted_identity_survives_flatten() -> Bool {
-  declaration_graft_named_reachable(src: src_alias_spelled_as_emitted_id, lexeme: "dag_surface_type_expr")
+  declaration_graft_named_in(
+    out: declaration_graft_alias_spelled_as_emitted_id_assembled(),
+    lexeme: "dag_surface_type_expr"
+  )
 }
 
 test fn declaration_graft_alias_spelled_as_production_name_survives_flatten() -> Bool {
-  declaration_graft_named_reachable(src: src_alias_spelled_as_production_name, lexeme: "dag_production_type_decl")
+  declaration_graft_named_in(
+    out: declaration_graft_alias_spelled_as_production_name_assembled(),
+    lexeme: "dag_production_type_decl"
+  )
+}
+
+// An import_decl unit dissolves at the partition (admitted upstream as
+// Admission.imports): it is neither Named nor a residual shell. The closure of this
+// one-module ingest does NOT contain v2.std.logic: carried as a residual shell, resolve
+// walks `logic` / `Bool` as bare mentions and refuses (v2.test.native_decl_selection went
+// red on exactly this).
+test fn declaration_graft_import_beside_fn_accepts_and_dissolves_the_import() -> Bool {
+  match declaration_graft_combined_assembled() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      declaration_graft_label_present(root: root, lexeme: "b")
+        && !declaration_graft_atom_present(root: root, lexeme: "logic")
+  }
+}
+
+// A record beside a graftable coproduct is carried as a residual shell, not dropped
+// (main dropped it silently). The shell is UNLOWERED -- body_lower_type_decl rehomes a
+// type_decl only with a where-clause -- so its surface tokens reach resolve as bare
+// mentions and a closure without a parse-phase declaration index refuses
+// resolve_reason_unbound_symbol (measured: even `type Rec { }`). Standing RED of
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft; flips to
+// an Accepted-with-Rec-Named control when the rehome lands.
+test fn declaration_graft_coproduct_beside_record_refuses_unbound_today() -> Bool {
+  declaration_graft_refuses_with(
+    out: declaration_graft_flag_and_rec_assembled(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// Record assemble standing RED (the record spelling of the field_decl_block skip), asserted
+// by the typed reason so the row can go red when the rehome lands, and never by
+// `!named_reachable`, which is true on every Rejected.
+test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
+  declaration_graft_refuses_with(
+    out: declaration_graft_record_type_only_assembled(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+test fn declaration_graft_record_construct_does_not_accept_today() -> Bool {
+  declaration_graft_refuses_with(
+    out: declaration_graft_record_construct_assembled(),
+    reason: ^resolve_reason_unbound_symbol
+  )
 }
