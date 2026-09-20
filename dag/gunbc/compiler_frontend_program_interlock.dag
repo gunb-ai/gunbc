@@ -272,6 +272,18 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // against the persisted frontier (gunbc.self_host_compile_phase_live_gate, merged in #9857, with its
 // enrolment parked by the operator), and native admission answers a different question. Re-pointing
 // it would be a meaning fork, so both milestones stand.
+// THE WAVE-ADMISSION EDGE IS VOIDED BY OPERATOR RULING 2026-09-19.
+// NamespaceFirstSemanticWave was gated on NamespaceWaveAdmissionEnrolled: the 2026-08-26 ruling
+// made the plan's disclosed "no CI mechanism" gap a blocker and named the wall as the gate. The
+// 2026-09-19 ruling DELETED the wall -- its transition-admission bookkeeping refused 100% of
+// merge_group runs on a clean floor (run 35461710214; gunbc.rung_drop
+// namespace_wave_admission_wall_removed) -- so the edge named a gate that does not exist, and
+// gating the wave on a deleted phase would be the trigger-sufficiency failure this file exists
+// to prevent, arriving through an edge rather than a label. The milestone VARIANT stays: the
+// program fact it names returns if a replacement wall is enrolled, which is exactly the drop
+// row's restoration trigger. What the wave now waits on is the remaining pair, and the ACT-0
+// release gate still reads the milestone's standing -- which reads the drop row, so the waves
+// cannot be released while the drop stands.
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
@@ -280,7 +292,7 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
     NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceBaselineObservationComplete]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
@@ -299,6 +311,15 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
 // merge before the wave-admission wall exists. Preparatory work is explicitly
 // unaffected -- measurement, port-locus, instruments, lexical de-forking that
 // preserves the exact set, typed carriers, dry-run projections. Step 1 is not.
+//
+// SUPERSEDED IN PART, 2026-09-19 (operator ruling): the wall itself is DELETED --
+// its transition-admission bookkeeping refused every merge_group run on a clean
+// floor (run 35461710214) -- and the blocker it carried is declared as the drop
+// gunbc.rung_drop namespace_wave_admission_wall_removed rather than enforced by a
+// phase. The blocker STANDS as a program fact: ACT-0's release gate still reads
+// the milestone, and the milestone now reads the drop row, so the waves stay
+// unreleased until a wall with a debt-collection design that never charges
+// bystanders exists and runs at landing time.
 type NamespaceChangeClass
   = PreparatoryNoSemanticMotion
   | AltersSubjectMembershipOrBinding

@@ -18,7 +18,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use v1_compiler::cli_run::namespace_wave_admission::{
+use v1_compiler::cli_run::namespace_baseline::{
     blob_id_at, environment_load_refusal_text, evaluate_environment_in, load_parse_environment_at,
     materialize_revision_paths,
 };

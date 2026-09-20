@@ -3,7 +3,7 @@ module extdeps.virtualization.firecracker
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -37,6 +37,42 @@ type FirecrackerRelease {
 data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
   version: "v1.16.1",
   arch: "aarch64",
+}
+
+// THE vCPU RANGE THE PINNED RELEASE ACCEPTS, AS UPSTREAM STATES IT. Firecracker's machine
+// configuration admits `vcpu_count` in 1..=32 (docs/api_requests: "Number of vCPUs (either 1 or
+// an even number)" was the pre-1.0 wording; the current MachineConfig schema constrains the field
+// to minimum 1, maximum 32, and the VMM refuses a PUT /machine-config outside that range before
+// any boot). It is a fact about this RELEASE and lives beside its row, so a consumer that admits
+// a guest topology can refuse a count the VMM would refuse, rather than discovering it at boot as
+// an API error. A later release that widens the range changes this row and nothing downstream.
+// THE BOUNDS RIDE THE SAME CARRIER AS THE COUNT THEY BOUND: std.measure HardwareThreadCount, the
+// one place a vCPU count lives in this corpus (extdeps.cloud.hetzner and extdeps.github.hosted_runners
+// read vendor vCPU figures onto it the same way). The API field itself stays the bare Int upstream's
+// schema declares (FirecrackerMachineConfig.vcpu_count); the boundary conversion is one call, here.
+type FirecrackerVcpuRange {
+  of_release: FirecrackerRelease
+  minimum: HardwareThreadCount
+  maximum: HardwareThreadCount
+}
+
+data firecracker_vcpu_range_v1_16_1: FirecrackerVcpuRange = FirecrackerVcpuRange {
+  of_release: firecracker_release_aarch64,
+  minimum: hardware_thread_count(count: 1),
+  maximum: hardware_thread_count(count: 32),
+}
+
+type FirecrackerVcpuAdmission
+  = VcpuCountAdmitted { count: HardwareThreadCount }
+  | VcpuCountUnsupported { requested: HardwareThreadCount, minimum: HardwareThreadCount, maximum: HardwareThreadCount }
+
+fn firecracker_vcpu_count_admission(range: FirecrackerVcpuRange, count: HardwareThreadCount) -> FirecrackerVcpuAdmission {
+  let n = hardware_thread_count_value(t: count)
+  if n < hardware_thread_count_value(t: range.minimum) || n > hardware_thread_count_value(t: range.maximum) {
+    VcpuCountUnsupported { requested: count, minimum: range.minimum, maximum: range.maximum }
+  } else {
+    VcpuCountAdmitted { count: count }
+  }
 }
 
 // THE HOST REQUIREMENT IS ONE FACT AND IT IS NOT NEGOTIABLE. Upstream states it as read/write

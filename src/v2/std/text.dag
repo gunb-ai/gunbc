@@ -73,9 +73,8 @@ fn char_eq(a: Char, b: Char) -> Bool {
 // them under names that do not spell string_eq exactly.
 //
 // THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
-// rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster
-// header in src/v1/stage0/src/namespace_wave_admission.rs names -- two spellings of one census
-// would be the second authority DESIGN section 3 forbids, and the narrower one UNDER-REPORTS:
+// rots the moment anyone adds or removes a copy. ONE COMMAND (the roster header that used to name
+// its twin is deleted with the wave-admission wall, 2026-09-19, so this is now its only home):
 //   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
 // A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
 // after it stopped being true, which is why neither appears in this annotation.
