@@ -22,7 +22,7 @@ import gunbc.harness.harness_turn {
   harness_stop_reason_truncated, harness_wire_block_json,
   harness_split_inline_reasoning, harness_thinking_format_cause,
 }
-import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
+import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum,
@@ -284,21 +284,46 @@ test fn a_second_closer_is_speech_not_an_invalid_format() -> Bool {
   let b = harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>the file mentions </think> in a test" }])
   list_length(items: b) == 2
     && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "the file mentions </think> in a test"  _ => false })
-    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: ReasoningMaximum) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: ReasoningMaximum, stop: EndTurn) == ""
 }
 
-// THE ENCODER'S SECOND INVALID SHAPE: thinking requested, no closer, no thinking block.
-test fn a_missing_closer_under_thinking_is_an_invalid_format() -> Bool {
-  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum)
+// THE INVALID SHAPE, NARROWED TO WHAT THE INVARIANT ACTUALLY NAMES: thinking requested, the
+// completion stopped at the TOKEN CEILING, and no closer and no thinking block arrived -- the chain
+// of thought is truncated and must not be transcribed as speech.
+test fn a_ceiling_stopped_completion_with_no_closer_is_an_invalid_format() -> Bool {
+  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum, stop: MaxTokens)
     .contains("no end-of-thinking closer")
 }
 
-// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, and a
-// well-formed inline completion under Think Max is well-formed too. A cause that fired on either
-// would refuse every ordinary round.
-test fn a_closerless_text_is_valid_under_non_think_and_a_split_one_under_think_max() -> Bool {
-  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningOff) == ""
-    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "r</think>391" }], mode: ReasoningMaximum) == ""
+// THE PRODUCTION SHAPE THAT FALSIFIED THE OLD PREDICATE, planted verbatim from the observed
+// completion (dispatch probe 2026-09-20, attempt-state shell-typed-invocation-a19c151825c6f6eff):
+// GLM-5.3-Flash at reasoning_effort max answered with finish_reason `tool_calls`, reasoning null
+// and zero reasoning tokens. A COMPLETED round whose model went straight to its tool calls is
+// well-formed -- complete is not truncated -- and the turn must execute the calls, not fail.
+test fn a_completed_tool_round_with_no_reasoning_is_well_formed() -> Bool {
+  harness_thinking_format_cause(unit: Glm53FlashOnVllm, blocks: [
+    WireToolUseBlock { id: "chatcmpl-tool-9aca2e33e6090815", name: "run_command", input: json_object([]) },
+    WireToolUseBlock { id: "chatcmpl-tool-80011b8c2bf62a54", name: "run_command", input: json_object([]) },
+  ], mode: ReasoningMaximum, stop: ToolUse) == ""
+}
+
+// THE DISCRIMINATING RED FOR THE FIX: the SAME tool-call block list, but stopped at the ceiling --
+// the truncated shape the invariant exists to refuse. The cause must still fire, and a closerless
+// text stopped at the ceiling must fire with it.
+test fn a_ceiling_stopped_round_with_no_thinking_block_is_refused() -> Bool {
+  harness_thinking_format_cause(unit: Glm53FlashOnVllm, blocks: [
+    WireToolUseBlock { id: "a", name: "run_command", input: json_object([]) },
+  ], mode: ReasoningMaximum, stop: MaxTokens).contains("truncated")
+}
+
+// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, a
+// well-formed inline completion under Think Max is well-formed too, and a closer-less text that
+// COMPLETED under Think Max is a model that simply did not reason this round -- not a truncation.
+// A cause that fired on any of these would refuse every ordinary round.
+test fn a_closerless_text_is_valid_under_non_think_and_completed_stops() -> Bool {
+  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningOff, stop: EndTurn) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "r</think>391" }], mode: ReasoningMaximum, stop: EndTurn) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum, stop: EndTurn) == ""
 }
 
 

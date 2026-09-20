@@ -776,17 +776,31 @@ fn harness_stop_reason_truncated(reason: AnthropicStopReason) -> Bool {
 }
 
 
-// THE ENCODER'S TWO INVALID SHAPES, as a located cause; empty means the completion is well-formed.
-// Checked on the RAW blocks so a multiple-closer text is judged before any split could hide it, and
-// only when thinking was requested -- which is now asked of the SEAM rather than of the level alone,
-// and the difference is load-bearing: on DeepSeek the off level genuinely requests nothing and a
-// completion with no closer is well-formed, while GLM-5.3-Flash reasons unconditionally, so at every
-// level a completion carrying no reasoning at all is a shape worth refusing. A level-only predicate
-// answered false for off and would have let that pass unexamined. A thinking block already present
-// (a parser-equipped server, which vLLM is for the GLM family) satisfies the requirement.
-fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>, mode: HarnessReasoningLevel) -> String {
-  if harness_unit_thinking_requested(unit: unit, level: mode) && !harness_has_thinking_block(blocks: harness_split_inline_reasoning(unit: unit, blocks: blocks)) {
-    "invalid thinking format: thinking was requested and the completion carries no end-of-thinking closer and no thinking block; the encoder asserts on this shape, and a truncated chain of thought must not be transcribed as speech"
+// THE INVALID SHAPE IS A TRUNCATED THINKING BLOCK, AND TRUNCATION IS A PROPERTY OF THE STOP REASON,
+// NOT OF THE BLOCK LIST. The hazard this refuses is the one the seam names at
+// harness_unit_server_parses_reasoning: thinking requested, the completion stopped at the token
+// ceiling mid-thought, and the closer never arrived -- so whatever text exists is partial reasoning,
+// and a truncated chain of thought must not be transcribed as speech. Checked on the RAW blocks so a
+// multiple-closer text is judged before any split could hide it, and only when thinking was requested
+// -- which is asked of the SEAM rather than of the level alone, and the difference is load-bearing:
+// on DeepSeek the off level genuinely requests nothing and a completion with no closer is well-formed.
+// A thinking block already present (a parser-equipped server, which vLLM is for the GLM family)
+// satisfies the requirement.
+//
+// A COMPLETED COMPLETION CARRYING NO REASONING IS NOT THAT SHAPE. An earlier revision of this
+// predicate refused ANY closer-less completion under a requested thinking mode, on the claim that
+// GLM-5.3-Flash reasons unconditionally so an empty reasoning half is always a defect. Production
+// falsified the claim, 2026-09-20 (dispatch probe, attempt-state
+// shell-typed-invocation-a19c151825c6f6eff): at reasoning_effort max the model answered a tool round
+// with finish_reason `tool_calls`, reasoning null and zero reasoning tokens -- it went straight to
+// its tool calls, the completion was complete, and the refusal killed a healthy four-round turn.
+// The stop reason is the discriminator the invariant actually needs: `length` mid-thinking is the
+// truncation; a completed stop with no thinking block is a model that did not think this round.
+fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>, mode: HarnessReasoningLevel, stop: AnthropicStopReason) -> String {
+  if harness_unit_thinking_requested(unit: unit, level: mode)
+    && harness_stop_reason_truncated(reason: stop)
+    && !harness_has_thinking_block(blocks: harness_split_inline_reasoning(unit: unit, blocks: blocks)) {
+    "invalid thinking format: thinking was requested and the completion stopped at the token ceiling with no end-of-thinking closer and no thinking block; the chain of thought is truncated, and a truncated chain of thought must not be transcribed as speech"
   } else {
     ""
   }
@@ -1021,20 +1035,11 @@ fn harness_turn_round(
           tool_calls: list_length(items: uses),
           files_changed: none,
         )
-        if harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode) != "" {
-          let invalid = concat(events, [
-            usage,
-            harness_event_turn_failed(message: harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode)),
-          ])
-          match harness_write_events(config: config, events: invalid) {
-            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-            HarnessEventsWritten =>
-              TurnThinkingFormatInvalid {
-                cause: harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode),
-                steps_taken: steps_taken + 1,
-              }
-          }
-        } else if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
+        // TRUNCATION WITH AN OPEN TOOL CALL IS JUDGED FIRST: when both arms could fire on one
+        // max_tokens stop, the open call is the more specific cause and the one whose consequence
+        // (a partial file write executed as a complete command) is the worse to bury in a format
+        // verdict.
+        if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
           let truncated = concat(events, [
             usage,
             harness_event_turn_failed(
@@ -1052,6 +1057,19 @@ fn harness_turn_round(
               TurnTruncatedMidToolCall {
                 output_tokens: token_count_value(t: output_tokens),
                 ceiling: config.max_tokens,
+                steps_taken: steps_taken + 1,
+              }
+          }
+        } else if harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode, stop: stop_reason) != "" {
+          let invalid = concat(events, [
+            usage,
+            harness_event_turn_failed(message: harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode, stop: stop_reason)),
+          ])
+          match harness_write_events(config: config, events: invalid) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnThinkingFormatInvalid {
+                cause: harness_thinking_format_cause(unit: config.serving_unit, blocks: blocks, mode: config.reasoning_mode, stop: stop_reason),
                 steps_taken: steps_taken + 1,
               }
           }
