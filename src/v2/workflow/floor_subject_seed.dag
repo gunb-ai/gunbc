@@ -44,7 +44,7 @@ type PreparedSubjectSeedGround
     }
 
 // HOW A CONSUMER'S MATCH ARM WAS BOUND TO THE CHANGED COPRODUCT, decided from the arm's
-// declaring-candidate set (the consumption relation `namespace_wave_admission` already computes
+// declaring-candidate set (the consumption relation `namespace_baseline` already computes
 // from `ModuleDeclarationRecord`; no second relation is minted). Kept apart because the two are
 // planned alike and COUNTED apart: a bare read whose candidate set is empty at this grain is the
 // flat last-writer-wins channel the namespace cut is retiring, and absorbing it into the

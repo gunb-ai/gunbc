@@ -209,9 +209,11 @@ pub struct ModuleDeclarationRecord {
     /// resolves nothing across files.
     ///
     /// THE OVER-COLLECTION IS BOUNDED, and the earlier reasoning for leaving it unbounded is
-    /// refuted: that it is SYMMETRIC across the two trees the one consumer
-    /// (`namespace_wave_admission`) compares, so a spelling denoting nothing on both sides
-    /// contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT — the
+    /// refuted: that it is SYMMETRIC across the two trees the consumer of the day
+    /// (`namespace_wave_admission`, deleted with the wave-admission wall 2026-09-19; its
+    /// baseline machinery survives as `namespace_baseline`) compares, so a spelling denoting
+    /// nothing on both sides contributes no delta. A symmetric COLLECTOR does not give a
+    /// symmetric VERDICT — the
     /// supplier set is a function of the CORPUS, so deleting an unrelated declaration moves it
     /// under every site merely spelling the same word. The measured specimen, the two kinds
     /// now excluded, and the remaining members of the class are on
