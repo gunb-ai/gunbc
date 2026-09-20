@@ -3,14 +3,10 @@ module gunbc.ci_floor_measurement
 import std.measure {
   ByteSize, byte_size, byte_size_count,
 }
-import std.realization_width { byte_size_saturating_sub }
-import std.types { Int, List, String, NonEmptyStr, Bool }
+import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.floor_demand { gunbc_ci_floor_run_peak_receipts, floor_run_peak_receipt_at_throttle_line }
 
