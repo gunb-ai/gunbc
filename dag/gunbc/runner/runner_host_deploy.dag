@@ -306,8 +306,12 @@ type RunnerHostDeployResolution
 // and a fifth is a row someone must author, not a default someone inherits.
 //
 // This mirrors gunbc.runner_slot_allocation gunbc_runner_committed_width, which answers
-// zero slots for an unknown host on the same reasoning: an unclassified machine is unknown, not
-// typical.
+// RunnerWidthUnresolved for an unknown host on the same reasoning: an unclassified machine is
+// unknown, not typical. An earlier revision of this sentence said that authority "answers zero
+// slots for an unknown host" -- which was true of the deleted Int API and is the exact conflation
+// this change removed, left standing as prose in the module that turns a width into a provisioning
+// target (DESIGN 4c: an annotation is never evidence that a machine claim holds, and a drifted one
+// is a second account of a fact the declaration already carries).
 
 fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
   if (host as String) == (operator_host_srv1 as String) {

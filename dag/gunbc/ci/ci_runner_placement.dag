@@ -553,24 +553,7 @@ fn refuse_host(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRu
 // fleet-level reason is now a total function from one offer to one standing, so a refusal has no
 // carrier through which it could reach another host. That is the per-host grain as a structural
 // property rather than as care taken by every arm.
-// THE WIDTH IS RESOLVED FIRST, BECAUSE EVERY CHARGE BELOW IT IS DENOMINATED IN IT. The runner pool
-// this wall checks against IS slots x MemoryMax, so a host whose width does not resolve has no
-// runner pool to charge -- and the previous shape reached the conservation arithmetic anyway,
-// charging the zero that an unresolved width answered. A zero charge always conserves, so the wall
-// returned HostAllocationConserves for exactly the hosts it could say least about.
 fn host_deployment_standing(offer: ComputeOffer, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
-  let host_id = offer.supply.physical.identity
-  match gunbc_runner_committed_width(host: host_id) {
-    RunnerWidthUnresolved { cause: wc } =>
-      refuse_host(host: host_id, cause: CommittedWidthUnresolved {
-        cause: runner_width_unresolved_cause_text(cause: wc)
-      })
-    RunnerWidthDerived { slots: slots } =>
-      host_deployment_standing_at_width(offer: offer, slots: slots, control_plane_placement: control_plane_placement)
-  }
-}
-
-fn host_deployment_standing_at_width(offer: ComputeOffer, slots: Int, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
   let host_id = offer.supply.physical.identity
   match compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
@@ -586,15 +569,51 @@ fn host_deployment_standing_at_width(offer: ComputeOffer, slots: Int, control_pl
             SessionSliceUnsized { reason: sr } =>
               refuse_host(host: host_id, cause: SessionReservationUnestablished { cause: sr })
             SessionSliceNotApplicable =>
-              host_standing_with_session_slice(offer: offer, slots: slots, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: byte_size(0), control_plane_placement: control_plane_placement)
+              host_standing_with_session_slice(offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: byte_size(0), control_plane_placement: control_plane_placement)
             SessionSliceCharged { bytes: session_pool } =>
-              host_standing_with_session_slice(offer: offer, slots: slots, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: session_pool, control_plane_placement: control_plane_placement)
+              host_standing_with_session_slice(offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: oomd_actuation_floor(host: host_ram), session_pool: session_pool, control_plane_placement: control_plane_placement)
           }
       }
   }
 }
 
+// THE WIDTH IS RESOLVED BEFORE THE CONSERVATION WALL AND AFTER THE SESSION SLICE, AND BOTH HALVES
+// OF THAT ORDER ARE DELIBERATE. Before the wall, because the runner pool it checks IS slots x
+// MemoryMax: an unresolved width charged the wall a zero pool, a zero charge always conserves, and
+// the wall therefore returned HostAllocationConserves for exactly the hosts it could say least
+// about. After the session slice, because on this fleet an unestablished session reservation is
+// what makes a width unresolvable -- resolving width first would refuse srv2 with the derived cause
+// and leave SessionReservationUnestablished with no production producer, replacing a specific
+// refusal with a general one and killing an arm that names the actual root.
 fn host_standing_with_session_slice(
+  offer: ComputeOffer,
+  cpu: CpuFacts,
+  host_id: HostIdentity,
+  host_ram: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize,
+  control_plane_placement: FabricControlPlanePlacement
+) -> HostRunnerDeploymentStanding {
+  match gunbc_runner_committed_width(host: host_id) {
+    RunnerWidthUnresolved { cause: wc } =>
+      refuse_host(host: host_id, cause: CommittedWidthUnresolved {
+        cause: runner_width_unresolved_cause_text(cause: wc)
+      })
+    RunnerWidthDerived { slots: slots } =>
+      host_standing_at_width(
+        offer: offer,
+        slots: slots,
+        cpu: cpu,
+        host_id: host_id,
+        host_ram: host_ram,
+        headroom: headroom,
+        session_pool: session_pool,
+        control_plane_placement: control_plane_placement,
+      )
+  }
+}
+
+fn host_standing_at_width(
   offer: ComputeOffer,
   slots: Int,
   cpu: CpuFacts,

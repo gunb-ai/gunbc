@@ -144,17 +144,28 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
 // for srv2, by any mechanism, turns this arm into RunnerWidthDerived and reds the claim; so does
 // answering a derived number through a re-grounded denominator, which is the outcome that should
 // require a visible edit here.
+// THE CAUSE PAYLOAD IS THE RESERVATION POLICY'S OWN SENTENCE, NOT A DESCRIPTION WRITTEN HERE, and
+// the row below requires it to survive into the rendered text. Checking only the variant and the
+// host would be satisfied by a carrier that took the arm and then said nothing about why -- which
+// is the state this whole change replaced, one layer in.
+data srv2_policy_cause_fragment: String = "the managed-slice peak cannot be read as a whole-host aggregate"
+
 test fn srv2_width_resolves_to_a_typed_refusal_naming_its_denominator() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_srv2) {
     RunnerWidthDerived { slots: _ } => false
     RunnerWidthUnresolved { cause: c } =>
       match c {
         WidthSlotShapeInadmissible { reason: _ } => false
-        WidthMemoryDenominatorUnestablished { host: h, cause: _ } =>
+        WidthMemoryDenominatorUnestablished { host: h, cause: policy_cause } =>
           (h as String) == (operator_host_srv2 as String)
             && string_contains(
                  s: runner_width_unresolved_cause_text(cause: c),
                  pattern: "is UNRESOLVED, not zero",
+               )
+            && string_contains(s: policy_cause as String, pattern: srv2_policy_cause_fragment)
+            && string_contains(
+                 s: runner_width_unresolved_cause_text(cause: c),
+                 pattern: srv2_policy_cause_fragment,
                )
       }
   }
@@ -402,10 +413,21 @@ test fn a_slot_on_an_unresolved_host_is_neither_member_nor_outside() -> Bool {
 // THE SUMMANDS MUST ADD UP OR THE PARTITION IS NOT ONE. If github + fabric ever drifted from the
 // committed width, some slot would be in neither population or counted twice, and the arithmetic
 // below is the only thing standing between "purpose is a partition" and "purpose is a label."
-fn width_or_negative(r: RunnerWidthResolution) -> Int {
+// THE RESOLUTIONS ARE MATCHED, NEVER FLATTENED TO A SENTINEL NUMBER. An earlier revision of this
+// change mapped an unresolved answer to -1 and did arithmetic on it, which is the same substitution
+// the production code just stopped doing: a claim whose inputs are sentinels is a claim about the
+// sentinel convention. These two helpers each fail on the arm they are not about.
+fn resolution_is_unresolved(r: RunnerWidthResolution) -> Bool {
   match r {
-    RunnerWidthDerived { slots: n } => n
-    RunnerWidthUnresolved { cause: _ } => 0 - 1
+    RunnerWidthUnresolved { cause: _ } => true
+    RunnerWidthDerived { slots: _ } => false
+  }
+}
+
+fn derived_width_or_fail(r: RunnerWidthResolution, k: fn(Int) -> Bool) -> Bool {
+  match r {
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => k(n)
   }
 }
 
@@ -415,15 +437,16 @@ fn width_or_negative(r: RunnerWidthResolution) -> Int {
 // both counts come back UNRESOLVED on that host, so a projection that quietly started answering a
 // number for an underivable population reds here.
 fn purposes_partition_on(host: HostIdentity) -> Bool {
-  width_or_negative(r: host_github_slot_count(host: host))
-    + width_or_negative(r: host_fabric_slot_count(host: host))
-    == width_or_negative(r: gunbc_runner_committed_width(host: host))
+  derived_width_or_fail(r: gunbc_runner_committed_width(host: host), k: committed =>
+    derived_width_or_fail(r: host_github_slot_count(host: host), k: gh =>
+      derived_width_or_fail(r: host_fabric_slot_count(host: host), k: fab =>
+        gh + fab == committed)))
 }
 
 fn both_counts_unresolved_on(host: HostIdentity) -> Bool {
-  width_or_negative(r: host_github_slot_count(host: host)) == 0 - 1
-    && width_or_negative(r: host_fabric_slot_count(host: host)) == 0 - 1
-    && width_or_negative(r: gunbc_runner_committed_width(host: host)) == 0 - 1
+  resolution_is_unresolved(r: host_github_slot_count(host: host))
+    && resolution_is_unresolved(r: host_fabric_slot_count(host: host))
+    && resolution_is_unresolved(r: gunbc_runner_committed_width(host: host))
 }
 
 test fn slot_purposes_partition_every_host_committed_width() -> Bool {
@@ -462,13 +485,13 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // the_fabric_member_is_an_authored_identity_not_a_top_index_rule, observed working through a real
 // width change rather than only asserted.
 test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
-  let srv1_past_end = width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv1)) + 1
-  let srv3_past_end = width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv3)) + 1
-  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
-    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
-    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_past_end))
-    && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
+  derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv1), k: srv1_w =>
+    derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv3), k: srv3_w =>
+      membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 1))
+        && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
+        && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_w + 1))
+        && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
+        && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 1))))
 }
 
 // THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
@@ -478,8 +501,8 @@ test fn an_identity_outside_the_committed_population_is_refused_not_classified()
 test fn the_fabric_member_is_an_authored_identity_not_a_top_index_rule() -> Bool {
   srv3_fabric_canary_slot().slot_index == 6
     && (srv3_fabric_canary_slot().host as String) == (operator_host_srv3 as String)
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && host_fabric_slot_count(host: operator_host_srv4) == 0
+    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv3), k: n => n == 1)
+    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv4), k: n => n == 0)
 }
 
 test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
@@ -518,8 +541,9 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
-    && width_or_negative(r: host_github_slot_count(host: operator_host_srv3))
-         == width_or_negative(r: gunbc_runner_committed_width(host: operator_host_srv3)) - 1
+    && derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv3), k: committed =>
+       derived_width_or_fail(r: host_github_slot_count(host: operator_host_srv3), k: gh =>
+         gh == committed - 1))
 }
 
 // THE SLOT ROW DECLARES ONE CORE PER SLOT AND NO CPU CEILING, AND THE TWO ARE NOT ONE FACT. Until

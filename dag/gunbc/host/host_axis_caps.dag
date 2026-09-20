@@ -26,6 +26,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
@@ -352,17 +353,43 @@ type CapConvergeDecision
     }
   | CapConvergeWithheld { cause: String }
 
+// THE TARGET SET IS RESOLVED BEFORE THE RAISE IS AUTHORIZED, because an authorization over a target
+// set nobody could derive is not a weaker authorization -- it is the same CapConvergeAuthorized the
+// caller acts on, carrying the ordinary nonempty desired cap members and an empty population to
+// write them to. Whether a later script-ordering guard happens to require nonempty units is not the
+// question: the refusal belongs at this decision, which is the one that says a raise is admitted.
 fn cap_converge_decision(
   host: HostIdentity,
   required_retiring: List<NonEmptyStr>,
   observation: SurplusSlotObservation,
+) -> CapConvergeDecision {
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsWidthUnresolved { host: uh, cause: uc } =>
+      CapConvergeWithheld {
+        cause: join([uh as String, " has no derivable cap-bearing unit population, so there is no target set a raise could be authorized over (", uc, "); existing caps are left exactly as observed"], ""),
+      }
+    ServiceUnitsDerived { units: target_units } =>
+      cap_converge_decision_over_targets(
+        host: host,
+        required_retiring: required_retiring,
+        observation: observation,
+        target_units: target_units,
+      )
+  }
+}
+
+fn cap_converge_decision_over_targets(
+  host: HostIdentity,
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+  target_units: List<NonEmptyStr>,
 ) -> CapConvergeDecision {
   match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
     CapRaiseAdmitted =>
       CapConvergeAuthorized {
         host: host,
         authorized_retiring: required_retiring,
-        target_units: runner_slot_service_units_for_host(host: host),
+        target_units: target_units,
         desired: derived_runner_memory_cap_members(),
       }
     CapRaiseBlockedPendingRetirement { still_present: sp } =>
@@ -515,17 +542,23 @@ fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) ->
   }
 }
 
-// A HOST WHOSE WIDTH DOES NOT RESOLVE GETS NO UNITS, WHICH IS WHAT THIS ROSTER ALREADY MEANT TO SAY
-// AND COULD NOT. The note above records the intent -- "a host whose width is REFUSED gets no units"
-// -- and it was reached through a zero limit rather than through a refusal, so the same empty list
-// stood for "this host carries no cap-bearing units" and "this host could not be asked". Both
-// produce no units to converge, so nothing observable changes here; what changes is that the reason
-// is no longer inferred from a count.
-fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+// A HOST WHOSE WIDTH DOES NOT RESOLVE HAS NO UNIT ROSTER, AND "no units" WAS THE WRONG WAY TO SAY
+// IT. The note above records the intent -- "a host whose width is REFUSED gets no units" -- and an
+// earlier revision of this function reached it through a zero limit, so one empty list stood for
+// "this host carries no cap-bearing units" and "this host could not be asked". That looked
+// harmless because both produce nothing to converge, and it is not: cap_converge_decision builds
+// CapConvergeAuthorized around this list, so an unresolved host produced an AUTHORIZED decision
+// whose target set was empty -- an authorization reached because nothing could be asked.
+type RunnerSlotServiceUnits
+  = ServiceUnitsDerived { units: List<NonEmptyStr> }
+  | ServiceUnitsWidthUnresolved { host: HostIdentity, cause: String }
+
+fn runner_slot_service_units_for_host(host: HostIdentity) -> RunnerSlotServiceUnits {
   match gunbc_runner_committed_width(host: host) {
-    RunnerWidthUnresolved { cause: _ } => []
+    RunnerWidthUnresolved { cause: c } =>
+      ServiceUnitsWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
     RunnerWidthDerived { slots: slots } =>
-      runner_slot_service_units_range(host: host, slot: 1, limit: slots)
+      ServiceUnitsDerived { units: runner_slot_service_units_range(host: host, slot: 1, limit: slots) }
   }
 }
 
@@ -596,8 +629,18 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
+// A HOST WITH NO DERIVABLE UNIT ROSTER EMITS A REFUSAL LINE, NOT AN EMPTY SCRIPT. An empty script
+// applies cleanly and reports nothing, which is the quietest possible way to not converge a host.
 fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
-  deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsWidthUnresolved { host: uh, cause: c } =>
+      join([
+        "echo '__GUNBC_DEPLOY_REFUSED__ memory-cap apply: host=", uh as String,
+        " cause=no cap-bearing unit population is derivable for this host; ", c,
+        "' >&2; exit 1",
+      ], "")
+    ServiceUnitsDerived { units: units } => deploy_memory_cap_apply_script_ordered(units: units)
+  }
 }
 
 // THE SCRIPT IS BUILT FROM THE MEMBERS THE AUTHORIZATION CARRIES, not re-derived beside it. The

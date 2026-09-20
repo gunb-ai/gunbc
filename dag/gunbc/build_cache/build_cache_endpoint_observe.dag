@@ -70,6 +70,7 @@ import gunbc.build_cache_endpoint_path {
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
 }
 import product.placement_supply { HostIdentity }
 
@@ -504,14 +505,24 @@ fn runner_slot_index_text(unit_name: String) -> String {
 // out of a missing denominator. There is no third arm to add here because RunnerSlotLifecycle is
 // gunbc.build_cache_instance's two-state fact; the honest answer is Absent, and the caller that
 // receives it already has an undecided arm for exactly this (OwnerContextUndecided).
-fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycle? {
+// THE CAUSE IS CARRIED, NOT DISCARDED AND RE-DESCRIBED. An Option here was already safe -- the
+// caller cannot call a live slot retired through an Absent -- but it threw away the reservation
+// policy's own sentence and left the caller to invent a generic one, which is the provenance half
+// of the same defect: a reader of the undecided context could not tell WHY the slot could not be
+// placed, and the one authority that knows had already said so.
+type RunnerSlotLifecycleResolution
+  = LifecycleDerived { lifecycle: RunnerSlotLifecycle }
+  | LifecycleWidthUnresolved { host: HostIdentity, cause: String }
+
+fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycleResolution {
   match gunbc_runner_committed_width(host: host) {
-    RunnerWidthUnresolved { cause: _ } => none
+    RunnerWidthUnresolved { cause: c } =>
+      LifecycleWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
     RunnerWidthDerived { slots: committed } =>
       if slot_index >= 1 && slot_index <= committed {
-        Present { value: DesiredRunnerSlot }
+        LifecycleDerived { lifecycle: DesiredRunnerSlot }
       } else {
-        Present { value: RetiredRunnerSlot }
+        LifecycleDerived { lifecycle: RetiredRunnerSlot }
       }
   }
 }
@@ -543,12 +554,15 @@ fn runner_owner_context(
         }
       CheckedNatReady { value: idx } =>
         match runner_slot_lifecycle_for(host: instance.identity.host, slot_index: idx) {
-          Absent =>
+          LifecycleWidthUnresolved { host: _, cause: wc } =>
             OwnerContextUndecided {
-              detail: concat("the endpoint owner's cgroup names a runner slot on a host whose committed width does not resolve, so whether that slot is desired or retired cannot be decided: ", unit_name) as NonEmptyStr,
+              detail: concat(
+                concat("the endpoint owner's cgroup names the runner slot ", unit_name),
+                concat(", whose host cannot say whether that slot is desired or retired: ", wc),
+              ) as NonEmptyStr,
               observed_cgroup: cgroup_path,
             }
-          Present { value: lifecycle } =>
+          LifecycleDerived { lifecycle: lifecycle } =>
             OwnerInRunnerSlot {
               slot: RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
               lifecycle: lifecycle,

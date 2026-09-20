@@ -196,11 +196,39 @@ fn fleet_capacity_summary_line() -> String {
 // A standing "0 withdrawn" line is noise on every ordinary day and trains the reader to skip the
 // row where the number finally matters. Absent means nothing is withdrawn, which is the same thing
 // the per-host rows already say -- this line exists to make a NON-ZERO state impossible to miss.
+// THE DIFFERENCE OF TWO INCOMPLETE TOTALS IS NOT A WITHDRAWN AMOUNT, AND ABSENCE HERE MEANS
+// "nothing is withdrawn". This subtracted only the two `.slots` and threw away the completeness
+// information the totals had just been given: a withdrawn host whose width does not resolve
+// contributes zero to BOTH sides, so the difference is zero and the line disappears -- rendering
+// "nothing is withdrawn" over a host the operator withdrew and the model cannot size. The two
+// states are separated: a numeric amount when both totals are complete, and an explicit
+// unestablished line when either is not.
 fn fleet_capacity_withdrawn_line() -> String? {
-  let withdrawn = fleet_committed_slot_total_ignoring_withdrawals().slots - fleet_committed_slot_total().slots
-  if withdrawn > 0 {
+  fleet_capacity_withdrawn_line_over(
+    all_hosts: fleet_committed_slot_total_ignoring_withdrawals(),
+    active: fleet_committed_slot_total(),
+  )
+}
+
+// THE DECISION TAKES THE TWO TOTALS rather than reading them, so all three of its answers are
+// reachable from a witness at this one interface -- including the complete-and-equal answer, which
+// is unauthorable against the live fleet while any host is unresolved (DESIGN 4b: ask whether the
+// red is authorable). The wrapper above is the real path's single inhabitance.
+fn fleet_capacity_withdrawn_line_over(
+  all_hosts: FleetCommittedSlotTotal,
+  active: FleetCommittedSlotTotal,
+) -> String? {
+  if (all_hosts.unresolved_hosts |> count) > 0 || (active.unresolved_hosts |> count) > 0 {
     Present {
-      value: join([to_string(withdrawn), " slots withdrawn by operator control"], ""),
+      value: join([
+        "withdrawn capacity is unestablished: ",
+        join(map(all_hosts.unresolved_hosts, h => h as String), "+"),
+        " have no derivable committed width, so the difference between the full and active totals does not measure what was withdrawn",
+      ], ""),
+    }
+  } else if all_hosts.slots - active.slots > 0 {
+    Present {
+      value: join([to_string(all_hosts.slots - active.slots), " slots withdrawn by operator control"], ""),
     }
   } else {
     none

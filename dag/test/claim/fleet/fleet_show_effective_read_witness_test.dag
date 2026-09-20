@@ -63,29 +63,33 @@ test fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
   }
 }
 
-// AN UNRESOLVED WIDTH IS MAPPED TO -1 RATHER THAN TO 0, AND THAT KEEPS TWO OF THESE ROWS HONEST.
-// The srv2 rows below compare a live readback against what this fleet DECLARES for srv2, and srv2's
-// width no longer resolves -- so "declared" is not zero, it is nothing. A zero would make the slice
-// cap comparison a comparison against a zero-byte cap and the width comparison a comparison against
-// zero active runners, both of which can agree with a reading for reasons that have nothing to do
-// with the property. -1 cannot be observed, so those rows stay red-able.
-fn expected_width_for(host: HostIdentity) -> Int {
+// A ROW THAT NEEDS A LIVE DERIVED WIDTH MATCHES THE RESOLUTION AND FAILS ON UNRESOLVED; A ROW ABOUT
+// THE COMPARISON INTERFACE SUPPLIES ITS EXPECTATION. An earlier revision of this change mapped an
+// unresolved width to -1 and fed that to the drift comparisons, which is still substituting a
+// number for an unknown: an unavailable desired width establishes neither convergence nor drift,
+// and a comparison against a fabricated -1 reports drift for a reason the property does not own.
+//
+// The two srv2 rows below were exactly that case, and they are re-derived rather than adapted:
+// srv2 has no declaration to converge against at all, which is asserted directly, and the
+// comparison coverage they carried is preserved by supplying the expectation.
+fn live_derived_width_or_fail(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
   match gunbc_runner_committed_width(host: host) {
-    RunnerWidthUnresolved { cause: _ } => 0 - 1
-    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => false
+    RunnerWidthDerived { slots: n } => k(n)
   }
 }
 
 test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
-  match slice_property_memory_max_verdict(
-    read: read,
-    property: systemd_memory_max_property,
-    expected: gunbc_runner_slice_cap_for_width(slots: expected_width_for(host: operator_host_srv1)),
-  ) {
-    Present { value: Drifted } => true
-    _ => false
-  }
+  live_derived_width_or_fail(host: operator_host_srv1, k: w =>
+    match slice_property_memory_max_verdict(
+      read: read,
+      property: systemd_memory_max_property,
+      expected: gunbc_runner_slice_cap_for_width(slots: w),
+    ) {
+      Present { value: Drifted } => true
+      _ => false
+    })
 }
 
 // THIS WITNESS HAS FLIPPED TWICE AND BOTH FLIPS ARE FACTS RATHER THAN BROKEN TESTS. The srv2
@@ -113,16 +117,32 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
 // 2026-07-03 row, at which point this witness asserts against an observation contemporary with the
 // declaration rather than one fourteen months older.
 
-test fn witness_srv2_slice_cap_converges_after_the_16_gib_ruling() -> Bool {
+// srv2 HAS NO DECLARATION TO CONVERGE AGAINST, AND THAT IS NOW THE CLAIM. This row read
+// "converges after the 16 GiB ruling" and compared the 2026-07-03 80 GiB readback against whatever
+// slice cap the model derived for srv2. Since the 26/25 GiB transition deleted srv2's held width
+// there is no such cap: the width resolves to a typed refusal, so the comparison had no second
+// operand and the verdict it produced was about a number nobody declared.
+//
+// THE COMPARISON COVERAGE IS PRESERVED BY SUPPLYING THE EXPECTATION, at the interface the row is
+// really about: the same real readback converges against its own value and drifts against another,
+// so the verdict function is still exercised in both directions by this module (the superseded
+// 70 GiB row below is the drift half). What is no longer asserted is a relation between srv2's live
+// slice and a declaration that does not exist.
+test fn witness_srv2_slice_cap_has_no_declaration_to_converge_against() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
-  match slice_property_memory_max_verdict(
-    read: read,
-    property: systemd_memory_max_property,
-    expected: gunbc_runner_slice_cap_for_width(slots: expected_width_for(host: operator_host_srv2)),
-  ) {
-    Present { value: VerdictConverged } => true
-    _ => false
+  let no_declared_width = match gunbc_runner_committed_width(host: operator_host_srv2) {
+    RunnerWidthUnresolved { cause: _ } => true
+    RunnerWidthDerived { slots: _ } => false
   }
+  no_declared_width
+    && match slice_property_memory_max_verdict(
+      read: read,
+      property: systemd_memory_max_property,
+      expected: byte_size(85899345920),
+    ) {
+      Present { value: VerdictConverged } => true
+      _ => false
+    }
 }
 
 test fn witness_RED_srv2_slice_cap_would_drift_against_the_superseded_70_gib_cap() -> Bool {
@@ -164,21 +184,29 @@ test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
 test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {
     Present { value: read } =>
-      runner_width_converge_verdict(
-        observed: read.active_count,
-        desired: expected_width_for(host: operator_host_srv1)
-      ) == gunbc.host_converge.Drifted
+      live_derived_width_or_fail(host: operator_host_srv1, k: w =>
+        runner_width_converge_verdict(observed: read.active_count, desired: w)
+          == gunbc.host_converge.Drifted)
     Absent => false
   }
 }
 
-test fn witness_srv2_width_drifts_from_declared_count() -> Bool {
+// SAME RE-DERIVATION AS THE SLICE-CAP ROW. srv2 declares no width, so "the live width drifts from
+// the declared count" has no declared count in it. The row now asserts that the reading is still
+// parsed and that the DESIRED side is unavailable -- and keeps the verdict function exercised by
+// supplying a desired count, so a verdict that stopped reporting drift on a real disagreement still
+// reds here.
+test fn witness_srv2_width_has_no_declared_count_to_drift_from() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv2_runner_width_fixture_row) {
     Present { value: read } =>
-      runner_width_converge_verdict(
-        observed: read.active_count,
-        desired: expected_width_for(host: operator_host_srv2)
-      ) == gunbc.host_converge.Drifted
+      match gunbc_runner_committed_width(host: operator_host_srv2) {
+        RunnerWidthDerived { slots: _ } => false
+        RunnerWidthUnresolved { cause: _ } =>
+          runner_width_converge_verdict(observed: read.active_count, desired: read.active_count + 1)
+            == gunbc.host_converge.Drifted
+            && runner_width_converge_verdict(observed: read.active_count, desired: read.active_count)
+                 != gunbc.host_converge.Drifted
+      }
     Absent => false
   }
 }

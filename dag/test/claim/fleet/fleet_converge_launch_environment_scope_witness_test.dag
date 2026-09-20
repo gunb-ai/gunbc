@@ -572,9 +572,12 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
 // Both populations are asserted nonempty: a disjointness claim over an empty set is free and would
 // go green if either producer silently stopped answering.
 // ---------------------------------------------------------------------------
-// THE NONEMPTY CONJUNCT BELOW IS WHAT MAKES THE UNRESOLVED ARM SAFE HERE. An unresolved population
-// yields no members, and the claim already refuses to be satisfied by an empty runner-unit set --
-// so a width that stopped resolving on srv1 reds this row rather than trivially satisfying it.
+// THE NONEMPTINESS MUST BE AT THE CONCRETE-SLOT GRAIN, AND AN EARLIER REVISION PUT IT ONE LEVEL TOO
+// HIGH. The tested list is `[runner_unit_template_name] + concrete units`, so
+// `list_length(runner_units) > 0` stays true when EVERY concrete slot disappears -- the template
+// supplies the nonemptiness and the disjointness check goes green over a population of one name
+// that is not a slot. So the concrete population is required to be derived AND nonempty here,
+// before the template is added, and a mutation that empties it reds this row.
 fn srv1_committed_members() -> List<RunnerSlotIdentity> {
   match committed_slot_identities(host: witness_host_srv1 as HostIdentity) {
     CommittedPopulationDerived { members: m } => m
@@ -584,12 +587,10 @@ fn srv1_committed_members() -> List<RunnerSlotIdentity> {
 
 test fn the_launch_environment_owns_no_runner_unit_and_no_runner_unit_owns_it() -> Bool {
   let owned = map(deployment_owned_steps_retract_order(spec: deployment_spec_srv1()), s => s.path as String)
-  let runner_units = concat(
-    [runner_unit_template_name as String],
-    map(srv1_committed_members(), i => runner_slot_unit_name(slot: i) as String),
-  )
+  let concrete = map(srv1_committed_members(), i => runner_slot_unit_name(slot: i) as String)
+  let runner_units = concat([runner_unit_template_name as String], concrete)
   list_length(items: owned) > 0
-    && list_length(items: runner_units) > 0
+    && list_length(items: concrete) > 0
     && !any(owned, p => any(runner_units, u => string_contains(s: p, pattern: u)))
     && !any(owned, p => string_contains(s: p, pattern: runner_unit_prefix))
 }

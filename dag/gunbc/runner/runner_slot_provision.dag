@@ -73,6 +73,7 @@ import gunbc.runner_slot_retirement {
   RemovalTeardownAuthorized,
   slot_removal_realization,
   transition_required_retiring,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
   retirement_unit,
 }
 
@@ -252,13 +253,35 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
 // withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
 // this planner exists to reach (serving 13..21). Membership teardown already prints those
 // dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
+// THE UNRESOLVED ARM DOES NOT ROUTE THROUGH obligation_withheld_line, which reads a UNIT name to
+// derive a slot tree. Its subject is a HOST with no obligation at all, so there is no unit to name
+// and no tree to derive; handing it a host identity would report "the required identity is not a
+// runner unit", which is true of the string and wrong about the state.
 fn obligation_withheld_scripts(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
   evidence: SlotRetirementEvidence,
 ) -> List<String> {
   let removed = membership_removed_unit_names(membership: membership)
-  transition_required_retiring(host: deploy.host_label as HostIdentity)
+  match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      [join([
+        "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
+        " cause=this host's retirement obligation is not derivable, so no required retiree can be named and none may be torn down; ",
+        c,
+        "' >&2",
+      ], "")]
+    RetireesKnown { units: units } =>
+      obligation_withheld_scripts_over(units: units, removed: removed, evidence: evidence)
+  }
+}
+
+fn obligation_withheld_scripts_over(
+  units: List<NonEmptyStr>,
+  removed: List<String>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  units
     |> map(u => u as String)
     |> filter(u => membership_does_not_name(removed: removed, unit: u))
     |> flat_map(u =>
@@ -282,6 +305,10 @@ fn obligation_withheld_scripts(
     )
 }
 
+// AN UNRESOLVED OBLIGATION CONTRIBUTES NO ACTUATION, AND THE WITHHOLDING IS REPORTED BESIDE IT by
+// obligation_withheld_scripts rather than being that empty list's meaning. Acting on the other arm
+// -- treating "cannot derive the obligation" as "there is nothing to retire" -- is the silence this
+// whole change exists to remove; acting on it HERE would be a teardown.
 fn retirement_actuation_units(
   deploy: RunnerHostDeploy,
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
@@ -289,12 +316,16 @@ fn retirement_actuation_units(
 ) -> List<String> {
   let from_membership = membership_removed_unit_names(membership: membership)
     |> filter(u => realization_requires_actuation(evidence: evidence, unit: u))
-  let from_obligation = transition_required_retiring(host: deploy.host_label as HostIdentity)
-    |> map(u => u as String)
-    |> filter(u =>
-      evidence_has_standing_for(evidence: evidence, unit: u)
-        && realization_requires_actuation(evidence: evidence, unit: u)
-    )
+  let from_obligation = match transition_required_retiring(host: deploy.host_label as HostIdentity) {
+    RetireesUnresolved { host: _, cause: _ } => []
+    RetireesKnown { units: units } =>
+      units
+        |> map(u => u as String)
+        |> filter(u =>
+          evidence_has_standing_for(evidence: evidence, unit: u)
+            && realization_requires_actuation(evidence: evidence, unit: u)
+        )
+  }
   first_occurrences(items: concat(from_membership, from_obligation))
 }
 

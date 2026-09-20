@@ -191,15 +191,18 @@ fn runner_capacity_apply_host_plan(host_plan: RunnerCapacityHostPlan) -> RunnerC
 // {01,02,04,05} has count 4 and is NOT converged at width 5; a count-shaped claim would compare 4
 // against a width and conclude work remains at 05, which is already registered, while 03 goes
 // unplanned forever. Convergence is set equality and this signature now says so.
-// AN UNRESOLVED HOST CONTRIBUTES NO DESIRED MEMBERS, SO IT PLANS NOTHING -- WHICH IS THE ANSWER
-// THIS PREDICATE WANTS AND NOT A CLAIM ABOUT CONVERGENCE. The idempotency question is "does
-// re-applying plan work"; a host with no derivable population has no work to plan, and the planner
-// proper (plan_runner_capacity_host) is where that host is REFUSED by name. Answering here would
-// duplicate that refusal in a predicate whose subject is additions.
-fn reapply_members_of(host: HostIdentity) -> List<RunnerSlotIdentity> {
+// INABILITY TO PLAN IS NOT EVIDENCE OF SUCCESSFUL REAPPLICATION, AND AN EMPTY DESIRED POPULATION
+// WOULD HAVE MADE IT LOOK LIKE ONE. An earlier revision of this change projected an unresolved
+// population to `[]` here and argued the planner refuses that host elsewhere -- but this predicate
+// is consumed as "re-applying plans no work", and zero additions derived from a population that was
+// never derived answers that question in the affirmative for the strongest possible reason: nothing
+// could be asked. It now answers false, which is the honest reading of "this does not establish
+// idempotency"; the host's own refusal, with its cause, is plan_runner_capacity_host's.
+fn reapply_additions_are_zero(host: HostIdentity, requested_width: Int, observed: List<RunnerSlotIdentity>) -> Bool {
   match committed_slot_identities(host: host) {
-    CommittedPopulationDerived { members: m } => m
-    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => false
+    CommittedPopulationDerived { members: m } =>
+      addition_actions(members: m, requested_width: requested_width, observed: observed).length() == 0
   }
 }
 
@@ -209,8 +212,8 @@ fn runner_capacity_reapply_plans_zero_additions(
   observed_srv3: List<RunnerSlotIdentity>,
   observed_srv4: List<RunnerSlotIdentity>,
 ) -> Bool {
-  addition_actions(members: reapply_members_of(host: operator_host_srv3), requested_width: srv3_width, observed: observed_srv3).length() == 0
-    && addition_actions(members: reapply_members_of(host: operator_host_srv4), requested_width: srv4_width, observed: observed_srv4).length() == 0
+  reapply_additions_are_zero(host: operator_host_srv3, requested_width: srv3_width, observed: observed_srv3)
+    && reapply_additions_are_zero(host: operator_host_srv4, requested_width: srv4_width, observed: observed_srv4)
 }
 
 fn runner_capacity_apply_plan(plan: RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {

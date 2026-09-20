@@ -197,9 +197,19 @@ test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() ->
       string_contains(s: r, pattern: "srv2-01")
         && string_contains(s: r, pattern: "a host whose committed width does not resolve")
         && string_contains(s: r, pattern: "is UNRESOLVED, not zero")
+        && string_contains(s: r, pattern: srv2_reservation_policy_cause_fragment)
         && !string_contains(s: r, pattern: "resolves to no committed fleet slot")
   }
 }
+
+// THE POLICY'S OWN SENTENCE MUST SURVIVE THE WHOLE ROUTE, and without this conjunct it need not.
+// A renderer that dropped the cause suffix while keeping "is UNRESOLVED, not zero" satisfies every
+// other conjunct above -- the refusal would still read as a typed refusal and would no longer say
+// WHY, which is the half an operator acts on. This fragment is authored in
+// gunbc.session_reservation_policy srv2_session_reservation_sizing and is quoted rather than
+// re-derived deliberately: a witness that computed it from the policy would agree with the policy
+// by construction and could not see the renderer dropping it.
+data srv2_reservation_policy_cause_fragment: String = "the managed-slice peak cannot be read as a whole-host aggregate"
 
 fn observed_prefix_from_roster(host: HostIdentity, roster: OrganizationRunnerRosterEvidence) -> List<RunnerSlotIdentity> {
   match observed_github_slot_identities(host: host, roster: roster) {
@@ -233,7 +243,7 @@ fn observed_prefix_from_roster(host: HostIdentity, roster: OrganizationRunnerRos
 // one. What was wrong was the PLANNER deriving that shape from a width instead of reading it.
 fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    committed_members_of(host: host),
     init: [],
     f: (acc, id) => if id.slot_index > n { acc } else { concat(acc, [id]) }
   )
@@ -507,6 +517,7 @@ test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
     GitHubSlotPopulationUnreadable { reason: _ } => false
     GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
     GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
+    GitHubSlotPopulationHostWidthUnresolved { registration_name: _, host: _, cause: _ } => false
   }
 }
 

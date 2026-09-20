@@ -8,6 +8,8 @@ import gunbc.fleet_capacity_panel {
   fleet_committed_slot_total,
   fleet_committed_slot_total_ignoring_withdrawals,
   fleet_capacity_withdrawn_line,
+  fleet_capacity_withdrawn_line_over,
+  FleetCommittedSlotTotal,
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -112,7 +114,12 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 // per-host widths) while carrying no assumption about which hosts resemble each other. It also
 // stays a genuine oracle rather than measure() == measure(): the right side reads
 // gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
-fn derived_width_or_zero(host: HostIdentity) -> Int {
+// ZERO HERE IS THE PRODUCTION RULE BEING ASSERTED, NOT A SUBSTITUTION FOR AN UNKNOWN. The total
+// under test adds nothing for an unresolved host BY DESIGN and records it in unresolved_hosts
+// instead; this reproduces that summand independently so the two can be compared. The conjunct that
+// makes the comparison non-vacuous is the unresolved-set equality below -- without it, this would
+// be an agreement between two zeros.
+fn width_contribution_to_the_total(host: HostIdentity) -> Int {
   match gunbc_runner_committed_width(host: host) {
     RunnerWidthUnresolved { cause: _ } => 0
     RunnerWidthDerived { slots: n } => n
@@ -133,10 +140,10 @@ fn host_width_is_unresolved(host: HostIdentity) -> Bool {
 test fn the_slot_total_sums_the_allocation_authority() -> Bool {
   let total = fleet_committed_slot_total_ignoring_withdrawals()
   total.slots
-    == derived_width_or_zero(host: operator_host_srv1)
-       + derived_width_or_zero(host: operator_host_srv2)
-       + derived_width_or_zero(host: operator_host_srv3)
-       + derived_width_or_zero(host: operator_host_srv4)
+    == width_contribution_to_the_total(host: operator_host_srv1)
+       + width_contribution_to_the_total(host: operator_host_srv2)
+       + width_contribution_to_the_total(host: operator_host_srv3)
+       + width_contribution_to_the_total(host: operator_host_srv4)
     && fleet_committed_slot_total().slots > 0
     && all(total.unresolved_hosts, h => host_width_is_unresolved(host: h))
     && ((total.unresolved_hosts |> count) > 0) == (
@@ -147,17 +154,58 @@ test fn the_slot_total_sums_the_allocation_authority() -> Bool {
        )
 }
 
-// WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
+fn withdrawn_line_text(all_hosts: FleetCommittedSlotTotal, active: FleetCommittedSlotTotal) -> String {
+  match fleet_capacity_withdrawn_line_over(all_hosts: all_hosts, active: active) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// WITH NOTHING WITHDRAWN AND BOTH TOTALS COMPLETE, THE LINE IS ABSENT.
 //
 // The absent line is the point: a standing "0 withdrawn" row is noise on every ordinary day and
-// trains the reader to skip the row where a non-zero number finally matters.
+// trains the reader to skip the row where a non-zero number finally matters. The totals are
+// SUPPLIED because the complete case is not authorable against the live fleet -- srv2's width does
+// not resolve, so every live total carries an unresolved host -- and a claim that can only be made
+// about one of the three answers is not a claim about the decision.
 test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
-  let line_absent = match fleet_capacity_withdrawn_line() {
-    Present { value: _ } => false
-    Absent => true
+  let complete_5 = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] }
+  withdrawn_line_text(all_hosts: complete_5, active: complete_5) == ""
+    && string_contains(
+         s: withdrawn_line_text(
+           all_hosts: FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] },
+           active: FleetCommittedSlotTotal { slots: 3, unresolved_hosts: [] },
+         ),
+         pattern: "2 slots withdrawn by operator control",
+       )
+}
+
+// AN INCOMPLETE TOTAL REPORTS THAT THE WITHDRAWN AMOUNT IS UNESTABLISHED, AND THIS IS THE ROW THE
+// LIVE FLEET TAKES. A withdrawn host whose width does not resolve contributes zero to BOTH totals,
+// so the difference is zero and the previous shape rendered nothing at all -- "nothing is
+// withdrawn" over a host the operator withdrew and the model cannot size. RED: a projection that
+// went back to subtracting the two `.slots` produces "" for the first case here and no
+// "unestablished" for the second.
+test fn an_incomplete_total_reports_the_withdrawn_amount_as_unestablished() -> Bool {
+  let incomplete = FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [operator_host_srv2] }
+  let line = withdrawn_line_text(all_hosts: incomplete, active: incomplete)
+  string_contains(s: line, pattern: "withdrawn capacity is unestablished")
+    && string_contains(s: line, pattern: operator_host_srv2 as String)
+    && !string_contains(s: line, pattern: "slots withdrawn by operator control")
+    && string_contains(
+         s: withdrawn_line_text(all_hosts: incomplete, active: FleetCommittedSlotTotal { slots: 5, unresolved_hosts: [] }),
+         pattern: "withdrawn capacity is unestablished",
+       )
+}
+
+// THE LIVE PANEL INHABITS THAT PATH, which is what keeps the supplied-value rows above from being a
+// claim about a function nothing calls: the real fleet carries an unresolved host today, so the
+// rendered line is the unestablished one.
+test fn the_live_withdrawn_line_is_the_unestablished_one_while_a_host_is_unresolved() -> Bool {
+  match fleet_capacity_withdrawn_line() {
+    Absent => false
+    Present { value: v } => string_contains(s: v, pattern: "withdrawn capacity is unestablished")
   }
-  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
-    && line_absent
 }
 
 test fn the_summary_line_names_both_axes() -> Bool {
@@ -220,8 +268,12 @@ test fn srv1_is_axis_bound_while_srv2_width_is_unresolved() -> Bool {
 // using a cause that did not produce it.
 test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
   all([operator_host_srv1, operator_host_srv3], h =>
-    all(host_binding_width_axes(host: h), a =>
-      width_axis_binds_at(standing: a, committed: derived_width_or_zero(host: h))))
+    match gunbc_runner_committed_width(host: h) {
+      RunnerWidthUnresolved { cause: _ } => false
+      RunnerWidthDerived { slots: committed } =>
+        all(host_binding_width_axes(host: h), a =>
+          width_axis_binds_at(standing: a, committed: committed))
+    })
 }
 
 // THE PANEL RENDERS A WIDTH PROVENANCE FOR EVERY HOST, AND THE ROW NO LONGER NAMES WHICH ONE. An
