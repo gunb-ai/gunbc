@@ -227,6 +227,18 @@ fn unit_is_enabled(s: UnitFileState) -> Bool {
 // a host correctly converged to ManagedOomAuto reported as drift forever.
 // Every other property here is checked effective-vs-intended; this one now
 // matches.
+// Is this action the destructive one? A PROJECTION predicate: it renders an
+// action for consumers that must state the posture as a boolean (the runner
+// deploy manifest). It is deliberately NOT a grounding assertion -- asserting
+// pressure_is_kill(effective) is what made ManagedOomAuto unrepresentable as
+// an intended state; see pressure_action_matches below.
+fn pressure_is_kill(a: ManagedOomAction) -> Bool {
+  match a {
+    ManagedOomKill => true
+    ManagedOomAuto => false
+  }
+}
+
 fn pressure_action_matches(eff: ManagedOomAction, intended: ManagedOomAction) -> Bool {
   match eff {
     ManagedOomKill => match intended {
