@@ -2,11 +2,12 @@ module gunbc.runner_microvm_lifecycle_realize
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, SingleAuthority }
-import std.resources { Network }
+import std.resources { Network, Filesystem }
 import extdeps.linux.cgroup_v2 {
   CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
   decode_cgroup_subtree_procs, cgroup_v2_procs_interface_file, cgroup_v2_procs_path,
   cgroup_v2_mount_point, cgroup_v2_freeze_interface_file,
+  cgroup_v2_kill_path, cgroup_v2_kill_request_value,
   CgroupSubtreeFreezeDecoding, CgroupSubtreeFreezeDecoded, CgroupSubtreeFreezeUnparseable,
   decode_cgroup_subtree_freeze,
 }
@@ -27,7 +28,7 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_operation_exec {
   HostOperation, HostOperationOutcome, HostOperationObserved, HostOperationRefused,
-  CgroupReadInterfaceFile, SystemctlStop, SystemctlKill, host_operation_exec,
+  CgroupReadInterfaceFile, SystemctlStop, host_operation_exec,
 }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.systemctl_show_read {
@@ -420,8 +421,6 @@ fn observe_attempt_resource(subject: AttemptResourceSubject) -> ObservedPath {
 // configured elsewhere would make "graceful" mean something the controller did not choose.
 data runner_microvm_stop_signal: NonEmptyStr = "SIGTERM" as NonEmptyStr
 
-data runner_microvm_force_signal: NonEmptyStr = "SIGKILL" as NonEmptyStr
-
 data runner_microvm_graceful_stop_seconds: Int = 30
 
 // THE FORCE IS BOUNDED IN READS, NOT IN WALL TIME ALONE, because what the bound protects against is
@@ -466,21 +465,70 @@ fn unit_signal_outcome(label: String, outcome: HostOperationOutcome) -> UnitSign
   }
 }
 
-fn request_unit_stop(unit: NonEmptyStr) -> UnitSignalOutcome {
-  unit_signal_outcome(
-    label: join(["systemctl stop ", unit as String], ""),
-    outcome: host_operation_exec(transport: controller_transport(), operation: SystemctlStop { unit: unit }),
-  )
+// A STOP THAT TIMED OUT IS NOT A STOP THAT WAS NEVER ISSUED, AND THE EXIT CODE CANNOT TELL THEM
+// APART. `systemctl stop` exits nonzero when the job fails -- which is exactly what a unit whose
+// child ignores SIGTERM under SendSIGKILL=no produces, the central case of this whole controller --
+// and it also exits nonzero for a unit the manager has never heard of. Folding both into a refusal
+// would report the ignoring child as an UNOBSERVED stop and never force it, which is the arm that
+// leaks a VMM. So the distinction drawn here is the one the transport can actually make: whether
+// the command REACHED the manager at all. What happened to the processes afterwards is not this
+// call's answer; it is the cgroup's, read next.
+type StopRequestOutcome
+  = StopRequestIssued { outcome: UnitSignalOutcome }
+  | StopRequestNotIssued { detail: NonEmptyStr }
+
+fn request_unit_stop(unit: NonEmptyStr) -> StopRequestOutcome
+  uses net: Network
+{
+  let label = join(["systemctl stop ", unit as String], "")
+  match host_operation_exec(transport: controller_transport(), operation: SystemctlStop { unit: unit }) {
+    HostOperationRefused { operation: o, reason: r } =>
+      StopRequestNotIssued { detail: join([label, ": ", o, " refused: ", r], "") as NonEmptyStr }
+    observed => StopRequestIssued { outcome: unit_signal_outcome(label: label, outcome: observed) }
+  }
 }
 
-fn force_kill_unit(unit: NonEmptyStr) -> UnitSignalOutcome {
-  unit_signal_outcome(
-    label: join(["systemctl kill ", unit as String], ""),
-    outcome: host_operation_exec(
-      transport: controller_transport(),
-      operation: SystemctlKill { unit: unit, signal: runner_microvm_force_signal },
-    ),
+// THE FORCE IS THE CELL'S, NOT THE UNIT'S, AND THAT IS WHY IT IS A CGROUP WRITE.
+//
+// The graceful stop is the ATTEMPT'S: its own VMM unit is asked to end, and SendSIGKILL=no means
+// nothing escalates behind the controller's back. The force is the CELL'S, because the cell is the
+// thing being released and its residue is not confined to one unit -- a process that moved itself
+// into a sibling scope under the same slice is accounted to the cell, invisible to a kill aimed at
+// the unit, and would survive a force that only signalled the unit.
+//
+// cgroup.kill is also atomic with respect to forking, which a signal loop is not, so a respawning
+// residue cannot outrun it. What it does NOT do is reap a FROZEN task -- the SIGKILL is pending
+// until the cgroup is thawed -- and that is correct rather than a gap: the task is still there, the
+// readback still finds it, and the cell still quarantines.
+type CellForceOutcome
+  = CellForceIssued
+  | CellForceNotIssued { detail: NonEmptyStr }
+
+fn force_kill_cell(slice: NonEmptyStr) -> CellForceOutcome
+  uses net: Network
+{
+  match read_slice_cgroup_path(slice: slice) {
+    SliceCgroupPathUnread { reason: why } => CellForceNotIssued { detail: why }
+    SliceCgroupNotHeld => CellForceIssued
+    SliceCgroupPath { path: root } => write_cell_kill(root: root)
+  }
+}
+
+// A CELL WHOSE CGROUP THE MANAGER NO LONGER HOLDS NEEDS NO KILL, which is the CellForceIssued arm
+// above: there is no cgroup, so there is nothing in it, and reporting that as a failure to force
+// would make a cell that finished first unreleasable.
+fn write_cell_kill(root: NonEmptyStr) -> CellForceOutcome {
+  let wrote = Filesystem.Write(
+    path: cgroup_v2_kill_path(cgroup_path: root) as String,
+    content: cgroup_v2_kill_request_value,
   )
+  if wrote.success {
+    CellForceIssued
+  } else {
+    CellForceNotIssued {
+      detail: join([cgroup_v2_kill_path(cgroup_path: root) as String, ": ", wrote.error], "") as NonEmptyStr,
+    }
+  }
 }
 
 // THE WAIT IS A DESCENT ON THE READ BUDGET, and a failed read ENDS it rather than consuming the
@@ -533,21 +581,19 @@ fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   }
 }
 
-// THE KILL IS READ THE SAME WAY THE STOP IS, and for the same reason: `systemctl kill` reports the
-// MANAGER'S status, not the signalled process's, so a nonzero exit says the signal may not have
-// been sent and says nothing about what died. Only a command that never reached the manager is
-// unobserved; everything else is settled by the cgroup.
+// THE FORCE IS READ THE SAME WAY THE STOP IS: only a force that could not be ISSUED leaves the
+// outcome unobserved, and everything else is settled by the cgroup.
 //
-// THE MATCH IS ALSO THE ORDERING. Reading the subtree inside the arm of a match on the kill's
-// result makes the read depend on that result, which is what puts it after the kill in a graph --
+// THE MATCH IS ALSO THE ORDERING. Reading the subtree inside the arm of a match on the force's
+// result makes the read depend on that result, which is what puts it after the force in a graph --
 // the same edge observe_attempt_teardown has to pass explicitly because its readbacks are siblings
 // in a record rather than arms of a match.
 fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr, after: UnitSignalOutcome) -> TeardownStop
   uses net: Network
 {
-  match force_kill_unit(unit: unit) {
-    ForceKillNotIssued { detail: d } => StopOutcomeUnobserved { reason: d }
-    ForceKillIssued { outcome: _ } =>
+  match force_kill_cell(slice: slice) {
+    CellForceNotIssued { detail: d } => StopOutcomeUnobserved { reason: d }
+    CellForceIssued =>
       match await_quiet_subtree(slice: slice, reads_left: runner_microvm_force_stop_reads) {
         CgroupSubtreeEmpty => StoppedByForce
         CgroupSubtreeReadFailed { reason: r } => StopOutcomeUnobserved { reason: r }

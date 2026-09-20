@@ -266,6 +266,21 @@ fn cgroup_v2_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
 }
 
+// THE SUBTREE KILL, WHICH IS THE KERNEL'S OWN ANSWER TO "EMPTY THIS CELL". cgroup v2 documents
+// `cgroup.kill` as a write-only file on non-root cgroups: writing 1 kills the cgroup AND ALL ITS
+// DESCENDANTS, with SIGKILL, atomically with respect to forking -- a process that forks while the
+// kill is in progress cannot escape it. That last clause is why this is not a second spelling of
+// signalling a unit: a manager's kill reaches the processes of ONE unit's cgroup, so a process that
+// moved itself into a sibling scope under the same slice survives it, and a respawner can outrun
+// it. The subject here is the SUBTREE, which is the same subject a cell's readback asks about.
+data cgroup_v2_kill_interface_file: NonEmptyStr = "cgroup.kill"
+
+data cgroup_v2_kill_request_value: String = "1"
+
+fn cgroup_v2_kill_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_kill_interface_file)
+}
+
 // A LINE THAT IS NOT A PID REFUSES THE WHOLE FILE RATHER THAN BEING DROPPED. The body is the
 // kernel's own newline-separated list, so a line this decoder cannot read is a body the documented
 // form does not produce -- and the consumer of this reading is a cleanup verdict, where a listing

@@ -345,19 +345,6 @@ type UnitFileState
 // would run this on -- a genuinely wedged task cannot be created safely and cannot be cleaned up
 // afterwards, while a freeze is exactly reversible by its own inverse verb.
 
-// Kill: SIGNALLING A UNIT IS NOT STOPPING IT, AND THE DIFFERENCE IS WHO DECIDES THE ESCALATION.
-// `systemctl stop` runs the unit's own stop protocol -- KillSignal, then SIGKILL after
-// TimeoutStopSec unless SendSIGKILL=no -- so a caller that needs to own the escalation itself
-// cannot express it through stop at all: the manager either escalates on its own schedule or
-// gives up, and in both cases the caller cannot say which happened. `kill` sends ONE named signal
-// and returns, which is what a bounded force-stop is made of. --kill-whom=all is the whole point
-// for a controller reading a cgroup afterwards: the default `main` leaves every other process in
-// the unit's control group running, so a caller that then observed survivors would be observing
-// processes it never signalled. systemctl.1 documents both flags; the exit status is the
-// manager's, not the signalled process's, so a zero here says the signal was SENT and never that
-// anything died -- the readback is a separate observation and this operation cannot substitute
-// for it.
-
 service systemd.Systemctl {
   operation Enable {
     input { unit: NonEmptyStr }
@@ -429,57 +416,6 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
-    }
-  }
-
-  operation Kill {
-    input { unit: NonEmptyStr, signal: NonEmptyStr }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemctl", "kill", "--kill-whom=all", "--signal={signal}", "{unit}"] }
-    exit {
-      0 => Unit
-      nonzero => String "systemctl kill failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Kill"
-    }
-  }
-
-  operation Freeze {
-    input { unit: NonEmptyStr }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemctl", "freeze", "{unit}"] }
-    exit {
-      0 => Unit
-      nonzero => String "systemctl freeze failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Freeze"
-    }
-  }
-
-  operation Thaw {
-    input { unit: NonEmptyStr }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemctl", "thaw", "{unit}"] }
-    exit {
-      0 => Unit
-      nonzero => String "systemctl thaw failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Thaw"
     }
   }
 

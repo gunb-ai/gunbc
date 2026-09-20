@@ -5,6 +5,7 @@ import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.tools.sleep
 import gunbc.systemd_run_transient {
   SystemdRunTransientOutcome, SystemdRunTransientStarted, SystemdRunTransientRefused,
   systemd_run_transient_read,
@@ -12,7 +13,7 @@ import gunbc.systemd_run_transient {
 import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_operation_exec {
   HostOperationOutcome, HostOperationObserved, HostOperationRefused,
-  SystemctlFreeze, SystemctlThaw, SystemctlKill, host_operation_exec,
+  SystemctlFreeze, SystemctlThaw, SystemctlStop, host_operation_exec,
 }
 import gunbc.systemctl_is_active_read {
   UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused, systemctl_is_active_read,
@@ -53,11 +54,10 @@ import gunbc.runner_microvm_lifecycle {
 }
 import gunbc.runner_microvm_lifecycle_realize {
   AttemptTeardownOutcome, TeardownSettled, TeardownObservationForeign,
-  UnitSignalOutcome, UnitSignalled, UnitSignalRefused,
-  ForceKillOutcome, ForceKillIssued, ForceKillNotIssued,
+  CellForceOutcome, CellForceIssued, CellForceNotIssued,
   SliceFreezeReadback, SliceThawed, SliceHoldsFrozenCgroups, SliceFreezeUnreadable,
   perform_bounded_stop, read_cell_cgroup_subtree, settle_attempt_teardown,
-  read_slice_freeze_state, runner_microvm_attempt_stop_properties, force_kill_unit,
+  read_slice_freeze_state, runner_microvm_attempt_stop_properties, force_kill_cell,
 }
 import gunbc.runner_microvm_cell_readiness_store {
   CellReadinessWritten, CellReadinessRecordWritten, CellReadinessWriteRefusedByStore,
@@ -150,6 +150,21 @@ fn start_red_unit(attempt: MicroVmAttempt, payload: String) -> Bool {
   }
 }
 
+// THE ESCAPEE NEEDS TIME TO EXIST, AND WAITING FOR IT IS PART OF BUILDING THE WORLD, NOT PART OF
+// THE SUBJECT. systemd-run --scope registers a new unit with the manager, which is not instant, so
+// a read taken the moment the service starts can find a slice that is legitimately still empty --
+// and would report the controller passing a test that never ran. The wait is the modeled sleep
+// operation, and matching on its result is what orders what follows after it.
+data red_escapee_settle_seconds: Int = 5
+
+fn start_red_unit_and_settle(attempt: MicroVmAttempt, payload: String) -> Bool {
+  if !start_red_unit(attempt: attempt, payload: payload) {
+    false
+  } else {
+    sleep.Delay.Seconds(seconds: to_string(red_escapee_settle_seconds) as NonEmptyStr).success
+  }
+}
+
 fn unit_signalled(outcome: HostOperationOutcome) -> Bool {
   match outcome {
     HostOperationObserved { stdout: _, success: ok, stderr: _ } => ok
@@ -168,10 +183,10 @@ fn thaw_unit(unit: NonEmptyStr) -> Bool {
 // EVERY CLAIM ENDS BY LEAVING THE SLICE QUIET, and the sweep is part of the claim rather than the
 // script's job: a RED that proved a survivor and then left it running would have converted a
 // receipt into a leak on a host other people are using.
-fn signal_was_sent(outcome: ForceKillOutcome) -> Bool {
+fn cell_force_was_issued(outcome: CellForceOutcome) -> Bool {
   match outcome {
-    ForceKillIssued { outcome: _ } => true
-    ForceKillNotIssued { detail: _ } => false
+    CellForceIssued => true
+    CellForceNotIssued { detail: _ } => false
   }
 }
 
@@ -184,9 +199,12 @@ fn signal_was_sent(outcome: ForceKillOutcome) -> Bool {
 // count taken after a kill -- and the kill did not land. So the sweep asserts BOTH, and an
 // unreadable freeze state is a failure here rather than a shrug: this is the readback whose whole
 // purpose is to notice the state this run can create.
+// THE SWEEP USES THE CONTROLLER'S OWN CELL FORCE, which empties the whole slice subtree in one
+// kernel operation -- the service, the escapee scope beside it, and anything either forked. A
+// sweep that signalled the units one by one would be a second, weaker spelling of the thing this
+// file exists to test, and would miss exactly what the escapee RED proves it misses.
 fn sweep_slice_quiet(attempt: MicroVmAttempt, index: Int) -> Bool {
-  let escapee_signalled = signal_was_sent(outcome: force_kill_unit(unit: red_escapee_unit(attempt: attempt)))
-  let unit_signalled_ok = signal_was_sent(outcome: force_kill_unit(unit: runner_microvm_attempt_unit_name(attempt: attempt)))
+  let forced = cell_force_was_issued(outcome: force_kill_cell(slice: red_slice(index: index)))
   sweep_found_no_process(index: index) && sweep_found_nothing_frozen(index: index)
 }
 
@@ -320,25 +338,42 @@ fn red_a_child_that_ignores_sigterm_is_stopped_by_force() -> Bool {
 // ── RED 2: a double-forked escapee in a sibling scope ─────────────────────────────────────────
 
 // THE DISCRIMINATOR IS THE CGROUP THE PID IS IN, NOT THAT THERE IS A PID. A readback rooted at the
-// unit's own cgroup, or one that read only the slice's own cgroup.procs, answers EMPTY here: the
-// escapee is in a scope beside the service. So the claim requires both that the subtree is
-// populated AND that no populated cgroup is the slice root itself.
+// unit's own cgroup answers EMPTY here: the escapee is in a scope BESIDE the service, so
+// `systemctl stop` of the service -- whose KillMode is control-group -- does not reach it. The
+// claim therefore requires both that the slice-wide subtree is populated AND that no populated
+// cgroup is the slice root itself, which is what a unit-rooted or root-file-only read would miss.
+//
+// THE SERVICE IS STOPPED BY THE WITNESS, not by the controller, because the subject here is the
+// READ and the stop is the world it is read in. The stop is issued through the same modeled
+// operation the controller uses, and matching on its result is what puts the read after it.
 fn red_a_double_forked_escapee_is_found_by_the_subtree_read() -> Bool {
   match red_attempt(index: 91, attempt_id: "red2") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 91))) {
+      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 91))) {
         false
       } else {
-        let seen = read_cell_cgroup_subtree(slice: red_slice(index: 91))
-        let swept = sweep_slice_quiet(attempt: a, index: 91)
-        swept && match seen {
-          CgroupSubtreePopulated { pids: p, cgroups: cgs } =>
-            list_length(items: p) > 0
-              && fold(cgs, init: true, f: (acc, c) => acc && !ends_with(s: c as String, suffix: red_slice(index: 91) as String))
-          _ => false
+        match host_operation_exec(
+          transport: LocalShell,
+          operation: SystemctlStop { unit: runner_microvm_attempt_unit_name(attempt: a) },
+        ) {
+          HostOperationRefused { operation: _, reason: _ } => false
+          HostOperationObserved { stdout: _, success: _, stderr: _ } => {
+            let seen = read_cell_cgroup_subtree(slice: red_slice(index: 91))
+            let swept = sweep_slice_quiet(attempt: a, index: 91)
+            swept && red_escapee_was_found_beside_the_service(seen: seen, index: 91)
+          }
         }
       }
+  }
+}
+
+fn red_escapee_was_found_beside_the_service(seen: CgroupSubtreeReadback, index: Int) -> Bool {
+  match seen {
+    CgroupSubtreePopulated { pids: p, cgroups: cgs } =>
+      list_length(items: p) > 0
+        && fold(cgs, init: true, f: (acc, c) => acc && !ends_with(s: c as String, suffix: red_slice(index: index) as String))
+    _ => false
   }
 }
 
@@ -348,7 +383,7 @@ fn red_a_frozen_task_survives_the_bounded_force_stop() -> Bool {
   match red_attempt(index: 92, attempt_id: "red3") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
+      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
         false
       } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
         false
@@ -374,7 +409,7 @@ fn red_a_surviving_task_quarantines_the_cell() -> Bool {
   match red_attempt(index: 92, attempt_id: "red3b") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
+      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 92))) {
         false
       } else if !freeze_unit(unit: red_escapee_unit(attempt: a)) {
         false
@@ -542,7 +577,7 @@ fn red_a_successful_job_that_left_a_process_is_released_only_after_it_is_gone() 
   match red_attempt(index: 95, attempt_id: "red6") {
     Absent => false
     Present { value: a } =>
-      if !start_red_unit(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 95))) {
+      if !start_red_unit_and_settle(attempt: a, payload: red_escapee_payload(attempt: a, slice: red_slice(index: 95))) {
         false
       } else {
         let before = read_cell_cgroup_subtree(slice: red_slice(index: 95))

@@ -111,7 +111,6 @@ type HostOperation =
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlMaskNow { unit: NonEmptyStr }
-  | SystemctlKill { unit: NonEmptyStr, signal: NonEmptyStr }
   | SystemctlFreeze { unit: NonEmptyStr }
   | SystemctlThaw { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
@@ -163,13 +162,6 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     SystemctlMaskNow { unit: u } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "MaskNow"),
       bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
-    )
-    SystemctlKill { unit: u, signal: sig } => bind_operation_invocation(
-      at: systemctl_operation_ref(operation: "Kill"),
-      bindings: [
-        operation_argv_bind_text(name: "unit", text: u as String),
-        operation_argv_bind_text(name: "signal", text: sig as String),
-      ],
     )
     SystemctlFreeze { unit: u } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Freeze"),
@@ -335,10 +327,6 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     SystemctlMaskNow { unit: u } => {
       let result = systemd.Systemctl.MaskNow(unit: u)
-      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
-    }
-    SystemctlKill { unit: u, signal: sig } => {
-      let result = systemd.Systemctl.Kill(unit: u, signal: sig)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
     SystemctlFreeze { unit: u } => {
