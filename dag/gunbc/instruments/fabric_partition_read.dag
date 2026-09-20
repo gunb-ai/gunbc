@@ -1,6 +1,6 @@
 module gunbc.instruments.fabric_partition_read
 
-import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
