@@ -1016,14 +1016,16 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
   }
 }
 
-// THE NETWORK CONVERGE IS ITS OWN MODE, NOT A STEP OF THE HOST CONVERGE. The host converge installs
-// the VMM; this installs the slots' taps, their v6 sysctls, the host ruleset and forwarding, and
-// then READS the host back into a ConvergedSlotNetwork receipt. They are separate dispatches because
-// they fail for different reasons and an operator routinely wants one without the other: a
-// Firecracker release that will not verify says nothing about a tap that will not carry an address.
+// THIS MODE READS; IT INSTALLS NOTHING. The microVM network mutations are not granted to the job
+// user and must not be -- that pair would be root (gunbc.runner_microvm_network_converge
+// microvm_network_host_mutation_principal_frontier) -- so this mode reads the slot taps, their
+// addresses, routes and v6 standing, the host's forwarding, ruleset digest and helper standing, and
+// records them as a ConvergedSlotNetwork receipt. It is its own dispatch rather than a step of the
+// host converge because the two fail for different reasons and an operator routinely wants one
+// without the other: a Firecracker release that will not verify says nothing about a tap's address.
 fn fleet_converge_microvm_network_observe_step() -> Step {
   RunStep {
-    name: Present { value: "Runner micro-VM network: install the slot taps, ruleset and forwarding, then read the host back" },
+    name: Present { value: "Runner micro-VM network: read the slot taps, ruleset and forwarding back into a receipt (installs nothing)" },
     id: Present { value: "microvm_network_observe" },
     run: gunbc_ci_runner_microvm_network_observe_invoke(),
     shell: none,
