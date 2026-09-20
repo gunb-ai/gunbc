@@ -82,8 +82,14 @@ fn clear_slice() -> Bool
   systemd.Systemctl.Stop(unit: wet_slice).success || true
 }
 
+// A PAYLOAD THAT IGNORES SIGTERM MUST NOT DEPEND ON ITS CHILD SURVIVING IT, and the first cut did.
+// `trap '' TERM; sleep 600` ignores TERM in the SHELL -- and --kill-whom=all signals the sleep too,
+// which dies, after which the script runs off its end and the shell exits. Whether the cgroup
+// empties on the graceful ask then depends on a race nobody declared: the claim passed once and
+// failed once against unchanged controller code. The loop restarts the child, so the shell survives
+// TERM for as long as the claim needs it to, and the arm is reached by construction.
 fn sigterm_ignoring_payload() -> List<String> {
-  ["/bin/sh", "-c", "trap '' TERM; sleep 600"]
+  ["/bin/sh", "-c", "trap '' TERM; while true; do sleep 1; done"]
 }
 
 // A SURVIVOR THE UNIT'S OWN KILL CANNOT REACH: a second transient unit under the SLICE rather than
@@ -223,9 +229,9 @@ test fn a_frozen_cell_is_still_ended_by_the_cell_wide_force() -> Bool
     false
   } else if !start_payload(unit: "gunbc-wet-frozen.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
     false
-  } else if !readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice)) {
-    false
   } else if !write_freeze(value: cgroup_v2_frozen_value) {
+    false
+  } else if read_freeze() != cgroup_v2_frozen_value {
     false
   } else {
     let stopped = stop_attempt(unit: "gunbc-wet-frozen.service" as NonEmptyStr, slice: wet_slice)
@@ -241,6 +247,19 @@ fn stop_was_by_force(stop: TeardownStop) -> Bool {
     ForceStopOutcomeUnobservable { reason: _ } => false
     StoppedGracefully => false
   }
+}
+
+// THE FREEZE IS READ BACK BEFORE THE CLAIM RESTS ON IT. A write that silently did not take would
+// make the rest of this claim a statement about an unfrozen cgroup, which is a different and much
+// less interesting fact; and when the claim fails, this is what says whether the freeze or the force
+// was the part that did not do what it says.
+fn read_freeze() -> String
+  uses net: Network
+{
+  let read = linux.CgroupV2.ReadInterfaceFile(
+    file_path: cgroup_v2_freeze_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr),
+  )
+  if read.success == false { "" } else { trim(s: read.value) }
 }
 
 fn write_freeze(value: String) -> Bool
@@ -409,11 +428,14 @@ fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: Strin
 
 // THE STOP TAKES THE FIRST READING AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this
 // substrate is data dependence and nothing else.
+// THE STOP DOES NOT REQUIRE THE RESET TO SUCCEED, and the first cut did, which made the claim fail
+// for a reason that was not about it: `systemctl stop` on a retained unit that has exited already
+// unloads it, so the reset that follows reports "not loaded" -- the state the reset was for, reached
+// by the stop. What this needs is that the unit is gone, and Stop establishes that.
 fn stop_incarnation_unit(after: String) -> Bool
   uses net: Network
 {
   after != "" && systemd.Systemctl.Stop(unit: incarnation_unit()).success
-    && systemd.Systemctl.ResetFailedUnit(unit: incarnation_unit()).success
 }
 
 // RED 6 -- A JOB THAT EXITS ZERO CAN LEAVE THE CELL'S SUBTREE POPULATED.
