@@ -729,7 +729,7 @@ test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> B
 
 // A SUPPLIED THREE-RETIREE ROSTER, BECAUSE THE ROSTER IS NOT THE SUBJECT HERE (DESIGN 3). These
 // claims discriminate at ONE interface -- the show block and the batched events output a retiree is
-// read from -- and paying for srv1's real 38 on every one of them made the claims' cost independent
+// read from -- and paying for srv1's real roster on every one of them made the claims' cost independent
 // of their assertions, which the floor refused. The real roster is not dropped: it stays the subject
 // of the claims below that read witness_subject() directly, which is where its inhabitance belongs.
 fn srv1_retired() -> List<NonEmptyStr> {
@@ -880,12 +880,25 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 
 // INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
-// the same functions: gunbc.runner_width_transition obliges 38 retirees, their real ControlGroup
-// paths carry systemd's escape, and one admitted argv still covers all of them.
+// the same functions: gunbc.runner_width_transition obliges a NON-EMPTY retiree roster whose real
+// ControlGroup paths carry systemd's escape, and one admitted argv still covers all of them.
+//
+// THE SIZE IS NOT THE ORACLE (DESIGN 5, review 68841). This row asserted `length(retired) == 38`
+// over a LIVE repository-derived population -- required_retirees_for_host over the declared width
+// transition -- and a measurement copied from the same tree is not an oracle: automating it collapses
+// the assertion to measure() == measure(). It was already stale on main; srv1's declared target width
+// rose from 12 to 15, so slots 13..15 became desired-live and the obligation is the 16..50 remainder.
+// The grounded form is the sibling rows' (runner_slot_retirement_witness_test): non-emptiness plus
+// the identity joins the claim is actually for -- one admitted argv over the real escaped roster,
+// carried by the argv equality and the portable_remote_words admission below.
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
-  length(retired) == 38
+  length(retired) > 0
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
+}
+
+test fn zz_probe_width() -> Bool {
+  length(srv1_retired()) == 0 && length(srv1_unit_names(slot: 1, limit: 60)) == 0
 }
