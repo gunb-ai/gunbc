@@ -6,6 +6,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessObservation }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound,
   HostCaptureStage,
@@ -164,18 +165,22 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
 // nothing. POSIX shell functions take precedence over PATH, so each case prefixes the UNMODIFIED body
 // with stubs for the two tools it calls -- no 64 GiB is written and no real hashing happens, while
 // every line of the body under test is the one the image carries.
-fn workload_case(stubs: String) -> Int {
+// ONE SPAWN PER CASE. The stdout and the exit status are two fields of ONE observation, so reading
+// them through two functions ran the program twice per case to learn what a single run already
+// reported -- eight executions where four suffice. It also made the disagreeing case incoherent:
+// that stub counts invocations, so a second spawn continued a sequence the first had started.
+fn workload_case(stubs: String) -> ProcessObservation {
   run_shell_command_observe(
     command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
     transport: LocalExec,
-  ).exit_code
+  )
 }
 
-fn workload_case_stdout(stubs: String) -> String {
-  run_shell_command_observe(
-    command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command() as String, "\n")),
-    transport: LocalExec,
-  ).stdout
+// The token must be a WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX",
+// or the token inside an argv echo, may not satisfy this. Captured stdout carries no trailing
+// newline, so the capture is padded on BOTH sides before the line-delimited match.
+fn workload_emitted_the_token(o: ProcessObservation) -> Bool {
+  string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
 }
 
 data workload_stub_dd: String = "dd() { :; }; rm() { :; }; mkdir() { :; };"
@@ -194,14 +199,8 @@ data workload_stub_partial: String = "sha256sum() { for f in \"$@\"; do case \"$
 data workload_stub_disagree: String = "sha256sum() { n=$(cat /tmp/gunbc-wl-counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > /tmp/gunbc-wl-counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };"
 
 test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
-  let complete = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_complete))
-  let complete_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
-  // THE TOKEN MUST BE A WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX"
-  // or the token inside an argv echo may not satisfy this. Captured stdout carries no trailing
-  // newline, so the captured text is padded on BOTH sides before the line-delimited match; matching
-  // the raw capture against a trailing "\n" failed on the one case that must pass, which is a control
-  // that fails closed rather than a workload defect.
-  string_contains(s: concat("\n", complete, "\n"), pattern: "\nworkload-digest-stable=yes\n") && complete_rc == 0
+  let complete = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
+  workload_emitted_the_token(o: complete) && complete.exit_code == 0
 }
 
 // THE THREE REDS. Each would be called STABLE by a body that only compares the two manifests: both
@@ -209,17 +208,17 @@ test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_ex
 // emit the token, and each must leave the stage nonzero.
 test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
   let cleared = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
-  let empty = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_both_empty))
-  let empty_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
-  let partial = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_partial))
-  let partial_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
+  let empty = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
+  let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
   let cleared_again = shell.Remove.FileForce(path: "/tmp/gunbc-wl-counter")
-  let disagree = workload_case_stdout(stubs: concat(workload_stub_dd, workload_stub_disagree))
-  let disagree_rc = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
-  string_contains(s: empty, pattern: "workload-digest-stable=yes") == false
-    && empty_rc != 0
-    && string_contains(s: partial, pattern: "workload-digest-stable=yes") == false
-    && partial_rc != 0
-    && string_contains(s: disagree, pattern: "workload-digest-stable=yes") == false
-    && disagree_rc != 0
+  let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree))
+  // ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
+  // claim -- it also rules out the token appearing with anything appended -- and a RED may not be
+  // weakened to share a helper with the positive case.
+  string_contains(s: empty.stdout, pattern: "workload-digest-stable=yes") == false
+    && empty.exit_code != 0
+    && string_contains(s: partial.stdout, pattern: "workload-digest-stable=yes") == false
+    && partial.exit_code != 0
+    && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
+    && disagree.exit_code != 0
 }
