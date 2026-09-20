@@ -10,6 +10,7 @@ import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded, ForceStopOutcomeUnobservable,
+  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
 import gunbc.runner_microvm_lifecycle_realize {
@@ -287,7 +288,7 @@ test fn show_property_reads_a_units_environment() -> Bool
   } else if !start_with_invocation(unit: "gunbc-wet-show-inv.service" as NonEmptyStr, invocation: "probe-inv", sleep_for: "301") {
     false
   } else {
-    observe_unit_attempt_invocation(unit: "gunbc-wet-show-inv.service" as NonEmptyStr) == "probe-inv"
+    invocation_text(reading: observe_unit_attempt_invocation(unit: "gunbc-wet-show-inv.service" as NonEmptyStr)) == "probe-inv"
   }
 }
 
@@ -326,7 +327,7 @@ test fn the_unit_reports_the_attempt_invocation_id_it_was_started_with() -> Bool
   } else if !start_with_invocation(unit: incarnation_unit(), invocation: "attempt-inv-one", sleep_for: "600") {
     false
   } else {
-    let first = observe_unit_attempt_invocation(unit: incarnation_unit())
+    let first = invocation_text(reading: observe_unit_attempt_invocation(unit: incarnation_unit()))
     if first != "attempt-inv-one" {
       false
     } else if !stop_incarnation_unit(after: first) {
@@ -334,7 +335,37 @@ test fn the_unit_reports_the_attempt_invocation_id_it_was_started_with() -> Bool
     } else if !start_with_invocation(unit: incarnation_unit(), invocation: "attempt-inv-two", sleep_for: "601") {
       false
     } else {
-      observe_unit_attempt_invocation(unit: incarnation_unit()) == "attempt-inv-two"
+      invocation_text(reading: observe_unit_attempt_invocation(unit: incarnation_unit())) == "attempt-inv-two"
+    }
+  }
+}
+
+// THE READING IS UNWRAPPED HERE AND NOWHERE ELSE, and an unread one renders as the empty string --
+// which no attempt id can equal, so a claim below cannot pass on a reading that was never taken. The
+// UNREAD arm is asserted on its own in the claim beneath these.
+fn invocation_text(reading: UnitInvocationReading) -> String {
+  match reading {
+    UnitInvocationRead { invocation_id: v } => v as String
+    UnitInvocationUnread { reason: _ } => ""
+  }
+}
+
+// A UNIT THAT CARRIES NO ATTEMPT ASSIGNMENT READS AS UNREAD, NOT AS A VALUE. This is the wet half of
+// review 69057's finding: the producer used to return "" for exactly this case and the caller crossed
+// it into a NonEmptyStr, which -- measured on this host -- SILENTLY ADMITS, so a NonEmptyStr held the
+// empty string. The claim asserts the arm rather than the string, because a producer that returned
+// UnitInvocationRead { invocation_id: "" } would render identically through invocation_text above.
+test fn a_unit_with_no_attempt_assignment_reads_as_unread() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-noenv.service" as NonEmptyStr, argv: ["/bin/sleep", "302"]) {
+    false
+  } else {
+    match observe_unit_attempt_invocation(unit: "gunbc-wet-noenv.service" as NonEmptyStr) {
+      UnitInvocationUnread { reason: r } => (r as String) != ""
+      UnitInvocationRead { invocation_id: _ } => false
     }
   }
 }

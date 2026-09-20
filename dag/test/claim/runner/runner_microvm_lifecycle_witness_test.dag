@@ -384,21 +384,15 @@ test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_
         Absent => false
         Present { value: b } => {
           let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
-          let unread = match attempt_teardown_readback(
-            bound: b,
-            observed: observed_with_invocation(id: id, facts: clean, reading: UnitInvocationUnread { reason: "the unit carries no assignment" as NonEmptyStr }),
-          ) {
+          let unread = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationUnread { reason: "the unit carries no assignment" as NonEmptyStr }) {
             TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: _ } => true
             _ => false
           }
-          let foreign = match attempt_teardown_readback(
-            bound: b,
-            observed: observed_with_invocation(id: id, facts: clean, reading: UnitInvocationRead { invocation_id: "inv-somebody-else" as NonEmptyStr }),
-          ) {
+          let foreign = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationRead { invocation_id: "inv-somebody-else" as NonEmptyStr }) {
             TeardownReadbackForeignSubject { subject: SubjectInvocation, expected: _, observed: _ } => true
             _ => false
           }
-          let own = match attempt_teardown_readback(bound: b, observed: observed_for(id: id, facts: clean)) {
+          let own = match teardown_binding(bound: b, id: id, facts: clean) {
             TeardownReadbackBound { readback: _ } => true
             _ => false
           }
@@ -417,18 +411,32 @@ test fn an_unreadable_unit_invocation_settles_nothing() -> Bool {
       match bound_of(id: id) {
         Absent => false
         Present { value: b } =>
-          match attempt_teardown_readback(
+          match binding_with_invocation(
             bound: b,
-            observed: observed_with_invocation(
-              id: id,
-              facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
-              reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
-            ),
+            id: id,
+            facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
+            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
           ) {
             TeardownReadbackBound { readback: _ } => false
             _ => true
           }
       }
+  }
+}
+
+// THE OPTIONAL FIXTURE IS HANDLED THE SAME WAY teardown_binding HANDLES IT: an Absent fixture yields
+// a refusal naming the SLOT NETWORK subject, which neither claim above accepts, so a skipped readback
+// cannot read as a pass.
+fn binding_with_invocation(
+  bound: CellBoundAttempt,
+  id: AttemptIdentity,
+  facts: HostFacts?,
+  reading: UnitInvocationReading,
+) -> TeardownReadbackBinding {
+  match facts {
+    Absent => TeardownReadbackForeignSubject { subject: SubjectSlotNetwork, expected: "a readable fixture", observed: "no subject" }
+    Present { value: f } =>
+      attempt_teardown_readback(bound: bound, observed: observed_with_invocation(id: id, facts: f, reading: reading))
   }
 }
 
