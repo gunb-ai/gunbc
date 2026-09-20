@@ -1,0 +1,56 @@
+module gunbc.machine_intake_sol_hold
+
+import std.types { Bool, NonEmptyStr, Unit }
+import std.string_type { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// HOLDING A STREAMING SOL SESSION IS REALIZATION, NOT THE IPMI INTERFACE. extdeps.bmc.ipmi
+// SolDeactivate is a flat ipmitool argv; `sol activate` is the matching interface and it does not
+// return until the session ends. Backgrounding, redirecting the collector, and writing a pid are
+// how THIS workflow holds that session after the operator grant — one of N realizations, never a
+// fact about IPMI (DESIGN §3). The hold is still bash: process-hold is not a Node in the grammar
+// yet, so the transport is a marked scaffold rather than an unmarked script fused into the BMC
+// interface (review 67590).
+
+data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.machine_intake_sol_hold",
+    decl_name: "mtcollins1_sol_hold_shell_emit_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — holding `ipmitool sol activate` as a background collector (redirect, stdin from /dev/zero, pid file) is still a bash -c process-hold; paths are positional data (`$1`…`$5`), not interpolated shell syntax. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) or a typed process-hold realization starts a streaming session, redirects its bytes, and records the holder pid without a medium-as-string script")
+
+service gunbc.machine_intake.sol_hold {
+  operation ActivateHeld {
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      capture_path: NonEmptyStr
+      pid_path: NonEmptyStr
+    }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "bash",
+        "-c",
+        "ipmitool -H \"$1\" -I lanplus -U \"$2\" -f \"$3\" sol activate >> \"$4\" 2>&1 < /dev/zero & echo $! > \"$5\"",
+        "sol-hold",
+        "{bmc_host}",
+        "{username}",
+        "{password_file}",
+        "{capture_path}",
+        "{pid_path}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sol activate held failed"
+    }
+  }
+}

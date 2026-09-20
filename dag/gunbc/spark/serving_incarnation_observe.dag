@@ -462,11 +462,14 @@ fn incarnation_after_host_facts(
                 } else if count(scan.matched) > 1 {
                   IncarnationRefused { refusal: IncarnationAmbiguousProcessStart { pids: map(scan.matched, b => b.pid), field: endpoint.process_start_field } }
                 } else {
-                  let bound = scan.matched.first()
-                  incarnation_after_process(
-                    transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                    names: names, invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
-                  )
+                  match scan.matched.first() {
+                    Absent => IncarnationRefused { refusal: IncarnationNoProcessStartsAtExportedInstant { candidates: count(pids), field: endpoint.process_start_field } }
+                    Present { value: bound } =>
+                      incarnation_after_process(
+                        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                        names: names, invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
+                      )
+                  }
                 }
             }
           }

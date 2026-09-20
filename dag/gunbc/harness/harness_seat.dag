@@ -12,7 +12,7 @@ import gunbc.serving.serving_enrollment {
 }
 import v2.std.optional { Present, Absent }
 import gunbc.fabric_event_log_host {
-  HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds,
+  HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds,
 }
 import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
@@ -22,8 +22,9 @@ import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolReleased, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired }
+import gunbc.fabric_db_client { FabricDbBinding }
 import gunbc.fabric_event_log {
-  EventLogLayout, HeadExpectation, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
+  HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
   SeatAcquireRefused, fabric_seat_acquire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
   fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
@@ -246,7 +247,7 @@ fn harness_seat_capacity(group: FabricGroup, class: ServingCoTenancyClass) -> Ha
 // unreadable group look like patience. An unread group frees nobody: nothing about waiting turns it
 // into a reading, so its remedy is to go and measure.
 type HarnessSeatBinding
-  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, group_wire: String, launch: VllmEndpointProcessLaunch, layout: EventLogLayout, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass }
+  = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, group_wire: String, launch: VllmEndpointProcessLaunch, store: FabricDbBinding, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass }
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
 
@@ -300,7 +301,7 @@ type HarnessClassHeld
   = ClassSeatsHeld { held: Nat }
   | ClassHeldUnread { obligation: NonEmptyStr }
 
-fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout: EventLogLayout, now: EpochSecs) -> HarnessClassHeld {
+fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, store: FabricDbBinding, now: EpochSecs) -> HarnessClassHeld {
   match harness_seat_capacity_for(route: route, class: class) {
     AdmissionCeilingUnestablished { group: g, cause: why } =>
       ClassHeldUnread {
@@ -314,12 +315,19 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout:
         ServingRouteUnresolved { group: g, obligation: why } =>
           ClassHeldUnread { obligation: join([fabric_group_wire(g: g) as String, ": ", why as String], "") as NonEmptyStr }
         ServingRouteResolved { endpoint: e, ceiling: _ } =>
-          match fabric_seat_observe(layout: layout, partition: harness_seat_partition(group: e.group, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
+          match fabric_seat_observe(store: store, partition: harness_seat_partition(group: e.group, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
             SeatStandingUnobserved { step: st, reason: why } =>
               ClassHeldUnread {
                 obligation: join([
                   fabric_group_wire(g: e.group) as String, " ", serving_co_tenancy_class_wire(c: class) as String,
                   " seat pool could not be read at ", st, ": ", why,
+                ], "") as NonEmptyStr,
+              }
+            SeatStandingStoreRefused { cause: c } =>
+              ClassHeldUnread {
+                obligation: join([
+                  fabric_group_wire(g: e.group) as String, " ", serving_co_tenancy_class_wire(c: class) as String,
+                  " seat pool could not be read from the fabric DB: ", event_log_refusal_wire(cause: c),
                 ], "") as NonEmptyStr,
               }
             SeatFullObserved { generation: _ } => ClassSeatsHeld { held: ceiling }
@@ -333,11 +341,11 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, layout:
 // EITHER CLASS UNREAD MAKES THE WHOLE STANDING UNREAD, carrying that class's own cause rather than a
 // sentence about which class it was. A standing holding one class's count and defaulting the other's
 // would default the one that admits.
-fn harness_seat_standing(route: ServingRoute, layout: EventLogLayout, now: EpochSecs) -> ServingSeatStanding {
-  match harness_class_held(route: route, class: InteractiveQualitySensitive, layout: layout, now: now) {
+fn harness_seat_standing(route: ServingRoute, store: FabricDbBinding, now: EpochSecs) -> ServingSeatStanding {
+  match harness_class_held(route: route, class: InteractiveQualitySensitive, store: store, now: now) {
     ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
     ClassSeatsHeld { held: q } =>
-      match harness_class_held(route: route, class: BatchQualityTolerant, layout: layout, now: now) {
+      match harness_class_held(route: route, class: BatchQualityTolerant, store: store, now: now) {
         ClassHeldUnread { obligation: o } => SeatStandingUnread { obligation: o }
         ClassSeatsHeld { held: t } => SeatStandingRead { quality_held: q, tolerant_held: t }
       }
@@ -841,7 +849,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricDbBinding, now: EpochSecs, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -872,7 +880,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
           }
       }
     }
@@ -896,7 +904,7 @@ fn harness_candidate_from_standing(
   launch: VllmEndpointProcessLaunch,
   engine: HarnessEngineReading,
   route_ceiling: ServingRouteTurnCeiling,
-  layout: EventLogLayout,
+  store: FabricDbBinding,
   now: EpochSecs,
   access: FleetSshContextPreparation,
   declared_units: HarnessDeclaredUnitRoster,
@@ -916,7 +924,7 @@ fn harness_candidate_from_standing(
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-                  seats_held: harness_seat_standing(route: route, layout: layout, now: now),
+                  seats_held: harness_seat_standing(route: route, store: store, now: now),
                   now: now, access: access, declared_units: declared_units, participation_roster: participation_roster,
                 )
               }
@@ -1010,9 +1018,9 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
-fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
+fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricDbBinding, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, subject: subject, layout: layout, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
+    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
@@ -1098,14 +1106,14 @@ type HarnessAcquisition
 // which is the leak the ceiling of one exists to prevent, arriving through the recovery path
 // (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
 // could not give back is named in the reason.
-fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
+fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricDbBinding, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
   match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine_at(endpoint: candidate.endpoint, at: now).launch, now: to_string(now)).reading {
     EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
-      let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
+      let released = release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
     }
     EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
-        match release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
+        match release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
           HarnessSeatReleased { partition: _ } =>
             AcquisitionLost {
               key: candidate.key,
@@ -1123,7 +1131,7 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
             ceiling: candidate.ceiling,
             group_wire: fabric_group_wire(g: candidate.group) as String,
             launch: candidate.launch,
-            layout: layout,
+            store: store,
             model: candidate.model,
             unit: candidate.unit,
             class: class,
@@ -1133,15 +1141,15 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
 }
 
 
-fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
+fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, store: FabricDbBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group, class: class) {
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }
     SeatCeilingByDeclaredPolicy { class: _, pool: root, seats: _ } => {
       let partition = harness_seat_partition(group: candidate.group, class: class, ceiling: candidate.ceiling)
-      match event_log_observe_head(layout: layout, partition: partition) {
-        HeadObservationRefused { step: st, reason: why } =>
-          AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the partition head could not be read at ", st, ", so no unique acquisition reference exists: ", why], "")) }
+      match event_log_observe_head(store: store, partition: partition) {
+        HeadObservationRefused { cause: c } =>
+          AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the partition head could not be read, so no unique acquisition reference exists: ", event_log_refusal_wire(cause: c)], "")) }
         HeadObserved { head: h } => {
       let request = SeatRequest {
         reference: harness_seat_reference(attempt: attempt, offer_key: candidate.key, now: now, round: round, head: harness_head_word(head: h)),
@@ -1149,15 +1157,17 @@ fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass,
         at: now,
         term_seconds: policy.maximum_duration_seconds,
       }
-      match fabric_seat_acquire(layout: layout, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
+      match fabric_seat_acquire(store: store, partition: partition, root: root, actor: actor, request: request, policy: policy, attempts: 3, budget: 4096) {
         SeatGranted { grant: g, generation: _, attempts_used: _ } =>
-          harness_fence_grant(candidate: candidate, class: class, layout: layout, partition: partition, shape: shape, grant: g, now: now)
+          harness_fence_grant(candidate: candidate, class: class, store: store, partition: partition, shape: shape, grant: g, now: now)
         SeatFull { wire: w, attempts_used: _ } =>
           AcquisitionLost { key: candidate.key, detail: seat_bind_detail(group: candidate.group, text: w) }
         SeatContended { attempts: a } =>
           AcquisitionLost { key: candidate.key, detail: seat_bind_detail(group: candidate.group, text: join(["the seat compare-and-set was contended ", to_string(a), " times"], "")) }
         SeatAcquireRefused { step: st, reason: why, attempts_used: _ } =>
           AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([st, ": ", why], "")) }
+        SeatStoreRefused { cause: c, attempts_used: _ } =>
+          AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["fabric DB: ", event_log_refusal_wire(cause: c)], "")) }
       }
         }
       }
@@ -1192,11 +1202,11 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
 // consumer rejected until select_supply's pricing fold read it as a Measure and the interpreter
 // refused a field access on an Int -- first reached 2026-09-18, when the serving route's admission
 // first passed in production and this fold ran for real.
-fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> PlacementRound {
+fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricDbBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
     Absent => {
-      let collected = harness_collect_candidates(class: class, requirement: requirement, subject: subject, layout: layout, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations, declared_units: declared_units, participation_roster: participation_roster)
+      let collected = harness_collect_candidates(class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations, declared_units: declared_units, participation_roster: participation_roster)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
       match select_supply(
@@ -1236,7 +1246,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
                 incarnations: collected.incarnations,
               }
             Present { value: c } =>
-              match harness_acquire_on(candidate: c, class: class, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
+              match harness_acquire_on(candidate: c, class: class, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
                 AcquisitionGranted { binding: b } =>
                   PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable, incarnations: collected.incarnations }
                 AcquisitionRefused { detail: d } =>
@@ -1261,9 +1271,9 @@ data harness_placement_rounds: Nat = 3
 // screen argument naming another.
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
-  match event_log_layout_for_host(short_hostname: short_hostname) {
-    HostLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
-    HostLayoutResolved { layout: layout, executor: _ } =>
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
@@ -1271,7 +1281,7 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
           let declared_units = harness_declared_unit_roster()
           let participation_roster = harness_group_participation_roster(access: access)
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, incarnations: [] }, f: (acc, round) =>
-            harness_placement_round(acc: acc, class: class, requirement: requirement, subject: subject, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
+            harness_placement_round(acc: acc, class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
           match placed.done {
             Present { value: b } => b
             Absent =>
@@ -1305,9 +1315,9 @@ fn release_proposal(pool: Pool<Count, One>, reference: NonEmptyStr, reason: NonE
   }
 }
 
-fn release_append(layout: EventLogLayout, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease? {
-  match event_log_read_partition(layout: layout, partition: partition, budget: 4096) {
-    PartitionReadRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+fn release_append(store: FabricDbBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease? {
+  match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+    PartitionReadRefused { cause: c } => Present { value: HarnessSeatReleaseRefused { detail: event_log_refusal_wire(cause: c) } }
     PartitionReadOk { head: head, walk: walk } =>
       match walk {
         ChainIncomplete { missing: m, newest_first_so_far: _ } =>
@@ -1330,10 +1340,10 @@ fn release_append(layout: EventLogLayout, partition: PartitionId, ceiling: Nat, 
                     actor: reference,
                     payload: PoolReleased { reference: reference, reason: reason },
                   }
-                  match event_log_append(layout: layout, partition: partition, event: event, expected: head) {
+                  match event_log_append(store: store, partition: partition, event: event, expected: head) {
                     EventAppended { id: _ } => Present { value: HarnessSeatReleased { partition: partition } }
                     EventAppendStale { expected: _, observed: _ } => none
-                    EventAppendRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+                    EventAppendRefused { cause: c } => Present { value: HarnessSeatReleaseRefused { detail: event_log_refusal_wire(cause: c) } }
                   }
                 }
               }
@@ -1342,11 +1352,11 @@ fn release_append(layout: EventLogLayout, partition: PartitionId, ceiling: Nat, 
   }
 }
 
-fn release_retry(layout: EventLogLayout, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+fn release_retry(store: FabricDbBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
   let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: ReleaseFold { done: none }, f: (acc, _i) =>
     match acc.done {
       Present { value: _ } => acc
-      Absent => ReleaseFold { done: release_append(layout: layout, partition: partition, ceiling: ceiling, reference: reference, reason: reason, now: now) }
+      Absent => ReleaseFold { done: release_append(store: store, partition: partition, ceiling: ceiling, reference: reference, reason: reason, now: now) }
     })
   match st.done {
     Present { value: r } => r
@@ -1371,11 +1381,11 @@ fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> Har
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
     HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
-    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, layout: layout, model: _, unit: _, class: _ } =>
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, store: store, model: _, unit: _, class: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>
-          release_retry(layout: layout, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
+          release_retry(store: store, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
       }
   }
 }
@@ -1438,17 +1448,19 @@ fn harness_release_capability_wire(c: HarnessReleaseCapability) -> String {
 }
 
 fn harness_release_held(short_hostname: String, capability: HarnessReleaseCapability, reason: NonEmptyStr) -> HarnessSeatRelease {
-  match event_log_layout_for_host(short_hostname: short_hostname) {
-    HostLayoutRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
-    HostLayoutResolved { layout: layout, executor: _ } =>
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>
-          match fabric_seat_observe(layout: layout, partition: capability.partition, root: harness_seat_pool_root(partition: capability.partition, ceiling: capability.ceiling), at: now, budget: 4096) {
+          match fabric_seat_observe(store: store, partition: capability.partition, root: harness_seat_pool_root(partition: capability.partition, ceiling: capability.ceiling), at: now, budget: 4096) {
             SeatStandingUnobserved { step: st, reason: why } =>
               HarnessSeatReleaseRefused { detail: join(["the seat pool could not be read at ", st, ", so the fence could not be checked: ", why], "") }
-            SeatFullObserved { generation: gen } => harness_release_fenced(layout: layout, capability: capability, observed: gen, reason: reason, now: now)
-            SeatRoomObserved { headroom: _, generation: gen } => harness_release_fenced(layout: layout, capability: capability, observed: gen, reason: reason, now: now)
+            SeatStandingStoreRefused { cause: c } =>
+              HarnessSeatReleaseRefused { detail: join(["the seat pool could not be read from the fabric DB, so the fence could not be checked: ", event_log_refusal_wire(cause: c)], "") }
+            SeatFullObserved { generation: gen } => harness_release_fenced(store: store, capability: capability, observed: gen, reason: reason, now: now)
+            SeatRoomObserved { headroom: _, generation: gen } => harness_release_fenced(store: store, capability: capability, observed: gen, reason: reason, now: now)
           }
       }
   }
@@ -1482,7 +1494,7 @@ fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> Ev
   }
 }
 
-fn harness_release_fenced(layout: EventLogLayout, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+fn harness_release_fenced(store: FabricDbBinding, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
   if observed < capability.generation {
     HarnessSeatReleaseRefused {
       detail: join([
@@ -1492,9 +1504,9 @@ fn harness_release_fenced(layout: EventLogLayout, capability: HarnessReleaseCapa
       ], ""),
     }
   } else {
-    match event_log_read_partition(layout: layout, partition: capability.partition, budget: 4096) {
-      PartitionReadRefused { step: st, reason: why } =>
-        HarnessSeatReleaseRefused { detail: join(["the partition could not be read at ", st, ", so the grant could not be checked: ", why], "") }
+    match event_log_read_partition(store: store, partition: capability.partition, budget: 4096) {
+      PartitionReadRefused { cause: c } =>
+        HarnessSeatReleaseRefused { detail: join(["the partition could not be read, so the grant could not be checked: ", event_log_refusal_wire(cause: c)], "") }
       PartitionReadOk { head: _, walk: walk } =>
         match admitting_event_for(walk: walk, reference: capability.reference) {
           Absent =>
@@ -1511,7 +1523,7 @@ fn harness_release_fenced(layout: EventLogLayout, capability: HarnessReleaseCapa
                 ], ""),
               }
             } else {
-              release_retry(layout: layout, partition: capability.partition, ceiling: capability.ceiling, reference: capability.reference, reason: reason, now: now)
+              release_retry(store: store, partition: capability.partition, ceiling: capability.ceiling, reference: capability.reference, reason: reason, now: now)
             }
         }
     }

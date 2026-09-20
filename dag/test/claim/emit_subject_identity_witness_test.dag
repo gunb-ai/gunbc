@@ -180,7 +180,10 @@ test fn an_admission_against_a_subject_outside_the_roster_is_an_orphan() -> Bool
     admitted: [key(root: "dag", kind: ModuleClosure), key(root: "dag", kind: ProductClosure)]
   )
   (count(orphans) == 1)
-    && (emit_subject_key_text(key: orphans[0]) == emit_subject_key_text(key: key(root: "dag", kind: ProductClosure)))
+    && (match orphans.first() {
+      Present { value: orphan } => emit_subject_key_text(key: orphan) == emit_subject_key_text(key: key(root: "dag", kind: ProductClosure))
+      Absent => false
+    })
 }
 
 // ITS CONTROL: an admission that DOES name a roster subject is not an orphan, so the check above is
