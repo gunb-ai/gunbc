@@ -7,7 +7,10 @@ cd "$REPO"
 git fetch origin pull/11800/head
 git checkout -q --detach "$HEADSHA"
 echo "HEAD: $(git rev-parse HEAD)"
-D=$(mktemp -d)
+# The driver must live INSIDE the repo: gunbc panics on a source root outside the process
+# workspace root (repo_relative_path_normalized: path /tmp/tmp.XXXX is not under process workspace root).
+D="$REPO/.scratch-driver"
+rm -rf "$D"; mkdir -p "$D"
 python3 - "$D" "$FILE" <<'PY'
 import re, sys
 d, p = sys.argv[1], sys.argv[2]
@@ -30,6 +33,8 @@ fn report() -> String {
 """ % (imp, rows))
 print("claims in driver:", len(names))
 PY
+# A non-interactive ssh to srv1 does not have cargo on PATH.
+export PATH="$HOME/.cargo/bin:$PATH"
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/tmp/gunbc-11800-target}
 cargo build --release -p v1-compiler --bin gunbc || exit 1
 G=$CARGO_TARGET_DIR/release/gunbc
@@ -43,4 +48,7 @@ echo "=== RUN 2: mutated; the_real_srv1_retiree_roster_reaches_one_admitted_read
 systemd-run --user --scope -p MemoryMax=24G "$G" run --source-root dag --source-root src/v2 --source-root "$D" --entry "$D/runner_host_file_report.dag" --function report
 echo "rc=$?"
 git checkout -- "$FILE"
+rm -rf "$D"
+# NOTE: rc=2 on both runs is EXPECTED and is not a failure. gunbc run refuses to map a String
+# return to an exit code, and prints the report inside the refusal text. Read the lines, not the rc.
 echo "=== restored: $(git status --porcelain -- "$FILE" | wc -l) modified paths remain ==="
