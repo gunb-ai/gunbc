@@ -39,11 +39,24 @@ type UbuntuSeededInstallMediaBuildInput {
   builder_revision: NonEmptyStr
 }
 
-// THE DATES ARE PINNED so identical inputs reproduce identical bytes. The replay otherwise stamps the
-// build instant into the volume descriptors and into every mapped file, so each rebuild of the same
-// inputs would measure a different digest and create-only publication would mint a new name every
-// time. uuid is xorriso's 16-digit volume date (it is also the medium's blkid UUID); file_date is
-// the -alter_date timestring applied to every file.
+// THE DATES ARE PINNED SO THAT IDENTICAL INPUTS CAN REPRODUCE IDENTICAL BYTES, AND THAT IS A BET
+// UNTIL A BUILD RUNS (DESIGN §4d: an inference is typed as a bet, not promoted). What is established:
+// the replay stamps the build instant into the volume descriptors and into mapped files, so WITHOUT
+// pinning a rebuild of the same inputs measures a different digest. What is NOT established: that
+// pinning these two dates is SUFFICIENT for byte-identical output -- xorriso may carry other
+// build-varying state, and the ordering these commands rely on (both -volume_date commands after the
+// -map commands, so freshly mapped files are covered) is read off the tool's left-to-right execution
+// rather than measured. WHAT WOULD SETTLE IT: the srv2 wet control named in
+// gunbc.machine_intake_mtcollins1_census_image -- build twice from one input, compare the two measured
+// digests, and change one seed byte and compare again.
+//
+// NOTHING SILENTLY DEPENDS ON THE BET. If a rebuild is not byte-identical it produces a DIFFERENT
+// digest, so it publishes under a different name; create-only publication refuses nothing and
+// replaces nothing, and the derivation record names whichever bytes were actually built. The cost of
+// the bet being wrong is a second published image, not a wrong one.
+//
+// uuid is xorriso's 16-digit volume date (it is also the medium's blkid UUID); file_date is the
+// -alter_date timestring applied to every file.
 type SeededInstallMediaPinnedDates {
   volume_uuid: NonEmptyStr
   file_date: NonEmptyStr

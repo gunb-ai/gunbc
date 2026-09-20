@@ -3,8 +3,9 @@ module gunbc.seeded_install_media_policy
 import std.types { NonEmptyStr }
 import extdeps.provisioning.ubuntu_seeded_install_media { SeededInstallMediaPinnedDates }
 
-// WHICH INSTANT A DERIVED IMAGE CLAIMS, shared by every seeded image this fleet builds. Any fixed
-// value makes the build reproducible; this one is the 24.04.3 arm64 live-server medium's own volume
+// WHICH INSTANT A DERIVED IMAGE CLAIMS, shared by every seeded image this fleet builds. A fixed value
+// is what a reproducible build needs (whether it is SUFFICIENT is the bet typed on
+// SeededInstallMediaPinnedDates); this one is the 24.04.3 arm64 live-server medium's own volume
 // date, read off its blkid UUID ("2025-08-06-15-52-50-00") in the boot-media section of
 // artifacts/bmc/mtcollins1-host-capture.txt, so a derived image reports the date of the release it
 // was derived from rather than a date that means nothing. It is policy, not an upstream fact: the
