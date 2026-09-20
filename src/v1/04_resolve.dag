@@ -184,7 +184,8 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_na
       Absent => KindDeclarationUnresolved
       Present { value: kind_decl } =>
         let arg_name = authored_name(env: env, node: arg)
-        if kind_names_admissible_inhabitant(kind_decl: kind_decl, arg_name: arg_name, env: env) { KindInhabited }
+        if kind_decl.children |> any(c => node_authored_or_own_name(n: c, env: env) == arg_name) { KindInhabited }
+        else if kind_names_admissible_inhabitant(kind_decl: kind_decl, arg_name: arg_name, env: env) { KindInhabited }
         else if kind_inhabitant_matches_resolved(kind_node: kind_node, arg: arg, env: env, module_name: module_name) { KindInhabited }
         else if type_arg_name_is_bound_generic_parameter(name: arg_name, env: env) { KindInhabited }
         else { KindNotInhabited }

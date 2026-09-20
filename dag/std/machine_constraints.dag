@@ -32,15 +32,23 @@ import std.constructors { Phantom }
 //     literals to an arm spelled StaticWidth. That is the stringly proxy this wall exists to remove.
 // The last entry is the one worth reading: it is the option that looks viable and is not.
 
-type PointerWidth
-
-// THE KIND. Its alias target is the roster of admissible NAMED inhabitants, so the check compares an
-// argument against a DECLARED DECLARATION rather than against a shape -- which is the difference
-// between this and the variant-shape proxy it replaced: a kind naming PointerWidth cannot be
-// satisfied by an unrelated declaration that happens to have the right shape.
-// CEILING, STATED: an alias carries exactly ONE named inhabitant, and the comparison is nominal
-// against that target. Both are narrower than the truth and narrow in the REFUSING direction.
-type WidthResolution = PointerWidth
+// THE KIND, AND ITS ARMS ARE THE ROSTER. The check asks whether the argument is one of these
+// DECLARED arms, so a kind naming PointerWidth cannot be satisfied by an unrelated declaration that
+// happens to have the right shape -- which is the difference between this and the variant-shape
+// proxy it replaced.
+// IT IS A COPRODUCT RATHER THAN AN ALIAS FOR A MEASURED REASON. `type WidthResolution = PointerWidth`
+// is a SINGLE-ARM form, which this language parses as a TYPE ALIAS; the declaration then reaches the
+// kind check as a bare nominal node carrying neither a resolved target nor children, so the check
+// could read nothing and refused its own declared inhabitant. The refusal printed it:
+//   'PointerWidth [decl=WidthResolution inferred=absent resolved_target= children=0]'
+// Two arms make it a real coproduct whose children ARE readable. Unit variants in type-argument
+// position are minted as zero-sized markers and compile, verified cross-module with a correctly
+// generated qualified use line, so PointerWidth keeps working at the 4 live MachineWidth sites.
+// StaticWidthIndex names the literal arm so the roster is complete rather than implicit; a Nat
+// literal is admitted by the language-level rule described above, not by matching this arm.
+type WidthResolution
+  = StaticWidthIndex
+  | PointerWidth
 
 type MachineWidth<bits: WidthResolution>
 
