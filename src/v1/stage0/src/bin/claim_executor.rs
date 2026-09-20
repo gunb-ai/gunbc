@@ -1926,12 +1926,7 @@ fn report_wave_admission_outcome(
             eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
             nwa::wave_admission_refusal(outcome)
         }
-        nwa::WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report,
-            roster_touched: _,
-        } => {
+        nwa::WaveAdmissionOutcome::Adjudicated { base, head, report } => {
             let p = &report.population;
             eprintln!(
                 "required-ci: namespace-wave-admission base={base} head={head} \
@@ -1956,22 +1951,8 @@ fn report_wave_admission_outcome(
                 eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
             }
             for consumed in &report.consumed_admissions {
-                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
-            }
-            for owed in &report.used_without_follow_up {
-                eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
-            }
-            for receipt in &report.owned_consumed_receipts {
                 eprintln!(
-                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
-                     owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
-                     existence, state, and deletion scope are not established by this run, and \
-                     whether this run refuses is wave_admission_refusal's verdict, not this \
-                     receipt's; no executing route in this repository reads the follow-up's forge \
-                     state",
-                    receipt.label,
-                    receipt.owner_pull_request,
-                    receipt.deletion_follow_up_pull_request
+                    "required-ci: namespace-wave-admission CARRIED ROW ALREADY SATISFIED {consumed}"
                 );
             }
             // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
