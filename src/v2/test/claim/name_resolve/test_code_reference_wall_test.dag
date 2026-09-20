@@ -413,7 +413,14 @@ test fn an_imported_test_fn_is_refused_holds() -> Bool {
 // bound to -- refusing an ordinary local shadowed by an imported test fn, and, silently, ACCEPTING a
 // reference to a local test fn shadowed by an ordinary import. The reading of root_binding_origin is
 // right. THE STATE IS UNREACHABLE: admission refuses that module first, in BOTH directions, so the
-// wall is never asked. These three rows are that measurement, and they are why this PR carries no
+// wall is never asked. AND NOTHING CAN MANUFACTURE THE COLLISION AROUND THAT ADMISSION: across the
+// whole corpus there are eight constructions of Namespace.imported_origins, and seven build it EMPTY
+// (v2.compiler.resolve empty_namespace and build_program_namespace, v2.compiler.name_resolve
+// admission_namespace_base, and the four test fixtures that construct a Namespace directly). The one
+// non-empty construction is admitted_subject_from_bindings, whose origins come only from an
+// AdmissionAccepted, and the only writer into that map is admit_named_exports -- the same fold that
+// refuses the collision. So a fixture cannot hand resolution an origin map that admission never saw.
+// These three rows are that measurement, and they are why this PR carries no
 // shadow-aware origin lookup -- a lookup guarding a state admission has already made unwritable would
 // be validation restating a constraint the model carries (DESIGN section 5, correctness by
 // construction over validation), and its red would not be authorable.
