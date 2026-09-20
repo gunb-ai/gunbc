@@ -1063,8 +1063,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
-    gunbc_ci_approval_keyring_converge_target,
-    gunbc_ci_mtcollins1_boot_target,
     gunbc_ci_heal_candidate_target,
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
