@@ -22,7 +22,12 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+  runner_width_unresolved_cause_text,
+}
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
@@ -39,7 +44,9 @@ import extdeps.systemd.systemctl {
 import std.measure { byte_size_count }
 import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
+  bash_build_with_redir,
   bash_build_with_redir_to_file,
+  bash_build_exit,
   bash_build_word_lit,
 }
 import v2.std.node { Node }
@@ -248,7 +255,7 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
 //
 // WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
-// target by `gunbc_runner_slots_per_host`, so a host whose width is REFUSED gets no units and
+// target by `gunbc_runner_committed_width`, so a host whose width is REFUSED gets no units and
 // therefore no caps. That answers WHETHER a host may be written to.
 //
 // WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
@@ -348,17 +355,43 @@ type CapConvergeDecision
     }
   | CapConvergeWithheld { cause: String }
 
+// THE TARGET SET IS RESOLVED BEFORE THE RAISE IS AUTHORIZED, because an authorization over a target
+// set nobody could derive is not a weaker authorization -- it is the same CapConvergeAuthorized the
+// caller acts on, carrying the ordinary nonempty desired cap members and an empty population to
+// write them to. Whether a later script-ordering guard happens to require nonempty units is not the
+// question: the refusal belongs at this decision, which is the one that says a raise is admitted.
 fn cap_converge_decision(
   host: HostIdentity,
   required_retiring: List<NonEmptyStr>,
   observation: SurplusSlotObservation,
+) -> CapConvergeDecision {
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsWidthUnresolved { host: uh, cause: uc } =>
+      CapConvergeWithheld {
+        cause: join([uh as String, " has no derivable cap-bearing unit population, so there is no target set a raise could be authorized over (", uc, "); existing caps are left exactly as observed"], ""),
+      }
+    ServiceUnitsDerived { units: target_units } =>
+      cap_converge_decision_over_targets(
+        host: host,
+        required_retiring: required_retiring,
+        observation: observation,
+        target_units: target_units,
+      )
+  }
+}
+
+fn cap_converge_decision_over_targets(
+  host: HostIdentity,
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+  target_units: List<NonEmptyStr>,
 ) -> CapConvergeDecision {
   match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
     CapRaiseAdmitted =>
       CapConvergeAuthorized {
         host: host,
         authorized_retiring: required_retiring,
-        target_units: runner_slot_service_units_for_host(host: host),
+        target_units: target_units,
         desired: derived_runner_memory_cap_members(),
       }
     CapRaiseBlockedPendingRetirement { still_present: sp } =>
@@ -511,12 +544,24 @@ fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) ->
   }
 }
 
-fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
-  runner_slot_service_units_range(
-    host: host,
-    slot: 1,
-    limit: gunbc_runner_slots_per_host(host: host),
-  )
+// A HOST WHOSE WIDTH DOES NOT RESOLVE HAS NO UNIT ROSTER, AND "no units" WAS THE WRONG WAY TO SAY
+// IT. The note above records the intent -- "a host whose width is REFUSED gets no units" -- and an
+// earlier revision of this function reached it through a zero limit, so one empty list stood for
+// "this host carries no cap-bearing units" and "this host could not be asked". That looked
+// harmless because both produce nothing to converge, and it is not: cap_converge_decision builds
+// CapConvergeAuthorized around this list, so an unresolved host produced an AUTHORIZED decision
+// whose target set was empty -- an authorization reached because nothing could be asked.
+type RunnerSlotServiceUnits
+  = ServiceUnitsDerived { units: List<NonEmptyStr> }
+  | ServiceUnitsWidthUnresolved { host: HostIdentity, cause: String }
+
+fn runner_slot_service_units_for_host(host: HostIdentity) -> RunnerSlotServiceUnits {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      ServiceUnitsWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
+    RunnerWidthDerived { slots: slots } =>
+      ServiceUnitsDerived { units: runner_slot_service_units_range(host: host, slot: 1, limit: slots) }
+  }
 }
 
 fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {
@@ -586,8 +631,30 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
+// A HOST WITH NO DERIVABLE UNIT ROSTER EMITS A REFUSAL, NOT AN EMPTY SCRIPT. An empty script
+// applies cleanly and reports nothing, which is the quietest possible way to not converge a host.
+//
+// THE REFUSAL IS BUILT AS A COMMAND, NOT CONCATENATED AS TEXT. An earlier revision of this arm
+// spelled `echo '<message>' >&2; exit 1` by joining strings with the cause interpolated inside the
+// opening quote. The cause is DATA from gunbc.session_reservation_policy, and an apostrophe in it
+// closes the quoted argument -- so the refusal script would stop being shell exactly when it had
+// something to say. gunbc.shell_command_text serializes the message as a WORD, and the redirection
+// and the exit are modeled bash nodes rather than characters appended to a string.
 fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
-  deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
+  match runner_slot_service_units_for_host(host: host) {
+    ServiceUnitsWidthUnresolved { host: uh, cause: c } =>
+      shell_command_text_of_stmts(stmts: [
+        bash_build_with_redir(
+          inner: shell_command_intent(words: ["echo", join([
+            "__GUNBC_DEPLOY_REFUSED__ memory-cap apply: host=", uh as String,
+            " cause=no cap-bearing unit population is derivable for this host; ", c,
+          ], "")]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ])
+    ServiceUnitsDerived { units: units } => deploy_memory_cap_apply_script_ordered(units: units)
+  }
 }
 
 // THE SCRIPT IS BUILT FROM THE MEMBERS THE AUTHORIZATION CARRIES, not re-derived beside it. The

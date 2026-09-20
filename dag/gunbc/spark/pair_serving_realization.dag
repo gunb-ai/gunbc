@@ -12,6 +12,7 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
+import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
@@ -31,21 +32,21 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names,
 }
 import gunbc.spark.collective_transport_plan {
-  CollectiveTransportPlan, RoceOverInterface, SocketOverInterface,
+  CollectiveTransportPlan, RoceOverInterface, SocketOverInterface, spark_rail_gid_selection,
   transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
-}
-import extdeps.nvidia.nccl {
-  NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
   Description, After, Requires,
-  ServiceType, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
+  ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
   WantedBy,
   serialize_systemd_unit_file,
 }
 import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
-import gunbc.spark.fabric_switch_observed { FabricLaneObserved, FabricGroup, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.native_serving_realization {
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused, glm_native_head_unit_render,
+}
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
@@ -243,6 +244,12 @@ fn spark_pair_ray_worker_argv(head: FabricLaneObserved, self: FabricLaneObserved
 // arm. What remains here is the set the plan does not own: the variables naming the leg netdev for
 // non-NCCL users (TP_SOCKET_IFNAME, MN_IF_NAME, the OMPI include), the rail address, and the two
 // engine settings the operator ruled.
+//
+// THE LAST ROW DECLARES THE USAGE-STATS REPORTER OFF, spelled from the same extdeps.vllm.usage_stats
+// row the route's telemetry reading folds, so the declaration and the reading share one authority.
+// The declaration alone admits nothing -- the route is discharged by the READING of the answering
+// container's effective environment (gunbc.spark.first_party_serving
+// spark_serving_usage_stats_standing); this assignment is what makes that reading come out disabled.
 fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignment> {
   let ifname = lane.leg_netdev as String
   let rail_ip = render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String
@@ -254,6 +261,10 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
     DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail_ip },
     DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
     DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
+    DockerEnvAssignment {
+      name: vllm_usage_stats_no_usage_stats_term.variable,
+      value: vllm_usage_stats_no_usage_stats_term.disabling_value as String,
+    },
   ], transport_plan_env(p: spark_pair_transport_plan(lane: lane)))
 }
 
@@ -262,7 +273,9 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
 // RoCE v2 and NCCL finds the slot itself. A slot number is what the image baked, and it went stale
 // the first time the link flapped (extdeps.docker.images.sparkrun_vllm_ds4_gb10
 // sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names).
-data spark_pair_rail_gid_selection: NcclRoceGidSelection = NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 }
+// THE GID SELECTION'S HOME is gunbc.spark.collective_transport_plan spark_rail_gid_selection (a
+// fabric fact, RoCEv2/IPv4 on both cages' rails); it moved out of this module on 2026-09-17 when
+// the GLM native arm took the same plan.
 
 // ── THIS ROUTE'S TRANSPORT IS ONE VALUE, AND THE CONTAINER FIELDS ARE ITS PROJECTION ──────────
 //
@@ -278,7 +291,7 @@ fn spark_pair_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPla
   RoceOverInterface {
     interface: lane.leg_netdev,
     rdma_device: lane.leg_rdma_device,
-    gid_selection: spark_pair_rail_gid_selection,
+    gid_selection: spark_rail_gid_selection,
   }
 }
 
@@ -524,7 +537,7 @@ fn spark_pair_head_unit_unsigned(args: VllmEngineArgs, snapshot: ModelSnapshotDe
                   Requires { target: "docker.service" as NonEmptyStr },
                 ],
                 service: concat(concat([
-                  ServiceType { mode: "simple" as NonEmptyStr },
+                  ServiceType { mode: SimpleMode },
                 ], lifecycle), [
                   ExecStartPre { command: stop_line },
                   ExecStartPre { command: ray_line },
@@ -565,7 +578,7 @@ fn spark_pair_worker_unit_unsigned(head: FabricLaneObserved, self: FabricLaneObs
                 Requires { target: "docker.service" as NonEmptyStr },
               ],
               service: concat(concat([
-                ServiceType { mode: "simple" as NonEmptyStr },
+                ServiceType { mode: SimpleMode },
               ], lifecycle), [
                 ExecStartPre { command: stop_line },
                 ExecStart { command: join_line },
@@ -661,11 +674,28 @@ fn spark_pair_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRen
   }
 }
 
+// THE GROUP'S DECLARED HEAD UNIT IS ITS OWN ARM'S. Group A is served by the pair realization and its
+// head unit is rendered here; group B is served by the native four-rank arm, whose head unit
+// gunbc.spark.native_serving_realization glm_native_head_unit_render renders from the arm's own
+// profile. An earlier revision on main answered group B with an obligation because the canary it
+// then ran was a bare argv launch with no unit; the native arm has one, so the sealed constructor
+// below still takes only a group, and a caller still cannot reach past it to choose bytes.
+fn declared_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRender {
+  match group {
+    FabricGroupA => spark_pair_head_unit_render_for_group(group: group)
+    FabricGroupB =>
+      match glm_native_head_unit_render() {
+        GlmNativeUnitRenderRefused { unit_name: n, cause: c } => SparkPairUnitRenderRefused { unit_name: n, cause: c }
+        GlmNativeUnitRendered { unit_name: n, text: t } => SparkPairUnitRendered { unit_name: n, text: t }
+      }
+  }
+}
+
 // PROPOSITION (2), AND THE ONLY CONSTRUCTOR OF DeclaredUnitDigestEvidence IN THE CORPUS. It takes a
 // modeled FabricGroup, obtains the render from the PRODUCTION declaration, and seals what that
 // render hashes to. A caller chooses a group; it cannot reach past this to choose bytes.
 fn spark_pair_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  match spark_pair_rendered_unit_digest(render: spark_pair_head_unit_render_for_group(group: group)) {
+  match spark_pair_rendered_unit_digest(render: declared_head_unit_render_for_group(group: group)) {
     RenderedUnitDigestUnavailable { obligation: o } =>
       DeclaredUnitDigestUnavailable { obligation: o }
     RenderedUnitDigested { unit_name: _, digest: d } =>
