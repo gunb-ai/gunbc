@@ -673,19 +673,25 @@ fn refusal_text(r: ConvergeRefusal) -> String {
 // on #11751). The operator's reading comes first; the WIRE form follows it in the same file, so one
 // artifact serves both readers and the lifecycle controller can reconstruct the sealed value with
 // parse_converged_slot_network rather than re-deriving it from prose.
+//
+// THE WIRE BLOCK COMES FIRST AND THE OPERATOR'S READING IS COMMENTED. The parse refuses anything
+// whose first line is not the schema, so a file that opened with the human summary parsed as
+// malformed -- every real receipt this converge writes (review 69063). Prefixing the report with
+// "# " keeps one artifact for both readers while leaving the wire block the whole parseable content:
+// a comment line matches no key and no slot prefix.
 fn helper_surface_text(name: String, r: HelperSurfaceReading) -> String {
   match r {
-    HelperSurfaceCounted { count: n } => join(["  ", name, "=", to_string(n), "\n"], "")
-    HelperSurfaceUnread { reason: why } => join(["  ", name, "=UNREAD ", why as String, "\n"], "")
+    HelperSurfaceCounted { count: n } => join(["#   ", name, "=", to_string(n), "\n"], "")
+    HelperSurfaceUnread { reason: why } => join(["#   ", name, "=UNREAD ", why as String, "\n"], "")
   }
 }
 
 fn auto_assignment_text(a: HelperAutoAssignment) -> String {
   match a {
-    AutoAssignmentAbsentFromKernel { kernel_release: k } => join(["  auto_assignment=absent_from_kernel release=", k as String, "\n"], "")
-    AutoAssignmentSysctlOff => "  auto_assignment=sysctl_off\n"
-    AutoAssignmentOn => "  auto_assignment=ON\n"
-    AutoAssignmentUnread { reason: why } => join(["  auto_assignment=UNREAD ", why as String, "\n"], "")
+    AutoAssignmentAbsentFromKernel { kernel_release: k } => join(["#   auto_assignment=absent_from_kernel release=", k as String, "\n"], "")
+    AutoAssignmentSysctlOff => "#   auto_assignment=sysctl_off\n"
+    AutoAssignmentOn => "#   auto_assignment=ON\n"
+    AutoAssignmentUnread { reason: why } => join(["#   auto_assignment=UNREAD ", why as String, "\n"], "")
   }
 }
 
@@ -699,24 +705,24 @@ fn tap_ipv6_text(t: TapIpv6Standing) -> String {
 
 fn converged_slot_text(c: ConvergedSlot) -> String {
   join([
-    "slot ", runner_slot_instance_name(slot: c.subject.slot), "\n",
-    "  tap=", c.subject.tap_device as String, "\n",
-    "  guest_address=", render_ipv4_address(addr: c.subject.guest_address) as String, "\n",
-    "  host_address=", c.host_address_cidr as String, "\n",
-    "  route=", c.guest_route as String, "\n",
-    "  tap_ipv6=", tap_ipv6_text(t: c.tap_ipv6), "\n",
+    "# slot ", runner_slot_instance_name(slot: c.subject.slot), "\n",
+    "#   tap=", c.subject.tap_device as String, "\n",
+    "#   guest_address=", render_ipv4_address(addr: c.subject.guest_address) as String, "\n",
+    "#   host_address=", c.host_address_cidr as String, "\n",
+    "#   route=", c.guest_route as String, "\n",
+    "#   tap_ipv6=", tap_ipv6_text(t: c.tap_ipv6), "\n",
   ], "")
 }
 
 fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
   join([
-    "microvm-network-converge CONVERGED\n",
-    "host=", c.host as String, "\n",
-    "generation=", c.generation as String, "\n",
-    "nft_digest=", c.nft_digest.hex as String, "\n",
-    "slots=", to_string(length(c.slots)), "\n",
+    "# microvm-network-converge CONVERGED\n",
+    "# host=", c.host as String, "\n",
+    "# generation=", c.generation as String, "\n",
+    "# nft_digest=", c.nft_digest.hex as String, "\n",
+    "# slots=", to_string(length(c.slots)), "\n",
     join(map(c.slots, x => converged_slot_text(c: x)), ""),
-    "helpers\n",
+    "# helpers\n",
     auto_assignment_text(a: c.helpers.auto_assignment),
     helper_surface_text(name: "nft_ct_helper_statements", r: c.helpers.nft_ct_helper_statements),
     helper_surface_text(name: "xtables_ct_helper_targets", r: c.helpers.xtables_ct_helper_targets),
@@ -728,7 +734,7 @@ fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
 fn receipt_text(o: ConvergeOutcome) -> String {
   match o {
     ConvergeRefused { refusal: r } => join(["microvm-network-converge REFUSED: ", refusal_text(r: r), "\n"], "")
-    ConvergedNetwork { receipt: c } => join([converged_receipt_text(c: c), render_converged_slot_network(c: c)], "")
+    ConvergedNetwork { receipt: c } => join([render_converged_slot_network(c: c), converged_receipt_text(c: c)], "")
   }
 }
 

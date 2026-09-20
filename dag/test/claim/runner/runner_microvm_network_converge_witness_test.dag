@@ -26,7 +26,7 @@ import gunbc.runner_microvm_network_converge {
   SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,
   ConvergeRefusal, SlotTapIpv6Unread, SlotTapIpv6Enabled, SlotAddressNotHeld, SlotRouteNotHeld,
   IpForwardingOff, RulesetUnread, HelperStandingUnread, HelperAutoAssignmentOn, HelpersAttached,
-  converge_outcome, absent_from_kernel_or_unread,
+  converge_outcome, absent_from_kernel_or_unread, receipt_text,
   IpForwardStanding, IpForwardOn, IpForwardOff, IpForwardUnread,
   SlotProbeReading, SlotProbeRead, SlotProbeUnread,
   IpForwardingUnread, SlotAddressUnread, SlotRouteUnread,
@@ -307,7 +307,11 @@ test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool {
     }
 }
 
-// THE RECEIPT ROUND-TRIPS INTO THE VALUE THE SANITATION SUBJECT TAKES. A converge that wrote prose
+// THE CLAIM PARSES THE BYTES THE CONVERGE WRITES, NOT A RENDERING NO CONSUMER SEES. Feeding
+// render_converged_slot_network directly was green over a value the artifact never contained: the
+// persisted file opened with the operator's summary, so the parser refused every real receipt
+// (review 69063). This calls receipt_text -- the function whose output is written to the artifact --
+// and asserts the schema is the first line, which is the property that makes the parse reachable. A converge that wrote prose
 // only would leave the lifecycle controller with no modeled route from a completed converge to a
 // ConvergedSlotNetwork (side-chat hold on #11751), so the artifact carries a wire form and this
 // claim runs it both ways: render, parse, and read the parsed value's fields back.
@@ -316,12 +320,13 @@ test fn the_receipt_round_trips_into_a_converged_slot_network() -> Bool {
     ConvergeRefused { refusal: _ } => false
     ConvergedNetwork { receipt: c } =>
       match parse_converged_slot_network(
-        text: render_converged_slot_network(c: c),
+        text: receipt_text(o: converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host())),
         candidates: [slot(i: 1), slot(i: 2)],
       ) {
         ConvergedSlotNetworkMalformed { cause: _ } => false
         ConvergedSlotNetworkParsed { receipt: back } =>
-          (back.host as String) == (c.host as String)
+          receipt_text(o: converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host())).starts_with(prefix: "gunbc.converged_slot_network.v1\n")
+            && (back.host as String) == (c.host as String)
             && (back.generation as String) == (c.generation as String)
             && (back.nft_digest.hex as String) == (c.nft_digest.hex as String)
             && length(back.slots) == 2
@@ -336,7 +341,7 @@ test fn a_receipt_that_does_not_describe_this_host_is_refused() -> Bool {
   match converge_outcome(slots: [clean_slot(i: 1)], h: clean_host()) {
     ConvergeRefused { refusal: _ } => false
     ConvergedNetwork { receipt: c } => {
-      let wire = render_converged_slot_network(c: c)
+      let wire = receipt_text(o: converge_outcome(slots: [clean_slot(i: 1)], h: clean_host()))
       match parse_converged_slot_network(text: wire, candidates: [slot(i: 2)]) {
         ConvergedSlotNetworkMalformed { cause: _ } => true
         ConvergedSlotNetworkParsed { receipt: _ } => false
