@@ -336,13 +336,18 @@ type UnitFileState
   | UnitTransient
   | UnitBad
 
-// THE TWO KILLS ARE TWO OPERATIONS, NOT ONE WITH A SIGNAL PARAMETER, and the reason is
-// extdeps.posix.signal's: a service that accepts an arbitrary signal name accepts every signal
-// anyone ever wants, and the two this corpus has a consumer for are the two halves of one bounded
-// stop -- the graceful ask and the forced end. `--kill-whom=all` is the substance rather than a
-// default made explicit: the default reaches the main process only, and a stop that signals only
-// the main process is exactly the case gunbc.runner_microvm_lifecycle's CgroupSubtreePopulated
-// exists to catch. systemd.kill(5) documents both flags.
+// THE GRACEFUL ASK IS ONE OPERATION, NOT A SIGNAL PARAMETER, and the reason is extdeps.posix.signal's:
+// a service that accepts an arbitrary signal name accepts every signal anyone ever wants. There is
+// deliberately no SIGKILL sibling here. A caller that needs a forced end wants the CGROUP's subtree
+// and not this unit's -- a process in a sibling cgroup under the same slice is not reached by a unit
+// kill -- and the kernel answers that directly through cgroup.kill
+// (extdeps.linux.cgroup_v2 cgroup_v2_kill_path), atomically against forking. Adding a KillUnitKill
+// here would put a second, weaker answer beside it and the weaker one reads like the obvious choice.
+//
+// `--kill-whom=all` is the substance rather than a default made explicit: the default reaches the
+// main process only, and a stop that signals only the main process leaves exactly the children
+// gunbc.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
+// both flags.
 service systemd.Systemctl {
   operation Enable {
     input { unit: NonEmptyStr }
@@ -430,22 +435,6 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.KillUnitTerm"
-    }
-  }
-
-  operation KillUnitKill {
-    input { unit: NonEmptyStr }
-    output {
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemctl", "kill", "--signal=SIGKILL", "--kill-whom=all", "{unit}"] }
-    exit {
-      0 => Unit
-      nonzero => String "systemctl kill --signal=SIGKILL failed"
-    }
-    mock_response {
-      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.KillUnitKill"
     }
   }
 

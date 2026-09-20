@@ -271,3 +271,48 @@ fn kernel_provides_cgroup_v2(kernel: KernelFamily) -> Bool {
     WindowsNt => false
   }
 }
+
+// KILLING A SUBTREE IS A KERNEL PRIMITIVE, AND IT IS NOT THE SAME OPERATION AS SIGNALLING A UNIT.
+//
+// The admin guide documents cgroup.kill as "a write-only single value file" where writing "1" to it
+// "kills all processes in the cgroup and all its descendant cgroups", and states the property that
+// matters here: the kill is carried out "without any permission checking" and, crucially, it is
+// ATOMIC AGAINST FORKING -- a process cannot escape by forking while the kill is in progress, which
+// no signal loop over an enumerated pid list can promise.
+//
+// WHY A CONSUMER WOULD REACH FOR THIS RATHER THAN FOR A UNIT KILL. `systemctl kill --kill-whom=all`
+// signals ONE UNIT's control group. A process that moved itself into a sibling cgroup under the same
+// parent -- a scope beside a service in one slice -- is still accounted to that parent and is still
+// found by a parent-wide readback, and is NOT reached by that kill. The two operations therefore
+// answer different questions: one ends a UNIT, this one ends everything under a CGROUP.
+//
+// THE FILE NAME AND THE TRIGGER VALUE ARE THE KERNEL'S AND ARE SPELLED ONCE. A consumer that wrote
+// "1" to a path it assembled itself would be a second authority for both.
+data cgroup_v2_kill_interface_file: NonEmptyStr = "cgroup.kill"
+
+data cgroup_v2_kill_trigger_value: String = "1"
+
+fn cgroup_v2_kill_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_kill_interface_file)
+}
+
+// THE FREEZER, AND WHAT IT IS FOR HERE. cgroup.freeze is documented as a single value file on
+// non-root cgroups: writing "1" freezes the cgroup and its descendants, and a frozen process "can be
+// stopped... but it will not be able to run until thawed" -- so a pending SIGKILL is delivered but
+// not acted on while the cgroup stays frozen. That makes the freezer the one mechanism that produces
+// a task surviving a bounded force-stop WITHOUT wedging a device or a filesystem, which is the other
+// way to reach the same state and is not something to do to a host.
+//
+// IT IS REVERSED BY ITS OWN INVERSE AND IS OBSERVABLE AFTERWARDS. Writing "0" thaws; reading the file
+// back says which state the cgroup is in. A consumer that freezes and then dies leaves a cgroup whose
+// own file says it is frozen, so the residue names itself rather than presenting as an inexplicable
+// hang.
+data cgroup_v2_freeze_interface_file: NonEmptyStr = "cgroup.freeze"
+
+data cgroup_v2_frozen_value: String = "1"
+
+data cgroup_v2_thawed_value: String = "0"
+
+fn cgroup_v2_freeze_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_freeze_interface_file)
+}

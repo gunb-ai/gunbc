@@ -2,10 +2,13 @@ module test.manual.runner_microvm_lifecycle_wet_receipt
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
-import std.resources { Network }
+import std.resources { Network, Filesystem }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
-import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_child_path,
+  cgroup_v2_freeze_path, cgroup_v2_frozen_value, cgroup_v2_thawed_value,
+}
 
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -190,36 +193,78 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
   }
 }
 
-// RED 3 -- A TASK THE BOUNDED FORCE-STOP DOES NOT END IS REPORTED AS A SURVIVOR.
+// RED 3 -- A TASK THE BOUNDED FORCE-STOP CANNOT END IS REPORTED AS A SURVIVOR.
 //
-// HOW THE SURVIVOR IS PRODUCED, STATED PLAINLY BECAUSE IT IS NOT THE ONLY WAY TO REACH THIS ARM.
-// gunbc.runner_microvm_lifecycle names uninterruptible sleep as the case that survives SIGKILL. A
-// task in D state is NOT created here: producing one needs a wedged device or a hung filesystem on a
-// host that is running other people's CI, and manufacturing one would be a worse defect than the one
-// this claim covers. The survivor is instead a process the unit's kill does not REACH -- a scope
-// under the slice rather than under the unit. Both produce the identical host fact the controller
-// acts on: the cell's subtree still holds a pid after the force bound elapsed. What this claim
-// therefore establishes is that the controller reports ForceStopBoundExceeded with that pid, and
-// what it does not establish is anything about SIGKILL's behaviour on D-state tasks, which is the
-// kernel's contract and not ours.
+// WHAT CHANGED AND WHY, because the first cut of this claim passed for the wrong reason. It started a
+// scope BESIDE the service under the same slice and asserted ForceStopBoundExceeded -- and it passed,
+// because the force was `systemctl kill` against the UNIT, which never reached a sibling cgroup. The
+// claim was green over a defect rather than over a guarantee: a cell that a correct force would have
+// cleaned was being quarantined. A review (vivid-stag-809, relayed by sunny-ant-606) named it, the
+// controller now writes the CELL slice's cgroup.kill, and that claim would now correctly fail.
 //
-// IT TAKES THE FULL GRACE PLUS FORCE BOUND to run, by construction: the arm is only reachable after
-// both elapse. That is the cost of the only evidence that the bound is enforced at all.
-test fn a_survivor_the_unit_kill_cannot_reach_exceeds_the_force_bound() -> Bool
-  uses net: Network
+// SO THE SURVIVOR HAS TO BE ONE THE KERNEL ITSELF CANNOT END, and there are exactly two: a task in
+// uninterruptible sleep, and a FROZEN cgroup. D state needs a wedged device or a hung filesystem on a
+// host running other people's CI and is not something to manufacture. The freezer is the kernel's own
+// documented mechanism, it is real -- a frozen task takes the SIGKILL and does not act on it until
+// thawed -- it is reversed by its own inverse verb, and a run that dies between the freeze and the
+// thaw leaves a cgroup whose own cgroup.freeze says so.
+//
+// WITHOUT THIS CLAIM THAT ARM HAS NEVER EXECUTED, which is the question the review asked and the
+// reason the claim is worth its cost: ForceStopBoundExceeded is the arm that keeps a cell quarantined
+// when teardown could not finish, and an arm with no producer is specification without execution.
+//
+// IT TAKES THE FULL GRACE PLUS FORCE BOUND, by construction: the arm is only reachable after both
+// elapse. The thaw runs afterwards and is asserted, so a failure to restore the host is visible here
+// rather than to whoever runs next.
+test fn a_frozen_task_survives_the_bounded_force_stop() -> Bool
+  uses net: Network, fs: Filesystem
 {
   if !clear_slice() {
     false
-  } else if !start_payload(unit: "gunbc-wet-survivor.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-survivor-child")) {
+  } else if !start_payload(unit: "gunbc-wet-frozen.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
     false
   } else if !readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice)) {
     false
+  } else if !write_freeze(value: cgroup_v2_frozen_value) {
+    false
   } else {
-    match stop_attempt(unit: "gunbc-wet-survivor.service" as NonEmptyStr, slice: wet_slice) {
-      ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
-      StoppedGracefully => false
-      StoppedByForce => false
-    }
+    let stopped = stop_attempt(unit: "gunbc-wet-frozen.service" as NonEmptyStr, slice: wet_slice)
+    let thawed = write_freeze_after(value: cgroup_v2_thawed_value, after: stopped)
+    thawed && stop_exceeded_the_bound(stop: stopped)
+  }
+}
+
+fn stop_exceeded_the_bound(stop: TeardownStop) -> Bool {
+  match stop {
+    ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
+    StoppedGracefully => false
+    StoppedByForce => false
+  }
+}
+
+fn write_freeze(value: String) -> Bool
+  uses fs: Filesystem
+{
+  Filesystem.Write(
+    path: cgroup_v2_freeze_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr) as String,
+    content: value,
+  ).success
+}
+
+// THE THAW TAKES THE STOP AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this substrate is
+// data dependence and nothing else; a thaw that took no argument would be a node the evaluator may
+// run before the stop, which would unfreeze the cgroup the claim depends on being frozen.
+fn write_freeze_after(value: String, after: TeardownStop) -> Bool
+  uses fs: Filesystem
+{
+  stop_names_an_outcome(stop: after) && write_freeze(value: value)
+}
+
+fn stop_names_an_outcome(stop: TeardownStop) -> Bool {
+  match stop {
+    ForceStopBoundExceeded { survivors: _ } => true
+    StoppedGracefully => true
+    StoppedByForce => true
   }
 }
 
@@ -346,15 +391,18 @@ fn stop_incarnation_unit(after: String) -> Bool
   after != "" && systemd.Systemctl.Stop(unit: incarnation_unit()).success
 }
 
-// RED 6 -- A JOB THAT EXITS ZERO AND LEAVES A PROCESS BEHIND LEAVES THE CELL DIRTY.
+// RED 6 -- A JOB THAT EXITS ZERO CAN LEAVE THE CELL'S SUBTREE POPULATED.
 //
-// The unit's own command exits 0 and the unit stops cleanly; a process it started outside its
-// control group is still running in the cell's slice afterwards. The controller's stop reports
-// success and the readback reports the leftover, which is the case product.fabric.sanitation exists
-// for: the exit status is an input to sanitation and never its verdict. This claim stops at the
-// readback rather than running the whole settlement, because the settlement over a supplied
-// CgroupSubtreePopulated is exactly what the hermetic witness already establishes; what only a host
-// can establish is that a successful job CAN leave the subtree populated.
+// The unit's own command exits 0 and the unit is gone; a process it started outside its control group
+// is still running in the cell's slice afterwards. That is the case product.fabric.sanitation exists
+// for -- the exit status is an input to sanitation and never its verdict -- and it is the half only a
+// host can establish. What the hermetic witness already establishes, and this deliberately does not
+// repeat, is what settle_teardown does with a populated readback.
+//
+// THIS CLAIM CHANGED WITH THE FORCE REPAIR AND IS WEAKER THAN ITS FIRST CUT, WHICH IS CORRECT. It
+// used to assert that the survivor was still there AFTER the stop, which only held because the force
+// could not reach a sibling cgroup. The repaired force ends it, so the surviving fact is the one
+// before teardown: a successful job CAN leave the cell dirty, and the readback sees it.
 test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
   uses net: Network
 {
@@ -362,13 +410,29 @@ test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
     false
   } else if !start_payload(unit: "gunbc-wet-background.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-background-child")) {
     false
+  } else {
+    readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
+  }
+}
+
+// AND THE OTHER HALF OF THE REPAIR: THE CELL-WIDE FORCE ENDS THAT SURVIVOR. This is the claim the
+// force repair owes, and it is the exact inverse of the one above -- same payload, same sibling
+// cgroup, and the stop now reaches it. Before the repair this would have read
+// ForceStopBoundExceeded; a regression to a unit-scoped kill reds it.
+test fn the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup() -> Bool
+  uses net: Network, fs: Filesystem
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-reach.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-reach-child")) {
+    false
   } else if !readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice)) {
     false
   } else {
-    match stop_attempt(unit: "gunbc-wet-background.service" as NonEmptyStr, slice: wet_slice) {
-      ForceStopBoundExceeded { survivors: _ } => readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
+    match stop_attempt(unit: "gunbc-wet-reach.service" as NonEmptyStr, slice: wet_slice) {
+      StoppedByForce => readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice))
       StoppedGracefully => false
-      StoppedByForce => false
+      ForceStopBoundExceeded { survivors: _ } => false
     }
   }
 }

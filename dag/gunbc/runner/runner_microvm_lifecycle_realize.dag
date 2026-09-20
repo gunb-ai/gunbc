@@ -13,6 +13,7 @@ import extdeps.posix.test_utility { test_exists_command }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
+  cgroup_v2_kill_path, cgroup_v2_kill_trigger_value,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
 import extdeps.systemd { systemd_unit_property_wire,
@@ -289,14 +290,36 @@ data attempt_force_stop_bound: Second = second(count: 10)
 
 data attempt_stop_poll_interval: Second = second(count: 1)
 
-// THE STOP IS TWO EXPLICIT SIGNALS, NOT `systemctl stop`, AND THAT IS WHAT MAKES THE THREE ARMS
-// DISTINGUISHABLE. `systemctl stop` sends SIGTERM and escalates to SIGKILL on the unit's own
-// TimeoutStopSec, then reports one success -- so a unit whose child ignored SIGTERM and a unit that
-// exited on it return the same thing, and StoppedGracefully would be indistinguishable from
-// StoppedByForce. Sending each signal here, and reading the cgroup between them, is what lets the
-// controller say WHICH of the three happened. `--kill-whom=all` reaches the whole control group,
-// because a stop that signals only the main process leaves exactly the double-forked child this
-// readback exists to find.
+// THE STOP IS TWO STEPS AT TWO DIFFERENT SUBJECTS, AND THE ASYMMETRY IS THE WHOLE DESIGN.
+//
+// THE GRACEFUL ASK IS THE UNIT'S. `systemctl kill --signal=SIGTERM --kill-whom=all <unit>` reaches
+// the processes in THAT UNIT's control group -- the attempt's own -- which is exactly who a graceful
+// ask is addressed to. `--kill-whom=all` rather than the default because the default reaches only
+// the main process, and a VMM's children are the point.
+//
+// THE FORCE IS THE CELL'S, AND THIS WAS A DEFECT UNTIL A REVIEW FOUND IT (vivid-stag-809 on this PR,
+// relayed by sunny-ant-606). The force used to signal the same UNIT, under an annotation claiming it
+// "reaches the whole control group". It does not: it reaches the UNIT's cgroup. A process that moved
+// itself into a scope BESIDE the service under the same cell slice is still accounted to the cell,
+// is still found by the slice-wide readback, and was never reached by that kill -- so it survived
+// the force and quarantined a cell that a correct force would have cleaned. This file's own wet RED
+// proved it and the annotation contradicted it one function away, which is prose claiming more than
+// the code enforced.
+//
+// SO THE FORCE IS A WRITE TO THE CELL SLICE'S cgroup.kill, which is the kernel's own answer: it takes
+// the whole SUBTREE and is atomic against forking, so nothing escapes by forking mid-kill the way it
+// can between an enumeration and a signal loop. What must be true after a teardown is a fact about
+// the CELL, so the operation that establishes it is addressed to the cell.
+//
+// WHAT THAT MEANS FOR ForceStopBoundExceeded: after this repair the arm is reachable only by a task
+// the KERNEL could not end -- uninterruptible sleep, or a frozen cgroup -- which is what the type
+// always meant. A process merely hiding in a sibling cgroup no longer reaches it.
+//
+// WHY NOT `systemctl stop`: it sends SIGTERM and escalates to SIGKILL on the unit's own
+// TimeoutStopSec and reports one success, so a unit whose child ignored SIGTERM and one that exited
+// on it return the same thing, and StoppedGracefully would be indistinguishable from StoppedByForce.
+// Doing each step here, and reading the cgroup between them, is what lets the controller say WHICH of
+// the three happened.
 type StopQuiescence
   = CgroupQuiet
   | CgroupStillHolding { readback: CgroupSubtreeReadback }
@@ -348,7 +371,7 @@ fn survivors_of(q: StopQuiescence) -> List<Int> {
 }
 
 fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
-  uses net: Network
+  uses net: Network, fs: Filesystem
 {
   let _termed = systemd.Systemctl.KillUnitTerm(unit: unit)
   match poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_stop_grace)) {
@@ -357,10 +380,26 @@ fn stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
   }
 }
 
+// A CELL WHOSE CGROUP IS NOT THERE HAS NOTHING TO KILL, and that is not a failure to force-stop: the
+// subtree is gone, so the graceful ask ended everything. It is reported as a stop by force because
+// the force step ran and the cell is quiet, which is the honest reading of what happened.
 fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
-  uses net: Network
+  uses net: Network, fs: Filesystem
 {
-  let _killed = systemd.Systemctl.KillUnitKill(unit: unit)
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: slice) {
+    SliceNameNotASlice { spelling: _ } =>
+      ForceStopBoundExceeded { survivors: survivors_of(q: poll_until_quiet(slice: slice, polls_remaining: 0)) }
+    SliceCgroupPath { path: p } => force_stop_subtree(path: p, slice: slice)
+  }
+}
+
+fn force_stop_subtree(path: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network, fs: Filesystem
+{
+  let _killed = Filesystem.Write(
+    path: cgroup_v2_kill_path(cgroup_path: path) as String,
+    content: cgroup_v2_kill_trigger_value,
+  )
   let q = poll_until_quiet(slice: slice, polls_remaining: polls_for(bound: attempt_force_stop_bound))
   match q {
     CgroupQuiet => StoppedByForce
@@ -405,7 +444,7 @@ fn perform_teardown_and_observe(
   bound: CellBoundAttempt,
   network: BoundSlotNetworkReadback,
 ) -> ObservedTeardown
-  uses net: Network
+  uses net: Network, fs: Filesystem
 {
   let attempt = bound.attempt.attempt
   let unit = in_flight_attempt_unit(attempt: bound.attempt)
