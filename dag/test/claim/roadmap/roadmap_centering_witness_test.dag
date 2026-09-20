@@ -234,3 +234,28 @@ test fn the_seven_experiment_nodes_are_centered_and_resolve_and_render() -> Bool
     && all(experiment_node_ids, id => id_resolves_against_authority(id: id))
     && all(experiment_node_ids, id => string_length(s: id) > 0)
 }
+
+// THE SHELL→DAG MIGRATION BATCH 1 ROWS (operator ruling 2026-09-20), planted: the ten
+// shell-dag-* ids each have a roster row whose plan renders into that node's brief, and each id
+// resolves directly against the roadmap authority — none is a derived closing-contract id, so the
+// suffix strip in id_resolves_against_authority is the identity on them. The batch shares the
+// prefix because the roadmap model carries no project/component grouping mechanism yet.
+data shell_dag_migration_node_ids: List<String> = [
+  "shell-dag-cron-entry-line-builder",
+  "shell-dag-floor-peak-calibration-rows",
+  "shell-dag-ci-fmt-gate-line",
+  "shell-dag-ci-deploy-invoke-prelude",
+  "shell-dag-ci-heal-regen-invoke",
+  "shell-dag-compile-pool-slice-install",
+  "shell-dag-slot-population-census-read",
+  "shell-dag-codex-app-server-trip-script",
+  "shell-dag-live-deploy-install-owned",
+  "shell-dag-live-deploy-restart-tailscale",
+]
+
+test fn the_ten_shell_dag_migration_nodes_are_centered_and_resolve_and_render() -> Bool {
+  count(shell_dag_migration_node_ids) == 10
+    && all(shell_dag_migration_node_ids, id => experiment_row_centered(id: id))
+    && all(shell_dag_migration_node_ids, id => id_resolves_against_authority(id: id))
+    && all(shell_dag_migration_node_ids, id => string_length(s: id) > 0)
+}
