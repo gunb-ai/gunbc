@@ -378,6 +378,16 @@ type NamespaceGraftDeclPartition {
 // the same disposition ModuleRootEdgeDissolve gives the module header. Carried
 // as a residual it is a raw shell resolve walks as bare mentions, which refuses
 // every ingest whose closure does not contain the imported module's spine.
+// EVERY CONSUMER OF THE GRAFTED BODY WAS CHECKED FOR AN IMPORT READ, AND NONE HAS
+// ONE: the self-host emitter feeds emit_imports from v1.compiler.core module_imports
+// (the v1 module node's own params, the seed parse -- not this tree); the v2 closure
+// route (v2.compiler.self_host.compiler_closure_emit) derives its closure with
+// v2.std.dependency dependency_lens, a generic parent-to-child edge fold; and
+// v2.compiler.translate's import shortcut fires only on an import_decl node it is
+// handed directly (the TypeScript import witnesses construct one), never on a node
+// found in a module body. Measured on origin/main with the same binary: the graft
+// body of a module with an import and a fn already carried no import_decl shell,
+// so this arm types a drop the flatten was already making.
 type NamespaceGraftUnitDisposition
   = UnitNamed { edge: Edge }
   | UnitResidual
