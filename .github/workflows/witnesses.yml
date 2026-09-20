@@ -25,6 +25,7 @@ env:
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
   GUNBC_REQUIRED_FLOOR_CLAIM_COST: required_floor_claim_cost.tsv
   GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND: required_floor_cross_claim_demand.tsv
+  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   witnesses:
     runs-on: [self-hosted, linux, arm64]
