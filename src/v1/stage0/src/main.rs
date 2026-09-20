@@ -673,6 +673,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
                 census_only_sources: Rc::new(census_only_sources.into()),
+                corpus: v1_compiler_compile::CorpusScope::CorpusUnknown,
             });
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(

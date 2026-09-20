@@ -872,7 +872,7 @@ fn diagnostic_identity_file(identity: String) -> String {
 
 fn diagnostic_semantic_key(identity: String) -> String {
   let fields = split(s: identity, delimiter: "\t")
-  join([diagnostic_identity_file(identity: identity), fields[1], fields[2]], "\t")
+  join(concat([diagnostic_identity_file(identity: identity)], fields.skip(n: 1).take(n: 2)), "\t")
 }
 
 fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {

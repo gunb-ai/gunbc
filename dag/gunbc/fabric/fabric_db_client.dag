@@ -1,0 +1,151 @@
+module gunbc.fabric_db_client
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.nat { Nat }
+import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
+import std.measure { Second, second }
+import extdeps.tools.curl { CurlExitOutcome, CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import std.fabric_db {
+  FabricObject, FabricObjectRef, fabric_object_preimage, fabric_object_ref_wire,
+  FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
+  FabricDbFault, FabricStoreUnreachable, FabricReplyUndecodable,
+  FabricPut, FabricPutRefused, FabricHeadRead, FabricHeadReadRefused,
+  FabricHeadAdvance, FabricHeadAdvanceRefused, FabricClosureRead, FabricClosureRefused,
+}
+import gunbc.fabric_db_wire { fabric_db_unwire_head, fabric_db_unwire_put, fabric_db_unwire_advance, fabric_db_unwire_closure }
+import gunbc.fabric_db_file_store {
+  FabricDbFileRoot, fabric_db_file_root, fabric_db_file_head, fabric_db_file_put, fabric_db_file_advance, fabric_db_file_closure,
+}
+import gunbc.fabric_db_placement { FabricDbPlacement, FabricDbPlaced, FabricDbUnplaced }
+import product.placement_supply { HostIdentity, host_identity_eq }
+
+// THE FABRIC DB AS A CALLER REACHES IT: std.fabric_db's four operations, each bound to one of two
+// handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch that
+// selects a realization is itself realization):
+//
+//   FabricDbLocalFiles   the caller IS the placed host; the file store runs in process.
+//   FabricDbServed       every other host; one bounded HTTPS POST to the placed host's endpoint,
+//                        answered in the one wire form.
+//
+// There is no third binding and no fallback between them: a served call that cannot reach the
+// endpoint answers FabricStoreUnreachable and the caller refuses -- it never reads a local copy,
+// because no host but the placement holds one.
+//
+// UNREACHABLE IS DECIDED HERE, FROM THE TRANSPORT, BEFORE ANY REPLY EXISTS. curl's exit status is
+// classified by extdeps.tools.curl; any nonzero status is the store not being reached. A reply with
+// an HTTP status other than 200 means the endpoint answered something that is not this protocol's
+// outcome -- a version skew, an unknown operation -- and is FabricReplyUndecodable, never a store
+// arm. Only a 200 body is decoded, and decoding refuses anything that is not fabric_db/1.
+type FabricDbBinding
+  = FabricDbLocalFiles { root: FabricDbFileRoot }
+  | FabricDbServed { endpoint: NonEmptyStr }
+  | FabricDbBindingUnplaced
+
+fn fabric_db_binding_for(placement: FabricDbPlacement, executor: HostIdentity) -> FabricDbBinding {
+  match placement {
+    FabricDbUnplaced => FabricDbBindingUnplaced
+    FabricDbPlaced { host: h, store_root: r, endpoint: e } =>
+      if host_identity_eq(a: h, b: executor) { FabricDbLocalFiles { root: fabric_db_file_root(root: r) } } else { FabricDbServed { endpoint: e } }
+  }
+}
+
+data fabric_db_unplaced_detail: NonEmptyStr = "the fabric DB is unplaced" as NonEmptyStr
+
+// The declared transport bounds: connecting is a handshake to one tailnet peer; a whole request is
+// one store operation on local disk plus the closure's transfer. These bound a wait that was
+// otherwise unbounded, not a measured cost.
+data fabric_db_connect_bound: Second = second(count: 5)
+data fabric_db_request_bound: Second = second(count: 60)
+
+// ONE ROUND TRIP, classified. The reply body carries curl's appended status line last.
+type ServedReply
+  = ServedAnswered { body: String }
+  | ServedFault { fault: FabricDbFault }
+
+fn served_reply_from(exit_code: Int, stdout: String, stderr: String) -> ServedReply {
+  match curl_exit_outcome(code: exit_code) {
+    CurlTransferCompleted => served_reply_from_status(stdout: stdout)
+    other => ServedFault { fault: FabricStoreUnreachable { detail: join([curl_exit_outcome_name(outcome: other), ": ", stderr], "") as NonEmptyStr } }
+  }
+}
+
+// The status line is read by extdeps.tools.curl's own classifier for `-w '\n%{http_code}'`, never
+// re-parsed here; the body is everything before that final line.
+fn served_reply_from_status(stdout: String) -> ServedReply {
+  let lines = split(stdout, separator: "\n")
+  let body = join(lines |> take(n: length(lines) - 1), "\n")
+  match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => ServedFault { fault: FabricReplyUndecodable { detail: c } }
+    CurlWroteHttpStatus { status: st } =>
+      if (st as Int) == 200 { ServedAnswered { body: body } }
+      else { ServedFault { fault: FabricReplyUndecodable { detail: join(["HTTP ", to_string(st as Int), ": ", body], "") as NonEmptyStr } } }
+  }
+}
+
+fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  let r = http.Client.PostStdinWithin(
+    url: join([endpoint as String, "/", operation], "") as NonEmptyStr,
+    request_body: request,
+    connect_seconds: http_client_max_time_flag(max_time: fabric_db_connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: fabric_db_request_bound),
+  )
+  served_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr)
+}
+
+fn expectation_request_words(expected: FabricHeadExpectation) -> String {
+  match expected {
+    ExpectHeadAbsent => "absent"
+    ExpectHeadAt { object: o } => join(["at ", fabric_object_ref_wire(object: o) as String], "")
+  }
+}
+
+// ── THE FOUR OPERATIONS, BOUND ───────────────────────────────────────────────────────────────
+
+fn fabric_db_head(binding: FabricDbBinding, name: NonEmptyStr) -> FabricHeadRead {
+  match binding {
+    FabricDbBindingUnplaced => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: fabric_db_unplaced_detail } }
+    FabricDbLocalFiles { root: r } => fabric_db_file_head(root: r, name: name)
+    FabricDbServed { endpoint: e } =>
+      match served_post(endpoint: e, operation: "head", request: name as String) {
+        ServedFault { fault: f } => FabricHeadReadRefused { fault: f }
+        ServedAnswered { body: b } => fabric_db_unwire_head(text: b)
+      }
+  }
+}
+
+fn fabric_db_put(binding: FabricDbBinding, object: FabricObject) -> FabricPut {
+  match binding {
+    FabricDbBindingUnplaced => FabricPutRefused { fault: FabricStoreUnreachable { detail: fabric_db_unplaced_detail } }
+    FabricDbLocalFiles { root: r } => fabric_db_file_put(root: r, object: object)
+    FabricDbServed { endpoint: e } =>
+      match served_post(endpoint: e, operation: "put", request: fabric_object_preimage(object: object) as String) {
+        ServedFault { fault: f } => FabricPutRefused { fault: f }
+        ServedAnswered { body: b } => fabric_db_unwire_put(text: b)
+      }
+  }
+}
+
+fn fabric_db_advance(binding: FabricDbBinding, name: NonEmptyStr, expected: FabricHeadExpectation, target: FabricObjectRef) -> FabricHeadAdvance {
+  match binding {
+    FabricDbBindingUnplaced => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: fabric_db_unplaced_detail } }
+    FabricDbLocalFiles { root: r } => fabric_db_file_advance(root: r, name: name, expected: expected, target: target)
+    FabricDbServed { endpoint: e } =>
+      match served_post(endpoint: e, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
+        ServedFault { fault: f } => FabricHeadAdvanceRefused { fault: f }
+        ServedAnswered { body: b } => fabric_db_unwire_advance(text: b)
+      }
+  }
+}
+
+fn fabric_db_closure(binding: FabricDbBinding, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
+  match binding {
+    FabricDbBindingUnplaced => FabricClosureRefused { fault: FabricStoreUnreachable { detail: fabric_db_unplaced_detail } }
+    FabricDbLocalFiles { root: r } => fabric_db_file_closure(root: r, name: name, bound: bound)
+    FabricDbServed { endpoint: e } =>
+      match served_post(endpoint: e, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
+        ServedFault { fault: f } => FabricClosureRefused { fault: f }
+        ServedAnswered { body: b } => fabric_db_unwire_closure(text: b)
+      }
+  }
+}

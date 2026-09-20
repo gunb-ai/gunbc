@@ -4894,6 +4894,137 @@ fn ct_test_marker_item_kind_test() -> String {
   )
 }
 
+// THE ONE WALL ROW THAT STAYS OFF THE FLOOR, AND WHY. Every other red and control of the wall runs on
+// the floor in test.claim.test_reference_wall_witness; their compiler_tests copies were deleted when
+// those were enrolled (review 67649). The identity-grain swap cannot move: it must compile a module
+// that carries a real ledger row, and on the floor such a module collides with the loaded corpus and
+// the census refuses rather than answers. It runs in no CI step. Next-rung trigger: a census probe
+// that can compile a fixture under a module name the corpus already holds, or inject its own ledger.
+fn ct_test_reference_wall_test() -> String {
+  concat(
+    "    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread\n",
+    "    // and hands back one plain tag per test-reference diagnostic.\n",
+    "    fn test_reference_tags(module: &str, body: &str) -> Vec<String> {\n",
+    "        let content = format!(\"module {}\\n\\n{}\", module, body);\n",
+    "        let (tx, rx) = std::sync::mpsc::channel();\n",
+    "        std::thread::Builder::new()\n",
+    "            .name(\"test-reference-wall\".to_string())\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(move || {\n",
+    "                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"test_reference_fixture.dag\".to_string(), content });\n",
+    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));\n",
+    "                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| {\n",
+    "                    let blocking = crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone());\n",
+    "                    match e.diagnostic.as_ref() {\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { .. } => Some(format!(\"referenced blocking={}\", blocking)),\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Some(format!(\"admitted blocking={}\", blocking)),\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceBudgetMismatch { declared, observed, .. } => Some(format!(\"mismatch declared={} observed={} blocking={}\", declared, observed, blocking)),\n",
+    "                        _ => None,\n",
+    "                    }\n",
+    "                }).collect();\n",
+    "                let _ = tx.send(tags);\n",
+    "            })\n",
+    "            .expect(\"spawn test-reference-wall\");\n",
+    "        rx.recv_timeout(std::time::Duration::from_secs(120)).expect(\"compile hung\")\n",
+    "    }\n",
+    "\n",
+    "    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the\n",
+    "    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.\n",
+    "    #[test]\n",
+    "    fn a_new_target_under_a_rostered_referrer_is_refused() {\n",
+    "        let debt = crate::v1_compiler_compile::test_reference_debt();\n",
+    "        let row = debt.iter().find(|r| r.referrer != \"<import>\" && r.occurrences == 1).cloned().expect(\"a single-call row\");\n",
+    "        let body = format!(\"test fn zz_swapped_in() -> Bool {{\\n  true\\n}}\\n\\nfn {}() -> Bool {{\\n  zz_swapped_in()\\n}}\\n\", row.referrer);\n",
+    "        let tags = test_reference_tags(&row.module_name, &body);\n",
+    "        assert!(tags.contains(&\"referenced blocking=true\".to_string()), \"{:?}\", tags);\n",
+    "        assert!(tags.contains(&format!(\"mismatch declared={} observed=0 blocking=true\", row.occurrences)), \"{:?}\", tags);\n",
+    "    }\n\n",
+    "\n"
+  )
+}
+
+// THE IMPORT-ALL ROUTE'S ONLY RED, AND WHY IT IS NOT ON THE FLOOR. The floor's census probe
+// (gunbc.compile_census_probe) compiles one fixture module against the corpus and loads the corpus
+// modules it imports for name lookup only, never typed, so no floor fixture can hold both a
+// test-bearing target and a module that imports it wholesale. This two-module compile is the red
+// for a CALL reached through a no-braces import, and like every compiler_tests row it runs in no CI
+// step. Next-rung trigger: a census probe that types more than one fixture source in one compile.
+//
+// A FUNCTION VALUE reached through a no-braces import is NOT decided, and that is an upstream
+// defect rather than a gap in the wall: v1 inference binds such a name as LocalValueBinding, as if it
+// were a local, so it is indistinguishable from a real local at this pass and the wall correctly
+// declines to treat locals as references. Trigger: inference binds a wildcard-imported declaration
+// as FunctionValueBinding, at which point the typed arm of function_value_target decides it.
+fn ct_test_reference_import_all_test() -> String {
+  concat(
+    "    // Two modules in one compile, which the floor's census probe cannot express: it types one fixture\n",
+    "    // and loads the corpus for name lookup only.\n",
+    "    fn import_all_tags() -> Vec<String> {\n",
+    "        let (tx, rx) = std::sync::mpsc::channel();\n",
+    "        std::thread::Builder::new()\n",
+    "            .name(\"test-reference-import-all\".to_string())\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(move || {\n",
+    "                let target = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"wall_target.dag\".to_string(), content: \"module wall.fixture.target\\n\\ntest fn leaf() -> Bool {\\n  true\\n}\\n\".to_string() });\n",
+    "                let caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"wall_caller.dag\".to_string(), content: \"module wall.fixture.caller\\n\\nimport wall.fixture.target\\n\\nfn expose() -> Bool {\\n  leaf()\\n}\\n\".to_string() });\n",
+    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![target, caller]));\n",
+    "                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| match e.diagnostic.as_ref() {\n",
+    "                    crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { referrer, target, .. } => Some(format!(\"{} -> {}\", referrer, target)),\n",
+    "                    _ => None,\n",
+    "                }).collect();\n",
+    "                let _ = tx.send(tags);\n",
+    "            })\n",
+    "            .expect(\"spawn test-reference-import-all\");\n",
+    "        rx.recv_timeout(std::time::Duration::from_secs(120)).expect(\"compile hung\")\n",
+    "    }\n",
+    "\n",
+    "    #[test]\n",
+    "    fn a_test_reached_through_import_all_is_refused() {\n",
+    "        assert_eq!(import_all_tags(), vec![\"wall.fixture.caller.expose -> wall.fixture.target.leaf\".to_string()]);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
+// THE ORPHAN ARM'S RED, AND WHY IT IS NOT ON THE FLOOR. An orphaned corpus row would refuse every CI
+// compile, so it cannot be authored into the real ledger; the arm is therefore exercised at its own
+// interface, v1.compiler.compile test_reference_unevaluated_row_diag, on synthetic rows. Like every
+// compiler_tests row it runs in no CI step. The floor carries its positive control instead: a
+// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness).
+// Next-rung trigger: a census probe that can compile against an injected ledger.
+fn ct_test_reference_orphan_row_test() -> String {
+  concat(
+    "    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census\n",
+    "    // knowledge and scope alone, so the pure function is called directly on synthetic rows.\n",
+    "    #[test]\n",
+    "    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {\n",
+    "        use crate::v1_compiler_compile::\{CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope};\n",
+    "        let row = |scope: TestReferenceRowScope| std::rc::Rc::new(TestReferenceDebtRow {\n",
+    "            module_name: \"gone.module\".to_string(),\n",
+    "            referrer: \"caller\".to_string(),\n",
+    "            target: \"gone.module.leaf\".to_string(),\n",
+    "            occurrences: 1,\n",
+    "            scope: scope,\n",
+    "            dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),\n",
+    "        });\n",
+    "        let loaded = |names: &[&str]| std::rc::Rc::new(CensusKnowledge::CensusLoaded {\n",
+    "            modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),\n",
+    "        });\n",
+    "        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| d.iter().filter(|e| matches!(e.diagnostic.as_ref(), crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. })).count();\n",
+    "        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);\n",
+    "        // RED: census loaded, module in neither the closure nor the census.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"other.module\"]))), 1);\n",
+    "        // CONTROL: the module exists, only outside this closure.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"gone.module\"]))), 0);\n",
+    "        // CONTROL: no census, so absence proves nothing.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), std::rc::Rc::new(CensusKnowledge::CensusAbsent))), 0);\n",
+    "        // CONTROL: the fixture control row is exempt by its declared scope.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::FixtureControlRow), loaded(&[\"other.module\"]))), 0);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -4903,6 +5034,9 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_test_marker_item_kind_test(),
+    ct_test_reference_wall_test(),
+    ct_test_reference_import_all_test(),
+    ct_test_reference_orphan_row_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),

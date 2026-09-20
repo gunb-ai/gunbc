@@ -34,7 +34,8 @@ import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConverg
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.compiler_gate_workflow { expected_compiler_gate_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.cargo_config_emit { expected_cargo_config_toml }
 import gunbc.gitignore_emit { expected_gitignore }
@@ -89,7 +90,7 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
 
 fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
+    WitnessFloorYamlArtifact => match expected_compiler_gate_yml() {
       WitnessFloorGenerated { content } => artifact_generated(content: content)
       WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
