@@ -13,11 +13,13 @@ import gunbc.runner_microvm {
 }
 import gunbc.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
-  BootConsoleLacksRunnerVersion, BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
-  boot_probe_verdict, boot_probe_admitted,
+  BootConsoleLacksRunnerVersion, BootConsoleLacksGuestBooted,
+  BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
+  boot_probe_verdict, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
 }
+import gunbc.runner_guest_image { guest_observation_line, GuestBooted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -161,4 +163,21 @@ test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
+}
+
+// A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
+// readback with and without the agent's GuestBooted marker: only the marked console is a boot of
+// this image's agent. The marker is produced by the emitter's own line builder, so an emitter edit
+// the reader does not follow reds here.
+test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool {
+  let marker = guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image)
+  let marked = guest_agent_boot_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 0, stdout: join(["[ 3.1] ", marker, "\n2.", "336.0\n"], ""), stderr: ""),
+  )
+  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
+  boot_probe_admitted(v: marked)
+    && !boot_probe_admitted(v: unmarked)
+    && (match unmarked { BootConsoleLacksGuestBooted { console: _ } => true  _ => false })
+    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version()))
 }
