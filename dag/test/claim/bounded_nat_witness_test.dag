@@ -115,3 +115,34 @@ test fn a_product_too_wide_for_the_host_refuses_on_its_own_arm() -> Bool {
     _ => false
   }
 }
+
+// THE REVIEWER'S DISCRIMINATING CASE (review of gunbc#11645): does the host-width rule refuse an
+// operand that is valid and computable? It did, for the WRAPPING product, and this is the red that
+// would have caught it. Both vectors have a 64-bit full product, so neither answer is reachable by
+// forming the product on this host -- the split is doing the work, not luck. The paired half is that
+// the CHECKED product on the same operands still refuses, which is correct rather than a gap: the
+// whole product is what detects overflow, and it does not exist here.
+test fn the_wrapping_product_is_computed_where_the_checked_one_cannot_be() -> Bool {
+  let all_ones = arm_value(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 4294967295), f: bounded_nat_mul_mod)) == Present { value: 1 }
+  let mixed = arm_value(r: on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 3735928559), f: bounded_nat_mul_mod)) == Present { value: 559038737 }
+  let checked_still_refuses = match on2(a: m(bits: w32(), value: 4294967295), b: m(bits: w32(), value: 4294967295), f: bounded_nat_mul) {
+    Present { value: ProductExceedsHostInt { bits: _ } } => true
+    _ => false
+  }
+  all_ones && mixed && checked_still_refuses
+}
+
+// THE RESIDUAL CEILING IS REAL AND IS ASSERTED AT ITS EDGE, so that widening it later is a change
+// this witness reports rather than absorbs. 41 is the last width the split admits; 42 is the first
+// it refuses, and the refusal names its own arm.
+test fn the_wrapping_product_ceiling_sits_between_41_and_42() -> Bool {
+  let admitted = match on2(a: m(bits: bit_width(count: 41), value: 3), b: m(bits: bit_width(count: 41), value: 5), f: bounded_nat_mul_mod) {
+    Present { value: Within { n: _ } } => true
+    _ => false
+  }
+  let refused = match on2(a: m(bits: bit_width(count: 42), value: 3), b: m(bits: bit_width(count: 42), value: 5), f: bounded_nat_mul_mod) {
+    Present { value: ProductExceedsHostInt { bits: _ } } => true
+    _ => false
+  }
+  admitted && refused
+}

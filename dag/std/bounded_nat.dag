@@ -110,11 +110,30 @@ fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
 // operands of one operation. Widening the narrower one silently is exactly the fail-open this family
 // exists to remove, so the disagreement is reported rather than resolved.
 //
-// PRODUCT WIDTH IS A SEPARATE ADMISSION FROM SUM WIDTH. A sum of two N-bit values needs N + 1 bits,
-// but a product needs 2N, so multiplication is admitted only while 2N stays inside the host bound.
-// Above that the operation refuses with its own arm rather than letting the host integer overflow --
-// which in the substrate is a raised refusal, not a value, and would stop the line somewhere this
+// PRODUCT WIDTH IS A SEPARATE ADMISSION FROM SUM WIDTH, AND THE TWO MULTIPLICATIONS DO NOT SHARE ONE.
+// A sum of two N-bit values needs N + 1 bits. The CHECKED product needs 2N, because detecting that a
+// product left the width requires the WHOLE product to exist -- so bounded_nat_mul is admitted only
+// while 2N stays inside the host bound, and above that it refuses rather than letting the host
+// integer overflow, which in the substrate is a raised refusal and would stop the line somewhere this
 // family cannot describe.
+//
+// THE WRAPPING PRODUCT NEEDS NO SUCH THING, AND GIVING IT THE CHECKED CEILING WAS AN OVER-PROHIBITION
+// (DESIGN 4d: a mechanism that forbids more than the evidence supports costs the thing you never did).
+// Reduction modulo 2^N depends only on the LOW N bits, which a host int can carry for widths the full
+// product would overflow. Splitting one operand at h = N / 2 gives the identity
+//   (a * b) mod 2^N  =  ((a1 * b) mod 2^(N - h)) * 2^h  +  a0 * b   (mod 2^N),   a = a1 * 2^h + a0
+// whose largest intermediates are a0 * b and a1 * b, of h + N and (N - h) + N bits. So UInt32
+// wrapping multiplication is computable here and no longer refuses, while UInt32 CHECKED
+// multiplication still refuses -- correctly, because its full 64-bit product does not exist on this
+// host. That is the distinction the shared ceiling was hiding.
+//
+// THE WRAPPING CEILING IS REAL BUT HIGHER, AND IS STATED RATHER THAN ROUNDED. The split admits a
+// width only while max(h + N, (N - h) + N) stays inside the host bound, which is N <= 41 -- not every
+// width the carrier admits. Widths 42..62 still refuse, and that residual is a property of the NAIVE
+// HOST REALIZATION rather than of bounded naturals. NEXT-RUNG TRIGGER for it, a capability: routing
+// the wrapping product through std.bignat's multi-limb arithmetic (or a recursive split), SUFFICIENT
+// FOR every width this carrier admits to have a computable wrapping product, at which point
+// bounded_nat_wrapping_product_admitted is constantly true and dissolves.
 type BoundedNatArith
   = Within { n: BoundedNat }
   | Overflows { bits: BitWidth }
@@ -206,12 +225,29 @@ fn bounded_nat_add_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   }
 }
 
+// Admitted while the SPLIT's intermediates fit the host, which is a weaker demand than the checked
+// product's 2N; see the note above the carrier for the identity and the residual 42..62 ceiling.
+fn bounded_nat_wrapping_product_admitted(bits: BitWidth) -> Bool {
+  bit_width_count(b: bits) + (bit_width_count(b: bits) - bit_width_count(b: bits) / 2)
+    <= bounded_nat_host_bit_ceiling()
+}
+
+// The low N bits of a product, without ever forming the whole product.
+fn bounded_nat_wrapping_product(bits: BitWidth, a: Int, b: Int) -> Int {
+  let n = bit_width_count(b: bits)
+  let h = n / 2
+  let low_modulus = bitwise_pow2(n: h)
+  let high_modulus = bitwise_pow2(n: n - h)
+  let high = ((a / low_modulus) * b) % high_modulus
+  (high * low_modulus + (a % low_modulus) * b) % bounded_nat_modulus(bits: bits)
+}
+
 fn bounded_nat_mul_mod(a: BoundedNat, b: BoundedNat) -> BoundedNatArith {
   if !bounded_nat_widths_agree(a: a, b: b) {
     WidthMismatch { left: a.bits, right: b.bits }
-  } else if !bounded_nat_product_admitted(bits: a.bits) {
+  } else if !bounded_nat_wrapping_product_admitted(bits: a.bits) {
     ProductExceedsHostInt { bits: a.bits }
   } else {
-    Within { n: BoundedNat { bits: a.bits, value: (a.value * b.value) % bounded_nat_modulus(bits: a.bits) } }
+    Within { n: BoundedNat { bits: a.bits, value: bounded_nat_wrapping_product(bits: a.bits, a: a.value, b: b.value) } }
   }
 }
