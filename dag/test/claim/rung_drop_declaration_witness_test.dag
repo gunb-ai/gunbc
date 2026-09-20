@@ -29,6 +29,23 @@ data control_rung_drop: RungDrop = RungDrop {
   }
 }
 
+// THE SAME CONTROL, EXCEPT THAT ITS TRIGGER ALREADY CLOSES ITS SENTENCE. The period is the one
+// field that varies, so the pair below isolates the projector's terminator handling from every
+// other field of the row.
+data control_rung_drop_with_terminated_trigger: RungDrop = RungDrop {
+  identity: "control.identity" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: ["control.population.one"],
+    restoration_trigger: "control restoration trigger."
+  }
+}
+
 // Local one-liner over the builtin rather than an import: three test files already declare their
 // own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a
 // witness's incidental helper, not a shared authority, and it is named distinctly for that reason.
@@ -92,4 +109,19 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
   !contains_text(haystack: live, needle: "control.subject")
     && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
     && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// THE RESTORATION SENTENCE IS TERMINATED EXACTLY ONCE, WHICHEVER WAY THE ROW SPELLED IT. Both
+// arms are asserted because they fail differently: unconditional appending (the defect that put
+// 21 double periods into docs/design-rung-drops.md) reds the terminated arm, and unconditional
+// stripping-then-nothing, or never appending, reds the unterminated arm. Each arm checks the
+// single-period ending AND the absence of the double, so a renderer that ends "trigger.." still
+// satisfies `ends_with "trigger."` and is caught by the second clause.
+test fn restoration_trigger_projects_exactly_one_terminator() -> Bool {
+  let unterminated = rung_drop_declaration_message(d: control_rung_drop)
+  let terminated = rung_drop_declaration_message(d: control_rung_drop_with_terminated_trigger)
+  ends_with(s: unterminated, suffix: "control restoration trigger.")
+    && !ends_with(s: unterminated, suffix: "trigger..")
+    && ends_with(s: terminated, suffix: "control restoration trigger.")
+    && !ends_with(s: terminated, suffix: "trigger..")
 }
