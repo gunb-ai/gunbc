@@ -129,6 +129,44 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
 
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
 
+// THE LOAD-STATE VOCABULARY, CITED TO systemd.unit(5). The five words are `loaded`, `not-found`,
+// `bad-setting`, `error` and `masked`, and until now only the one this corpus reads positively had a
+// declared row -- so a consumer needing the other four spelled them itself, in the product layer,
+// where a second spelling of a cited upstream is free to drift from it.
+//
+// `not-found` IS NOT RE-SPELLED HERE. Its wire word comes from the row above, which already existed
+// and already has consumers; adding a sixth literal beside it would be the fork this type exists to
+// close, committed inside the closing move.
+//
+// THE PARSE'S ABSENT ARM IS THE UNKNOWN READING, exactly as its ActiveState sibling's is: a word
+// systemd emits that this model does not carry is UNKNOWN, and a consumer that defaulted it to
+// "loaded" or to "absent" would be inventing the answer it could not read.
+type SystemdUnitLoadState
+  = LoadStateLoaded
+  | LoadStateNotFound
+  | LoadStateBadSetting
+  | LoadStateError
+  | LoadStateMasked
+
+fn systemd_unit_load_state_wire(s: SystemdUnitLoadState) -> String {
+  match s {
+    LoadStateLoaded => "loaded"
+    LoadStateNotFound => systemd_unit_load_state_not_found_wire as String
+    LoadStateBadSetting => "bad-setting"
+    LoadStateError => "error"
+    LoadStateMasked => "masked"
+  }
+}
+
+fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
+  if raw == systemd_unit_load_state_wire(s: LoadStateLoaded) { Present { value: LoadStateLoaded } }
+  else { if raw == systemd_unit_load_state_wire(s: LoadStateNotFound) { Present { value: LoadStateNotFound } }
+  else { if raw == systemd_unit_load_state_wire(s: LoadStateBadSetting) { Present { value: LoadStateBadSetting } }
+  else { if raw == systemd_unit_load_state_wire(s: LoadStateError) { Present { value: LoadStateError } }
+  else { if raw == systemd_unit_load_state_wire(s: LoadStateMasked) { Present { value: LoadStateMasked } }
+  else { none } } } } }
+}
+
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
 data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemorySwapMax)

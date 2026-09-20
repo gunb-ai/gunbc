@@ -14,6 +14,8 @@ import gunbc.runner_slot_retirement {
   authoritative_standing_is_complete,
   authoritative_standing_cause,
   RetirementMethodAvailability,
+  retirement_method_availability,
+  RetirementMethod,
   MethodAvailable,
   MethodUnavailable,
   RunnerRetirementStanding,
@@ -34,6 +36,12 @@ import gunbc.runner_host_retirement {
   estate_obligation_wire,
   RetireeObligationBasis,
   retiree_obligation_ungrounded_cause,
+}
+import gunbc.runner_registration_capture {
+  LocalSlotPopulation,
+  LocalPopulationKnown,
+  LocalPopulationIncomplete,
+  local_population_standing,
 }
 
 // THE CLOSURE CLAIM IS A CONJUNCTION, AND EVERY WAY OF NOT KNOWING IS A CONJUNCT.
@@ -127,9 +135,15 @@ fn roster_blockers(roster: OrganizationRunnerRosterEvidence) -> List<ClosureBloc
 //
 // One observed roster is now the single source of both answers, so an omission has nowhere to happen:
 // there is no second list a caller could shorten.
+// THE ROSTER SCAN IS THE LEGACY NAME DECODER'S SECOND CONSUMER, and what it produces is a CANDIDATE
+// rather than ownership: a registration with no local capture has only its name to go on, which is
+// how owned surplus beyond the captured files is found and is never by itself evidence that this
+// estate issued it. The org is the scan's own scope and is carried in so the id is addressed within
+// it -- a bare numeric id names nothing.
 fn roster_surplus_dispositions(
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
+  roster_organization: NonEmptyStr,
 ) -> List<SurplusIdentityDisposition> {
   match roster {
     RosterReadUnavailable { reason: _ } => []
@@ -139,6 +153,8 @@ fn roster_surplus_dispositions(
         host: host,
         decoding: decode_registration_slot(reg: r),
         name: r.name,
+        organization: roster_organization,
+        agent_id: r.id as Int,
         capture: host_retirement_capture(host: host),
       ))
   }
@@ -264,6 +280,22 @@ fn obligation_coverage_blockers(
   )
 }
 
+// THE LOCAL POPULATION IS ITS OWN BLOCKER, SEPARATE FROM THE REGISTRATION CAPTURE. Registration
+// completeness cannot settle which TREES exist: srv2's census observed seven local slots against
+// four `.runner` files, so a complete registration capture would still leave three trees unaccounted
+// for. The two questions have different producers and different remedies, so they refuse separately.
+fn local_population_blockers(host: HostIdentity, population: LocalSlotPopulation) -> List<ClosureBlocker> {
+  match local_population_standing(p: population) {
+    LocalPopulationKnown { observed_on: _, slots: _ } => []
+    LocalPopulationIncomplete { cause: c } => [
+      ClosureBlocker {
+        subject: join([host as String, "/local-slot-population"], ""),
+        cause: join(["which owned local slots exist on this host is not established: ", c, ". A registration capture does not answer it -- a slot whose .runner is positively absent is still a tree that owes a retirement"], ""),
+      },
+    ]
+  }
+}
+
 fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
   match d {
     PlannerSawCompleteSubject { operations_emitted: n } =>
@@ -325,16 +357,26 @@ type RetirementAssessmentVerdict
   = AssessmentClearOfBlockers { revision: NonEmptyStr, required_subjects: Int }
   | AssessmentBlocked { revision: NonEmptyStr, blockers: List<ClosureBlocker> }
 
+// THE METHOD IS PASSED, NOT ITS AVAILABILITY, BECAUSE AVAILABILITY IS PER SUBJECT. This fold took one
+// precomputed RetirementMethodAvailability and stamped it across every subject, while the producer is
+// unit-dependent: AuthorizedDisruptiveRetirement asks interruption_authorization_covers(auth, unit).
+// So one covered unit would have yielded MethodAvailable -- an empty blocker list -- for units the
+// authorization never named, on the route that interrupts them. It stayed latent only because the
+// arm that does reach production, GracefulRetirement, ignores its unit argument, and the caller was
+// handing it a HOST rather than a unit at all. That is the identity join this PR adds
+// SlotRetirementSubjectMismatch to refuse, committed in the fold beside it.
 fn retirement_assessment_verdict(
   revision: NonEmptyStr,
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
+  roster_organization: NonEmptyStr,
   required: List<NonEmptyStr>,
   standings: List<RunnerRetirementStanding>,
   method_subjects: List<String>,
-  method_availability: RetirementMethodAvailability,
+  method: RetirementMethod,
   planner: PlannerDisposition,
   basis: RetireeObligationBasis,
+  local_population: LocalSlotPopulation,
   obligation_population: List<NonEmptyStr>,
   estate: EstateCleanupStanding,
   extra: List<ClosureBlocker>,
@@ -343,16 +385,19 @@ fn retirement_assessment_verdict(
     concat(
       concat(
         roster_blockers(roster: roster),
-        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster)),
+        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster, roster_organization: roster_organization)),
       ),
       concat(
         retiree_blockers(required: required, standings: standings),
-        flat_map(method_subjects, u => method_blockers(unit: u, availability: method_availability)),
+        flat_map(method_subjects, u => method_blockers(unit: u, availability: retirement_method_availability(method: method, unit: u))),
       ),
     ),
     concat(
       concat(
-        concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+        concat(
+          concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+          local_population_blockers(host: host, population: local_population),
+        ),
         obligation_coverage_blockers(obligation_population: obligation_population, required: required),
       ),
       concat(estate_blockers(host: host, estate: estate), extra),

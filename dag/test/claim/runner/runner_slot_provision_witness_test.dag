@@ -31,6 +31,7 @@ import gunbc.runner_slot_provision {
   SlotProvenanceUnobserved,
   RunnerSlotRegistration, SlotUnregistered, SlotRegisteredPersistent, SlotRegisteredEphemeral, SlotRegistrationUnreadable,
   runner_slot_provenance_wire,
+  runner_slot_provenance_is_retired_incarnation,
   RunnerSlotMemberAt,
   desired_runner_slot_members,
   runner_slot_membership_reconcile,
@@ -484,17 +485,44 @@ test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
     }))
 }
 
-// srv2-11 and srv2-12 on 2026-09-04: `.runner` present with Ephemeral=True, unit inactive and
-// disabled since June. GitHub had already unregistered them (ephemeral registrations end after
-// one job), so the tree is a retired incarnation; a Bool registration flag refused it forever.
-test fn a_dead_ephemeral_registration_is_a_retired_incarnation() -> Bool {
+// THIS CLAIM ASSERTED THE INFERENCE THAT HAS BEEN WITHDRAWN, AND IS INVERTED RATHER THAN DELETED.
+//
+// It read: srv2-11 and srv2-12 carry `.runner` with Ephemeral=True beside a unit inactive and
+// disabled since June, GitHub had ALREADY UNREGISTERED THEM because ephemeral registrations end
+// after one job, so the tree is a retired incarnation. The upstream sentence says an ephemeral runner
+// is unregistered AFTER IT COMPLETES ONE JOB -- a consequence of a condition, not evidence the
+// condition occurred. A registration created and stopped before running any job is still held
+// remotely beside a tree that looks exactly like this one.
+//
+// So the witness that certified the inference now establishes its correction: an ephemeral
+// registration is NOT a retired incarnation on local evidence, and the tree is not reconcilable away
+// on that basis. Keeping it as an inverted control rather than deleting it is deliberate -- this
+// exact fixture is the one that read green while the inference was wrong, so it is the one that must
+// go red if anybody restores it.
+//
+// THE CONSEQUENCE REACHES OWNERSHIP, WHICH IS THE POINT RATHER THAN A SIDE EFFECT.
+// `runner_slot_member_ownership` is gated on this predicate, so withdrawing the inference also stops
+// these trees being `Owned` for removal -- and the tree holds the only captured copy of the AgentId
+// binding, so the arm that authorized deleting it was the arm that authorized destroying the evidence
+// needed to reconcile the remote object properly.
+test fn a_dead_ephemeral_registration_is_not_a_retired_incarnation() -> Bool {
   let ghost = provenance_witness_member(
     name: "wfix-11",
     p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredEphemeral, unit_active: false, unit_enabled: false },
   )
-  (runner_slot_member_ownership(m: ghost) == Present { value: Owned })
-    && (provenance_witness_reconcile(observed: [ghost]).actions |> count) == 1
+  !runner_slot_provenance_is_retired_incarnation(p: ghost.provenance)
+    && runner_slot_member_ownership(m: ghost) != Present { value: Owned }
     && string_contains(s: runner_slot_provenance_wire(p: ghost.provenance), pattern: "ephemeral")
+}
+
+// AND THE ARM THAT STILL DOES DISCHARGE, so the correction did not make the predicate refuse
+// everything: a tree with NO registration file has no remote registration to be uncertain about.
+test fn an_unregistered_dead_tree_is_still_a_retired_incarnation() -> Bool {
+  let ghost = provenance_witness_member(
+    name: "wfix-12",
+    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+  )
+  runner_slot_provenance_is_retired_incarnation(p: ghost.provenance)
 }
 
 // RED controls on the same shape: an ACTIVE ephemeral registration is a live runner, and an
@@ -516,11 +544,11 @@ data fixture_runner_registration_persistent: String = "{\"AgentId\":\"2\",\"Agen
 
 test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
   let ephemeral = match actions_runner_registration_decode(raw: fixture_runner_registration_ephemeral) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => true
+    ActionsRunnerRegistrationDecoded { record: r } => match r.lifecycle { ActionsRunnerRegistrationEphemeral => true  ActionsRunnerRegistrationPersistent => false }
     _ => false
   }
   let persistent = match actions_runner_registration_decode(raw: fixture_runner_registration_persistent) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => true
+    ActionsRunnerRegistrationDecoded { record: r } => match r.lifecycle { ActionsRunnerRegistrationPersistent => true  ActionsRunnerRegistrationEphemeral => false }
     _ => false
   }
   let garbage = match actions_runner_registration_decode(raw: "not json") {

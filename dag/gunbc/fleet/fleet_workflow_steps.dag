@@ -567,7 +567,18 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // input, so plan/apply, dashboard deploy and the launch-deployment receipt of ONE host queue behind
 // each other while different hosts stay independent. Expression-valued because the host is a
 // dispatch input, not a constant of the workflow.
-data fleet_host_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.host }}"
+// ONE MUTATION-DOMAIN PRODUCER, SPELLED ONCE. Three rows named this domain and differed only in the
+// GHA expression that resolves the host: a plain dispatch input twice, and a map lookup for the reset
+// observer. The prose beside them asserted they were the SAME `gunbc-host-mutation-<host>` domain,
+// and prose is not an edge -- the domain name is only load-bearing if two jobs keying the same host
+// CANNOT drift apart, and three hand-spelled prefixes can. The producer takes the host expression
+// because that is the part that genuinely differs; the prefix and the `${{ }}` wrapping are the fact
+// being shared.
+fn host_mutation_concurrency_group_expression(host_expression: String) -> String {
+  join(["gunbc-host-mutation-${{ ", host_expression, " }}"], "")
+}
+
+data fleet_host_mutation_concurrency_group_expression: String = host_mutation_concurrency_group_expression(host_expression: "github.event.inputs.host")
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
