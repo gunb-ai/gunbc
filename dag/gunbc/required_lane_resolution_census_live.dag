@@ -1,7 +1,7 @@
 module gunbc.required_lane_resolution_census_live
 
 import std.types { String, Bool, List, Int }
-import v2.std.optional { Optional, Present, Absent }
+import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -115,36 +115,37 @@ type LivePopulations
   = LivePopulationsObserved { admitted: List<String>, resolved: List<LaneResolvedPopulation> }
   | LivePopulationsRefused { cause: String }
 
-type ResolvedAcc {
-  rows: List<LaneResolvedPopulation>
-  refusal: Optional<String>
+// The fold's accumulator is a coproduct rather than rows-plus-optional-cause: a refused subject
+// ends the fold with its cause, and no arm carries a partial row list beside a refusal.
+type ResolvedAcc
+  = ResolvedRows { rows: List<LaneResolvedPopulation> }
+  | ResolvedRefused { cause: String }
+
+fn resolve_subject(acc: ResolvedAcc, job_id: String, s: LaneResolutionSubject) -> ResolvedAcc {
+  match acc {
+    ResolvedRefused { cause: c } => ResolvedRefused { cause: c }
+    ResolvedRows { rows: rows } => match subject_population(s: s) {
+      ModuleIdentityPopulationRefused { cause: c } =>
+        ResolvedRefused { cause: concat(concat(concat("job `", job_id), "`: "), c) }
+      ModuleIdentityPopulationObserved { modules: ms } =>
+        ResolvedRows { rows: list_push(rows, LaneResolvedPopulation { job_id: job_id, subject: s, modules: ms }) }
+    }
+  }
 }
 
 fn resolve_row(acc: ResolvedAcc, row: LaneResolutionRow) -> ResolvedAcc {
-  row.subjects |> fold(init: acc, f: fn(a, s) {
-    match a.refusal {
-      Present { value: _ } => a
-      Absent => match subject_population(s: s) {
-        ModuleIdentityPopulationRefused { cause: c } =>
-          ResolvedAcc { rows: a.rows, refusal: Present { value: concat(concat(concat("job `", row.job_id), "`: "), c) } }
-        ModuleIdentityPopulationObserved { modules: ms } =>
-          ResolvedAcc { rows: list_push(a.rows, LaneResolvedPopulation { job_id: row.job_id, subject: s, modules: ms }), refusal: Absent {} }
-      }
-    }
-  })
+  row.subjects |> fold(init: acc, f: fn(a, s) { resolve_subject(acc: a, job_id: row.job_id, s: s) })
 }
 
 fn live_populations() -> LivePopulations {
   match roster_coverage(w: compiler_gate_workflow) {
     RosterCovers => match source_root_ingest_module_identities(witness_layer_roots) {
       ModuleIdentityPopulationRefused { cause: c } => LivePopulationsRefused { cause: concat("admitted population: ", c) }
-      ModuleIdentityPopulationObserved { modules: admitted } => {
-        let acc = lane_resolution_roster() |> fold(init: ResolvedAcc { rows: [], refusal: Absent {} }, f: resolve_row)
-        match acc.refusal {
-          Present { value: c } => LivePopulationsRefused { cause: c }
-          Absent => LivePopulationsObserved { admitted: admitted, resolved: acc.rows }
+      ModuleIdentityPopulationObserved { modules: admitted } =>
+        match lane_resolution_roster() |> fold(init: ResolvedRows { rows: [] }, f: resolve_row) {
+          ResolvedRefused { cause: c } => LivePopulationsRefused { cause: c }
+          ResolvedRows { rows: rows } => LivePopulationsObserved { admitted: admitted, resolved: rows }
         }
-      }
     }
     RosterMissesJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterMissesJob { job_id: j }) }
     RosterNamesAbsentJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterNamesAbsentJob { job_id: j }) }
