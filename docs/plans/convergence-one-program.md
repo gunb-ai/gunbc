@@ -32,10 +32,16 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 |----|-----|-----------------|
 | #11678 | C9a.1 | GCP Secret IAM: read the policy back **independently** after the write |
 | #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back — **now DIRTY** |
-| #11689 | C11 | GitHub reads rebound onto the canonical observe-then-assess join |
+| #11689 | C11 | GitHub reads rebound onto the canonical join — **parked, see below** |
 | #11732 | C9b | App private-key rotation: exact-version verifier, contract, `DisableOnly` |
 | #11795 | — | `RungDropAmendment` carrier, so a later ruling on a standing drop has a home |
 | #11828 | — | `mtcollins1_boot` narrowed to `FleetSshKeyNotConsumed` |
+
+**#11689 is parked for the same reason, one rung further on.** It is complete and correct at
+`2e63f9d53`: the rebind is done, and a scratch regeneration driver that an earlier `git add -A` had
+swept in — no consumer, re-minting a generated workflow path as a literal — was found by review and
+deleted, so the PR no longer carries a defect that would land. It then went DIRTY again within the
+hour on the contended pair. It is left open, not closed.
 
 **#11676 was deliberately not rebuilt.** It is approved and green at `c153cfa519`, but main moved
 27 commits and edited five of its seven files, so resolving is content work rather than a
