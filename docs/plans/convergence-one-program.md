@@ -216,13 +216,9 @@ only then declare the outcome.
   changing a `ci_spec` entry target inherits this, and must carry its own derived bytes.
 - **`fleet_converge_workflow.dag` and its generated `.yml` are the contended pair**: every lane that
   adds a dispatch mode touches the same two rows, so PRs there go DIRTY on queue position rather
-  than on any defect. Worse, **a conflict region in that workflow can split a step.** One
-  resolution had five regions, four of them keep-both; the fifth had both sides ending mid-step and
-  sharing the `continue_on_error`/timeout tail that followed, so concatenating in either order left
-  a step unterminated. It *looked* right by inspection. The regeneration caught it as an
-  unterminated function body at EOF — two thousand lines from the splice — and a brace-balance
-  count against both parent versions located it. A keep-both resolution here is not safe by
-  reading; only the regen is.
+  than on any defect. A conflict region there can split a step, and a keep-both resolution is not
+  safe by reading — the class and its fourth specimen are rostered at
+  `gunbc.recurring_failure_mode.merge_region_excludes_shared_tail`.
 - **The verification that discriminates, for anyone hand-committing a projection:** push, then read
   heal's repair-candidate *manifest* on that head. An empty entry set against two entries on the
   prior head is a real signal. A byte count matching heal's own is corroboration only — a different
