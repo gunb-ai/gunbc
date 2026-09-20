@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_census_image
 
 import std.types { List, NonEmptyStr, String }
+import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
@@ -48,12 +49,16 @@ data mtcollins1_census_machine: NonEmptyStr = "mtcollins1"
 // boot failure -- the misattribution this lane exists to end. Both spellings derive from here.
 data mtcollins1_census_console_tty: NonEmptyStr = "ttyAMA0"
 
-data mtcollins1_census_console_baud: NonEmptyStr = "115200"
+// THE RATE IS A MEASURE, not text: the corpus already models a serial console's rate as
+// std.measure Bandwidth (extdeps.network.mikrotik_crs812 rj45 console data_rate), so the kernel
+// argument RENDERS this row rather than restating the number.
+data mtcollins1_census_console_baud: Bandwidth = bandwidth(count: 115200)
 
 data mtcollins1_census_console_device: NonEmptyStr = concat("/dev/", mtcollins1_census_console_tty as String) as NonEmptyStr
 
 data mtcollins1_census_console_arg: NonEmptyStr = concat(
-  "console=", mtcollins1_census_console_tty as String, ",", mtcollins1_census_console_baud as String,
+  "console=", mtcollins1_census_console_tty as String, ",",
+  bandwidth_count(b: mtcollins1_census_console_baud) as String,
 ) as NonEmptyStr
 
 // The seed directory the earlier census booted with (its /proc/cmdline in attempt=3 reads

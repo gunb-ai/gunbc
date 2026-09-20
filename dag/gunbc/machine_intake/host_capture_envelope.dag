@@ -42,6 +42,15 @@ data host_capture_workload_write_rc_token: String = "workload-write-rc="
 
 data host_capture_workload_stable_token: String = "workload-digest-stable=yes"
 
+// WHICH RUN THIS ENVELOPE IS, named for what the medium can actually know. attempt=3's envelope
+// carried an ATTEMPT ORDINAL, which a host counting its own boots cannot produce: the census image is
+// static media with no state across boots, so the only run identity available to it is the kernel's
+// boot id. Reusing `attempt=` for that would be DESIGN §3's meaning fork -- one spelling, two
+// materially different meanings, with nothing in the parser to discriminate -- so the field is named
+// for the value it carries. The boot-id stage prints the same value inside the envelope; here it
+// identifies the run even when every section fails.
+data host_capture_run_token: String = "boot-id="
+
 type HostCaptureEnvelopeMarker = HostCaptureBegin | HostCaptureEnd
 
 fn host_capture_marker_word(marker: HostCaptureEnvelopeMarker) -> String {
@@ -117,7 +126,7 @@ data host_capture_census_stages: List<HostCaptureStage> = [
 fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMarker) -> String {
   concat(
     host_capture_envelope_rule, host_capture_envelope_tag as String, " ", machine as String,
-    " attempt=$GUNBC_ATTEMPT ", host_capture_marker_word(marker: marker),
+    " ", host_capture_run_token, "$GUNBC_BOOT_ID ", host_capture_marker_word(marker: marker),
     " $(date -u +%Y-%m-%dT%H:%M:%SZ)", host_capture_envelope_rule,
   )
 }
@@ -151,7 +160,7 @@ fn host_capture_program(
   concat(
     "#!/bin/sh\n",
     "exec >", console_device as String, " 2>&1\n",
-    "GUNBC_ATTEMPT=$(cat /proc/sys/kernel/random/boot_id)\n",
+    "GUNBC_BOOT_ID=$(cat /proc/sys/kernel/random/boot_id)\n",
     "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureBegin), "\"\n",
     join(map(stages, s => host_capture_stage_program(stage: s)), ""),
     "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureEnd), "\"\n",
