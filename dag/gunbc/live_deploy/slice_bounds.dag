@@ -25,12 +25,25 @@ import std.measure { ByteSize, byte_size }
 //
 // WHAT FALSIFIED IT: the runner row stopped being an allowance for "a gunbc process". The
 // 2026-09-12 demand ruling sizes it from the REQUIRED FLOOR'S measured peak -- one prepared subject
-// over the whole corpus, 22.74 GiB uncensored -- which is work this deployment never performs. The
+// over the whole corpus, a figure gunbc.runner_slot_allocation gunbc_runner_slot_memory_max_ruling_note
+// owns and this row deliberately does not restate -- which is work this deployment never performs. The
 // same 2026-09-04 measurement the old note cited for scale is the refutation at this size: serve
 // peaked at 3.46 GB and the belt at 0.97 GB. Sharing one number with the floor was a coincidence of
 // magnitude that read as an identity of workload, and the moment the floor's number moved, the
 // coincidence ended while the sentence asserting the identity did not. That is the pattern this
 // corpus keeps finding -- a name that states a coincidence as a law.
+//
+// THE FIGURE THIS PASSAGE USED TO QUOTE WAS THE WRONG ONE, AND IT IS REMOVED RATHER THAN CORRECTED
+// (main, 2026-09-20; ported here because this passage moved out of gunbc.live_deploy.emit in this
+// PR and the repair would otherwise have been dropped by the move). It read "22.74 GiB uncensored".
+// The ruling it attributes that to records TWO disagreeing readings and states in as many words that
+// it takes the LARGER and that sizing to the smaller "is the fail-open direction" -- so this row
+// named the arm the ruling refused, and named the fail-open direction as what the fail-closed
+// decision was. Nothing downstream of THIS passage changes: its whole argument is that the floor's
+// demand does not apply to this deployment at all, and that holds at any value. It is a citation
+// defect, not a wrong decision. The repair is to stop carrying a second copy of a number this row
+// does not own (DESIGN section 6: name the producer, never transcribe its output) -- which is also
+// why no newer figure is substituted here, even though one now exists.
 //
 // THE VALUES DO NOT CHANGE TODAY, deliberately. They are the bytes this deployment already runs
 // with, restated as its own fact with its own justification rather than re-derived to something

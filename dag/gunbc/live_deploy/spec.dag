@@ -717,13 +717,15 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // so a `git config` from the apply is EACCES on one side and outside the six sudo grants on the
 // other. That argues for the tree-sync unit, which already has the right principal.
 //
-// It cannot be the tree-sync unit. That unit is installed and started inside the GunbcSourceTree
-// step, which is FIRST in deployment_owned_steps, while ServeBinary is second -- so on a fresh
-// instance the gunbc binary the convergence invokes does not exist yet, and the leg would red the
-// first deploy of every new slot. Ordering the member AFTER ServeBinary is what makes the binary a
-// precondition the membership itself establishes.
+// It cannot be the tree-sync unit. That unit was installed and started inside the GunbcSourceTree
+// step, and when this member was written that step came FIRST in deployment_owned_steps with
+// ServeBinary second -- so on a fresh instance the gunbc binary the convergence invokes did not
+// exist yet, and the leg would red the first deploy of every new slot. Ordering the member AFTER
+// ServeBinary is what makes the binary a precondition the membership itself establishes. (The two
+// have since swapped -- deployment_steps_apply_order says why binary now lands before the tree --
+// and this member's position after BOTH is unchanged by that.)
 //
-// It sits THIRD -- immediately after GunbcSourceTree and ServeBinary, and before the belt timer.
+// It sits THIRD -- immediately after ServeBinary and GunbcSourceTree, and before the belt timer.
 // An earlier cut of this change said "last" and placed it last; that was an inversion of
 // the rule deployment_steps_apply_order's annotation states, that dependencies precede their
 // consumers, because the
@@ -732,7 +734,7 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
 // only one. Witness: deployed_tree_remote_witness_test
 // `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
-// tree,binary,remote,belt,route.
+// binary,tree,remote,publication,belt,route.
 fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
 }
