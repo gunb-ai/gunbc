@@ -1,0 +1,190 @@
+module gunbc.machine_intake_mtcollins1_boot_authorization
+
+import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.scoped_authorization {
+  AuthorizedAction,
+  AttemptIdentity,
+  AuthorizationScope,
+  AuthorizationRequest,
+  ScopedAuthorization,
+  AuthorizationGranted,
+  AuthorizationDenied,
+  authorize,
+  AuthorizationPermitted,
+  AuthorizationRefused,
+}
+import gunbc.auth.approval_decision_store {
+  grant_from_approved_decision, GrantDerived, GrantForAnotherIntent,
+  request_revision_of,
+}
+import gunbc.auth.approval_request_client {
+  ApprovalPollStanding, PollApproved, PollDenied, PollExpired, PollStillPending,
+  PollNotFiled, PollUnreadable,
+}
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
+import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection,
+  ipmi_boot_selection_label,
+}
+import extdeps.toolchain.types { architecture_diagnostic_name }
+
+type MtCollins1BootSubject {
+  machine: NonEmptyStr
+  bmc_host: NonEmptyStr
+  image_name: NonEmptyStr
+  image_sha256: NonEmptyStr
+  export_host: NonEmptyStr
+  export_dir: NonEmptyStr
+  selection: IpmiBootSelection
+  power_action: NonEmptyStr
+  execution_revision: NonEmptyStr
+}
+
+data mtcollins1_boot_machine: NonEmptyStr = "mtcollins1"
+
+fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
+  MtCollins1BootSubject {
+    machine: mtcollins1_boot_machine,
+    bmc_host: mtcollins1_endpoint.host,
+    image_name: mtcollins1_diskless_image_name,
+    image_sha256: mtcollins1_boot_image_sha256,
+    export_host: operator_host_srv2 as NonEmptyStr,
+    export_dir: mtcollins1_boot_export_dir,
+    selection: mtcollins1_cdrom_selection,
+    power_action: mtcollins1_power_action,
+    execution_revision: execution_revision,
+  }
+}
+
+data mtcollins1_virtual_media_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "megarac" },
+  path: ["media", "remote-image"],
+}
+
+data mtcollins1_virtual_media_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: mtcollins1_virtual_media_resource,
+  action: "megarac.virtual-media.attach" as AuthorizedAction,
+}
+
+data mtcollins1_ipmi_boot_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "ipmi" },
+  path: ["chassis", "bootdev"],
+}
+
+data mtcollins1_ipmi_boot_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: mtcollins1_ipmi_boot_resource,
+  action: "ipmi.chassis.bootdev.set" as AuthorizedAction,
+}
+
+data mtcollins1_ipmi_power_resource: NamespacePosition = NamespacePosition {
+  tree: ServiceOpTree { service: "ipmi" },
+  path: ["chassis", "power"],
+}
+
+data mtcollins1_ipmi_power_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: mtcollins1_ipmi_power_resource,
+  action: "ipmi.chassis.power.cycle" as AuthorizedAction,
+}
+
+data mtcollins1_boot_required_scopes: List<AuthorizationScope> = [
+  mtcollins1_virtual_media_scope,
+  mtcollins1_ipmi_boot_scope,
+  mtcollins1_ipmi_power_scope,
+]
+
+fn mtcollins1_boot_intent_hash(subject: MtCollins1BootSubject) -> ContentHash {
+  content_hash_of_value(
+    value: join([
+      subject.machine as String,
+      subject.bmc_host as String,
+      subject.image_name as String,
+      subject.image_sha256 as String,
+      subject.export_host as String,
+      subject.export_dir as String,
+      architecture_diagnostic_name(arch: subject.selection.architecture) as String,
+      ipmi_boot_selection_label(selection: subject.selection) as String,
+      subject.power_action as String,
+      subject.execution_revision as String,
+    ], "|") as NonEmptyStr,
+  )
+}
+
+data mtcollins1_boot_purpose: NonEmptyStr = "Attach the diskless Ubuntu live image already exported on srv2 to Mt. Collins unit 1 over BMC virtual media, set one-shot CD boot, and power-cycle the host. This interrupts anything the unit is currently running." as NonEmptyStr
+
+fn mtcollins1_boot_authorization_request(
+  escalation_id: NonEmptyStr,
+  attempt: AttemptIdentity,
+  execution_revision: NonEmptyStr,
+) -> AuthorizationRequest<MtCollins1BootSubject> {
+  let subject = mtcollins1_boot_subject(execution_revision: execution_revision)
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: mtcollins1_boot_required_scopes,
+    subject: subject,
+    purpose: mtcollins1_boot_purpose,
+    attempt: attempt,
+    intent_hash: mtcollins1_boot_intent_hash(subject: subject),
+    destructive: true,
+  }
+}
+
+type MtCollins1BootGate
+  = BootGateAdmitted { authorization: ScopedAuthorization<MtCollins1BootSubject> }
+  | BootGatePending { escalation_id: NonEmptyStr }
+  | BootGateDenied { reason: NonEmptyStr }
+  | BootGateExpired
+  | BootGateNotFiled { escalation_id: NonEmptyStr }
+  | BootGateIntentMismatch { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | BootGateStoreUnreadable { detail: NonEmptyStr }
+  | BootGateAuthorizeRefused { detail: NonEmptyStr }
+
+fn mtcollins1_boot_gate_from_poll(
+  poll: ApprovalPollStanding,
+  request: AuthorizationRequest<MtCollins1BootSubject>,
+  observed_at: Timestamp,
+) -> MtCollins1BootGate {
+  match poll {
+    PollStillPending => BootGatePending { escalation_id: request.escalation_id }
+    PollNotFiled => BootGateNotFiled { escalation_id: request.escalation_id }
+    PollExpired => BootGateExpired
+    PollUnreadable { detail: d } => BootGateStoreUnreadable { detail: d }
+    PollDenied { revision: r, decided_by: _, decided_at: _, reason: why } =>
+      if r != request_revision_of(request: request) {
+        BootGateIntentMismatch {
+          requested_revision: request_revision_of(request: request),
+          decided_revision: r,
+        }
+      } else {
+        BootGateDenied { reason: why }
+      }
+    PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      match grant_from_approved_decision(
+        request: request,
+        revision: r,
+        decided_by: by,
+        decided_at: at,
+        execute_by: until,
+      ) {
+        GrantForAnotherIntent { requested_revision: a, decided_revision: b } =>
+          BootGateIntentMismatch { requested_revision: a, decided_revision: b }
+        GrantDerived { authorization: auth } =>
+          match authorize(authorization: auth, request: request, observed_at: observed_at) {
+            AuthorizationPermitted { grant: _ } => BootGateAdmitted { authorization: auth }
+            AuthorizationRefused { cause: _ } =>
+              BootGateAuthorizeRefused { detail: "scoped authorization refused the HTTP grant for this request" as NonEmptyStr }
+          }
+        _ =>
+          BootGateStoreUnreadable { detail: "approved GET standing did not yield a grant" as NonEmptyStr }
+      }
+  }
+}
+

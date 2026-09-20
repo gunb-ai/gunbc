@@ -37,7 +37,9 @@ the module paths, which is what a citation names; the files happen to live under
 ### Subject A — compute cells (`gunbc.fabric_*`, `gunbc.compute.*`)
 
 `gunbc.fabric_control_plane` (`CellReservation`, `reserve_selected_cell`, `partition_cell_roster`,
-`CellSlotState`, `end_cell_hold`, `free_cell_slot`), `gunbc.fabric_executor_class`
+`end_cell_hold`, `free_cell_slot`; the held/free occupancy state is the shared
+`std.durable_exclusive_hold::DurableHoldState`, realized over the file store by
+`gunbc.durable_exclusive_hold_file_store`), `gunbc.fabric_executor_class`
 (`CapacityClassAdmission`, `ExecutorSanction`), `gunbc.fabric_quota` (`QuotaLease` over
 `product.capacity.lease`), `gunbc.compute.work_request` (`WorkOperation`, `WorkSubject = ExactTree`,
 `WorkOutcome`). Subject identity: an **exact source tree** to be built by some runner slot.
@@ -83,7 +85,7 @@ verdict derived from a deadline." `LeaseGrant` carries `granted_at`, `expires_at
 | | serving | compute cell |
 |---|---|---|
 | allocation carrier | `product.capacity.lease::LeaseGrant` (termed) | `product.fabric.execution::LeaseIdentity` (timeless) |
-| occupancy state | `SeatRequest` / pool events | `CellReservation` / `CellSlotState` |
+| occupancy state | `SeatRequest` / pool events | `CellReservation` / `std.durable_exclusive_hold::DurableHoldState` |
 | linearization | `fabric_seat_acquire` over an append-only event chain | `file_compare_and_set` over a file-backed CAS |
 | selection | `select_supply` | `select_supply` via `floor_supply_selection` |
 

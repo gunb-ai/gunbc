@@ -1,0 +1,118 @@
+module gunbc.auth.approval_request_client
+
+import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
+import std.scoped_authorization { AuthorizationRequest }
+import extdeps.crypto.mac {
+  MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
+}
+import gunbc.auth.approval_status_wire {
+  FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
+}
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, request_revision_of, approval_mac_key_id,
+}
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id, sign_submission,
+}
+import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+
+data approval_request_submit_path: NonEmptyStr = "/approvals"
+
+fn approval_loopback_origin() -> NonEmptyStr {
+  let instance = srv1_live_dashboard_instance()
+  concat(
+    concat("http://", instance.listen_host as String),
+    concat(":", to_string(instance.listen_port)),
+  ) as NonEmptyStr
+}
+
+fn approval_submit_url() -> NonEmptyStr {
+  concat(approval_loopback_origin() as String, approval_request_submit_path as String) as NonEmptyStr
+}
+
+fn approval_status_url(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    concat(approval_loopback_origin() as String, concat(approval_request_submit_path as String, "/")),
+    escalation_id as String,
+  ) as NonEmptyStr
+}
+
+fn stored_request_from_authorization<Subject>(
+  request: AuthorizationRequest<Subject>,
+  issued_at: Timestamp,
+  expires_at: Timestamp,
+) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: request.escalation_id,
+    request_revision: request_revision_of(request: request),
+    attempt: request.attempt,
+    requester: fleet_operator_email,
+    purpose: request.purpose,
+    destructive: request.destructive,
+    issued_at: issued_at,
+    expires_at: expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+type SubmissionMac
+  = SubmissionMacReady { tag_hex: NonEmptyStr }
+  | SubmissionMacKeyNotHex { key_id: MacKeyId }
+
+fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> SubmissionMac {
+  let key = MacKey {
+    id: approval_submission_mac_key_id,
+    suite: HmacSha256,
+    material: key_material as Secret,
+  }
+  match sign_submission(key: key, request: request) {
+    MacKeyMaterialNotHex { key_id: k } => SubmissionMacKeyNotHex { key_id: k }
+    MacSigned { tag: t } => SubmissionMacReady { tag_hex: t.hex }
+  }
+}
+
+type ApprovalPollStanding
+  = PollStillPending
+  | PollApproved {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      execute_by: Timestamp
+    }
+  | PollDenied {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      reason: NonEmptyStr
+    }
+  | PollExpired
+  | PollNotFiled
+  | PollUnreadable { detail: NonEmptyStr }
+
+fn approval_poll_standing(
+  status: FiledApprovalStatus,
+  observed_at: Timestamp,
+  expires_at: Timestamp,
+) -> ApprovalPollStanding {
+  if observed_at > expires_at {
+    match status {
+      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
+      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
+      _ => PollExpired
+    }
+  } else {
+    match status {
+      StatusNotFiled => PollNotFiled
+      StatusPending { expires_at: _ } => PollStillPending
+      StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+        PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+      StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+        PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
+      StatusUnreadable { detail: d } => PollUnreadable { detail: d }
+    }
+  }
+}

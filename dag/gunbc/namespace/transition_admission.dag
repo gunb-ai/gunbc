@@ -2,49 +2,37 @@ module gunbc.namespace.transition_admission
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
-import std.integer { UInt32 }
 import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 
-// Directory-is-membership roster for namespace transition admissions.
+// The shape of one namespace transition admission. Admissions are CARRIED BY THE CHANGE THAT
+// NEEDS THEM -- a transition_admission fenced block in one of that change's commit messages, holding
+// one module `gunbc.namespace.transition_admission.<stem>` that imports this type -- and never by
+// files in the tree.
 //
-// CONSUMERS (§3c): (1) v1_compiler.namespace_wave_admission load_transition_admissions
-// folds sibling files under dag/gunbc/namespace/transition_admission/ as the permission
-// set for adjudicate -- the production fold, required-ci wave-admission phase only.
-// (2) the parse sweep consumes each sibling as an ordinary module. (3)
-// admission_roster_path_touched reads the directory prefix on the unfiltered diff.
-// There is no committed list: a list would re-create the single-file collision this
-// module exists to delete. Recurring_failure_mode's derived roster.dag exists because
-// other modules import a List; this fold does not.
+// CONSUMERS (section 3c): v1_compiler.namespace_wave_admission load_carried_admissions folds the
+// blocks of the commits base..head into the permission set for adjudicate, in the required-ci
+// wave-admission phase; tree_carried_admission_refusal refuses any file under
+// dag/gunbc/namespace/transition_admission/.
 //
-// EMPTY IS THE RESTING STATE, AND EMPTY IS NOT PERMISSIVE. A missing or empty sibling
-// directory admits no extra delta: a run with no unadjudicated motion passes, a real
-// TargetChanged without a file refuses. That sentence used to live above a Rust const
-// and went stale whenever a dissolution PR edited the array but not the paragraph
-// (#11274 left prose asserting seven #11182 rows still stood). THIS MODULE is the
-// home for what remains: membership is the directory. Git history of the deleted
-// const is quarry for past shrinks (53, 314, …). Do not transcribe a census of
-// retired labels here — that is how the paragraph rotted.
+// WHY NOT THE TREE. The directory under this module was the roster from #11274 until this change.
+// A row there was required at its owner's gate and consumed the moment the owner landed, so every
+// row reached main already consumed and its deletion fell to whichever change touched the roster
+// next: gunbc.recurring_failure_mode.consumed_admission_externalized_to_the_next_roster_touch.
+// The two per-row debt fields -- deletion_follow_up and owner_pull_request -- existed only to
+// track that debt, and are deleted with it: the owner of a carried row is the commit carrying it.
 //
-// #11193 / #11347's const row is CONSUMED on main. Deletion owner is #11356
-// (carried on #11214). This cut does not re-home that row as a sibling file:
-// a roster touch that keeps a consumed admission is the bystander-red the
-// directory exists to stop, and it would duplicate #11356's receipt.
-//
-// INHERITANCE FROM IN-FLIGHT CONST PRs. #11306 (vivid-stag-90) may land first with
-// six TargetChanged rows, label "repository visibility unifies onto its resource
-// module (gunbc#11306)", expected declarer extdeps.github.repository, at:
-//   extdeps.github.actions_token :: ActionsRepositoryPolicyObservation  RepositoryVisibility
-//   extdeps.github.actions_token :: fork_write_tokens_reachable         PrivateRepository
-//   extdeps.github.actions_token :: fork_write_tokens_reachable         PublicRepository
-//   test.claim.actions_job_grant_witness :: fork_policy_allows          PrivateRepository
-//   test.claim.actions_job_grant_witness :: fork_policy_denies          PrivateRepository
-//   test.claim.actions_job_grant_witness :: public_fork_policy_allows   PublicRepository
-// Those become six sibling files (stem = module_declaration_spelling). They are
-// consumed by that merge; #11316 deletes them as files. If this cut merges after
-// that pair, the directory is empty again — the designed resting state. Do not
-// author those six files onto an unlanded #11345: they would refuse against a
-// main that does not yet carry the relocation.
+// EMPTY IS THE RESTING STATE, AND EMPTY IS NOT PERMISSIVE. A change carrying no block admits no
+// extra delta: a run with no unadjudicated motion passes, a real TargetChanged with no block
+// refuses.
 
+// Relocation: one declaration moved between modules, admitted once for every binding it repoints.
+// A move repoints every reference to its leaf, so as Binding rows it costs one row per reference
+// site -- gunbc#10994 needed seventeen for one move, growing with the consumer count rather than
+// with the change. The row stays an enumeration, never a predicate: it admits exactly the bindings
+// whose declarer set was {from_module} at the base and {to_module} at the head, and nothing else.
+// `to` is a DeclarationRef because it resolves once the move lands; `from_module` is text because
+// after the move nothing declares the leaf there, and a DeclarationRef to it would be refused.
+//
 // Binding.expected_candidates: candidate declaring identities, same type as enclosing. The wall
 // join is module_path. decl_name must equal Binding.spelling (the relocated leaf); load refuses a
 // mismatch so a phantom leaf cannot pass.
@@ -58,15 +46,13 @@ type AdmissionSubject
       from_module: NonEmptyStr
       target_module: NonEmptyStr
     }
-
-type DeletionFollowUp
-  = NotAuthored
-  | PullRequest { number: UInt32 }
+  | Relocation {
+      to: DeclarationRef
+      from_module: NonEmptyStr
+    }
 
 type TransitionAdmission {
   label: NonEmptyStr
   subject: AdmissionSubject
   disposition: NamespaceDeltaDisposition
-  deletion_follow_up: DeletionFollowUp
-  owner_pull_request: UInt32
 }

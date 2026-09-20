@@ -1,5 +1,6 @@
 module gunbc.review_sheet_sheets
 
+import std.types { NonEmptyStr, String, Int, List, Bool }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
@@ -32,6 +33,8 @@ import gunbc.review_sheet_projection {
   a1_row_span_wire,
   a1_row_span_includes_letter,
   a1_from_wire,
+  a1_letter_index,
+  AppendCellRun,
   A1Column,
   A1Cell,
   A1RowSpan,
@@ -41,6 +44,7 @@ import gunbc.review_sheet_projection {
 }
 import extdeps.google.sheets {
   ValueRange,
+  ValueRangeWrite,
   SheetsValueInputOption,
   InputRaw,
   SheetsValueRenderOption,
@@ -49,6 +53,17 @@ import extdeps.google.sheets {
   sheets_major_dimension_from_wire,
   DimensionRows,
   DimensionColumns,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+  a1_range_encode,
+  a1_range_encoding_text,
+  a1_range_title_decode,
+  a1_sheet_title_refusal_text,
+  A1TitleQualified,
+  A1TitleWholeSheet,
+  A1TitleUnqualified,
+  A1TitleRefused,
 }
 import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -136,28 +151,28 @@ type SheetA1Range {
   end: SheetA1End
 }
 
-fn sheet_a1_range_wire(range: SheetA1Range) -> String {
+fn sheet_a1_range_wire(range: SheetA1Range) -> A1RangeEncoding {
   match range.end {
-    A1EndWholeTab => range.tab as String
+    A1EndWholeTab => a1_range_encode(title: range.tab, cells: Absent)
     A1EndOpen { column: c } =>
-      concat(
-        range.tab as String,
-        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String))),
+      a1_range_encode(
+        title: range.tab,
+        cells: Present { value: concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String)) },
       )
     A1EndClosed { cell: c } =>
-      concat(
-        range.tab as String,
-        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c)))),
+      a1_range_encode(
+        title: range.tab,
+        cells: Present { value: concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c))) },
       )
   }
 }
 
-fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
-  concat(tab as String, concat("!", a1_cell_wire(cell: cell)))
+fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> A1RangeEncoding {
+  a1_range_encode(title: tab, cells: Present { value: a1_cell_wire(cell: cell) })
 }
 
-fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> String {
-  concat(tab as String, concat("!", a1_row_span_wire(span: span)))
+fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> A1RangeEncoding {
+  a1_range_encode(title: tab, cells: Present { value: a1_row_span_wire(span: span) })
 }
 
 type A1ReadbackStanding
@@ -173,100 +188,86 @@ fn review_sheet_get_values_request(tab: NonEmptyStr) -> SheetA1Range {
 }
 
 fn a1_readback_standing(range: String) -> A1ReadbackStanding {
-  let parts = range.split(delimiter: "!")
-  if (parts |> count) != 2 {
-    A1ReadbackUnreadable {
-      reason: concat("unqualified A1 range; BatchUpdate would hit the first tab: ", range) as NonEmptyStr
-    }
-  } else {
-    match parts.first() {
-      Absent =>
-        A1ReadbackUnreadable { reason: "A1 range missing sheet title" as NonEmptyStr }
-      Present { value: tab } =>
-        if (tab == "") || string_contains(s: tab, pattern: "'") {
-          A1ReadbackUnreadable {
-            reason: concat("A1 sheet title unreadable: ", tab) as NonEmptyStr
-          }
-        } else {
-          match parts.skip(n: 1).first() {
-            Absent =>
-              A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
-            Present { value: cells } => {
-              let segs = cells.split(delimiter: ":")
-              if (segs |> count) != 2 {
-                A1ReadbackUnreadable {
-                  reason: concat("A1 range is not start:end: ", range) as NonEmptyStr
-                }
-              } else {
-                match segs.first() {
-                  Absent =>
-                    A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
-                  Present { value: start_tok } =>
-                    match segs.skip(n: 1).first() {
-                      Absent =>
-                        A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
-                      Present { value: end_tok } =>
-                        match a1_from_wire(token: start_tok) {
-                          A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
-                          A1WireOpenColumn { column: _ } =>
-                            A1ReadbackUnreadable {
-                              reason: concat(
-                                "readback not A1-anchored; write A1 would not match the compared cells: ",
-                                range,
-                              ) as NonEmptyStr
+  match a1_range_title_decode(range: range) {
+    A1TitleRefused { refusal: r } =>
+      A1ReadbackUnreadable {
+        reason: concat(a1_sheet_title_refusal_text(refusal: r), concat(": ", range)) as NonEmptyStr
+      }
+    A1TitleUnqualified { text: _ } =>
+      A1ReadbackUnreadable {
+        reason: concat("unqualified A1 range; BatchUpdate would hit the first tab: ", range) as NonEmptyStr
+      }
+    A1TitleWholeSheet { title: _ } =>
+      A1ReadbackUnreadable {
+        reason: concat("A1 range is not start:end: ", range) as NonEmptyStr
+      }
+    A1TitleQualified { title: tab, cells: cells } => {
+      let segs = cells.split(delimiter: ":")
+      if (segs |> count) != 2 {
+        A1ReadbackUnreadable {
+          reason: concat("A1 range is not start:end: ", range) as NonEmptyStr
+        }
+      } else {
+        match segs.first() {
+          Absent =>
+            A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+          Present { value: start_tok } =>
+            match segs.skip(n: 1).first() {
+              Absent =>
+                A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+              Present { value: end_tok } =>
+                match a1_from_wire(token: start_tok) {
+                  A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                  A1WireOpenColumn { column: _ } =>
+                    A1ReadbackUnreadable {
+                      reason: concat(
+                        "readback not A1-anchored; write A1 would not match the compared cells: ",
+                        range,
+                      ) as NonEmptyStr
+                    }
+                  A1WireCell { cell: origin } =>
+                    if a1_cell_eq(a: origin, b: a1_origin_cell()) {
+                      match a1_from_wire(token: end_tok) {
+                        A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                        A1WireOpenColumn { column: c } =>
+                          A1ReadbackAnchored {
+                            range: SheetA1Range {
+                              tab: tab,
+                              origin: origin,
+                              end: A1EndOpen { column: c },
                             }
-                          A1WireCell { cell: origin } =>
-                            if a1_cell_eq(a: origin, b: a1_origin_cell()) {
-                              match a1_from_wire(token: end_tok) {
-                                A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
-                                A1WireOpenColumn { column: c } =>
-                                  A1ReadbackAnchored {
-                                    range: SheetA1Range {
-                                      tab: tab as NonEmptyStr,
-                                      origin: origin,
-                                      end: A1EndOpen { column: c },
-                                    }
-                                  }
-                                A1WireCell { cell: end } =>
-                                  A1ReadbackAnchored {
-                                    range: SheetA1Range {
-                                      tab: tab as NonEmptyStr,
-                                      origin: origin,
-                                      end: A1EndClosed { cell: end },
-                                    }
-                                  }
-                              }
-                            } else {
-                              A1ReadbackUnreadable {
-                                reason: concat(
-                                  "readback not A1-anchored; write A1 would not match the compared cells: ",
-                                  range,
-                                ) as NonEmptyStr
-                              }
+                          }
+                        A1WireCell { cell: end } =>
+                          A1ReadbackAnchored {
+                            range: SheetA1Range {
+                              tab: tab,
+                              origin: origin,
+                              end: A1EndClosed { cell: end },
                             }
-                        }
+                          }
+                      }
+                    } else {
+                      A1ReadbackUnreadable {
+                        reason: concat(
+                          "readback not A1-anchored; write A1 would not match the compared cells: ",
+                          range,
+                        ) as NonEmptyStr
+                      }
                     }
                 }
-              }
             }
-          }
         }
+      }
     }
-  }
-}
-
-fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRange {
-  ValueRange {
-    range: sheet_qualified_cell(tab: tab, cell: write.a1),
-    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
-    values: Present { value: [[write.value]] },
   }
 }
 
 fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
-  match split(s: range, delimiter: "!") |> skip(n: 1) |> first {
-    Absent => false
-    Present { value: span_wire } =>
+  match a1_range_title_decode(range: range) {
+    A1TitleRefused { refusal: _ } => false
+    A1TitleUnqualified { text: _ } => false
+    A1TitleWholeSheet { title: _ } => false
+    A1TitleQualified { title: _, cells: span_wire } =>
       match split(s: span_wire, delimiter: ":") |> first {
         Absent => false
         Present { value: start_wire } =>
@@ -292,26 +293,200 @@ fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
   }
 }
 
-fn value_ranges_from_append(row: AppendListingRow, tab: NonEmptyStr) -> List<ValueRange> {
-  map(row.runs, run => ValueRange {
-    range: sheet_qualified_span(tab: tab, span: run.a1),
-    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
-    values: Present { value: [run.cells] },
-  })
-}
-
 type TabBoundWritePlan {
   tab: NonEmptyStr
   plan: ReviewSheetWritePlan
 }
 
-fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> List<ValueRange> {
-  concat(
-    map(bound.plan.patches, w => value_range_from_derived_write(write: w, tab: bound.tab)),
-    fold(bound.plan.appends, init: [], f: fn(acc, row) {
-      concat(acc, value_ranges_from_append(row: row, tab: bound.tab))
-    }),
-  )
+// ONE LOWERING, TOTAL AND TYPED. A TabBoundWritePlan carries derived-cell patches and append runs
+// in the projection's vocabulary (A1Cell, A1RowSpan, cells); Sheets values.batchUpdate takes
+// ValueRangeWrite, whose wire fields are non-optional. This fold is the only place that crossing
+// happens, and it either lowers EVERY range of the plan or refuses with every defect it found. It
+// never drops a range: the identity join the witness asserts -- each plan element appears exactly
+// once among the lowered ranges -- is a property of this fold and not of any caller.
+//
+// WHAT IS UNLOWERABLE, AND WHY EACH IS A REFUSAL RATHER THAN A REPAIR. An append run whose cell
+// count does not equal its span width would write cells past, or short of, the frontier the
+// classification chose; a run whose span is not one row, or not on the listing's sheet_row, was
+// not produced by the projection fold (a1_row_span_cols builds one row on sheet_row) and so is a
+// hand-authored plan; a span letter outside a1_column_letters has no width; a patch or run at a
+// row below 1, or a patch at a column letter outside a1_column_letters, names no cell Sheets has
+// (A0 and AA are refused on the wire, and refusing here keeps the refusal typed and before any
+// request exists); a tab title the A1 codec cannot encode (extdeps.google.sheets a1_range_encode,
+// whose refusal this fold CARRIES rather than re-deciding -- the codec quotes a space-titled tab
+// and refuses an apostrophe-titled one, and this module no longer inspects the title itself); and
+// a plan with nothing in it would issue a zero-range batch that Sheets answers 200 to, which is a
+// success report over a write that never happened. Each of these refuses; none is widened into a
+// guess, and a refused title is never flattened into a range string.
+type WritePlanLowering
+  = WritePlanLowered { ranges: List<ValueRangeWrite> }
+  | WritePlanUnlowerable { refusals: List<WritePlanRefusal> }
+
+type PatchDefect
+  = PatchColumnUnreadable
+  | PatchRowBelowOrigin
+
+type AppendRunDefect
+  = AppendRunRowBelowOrigin
+  | AppendRunSpanNotOneRow
+  | AppendRunOffListingRow { sheet_row: Int }
+  | AppendRunSpanColumnUnreadable
+  | AppendRunWidthMismatch { cell_count: Int, span_width: Int }
+
+type WritePlanRefusal
+  = EmptyWritePlan
+  | TabTitleUnquotable { title: NonEmptyStr }
+  | PatchMalformed { listing_id: NonEmptyStr, a1: A1Cell, defect: PatchDefect }
+  | AppendRunMalformed { listing_id: NonEmptyStr, span: A1RowSpan, defect: AppendRunDefect }
+
+// title_refused records that the codec's refusal has been carried once: every range of one plan
+// shares one tab, so the refusal is reported once and not once per range.
+type LoweringAcc {
+  ranges: List<ValueRangeWrite>
+  refusals: List<WritePlanRefusal>
+  title_refused: Bool
+}
+
+fn push_encoded_range(acc: LoweringAcc, encoding: A1RangeEncoding, values: List<List<String>>) -> LoweringAcc {
+  match encoding {
+    A1RangeEncoded { wire: w } =>
+      LoweringAcc {
+        ranges: concat(acc.ranges, [ValueRangeWrite {
+          range: w,
+          majorDimension: sheets_major_dimension_wire(d: DimensionRows),
+          values: values,
+        }]),
+        refusals: acc.refusals,
+        title_refused: acc.title_refused,
+      }
+    A1TitleApostropheUnsupported { title: t } =>
+      if acc.title_refused {
+        acc
+      } else {
+        LoweringAcc {
+          ranges: acc.ranges,
+          refusals: concat(acc.refusals, [TabTitleUnquotable { title: t }]),
+          title_refused: true,
+        }
+      }
+  }
+}
+
+fn patch_defect(write: DerivedCellWrite) -> PatchDefect? {
+  if write.a1.row < 1 {
+    Present { value: PatchRowBelowOrigin }
+  } else {
+    match a1_letter_index(letter: write.a1.column.letter as String) {
+      Absent => Present { value: PatchColumnUnreadable }
+      Present { value: _ } => none
+    }
+  }
+}
+
+fn lower_patch(acc: LoweringAcc, write: DerivedCellWrite, tab: NonEmptyStr) -> LoweringAcc {
+  match patch_defect(write: write) {
+    Present { value: defect } =>
+      LoweringAcc {
+        ranges: acc.ranges,
+        refusals: concat(acc.refusals, [PatchMalformed { listing_id: write.listing_id, a1: write.a1, defect: defect }]),
+        title_refused: acc.title_refused,
+      }
+    Absent =>
+      push_encoded_range(acc: acc, encoding: sheet_qualified_cell(tab: tab, cell: write.a1), values: [[write.value]])
+  }
+}
+
+fn append_run_span_width(span: A1RowSpan) -> Int? {
+  match a1_letter_index(letter: span.start.column.letter as String) {
+    Absent => none
+    Present { value: start_i } =>
+      match a1_letter_index(letter: span.end.column.letter as String) {
+        Absent => none
+        Present { value: end_i } => Present { value: end_i - start_i + 1 }
+      }
+  }
+}
+
+fn append_run_defect(run: AppendCellRun, sheet_row: Int) -> AppendRunDefect? {
+  if sheet_row < 1 || run.a1.start.row < 1 || run.a1.end.row < 1 {
+    Present { value: AppendRunRowBelowOrigin }
+  } else if run.a1.start.row != run.a1.end.row {
+    Present { value: AppendRunSpanNotOneRow }
+  } else if run.a1.start.row != sheet_row {
+    Present { value: AppendRunOffListingRow { sheet_row: sheet_row } }
+  } else {
+    match append_run_span_width(span: run.a1) {
+      Absent => Present { value: AppendRunSpanColumnUnreadable }
+      Present { value: width } =>
+        if width != count(run.cells) {
+          Present { value: AppendRunWidthMismatch { cell_count: count(run.cells), span_width: width } }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn lower_append_run(acc: LoweringAcc, row: AppendListingRow, run: AppendCellRun, tab: NonEmptyStr) -> LoweringAcc {
+  match append_run_defect(run: run, sheet_row: row.sheet_row) {
+    Present { value: defect } =>
+      LoweringAcc {
+        ranges: acc.ranges,
+        refusals: concat(acc.refusals, [AppendRunMalformed { listing_id: row.listing_id, span: run.a1, defect: defect }]),
+        title_refused: acc.title_refused,
+      }
+    Absent =>
+      push_encoded_range(acc: acc, encoding: sheet_qualified_span(tab: tab, span: run.a1), values: [run.cells])
+  }
+}
+
+fn lower_append_row(acc: LoweringAcc, row: AppendListingRow, tab: NonEmptyStr) -> LoweringAcc {
+  fold(row.runs, init: acc, f: fn(inner, run) { lower_append_run(acc: inner, row: row, run: run, tab: tab) })
+}
+
+fn lower_write_plan(bound: TabBoundWritePlan) -> WritePlanLowering {
+  let start = LoweringAcc { ranges: [], refusals: [], title_refused: false }
+  let patched = fold(bound.plan.patches, init: start, f: fn(acc, w) { lower_patch(acc: acc, write: w, tab: bound.tab) })
+  let lowered = fold(bound.plan.appends, init: patched, f: fn(acc, row) {
+    lower_append_row(acc: acc, row: row, tab: bound.tab)
+  })
+  let refusals = if count(lowered.ranges) == 0 && count(lowered.refusals) == 0 {
+    [EmptyWritePlan]
+  } else {
+    lowered.refusals
+  }
+  if count(refusals) == 0 {
+    WritePlanLowered { ranges: lowered.ranges }
+  } else {
+    WritePlanUnlowerable { refusals: refusals }
+  }
+}
+
+fn write_plan_refusal_text(refusal: WritePlanRefusal) -> String {
+  match refusal {
+    EmptyWritePlan => "the write plan carries no patch and no append run, so there is nothing to send"
+    TabTitleUnquotable { title: t } => a1_range_encoding_text(e: A1TitleApostropheUnsupported { title: t })
+    PatchMalformed { listing_id: id, a1: c, defect: d } =>
+      concat(
+        concat("patch for listing ", concat(id as String, concat(" at ", a1_cell_wire(cell: c)))),
+        match d {
+          PatchColumnUnreadable => " names a column letter outside the modeled A1 columns"
+          PatchRowBelowOrigin => " names a row below 1"
+        },
+      )
+    AppendRunMalformed { listing_id: id, span: s, defect: d } =>
+      concat(
+        concat("append run for listing ", concat(id as String, concat(" at ", a1_row_span_wire(span: s)))),
+        match d {
+          AppendRunRowBelowOrigin => " names a row below 1"
+          AppendRunSpanNotOneRow => " spans more than one row"
+          AppendRunOffListingRow { sheet_row: r } => concat(" is not on the listing's sheet row ", to_string(r))
+          AppendRunSpanColumnUnreadable => " names a column letter outside the modeled A1 columns"
+          AppendRunWidthMismatch { cell_count: c, span_width: w } =>
+            concat(" carries ", concat(to_string(c), concat(" cells for a span ", concat(to_string(w), " wide"))))
+        },
+      )
+  }
 }
 
 type ObservedSheetFromReadback
@@ -408,13 +583,16 @@ type ReviewSheetEnsureAssessment
 type SheetRequestCause
   = BoundedRequest { range: SheetA1Range }
   | ColumnBoundedRequest { range: SheetA1Range }
+  | TitleNotEncodable { range: SheetA1Range }
 
 fn sheet_request_cause_text(cause: SheetRequestCause) -> String {
   match cause {
     BoundedRequest { range: r } =>
-      concat("bounded GetValues request; append would write past unobserved rows: ", sheet_a1_range_wire(range: r))
+      concat("bounded GetValues request; append would write past unobserved rows: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
     ColumnBoundedRequest { range: r } =>
-      concat("column-bounded GetValues request; append would write past unobserved columns: ", sheet_a1_range_wire(range: r))
+      concat("column-bounded GetValues request; append would write past unobserved columns: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+    TitleNotEncodable { range: r } =>
+      concat("GetValues request tab is not A1-encodable: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
   }
 }
 
@@ -424,32 +602,37 @@ fn review_sheet_ensure_assess(
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetEnsureAssessment {
-  match requested.end {
-    A1EndClosed { cell: _ } =>
-      ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
-    A1EndOpen { column: _ } =>
-      ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
-    A1EndWholeTab =>
-      match observed_sheet_from_value_range(range: range) {
-        ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
-        ReadbackObserved { observed: observed, tab: tab } =>
-          if (tab as String) != (requested.tab as String) {
-            ReviewSheetReadbackRejected {
-              reason: concat(
-                "readback tab ",
-                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
-              ) as NonEmptyStr
-            }
-          } else {
-            ReviewSheetProjectionClassified {
-              observed: observed,
-              tab: tab,
-              classification: classify_review_sheet(
-                observed: observed,
-                projection: projection,
-                erasures: erasures,
-              ),
-            }
+  match sheet_a1_range_wire(range: requested) {
+    A1TitleApostropheUnsupported { title: _ } =>
+      ReviewSheetRequestRejected { cause: TitleNotEncodable { range: requested } }
+    A1RangeEncoded { wire: _ } =>
+      match requested.end {
+        A1EndClosed { cell: _ } =>
+          ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
+        A1EndOpen { column: _ } =>
+          ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
+        A1EndWholeTab =>
+          match observed_sheet_from_value_range(range: range) {
+            ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
+            ReadbackObserved { observed: observed, tab: tab } =>
+              if (tab as String) != (requested.tab as String) {
+                ReviewSheetReadbackRejected {
+                  reason: concat(
+                    "readback tab ",
+                    concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
+                  ) as NonEmptyStr
+                }
+              } else {
+                ReviewSheetProjectionClassified {
+                  observed: observed,
+                  tab: tab,
+                  classification: classify_review_sheet(
+                    observed: observed,
+                    projection: projection,
+                    erasures: erasures,
+                  ),
+                }
+              }
           }
       }
   }

@@ -158,11 +158,15 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
     if count(segments) != 2 {
       destination_slug_not_owner_name(slug: slug)
     } else {
-      DispatchDestinationResolved {
-        identity: named_destination_identity_from_owner_name(
-          owner: segments.first(),
-          name: segments.skip(n: 1).first(),
-        ),
+      match segments.first() {
+        Absent => destination_slug_not_owner_name(slug: slug)
+        Present { value: owner } => match segments.skip(n: 1).first() {
+          Absent => destination_slug_not_owner_name(slug: slug)
+          Present { value: name } =>
+            DispatchDestinationResolved {
+              identity: named_destination_identity_from_owner_name(owner: owner, name: name),
+            }
+        }
       }
     }
   }

@@ -3,10 +3,14 @@ module gunbc.generated_workflow_provenance
 import std.types { String, List }
 import gunbc.generated_artifact {
   GeneratedArtifact,
+  generated_artifact_registry,
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
 }
+import v2.std.optional { Present, Absent }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
 // visible. Keep the provenance in that boundary rather than asking a reviewer to infer it from the
@@ -30,17 +34,42 @@ type GeneratedWorkflowProvenance {
 // gunbc.generated_artifact generated_artifact_registry by identity in BOTH directions, so a row
 // that outlives its generator (the direction that would let the census skip a hand-authored file)
 // refuses, as does a generated workflow missing here.
-data generated_workflow_artifacts: List<GeneratedArtifact> = [
-  WitnessFloorYamlArtifact,
-  FleetConvergeYamlArtifact,
-  FleetDesiredAdmissionYamlArtifact,
-]
+// DERIVED FROM THE MATCH, BECAUSE AUTHORING BOTH IS ONE FACT SPELLED TWICE.
+//
+// This was a hand-authored list beside generated_workflow_provenance's arms, and a workflow had
+// to be registered in BOTH. Adding the arms and forgetting the list is constructible, silent, and
+// fails far from the edit -- measured on gunbc#11547, where two missing entries produced two
+// blockers at once:
+//
+//   * action_use_admission_witness.generated_workflow_artifacts_are_exactly_the_registry_workflows
+//     returned false, because the registry carried five workflow artifacts and this list carried
+//     three;
+//   * every_realized_workflow_action_use_is_modeled_and_executed_exactly overran its eval-step
+//     budget at 110264 against 72300, because realized_census decides which files a generator
+//     already owns by joining the directory listing against THIS list, precisely so it does not
+//     re-execute a generator's subject. Missing from it, heal.yml and heal-publish.yml were
+//     treated as hand-written and parsed in full -- the duplication that module's own note prices
+//     at roughly 530k of 590k eval steps.
+//
+// Both were caught only at floor time, about fifty minutes after the edit. Deriving the list from
+// the arms makes the disagreement unconstructible (DESIGN 4b: construction over validation): an
+// artifact that HAS provenance IS in the list, and there is no second place to forget.
+data generated_workflow_artifacts: List<GeneratedArtifact> = fold(
+  generated_artifact_registry,
+  init: [],
+  f: fn(acc, a) {
+    match generated_workflow_provenance(a: a) {
+      Present { value: _ } => concat(acc, [a])
+      Absent => acc
+    }
+  }
+)
 
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
   match a {
     WitnessFloorYamlArtifact => Present { value: GeneratedWorkflowProvenance {
-      generator: "gunbc.witness_floor_workflow expected_witness_floor_yml",
-      authority: "gunbc.witness_floor_workflow witness_floor_workflow",
+      generator: "gunbc.compiler_gate_workflow expected_compiler_gate_yml",
+      authority: "gunbc.compiler_gate_workflow compiler_gate_workflow",
     } }
     FleetConvergeYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_converge_workflow expected_fleet_converge_yml",
@@ -49,6 +78,14 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
       authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
+    } }
+    HealWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_workflow expected_heal_workflow_yml",
+      authority: "gunbc.heal_workflow heal_workflow",
+    } }
+    HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
+      authority: "gunbc.heal_publisher_workflow heal_publisher_workflow",
     } }
     _ => none
   }
