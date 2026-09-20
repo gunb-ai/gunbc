@@ -312,17 +312,18 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. A mode that keeps FleetSshKeyConsumed here is the STATUS QUO -- the key
-// it held before this vocabulary existed -- and not a finding that it needs one; only a mode whose
-// closure has been walked appears below as FleetSshKeyNotConsumed.
+// authority it never uses. Three modes are established as not consuming it: the two API-only reads,
+// and the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
+// SSH operation. Every mode that predates this declaration keeps the key it held before, which is
+// the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
+// to keep, so its arm is derived from its operation route (the approval keyring converge executes
+// over fleet SSH to srv1 and consumes it).
 //
-// MT. COLLINS UNIT 1 BOOT IS THE THIRD SUCH MODE, AND IT IS NOT API-ONLY -- IT IS BMC-ONLY, which is
-// the distinction the walk had to settle. The counter-argument this arm has to answer is that the
-// mode opens a serial-over-LAN session on a host, so it plainly touches a machine; the question is
-// not whether it touches one but whether it resolves the FLEET KEY to do so. Every transport the
-// closure of mtcollins1_boot_wet reaches, with the credential each presents, enumerated from the
-// reached symbols rather than from the module import closure (which is a superset and does contain
-// ssh-reaching modules this entry never calls into):
+// THE ENUMERATION BEHIND THAT SENTENCE, kept because the route is the whole argument and the
+// sentence above only names it. Every transport the closure of mtcollins1_boot_wet reaches, with the
+// credential each presents, read at REACHED-SYMBOL grain rather than from the module import closure
+// (which is a superset and does contain ssh-reaching modules this entry never calls into -- reading
+// it at module grain is what made this arm look undecidable):
 //   - extdeps.filesystem.filesystem_io Filesystem.Read/Write/WriteOwnerOnly/WriteCreateNew/Delete --
 //     local files on the srv1-pinned runner, no credential;
 //   - extdeps.http.client Client.GetLocalhostBounded and Client.PostJsonFromFile -- curl to the
