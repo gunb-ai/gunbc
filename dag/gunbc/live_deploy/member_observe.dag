@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
 import extdeps.crypto.hash
-import extdeps.systemd { systemd_unit_property_wire_word, systemd_unit_property_wire, parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
+import extdeps.systemd { systemd_unit_property_wire, parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
 import extdeps.systemd.systemctl
 import extdeps.git.inspect
 import extdeps.shell
@@ -249,7 +249,7 @@ fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease) -> Membe
 fn manager_standing_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
   match arm {
     OnTheHostItself => {
-      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire_word(property: NeedDaemonReload))
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: NeedDaemonReload))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=NeedDaemonReload", "--value"], leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
@@ -280,7 +280,7 @@ fn desired_unit_manager() -> MemberIdentity {
 fn active_state_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
   match arm {
     OnTheHostItself => {
-      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire_word(property: ActiveState))
+      let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ActiveState))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show ActiveState ", unit as String], ""))
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=ActiveState", "--value"], leg: join(["systemctl show ActiveState ", unit as String], ""))

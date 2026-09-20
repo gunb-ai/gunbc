@@ -3,7 +3,7 @@ module extdeps.systemd.systemctl
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.string_type { String }
 import std.algebra { trim }
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path, SystemdUnitPropertyWire }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -366,12 +366,21 @@ type UnitFileState
 // would have failed both. At the shell on the same host, `--property=InvocationID --value` prints the
 // id and `--property=InvocationIDProperty --value` prints nothing with exit 0.
 //
-// SO THE INPUT IS A SEALED WIRE WORD AND ITS ONLY PRODUCER IS systemd_unit_property_wire_word. The
-// first repair took a bare NonEmptyStr, which fixed the spelling and moved the wall to caller
-// discipline -- every caller happened to convert, and nothing stopped the next one passing a literal
-// (review 69084). extdeps.systemd SystemdUnitPropertyWire is sole_constructor, so the conversion is
-// not a step that can be skipped, and the transport reads its field so the closed type reaches the
-// argv instead of stopping a layer short.
+// SO THE INPUT IS THE WIRE WORD, produced by extdeps.systemd systemd_unit_property_wire, and the
+// argv binds it as a plain variable exactly as the sibling SetProperty does.
+//
+// A SEALED CARRIER READ AS {property.wire} WAS TRIED HERE AND WITHDRAWN. It closed the spelling hole
+// by construction, which is strictly better, but a FIELD ACCESS is not bindable by the argv
+// materializer -- bind_argv_expr admits a string literal, a variable and an interpolation over
+// those, and refuses everything else as ArgvExpressionUnsupported -- so both operations left the
+// materializable set and the enrolled binding claims went red (review 69392, measured on srv1: two
+// claims in test.claim.operation_argv_binding_wall_witness red, green again after this).
+//
+// WHAT REMAINS IS CALLER DISCIPLINE AND IT IS WEAKER, STATED PLAINLY. Every caller converts through
+// systemd_unit_property_wire today and nothing stops the next one passing a literal; that is the
+// same gap review 69084 named, reopened deliberately because the alternative breaks a wall that
+// actually executes. The trigger that closes it again is argv element evaluation in the
+// materializer, which `std.operation_argv` already carries as declared residue.
 //
 service systemd.Systemctl {
   operation Enable {
@@ -560,13 +569,13 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: NonEmptyStr, property: SystemdUnitPropertyWire }
+    input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property.wire}", "--value"] }
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
     exit {
       0 => Unit
       nonzero => String "systemctl show failed"
@@ -577,13 +586,13 @@ service systemd.Systemctl {
   }
 
   operation ShowUserProperty {
-    input { unit: NonEmptyStr, property: SystemdUnitPropertyWire }
+    input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property.wire}", "--value"] }
+    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property}", "--value"] }
     exit {
       0 => Unit
       nonzero => String "systemctl --user show failed"

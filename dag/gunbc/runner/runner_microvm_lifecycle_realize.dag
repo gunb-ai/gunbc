@@ -21,7 +21,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd { systemd_unit_property_wire_word, systemd_unit_property_wire,
+import extdeps.systemd { systemd_unit_property_wire,
   SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
@@ -662,7 +662,7 @@ fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
 {
   let shown = systemd.Systemctl.ShowProperty(
     unit: unit,
-    property: systemd_unit_property_wire_word(property: EnvironmentProperty),
+    property: systemd_unit_property_wire(property: EnvironmentProperty),
   )
   if shown.success == false {
     UnitInvocationUnread {
@@ -1076,7 +1076,7 @@ fn observe_unit_exit_status(unit: NonEmptyStr) -> UnitExitStatusReading
 {
   let shown = systemd.Systemctl.ShowProperty(
     unit: unit,
-    property: systemd_unit_property_wire_word(property: ExecMainStatus),
+    property: systemd_unit_property_wire(property: ExecMainStatus),
   )
   if shown.success == false {
     ExitStatusUnread {

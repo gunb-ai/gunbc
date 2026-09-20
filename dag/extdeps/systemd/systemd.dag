@@ -94,19 +94,23 @@ type SystemdUnitProperty
 // from the type system to caller discipline: nothing stopped the next caller passing a literal and
 // re-entering the silent empty reading that a wet run had just been spent finding (review 69084).
 //
-// sole_constructor CLOSES IT BY CONSTRUCTION. The only way to obtain one of these is to hand a
-// SystemdUnitProperty to the function below, so the conversion is not a step a caller can skip -- and
-// the transport reads the field directly, which is what makes the carrier reachable at the argv
-// rather than stopping one layer short. That a record FIELD interpolates was measured rather than
-// assumed: a sealed one-field record echoed its field through a shell transport on srv1.
-type SystemdUnitPropertyWire sole_constructor {
-  wire: NonEmptyStr
-}
-
-fn systemd_unit_property_wire_word(property: SystemdUnitProperty) -> SystemdUnitPropertyWire {
-  SystemdUnitPropertyWire { wire: systemd_unit_property_wire(property: property) }
-}
-
+// THE SEAL CANNOT LIVE AT THE ARGV, AND THAT IS A MATERIALIZER FACT RATHER THAN A CHOICE. A sealed
+// one-field carrier read as `{property.wire}` was tried and withdrawn: `bind_argv_expr` binds a
+// string literal, a variable, and a string interpolation over those, and sends every other form --
+// including a FIELD ACCESS -- to ArgvExpressionUnsupported, so the two operations silently left the
+// materializable set and the enrolled argv-binding claims went red (review 69392, measured).
+//
+// The srv1 measurement that seemed to license the seal tested the wrong path. It echoed a record
+// field through a shell transport, which runs the interpreter's dispatch_shell route -- the full
+// evaluator -- while the wall that broke is the MATERIALIZER. `std.operation_argv`
+// `operation_argv_expression_residue_note` says exactly this about such operations, and the residue
+// dissolves when argv element evaluation lands, which is a separate lane.
+//
+// So the wire word is a plain NonEmptyStr and this function is its only sanctioned producer: the
+// conversion is a caller obligation rather than a construction wall, which is honestly weaker than
+// sole_constructor and is stated as such rather than implied. The trigger that would restore the
+// closed type is argv element evaluation in the materializer, and nothing less -- not a convention,
+// not a review habit, and not this comment.
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
     MemoryMax => "MemoryMax" as NonEmptyStr
