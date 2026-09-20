@@ -1,0 +1,52 @@
+module test.claim.shell.shell_dag_ci_fmt_gate_line_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.ci_spec { ci_fmt_gate_line }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-ci-fmt-gate-line, RED BY DESIGN UNTIL THE NODE IS DONE. The
+// node's bar is that gunbc.ci_spec ci_fmt_gate_line stops spelling `cargo fmt --all --check` as a
+// hand-written string and is realized by the typed extdeps.rust.cargo_build cargo.Build.Fmt
+// operation — the dissolve-on ci_fmt_gate_note already names, retiring with it. Today the line is
+// `"$CARGO_BIN" fmt --all --check`: a shell-variable indirection the typed operation does not
+// declare (its argv is ["cargo", "fmt", extra_args]), so the indirection's presence IS the
+// hand-spelling, observable without presuming any future signature. The red arm asserts it is
+// gone; it turns green only when the gate line derives from the typed cargo model. Enrolled in
+// v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (ci_fmt_gate_line) must survive the
+// rebind, because this witness cannot be re-pointed.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+// RED TODAY: the hand-spelled line reaches cargo through a shell variable the typed cargo.Build.Fmt
+// operation has no spelling for. Greens when the line is derived from the typed operation — an
+// argument the typed operation cannot express must refuse, never fall back to concat.
+test fn gate_line_is_not_a_hand_spelled_shell_indirection() -> Bool {
+  !string_contains(s: ci_fmt_gate_line(), pattern: "$CARGO_BIN")
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the gate runs the same check it has always
+// run — fmt over the whole workspace in check mode — whoever constructs the line.
+test fn gate_line_runs_the_workspace_fmt_check() -> Bool {
+  string_contains(s: ci_fmt_gate_line(), pattern: "fmt")
+    && string_contains(s: ci_fmt_gate_line(), pattern: "--all")
+    && string_contains(s: ci_fmt_gate_line(), pattern: "--check")
+}
+
+// POSITIVE CONTROL, green today and after: the rendered gate line carries no shell control word
+// (`set -e`, `||`, `&&`, `;`, `2>/dev/null`).
+test fn gate_line_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: ci_fmt_gate_line(), pattern: w))
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arm is red; green only when every clause holds over the typed rebind.
+test fn ci_fmt_gate_line_acceptance_holds() -> Bool {
+  gate_line_is_not_a_hand_spelled_shell_indirection()
+    && gate_line_runs_the_workspace_fmt_check()
+    && gate_line_renders_no_shell_control_word()
+}
