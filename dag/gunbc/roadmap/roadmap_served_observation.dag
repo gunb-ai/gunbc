@@ -1,5 +1,7 @@
 module gunbc.roadmap_served_observation
 
+import gunbc.site.markup { page_render_refusal_body }
+
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.algebra { trim }
@@ -18,7 +20,7 @@ import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
 import gunbc.roadmap_authority { roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
+import gunbc.roadmap_site_surface_render { site_artifact_digest }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page_over,

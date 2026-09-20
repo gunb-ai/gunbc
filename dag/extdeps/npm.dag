@@ -2,8 +2,8 @@ module extdeps.npm
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
-import std.integer { UInt8 }
-import std.encoding { base64_decode, base64_encode, Standard }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
+import std.encoding { base64_decode, base64_encode, base64_octets, Standard }
 import std.content_hash {
   ContentHash,
   Sha512Digest,
@@ -266,7 +266,10 @@ fn npm_registry_integrity_from_decode(
 }
 
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
-  encoded == base64_encode(octets: octets, variant: Standard)
+  match base64_octets(values: octets) {
+    QualifiedOctetsRefused { observed: _ } => false
+    QualifiedOctetsReady { value: qualified } => encoded == base64_encode(octets: qualified, variant: Standard)
+  }
 }
 
 fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {

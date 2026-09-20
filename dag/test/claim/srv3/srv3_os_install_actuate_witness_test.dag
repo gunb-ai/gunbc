@@ -3,26 +3,38 @@ module test.claim.srv3_os_install_actuate
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
+// claims check does not depend on which bytes the actuator serves, only on the path reaching the
+// intent; the real resolution route is exercised by test.claim.mtcollins1_census_image.
+data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
+  built: ubuntu_seeded_install_media_built(
+    input: srv3_seeded_install_media_input,
+    output_digest: "abababababababababababababababababababababababababababababababab",
+  ),
+  path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
+}
+
 // Was "has three steps". The count only ever mattered as a proxy for the plan
 // being derived from the solved mechanism, and srv3's BMC upgrade now exercises
 // that derivation directly: the solve refuses, so the plan refuses with it. A
 // plan still offering three nbd-proxy steps for a host whose firmware does not
 // implement nbd-proxy is the failure this replaces.
 test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool {
-  srv3_os_install_actuator_plan_refuses_on_unestablished_path()
-    && match srv3_os_install_actuator_plan_standing {
+  srv3_os_install_actuator_plan_refuses_on_unestablished_path(image: srv3_resolved_image_fixture)
+    && match srv3_os_install_actuator_plan_standing(image: srv3_resolved_image_fixture) {
       ActuatorPlanRefused { cause: _ } => true
       ActuatorPlanReady { plan: _, intents: _ } => false
     }
 }
 
 test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent()
+  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(
+    iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
+  )
   intent.bmc_host == asrock_srv3_live_bmc_host
     && intent.ws_path == bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0)
     && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
-    && intent.iso_path == srv3_actuator_virtual_media_iso_install_path
-    && string_contains(s: intent.iso_path as String, pattern: "srv3-seeded.iso")
+    && intent.iso_path == "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso"
 }
 
 test fn srv3_bmcweb_login_body_snapshot_uses_factory_when_unresolved() -> Bool {
@@ -36,7 +48,7 @@ test fn srv3_actuate_prep_paths_are_declared() -> Bool {
 }
 
 test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent()
+  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat_argv = fold(
     nbd_proxy_serve_websocat_argv(intent: intent),
     init: "",
@@ -54,7 +66,7 @@ test fn srv3_nbd_proxy_serve_argv_is_emittable_from_intent() -> Bool {
 }
 
 test fn nbd_proxy_serve_session_token_is_literal_in_websocat_argv() -> Bool {
-  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent()
+  let intent = gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_serve_intent(iso_path: "/var/lib/gunbc/artifacts/fixture.iso")
   let websocat_argv = fold(
     nbd_proxy_serve_websocat_argv(intent: intent),
     init: "",

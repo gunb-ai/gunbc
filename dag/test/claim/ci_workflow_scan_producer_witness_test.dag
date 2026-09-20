@@ -7,6 +7,9 @@ import extdeps.github.code_search {
   CodeSearchHit,
   CodeSearchRepository,
   retrievable_result_ceiling,
+  CodeSearchPageSizeAdmitted,
+  CodeSearchPageSizeRefused,
+  admit_code_search_page_size,
   deepest_retrievable_page,
 }
 import gunbc.ci_workflow_source_read {
@@ -50,10 +53,28 @@ import gunbc.ci_workflow_scan_producer {
 // exercised against whatever a mock happens to publish -- and the mock publishes one result, so the
 // truncated and saturated arms would be unreachable through the effectful path.
 //
-// Every fixture below is a SUPPLIED page rather than a fetched one. The pairing obligation is met
-// by gunbc.ci_workflow_scan_producer scan_partition, which calls the same folds against
-// perform_code_search_page: the real route still executes, and these claims discriminate at the
-// boundary where the meaning is decided.
+// Every fixture below is a SUPPLIED page rather than a fetched one, and THE PAIRING OBLIGATION IS
+// NOT DISCHARGED IN THIS CHANGE. An earlier revision of this annotation said it was -- "met by
+// scan_partition, which calls the same folds against perform_code_search_page: the real route still
+// executes" -- and that sentence was doing the work of a claim while being prose. No claim in this
+// module invokes scan_partition, nothing else in the corpus invokes it either, and an annotation is
+// never evidence that a machine claim holds (DESIGN section 4c). The test the obligation actually
+// sets is that DELETING THE INTEGRATION MUST MAKE A CONTROL FAIL; delete perform_code_search_page's
+// call site today and every claim below stays green, which is the definition of the gap rather than
+// a quibble about wording.
+//
+// WHY IT CANNOT BE DISCHARGED HERE, stated so the gap is bounded rather than open-ended:
+// perform_code_search_page needs a network and a GitHub credential, and the witness lanes run with
+// neither. WHAT DISCHARGES IT: one inhabitance claim executed against the live endpoint, asserting
+// the ROUTE and not only the answer -- that a real CodeSearchPage reaches scan_observation and the
+// record it produces carries the query it was asked for. That is the same shape of evidence the
+// review sheet converge takes, and it is a receipt from a run rather than a lane that can be made
+// to pass without a token.
+//
+// So what the claims below establish is bounded and worth saying exactly: they discriminate at the
+// boundary where the MEANING is decided -- what a page and a walk state mean for whether a sample
+// may be called a census -- and they establish nothing about whether GitHub emits the shapes they
+// supply.
 
 fn w_repo() -> CodeSearchRepository {
   CodeSearchRepository {
@@ -193,6 +214,26 @@ test fn no_pages_read_leaves_the_size_unobserved() -> Bool {
 
 // THE THREE-WAY GATE. A population may be read only when the walk exhausted AND the query was
 // enumerable; each of the next three claims removes one leg and expects a refusal.
+// THIS PAIR AND THE ONE BELOW ARE THE JUDGEMENT'S WALL AND CONTROL, AND THEY TEST THE JUDGEMENT
+// RATHER THAN THE CARRIER -- deliberately, which is the point of the ScanOutcome repair.
+//
+// WHAT IS FREELY CONSTRUCTIBLE AND WHAT IS NOT, stated exactly, because an earlier version of this
+// note got it backwards and named the wrong type as the wall. ScanDeclaredPopulation is an ORDINARY
+// ScanDisposition arm: any module may build it, and that is safe precisely because it carries NO
+// RECEIPT and therefore authorizes nothing. What cannot be built outside scan_partition is
+// ScanOutcome -- the sealed record that BINDS a receipt to a disposition -- so the invalid state the
+// carrier removes is a receipt from walk A paired with hits from walk B, not the existence of a
+// disposition value.
+//
+// So claims may and do construct dispositions; they cannot mint the authority that makes one a
+// scan's result. That is the wall working, and testing the judgement here is not a coverage gap.
+//
+// An earlier revision of this PR added two NEW claims here and called them that wall and control.
+// They were byte-identical in subject, inputs and expectation to this pair -- two names for one
+// fact, run twice -- and neither reached ScanOutcome or scan_partition at all, so they discriminated
+// nothing the branch did not already discriminate while being cited as coverage for the repair.
+// They are deleted; what is freely testable is scan_is_a_declared_population over a supplied
+// receipt, and these two already establish it.
 test fn an_exhausted_walk_over_an_enumerable_query_is_a_population() -> Bool {
   scan_is_a_declared_population(receipt: w_receipt(
     stop: StoppedExhausted { pages_read: 3 },
@@ -221,8 +262,15 @@ test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
 // THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
 // for a page the endpoint will never serve.
 test fn the_page_bound_comes_from_the_ceiling() -> Bool {
-  deepest_retrievable_page(per_page: 100) == 10
-    && deepest_retrievable_page(per_page: 50) == 20
+  match admit_code_search_page_size(observed: 100) {
+    CodeSearchPageSizeAdmitted { page_size: hundred } =>
+      deepest_retrievable_page(page_size: hundred) == 10
+        && match admit_code_search_page_size(observed: 50) {
+          CodeSearchPageSizeAdmitted { page_size: fifty } => deepest_retrievable_page(page_size: fifty) == 20
+          CodeSearchPageSizeRefused { observed: _, cause: _ } => false
+        }
+    CodeSearchPageSizeRefused { observed: _, cause: _ } => false
+  }
 }
 
 // A WALK WITH NO STOP REASON STOPPED BECAUSE IT RAN OUT OF PAGES, and saying so is what keeps
@@ -243,5 +291,36 @@ test fn a_full_page_record_names_the_next_page() -> Bool {
     ObservationComplete => false
     ObservationTruncatedUpstream { cause: _ } => false
     ObservationRefused { cause: _ } => false
+  }
+}
+
+
+// THE PAGE SIZE IS ADMITTED BEFORE THE WALK BOUND IS DERIVED FROM IT, and these three claims are the
+// wall and its controls. An earlier cut divided the retrievable ceiling by whatever Int arrived: a
+// caller passing 1000 got a bound of ONE PAGE, so a short first page reported StoppedExhausted and a
+// partial result was presented as a complete population -- the same shape as every other defect this
+// module exists to close, reached through a parameter rather than through an observation.
+test fn a_page_size_above_the_endpoint_maximum_is_refused() -> Bool {
+  match admit_code_search_page_size(observed: 1000) {
+    CodeSearchPageSizeRefused { observed: o, cause: c } =>
+      o == 1000 && string_contains(s: c as String, pattern: "at most")
+    CodeSearchPageSizeAdmitted { page_size: _ } => false
+  }
+}
+
+test fn a_page_size_below_one_is_refused() -> Bool {
+  match admit_code_search_page_size(observed: 0) {
+    CodeSearchPageSizeRefused { observed: o, cause: _ } => o == 0
+    CodeSearchPageSizeAdmitted { page_size: _ } => false
+  }
+}
+
+// THE CONTROL, without which a refusal of everything would satisfy both claims above while making
+// the producer uncallable.
+test fn the_endpoint_maximum_itself_is_admitted_and_bounds_the_walk() -> Bool {
+  match admit_code_search_page_size(observed: 100) {
+    CodeSearchPageSizeAdmitted { page_size: ps } =>
+      ps.size == 100 && deepest_retrievable_page(page_size: ps) == (retrievable_result_ceiling / 100)
+    CodeSearchPageSizeRefused { observed: _, cause: _ } => false
   }
 }
