@@ -43,6 +43,15 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // session's own descendants are that session's internal business and counting them would inflate
 // the population. -printf %f yields the bare child name rather than a full path.
 //
+// ListDescendantCgroups: THE WHOLE SUBTREE, AS FULL PATHS, for the one consumer whose question is
+// the opposite of ListChildCgroups': a teardown readback must find a process wherever it moved
+// itself, and a double-forked daemon that wrote its pid into a child cgroup two levels down is
+// invisible to a depth-one listing and to the root's own cgroup.procs. So there is no -maxdepth,
+// and each line is the path `find` reached rather than a bare name, because the consumer reads
+// an interface file under each one and a name would have to be re-joined to a parent it no longer
+// knows. Both operations exist because they answer different questions, not because one is the
+// other with a flag.
+//
 // PathIsDirectory: A CGROUP THAT DOES NOT EXIST IS NOT A CGROUP THAT COULD NOT BE READ. Both make `find` and
 // `cat` exit nonzero, so exit status alone cannot separate "this host has no such slice" from
 // "the slice is there and the read failed" -- and those have opposite meanings for a capacity
@@ -73,6 +82,21 @@ service linux.CgroupV2 {
     exit {
       0 => Unit
       nonzero => String "cgroup child enumeration failed"
+    }
+  }
+
+  operation ListDescendantCgroups {
+    input { cgroup_path: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: ["find", "{cgroup_path}", "-mindepth", "1", "-type", "d"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "cgroup descendant enumeration failed"
     }
   }
 
@@ -132,6 +156,16 @@ service linux.CgroupV2 {
 // key `populated`; a consumer that spelled either itself would be a second authority for a
 // string the kernel owns.
 data cgroup_v2_events_interface_file: NonEmptyStr = "cgroup.events"
+
+// `cgroup.procs`: "A read-write new-line separated values file which exists on all cgroups. When
+// read, it lists the PIDs of all processes which belong to the cgroup one-per-line." Reading it on
+// a threaded cgroup fails with EOPNOTSUPP, which is a READ FAILURE and not an empty listing --
+// the consumer keeps that distinction.
+data cgroup_v2_procs_interface_file: NonEmptyStr = "cgroup.procs"
+
+fn cgroup_v2_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
+}
 data cgroup_v2_events_populated_key: NonEmptyStr = "populated"
 
 // THE POPULATED KEY, DECODED, OR A TYPED REASON IT COULD NOT BE. `populated` is documented as

@@ -38,15 +38,10 @@ data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
 // controller exits. This module is what the controller decides at each step, from what it has
 // observed; the realization that performs the steps consumes these decisions and adds none.
 //
-// DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
-// no production entry calls it yet. NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize, the
-// controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
-// stop_request_admission and settle_teardown, reading and writing the store through
-// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
-// adhoc-3faa2033-f8f lane. TRIGGER: that module lands with srv1 transient-unit receipts for the
-// modeled REDs (SIGTERM-ignoring child, double-fork, unkillable task, failed cgroup read, stale stop,
-// background process after success). SUFFICIENT FOR retiring this paragraph. NOT satisfied by that
-// module compiling, or by it existing without an entry the slot unit execs.
+// THE REALIZATION IS gunbc.runner_microvm_lifecycle_realize: it performs the stop, reads the cgroup
+// subtree and the attempt's resources back from the host, hands the joined readback to
+// settle_teardown, and persists the settlement through gunbc.runner_microvm_cell_readiness. Its
+// srv1 transient-unit receipts for the modeled REDs are gunbc.runner_microvm_lifecycle_rehearsal.
 //
 // THE RULE THE WHOLE MODULE IS SHAPED BY: A GUEST EVENT MAY TRIGGER TEARDOWN, AND NO GUEST EVENT
 // MAY ESTABLISH SANITATION. The guest is the tenant. "The runner exited 0" and "the guest powered
@@ -248,10 +243,19 @@ fn stop_request_admission(live: AttemptIdentity, requested: AttemptIdentity) -> 
 // which of the three happened; a task that survives the bounded force-stop (uninterruptible sleep
 // survives SIGKILL) is not "still stopping", it is a surviving process, and the cell quarantines on
 // it whatever the cgroup readback says afterwards.
+//
+// THE FOURTH ARM CAME FROM REALIZING THE FIRST THREE (DESIGN 6b). A stop signals the pids it reads
+// out of the attempt's cgroup subtree, so a subtree that cannot be enumerated -- a child cgroup
+// whose cgroup.procs refuses -- is a stop that never saw its subject. That is not StoppedGracefully
+// (nothing was observed to stop), not StoppedByForce (nothing known was forced) and not an exceeded
+// bound with an empty survivor list (a list nobody could read is not empty). It is its own arm, and
+// it maps below onto NoSurvivingProcesses UNOBSERVABLE, the same verdict the cgroup readback reaches
+// for the same failure, so the two facts refuse together rather than one of them confirming.
 type TeardownStop
   = StoppedGracefully
   | StoppedByForce
   | ForceStopBoundExceeded { survivors: List<Int> }
+  | StopSubjectUnreadable { reason: NonEmptyStr }
 
 // THE CGROUP READBACK IS RECURSIVE, AND A FAILED READ IS ITS OWN ARM. cgroup.procs of the slot's
 // cgroup alone misses every process in a child cgroup -- a double-forked daemon moved one level
@@ -418,6 +422,7 @@ fn surviving_process_observation(stop: TeardownStop, cgroup: CgroupSubtreeReadba
       FactRefuted { fact: NoSurvivingProcesses, detail: join(["pids ", pid_list_text(pids: s), " survived the bounded force-stop"], "") as NonEmptyStr }
     StoppedGracefully => process_observation_of_cgroup(cgroup: cgroup)
     StoppedByForce => process_observation_of_cgroup(cgroup: cgroup)
+    StopSubjectUnreadable { reason: r } => FactUnobservable { fact: NoSurvivingProcesses, reason: r }
   }
 }
 

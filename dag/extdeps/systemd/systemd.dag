@@ -394,3 +394,34 @@ fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
 fn systemd_name_component_is_escaped(component: String) -> Bool {
   string_contains(s: component, pattern: "\\")
 }
+
+// WHERE A SLICE LIVES IN THE CGROUP TREE, BY systemd.slice(5)'s OWN RULE: "the name of a slice
+// unit ... encodes the location in the tree: a slice named foo-bar.slice is located within
+// foo.slice, which in turn is within the root slice". The unit name's dash-separated prefixes are
+// therefore the ancestor slices, each spelled with its own `.slice` suffix, and the cgroup path
+// relative to the mount point is those ancestors joined by `/` ending in the slice itself. The
+// root slice (`-.slice`) is the mount point and has no component. The name is taken as systemd
+// spells it -- an escaped component (`\x2d`) is one component, because the dash it escapes is not
+// a tree separator -- so the split is on the literal `-` only, which is exactly systemd's split.
+//
+// This is one function because it is one upstream fact; a consumer that walked the prefixes
+// itself would be a second authority for where a slice's processes are accounted, and a
+// disagreement there is a readback of the wrong subtree that reads "empty".
+data systemd_slice_unit_suffix: String = ".slice"
+
+fn systemd_slice_cgroup_relative_path(slice: NonEmptyStr) -> String {
+  let name = slice as String
+  let stem = if ends_with(s: name, suffix: systemd_slice_unit_suffix) {
+    substring(s: name, start: 0, end: string_length(s: name) - string_length(s: systemd_slice_unit_suffix))
+  } else {
+    name
+  }
+  let components = split(s: stem, delimiter: "-")
+  let prefixes = fold(components, init: [], f: (acc, c) =>
+    if (acc |> count) == 0 {
+      [c]
+    } else {
+      list_push(acc, join([fold(acc, init: "", f: (last, p) => p), "-", c], ""))
+    })
+  join(map(prefixes, p => join([p, systemd_slice_unit_suffix], "")), "/")
+}
