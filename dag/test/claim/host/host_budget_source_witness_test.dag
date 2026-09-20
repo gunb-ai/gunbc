@@ -141,6 +141,13 @@ test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability(
     })
 }
 
+test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
+  all(
+    procfs_paths_read_by_this_repository,
+    p => starts_with(s: procfs_path_literal(p: p) as String, prefix: "/proc/")
+  )
+}
+
 // The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a
 // source cannot leave the question unanswered: degraded is asserted to be exactly the complement of
 // host_budget_source_bounds_this_process over all_sources, so the two axes cannot drift apart and a
