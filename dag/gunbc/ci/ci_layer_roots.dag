@@ -597,6 +597,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "single-roster memo in tools.dag_compile_clean_scope lands AND G2 path-intersection is wired into floor admission axis (iv); re-enroll through the floor owner")
   },
   WitnessExclusionRow {
+    pattern: "runner_microvm_lifecycle_realize_wet_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture), substantiated per-row: every fn in this file starts a TRANSIENT systemd unit through gunbc.systemd_run_transient, signals it, freezes and thaws a cgroup, reads /sys/fs/cgroup and writes the host-local CellReadiness store. Hermetic discovery REFUSES rather than skipping -- systemd.SystemdRun.RunTransient publishes no mock_response -- and a runner that DID execute them would be starting units on a shared CI host, which is the opposite of what these claims are for. They run on a fleet host, under slot indices 90-95 that no fleet host allocates, each claim sweeping its own slice and reading back that nothing under it is left running or frozen. The PURE half is not excluded: the folds these claims drive -- the subtree readback over supplied readings, the resource-absence mapping, the unobserved-stop arm -- stay discovery-enrolled per-PR in runner_microvm_lifecycle_realize_witness_test.dag.",
+    dissolution: excl_wet_integration_dissolve},
+  WitnessExclusionRow {
     pattern: "host_effect_apply_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_wet_integration_reason,

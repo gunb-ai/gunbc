@@ -2,7 +2,6 @@ module gunbc.runner_microvm_cell_readiness_store
 
 import std.types { String, NonEmptyStr, Bool, List, Int, Map }
 import std.nat { Nat }
-import std.resources { Filesystem }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused, filesystem_read_outcome,
@@ -545,9 +544,7 @@ type StoreRecordScan {
   bad: NonEmptyStr?
 }
 
-fn store_record_scan_step(root: NonEmptyStr, acc: StoreRecordScan, name: String) -> StoreRecordScan
-  uses fs: Filesystem
-{
+fn store_record_scan_step(root: NonEmptyStr, acc: StoreRecordScan, name: String) -> StoreRecordScan {
   match acc.bad {
     Present { value: _ } => acc
     Absent => {
@@ -586,9 +583,7 @@ fn record_name_disagreement(root: NonEmptyStr, name: String, record: CellReadine
   }
 }
 
-fn read_cell_readiness_store(root: NonEmptyStr) -> CellReadinessStoreRead
-  uses fs: Filesystem
-{
+fn read_cell_readiness_store(root: NonEmptyStr) -> CellReadinessStoreRead {
   match read_store_ownership(root: root) {
     StoreOwnershipUnreadable { reason: r } => StoreUnreadable { reason: r }
     StoreOwnershipRead { ownership: ownership } => {
@@ -609,9 +604,7 @@ fn store_read_of_records(
   root: NonEmptyStr,
   ownership: CellReadinessStoreOwnership,
   names: List<String>,
-) -> CellReadinessStoreRead
-  uses fs: Filesystem
-{
+) -> CellReadinessStoreRead {
   let scan = fold(names, init: StoreRecordScan { records: [], bad: none }, f: (acc, n) => store_record_scan_step(root: root, acc: acc, name: n))
   match scan.bad {
     Present { value: why } => StoreUnreadable { reason: why }
@@ -637,9 +630,7 @@ type CellReadinessWritten
   | CellReadinessWriteStoreUnreadable { reason: NonEmptyStr }
   | CellReadinessWriteFailed { path: String, error: String }
 
-fn write_cell_readiness_record(root: NonEmptyStr, write: CellReadinessWrite) -> CellReadinessWritten
-  uses fs: Filesystem
-{
+fn write_cell_readiness_record(root: NonEmptyStr, write: CellReadinessWrite) -> CellReadinessWritten {
   match read_cell_readiness_store(root: root) {
     StoreUnreadable { reason: r } => CellReadinessWriteStoreUnreadable { reason: r }
     StoreRead { ownership: o, records: records } =>
@@ -660,9 +651,7 @@ fn write_cell_readiness_record(root: NonEmptyStr, write: CellReadinessWrite) -> 
 // THE RECORD IS WRITTEN OWNER-ONLY, which is the same fact the ownership admission reads back: a
 // store whose directory is root's but whose records are world-writable is a store any tenant can
 // mark Ready one file at a time.
-fn perform_record_write(root: NonEmptyStr, record: CellReadinessRecord) -> CellReadinessWritten
-  uses fs: Filesystem
-{
+fn perform_record_write(root: NonEmptyStr, record: CellReadinessRecord) -> CellReadinessWritten {
   let path = cell_readiness_record_path(root: root, cell: record_cell(record: record))
   let wrote = Filesystem.WriteOwnerOnly(path: path, content: render_cell_readiness_record(record: record))
   if wrote.success {

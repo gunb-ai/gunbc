@@ -49,8 +49,10 @@ import gunbc.runner_microvm_lifecycle {
 }
 import gunbc.runner_microvm_lifecycle_realize {
   AttemptTeardownOutcome, TeardownSettled, TeardownObservationForeign,
+  UnitSignalOutcome, UnitSignalled, UnitSignalRefused,
+  SliceFreezeReadback, SliceThawed, SliceHoldsFrozenCgroups, SliceFreezeUnreadable,
   perform_bounded_stop, read_cell_cgroup_subtree, settle_attempt_teardown,
-  runner_microvm_attempt_stop_properties, force_kill_unit,
+  read_slice_freeze_state, runner_microvm_attempt_stop_properties, force_kill_unit,
 }
 import gunbc.runner_microvm_cell_readiness_store {
   CellReadinessWritten, CellReadinessRecordWritten, CellReadinessWriteRefusedByStore,
@@ -161,13 +163,45 @@ fn thaw_unit(unit: NonEmptyStr) -> Bool {
 // EVERY CLAIM ENDS BY LEAVING THE SLICE QUIET, and the sweep is part of the claim rather than the
 // script's job: a RED that proved a survivor and then left it running would have converted a
 // receipt into a leak on a host other people are using.
+fn signal_was_sent(outcome: UnitSignalOutcome) -> Bool {
+  match outcome {
+    UnitSignalled => true
+    UnitSignalRefused { detail: _ } => false
+  }
+}
+
+// THE KILLS ARE NOT REQUIRED TO SUCCEED AND THE READBACKS ARE. A unit that already finished refuses
+// the signal, which is the ordinary case after a stop that worked; what the sweep owes is that
+// nothing is left running AND nothing is left frozen, and only the cgroup can answer either.
+//
+// THE FROZEN READBACK IS THE HALF THAT CANNOT BE SKIPPED (sunny-ant-606 ruling). A frozen
+// descendant holds no CPU and answers no signal, so a slice with one in it reads quiet to a process
+// count taken after a kill -- and the kill did not land. So the sweep asserts BOTH, and an
+// unreadable freeze state is a failure here rather than a shrug: this is the readback whose whole
+// purpose is to notice the state this run can create.
 fn sweep_slice_quiet(attempt: MicroVmAttempt, index: Int) -> Bool {
-  let killed_escapee = force_kill_unit(unit: red_escapee_unit(attempt: attempt))
-  let killed_unit = force_kill_unit(unit: runner_microvm_attempt_unit_name(attempt: attempt))
+  let escapee_signalled = signal_was_sent(outcome: force_kill_unit(unit: red_escapee_unit(attempt: attempt)))
+  let unit_signalled_ok = signal_was_sent(outcome: force_kill_unit(unit: runner_microvm_attempt_unit_name(attempt: attempt)))
+  sweep_found_no_process(index: index) && sweep_found_nothing_frozen(index: index)
+}
+
+// A SLICE THAT IS GONE IS QUIET. Once the last unit in it exits, systemd removes the slice's cgroup
+// and the read can no longer be taken -- which is the success case here, not a doubt, and it is why
+// this arm differs from the one inside the controller: there the question is whether a cell may be
+// RELEASED, and an unreadable cgroup must never answer yes.
+fn sweep_found_no_process(index: Int) -> Bool {
   match read_cell_cgroup_subtree(slice: red_slice(index: index)) {
     CgroupSubtreeEmpty => true
     CgroupSubtreeReadFailed { reason: _ } => true
     CgroupSubtreePopulated { pids: _, cgroups: _ } => false
+  }
+}
+
+fn sweep_found_nothing_frozen(index: Int) -> Bool {
+  match read_slice_freeze_state(slice: red_slice(index: index)) {
+    SliceThawed => true
+    SliceFreezeUnreadable { reason: _ } => true
+    SliceHoldsFrozenCgroups { cgroups: _ } => false
   }
 }
 

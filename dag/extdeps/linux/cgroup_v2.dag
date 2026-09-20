@@ -402,6 +402,87 @@ fn decode_cgroup_subtree_procs(stdout: String) -> CgroupSubtreeProcsDecoding {
   }
 }
 
+// THE FREEZER FLAG, AND THE SAME TREE READ THAT ANSWERS FOR PROCESSES ANSWERS FOR IT. cgroup v2
+// documents `cgroup.freeze` as a read-write file on non-root cgroups whose value is 0 or 1, where 1
+// means the cgroup and its descendants are frozen -- and a frozen cgroup is the one state in which
+// a pending SIGKILL is not acted on. A caller that froze something owes a readback that nothing it
+// touched is still frozen, and that readback is over the SUBTREE for the same reason the process
+// one is: the flag is written on whichever descendant was frozen, not on the root.
+data cgroup_v2_freeze_interface_file: NonEmptyStr = "cgroup.freeze"
+
+type CgroupSubtreeFreezeDecoding
+  = CgroupSubtreeFreezeDecoded { frozen: List<NonEmptyStr> }
+  | CgroupSubtreeFreezeUnparseable { cause: String }
+
+type CgroupFreezeLine
+  = CgroupFreezeLineBlank
+  | CgroupFreezeLineRead { cgroup: NonEmptyStr, frozen: Bool }
+  | CgroupFreezeLineMalformed { cause: String }
+
+fn cgroup_subtree_freeze_line(line: String) -> CgroupFreezeLine {
+  let trimmed = trim(s: line)
+  if trimmed == "" {
+    CgroupFreezeLineBlank
+  } else {
+    let suffix = concat("/", cgroup_v2_freeze_interface_file as String)
+    let fields = split(s: trimmed, delimiter: ":")
+    if list_length(items: fields) != 2 {
+      CgroupFreezeLineMalformed { cause: concat("a cgroup.freeze tree-read line is not one PATH:VALUE pair: ", trimmed) }
+    } else {
+      cgroup_subtree_freeze_pair(
+        trimmed: trimmed,
+        suffix: suffix,
+        file: join(fields.take(n: 1), ""),
+        value: trim(s: join(fields.skip(n: 1), "")),
+      )
+    }
+  }
+}
+
+// 0 AND 1 ARE THE ONLY DOCUMENTED VALUES AND ANYTHING ELSE REFUSES. Reading an unrecognised value as
+// "not frozen" is the direction that lets a frozen cgroup be reported as reversed.
+fn cgroup_subtree_freeze_pair(trimmed: String, suffix: String, file: String, value: String) -> CgroupFreezeLine {
+  if !ends_with(s: file, suffix: suffix) {
+    CgroupFreezeLineMalformed { cause: concat("a cgroup.freeze tree-read line names a file that is not a cgroup.freeze: ", file) }
+  } else if value == "0" {
+    CgroupFreezeLineRead { cgroup: substring(s: file, start: 0, end: string_length(s: file) - string_length(s: suffix)) as NonEmptyStr, frozen: false }
+  } else if value == "1" {
+    CgroupFreezeLineRead { cgroup: substring(s: file, start: 0, end: string_length(s: file) - string_length(s: suffix)) as NonEmptyStr, frozen: true }
+  } else {
+    CgroupFreezeLineMalformed { cause: concat("cgroup.freeze is documented as 0 or 1 and read as: ", trimmed) }
+  }
+}
+
+type CgroupFreezeScan {
+  frozen: List<NonEmptyStr>
+  bad: String?
+}
+
+fn cgroup_subtree_freeze_scan_step(acc: CgroupFreezeScan, line: String) -> CgroupFreezeScan {
+  match acc.bad {
+    Present { value: _ } => acc
+    Absent =>
+      match cgroup_subtree_freeze_line(line: line) {
+        CgroupFreezeLineBlank => acc
+        CgroupFreezeLineMalformed { cause: c } => CgroupFreezeScan { frozen: acc.frozen, bad: Present { value: c } }
+        CgroupFreezeLineRead { cgroup: cg, frozen: is_frozen } =>
+          if is_frozen {
+            CgroupFreezeScan { frozen: append(acc.frozen, cg), bad: none }
+          } else {
+            acc
+          }
+      }
+  }
+}
+
+fn decode_cgroup_subtree_freeze(stdout: String) -> CgroupSubtreeFreezeDecoding {
+  let scan = fold(split(s: stdout, delimiter: "\n"), init: CgroupFreezeScan { frozen: [], bad: none }, f: (acc, line) => cgroup_subtree_freeze_scan_step(acc: acc, line: line))
+  match scan.bad {
+    Present { value: c } => CgroupSubtreeFreezeUnparseable { cause: c }
+    Absent => CgroupSubtreeFreezeDecoded { frozen: scan.frozen }
+  }
+}
+
 fn decode_cgroup_procs(body: String) -> CgroupProcsDecoding {
   let scan = fold(split(s: body, delimiter: "\n"), init: CgroupProcsScan { pids: [], bad: none }, f: (acc, raw) => cgroup_procs_scan_step(acc: acc, raw: raw))
   match scan.bad {
