@@ -9,13 +9,17 @@ import std.types { NonEmptyStr, List, String }
 // merge, and every merge of main brought more. The rows rostered below arrived that way, AFTER the
 // measured population was fixed.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..a35c7cede3e" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..41b39f8d91b" as NonEmptyStr
 
 // THE ROSTER, carried rather than deleted on the assumption that these rows would have typed the
 // same way. Deleting them unmeasured is the fail-open the cut exists to avoid: a row whose derived
 // demand is EMPTY is exactly the row whose deletion flips its function from effectful to pure, and
 // the only thing that distinguishes the two is the measurement. The first module carries most of
-// them, so one unmeasured sweep there would be several silent flips rather than one. THE NEXT CUT
+// them, so one unmeasured sweep there would be several silent flips rather than one. RE-DERIVED AT
+// THE LANDING HEAD (reviews 69155, 69171): the range tip is the main this change merged, and the
+// eight production modules after review_sheet_tab_locator are the ones that gained `uses` rows
+// between the earlier tip and that head -- enumerated by the row form, not by resolving, which is
+// why they are ROSTERED here rather than cut. THE NEXT CUT
 // TAKES THEM: re-resolve these modules, apply the same criterion, delete the rows whose derived
 // demand is nonempty. The criterion does not change -- only the population is new.
 
@@ -27,6 +31,14 @@ data demand_restatement_follow_up_modules: List<String> = [
   "gunbc.authorization_claim_slot",
   "gunbc.machine_intake_megarac_media_attach",
   "gunbc.review_sheet_tab_locator",
+  "gunbc.site_pxe_edge_converge",
+  "gunbc.spark.native_serving_apply",
+  "gunbc.fleet_health_observe",
+  "gunbc.fleet_health",
+  "gunbc.runner_attempt_launch",
+  "gunbc.review_sheet_formula_observation",
+  "gunbc.github_effect_perform",
+  "gunbc.bmc_custody_read",
 ]
 
 // THE MODULE PATHS, for a consumer that renders the roster as prose. The roster is module paths and
