@@ -31,11 +31,20 @@ Six pull requests were CLEAN with every check green, waiting on an operator merg
 | PR | Cut | What it carries |
 |----|-----|-----------------|
 | #11678 | C9a.1 | GCP Secret IAM: read the policy back **independently** after the write |
-| #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back |
+| #11676 | C7 | provider-state root as a `live_deploy` ensured member, read back — **now DIRTY** |
 | #11689 | C11 | GitHub reads rebound onto the canonical observe-then-assess join |
 | #11732 | C9b | App private-key rotation: exact-version verifier, contract, `DisableOnly` |
 | #11795 | — | `RungDropAmendment` carrier, so a later ruling on a standing drop has a home |
 | #11828 | — | `mtcollins1_boot` narrowed to `FleetSshKeyNotConsumed` |
+
+**#11676 was deliberately not rebuilt.** It is approved and green at `c153cfa519`, but main moved
+27 commits and edited five of its seven files, so resolving is content work rather than a
+projection drop. Its only consumer is C8, which is held indefinitely, so rebuilding would deliver a
+member nothing consumes at the cost of a full review and CI cycle — and it would rot again the next
+time anyone touches `live_deploy`. The PR is left open rather than closed: the review history and
+its annotations are worth more there than in a closed tab. The colliding files are
+`live_deploy/emit.dag`, `live_deploy/spec.dag`, `roadmap/roadmap_dashboard_instance.dag`,
+`test/claim/live_deploy/emit_test.dag` and `test/claim/live_deploy_unit_emission_oracle_witness_test.dag`.
 
 **#11828 must not merge on checks alone.** Its acceptance is a wet dispatch of
 `fleet-converge mode=mtcollins1_boot`: if that mode does need the fleet key, it fails at the
