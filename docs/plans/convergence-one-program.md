@@ -102,6 +102,17 @@ Secret Manager write, so the only honest route today is an operator workstation.
   - **Open, for the operator**: `docs/plans/org-admin-credential-acquisition.md` is the prose home
     of this model. Deleting it orphans two live annotations that cite it; keeping it leaves a plan
     document for a credential that was never minted.
+- **#11760 would re-fork the authority #11795 just consolidated.** It still carries the postscript
+  text inline on the drop's `restoration_trigger`. If it lands after #11795, that string must be
+  deleted and replaced with a row under `dag/gunbc/rung_drop_amendment/`. Its author agreed. This
+  is the only known change that would undo that consolidation.
+- **The amendment witness is enrolled on no lane at all.** Its four claims were executed on the
+  committed tree, but not through a claim harness: `claim_executor` has no per-module selection,
+  and a whole-floor run is a CI job rather than a session one. They were run via `gunbc run
+  --function`, which refuses to map a `Bool` to an exit code and *prints the value in the refusal*
+  — a real execution of the real function, but not a harness run. Since required CI runs no claims,
+  nothing today would notice if that file went red. If claims return to the merge path, it belongs
+  in the first batch.
 - **A read-write-re-read fold is unfalsifiable under the current replay harness**, and this is a
   frame-level gap rather than a defect in any subject. REST replay keys a fixture by exact
   invocation, and the first read and the re-read of such a fold are the *same* invocation — same
@@ -189,6 +200,14 @@ only then declare the outcome.
 - **Heal cannot publish `.github/workflows`.** Any `.dag` change that reprojects a workflow must
   carry its own derived bytes, and nothing detects when it does not. Main's model and its
   executing workflow diverged this way once already.
+- **No session can execute a `gunbc run` remotely.** BuildBuddy executors expose no cgroup memory
+  limit, so `gunbc.host_budget_source` refuses with `HostBudgetUnreadable` before planning; a lane
+  that bound a limit by hand got SIGKILLed instead. Briefs that offer "CI or one remote dispatch"
+  as the escape from local memory pressure are offering something that does not exist today.
+- **The local regeneration hazard is LOAD, not a ceiling.** The same command made no progress in
+  40 minutes at host load ~270 and finished in about 20 at load ~66, writing correct bytes. Each
+  `gunbc run` loads the whole corpus, so runs must be serial — running claims alongside a regen
+  makes both thrash. Do not conclude the local arm is dead; check the load first.
 - **A workflow run's branch column is not the ref it built.** `heal.yml` checks out an input SHA,
   so the branch column names where the dispatch fired. Reading it as the built ref produced a
   false "main is red" alarm and a dispatched repair lane against innocent substrate files.
