@@ -161,6 +161,20 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   nothing and create no temp directory. An unconditional hermetic mock_response was refused
 //   (gunbc.hermetic_mock_fidelity). Sibling functions in the same entries stay hermetic.
 //
+//   THE CUT D DETACHED-PROCESS MEMBERS (gunbc#11555): the pair-serving authority-log wet
+//   witness's quiescence claim and the six D0 front-door claims write a CPython program into
+//   their throwaway directory and run it (python.Interpreter.RunFile); the program forks and
+//   setsids a background process -- a sleeper carrying the claim's residue pattern, or an
+//   http.server on a loopback port answering one chosen status -- which the scenario observes
+//   for real (pgrep -f over the quiescence leg; http.Client.StatusWithin through
+//   harness_bounded_presence; the host's /proc/net/tcp) and reaps by pid (shell.Exec.RunArgv
+//   kill), and which exits by itself after a bounded lifetime if the reap never comes. THE
+//   DETACHED PROCESS AND ITS LOOPBACK SOCKET ARE THE NEW ADMISSION: they are outside the temp
+//   directory for the scenario's bounded duration, and nothing else is -- no remote host, no
+//   non-loopback network, no install media, no cargo. Their exclusion rows carry that admission
+//   by name (gunbc.ci_layer_roots excl_local_repo_wet_detached_process_reason) with the
+//   dissolution that retires the opaque program literals and the wet-only observation seams.
+//
 // EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
 // member the executor cannot actually run would make this lane's route claim false, which is the
 // failure the ruling that ordered this lane forbids by name. The four contract-epoch members were

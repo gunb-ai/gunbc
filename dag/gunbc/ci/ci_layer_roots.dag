@@ -382,6 +382,10 @@ data excl_local_repo_wet_executor_identity_reason: String = "real host-effect ex
 
 data excl_local_repo_wet_executor_identity_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.RunArgv and the event-log head read, so the instrument entry can be driven hermetically with a fixed executor and a fixed partition head; then the claim re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
 
+data excl_local_repo_wet_detached_process_reason: String = "real host-effect execution witness whose effects include a DETACHED LOCAL PROCESS AND LOOPBACK NETWORK: the witness writes a CPython program into its throwaway temp directory and runs it (python.Interpreter.RunFile); the program forks and setsids a background process -- a sleeper carrying the claim's residue pattern (gunbc.spark.pair_serving_authority_log_real_execution), or an http.server bound to a loopback port answering one chosen status (gunbc.spark.pair_serving_d0_front_door_real_execution) -- that the scenario observes for real through the host-effect quiescence leg (pgrep -f), the real http.Client.StatusWithin and the host's /proc/net/tcp, then reaps by pid (kill), and that exits by itself after a bounded lifetime if the reap never comes. That process and the loopback socket it holds are outside the temp directory for the scenario's duration: this row admits exactly that, bounded by the lifetime, and nothing else -- no remote host, no non-loopback network, no install media, no cargo. The programs are carried as opaque String literals (medium-as-string) because no .dag route models a forked HTTP server or a daemonized sleeper today; that is part of what the dissolution below retires."
+
+data excl_local_repo_wet_detached_process_dissolve: DissolutionCondition = unbound_dissolution(description: "a modeled process/listener fixture (a .dag-authored detached process and loopback listener with typed lifetime and reap) replaces the opaque CPython literals, and mock_response coverage lands for python.Interpreter.RunFile, the pgrep leg, http.Client.StatusWithin and the /proc/net/tcp read so the observation seams can be driven hermetically with fixed readings; then these claims re-enroll as ordinary hermetic discovery rows with one wet inhabitance claim each, drop off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
@@ -934,8 +938,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "pair_serving_authority_log_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_reason,
-    dissolution: excl_local_repo_wet_dissolve},
+    reason: excl_local_repo_wet_detached_process_reason,
+    dissolution: excl_local_repo_wet_detached_process_dissolve},
   WitnessExclusionRow {
     pattern: "pair_serving_d0_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
@@ -949,8 +953,8 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "pair_serving_d0_front_door_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_reason,
-    dissolution: excl_local_repo_wet_dissolve},
+    reason: excl_local_repo_wet_detached_process_reason,
+    dissolution: excl_local_repo_wet_detached_process_dissolve},
   WitnessExclusionRow {
     pattern: "fabric_capacity_standing_wet_witness_test.dag",
     classification: LocalRepoWetLane,
