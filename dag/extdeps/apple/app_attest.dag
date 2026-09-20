@@ -80,6 +80,7 @@ type AttestationRefusal
   | AttestationCredentialIdMismatch { declared: AttestKeyId }
   | AttestationValidationCategoryAbsent
   | AttestationValidationCategoryRefused { category: Int }
+  | AttestationValidationCategoryMalformed
   | AttestationBundleVersionAbsent
   | AttestationVerificationUnrealized { capability: AppAttestUnrealizedCapability }
 
@@ -543,19 +544,33 @@ fn app_attest_same_environment(a: AppAttestEnvironment, b: AppAttestEnvironment)
 
 // Step 9 over the extensions CBOR: the category, when present, must be admitted; when absent, the
 // caller's policy decides.
-fn app_attest_category_check(obj: AppAttestAttestationObject, policy: AppAttestLaunchExtensionPolicy, admitted_categories: List<Int>) -> AttestationRefusal? {
-  let category = match obj.auth_data.extensions {
-    Absent => none
+type AppAttestCategoryReading
+  = CategoryRead { category: Int }
+  | CategoryAbsent
+  | CategoryMalformed
+
+// A category that is PRESENT but not an unsigned integer is malformed, not absent (review 69397):
+// reading it as absent let a text or negative-integer category pass step 9 under
+// LaunchExtensionsOptional, where the honest integer 0 would refuse. The three readings are kept
+// apart so the policy below can only ever excuse absence.
+fn app_attest_category_reading(obj: AppAttestAttestationObject) -> AppAttestCategoryReading {
+  match obj.auth_data.extensions {
+    Absent => CategoryAbsent
     Present { value: entries } =>
       match cbor_map_text_value(input: obj.input, entries: entries, key: app_attest_wire_validation_category) {
-        Present { value: CborUnsigned { value: c } } => Present { value: c }
-        _ => none
+        Absent => CategoryAbsent
+        Present { value: CborUnsigned { value: c } } => CategoryRead { category: c }
+        Present { value: _ } => CategoryMalformed
       }
   }
-  match category {
-    Present { value: c } =>
+}
+
+fn app_attest_category_check(obj: AppAttestAttestationObject, policy: AppAttestLaunchExtensionPolicy, admitted_categories: List<Int>) -> AttestationRefusal? {
+  match app_attest_category_reading(obj: obj) {
+    CategoryRead { category: c } =>
       if any(admitted_categories, a => a == c) { none } else { Present { value: AttestationValidationCategoryRefused { category: c } } }
-    Absent =>
+    CategoryMalformed => Present { value: AttestationValidationCategoryMalformed }
+    CategoryAbsent =>
       match policy {
         LaunchExtensionsRequired => Present { value: AttestationValidationCategoryAbsent }
         LaunchExtensionsOptional => none

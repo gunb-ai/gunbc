@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, Timestamp, Int, List }
 import std.integer { UInt8 }
 import std.encoding { base64_decode, base64_encode, Standard }
 import std.octet_span { OctetSpan, octet_span_octets }
-import extdeps.ietf.cbor { CborTrailingInput, CborDuplicateMapKey }
+import extdeps.ietf.cbor { CborTrailingInput, CborDuplicateMapKey, CborDecoded, CborRefused, CborMap, cbor_decode }
 import extdeps.itu.der { DerTrailingInput }
 import extdeps.ietf.x509 {
   X509Read, X509Ready, X509Refused, X509Malformed, X509Expired, X509NotYetValid,
@@ -15,7 +15,9 @@ import extdeps.apple.app_attest {
   AttestKeyId, AppAttestDevelopment, AppAttestProduction,
   AttestationVerification, AttestationVerified, AttestationRefused,
   AttestationMalformed, AttestationChainUntrusted, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch,
-  AttestationValidationCategoryAbsent, AttestationVerificationUnrealized, AttestationFormatUnexpected,
+  AttestationValidationCategoryAbsent, AttestationValidationCategoryRefused, AttestationValidationCategoryMalformed,
+  AttestationVerificationUnrealized, AttestationFormatUnexpected,
+  AppAttestAttestationObject, AppAttestAuthData, app_attest_category_check, app_attest_wire_validation_category,
   AssertionVerification, AssertionRefused, AssertionMalformed, AssertionVerificationUnrealized,
   AppAttestCborRefused, AppAttestUnknownField, AppAttestBase64Invalid,
   AppAttestEcdsaSignatureVerification, AppAttestSha256Digest,
@@ -131,6 +133,61 @@ test fn the_leaf_certificate_key_is_the_attested_credential_key() -> Bool {
               }
             }
           }
+      }
+  }
+}
+
+// ── Step 9's category reading, at the interface it discriminates (DESIGN §3: supplied values) ──
+
+// One CBOR map { "apple_validation_category_01": <value> }, encoded by hand from RFC 8949 and
+// decoded by the REAL cbor_decode so the entries carry real key spans; the attestation object
+// around it is supplied, because step 9 reads nothing else of it.
+fn category_map_input(value_encoding: List<UInt8>) -> List<UInt8> {
+  concat(concat([161, 120, 28], app_attest_wire_validation_category), value_encoding)
+}
+
+fn category_object(value_encoding: List<UInt8>) -> AppAttestAttestationObject? {
+  let input = category_map_input(value_encoding: value_encoding)
+  match cbor_decode(input: input) {
+    CborDecoded { item: CborMap { entries: entries } } =>
+      Present { value: AppAttestAttestationObject {
+        input: input,
+        certificates: [],
+        receipt: OctetSpan { start: 0, end: 0 },
+        auth_data: AppAttestAuthData {
+          whole: OctetSpan { start: 0, end: 0 },
+          rp_id_hash: OctetSpan { start: 0, end: 0 },
+          counter: 0,
+          credential: none,
+          extensions: Present { value: entries },
+        },
+      } }
+    _ => none
+  }
+}
+
+// RED for review 69397: a category PRESENT as the text "x" (0x61 0x78) used to read as absent and
+// pass step 9 under LaunchExtensionsOptional. It is malformed, and refuses under either policy.
+test fn a_text_typed_validation_category_is_malformed_not_absent() -> Bool {
+  match category_object(value_encoding: [97, 120]) {
+    Absent => false
+    Present { value: obj } =>
+      match app_attest_category_check(obj: obj, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories) {
+        Present { value: AttestationValidationCategoryMalformed } => true
+        _ => false
+      }
+  }
+}
+
+// The positive control on the same supplied object: the honest unsigned 0 is READ and refused as
+// a category outside the admitted set, naming it.
+test fn an_unadmitted_integer_category_is_refused_by_value() -> Bool {
+  match category_object(value_encoding: [0]) {
+    Absent => false
+    Present { value: obj } =>
+      match app_attest_category_check(obj: obj, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories) {
+        Present { value: AttestationValidationCategoryRefused { category: c } } => c == 0
+        _ => false
       }
   }
 }

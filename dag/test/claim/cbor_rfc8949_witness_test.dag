@@ -185,6 +185,25 @@ test fn refuses_floats_as_unsupported() -> Bool {
   }
 }
 
+// RED for review 69397: an unassigned simple value (major 7, additional information 0..19) used
+// to fall through the short-form argument path and then the body's tag arm, so `E0 01` decoded as
+// tag 0 over the unsigned 1 -- a second wire spelling for a value, consumed silently. It refuses at
+// the head now, and the body's tag arm is major 6 only.
+test fn refuses_an_unassigned_simple_value_instead_of_reading_it_as_a_tag() -> Bool {
+  match cbor_decode(input: [224, 1]) {
+    CborRefused { cause: CborSimpleValueUnsupported { at: a, info: i } } => a == 0 && i == 0
+    _ => false
+  }
+}
+
+// The positive control beside it: a genuine tag (major 6, tag 0 over the unsigned 1) still decodes.
+test fn a_genuine_tag_still_decodes_beside_the_simple_value_refusal() -> Bool {
+  match cbor_decode(input: [192, 1]) {
+    CborDecoded { item: CborTagged { tag: t, item: CborUnsigned { value: v } } } => t == 0 && v == 1
+    _ => false
+  }
+}
+
 test fn refuses_an_eight_octet_argument_as_too_wide() -> Bool {
   match cbor_decode(input: [27, 0, 0, 0, 1, 0, 0, 0, 0]) {
     CborRefused { cause: CborArgumentTooWide { at: _ } } => true
