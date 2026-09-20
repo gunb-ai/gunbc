@@ -180,7 +180,7 @@ fn mtcollins1_render_census_image_receipt(built: UbuntuSeededInstallMediaBuilt, 
 }
 
 fn mtcollins1_census_image_publish_wet() -> ProcessExit
-  uses net: std.resources.Network
+  uses fs: std.resources.Filesystem
 {
   match mtcollins1_census_image_publish() {
     SeededImagePublicationRefused { reason: r } =>
