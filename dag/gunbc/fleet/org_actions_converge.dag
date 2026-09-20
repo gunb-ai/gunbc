@@ -21,6 +21,7 @@ import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_acc
 import extdeps.github.org_admin_auth { RunnerGroupsRead, RunnerGroupRepositoriesRead }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.auth.org_admin_credential {
   SecretMaterial,
   SecretMaterialReader,
@@ -232,41 +233,50 @@ fn org_actions_converge_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
     Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
-    Present { value: _ } => {
-      let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: org_actions_organization)
-      if !listed.success {
-        exit_failure(reason: concat("OrgActionsValidationProbeRefused: ", listed.stderr))
-      } else {
-        match decode_runner_groups_json(body: listed.stdout) {
-          RunnerGroupListDecodeRefused { reason } => exit_failure(reason: reason as String)
-          RunnerGroupListDecoded { groups } => {
-            let reads = map(groups, g => read_observed_group(group: g))
-            match first_group_read_refusal(reads: reads) {
-              Present { value: reason } => exit_failure(reason: reason as String)
-              Absent => {
-                let observed_on = clock_now_probed_at_or_unknown()
-                let receipt = join([
-                  "credential=github-org-admin endpoint=GET-/orgs/\{org\}/actions/runner-groups organization=",
-                  org_actions_organization as String,
-                  " validated_at=", observed_on as String, "\n"
-                ], "")
-                let wrote = Filesystem.Write(path: org_actions_validation_receipt_path, content: receipt)
-                if !wrote.success {
-                  exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
-                } else {
-                  match org_actions_settings_diff(obs: SettingsRead {
-                    groups: completed_groups(reads: reads),
-                    observed_on: observed_on
-                  }) {
-                    OrgActionsSettingsConverged { observed_on: _ } => ExitSuccess
-                    OrgActionsSettingsDiverged { access_divergence_count, public_exposure_divergence_count, observed_on: _ } =>
-                      exit_failure(reason: join([
-                        "OrgActionsSettingsDiverged access=", to_string(access_divergence_count),
-                        " public_exposure=", to_string(public_exposure_divergence_count)
-                      ], ""))
-                    OrgActionsSettingsDiffRefused { reason } => exit_failure(reason: reason as String)
-                  }
-                }
+    Present { value: _ } => match first_absent_gh_cli_operation_host_cli_dependency() {
+      Present { value: a } =>
+        exit_failure(reason: concat("OrgActionsExecutorPrerequisiteAbsent: ", host_dependency_absent_wire(tool: a.tool, hint: a.hint)))
+      Absent => org_actions_converge_with_credential()
+    }
+  }
+}
+
+// Every read here spawns gh on THIS runner, so org_actions_converge_wet reaches it only after
+// gunbc.host_cli_dependency admits the executor; without gh the validation probe is not attempted
+// and the refusal names the executor prerequisite rather than an exec error.
+fn org_actions_converge_with_credential() -> ProcessExit {
+  let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: org_actions_organization)
+  if !listed.success {
+    exit_failure(reason: concat("OrgActionsValidationProbeRefused: ", listed.stderr))
+  } else {
+    match decode_runner_groups_json(body: listed.stdout) {
+      RunnerGroupListDecodeRefused { reason } => exit_failure(reason: reason as String)
+      RunnerGroupListDecoded { groups } => {
+        let reads = map(groups, g => read_observed_group(group: g))
+        match first_group_read_refusal(reads: reads) {
+          Present { value: reason } => exit_failure(reason: reason as String)
+          Absent => {
+            let observed_on = clock_now_probed_at_or_unknown()
+            let receipt = join([
+              "credential=github-org-admin endpoint=GET-/orgs/\{org\}/actions/runner-groups organization=",
+              org_actions_organization as String,
+              " validated_at=", observed_on as String, "\n"
+            ], "")
+            let wrote = Filesystem.Write(path: org_actions_validation_receipt_path, content: receipt)
+            if !wrote.success {
+              exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
+            } else {
+              match org_actions_settings_diff(obs: SettingsRead {
+                groups: completed_groups(reads: reads),
+                observed_on: observed_on
+              }) {
+                OrgActionsSettingsConverged { observed_on: _ } => ExitSuccess
+                OrgActionsSettingsDiverged { access_divergence_count, public_exposure_divergence_count, observed_on: _ } =>
+                  exit_failure(reason: join([
+                    "OrgActionsSettingsDiverged access=", to_string(access_divergence_count),
+                    " public_exposure=", to_string(public_exposure_divergence_count)
+                  ], ""))
+                OrgActionsSettingsDiffRefused { reason } => exit_failure(reason: reason as String)
               }
             }
           }

@@ -192,11 +192,12 @@ import gunbc.actions_run_binding {
   admit_run_revision,
   RunRevisionAdmitted,
   RunRevisionRefused,
+  fleet_converge_expected_host_env_name,
 }
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
-  fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name,
+  fleet_converge_plan_run_id_env_name,
   write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
   ReceiptWritten, ReceiptWriteRefused,
   read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,

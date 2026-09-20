@@ -77,9 +77,14 @@ import extdeps.languages.json.parse {
 // controller's session table is finite — this lane exhausted one service's sessions by opening one
 // per probe and closing none — so the release has to be observable rather than assumed.
 //
-// SessionReleaseUncertain EXISTS BECAUSE A LOST RESPONSE IS NOT A KNOWN STATE. A DELETE whose reply
-// never arrived may have released the session or may not; treating that as released would
-// under-count leaks exactly when the transport is already misbehaving, which is when leaks matter.
+// A LOST OR UNCLASSIFIED GET IS NOT A RELEASED SESSION. CloseSession's own exit is discarded on
+// purpose (this firmware has answered HTTP 401 on DELETE while an independent probe showed the
+// session gone). The standing is the probe that follows, on a route this firmware serves
+// (ProbeSessionOnMediaRoute), with curl --fail-with-body plus a trailing `%{http_code}` write-out,
+// so a timeout (`000`), a drop, and an HTTP 401 are different stdout. Only a 401/403 after a
+// SUCCEEDING probe before the close, under a parsed X-CSRFTOKEN, is evidence the cookie no longer
+// authenticates; every other outcome, and any probe that used a sentinel header, stays
+// SessionReleaseRefused.
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
@@ -172,12 +177,10 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // THE EFFECT SEQUENCE. Session, list, resolve, start, confirm — and the confirmation is a separate
 // read rather than the start call's own answer, for the reason given at the top of this module.
 //
-// THE CREDENTIAL IS A VALUE HERE AND A FILE PATH EVERYWHERE ELSE IN THIS LANE, and that asymmetry is
-// forced rather than chosen: OpenSession is form-encoded, and curl offers no netrc equivalent for a
-// form body, so the password reaches argv for exactly one call. Every subsequent operation carries
-// no credential at all because the cookie is the bearer. The ipmi operations beside this take a
-// password FILE for the same threat and can, because -f exists there. Naming the asymmetry is the
-// point; hiding it behind a wrapper would make one call's exposure look like none.
+// THE CREDENTIAL IS A FILE PATH ON EVERY CALL, INCLUDING OpenSession: curl's --data-urlencode
+// password@{password_file} reads the form value from the file, so the password never reaches argv
+// (extdeps.bmc.megarac OpenSession). Every subsequent operation carries no credential at all
+// because the cookie is the bearer.
 //
 // AN OPENED SESSION WHOSE TOKEN CANNOT BE READ IS STILL AN ALLOCATED SESSION. An earlier
 // revision returned SessionReleaseNotAttempted here, which is the leak that saturated this
@@ -185,11 +188,108 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
 // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
 // rather than inventing a second CloseSession shape. A refused or uncertain close remains
-// SessionReleaseRefused, never NotAttempted.
+// SessionReleaseRefused, never NotAttempted. HTTP 401 after CloseSession is evidence the cookie
+// no longer authenticates only when the GET presented a parsed X-CSRFTOKEN; a sentinel header
+// makes 401 indistinguishable from header rejection (review 67653).
+type SessionCsrfStanding
+  = SessionCsrfParsed
+  | SessionCsrfUnreadable
+
+fn megarac_session_get_writeout_code(get_body: String) -> String {
+  match split(s: get_body, delimiter: "\n").last() {
+    Present { value: code } => code
+    Absent => ""
+  }
+}
+
+// WHAT ONE COOKIE-BEARING GET ESTABLISHES, AND NOTHING MORE. The probe is a readonly GET on a
+// route THIS firmware serves (the remote-media configurations route, which OpenSession's cookie
+// succeeds on moments earlier), with the HTTP status as the trailing line. A succeeding GET is a
+// session the controller still recognises; a 401 or 403 is a cookie it no longer names -- the
+// ABSENCE observation. GET /api/session is NOT that route on this unit: it answers 404 with a live
+// cookie (boots 20 and 21, runs 35437393331 and 35445470385), so a 404 here is the route missing,
+// not the session, and is refused as unreadable rather than widened into absent. A mid-body code
+// with a different trailer is not a status either.
+type SessionPresence
+  = SessionPresent
+  | SessionAbsent { code: String }
+  | SessionPresenceUnreadable { detail: String }
+
+fn megarac_session_presence(get_succeeded: Bool, get_body: String) -> SessionPresence {
+  if get_succeeded {
+    SessionPresent
+  } else {
+    let code = megarac_session_get_writeout_code(get_body: get_body)
+    if code == "401" || code == "403" {
+      SessionAbsent { code: code }
+    } else {
+      SessionPresenceUnreadable { detail: get_body }
+    }
+  }
+}
+
+// RELEASE IS A TRANSITION, NOT A STATUS. A 4xx AFTER CloseSession proves the cookie is gone only
+// if the SAME GET succeeded BEFORE CloseSession: a route that 404s regardless of the cookie, or
+// a cookie the controller had already dropped, answers 4xx both times and would otherwise read
+// as a clean release -- the absorbing fallback DESIGN section 5 forbids, one status code wide.
+// So the fold takes both observations and mints SessionReleased for exactly present -> absent.
+fn megarac_session_release_by_reobservation(
+  before: SessionPresence,
+  after: SessionPresence,
+  csrf: SessionCsrfStanding,
+) -> SessionRelease {
+  match csrf {
+    SessionCsrfUnreadable =>
+      SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" }
+    SessionCsrfParsed =>
+      match before {
+        SessionPresent =>
+          match after {
+            SessionAbsent { code: _ } => SessionReleased
+            SessionPresent => SessionReleaseRefused { detail: "the session probe still succeeded after CloseSession" }
+            SessionPresenceUnreadable { detail: d } =>
+              SessionReleaseRefused { detail: concat("the session probe after CloseSession was unreadable; refusing to treat the session as released: ", d) }
+          }
+        SessionAbsent { code: c } =>
+          SessionReleaseRefused { detail: concat("the session probe was already refused BEFORE CloseSession (code ", concat(c, "); a refusal after it proves nothing about release -- the route or the cookie was not observable")) }
+        SessionPresenceUnreadable { detail: d } =>
+          SessionReleaseRefused { detail: concat("the session probe before CloseSession was unreadable; refusing to adjudicate release: ", d) }
+      }
+  }
+}
+
+fn megarac_close_and_reobserve(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  csrf: SessionCsrfStanding,
+) -> SessionRelease
+  uses net: std.resources.Network
+{
+  let before_get = megarac.Media.ProbeSessionOnMediaRoute(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  let before = megarac_session_presence(get_succeeded: before_get.success, get_body: before_get.body)
+  let _closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  let after_get = megarac.Media.ProbeSessionOnMediaRoute(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  let after = megarac_session_presence(get_succeeded: after_get.success, get_body: after_get.body)
+  return megarac_session_release_by_reobservation(before: before, after: after, csrf: csrf)
+}
+
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
-  password: NonEmptyStr,
+  password_file: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
@@ -198,7 +298,7 @@ fn megarac_attach_remote_image(
   session = megarac.Media.OpenSession(
     bmc_host: bmc_host,
     username: username,
-    password: password,
+    password_file: password_file,
     cookie_jar: cookie_jar,
   )
   if session.success == false {
@@ -241,14 +341,14 @@ fn megarac_release_unreadable_session(
   session_body: String,
 ) -> MegaRacAttachResult
 {
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: "unreadable" as NonEmptyStr,
-  )
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: "unreadable" as NonEmptyStr,
+      csrf: SessionCsrfUnreadable,
+    ),
   }
 }
 
@@ -271,15 +371,14 @@ fn megarac_attach_then_release(
     firmware: firmware,
   )
 
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-  )
-
   return MegaRacAttachResult {
     outcome: outcome,
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: csrf_token,
+      csrf: SessionCsrfParsed,
+    ),
   }
 }
 

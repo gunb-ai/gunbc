@@ -2,6 +2,15 @@ module gunbc.machine_intake_oob_boot_handoff
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection,
+  ipmi_boot_device_label,
+  ipmi_boot_selection_options_token,
+  ipmi_boot_expected_flag_rendering,
+  ipmi_boot_expected_device_rendering,
+  ipmi_boot_expected_mode_rendering,
+  ipmi_boot_expected_persistence_rendering,
+}
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
@@ -114,63 +123,41 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
 // next-boot override that nothing has consumed. A caller that retries must know which of the two it
 // is looking at, since one needs the selection re-applied and the other does not.
 type OobBootHandoffOutcome
-  = BootHandoffCompleted { selected: NonEmptyStr }
+  = BootControlIssued { selected: NonEmptyStr }
   | BootSelectionRefused
   | BootSelectionNotApplied { requested: NonEmptyStr, readback: String }
   | BootSelectionUnverifiable { requested: NonEmptyStr, readback: String }
   | BootSelectionFlagInvalid { requested: NonEmptyStr, readback: String }
+  | BootSelectionNotOneShot { requested: NonEmptyStr, readback: String }
+  | BootSelectionFirmwareMismatch { requested: NonEmptyStr, readback: String }
   | PowerCycleRefused { selected: NonEmptyStr }
   | BootHandoffNotAdmitted { admission: OobBootHandoffAdmission }
 
-// WHAT A BOOT-PARAMETER-5 READ-BACK ESTABLISHED. Three outcomes, because they have three different
-// remedies and collapsing them is what made the previous form unsafe.
-//
-// THE PREVIOUS FORM WAS A SUBSTRING TEST AND IT ACCEPTED AN INVALID OVERRIDE. `chassis bootparam
-// get 5` renders a block of boot flags, and a controller can answer with BOTH of these lines at
-// once:
-//
-//     Boot Flag Invalid
-//     Boot Device Selector : Force PXE
-//
-// That is a documented output shape, not a contrived one, and it means the controller is reporting
-// the selector it holds WHILE saying the flags are not valid. A `contains(expected)` test sees
-// "Force PXE", answers true, and the handoff proceeds to power-cycle a machine whose override will
-// not be honoured — producing exactly the wasted boot cycle reported as success that the
-// select-verify-restart ordering exists to prevent. The verification was the weakest link in a
-// sequence built around it.
-//
-// THE SUCCESS FLAG IS CHECKED FIRST, AND SEPARATELY. The previous form applied the predicate to
-// `readback.stdout` without ever consulting `readback.success`, so a failed read whose output
-// happened to carry the expected words would verify. A read that did not complete establishes
-// nothing about the controller's state, which is a different fact from a read that completed and
-// disagreed.
 type BootReadbackVerdict
   = BootReadbackConfirmed
   | BootReadbackFlagInvalid
+  | BootReadbackNotOneShot
+  | BootReadbackFirmwareMismatch
   | BootReadbackSelectorAbsent
 
-// THE INVALID-FLAG MARKER IS AN UPSTREAM RENDERING, carried as a row rather than inlined so the one
-// string this judgment turns on is nameable. ipmitool prints it inside the parameter-5 flag block.
 data ipmi_boot_flag_invalid_rendering: NonEmptyStr = "Boot Flag Invalid"
 
-// ORDER MATTERS AND IS NOT INTERCHANGEABLE: invalidity is checked BEFORE the selector, because a
-// block carrying both is invalid, not confirmed. Checking the selector first would return the old
-// behaviour with extra steps.
-fn boot_readback_verdict(readback: String, expected_rendering: NonEmptyStr) -> BootReadbackVerdict {
+fn boot_readback_verdict(readback: String, selection: IpmiBootSelection) -> BootReadbackVerdict {
   if readback |> contains(ipmi_boot_flag_invalid_rendering as String) {
     BootReadbackFlagInvalid
-  } else if readback |> contains(expected_rendering as String) {
+  } else if !(readback |> contains(ipmi_boot_expected_flag_rendering(selection: selection) as String)) {
+    BootReadbackFlagInvalid
+  } else if !(readback |> contains(ipmi_boot_expected_persistence_rendering(selection: selection) as String)) {
+    BootReadbackNotOneShot
+  } else if !(readback |> contains(ipmi_boot_expected_mode_rendering(selection: selection) as String)) {
+    BootReadbackFirmwareMismatch
+  } else if readback |> contains(ipmi_boot_expected_device_rendering(selection: selection) as String) {
     BootReadbackConfirmed
   } else {
     BootReadbackSelectorAbsent
   }
 }
 
-// THE RESTART LIVES BEHIND THE CONFIRMED ARM, which is what makes select-verify-restart structural
-// rather than merely sequential. The power cycle is not a statement that follows a check; it is the
-// body of the one verdict that permits it, so a future edit cannot reorder a refusal past it or fall
-// through to it. The previous form eliminated the verdict for its refusals and then continued to the
-// cycle, which is the same ordering held by convention instead of by shape.
 fn oob_power_cycle_after_confirmed_selection(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -186,7 +173,7 @@ fn oob_power_cycle_after_confirmed_selection(
     action: power_action,
   )
   return if cycle.success {
-    BootHandoffCompleted { selected: device }
+    BootControlIssued { selected: device }
   } else {
     PowerCycleRefused { selected: device }
   }
@@ -208,8 +195,7 @@ fn oob_boot_handoff(
   capability_row: BmcFirmwareReleaseCapabilityRow,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
-  device: NonEmptyStr,
-  expected_rendering: NonEmptyStr,
+  selection: IpmiBootSelection,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
 {
@@ -218,12 +204,14 @@ fn oob_boot_handoff(
     return BootHandoffNotAdmitted { admission: admission }
   }
   let bmc_host = observation.endpoint.host
+  let device = ipmi_boot_device_label(device: selection.device)
 
-  set = diagnostic.ipmi.Tool.ChassisBootDev(
+  set = diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
     device: device,
+    options: ipmi_boot_selection_options_token(selection: selection),
   )
   if set.success == false {
     return BootSelectionRefused
@@ -239,8 +227,10 @@ fn oob_boot_handoff(
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
   }
 
-  return match boot_readback_verdict(readback: readback.stdout, expected_rendering: expected_rendering) {
+  return match boot_readback_verdict(readback: readback.stdout, selection: selection) {
     BootReadbackFlagInvalid => BootSelectionFlagInvalid { requested: device, readback: readback.stdout }
+    BootReadbackNotOneShot => BootSelectionNotOneShot { requested: device, readback: readback.stdout }
+    BootReadbackFirmwareMismatch => BootSelectionFirmwareMismatch { requested: device, readback: readback.stdout }
     BootReadbackSelectorAbsent => BootSelectionNotApplied { requested: device, readback: readback.stdout }
     BootReadbackConfirmed =>
       oob_power_cycle_after_confirmed_selection(
