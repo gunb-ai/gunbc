@@ -1,0 +1,117 @@
+module test.claim.yaml_emit_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WRITER'S CONTRACT IS DECODED STRUCTURE: for every value it writes, the reader returns that
+// value -- ingest_yaml_source(emit(v)) == v, compared as values, never as re-serialized text (a
+// text comparison is satisfied by YamlString "123" coming back as YamlInt "123"). A value it cannot
+// write that way is refused with its path. A few byte-level claims pin the shapes the committed
+// workflows depend on.
+
+fn round_trips(v: YamlValue) -> Bool {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => ingest_yaml_source(src: t) == IngestedYaml { value: v }
+    YamlEmitRefused { path: _, reason: _ } => false
+  }
+}
+
+fn emitted(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
+}
+
+fn str(s: String) -> YamlValue {
+  YamlString { value: s }
+}
+
+fn field(k: String, v: YamlValue) -> YamlValue {
+  YamlMapping { entries: [YamlKeyValue { key: k, value: v }] }
+}
+
+fn refused_at(v: YamlValue, path: String, reason_part: String) -> Bool {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: _ } => false
+    YamlEmitRefused { path: p, reason: r } => (p == path) && string_contains(s: r, pattern: reason_part)
+  }
+}
+
+// Strings that read as something else when written plain, or that carry an indicator, a comment
+// marker, surrounding whitespace, an escape, or a GitHub expression.
+data tricky_strings: List<String> = [
+  "123", "-3", "1.5", ".inf", "0x1F", "true", "False", "null", "~", "", "yes", "on",
+  "a: b", "x #c", "#123456", "- item", "? q", ": c", "[a]", "\{b}", "&anchor", "*alias", "!tag",
+  "|", ">", "'quoted'", "\"quoted\"", "%dir", "@at", "`tick", " lead", "trail ", "a\tb",
+  "back\\slash", "$\{\{ runner.os }}", "$\{\{ fromJSON('\{\"a\": 1}') }}", "ends:", "a:b", "plain text"
+]
+
+test fn every_tricky_string_round_trips_as_a_value() -> Bool {
+  all(tricky_strings, s => round_trips(v: field(k: "v", v: str(s: s))))
+}
+
+test fn every_tricky_string_round_trips_as_a_key() -> Bool {
+  all(tricky_strings, s => round_trips(v: field(k: s, v: str(s: "x"))))
+}
+
+test fn every_tricky_string_round_trips_in_a_flow_sequence() -> Bool {
+  round_trips(v: field(k: "v", v: YamlSequence { elements: map(tricky_strings, s => str(s: s)) }))
+}
+
+// The failure the old text round trip could not see: a type change.
+test fn red_a_digit_string_is_quoted_so_it_does_not_come_back_an_int() -> Bool {
+  (emitted(v: field(k: "v", v: str(s: "123"))) == "v: \"123\"\n")
+    && (emitted(v: field(k: "v", v: YamlInt { lexeme: "123" })) == "v: 123\n")
+    && round_trips(v: field(k: "v", v: YamlInt { lexeme: "123" }))
+}
+
+data multiline_strings: List<String> = [
+  "l1\nl2", "l1\nl2\n", "l1\nl2\n\n", "a\n\nb", "\nlead-empty", "echo a\n# kept\necho b",
+  "\n", "\n\n", " leading space\nx", "x\n  indented\ny", "trailing space \nx", "tab\tinside\nx", "x\n\ty"
+]
+
+test fn every_multiline_string_round_trips_in_a_mapping_and_a_sequence() -> Bool {
+  all(multiline_strings, s => round_trips(v: field(k: "run", v: str(s: s))))
+    && all(multiline_strings, s => round_trips(v: field(k: "items", v: YamlSequence { elements: [str(s: s), str(s: "after")] })))
+}
+
+// The literal carries its final line breaks in its chomping indicator, and keeps empty lines.
+test fn literal_blocks_pick_the_chomping_indicator_and_keep_empty_lines() -> Bool {
+  (emitted(v: field(k: "run", v: str(s: "a\n\nb"))) == "run: |-\n  a\n\n  b\n")
+    && (emitted(v: field(k: "run", v: str(s: "a\n"))) == "run: |\n  a\n")
+    && (emitted(v: field(k: "run", v: str(s: "a\n\n"))) == "run: |+\n  a\n\n")
+}
+
+// A string a literal cannot carry is written double-quoted with escaped line breaks.
+test fn red_a_string_no_literal_can_carry_is_double_quoted() -> Bool {
+  emitted(v: field(k: "run", v: str(s: " lead\nx"))) == "run: \" lead\\nx\"\n"
+}
+
+test fn nested_collections_round_trip() -> Bool {
+  round_trips(v: YamlMapping { entries: [
+    YamlKeyValue { key: "jobs", value: field(k: "build", v: field(k: "steps", v: YamlSequence { elements: [
+      YamlMapping { entries: [
+        YamlKeyValue { key: "uses", value: str(s: "actions/checkout@v4") },
+        YamlKeyValue { key: "with", value: field(k: "fetch-depth", v: YamlInt { lexeme: "0" }) }
+      ] },
+      field(k: "run", v: str(s: "make\nmake test")),
+      YamlSequence { elements: [str(s: "nested"), YamlSequence { elements: [str(s: "deeper")] }] },
+      YamlSequence { elements: [YamlMapping { entries: [YamlKeyValue { key: "m", value: YamlNull }] }] },
+      YamlMapping { entries: [] },
+      YamlNull,
+      YamlBool { value: false },
+      YamlFloat { lexeme: "2.5" }
+    ] })) },
+    YamlKeyValue { key: "empty", value: YamlSequence { elements: [] } },
+    YamlKeyValue { key: "none", value: YamlMapping { entries: [] } }
+  ] })
+}
+
+test fn red_values_the_writer_cannot_write_refuse_with_their_path() -> Bool {
+  refused_at(v: field(k: "jobs", v: field(k: "timeout", v: YamlInt { lexeme: "ten" })), path: "jobs.timeout", reason_part: "int lexeme `ten`")
+    && refused_at(v: field(k: "s", v: YamlSequence { elements: [YamlFloat { lexeme: "1.2.3" }] }), path: "s[0]", reason_part: "float lexeme")
+    && refused_at(v: YamlMapping { entries: [YamlKeyValue { key: "a", value: YamlNull }, YamlKeyValue { key: "a", value: YamlNull }] }, path: "a", reason_part: "twice")
+    && refused_at(v: str(s: "top"), path: "", reason_part: "document root")
+    && refused_at(v: YamlMapping { entries: [] }, path: "", reason_part: "empty mapping")
+    && refused_at(v: field(k: "a", v: str(s: concat("x", from_code_point(cp: 160)))), path: "line 1 of the emitted text", reason_part: "U+00A0")
+}

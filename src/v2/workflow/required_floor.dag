@@ -624,9 +624,10 @@ fn fixture_home_prefixes() -> List<String> {
 // IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
 // that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.
 //
-// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its
-// every_realized_workflow_action_use_is_modeled_and_executed_exactly row is the only route that
-// admits hand-authored .github/workflows files, which no generator sees, and
+// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its per-file census
+// rows (census_<file>_uses_are_modeled_and_executed_exactly, joined to the directory listing by
+// every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file) are the only
+// route that admits hand-authored .github/workflows files, which no generator sees, and
 // gunbc.recurring_failure_mode.provider_substituted_action_runtime cites it as the executing wall.
 // Outside the gate it would disposition DeclinedOutsideRequiredGate, and changed-witness selection
 // fires only on edits to the witness's own test fns -- so a tag or node20 pin reintroduced into a

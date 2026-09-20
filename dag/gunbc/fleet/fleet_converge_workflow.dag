@@ -123,7 +123,7 @@ import gunbc.host_reset_return { ResetObserverPairing }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, LiveDeploy }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int, list_length }
@@ -1847,8 +1847,9 @@ fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOut
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
       JobTimeoutWithinCeiling { minutes: _ } =>
-        FleetConvergeYamlGenerated {
-          content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+        match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) {
+          EmittedYaml { text: t } => FleetConvergeYamlGenerated { content: t }
+          YamlEmitRefused { path: p, reason: r } => FleetConvergeYamlGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet_converge_workflow", path: p, reason: r) }
         }
     }
   } else {

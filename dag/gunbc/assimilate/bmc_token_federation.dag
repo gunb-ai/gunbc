@@ -26,7 +26,7 @@ import extdeps.github.actions {
 }
 import gunbc.action_use_admission { checkout_action, google_auth_action }
 import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, YamlEmitResult }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.types { NonEmptyStr }
@@ -243,6 +243,6 @@ data bmc_token_smoke_workflow: Workflow = {
 // rename touches BMC production files and their witnesses, and it is separable from the value
 // consolidation this change lands.
 
-fn emit_bmc_token_smoke_workflow_yaml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
+fn emit_bmc_token_smoke_workflow_yaml() -> YamlEmitResult {
+  emit_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
 }

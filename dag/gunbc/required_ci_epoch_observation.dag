@@ -37,7 +37,6 @@ type RequiredCiEpochUnobserved
   | RequiredCiEpochPathUnreadable { detail: String }
   | RequiredCiEpochDocumentUnparsable { detail: String }
   | RequiredCiEpochAbsent
-  | RequiredCiEpochDuplicated { occurrences: Int }
   | RequiredCiEpochMalformed { detail: String }
 
 type RequiredCiEpochObservation
@@ -84,23 +83,18 @@ fn epoch_from_entry(kv: YamlKeyValue) -> RequiredCiEpochObservation {
   }
 }
 
+// A SECOND EPOCH MEMBER CANNOT REACH THE MAPPING WALK: the reader refuses a mapping that holds a
+// key twice (YAML requires unique keys), so a duplicated epoch is RequiredCiEpochDocumentUnparsable
+// carrying the reader's line and reason.
 fn required_ci_epoch_from_workflow_source(src: String) -> RequiredCiEpochObservation {
   match ingest_yaml_source(src: src) {
-    YamlIngestRejected { reason: r } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: r } }
+    YamlIngestRejected { line: l, reason: r } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: join(["line ", to_string(l), ": ", r], "") } }
     IngestedYaml { value: doc } =>
       match doc {
         YamlMapping { entries: es } => {
-          let hits = epoch_entries_in(entries: yaml_env_entries(entries: es))
-          let n = hits.length()
-          if n == 0 {
-            RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
-          } else if n > 1 {
-            RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } }
-          } else {
-            match first(hits) {
-              Present { value: kv } => epoch_from_entry(kv: kv)
-              Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
-            }
+          match first(epoch_entries_in(entries: yaml_env_entries(entries: es))) {
+            Present { value: kv } => epoch_from_entry(kv: kv)
+            Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
           }
         }
         _ =>
@@ -126,8 +120,6 @@ fn required_ci_epoch_unobserved_message(cause: RequiredCiEpochUnobserved) -> Str
       concat("the workflow document at the triggering commit does not parse: ", d)
     RequiredCiEpochAbsent =>
       "the workflow at the triggering commit declares no contract epoch"
-    RequiredCiEpochDuplicated { occurrences: _ } =>
-      "the workflow at the triggering commit declares the contract epoch more than once"
     RequiredCiEpochMalformed { detail: d } =>
       concat("the contract epoch at the triggering commit is malformed: ", d)
   }

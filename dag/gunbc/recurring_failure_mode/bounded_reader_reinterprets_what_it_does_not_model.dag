@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.bounded_reader_reinterprets_what_it_does_not_model
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bounded_reader_reinterprets_what_it_does_not_model: RecurringFailureMode = RecurringFailureMode {
+  identity: "bounded_reader_reinterprets_what_it_does_not_model" as NonEmptyStr,
+
+  receipts: [
+    "**a bounded reader or writer answers outside its subset with a plausible wrong meaning instead of a refusal** (a reader that models part of a format falls through to the most permissive arm -- \"anything else is a string\" -- and a writer drops or reshapes what it cannot write, so a document outside the subset is accepted with a tree it does not denote, and a value is written as text that reads back as something else).",
+
+    "Found by the source audit on gunb-ai/gunbc#11663 (comment 5743133113) against extdeps.languages.yaml: unrecognized plain text became a string with no refusal arm; a flow sequence split on the literal `, ` (so `[a,b]` was one element and `[\"a, b\", c]` split inside quotes); single-quoted scalars kept their quotes; double-quoted escapes were not decoded and `\\q` was not refused; quoted keys kept their quotes; a flow mapping became a string; a `|` literal lost its clipped final line break; `key: # comment` became the string `# comment`; the writer filtered out a literal's empty lines, wrote `|` for text with no final line break, and wrote the string \"123\" unquoted so it read back as an int.",
+
+    "WHY IT SURVIVED: every witness compared serialize(parse(x)) with serialize(expected), and the round trip checked emit(parse(emit(v))) == emit(v). Both compare the WRITER's text, so a loss in the writer masked the same loss in the reader (the blank-lines witness could not fail for that reason), and a type change the writer re-spells identically -- YamlString \"123\" to YamlInt \"123\" -- passed. A witness over a reader must compare decoded structure with an independent expected value.",
+
+    "Repair (this change): extdeps.languages.yaml.ingest is a declared bounded subset of YAML 1.2.2 -- the core schema, both quoted styles with every escape, one-line flow sequences, `|`/`|-`/`|+` literals with detected indentation, block collections at any increasing indentation -- and refuses everything else with the line it sits on; extdeps.languages.yaml.emit decides plain-versus-quoted with the reader's own predicates, picks the chomping indicator from the text, falls back to a double-quoted scalar where no literal can carry the string, and returns YamlEmitRefused with the value's path for what it cannot write. Witnesses compare parse(text) with hand-written values and parse(emit(v)) with v, each construct with a red control (test.claim.yaml_ingest_witness, test.claim.yaml_emit_witness).",
+
+    "Rung: mechanically preventable -- the conformance witnesses expose a regression in either direction, and the refusal arms make an out-of-subset document a located, typed refusal rather than a tree.",
+
+    "Ceiling: structurally guaranteed, once the reader and writer are one grammar read in both directions (DESIGN section 4): a production the grammar does not carry has no arm to fall through to, so reinterpretation is not expressible.",
+
+    "Next-rung trigger: the capability for extdeps.languages.yaml's ingest and emit to be derived from one set of grammar rows in extdeps/languages, sufficient for every construct the subset admits to be read and written by the same production.",
+
+    "REVIEW TELL: a reader function returning the value type with no refusal arm; a writer that filters or rewrites content; a witness that compares re-serialized text where decoded values were available.",
+  ],
+
+  evidence: [],
+}

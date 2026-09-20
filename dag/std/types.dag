@@ -166,10 +166,11 @@ type CommitSha    = String
 // constructor; callers reach the constructor, the invalid state stops being writable, and this
 // predicate deletes.
 
+// Forty lowercase hex digits: removing every hex digit leaves nothing. Removing them by digit costs
+// the same whatever the text, where testing each character cost one lambda per character -- forty of
+// them for every head, on every admission of an action use.
 fn commit_sha_text_holds(head: String) -> Bool {
-  head.length() == 40 && all(chars(s: head), cp =>
-    (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
-  )
+  (head.length() == 40) && (replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(head, "0", ""), "1", ""), "2", ""), "3", ""), "4", ""), "5", ""), "6", ""), "7", ""), "8", ""), "9", ""), "a", ""), "b", ""), "c", ""), "d", ""), "e", ""), "f", "") == "")
 }
 
 type Sha256       = String

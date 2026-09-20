@@ -2,6 +2,7 @@ module extdeps.languages.yaml.types
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -81,4 +82,17 @@ fn yaml_sequence(elements: List<YamlValue>) -> YamlValue {
 
 fn kv(key: String, value: YamlValue) -> YamlKeyValue {
   YamlKeyValue { key: key, value: value }
+}
+
+// THE VALUE AT `key` IN A MAPPING'S ENTRIES. Keys of an ingested or emitted mapping are unique (both
+// directions refuse a duplicate), so there is at most one.
+type YamlKeyLookup
+  = YamlKeyPresent { value: YamlValue }
+  | YamlKeyAbsent
+
+fn yaml_lookup(entries: List<YamlKeyValue>, key: String) -> YamlKeyLookup {
+  match get(xs: filter(entries, e => e.key == key), index: 0) {
+    Present { value: e } => YamlKeyPresent { value: e.value }
+    Absent => YamlKeyAbsent
+  }
 }

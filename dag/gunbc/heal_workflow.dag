@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -384,7 +384,10 @@ fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
       } else if !heal_workflow_capability_closure_holds() {
         HealWorkflowGenerationRefused { reason: heal_workflow_capability_refusal_reason }
       } else {
-        HealWorkflowGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: heal_workflow)) }
+        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_workflow)) {
+          EmittedYaml { text: t } => HealWorkflowGenerated { content: t }
+          YamlEmitRefused { path: p, reason: r } => HealWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_workflow", path: p, reason: r) }
+        }
       }
   }
 }

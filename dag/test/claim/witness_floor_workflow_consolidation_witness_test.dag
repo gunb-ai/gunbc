@@ -10,7 +10,8 @@ import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string, workflow_triggers_yaml }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.types { YamlValue }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed, github_event_name_pull_request, github_event_name_push, github_event_name_merge_group, github_event_name_workflow_dispatch }
 import extdeps.github.actions { RunStep, UsesStep }
 import extdeps.github.expressions {
@@ -477,7 +478,7 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // cover the path end to end. A per-claim `expected_witness_floor_yml()` read is the whole-file
 // serialize this row must not pay (measured 1823ms against the 500ms line).
 test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
-  let yml = serialize_yaml(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
+  let yml = emitted_yaml_text(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
   string_contains(
     s: yml,
     pattern: concat("types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
@@ -634,4 +635,13 @@ test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
       WitnessFloorGroupResolved { group: g } => g == "witness-floor-run-rid"
       WitnessFloorGroupRefused { cause: _ } => false
     }
+}
+
+// The emitted text, or "" when the writer refuses: every claim below asserts content the refused
+// value does not have, so a refusal cannot pass one.
+fn emitted_yaml_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
 }

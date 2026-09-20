@@ -60,7 +60,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.inputs.expected_revision || github.ref }}
       - name: Isolate toolchain dirs
-        run: |
+        run: |-
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
           echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
@@ -83,7 +83,7 @@ jobs:
         env:
           HOME: ${{ runner.temp }}
       - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
-        run: |
+        run: |-
           # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
           if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
           GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
@@ -91,7 +91,7 @@ jobs:
           mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
           echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
+        run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
           rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
@@ -100,7 +100,7 @@ jobs:
       - name: Cache Cargo
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: |
+          path: |-
             ${{ runner.temp }}/cargo/registry/index/
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
@@ -110,7 +110,7 @@ jobs:
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Build release bins (claim_executor + gunbc)
         id: release_build
-        run: |
+        run: |-
           # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
@@ -129,7 +129,7 @@ jobs:
         timeout-minutes: 45
       - name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled"
         id: reset_observer_dispatch_admission
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/host_reset_return_run.dag --function host_reset_return_dispatch_admission_wet
         env:
@@ -193,7 +193,7 @@ jobs:
           create_credentials_file: false
         timeout-minutes: 5
       - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
-        run: |
+        run: |-
           # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           set -euo pipefail
           umask 077
@@ -222,7 +222,7 @@ jobs:
         timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         env:
@@ -232,7 +232,7 @@ jobs:
         timeout-minutes: 15
       - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
         id: launch_environment_plan
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_launch_environment_plan_wet
         env:
@@ -242,7 +242,7 @@ jobs:
         timeout-minutes: 5
       - name: Fleet allocation-store substrate plan
         id: allocation_store_plan
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_allocation_store_plan_wet
         if: github.event.inputs.mode == 'allocation_store_plan'
@@ -270,7 +270,7 @@ jobs:
         timeout-minutes: 10
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
-        run: |
+        run: |-
           set -euo pipefail
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
           if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
@@ -295,7 +295,7 @@ jobs:
         timeout-minutes: 10
       - name: Org Actions credential validation + read-only settings diff
         id: org_actions_observe
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/org-admin-app-key"
@@ -346,7 +346,7 @@ jobs:
         timeout-minutes: 10
       - name: "GitHub App control plane: registration + webhook config observation"
         id: app_control_plane_observe
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           APP_KEY_FILE="$RUNNER_TEMP/app-jwt-key"
@@ -396,7 +396,7 @@ jobs:
         timeout-minutes: 10
       - name: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)"
         id: r2_mint_preflight
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_permission_group_observe.dag --function observe_account_permission_groups_wet
           cat "$ROOT/target/r2-mint-preflight-permission-groups.txt"
@@ -416,7 +416,7 @@ jobs:
         timeout-minutes: 10
       - name: R2 object-write token mint (AccountTokens.Create + Secret Manager custody)
         id: r2_object_write_mint
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function run_object_write
         env:
@@ -435,7 +435,7 @@ jobs:
         timeout-minutes: 10
       - name: "Runner micro-VM guest image: observe base artifacts and their digests"
         id: guest_image_observe
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_guest_image.dag --function runner_guest_image_observe_wet
           cat "$ROOT/target/runner-guest-image-standing.txt"
@@ -443,7 +443,7 @@ jobs:
         timeout-minutes: 30
       - name: "Runner micro-VM guest image: build the image and digest what was built"
         id: guest_image_converge
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_guest_image.dag --function runner_guest_image_converge_wet
           cat "$ROOT/target/runner-guest-image-standing.txt"
@@ -461,7 +461,7 @@ jobs:
         timeout-minutes: 10
       - name: "Runner micro-VM host: install the cited Firecracker release and re-observe"
         id: microvm_host_converge
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_host_ready.dag --function runner_microvm_host_converge_wet
           cat "$ROOT/target/runner-microvm-host-standing.txt"
@@ -479,7 +479,7 @@ jobs:
         timeout-minutes: 10
       - name: "Runner micro-VM: boot the guest image and read the serial console"
         id: microvm_boot_probe
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_microvm_boot_probe.dag --function runner_microvm_boot_probe_wet
           cat "$ROOT/target/runner-microvm-boot-probe.txt"
@@ -497,7 +497,7 @@ jobs:
         timeout-minutes: 10
       - name: Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)
         id: spark_grants
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
@@ -526,7 +526,7 @@ jobs:
         timeout-minutes: 60
       - name: Spark managed-access bootstrap (creates gunbc-automation, installs the fleet key, proves key-only auth, lays the narrow grants; one target per run)
         id: spark_bootstrap
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
@@ -555,7 +555,7 @@ jobs:
         timeout-minutes: 60
       - name: Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)
         id: spark_serving_apply
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
@@ -584,7 +584,7 @@ jobs:
         timeout-minutes: 60
       - name: Spark runtime image probe (pull the pinned image on the selected Spark and ask it, inside its own digest, what it registers and what it admits)
         id: spark_runtime_image_probe
-        run: |
+        run: |-
           set -euo pipefail
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
@@ -613,7 +613,7 @@ jobs:
         timeout-minutes: 60
       - name: "Runner host files: observe the teardown drop-in, the needrestart deferral and the loaded teardown (no writes)"
         id: runner_host_file_observe
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_host_file_converge.dag --function runner_host_file_observe_ci_wet
           cat "$ROOT/target/runner-host-file-converge-receipt.txt"
@@ -623,7 +623,7 @@ jobs:
         timeout-minutes: 15
       - name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back"
         id: runner_host_file_converge
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_host_file_converge.dag --function runner_host_file_converge_ci_wet
           cat "$ROOT/target/runner-host-file-converge-receipt.txt"
@@ -633,7 +633,7 @@ jobs:
         timeout-minutes: 15
       - name: "Password-session tools: ensure every tool password_session_host_cli_requirements enrolls is present on this runner, installing only what is measured absent"
         id: runner_password_session_tool_converge
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_password_session_tool_converge.dag --function runner_password_session_tool_converge_ci_wet
           cat "$ROOT/target/runner-password-session-tool-converge-receipt.txt"
@@ -697,7 +697,7 @@ jobs:
         timeout-minutes: 5
       - name: "Host reset-return: drive the subject through its controller and measure the return from a peer"
         id: host_reset_return
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/host_reset_return_run.dag --function host_reset_return_wet
           cat "$ROOT/target/host-reset-return.txt"
@@ -764,7 +764,7 @@ jobs:
         timeout-minutes: 10
       - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)
         id: dashboard_deploy
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_transaction_wet
           cat "$ROOT/target/live-deploy-srv1-live-receipt/live_deploy_receipt.json"
@@ -828,7 +828,7 @@ jobs:
           create_credentials_file: false
         timeout-minutes: 5
       - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
-        run: |
+        run: |-
           # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           set -euo pipefail
           umask 077
@@ -884,7 +884,7 @@ jobs:
         timeout-minutes: 10
       - name: Roadmap launch deployment receipt (rlm_launch_deployment_receipt_wet)
         id: rlm_receipt
-        run: |
+        run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag --function rlm_launch_deployment_receipt_wet
           cat "$ROOT/target/rlm-launch-deployment-receipt/receipt.json"

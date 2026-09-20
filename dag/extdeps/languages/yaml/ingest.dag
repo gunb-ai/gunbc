@@ -3,10 +3,10 @@ module extdeps.languages.yaml.ingest
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.optional { Present, Absent }
+import std.algebra { trim }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
-  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
-  kv
+  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -16,60 +16,473 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// A BOUNDED SUBSET OF YAML 1.2.2, READ WITH ITS CORRECT MEANING OR REFUSED AT A LINE. Every document
+// this module accepts denotes, under the YAML 1.2.2 core schema, exactly the YamlValue it returns;
+// every construct outside the subset is refused with the 1-based line it sits on. Nothing outside
+// the subset is reinterpreted as a string and nothing is dropped. The subset, construct by construct:
+//
+//   ACCEPTED
+//   - one document whose root is a block mapping or a block sequence starting at column 0
+//   - block mappings with plain keys, or single- or double-quoted keys; plain keys must resolve to a
+//     string under the core schema and may not start with an indicator or a digit; duplicate keys refuse
+//   - block sequences, including compact `- key: value` items and compact nested `- - x` items, and a
+//     sequence under a key at the key's own indentation
+//   - any indentation that increases, spaces only
+//   - plain scalars, resolved by the core schema (section 10.3.2): null, bool, int (decimal, 0o, 0x),
+//     float (decimal, exponent, .inf, .nan), otherwise string
+//   - single-quoted scalars (`''` is a quote) and double-quoted scalars with every escape section 5.7
+//     names, each on one line with nothing after the closing quote
+//   - flow sequences of scalars on one line, and the empty flow mapping `{}`
+//   - literal block scalars `|`, `|-`, `|+` with auto-detected indentation
+//   - blank lines and full-line comments between nodes
+//
+//   REFUSED, each with its own reason
+//   - folded block scalars (`>`), block scalar indentation indicators, anchors, aliases, tags,
+//     directives, document markers, explicit `?` keys, flow mappings other than `{}`, nested flow
+//     collections, multi-line flow collections, multi-line plain or quoted scalars, and a comment
+//     after a value on the same line
+//   - tabs in indentation, CR line breaks, a line that ends in whitespace, and every character YAML
+//     does not allow in a stream or that this reader cannot tell from whitespace
+//     (yaml_refused_code_points)
+
 type YamlIngestResult
   = IngestedYaml { value: YamlValue }
-  | YamlIngestRejected { reason: String }
+  | YamlIngestRejected { line: Int, reason: String }
 
-type YamlBlockResult
-  = ParsedYamlBlock { value: YamlValue, next_index: Int }
-  | YamlBlockRejected { reason: String }
+type YamlScalarResult
+  = ReadYamlScalar { value: YamlValue }
+  | YamlScalarRefused { reason: String }
 
-type YamlEntryResult
-  = ParsedYamlEntry { entry: YamlKeyValue, next_index: Int }
-  | YamlEntryRejected { reason: String }
+// ---------------------------------------------------------------------------------------------
+// CHARACTER REPERTOIRE
+// ---------------------------------------------------------------------------------------------
 
-type YamlSeqItemResult
-  = ParsedYamlSeqItem { value: YamlValue, next_index: Int }
-  | YamlSeqItemRejected { reason: String }
+// Code points refused anywhere in a document. C0 controls other than tab and line feed, DEL, and
+// the C1 block are outside YAML's printable set (section 5.1), and CR is a line break this reader
+// does not model. The rest -- NEL, no-break space, the Unicode space separators, the line and
+// paragraph separators, the byte-order mark and the two noncharacters -- are refused because the
+// host's trim treats them as whitespace (or, for the BOM, because it is only legal at the start of
+// a stream), so a reader that accepted them could not tell their content from indentation.
+data yaml_refused_code_points: List<Int> = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+  28, 29, 30, 31, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142,
+  143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 5760,
+  8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288,
+  65279, 65534, 65535
+]
 
-type YamlLiteralCollectResult {
-  text: String
-  next_index: Int
+data yaml_refused_characters: List<String> = map(yaml_refused_code_points, cp => from_code_point(cp: cp))
+
+fn yaml_first_refused_character(text: String) -> Int {
+  fold(yaml_refused_code_points, init: -1, f: (acc, cp) => if (acc == -1) && string_contains(s: text, pattern: from_code_point(cp: cp)) { cp } else { acc })
 }
 
-data yaml_digit_chars: String = "0123456789"
+fn yaml_contains_refused_character(text: String) -> Bool {
+  any(yaml_refused_characters, c => string_contains(s: text, pattern: c))
+}
 
-// STOPS AT THE FIRST NON-DIGIT, BY BRANCHING. Written as `digit(head) && yaml_all_digits(tail)` it
-// recursed to the end of every plain value, because the interpreter evaluates both operands of `&&`
-// before dispatching it -- the operand-demand divergence already recorded as
-// gunbc.recurring_failure_mode.realization_arms_diverge_on_whether_the_program_refuses. The explicit
-// branch is this function's own early exit; it does not resolve that shared defect.
-fn yaml_all_digits(s: String) -> Bool {
-  if s == "" {
+fn yaml_line_containing(lines: List<String>, pattern: String, index: Int) -> Int {
+  match get(xs: lines, index: index) {
+    Absent => 0
+    Present { value: raw } => if string_contains(s: raw, pattern: pattern) { index + 1 } else { yaml_line_containing(lines: lines, pattern: pattern, index: index + 1) }
+  }
+}
+
+fn yaml_refused_character_reason(cp: Int) -> String {
+  join(["the character U+", yaml_hex_text(n: cp, width: 4), " is outside the supported repertoire (YAML's printable set, less the characters this reader cannot tell from whitespace, and less CR line breaks)"], "")
+}
+
+data yaml_hex_digits: String = "0123456789ABCDEF"
+
+fn yaml_hex_text(n: Int, width: Int) -> String {
+  if (n < 16) && (width <= 1) {
+    substring(s: yaml_hex_digits, start: n, end: n + 1)
+  } else {
+    concat(yaml_hex_text(n: n / 16, width: width - 1), substring(s: yaml_hex_digits, start: n % 16, end: (n % 16) + 1))
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PLAIN SCALARS AND THE CORE SCHEMA
+// ---------------------------------------------------------------------------------------------
+
+// Section 10.3.2: the exact spellings the core schema resolves to null, bool and the special floats.
+data yaml_core_schema_words: Map<String, YamlValue> = {
+  "null": YamlNull, "Null": YamlNull, "NULL": YamlNull, "~": YamlNull,
+  "true": YamlBool { value: true }, "True": YamlBool { value: true }, "TRUE": YamlBool { value: true },
+  "false": YamlBool { value: false }, "False": YamlBool { value: false }, "FALSE": YamlBool { value: false },
+  ".inf": YamlFloat { lexeme: ".inf" }, ".Inf": YamlFloat { lexeme: ".Inf" }, ".INF": YamlFloat { lexeme: ".INF" },
+  "+.inf": YamlFloat { lexeme: "+.inf" }, "+.Inf": YamlFloat { lexeme: "+.Inf" }, "+.INF": YamlFloat { lexeme: "+.INF" },
+  "-.inf": YamlFloat { lexeme: "-.inf" }, "-.Inf": YamlFloat { lexeme: "-.Inf" }, "-.INF": YamlFloat { lexeme: "-.INF" },
+  ".nan": YamlFloat { lexeme: ".nan" }, ".NaN": YamlFloat { lexeme: ".NaN" }, ".NAN": YamlFloat { lexeme: ".NAN" }
+}
+
+data yaml_decimal_digits: String = "0123456789"
+data yaml_numeric_starts: String = "0123456789+-."
+
+fn yaml_run_end(s: String, i: Int, alphabet: String) -> Int {
+  if i >= s.length() {
+    i
+  } else if string_contains(s: alphabet, pattern: char_at(s, i)) {
+    yaml_run_end(s: s, i: i + 1, alphabet: alphabet)
+  } else {
+    i
+  }
+}
+
+fn yaml_char_is(s: String, i: Int, alphabet: String) -> Bool {
+  if i >= s.length() { false } else { string_contains(s: alphabet, pattern: char_at(s, i)) }
+}
+
+fn yaml_sign_width(s: String) -> Int {
+  if starts_with(s: s, prefix: "-") || starts_with(s: s, prefix: "+") { 1 } else { 0 }
+}
+
+fn yaml_is_core_int(s: String) -> Bool {
+  let sign = yaml_sign_width(s: s)
+  let decimal_end = yaml_run_end(s: s, i: sign, alphabet: yaml_decimal_digits)
+  if (decimal_end == s.length()) && (decimal_end > sign) {
     true
-  } else if !string_contains(s: yaml_digit_chars, pattern: substring(s: s, start: 0, end: 1)) {
-    false
+  } else if starts_with(s: s, prefix: "0o") && (s.length() > 2) {
+    yaml_run_end(s: s, i: 2, alphabet: "01234567") == s.length()
+  } else if starts_with(s: s, prefix: "0x") && (s.length() > 2) {
+    yaml_run_end(s: s, i: 2, alphabet: "0123456789abcdefABCDEF") == s.length()
   } else {
-    yaml_all_digits(s: substring(s: s, start: 1, end: s.length()))
+    false
   }
 }
 
-fn yaml_looks_like_int(s: String) -> Bool {
-  if s == "" {
+// [-+]? ( \. [0-9]+ | [0-9]+ ( \. [0-9]* )? ) ( [eE] [-+]? [0-9]+ )?
+fn yaml_is_core_float(s: String) -> Bool {
+  let sign = yaml_sign_width(s: s)
+  let whole_end = yaml_run_end(s: s, i: sign, alphabet: yaml_decimal_digits)
+  let has_dot = yaml_char_is(s: s, i: whole_end, alphabet: ".")
+  let fraction_end = if has_dot { yaml_run_end(s: s, i: whole_end + 1, alphabet: yaml_decimal_digits) } else { whole_end }
+  let has_mantissa = (whole_end > sign) || (fraction_end > whole_end + 1)
+  if !has_mantissa {
     false
-  } else if starts_with(s: s, prefix: "-") {
-    let rest = substring(s: s, start: 1, end: s.length())
-    (rest != "") && yaml_all_digits(s: rest)
+  } else if yaml_char_is(s: s, i: fraction_end, alphabet: "eE") {
+    let exponent_digits = if yaml_char_is(s: s, i: fraction_end + 1, alphabet: "+-") { fraction_end + 2 } else { fraction_end + 1 }
+    let exponent_end = yaml_run_end(s: s, i: exponent_digits, alphabet: yaml_decimal_digits)
+    (exponent_end > exponent_digits) && (exponent_end == s.length())
   } else {
-    yaml_all_digits(s: s)
+    fraction_end == s.length()
   }
 }
 
-// COUNTED IN CHUNKS, NOT ONE RECURSIVE CALL PER SPACE. Recursing per space copied the remaining line
-// at every leading space and ran several times per line, so indentation dominated the parse -- about
-// 235 eval steps a line, which put a census of one 143-line workflow file past a whole claim's
-// budget (gunb-ai/gunbc#11587). Consuming the largest run of 8, 4, 2 or 1 spaces per call gives the
-// identical count (spaces only; a tab still ends the indentation) in a handful of calls.
+// The host's i64 parse accepts exactly [-+]?[0-9]+, the core schema's decimal int, so a value it
+// reads is an int in one step; anything it refuses (an overflow, 0o, 0x, a float, a string) is
+// decided by the full grammar below.
+fn yaml_resolve_numeric(s: String) -> YamlValue {
+  match parse_int(s: s) {
+    Present { value: _ } => YamlInt { lexeme: s }
+    Absent => yaml_resolve_numeric_grammar(s: s)
+  }
+}
+
+fn yaml_resolve_numeric_grammar(s: String) -> YamlValue {
+  if yaml_is_core_int(s: s) {
+    YamlInt { lexeme: s }
+  } else if yaml_is_core_float(s: s) {
+    YamlFloat { lexeme: s }
+  } else {
+    YamlString { value: s }
+  }
+}
+
+// THE CORE SCHEMA'S TAG RESOLUTION FOR A PLAIN SCALAR (section 10.3.2), for text already known to
+// be a well-formed plain scalar.
+fn yaml_resolve_plain(s: String) -> YamlValue {
+  match map_get(yaml_core_schema_words, s) {
+    Present { value: v } => v
+    Absent => if string_contains(s: yaml_numeric_starts, pattern: substring(s: s, start: 0, end: 1)) { yaml_resolve_numeric(s: s) } else { YamlString { value: s } }
+  }
+}
+
+data yaml_inline_comment_reason: String = "inline YAML comments after values are not modeled"
+
+// Why `s` is not a well-formed single-line plain scalar in block context, or "" when it is.
+// `s` is trimmed and non-empty and does not start with an indicator (the caller dispatched those).
+// `: ` would make it a mapping and ` #` would start a comment, so neither can be content.
+fn yaml_plain_refusal(s: String) -> String {
+  if !string_contains(s: s, pattern: ":") {
+    yaml_plain_comment_refusal(s: s)
+  } else if string_contains(s: s, pattern: ": ") || string_contains(s: s, pattern: ":\t") || ends_with(s: s, suffix: ":") {
+    "a plain scalar cannot contain `: ` or end with `:` (a nested mapping on one line is not YAML; quote the value)"
+  } else {
+    yaml_plain_comment_refusal(s: s)
+  }
+}
+
+fn yaml_plain_comment_refusal(s: String) -> String {
+  if !string_contains(s: s, pattern: "#") {
+    ""
+  } else if string_contains(s: s, pattern: " #") || string_contains(s: s, pattern: "\t#") {
+    yaml_inline_comment_reason
+  } else {
+    ""
+  }
+}
+
+// A plain KEY is further restricted: it may not start with any indicator or a numeric start, and
+// it must resolve to a string, because YamlKeyValue.key is a string and the core schema would read
+// `true`, `null` or `1` as something else. The emitter quotes every key this refuses.
+data yaml_plain_key_refused_starts: String = "-?:,[]{}#&*!|>'\"%@`0123456789+.~ \t"
+
+fn yaml_plain_key_refusal(k: String) -> String {
+  if string_contains(s: yaml_plain_key_refused_starts, pattern: substring(s: k, start: 0, end: 1)) {
+    join(["the plain key `", k, "` is empty or starts with an indicator or a numeric character; quote it"], "")
+  } else if map_contains_key(yaml_core_schema_words, k) {
+    join(["the plain key `", k, "` resolves to a non-string under the core schema; quote it"], "")
+  } else {
+    yaml_plain_comment_refusal(s: k)
+  }
+}
+
+// Emit and ingest share one reading of plain text: a string may be written plain exactly when
+// reading it plain gives the same string back.
+fn yaml_string_reads_back_plain(s: String) -> Bool {
+  if (s == "") || (trim(s) != s) || string_contains(s: s, pattern: "\n") {
+    false
+  } else if string_contains(s: yaml_value_special_starts, pattern: substring(s: s, start: 0, end: 1)) && !yaml_indicator_opens_plain(v: s) {
+    false
+  } else if yaml_plain_refusal(s: s) != "" {
+    false
+  } else {
+    match yaml_resolve_plain(s: s) {
+      YamlString { value: _ } => true
+      _ => false
+    }
+  }
+}
+
+fn yaml_string_reads_back_as_plain_key(k: String) -> Bool {
+  (trim(k) == k) && (yaml_plain_key_refusal(k: k) == "") && !string_contains(s: k, pattern: ": ") && !ends_with(s: k, suffix: ":")
+}
+
+// ---------------------------------------------------------------------------------------------
+// QUOTED SCALARS
+// ---------------------------------------------------------------------------------------------
+
+fn yaml_single_quoted(v: String) -> YamlScalarResult {
+  if (v.length() < 2) || !ends_with(s: v, suffix: "'") {
+    YamlScalarRefused { reason: "a single-quoted scalar must close on its own line with nothing after the closing quote (multi-line quoted scalars and trailing comments are outside the supported subset)" }
+  } else {
+    let inner = substring(s: v, start: 1, end: v.length() - 1)
+    if string_contains(s: replace(inner, "''", ""), pattern: "'") {
+      YamlScalarRefused { reason: "a lone `'` ends a single-quoted scalar before the end of the value (write `''` for a quote)" }
+    } else {
+      ReadYamlScalar { value: YamlString { value: replace(inner, "''", "'") } }
+    }
+  }
+}
+
+// Section 5.7. `\\`, `\x`, `\u` and `\U` are handled by the decoder; every other escape is one
+// character.
+data yaml_double_quoted_escapes: Map<String, Int> = {
+  "0": 0, "a": 7, "b": 8, "t": 9, "\t": 9, "n": 10, "v": 11, "f": 12, "r": 13, "e": 27,
+  " ": 32, "\"": 34, "/": 47, "N": 133, "_": 160, "L": 8232, "P": 8233
+}
+
+data yaml_hex_values: Map<String, Int> = {
+  "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+  "a": 10, "b": 11, "c": 12, "d": 13, "e": 14, "f": 15,
+  "A": 10, "B": 11, "C": 12, "D": 13, "E": 14, "F": 15
+}
+
+fn yaml_hex_value(s: String, i: Int, acc: Int) -> Int {
+  if i >= s.length() {
+    acc
+  } else {
+    match map_get(yaml_hex_values, char_at(s, i)) {
+      Present { value: d } => yaml_hex_value(s: s, i: i + 1, acc: (acc * 16) + d)
+      Absent => -1
+    }
+  }
+}
+
+data yaml_unescaped_quote_reason: String = "an unescaped `\"` ends a double-quoted scalar before the end of the value (multi-line quoted scalars and trailing comments are outside the supported subset)"
+
+fn yaml_double_quoted(v: String) -> YamlScalarResult {
+  if (v.length() < 2) || !ends_with(s: v, suffix: "\"") {
+    YamlScalarRefused { reason: "a double-quoted scalar must close on its own line with nothing after the closing quote (multi-line quoted scalars and trailing comments are outside the supported subset)" }
+  } else {
+    let inner = substring(s: v, start: 1, end: v.length() - 1)
+    if !string_contains(s: inner, pattern: "\\") {
+      if string_contains(s: inner, pattern: "\"") {
+        YamlScalarRefused { reason: yaml_unescaped_quote_reason }
+      } else {
+        ReadYamlScalar { value: YamlString { value: inner } }
+      }
+    } else {
+      yaml_double_quoted_pieces(pieces: split(s: inner, delimiter: "\\"), index: 0, escape: false, acc: [])
+    }
+  }
+}
+
+// THE BODY SPLIT AT EVERY BACKSLASH. Piece 0 is literal. In escape position a piece's first
+// character is the escaped one; an EMPTY piece there means the escaped character was the next
+// backslash, so the piece after it is literal again. An empty last piece in escape position is a
+// backslash with nothing after it: the closing quote was escaped, so the scalar never closed.
+fn yaml_double_quoted_pieces(pieces: List<String>, index: Int, escape: Bool, acc: List<String>) -> YamlScalarResult {
+  match get(xs: pieces, index: index) {
+    Absent => ReadYamlScalar { value: YamlString { value: join(acc, "") } }
+    Present { value: p } =>
+      if !escape {
+        if string_contains(s: p, pattern: "\"") {
+          YamlScalarRefused { reason: yaml_unescaped_quote_reason }
+        } else {
+          yaml_double_quoted_pieces(pieces: pieces, index: index + 1, escape: true, acc: concat(acc, [p]))
+        }
+      } else if p == "" {
+        if index + 1 >= pieces.length() {
+          YamlScalarRefused { reason: "a double-quoted scalar ends in a lone backslash, which escapes its closing quote" }
+        } else {
+          yaml_double_quoted_pieces(pieces: pieces, index: index + 1, escape: false, acc: concat(acc, ["\\"]))
+        }
+      } else {
+        yaml_double_quoted_escape(pieces: pieces, index: index, p: p, acc: acc)
+      }
+  }
+}
+
+fn yaml_double_quoted_escape(pieces: List<String>, index: Int, p: String, acc: List<String>) -> YamlScalarResult {
+  let c = substring(s: p, start: 0, end: 1)
+  let width = if c == "x" { 2 } else if c == "u" { 4 } else if c == "U" { 8 } else { 0 }
+  if width == 0 {
+    match map_get(yaml_double_quoted_escapes, c) {
+      Absent => YamlScalarRefused { reason: join(["`\\", c, "` is not a YAML escape (section 5.7)"], "") }
+      Present { value: cp } => yaml_double_quoted_rest(pieces: pieces, index: index, rest: substring(s: p, start: 1, end: p.length()), acc: concat(acc, [from_code_point(cp: cp)]))
+    }
+  } else if p.length() < width + 1 {
+    YamlScalarRefused { reason: join(["`\\", c, "` needs ", to_string(width), " hexadecimal digits"], "") }
+  } else {
+    let cp = yaml_hex_value(s: substring(s: p, start: 1, end: width + 1), i: 0, acc: 0)
+    if cp < 0 {
+      YamlScalarRefused { reason: join(["`\\", substring(s: p, start: 0, end: width + 1), "` is not a hexadecimal escape"], "") }
+    } else if ((cp >= 55296) && (cp <= 57343)) || (cp > 1114111) {
+      YamlScalarRefused { reason: join(["`\\", substring(s: p, start: 0, end: width + 1), "` does not name a Unicode scalar value"], "") }
+    } else {
+      yaml_double_quoted_rest(pieces: pieces, index: index, rest: substring(s: p, start: width + 1, end: p.length()), acc: concat(acc, [from_code_point(cp: cp)]))
+    }
+  }
+}
+
+fn yaml_double_quoted_rest(pieces: List<String>, index: Int, rest: String, acc: List<String>) -> YamlScalarResult {
+  if string_contains(s: rest, pattern: "\"") {
+    YamlScalarRefused { reason: yaml_unescaped_quote_reason }
+  } else {
+    yaml_double_quoted_pieces(pieces: pieces, index: index + 1, escape: true, acc: concat(acc, [rest]))
+  }
+}
+
+// The index just past the quote that closes the quoted scalar opening at 0, or -1 if it does not
+// close on this line. Used only where a quoted scalar may be followed by more text: a quoted key.
+fn yaml_quoted_end(s: String, i: Int, quote: String) -> Int {
+  if i >= s.length() {
+    -1
+  } else {
+    let c = char_at(s, i)
+    if (quote == "\"") && (c == "\\") {
+      yaml_quoted_end(s: s, i: i + 2, quote: quote)
+    } else if c != quote {
+      yaml_quoted_end(s: s, i: i + 1, quote: quote)
+    } else if (quote == "'") && yaml_char_is(s: s, i: i + 1, alphabet: "'") {
+      yaml_quoted_end(s: s, i: i + 2, quote: quote)
+    } else {
+      i + 1
+    }
+  }
+}
+
+fn yaml_quoted_scalar(v: String) -> YamlScalarResult {
+  if starts_with(s: v, prefix: "'") { yaml_single_quoted(v: v) } else { yaml_double_quoted(v: v) }
+}
+
+// ---------------------------------------------------------------------------------------------
+// FLOW SEQUENCES
+// ---------------------------------------------------------------------------------------------
+
+// A flow entry is a quoted scalar or a plain scalar that, in flow context, also may not contain a
+// flow indicator (section 7.3.3).
+fn yaml_flow_entry(e: String) -> YamlScalarResult {
+  if e == "" {
+    YamlScalarRefused { reason: "an empty flow sequence entry (including a trailing comma) is outside the supported subset" }
+  } else if starts_with(s: e, prefix: "\"") || starts_with(s: e, prefix: "'") {
+    yaml_quoted_scalar(v: e)
+  } else if string_contains(s: yaml_value_special_starts, pattern: substring(s: e, start: 0, end: 1)) && !yaml_indicator_opens_plain(v: e) {
+    YamlScalarRefused { reason: join(["the flow entry `", e, "` starts with an indicator; nested flow collections, anchors, aliases and tags are outside the supported subset"], "") }
+  } else if string_contains(s: e, pattern: "[") || string_contains(s: e, pattern: "]") || string_contains(s: e, pattern: "{") || string_contains(s: e, pattern: "}") {
+    YamlScalarRefused { reason: join(["the flow entry `", e, "` contains a flow indicator; quote it"], "") }
+  } else {
+    let bad = yaml_plain_refusal(s: e)
+    if bad != "" { YamlScalarRefused { reason: bad } } else { ReadYamlScalar { value: yaml_resolve_plain(s: e) } }
+  }
+}
+
+fn yaml_flow_entries(entries: List<String>, index: Int, acc: List<YamlValue>) -> YamlScalarResult {
+  match get(xs: entries, index: index) {
+    Absent => ReadYamlScalar { value: YamlSequence { elements: acc } }
+    Present { value: e } =>
+      match yaml_flow_entry(e: trim(e)) {
+        ReadYamlScalar { value: x } => yaml_flow_entries(entries: entries, index: index + 1, acc: concat(acc, [x]))
+        YamlScalarRefused { reason: r } => YamlScalarRefused { reason: r }
+      }
+  }
+}
+
+// Splits at the commas that are outside quotes. Quote state is tracked character by character; a
+// backslash inside double quotes skips the character after it.
+fn yaml_flow_split(s: String, i: Int, start: Int, quote: String, acc: List<String>) -> List<String> {
+  if i >= s.length() {
+    concat(acc, [substring(s: s, start: start, end: s.length())])
+  } else {
+    let c = char_at(s, i)
+    if quote == "" {
+      if c == "," {
+        yaml_flow_split(s: s, i: i + 1, start: i + 1, quote: "", acc: concat(acc, [substring(s: s, start: start, end: i)]))
+      } else if (c == "\"") || (c == "'") {
+        yaml_flow_split(s: s, i: i + 1, start: start, quote: c, acc: acc)
+      } else {
+        yaml_flow_split(s: s, i: i + 1, start: start, quote: "", acc: acc)
+      }
+    } else if (quote == "\"") && (c == "\\") {
+      yaml_flow_split(s: s, i: i + 2, start: start, quote: quote, acc: acc)
+    } else if c == quote {
+      yaml_flow_split(s: s, i: i + 1, start: start, quote: "", acc: acc)
+    } else {
+      yaml_flow_split(s: s, i: i + 1, start: start, quote: quote, acc: acc)
+    }
+  }
+}
+
+fn yaml_flow_sequence(v: String) -> YamlScalarResult {
+  if !ends_with(s: v, suffix: "]") {
+    YamlScalarRefused { reason: "a flow sequence must close on its own line with nothing after `]` (multi-line flow collections and trailing comments are outside the supported subset)" }
+  } else {
+    let inner = trim(substring(s: v, start: 1, end: v.length() - 1))
+    if inner == "" {
+      ReadYamlScalar { value: YamlSequence { elements: [] } }
+    } else if string_contains(s: inner, pattern: "\"") || string_contains(s: inner, pattern: "'") {
+      yaml_flow_entries(entries: yaml_flow_split(s: inner, i: 0, start: 0, quote: "", acc: []), index: 0, acc: [])
+    } else {
+      yaml_flow_entries(entries: split(s: inner, delimiter: ","), index: 0, acc: [])
+    }
+  }
+}
+
+// The number of leading spaces. The line never ends in whitespace (the document refuses that), so
+// its trimmed length gives the count directly unless the leading whitespace holds a tab.
+fn yaml_leading_spaces(line: String) -> Int {
+  let lead = line.length() - trim(line).length()
+  if starts_with(s: line, prefix: substring(s: yaml_spaces, start: 0, end: if lead > yaml_spaces.length() { yaml_spaces.length() } else { lead })) && (lead <= yaml_spaces.length()) {
+    lead
+  } else {
+    yaml_indent_of(line: line)
+  }
+}
+
+// Spaces only: a tab ends the count.
 fn yaml_indent_of(line: String) -> Int {
   if starts_with(s: line, prefix: "        ") {
     8 + yaml_indent_of(line: substring(s: line, start: 8, end: line.length()))
@@ -84,318 +497,661 @@ fn yaml_indent_of(line: String) -> Int {
   }
 }
 
-fn yaml_strip_indent(line: String, indent: Int) -> String {
-  substring(s: line, start: indent, end: line.length())
+// ---------------------------------------------------------------------------------------------
+// LITERAL BLOCK SCALARS
+// ---------------------------------------------------------------------------------------------
+
+data yaml_block_scalar_chomping: Map<String, String> = { "|": "clip", "|-": "strip", "|+": "keep" }
+
+data yaml_spaces: String = "                                                                "
+data yaml_newline_spaces: String = concat("\n", yaml_spaces)
+
+fn yaml_first_nonempty(lines: List<String>, index: Int) -> Int {
+  match get(xs: lines, index: index) {
+    Absent => index
+    Present { value: l } => if l == "" { yaml_first_nonempty(lines: lines, index: index + 1) } else { index }
+  }
 }
 
-// ONE LINE, READ ONCE. Every parse function asks the same three questions of a line -- its indent,
-// its text after that indent, and whether it is blank or a full-line comment -- and each used to
-// re-derive them from the raw string, several times per line and once more at every enclosing block
-// level that checks for its own end. That made the parse cost a large constant per line (measured at
-// 200-320 eval steps on this repository's workflows) for facts that never change after the line is
-// read. The table computes them once; every consumer reads the field.
-type YamlLine {
-  raw: String
-  indent: Int
-  text: String
-  ignorable: Bool
+// The first line of a literal's continuation that is neither empty nor indented to the content
+// column: the literal's body ends there (section 8.1.2).
+fn yaml_literal_end(lines: List<String>, index: Int, prefix: String) -> Int {
+  match get(xs: lines, index: index) {
+    Absent => index
+    Present { value: l } => if (l == "") || starts_with(s: l, prefix: prefix) { yaml_literal_end(lines: lines, index: index + 1, prefix: prefix) } else { index }
+  }
 }
 
-fn yaml_line_record(raw: String) -> YamlLine {
-  let indent = yaml_indent_of(line: raw)
-  let text = substring(s: raw, start: indent, end: raw.length())
-  YamlLine { raw: raw, indent: indent, text: text, ignorable: (text == "") || starts_with(s: text, prefix: "#") }
+fn yaml_strip_final_newlines(s: String) -> String {
+  if ends_with(s: s, suffix: "\n") { yaml_strip_final_newlines(s: substring(s: s, start: 0, end: s.length() - 1)) } else { s }
 }
 
-fn yaml_lines_from_source(src: String) -> List<YamlLine> {
+// Chomping (section 8.1.1.2): strip drops every final line break, clip keeps exactly one, keep
+// keeps them all. `text` is the body's lines joined, so its final line breaks are its trailing
+// empty lines.
+fn yaml_chomp(chomping: String, text: String) -> String {
+  if chomping == "strip" {
+    yaml_strip_final_newlines(s: text)
+  } else if chomping == "clip" {
+    concat(yaml_strip_final_newlines(s: text), "\n")
+  } else {
+    concat(text, "\n")
+  }
+}
+
+// The body with its content indentation removed from every line. Empty lines carry none.
+fn yaml_literal_text(body: String, prefix: String) -> String {
+  let s = replace(concat("\n", body), concat("\n", prefix), "\n")
+  substring(s: s, start: 1, end: s.length())
+}
+
+fn yaml_block_scalar(header: String, cont: String, col: Int) -> YamlBlockResult {
+  match map_get(yaml_block_scalar_chomping, header) {
+    Absent => YamlBlockRefused { line: 0, reason: join(["the block scalar header `", header, "` is outside the supported subset (only `|`, `|-` and `|+`, with no indentation indicator and no comment)"], "") }
+    Present { value: chomping } => yaml_literal_body(chomping: chomping, cont: cont, col: col)
+  }
+}
+
+// `cont` is every line after the header up to the next entry of the enclosing block; its first
+// non-empty line fixes the content indentation (section 8.1.1.1), which must exceed `col`.
+fn yaml_literal_body(chomping: String, cont: String, col: Int) -> YamlBlockResult {
+  let lines = split(s: cont, delimiter: "\n")
+  let first = lines.first()
+  let lead = first.length() - trim(first).length()
+  if (first == "") || (lead <= col) || (lead > yaml_spaces.length()) {
+    yaml_literal_general(chomping: chomping, cont: cont, col: col, lines: lines)
+  } else {
+    let prefix = substring(s: yaml_spaces, start: 0, end: lead)
+    if (split(s: concat("\n", cont), delimiter: concat("\n", prefix)) |> count) - 1 + (filter(lines, l => l == "") |> count) == (lines |> count) {
+      YamlBlockParsed { value: YamlString { value: yaml_chomp(chomping: chomping, text: yaml_literal_text(body: cont, prefix: prefix)) } }
+    } else {
+      yaml_literal_general(chomping: chomping, cont: cont, col: col, lines: lines)
+    }
+  }
+}
+
+// Every literal the fast test above does not settle: leading empty lines, a first line whose
+// leading whitespace holds a tab, no content, or a body that ends before the chunk does.
+fn yaml_literal_general(chomping: String, cont: String, col: Int, lines: List<String>) -> YamlBlockResult {
+  let first = match get(xs: lines, index: yaml_first_nonempty(lines: lines, index: 0)) { Present { value: l } => l  Absent => "" }
+  let content_indent = yaml_indent_of(line: first)
+  if (cont == "") || (first == "") || (content_indent <= col) {
+    if chomping == "keep" {
+      YamlBlockRefused { line: 0, reason: "a keep-chomped (`|+`) block scalar with no content line is outside the supported subset" }
+    } else {
+      yaml_scalar_with_cont(value: YamlString { value: "" }, cont: cont)
+    }
+  } else if content_indent > yaml_spaces.length() {
+    YamlBlockRefused { line: 1, reason: "block scalar content indented past 64 columns is outside the supported subset" }
+  } else {
+    let prefix = substring(s: yaml_spaces, start: 0, end: content_indent)
+    let end = yaml_literal_end(lines: lines, index: 0, prefix: prefix)
+    match yaml_scalar_with_cont(value: YamlNull, cont: join(lines.skip(n: end), "\n")) {
+      YamlBlockRefused { line: l, reason: r } => YamlBlockRefused { line: end + l, reason: r }
+      YamlBlockParsed { value: _ } =>
+        YamlBlockParsed { value: YamlString { value: yaml_chomp(chomping: chomping, text: yaml_literal_text(body: join(lines.take(n: end), "\n"), prefix: prefix)) } }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// BLOCK STRUCTURE
+// ---------------------------------------------------------------------------------------------
+//
+// A BLOCK IS SPLIT INTO ITS ENTRIES WITH ONE SPLIT, NOT READ LINE BY LINE. `text` is a block whose
+// first line starts at column `n` (with that indentation already removed) and whose later lines
+// keep theirs. Every line break followed by `n` spaces and a non-space is first marked with a
+// sentinel that cannot occur in an accepted document (a refused control character), so splitting at
+// the marks yields one chunk per line at column `n`, with the deeper lines left inside their chunk
+// exactly as written. A chunk that is an
+// empty line, a full-line comment, or (in a mapping) a sequence item at the mapping's own column is
+// joined back to the chunk before it: the first two carry no content there, and the third is the
+// value of the key before it. Everything else about a chunk is decided by reading that chunk.
+//
+// Every result's line is an offset from the first line of the text it was handed; callers add
+// their own offset, and ingest_yaml_source reports the 1-based document line.
+
+type YamlBlockResult
+  = YamlBlockParsed { value: YamlValue }
+  | YamlBlockRefused { line: Int, reason: String }
+
+type YamlEntryRead {
+  entry: YamlKeyValue
+  refusal: String
+  line: Int
+}
+
+data yaml_line_join_sentinel: String = from_code_point(cp: 1)
+
+fn yaml_is_ignorable_line(l: String) -> Bool {
+  let t = trim(l)
+  (t == "") || starts_with(s: t, prefix: "#")
+}
+
+// The offset of the first line of `cont` that carries content, or -1 when none does.
+fn yaml_first_content_offset(lines: List<String>, index: Int) -> Int {
+  match get(xs: lines, index: index) {
+    Absent => -1
+    Present { value: l } => if yaml_is_ignorable_line(l: l) { yaml_first_content_offset(lines: lines, index: index + 1) } else { index }
+  }
+}
+
+// A scalar's entry is one line: whatever else its chunk holds must be empty lines or comments.
+fn yaml_scalar_with_cont(value: YamlValue, cont: String) -> YamlBlockResult {
+  if cont == "" {
+    YamlBlockParsed { value: value }
+  } else {
+    let at = yaml_first_content_offset(lines: split(s: cont, delimiter: "\n"), index: 0)
+    if at < 0 {
+      YamlBlockParsed { value: value }
+    } else {
+      YamlBlockRefused { line: at + 1, reason: "unexpected indentation: this line continues a scalar or sits between block levels (multi-line plain scalars and irregular indentation are outside the supported subset)" }
+    }
+  }
+}
+
+// A chunk continues the one before it when its first line is empty (a blank line at column 0),
+// a comment, or -- in a mapping -- a sequence item at the mapping's own column.
+fn yaml_chunk_continues(c: String, seq: Bool) -> Bool {
+  starts_with(s: concat(c, "\n"), prefix: "\n") || starts_with(s: c, prefix: "#") || (!seq && yaml_is_seq_item(t: yaml_first_line(c: c)))
+}
+
+fn yaml_merge_chunks(chunks: List<String>, sp: String, seq: Bool) -> List<String> {
+  fold(chunks, init: [], f: (acc, c) =>
+    if ((acc |> count) > 0) && yaml_chunk_continues(c: c, seq: seq) {
+      concat(acc.take(n: (acc |> count) - 1), [join([acc.last(), "\n", sp, c], "")])
+    } else {
+      concat(acc, [c])
+    })
+}
+
+fn yaml_is_seq_item(t: String) -> Bool {
+  starts_with(s: concat(t, " "), prefix: "- ")
+}
+
+fn yaml_starts_seq(text: String) -> Bool {
+  starts_with(s: concat(text, " "), prefix: "- ") || starts_with(s: text, prefix: "-\n")
+}
+
+fn yaml_needs_merge(text: String, nl: String, n: Int, seq: Bool) -> Bool {
+  if string_contains(s: text, pattern: concat(nl, "#")) {
+    true
+  } else if n == 0 {
+    string_contains(s: concat(text, "\n"), pattern: "\n\n") || (!seq && string_contains(s: text, pattern: "\n-"))
+  } else if seq {
+    false
+  } else {
+    string_contains(s: text, pattern: concat(nl, "-"))
+  }
+}
+
+fn yaml_block(text: String, n: Int, seq: Bool, base: Int) -> YamlBlockResult {
+  if n > yaml_spaces.length() {
+    YamlBlockRefused { line: base, reason: "indentation past 64 columns is outside the supported subset" }
+  } else if !string_contains(s: text, pattern: "\n") {
+    if seq { yaml_seq_block(chunks: [text], n: n, base: base) } else { yaml_single_entry_block(c: text, n: n, base: base) }
+  } else {
+    let nl = substring(s: yaml_newline_spaces, start: 0, end: n + 1)
+    let marked = concat(yaml_line_join_sentinel, nl)
+    let raw = split(s: replace(replace(text, nl, marked), concat(marked, " "), concat(nl, " ")), delimiter: marked)
+    let chunks = if yaml_needs_merge(text: text, nl: nl, n: n, seq: seq) { yaml_merge_chunks(chunks: raw, sp: substring(s: yaml_spaces, start: 0, end: n), seq: seq) } else { raw }
+    if seq { yaml_seq_block(chunks: chunks, n: n, base: base) } else { yaml_map_block(chunks: chunks, n: n, base: base) }
+  }
+}
+
+fn yaml_single_entry_block(c: String, n: Int, base: Int) -> YamlBlockResult {
+  let r = yaml_entry(c: c, n: n)
+  if r.refusal != "" { YamlBlockRefused { line: base + r.line, reason: r.refusal } } else { YamlBlockParsed { value: YamlMapping { entries: [r.entry] } } }
+}
+
+fn yaml_line_count(c: String) -> Int {
+  split(s: c, delimiter: "\n") |> count
+}
+
+// A refused entry's key is the join sentinel, which no accepted key can contain, so the one map of
+// keys this block builds answers both questions: whether an entry was refused, and whether a key
+// repeats.
+fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
+  let reads = map(chunks, c => yaml_entry(c: c, n: n))
+  let entries = map(reads, r => r.entry)
+  let keys = fold(entries, init: empty_map(), f: (m, e) => map_insert(m, e.key, true))
+  if map_contains_key(keys, yaml_line_join_sentinel) {
+    yaml_first_entry_refusal(chunks: chunks, reads: reads, index: 0, line: base)
+  } else if (map_keys(keys) |> count) != (entries |> count) {
+    yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: 0, line: base, seen: empty_map())
+  } else {
+    YamlBlockParsed { value: YamlMapping { entries: entries } }
+  }
+}
+
+fn yaml_first_entry_refusal(chunks: List<String>, reads: List<YamlEntryRead>, index: Int, line: Int) -> YamlBlockResult {
+  match get(xs: reads, index: index) {
+    Absent => YamlBlockRefused { line: line, reason: "a mapping key decoded to U+0001, which this reader reserves as its line-join sentinel; such a key is outside the supported subset" }
+    Present { value: r } =>
+      if r.refusal != "" {
+        YamlBlockRefused { line: line + r.line, reason: r.refusal }
+      } else {
+        yaml_first_entry_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }))
+      }
+  }
+}
+
+fn yaml_duplicate_key_refusal(chunks: List<String>, entries: List<YamlKeyValue>, index: Int, line: Int, seen: Map<String, Bool>) -> YamlBlockResult {
+  match get(xs: entries, index: index) {
+    Absent => YamlBlockRefused { line: line, reason: "a mapping holds a key twice" }
+    Present { value: e } =>
+      if map_contains_key(seen, e.key) {
+        YamlBlockRefused { line: line, reason: join(["duplicate mapping key `", e.key, "` (YAML requires the keys of a mapping to be unique)"], "") }
+      } else {
+        yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }), seen: map_insert(seen, e.key, true))
+      }
+  }
+}
+
+fn yaml_seq_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
+  let reads = map(chunks, c => yaml_item(c: c, n: n))
+  if any(reads, r => match r { YamlBlockRefused { line: _, reason: _ } => true  YamlBlockParsed { value: _ } => false }) {
+    yaml_first_item_refusal(chunks: chunks, reads: reads, index: 0, line: base)
+  } else {
+    YamlBlockParsed { value: YamlSequence { elements: map(reads, r => match r { YamlBlockParsed { value: v } => v  YamlBlockRefused { line: _, reason: _ } => YamlNull }) } }
+  }
+}
+
+fn yaml_first_item_refusal(chunks: List<String>, reads: List<YamlBlockResult>, index: Int, line: Int) -> YamlBlockResult {
+  match get(xs: reads, index: index) {
+    Absent => YamlBlockRefused { line: line, reason: "a sequence item was refused" }
+    Present { value: r } =>
+      match r {
+        YamlBlockRefused { line: l, reason: why } => YamlBlockRefused { line: line + l, reason: why }
+        YamlBlockParsed { value: _ } =>
+          yaml_first_item_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }))
+      }
+  }
+}
+
+// First characters that do not open an ordinary plain scalar in block context: quotes, flow and
+// block-scalar indicators, anchors, aliases, tags, reserved indicators, a comment, and `-`, `?`,
+// `:`, which open a plain scalar only when a non-space follows (yaml_indicator_opens_plain).
+data yaml_value_special_starts: String = "\"'[]{},|>&*!%@`#-?:"
+
+fn yaml_indicator_opens_plain(v: String) -> Bool {
+  if (v.length() < 2) || yaml_char_is(s: v, i: 1, alphabet: " \t") {
+    false
+  } else {
+    starts_with(s: v, prefix: "-") || starts_with(s: v, prefix: "?") || starts_with(s: v, prefix: ":")
+  }
+}
+
+// Key starts that leave the one-line fast path: quoted and explicit keys, indicators, numeric
+// starts and whitespace. Value starts that leave it: every indicator, and whitespace.
+data yaml_key_slow_starts: String = "-?:,[]{}#&*!|>'\"%@`0123456789+.~ \t"
+data yaml_value_slow_starts: String = "\"'[]{},|>&*!%@`#-?: \t"
+
+// 1: leaves the one-line fast path (an indicator or whitespace). 2: a plain scalar the core schema
+// may resolve to something other than a string. Absent: an ordinary start, always a string.
+data yaml_value_start_class: Map<String, Int> = {
+  "": 1, " ": 1, "\t": 1, "\"": 1, "'": 1, "[": 1, "]": 1, "{": 1, "}": 1, ",": 1, "|": 1, ">": 1,
+  "&": 1, "*": 1, "!": 1, "%": 1, "@": 1, "`": 1, "#": 1, "-": 1, "?": 1, ":": 1,
+  "0": 2, "1": 2, "2": 2, "3": 2, "4": 2, "5": 2, "6": 2, "7": 2, "8": 2, "9": 2, "+": 2, ".": 2,
+  "n": 2, "N": 2, "t": 2, "T": 2, "f": 2, "F": 2, "~": 2
+}
+
+// THE COMMON ENTRY, `key: plain`, ON ONE LINE. Every test here only routes: a chunk that fails one
+// is read by yaml_entry_general, which decides everything this path does not. Exactly one `: `, no
+// continuation, no `#` anywhere (so no comment), no final `:`, a key that starts ordinarily and is
+// not a core-schema word, and a value that does not start with an indicator.
+fn yaml_entry(c: String, n: Int) -> YamlEntryRead {
+  if string_contains(s: c, pattern: "\n") {
+    yaml_entry_multiline(c: c, n: n)
+  } else {
+    let parts = split(s: c, delimiter: ": ")
+    let v = parts.last()
+    if (parts |> count) != 2 {
+      yaml_entry_general(c: c, n: n)
+    } else if string_contains(s: c, pattern: "#") || ends_with(s: v, suffix: ":") {
+      yaml_entry_general(c: c, n: n)
+    } else {
+      let k = parts.first()
+      if string_contains(s: yaml_key_slow_starts, pattern: substring(s: k, start: 0, end: 1)) || map_contains_key(yaml_core_schema_words, k) || (trim(k) != k) {
+        yaml_entry_general(c: c, n: n)
+      } else {
+        match map_get(yaml_value_start_class, substring(s: v, start: 0, end: 1)) {
+          Absent => YamlEntryRead { entry: YamlKeyValue { key: k, value: YamlString { value: v } }, refusal: "", line: 0 }
+          Present { value: cls } =>
+            if cls == 1 {
+              yaml_entry_general(c: c, n: n)
+            } else {
+              YamlEntryRead { entry: YamlKeyValue { key: k, value: yaml_resolve_plain(s: v) }, refusal: "", line: 0 }
+            }
+        }
+      }
+    }
+  }
+}
+
+// An entry whose chunk holds more lines: `key:` over a nested block and `key: |` over a literal
+// are read directly once the key passes the plain-key test; everything else is general.
+fn yaml_entry_multiline(c: String, n: Int) -> YamlEntryRead {
+  let f = yaml_first_line(c: c)
+  let parts = split(s: f, delimiter: ": ")
+  let k = parts.first()
+  if ends_with(s: k, suffix: " ") || ends_with(s: k, suffix: "\t") || ends_with(s: f, suffix: " :") || ends_with(s: f, suffix: "\t:") {
+    yaml_entry_general(c: c, n: n)
+  } else if (parts |> count) == 1 {
+    if ends_with(s: f, suffix: ":") && !starts_with(s: f, prefix: "\"") && !starts_with(s: f, prefix: "'") {
+      yaml_keyed_nested(k: substring(s: f, start: 0, end: f.length() - 1), cont: substring(s: c, start: f.length() + 1, end: c.length()), n: n)
+    } else {
+      yaml_entry_general(c: c, n: n)
+    }
+  } else if ((parts |> count) == 2) && starts_with(s: parts.last(), prefix: "|") && !string_contains(s: "\"'", pattern: substring(s: f, start: 0, end: 1)) {
+    yaml_literal_entry(k: k, v: substring(s: c, start: k.length() + 2, end: c.length()), n: n, c: c)
+  } else {
+    yaml_entry_general(c: c, n: n)
+  }
+}
+
+fn yaml_keyed_nested(k: String, cont: String, n: Int) -> YamlEntryRead {
+  if string_contains(s: yaml_key_slow_starts, pattern: substring(s: k, start: 0, end: 1)) || map_contains_key(yaml_core_schema_words, k) || string_contains(s: k, pattern: "#") {
+    yaml_keyed_entry(k: k, v: "", cont: cont, n: n)
+  } else {
+    yaml_entry_value(k: k, r: yaml_nested(cont: cont, col: n, same_col_seq: true))
+  }
+}
+
+fn yaml_literal_entry(k: String, v: String, n: Int, c: String) -> YamlEntryRead {
+  let ls = split(s: v, delimiter: "\n")
+  let bad = yaml_plain_key_refusal(k: k)
+  if bad != "" {
+    yaml_entry_refused(line: 0, reason: bad)
+  } else if (ls |> count) == 1 {
+    yaml_entry_value(k: k, r: yaml_block_scalar(header: v, cont: "", col: n))
+  } else {
+    yaml_entry_value(k: k, r: yaml_block_scalar(header: ls.first(), cont: substring(s: v, start: ls.first().length() + 1, end: v.length()), col: n))
+  }
+}
+
+fn yaml_entry_refused(line: Int, reason: String) -> YamlEntryRead {
+  YamlEntryRead { entry: YamlKeyValue { key: yaml_line_join_sentinel, value: YamlNull }, refusal: reason, line: line }
+}
+
+fn yaml_first_line(c: String) -> String {
+  let parts = split(s: c, delimiter: "\n")
+  parts.first()
+}
+
+fn yaml_rest_lines(c: String, first: String) -> String {
+  if first == c { "" } else { substring(s: c, start: first.length() + 1, end: c.length()) }
+}
+
+fn yaml_entry_general(c: String, n: Int) -> YamlEntryRead {
+  let ls = split(s: c, delimiter: "\n")
+  let f = ls.first()
+  let cont = if (ls |> count) == 1 { "" } else { join(ls.skip(n: 1), "\n") }
+  if starts_with(s: f, prefix: "\"") || starts_with(s: f, prefix: "'") {
+    yaml_quoted_key_entry(f: f, cont: cont, n: n)
+  } else if starts_with(s: f, prefix: "?") {
+    yaml_entry_refused(line: 0, reason: "explicit `?` mapping keys are outside the supported subset")
+  } else if starts_with(s: f, prefix: "\t") {
+    yaml_entry_refused(line: 0, reason: "indentation contains a tab (YAML indents with spaces only)")
+  } else {
+    let parts = split(s: f, delimiter: ": ")
+    let k = parts.first()
+    if (parts |> count) > 1 {
+      yaml_keyed_entry(k: trim(k), v: substring(s: f, start: k.length() + 2, end: f.length()), cont: cont, n: n)
+    } else if ends_with(s: f, suffix: ":") {
+      yaml_keyed_entry(k: trim(substring(s: f, start: 0, end: f.length() - 1)), v: "", cont: cont, n: n)
+    } else {
+      yaml_entry_refused(line: 0, reason: yaml_not_an_entry_reason(t: f))
+    }
+  }
+}
+
+fn yaml_keyed_entry(k: String, v: String, cont: String, n: Int) -> YamlEntryRead {
+  let bad = yaml_plain_key_refusal(k: k)
+  if bad != "" {
+    yaml_entry_refused(line: 0, reason: bad)
+  } else {
+    yaml_entry_value(k: k, r: if starts_with(s: v, prefix: "|") { yaml_block_scalar(header: v, cont: cont, col: n) } else { yaml_value(v: v, cont: cont, col: n, same_col_seq: true) })
+  }
+}
+
+fn yaml_entry_value(k: String, r: YamlBlockResult) -> YamlEntryRead {
+  match r {
+    YamlBlockParsed { value: x } => YamlEntryRead { entry: YamlKeyValue { key: k, value: x }, refusal: "", line: 0 }
+    YamlBlockRefused { line: l, reason: why } => yaml_entry_refused(line: l, reason: why)
+  }
+}
+
+fn yaml_not_an_entry_reason(t: String) -> String {
+  if (t == "---") || starts_with(s: t, prefix: "--- ") || (t == "...") {
+    "document markers are outside the supported subset (one document, no `---` or `...`)"
+  } else if starts_with(s: t, prefix: "%") {
+    "directives are outside the supported subset"
+  } else {
+    join(["expected a block mapping entry `key: value`, found `", t, "` (root scalars, multi-line plain scalars and tab-separated values are outside the supported subset)"], "")
+  }
+}
+
+fn yaml_quoted_key_entry(f: String, cont: String, n: Int) -> YamlEntryRead {
+  let end = yaml_quoted_end(s: f, i: 1, quote: substring(s: f, start: 0, end: 1))
+  let rest = if end < 0 { "" } else { substring(s: f, start: end, end: f.length()) }
+  if (end < 0) || !starts_with(s: concat(rest, " "), prefix: ": ") {
+    yaml_entry_refused(line: 0, reason: "a quoted key must close on its line and be followed directly by `:` and a space or the end of the line")
+  } else {
+    match yaml_quoted_scalar(v: substring(s: f, start: 0, end: end)) {
+      YamlScalarRefused { reason: why } => yaml_entry_refused(line: 0, reason: why)
+      ReadYamlScalar { value: decoded } =>
+        match decoded {
+          YamlString { value: k } => yaml_entry_value(k: k, r: yaml_value(v: trim(substring(s: rest, start: 1, end: rest.length())), cont: cont, col: n, same_col_seq: true))
+          _ => yaml_entry_refused(line: 0, reason: "a quoted key did not decode to a string")
+        }
+    }
+  }
+}
+
+// A value that begins on its entry's (or item's) line, followed by `cont`. `col` is the column a
+// nested block or a literal's content must exceed; `same_col_seq` admits a block sequence at `col`
+// itself, which YAML allows for a mapping value and not for a sequence item.
+fn yaml_value(v: String, cont: String, col: Int, same_col_seq: Bool) -> YamlBlockResult {
+  if v == "" {
+    yaml_nested(cont: cont, col: col, same_col_seq: same_col_seq)
+  } else if starts_with(s: v, prefix: " ") || starts_with(s: v, prefix: "\t") {
+    yaml_value(v: trim(v), cont: cont, col: col, same_col_seq: same_col_seq)
+  } else {
+    let c0 = substring(s: v, start: 0, end: 1)
+    if !string_contains(s: yaml_value_special_starts, pattern: c0) {
+      yaml_plain_value(v: v, cont: cont)
+    } else if yaml_indicator_opens_plain(v: v) {
+      yaml_plain_value(v: v, cont: cont)
+    } else {
+      yaml_special_value(v: v, c0: c0, cont: cont, col: col)
+    }
+  }
+}
+
+fn yaml_plain_value(v: String, cont: String) -> YamlBlockResult {
+  let bad = yaml_plain_refusal(s: v)
+  if bad != "" { YamlBlockRefused { line: 0, reason: bad } } else { yaml_scalar_with_cont(value: yaml_resolve_plain(s: v), cont: cont) }
+}
+
+fn yaml_scalar_read(read: YamlScalarResult, cont: String) -> YamlBlockResult {
+  match read {
+    ReadYamlScalar { value: x } => yaml_scalar_with_cont(value: x, cont: cont)
+    YamlScalarRefused { reason: why } => YamlBlockRefused { line: 0, reason: why }
+  }
+}
+
+fn yaml_special_value(v: String, c0: String, cont: String, col: Int) -> YamlBlockResult {
+  if (c0 == "\"") || (c0 == "'") {
+    yaml_scalar_read(read: yaml_quoted_scalar(v: v), cont: cont)
+  } else if c0 == "[" {
+    yaml_scalar_read(read: yaml_flow_sequence(v: v), cont: cont)
+  } else if c0 == "|" {
+    yaml_block_scalar(header: v, cont: cont, col: col)
+  } else if v == "{}" {
+    yaml_scalar_with_cont(value: YamlMapping { entries: [] }, cont: cont)
+  } else {
+    YamlBlockRefused { line: 0, reason: yaml_indicator_refusal(c: c0) }
+  }
+}
+
+fn yaml_indicator_refusal(c: String) -> String {
+  if c == "{" {
+    "flow mappings other than `{}` are outside the supported subset"
+  } else if c == ">" {
+    "folded block scalars (`>`) are outside the supported subset"
+  } else if (c == "&") || (c == "*") {
+    "anchors and aliases are outside the supported subset"
+  } else if c == "!" {
+    "tags are outside the supported subset"
+  } else if c == "#" {
+    yaml_inline_comment_reason
+  } else if (c == "-") || (c == "?") || (c == ":") {
+    join(["`", c, " ` cannot begin a value on the line of its key or sequence entry (explicit keys and inline block collections are outside the supported subset)"], "")
+  } else {
+    join(["`", c, "` cannot begin a plain scalar (section 7.3.3); quote the value"], "")
+  }
+}
+
+// A value on the lines after its key: a block deeper than `col`, a sequence at `col` where
+// admitted, or -- when the continuation holds only empty lines and comments -- null.
+// A value on the lines after its key: a block deeper than `col`, a sequence at `col` where
+// admitted, or -- when the continuation holds only empty lines and comments -- null.
+fn yaml_nested(cont: String, col: Int, same_col_seq: Bool) -> YamlBlockResult {
+  let first = yaml_first_line(c: cont)
+  let t = trim(first)
+  if (t == "") || starts_with(s: t, prefix: "#") {
+    yaml_nested_general(cont: cont, col: col, same_col_seq: same_col_seq)
+  } else {
+    let m = first.length() - t.length()
+    let text = substring(s: cont, start: m, end: cont.length())
+    let seq = yaml_starts_seq(text: text)
+    if (m > col) || (same_col_seq && (m == col) && seq) {
+      yaml_block(text: text, n: m, seq: seq, base: 1)
+    } else {
+      YamlBlockRefused { line: 1, reason: yaml_unexpected_indentation_reason }
+    }
+  }
+}
+
+data yaml_unexpected_indentation_reason: String = "unexpected indentation: this line continues a scalar or sits between block levels (multi-line plain scalars and irregular indentation are outside the supported subset)"
+
+// A nested value whose continuation starts with empty lines or comments, or holds nothing.
+fn yaml_nested_general(cont: String, col: Int, same_col_seq: Bool) -> YamlBlockResult {
+  if cont == "" {
+    YamlBlockParsed { value: YamlNull }
+  } else {
+    let lines = split(s: cont, delimiter: "\n")
+    let at = yaml_first_content_offset(lines: lines, index: 0)
+    if at < 0 {
+      YamlBlockParsed { value: YamlNull }
+    } else {
+      let block = if at == 0 { cont } else { join(lines.skip(n: at), "\n") }
+      let m = yaml_indent_of(line: block)
+      if starts_with(s: substring(s: block, start: m, end: block.length()), prefix: "\t") {
+        YamlBlockRefused { line: at + 1, reason: "indentation contains a tab (YAML indents with spaces only)" }
+      } else if (m > col) || (same_col_seq && (m == col) && yaml_is_seq_item(t: yaml_first_line(c: substring(s: block, start: m, end: block.length())))) {
+        yaml_block(text: substring(s: block, start: m, end: block.length()), n: m, seq: yaml_starts_seq(text: substring(s: block, start: m, end: block.length())), base: at + 1)
+      } else {
+        YamlBlockRefused { line: at + 1, reason: "unexpected indentation: this line continues a scalar or sits between block levels (multi-line plain scalars and irregular indentation are outside the supported subset)" }
+      }
+    }
+  }
+}
+
+fn yaml_item(c: String, n: Int) -> YamlBlockResult {
+  let f = yaml_first_line(c: c)
+  if f == "-" {
+    yaml_nested(cont: yaml_rest_lines(c: c, first: f), col: n, same_col_seq: false)
+  } else if !starts_with(s: f, prefix: "- ") {
+    YamlBlockRefused { line: 0, reason: "a block sequence's lines at its own indentation must all be `- ` items (a mapping entry cannot continue a sequence)" }
+  } else {
+    let body = trim(substring(s: f, start: 2, end: f.length()))
+    let skip = f.length() - body.length()
+    if yaml_opens_mapping_entry(t: body) {
+      yaml_block(text: substring(s: c, start: skip, end: c.length()), n: n + skip, seq: false, base: 0)
+    } else if yaml_is_seq_item(t: body) {
+      yaml_block(text: substring(s: c, start: skip, end: c.length()), n: n + skip, seq: true, base: 0)
+    } else {
+      yaml_value(v: body, cont: yaml_rest_lines(c: c, first: f), col: n, same_col_seq: false)
+    }
+  }
+}
+
+// Whether a sequence item's text is the first entry of a compact mapping rather than a scalar.
+fn yaml_opens_mapping_entry(t: String) -> Bool {
+  if !(string_contains(s: t, pattern: ": ") || ends_with(s: t, suffix: ":")) {
+    false
+  } else if !string_contains(s: yaml_value_special_starts, pattern: substring(s: t, start: 0, end: 1)) {
+    true
+  } else if starts_with(s: t, prefix: "\"") || starts_with(s: t, prefix: "'") {
+    yaml_quoted_key_opens_entry(t: t)
+  } else {
+    false
+  }
+}
+
+fn yaml_quoted_key_opens_entry(t: String) -> Bool {
+  let end = yaml_quoted_end(s: t, i: 1, quote: substring(s: t, start: 0, end: 1))
+  (end > 0) && starts_with(s: concat(substring(s: t, start: end, end: t.length()), " "), prefix: ": ")
+}
+
+// ---------------------------------------------------------------------------------------------
+// DOCUMENT
+// ---------------------------------------------------------------------------------------------
+
+fn yaml_source_lines(src: String) -> List<String> {
   let raw = split(s: src, delimiter: "\n")
   let n = raw.length()
-  let kept = if (n > 0) && (raw.skip(n: n - 1).first() == "") { raw.take(n: n - 1) } else { raw }
-  map(kept, l => yaml_line_record(raw: l))
+  if (n > 0) && (raw.skip(n: n - 1).first() == "") { raw.take(n: n - 1) } else { raw }
 }
 
-fn yaml_has_line_at(lines: List<YamlLine>, index: Int) -> Bool {
-  index < lines.length()
+fn yaml_has_leading_tab(src: String) -> Bool {
+  if string_contains(s: src, pattern: "\t") { yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0) > 0 } else { false }
 }
 
-// Callers guard with yaml_has_line_at; the Absent arm is the out-of-range row those guards exclude,
-// shaped so that no predicate below can mistake it for content (indent -1 matches no block).
-fn yaml_line_entry(lines: List<YamlLine>, index: Int) -> YamlLine {
+fn yaml_line_with_leading_tab(lines: List<String>, index: Int) -> Int {
   match get(xs: lines, index: index) {
-    Present { value: l } => l
-    Absent => YamlLine { raw: "", indent: -1, text: "", ignorable: false }
+    Absent => 0
+    Present { value: l } =>
+      if string_contains(s: substring(s: l, start: 0, end: l.length() - trim(l).length()), pattern: "\t") { index + 1 } else { yaml_line_with_leading_tab(lines: lines, index: index + 1) }
   }
 }
 
-fn yaml_line_at(lines: List<YamlLine>, index: Int) -> String {
-  yaml_line_entry(lines: lines, index: index).raw
+fn yaml_has_trailing_whitespace(src: String) -> Bool {
+  string_contains(s: src, pattern: " \n") || string_contains(s: src, pattern: "\t\n") || ends_with(s: src, suffix: " ") || ends_with(s: src, suffix: "\t")
 }
 
-fn yaml_text_at(lines: List<YamlLine>, index: Int) -> String {
-  yaml_line_entry(lines: lines, index: index).text
-}
-
-fn yaml_indent_at(lines: List<YamlLine>, index: Int) -> Int {
-  yaml_line_entry(lines: lines, index: index).indent
-}
-
-// OUTSIDE A SCALAR, A BLANK LINE OR A FULL-LINE COMMENT CARRIES NO CONTENT AT ANY INDENTATION
-// (YAML 1.2.2 section 6.6, l-comment). Block-literal bodies never pass through here -- they are
-// collected by yaml_collect_literal_lines_from, where blank and `#` lines ARE content -- so skipping
-// them between structural entries cannot drop scalar text.
-fn yaml_line_is_ignorable(lines: List<YamlLine>, index: Int) -> Bool {
-  yaml_has_line_at(lines: lines, index: index) && yaml_line_entry(lines: lines, index: index).ignorable
-}
-
-fn yaml_skip_ignorable_lines(lines: List<YamlLine>, index: Int) -> Int {
-  if yaml_line_is_ignorable(lines: lines, index: index) {
-    yaml_skip_ignorable_lines(lines: lines, index: index + 1)
-  } else {
-    index
-  }
-}
-
-// Inline comment separation is not yet modeled. Refuse the recognizable unquoted value form
-// instead of silently ingesting its comment as scalar content. This intentionally errs toward
-// refusal for richer scalar forms this bounded parser does not model; double-quoted scalars are
-// excluded, and block-literal content never passes through this predicate.
-fn yaml_has_unmodeled_inline_comment(text: String) -> Bool {
-  let double_quoted = starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"")
-  !double_quoted && (
-    string_contains(s: text, pattern: " #")
-      || string_contains(s: text, pattern: "\t#")
-  )
-}
-
-// A VALUE WITH NO BACKSLASH HAS NOTHING TO UNESCAPE, so it is returned whole. The per-character
-// recursion below copies the remainder at every character -- quadratic in the value's length -- and
-// generated workflows are made of long double-quoted command lines; running it only when an escape
-// is present gives the identical result.
-fn yaml_unescape_double_quoted(s: String) -> String {
-  if !string_contains(s: s, pattern: "\\") {
-    s
-  } else {
-    yaml_unescape_double_quoted_chars(s: s)
-  }
-}
-
-fn yaml_unescape_double_quoted_chars(s: String) -> String {
-  if s == "" {
-    ""
-  } else if starts_with(s: s, prefix: "\\\"") {
-    concat("\"", yaml_unescape_double_quoted_chars(s: substring(s: s, start: 2, end: s.length())))
-  } else if starts_with(s: s, prefix: "\\\\") {
-    concat("\\", yaml_unescape_double_quoted_chars(s: substring(s: s, start: 2, end: s.length())))
-  } else {
-    concat(substring(s: s, start: 0, end: 1), yaml_unescape_double_quoted_chars(s: substring(s: s, start: 1, end: s.length())))
-  }
-}
-
-fn yaml_is_flow_sequence_text(text: String) -> Bool {
-  starts_with(s: text, prefix: "[") && ends_with(s: text, suffix: "]")
-}
-
-fn yaml_parse_flow_sequence(text: String) -> YamlValue {
-  let inner = substring(s: text, start: 1, end: text.length() - 1)
-  if inner == "" {
-    YamlSequence { elements: [] }
-  } else {
-    YamlSequence { elements: map(split(s: inner, delimiter: ", "), t => yaml_parse_scalar_text(text: t)) }
-  }
-}
-
-fn yaml_parse_scalar_text(text: String) -> YamlValue {
-  if text == "''" {
-    YamlString { value: "" }
-  } else if starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"") && (text.length() >= 2) {
-    YamlString { value: yaml_unescape_double_quoted(s: substring(s: text, start: 1, end: text.length() - 1)) }
-  } else if text == "true" {
-    YamlBool { value: true }
-  } else if text == "false" {
-    YamlBool { value: false }
-  } else if yaml_looks_like_int(s: text) {
-    YamlInt { lexeme: text }
-  } else {
-    YamlString { value: text }
-  }
-}
-
-// A BLOCK LITERAL IS A SLICE: every line after the indicator that is empty or indented to at least
-// the content column. Its end is found with one field test per line, and its text is built once
-// from the slice -- not by re-reading each line and copying the growing accumulator on every step,
-// which cost ~117 eval steps a literal line.
-fn yaml_literal_end(lines: List<YamlLine>, index: Int, content_indent: Int) -> Int {
-  let e = yaml_line_entry(lines: lines, index: index)
-  if yaml_has_line_at(lines: lines, index: index) && ((e.raw == "") || (e.indent >= content_indent)) {
-    yaml_literal_end(lines: lines, index: index + 1, content_indent: content_indent)
-  } else {
-    index
-  }
-}
-
-fn yaml_collect_literal_lines_from(lines: List<YamlLine>, index: Int, content_indent: Int) -> YamlLiteralCollectResult {
-  let end = yaml_literal_end(lines: lines, index: index, content_indent: content_indent)
-  let body = lines.skip(n: index).take(n: end - index)
-  YamlLiteralCollectResult {
-    text: join(map(body, l => if l.raw == "" { "" } else { yaml_strip_indent(line: l.raw, indent: content_indent) }), "\n"),
-    next_index: end,
-  }
-}
-
-fn yaml_parse_mapping_entry(lines: List<YamlLine>, index: Int, indent: Int) -> YamlEntryResult {
-  let content = yaml_text_at(lines: lines, index: index)
-  let parts = split(s: content, delimiter: ": ")
-  if parts.length() > 1 {
-    let key = parts.first()
-    let rest = join(parts.skip(n: 1), ": ")
-    if yaml_has_unmodeled_inline_comment(text: rest) {
-      YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
-    } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2)
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
-    } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
-    }
-  } else if ends_with(s: content, suffix: ":") {
-    let key = substring(s: content, start: 0, end: content.length() - 1)
-    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
-    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 2) {
-      match yaml_parse_block(lines: lines, index: body, indent: indent + 2) {
-        ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
-        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
-      }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
-    }
-  } else {
-    YamlEntryRejected { reason: concat("malformed mapping entry: ", content) }
-  }
-}
-
-fn yaml_parse_mapping_entry_from_text(text: String, lines: List<YamlLine>, index: Int, indent: Int) -> YamlEntryResult {
-  let parts = split(s: text, delimiter: ": ")
-  if parts.length() > 1 {
-    let key = parts.first()
-    let rest = join(parts.skip(n: 1), ": ")
-    if yaml_has_unmodeled_inline_comment(text: rest) {
-      YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
-    } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4)
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
-    } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
-    }
-  } else if ends_with(s: text, suffix: ":") {
-    let key = substring(s: text, start: 0, end: text.length() - 1)
-    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
-    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 4) {
-      match yaml_parse_block(lines: lines, index: body, indent: indent + 4) {
-        ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
-        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
-      }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
-    }
-  } else {
-    YamlEntryRejected { reason: concat("malformed sequence-item mapping entry: ", text) }
-  }
-}
-
-fn yaml_parse_mapping_entries(lines: List<YamlLine>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
-  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
-  let ln = yaml_line_entry(lines: lines, index: current)
-  if !yaml_has_line_at(lines: lines, index: current) {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else if ln.indent != indent {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else if starts_with(s: ln.text, prefix: "- ") {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else {
-    match yaml_parse_mapping_entry(lines: lines, index: current, indent: indent) {
-      ParsedYamlEntry { entry: e, next_index: ni } =>
-        yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent, acc: concat(acc, [e]))
-      YamlEntryRejected { reason: r } => YamlBlockRejected { reason: r }
-    }
-  }
-}
-
-fn yaml_parse_seq_item(lines: List<YamlLine>, index: Int, indent: Int) -> YamlSeqItemResult {
-  let content = yaml_text_at(lines: lines, index: index)
-  let item_text = substring(s: content, start: 2, end: content.length())
-  if item_text == "|" {
-    let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2)
-    ParsedYamlSeqItem { value: YamlString { value: lit.text }, next_index: lit.next_index }
-  } else if yaml_is_flow_sequence_text(text: item_text) {
-    ParsedYamlSeqItem { value: yaml_parse_flow_sequence(text: item_text), next_index: index + 1 }
-  } else if string_contains(s: item_text, pattern: ": ") || ends_with(s: item_text, suffix: ":") {
-    match yaml_parse_mapping_entry_from_text(text: item_text, lines: lines, index: index, indent: indent) {
-      ParsedYamlEntry { entry: first_entry, next_index: ni } =>
-        match yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent + 2, acc: [first_entry]) {
-          ParsedYamlBlock { value: v, next_index: fi } => ParsedYamlSeqItem { value: v, next_index: fi }
-          YamlBlockRejected { reason: r } => YamlSeqItemRejected { reason: r }
-        }
-      YamlEntryRejected { reason: r } => YamlSeqItemRejected { reason: r }
-    }
-  } else if yaml_has_unmodeled_inline_comment(text: item_text) {
-    YamlSeqItemRejected { reason: "inline YAML comments after values are not modeled" }
-  } else {
-    ParsedYamlSeqItem { value: yaml_parse_scalar_text(text: item_text), next_index: index + 1 }
-  }
-}
-
-fn yaml_parse_seq_items(lines: List<YamlLine>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
-  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
-  let ln = yaml_line_entry(lines: lines, index: current)
-  if !yaml_has_line_at(lines: lines, index: current) {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else if ln.indent != indent {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else if !starts_with(s: ln.text, prefix: "- ") {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else {
-    match yaml_parse_seq_item(lines: lines, index: current, indent: indent) {
-      ParsedYamlSeqItem { value: v, next_index: ni } =>
-        yaml_parse_seq_items(lines: lines, index: ni, indent: indent, acc: concat(acc, [v]))
-      YamlSeqItemRejected { reason: r } => YamlBlockRejected { reason: r }
-    }
-  }
-}
-
-fn yaml_parse_block(lines: List<YamlLine>, index: Int, indent: Int) -> YamlBlockResult {
-  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
-  if !yaml_has_line_at(lines: lines, index: current) {
-    YamlBlockRejected { reason: "expected a YAML block, found end of input" }
-  } else if yaml_indent_at(lines: lines, index: current) != indent {
-    YamlBlockRejected { reason: concat("indentation mismatch at line ", to_string(current)) }
-  } else {
-    let content = yaml_text_at(lines: lines, index: current)
-    if starts_with(s: content, prefix: "- ") {
-      yaml_parse_seq_items(lines: lines, index: current, indent: indent, acc: [])
-    } else {
-      yaml_parse_mapping_entries(lines: lines, index: current, indent: indent, acc: [])
-    }
+fn yaml_line_ending_in_whitespace(lines: List<String>, index: Int) -> Int {
+  match get(xs: lines, index: index) {
+    Absent => 0
+    Present { value: l } => if ends_with(s: l, suffix: " ") || ends_with(s: l, suffix: "\t") { index + 1 } else { yaml_line_ending_in_whitespace(lines: lines, index: index + 1) }
   }
 }
 
 fn ingest_yaml_source(src: String) -> YamlIngestResult {
-  let lines = yaml_lines_from_source(src: src)
-  if lines.length() == 0 {
-    YamlIngestRejected { reason: "empty document" }
+  if yaml_contains_refused_character(text: src) {
+    let cp = yaml_first_refused_character(text: src)
+    YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: from_code_point(cp: cp), index: 0), reason: yaml_refused_character_reason(cp: cp) }
+  } else if yaml_has_leading_tab(src: src) {
+    YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }
+  } else if yaml_has_trailing_whitespace(src: src) {
+    YamlIngestRejected { line: yaml_line_ending_in_whitespace(lines: yaml_source_lines(src: src), index: 0), reason: "a line ends in whitespace, which is outside the supported subset (it would make an empty line indistinguishable from literal content)" }
   } else {
-    match yaml_parse_block(lines: lines, index: 0, indent: 0) {
-      ParsedYamlBlock { value: v, next_index: ni } =>
-        if ni == lines.length() {
-          IngestedYaml { value: v }
-        } else {
-          YamlIngestRejected { reason: concat("trailing content at line ", to_string(ni)) }
+    let lines = yaml_source_lines(src: src)
+    let at = yaml_first_content_offset(lines: lines, index: 0)
+    if at < 0 {
+      YamlIngestRejected { line: 0, reason: "the document has no content node" }
+    } else {
+      let root = if at == 0 { join(lines, "\n") } else { join(lines.skip(n: at), "\n") }
+      if starts_with(s: root, prefix: " ") || starts_with(s: root, prefix: "\t") {
+        YamlIngestRejected { line: at + 1, reason: "the root block must start at column 0" }
+      } else {
+        match yaml_block(text: root, n: 0, seq: yaml_starts_seq(text: root), base: 0) {
+          YamlBlockParsed { value: v } => IngestedYaml { value: v }
+          YamlBlockRefused { line: l, reason: why } => YamlIngestRejected { line: at + l + 1, reason: why }
         }
-      YamlBlockRejected { reason: r } => YamlIngestRejected { reason: r }
+      }
     }
   }
 }
@@ -403,6 +1159,6 @@ fn ingest_yaml_source(src: String) -> YamlIngestResult {
 fn yaml_source_parses(src: String) -> Bool {
   match ingest_yaml_source(src: src) {
     IngestedYaml { value: _ } => true
-    YamlIngestRejected { reason: _ } => false
+    YamlIngestRejected { line: _, reason: _ } => false
   }
 }

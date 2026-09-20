@@ -30,7 +30,6 @@ import gunbc.public_workload_census {
   public_workload_census_declared_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
-import gunbc.action_use_admission { realized_workflow_projection_frontier_rows }
 import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
 import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
 import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
@@ -104,7 +103,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     public_workload_census_run_attempt_consumer_frontier_rows,
     public_workload_census_declared_runner_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
-    realized_workflow_projection_frontier_rows,
     attempt_admission_subject_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
     cpu_description_string_leaf_frontier_rows,

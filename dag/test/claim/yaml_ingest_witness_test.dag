@@ -2,132 +2,226 @@ module test.claim.yaml_ingest_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn round_trips(v: YamlValue) -> Bool {
-  let original = serialize_yaml(v: v)
-  match ingest_yaml_source(src: original) {
-    IngestedYaml { value: reparsed } => serialize_yaml(v: reparsed) == original
-    YamlIngestRejected { reason: _ } => false
-  }
+// EVERY CLAIM HERE COMPARES DECODED STRUCTURE WITH A HAND-WRITTEN VALUE. Nothing goes through the
+// emitter, so a loss in the writer cannot hide a loss in the reader. Each construct pairs its
+// accepted reading with a red control: a refusal that must name its line and its reason, or a
+// neighbouring reading the construct must not collapse into.
+
+fn reads(src: String, v: YamlValue) -> Bool {
+  ingest_yaml_source(src: src) == IngestedYaml { value: v }
 }
 
-test fn witness_scalar_mapping_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
-    kv(key: "name", value: yaml_string(s: "ci")),
-    kv(key: "fetch-depth", value: yaml_int(n: 0)),
-    kv(key: "quoted", value: yaml_bool(b: true))
-  ]))
+fn one(key: String, v: YamlValue) -> YamlValue {
+  YamlMapping { entries: [YamlKeyValue { key: key, value: v }] }
 }
 
-test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
-    kv(key: "jobs", value: yaml_sequence(elements: [
-      yaml_mapping(entries: [
-        kv(key: "uses", value: yaml_string(s: "actions/checkout@v4")),
-        kv(key: "with", value: yaml_mapping(entries: [
-          kv(key: "fetch-depth", value: yaml_int(n: 1))
-        ]))
-      ])
-    ]))
-  ]))
+fn str(s: String) -> YamlValue {
+  YamlString { value: s }
 }
 
-test fn witness_block_literal_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [
-    kv(key: "run", value: yaml_string(s: "line one\nline two"))
-  ]))
-}
-
-test fn witness_empty_string_scalar_round_trips() -> Bool {
-  round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
-}
-
-test fn witness_empty_document_rejected() -> Bool {
-  yaml_source_parses(src: "") == false
-}
-
-test fn witness_column_zero_full_line_comment_is_lexically_ignored() -> Bool {
-  match ingest_yaml_source(src: "# generated provenance\nname: witnesses\n") {
-    IngestedYaml { value } => serialize_yaml(v: value) == "name: witnesses\n"
-    YamlIngestRejected { reason: _ } => false
-  }
-}
-
-test fn witness_indented_full_line_comment_is_lexically_ignored() -> Bool {
-  match ingest_yaml_source(src: "root:\n  # comment between block tokens\n  child: x\n") {
-    IngestedYaml { value } => serialize_yaml(v: value) == "root:\n  child: x\n"
-    YamlIngestRejected { reason: _ } => false
-  }
-}
-
-test fn witness_inline_trailing_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
-  match ingest_yaml_source(src: "name: x # trailing comment\n") {
+fn refuses_at(src: String, line: Int, reason_part: String) -> Bool {
+  match ingest_yaml_source(src: src) {
     IngestedYaml { value: _ } => false
-    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
+    YamlIngestRejected { line: l, reason: r } => (l == line) && string_contains(s: r, pattern: reason_part)
   }
 }
 
-test fn witness_tab_separated_inline_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
-  match ingest_yaml_source(src: "name: x\t# trailing comment\n") {
-    IngestedYaml { value: _ } => false
-    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
-  }
+// ---------------------------------------------------------------------------------------------
+// PLAIN SCALARS: THE CORE SCHEMA, NOT "UNRECOGNIZED TEXT IS A STRING"
+// ---------------------------------------------------------------------------------------------
+
+test fn plain_text_is_a_string() -> Bool {
+  reads(src: "a: ubuntu-latest\n", v: one(key: "a", v: str(s: "ubuntu-latest")))
+    && reads(src: "a: -D warnings\n", v: one(key: "a", v: str(s: "-D warnings")))
+    && reads(src: "a: 2026-09-01.1\n", v: one(key: "a", v: str(s: "2026-09-01.1")))
 }
 
-test fn witness_hash_inside_double_quoted_scalar_is_content() -> Bool {
-  round_trips(v: yaml_mapping(entries: [kv(key: "color", value: yaml_string(s: "#123456"))]))
+test fn core_schema_resolves_null_bool_int_float() -> Bool {
+  reads(src: "a: null\nb: ~\nc:\nd: true\ne: FALSE\nf: 010\ng: -3\nh: 0x1F\ni: 0o17\nj: 1.5\nk: .5e3\nl: -.inf\nm: .NaN\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: YamlNull },
+    YamlKeyValue { key: "b", value: YamlNull },
+    YamlKeyValue { key: "c", value: YamlNull },
+    YamlKeyValue { key: "d", value: YamlBool { value: true } },
+    YamlKeyValue { key: "e", value: YamlBool { value: false } },
+    YamlKeyValue { key: "f", value: YamlInt { lexeme: "010" } },
+    YamlKeyValue { key: "g", value: YamlInt { lexeme: "-3" } },
+    YamlKeyValue { key: "h", value: YamlInt { lexeme: "0x1F" } },
+    YamlKeyValue { key: "i", value: YamlInt { lexeme: "0o17" } },
+    YamlKeyValue { key: "j", value: YamlFloat { lexeme: "1.5" } },
+    YamlKeyValue { key: "k", value: YamlFloat { lexeme: ".5e3" } },
+    YamlKeyValue { key: "l", value: YamlFloat { lexeme: "-.inf" } },
+    YamlKeyValue { key: "m", value: YamlFloat { lexeme: ".NaN" } }
+  ] })
 }
 
-test fn witness_shell_issue_reference_inside_block_literal_is_content() -> Bool {
-  let source = "run: |\n  echo begin\n  # dissolve-on: typed shell realization (#5828)\n"
-  match ingest_yaml_source(src: source) {
-    IngestedYaml { value } => serialize_yaml(v: value) == source
-    YamlIngestRejected { reason: _ } => false
-  }
+// Red control for the resolution: the digits are an int, never the string "123", and YAML 1.1's
+// words are strings under the 1.2 core schema.
+test fn red_digits_are_not_a_string_and_yes_is_not_a_bool() -> Bool {
+  !reads(src: "a: 123\n", v: one(key: "a", v: str(s: "123")))
+    && reads(src: "a: 123\n", v: one(key: "a", v: YamlInt { lexeme: "123" }))
+    && reads(src: "a: yes\nb: on\n", v: YamlMapping { entries: [YamlKeyValue { key: "a", value: str(s: "yes") }, YamlKeyValue { key: "b", value: str(s: "on") }] })
 }
 
-test fn witness_comment_only_document_is_rejected() -> Bool {
-  !yaml_source_parses(src: "# no document node follows\n")
+test fn red_a_plain_value_holding_a_mapping_indicator_refuses() -> Bool {
+  refuses_at(src: "x: 1\na: b: c\n", line: 2, reason_part: "cannot contain `: `")
 }
 
-test fn witness_malformed_scalar_line_rejected() -> Bool {
-  yaml_source_parses(src: "just a bare word\n") == false
+// ---------------------------------------------------------------------------------------------
+// QUOTED SCALARS
+// ---------------------------------------------------------------------------------------------
+
+test fn single_quoted_scalar_drops_its_quotes_and_decodes_doubled_quotes() -> Bool {
+  reads(src: "a: 'it''s'\nb: '123'\nc: ''\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: str(s: "it's") },
+    YamlKeyValue { key: "b", value: str(s: "123") },
+    YamlKeyValue { key: "c", value: str(s: "") }
+  ] })
 }
 
-test fn witness_bad_nested_indent_rejected() -> Bool {
-  yaml_source_parses(src: "a:\n   b: 1\n") == false
+test fn red_a_single_quoted_scalar_with_trailing_text_refuses() -> Bool {
+  refuses_at(src: "a: 'x' y\n", line: 1, reason_part: "single-quoted")
 }
 
-test fn witness_rejection_discriminates_from_valid() -> Bool {
-  yaml_source_parses(src: "a: 1\n") &&
-    !yaml_source_parses(src: "just a bare word\n")
+test fn double_quoted_escapes_decode() -> Bool {
+  reads(src: "a: \"x\\ny\\t\\\"q\\\" \\\\ \\u00e9 \\x41\"\n", v: one(key: "a", v: str(s: join(["x\ny\t\"q\" \\ ", from_code_point(cp: 233), " A"], ""))))
+    && reads(src: "a: \"#123456\"\n", v: one(key: "a", v: str(s: "#123456")))
 }
 
-// Blank lines and full-line comments between entries -- including a comment indented unlike its
-// siblings, and one directly after a `key:` that opens a nested block -- carry no content.
-test fn witness_blank_and_comment_lines_between_entries_are_ignored() -> Bool {
-  match ingest_yaml_source(src: "# header\nname: ci\n\njobs:\n  # about the job\n  build:\n\n      # odd indent\n    steps:\n      - run: a\n\n      # between steps\n      - run: b\n") {
-    IngestedYaml { value: v } => serialize_yaml(v: v) == serialize_yaml(v: yaml_mapping(entries: [
-      kv(key: "name", value: yaml_string(s: "ci")),
-      kv(key: "jobs", value: yaml_mapping(entries: [
-        kv(key: "build", value: yaml_mapping(entries: [
-          kv(key: "steps", value: yaml_sequence(elements: [
-            yaml_mapping(entries: [kv(key: "run", value: yaml_string(s: "a"))]),
-            yaml_mapping(entries: [kv(key: "run", value: yaml_string(s: "b"))])
-          ]))
-        ]))
-      ]))
-    ]))
-    YamlIngestRejected { reason: _ } => false
-  }
+test fn red_an_invalid_escape_refuses_and_names_itself() -> Bool {
+  refuses_at(src: "a: 1\nb: \"bad \\q\"\n", line: 2, reason_part: "`\\q` is not a YAML escape")
+    && refuses_at(src: "a: \"x\\\"\n", line: 1, reason_part: "lone backslash")
+    && refuses_at(src: "a: \"a\" \"b\"\n", line: 1, reason_part: "unescaped")
 }
 
-// ...and inside a block literal they ARE content: skipping them there would silently rewrite scripts.
-test fn witness_blank_and_hash_lines_inside_a_block_literal_are_kept() -> Bool {
-  match ingest_yaml_source(src: "run: |\n  echo a\n\n  # kept\n  echo b\nnext: x\n") {
-    IngestedYaml { value: v } => serialize_yaml(v: v) == serialize_yaml(v: yaml_mapping(entries: [
-      kv(key: "run", value: yaml_string(s: "echo a\n\n# kept\necho b")),
-      kv(key: "next", value: yaml_string(s: "x"))
-    ]))
-    YamlIngestRejected { reason: _ } => false
-  }
+test fn quoted_keys_decode() -> Bool {
+  reads(src: "\"uses\": x\n'on': y\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "uses", value: str(s: "x") },
+    YamlKeyValue { key: "on", value: str(s: "y") }
+  ] })
+}
+
+test fn red_a_plain_key_the_core_schema_reads_as_non_string_refuses() -> Bool {
+  refuses_at(src: "true: x\n", line: 1, reason_part: "non-string")
+    && reads(src: "\"true\": x\n", v: one(key: "true", v: str(s: "x")))
+}
+
+// ---------------------------------------------------------------------------------------------
+// FLOW COLLECTIONS
+// ---------------------------------------------------------------------------------------------
+
+test fn flow_sequences_split_on_commas_outside_quotes() -> Bool {
+  reads(src: "a: [x,y]\nb: [\"x, y\", z]\nc: []\nd: [1, true]\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: YamlSequence { elements: [str(s: "x"), str(s: "y")] } },
+    YamlKeyValue { key: "b", value: YamlSequence { elements: [str(s: "x, y"), str(s: "z")] } },
+    YamlKeyValue { key: "c", value: YamlSequence { elements: [] } },
+    YamlKeyValue { key: "d", value: YamlSequence { elements: [YamlInt { lexeme: "1" }, YamlBool { value: true }] } }
+  ] })
+}
+
+test fn red_nested_and_unclosed_flow_sequences_refuse() -> Bool {
+  refuses_at(src: "a: [x, [y]]\n", line: 1, reason_part: "indicator")
+    && refuses_at(src: "a: [x,\n  y]\n", line: 1, reason_part: "close on its own line")
+}
+
+test fn red_a_flow_mapping_refuses_rather_than_becoming_a_string() -> Bool {
+  refuses_at(src: "steps:\n  - \{uses: x}\n", line: 2, reason_part: "flow mappings")
+    && reads(src: "a: \{}\n", v: one(key: "a", v: YamlMapping { entries: [] }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// LITERAL BLOCK SCALARS
+// ---------------------------------------------------------------------------------------------
+
+test fn literal_block_scalars_chomp_as_their_indicator_says() -> Bool {
+  reads(src: "a: |\n  echo x\nb: |-\n  echo y\nc: |+\n  echo z\n\nd: 1\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: str(s: "echo x\n") },
+    YamlKeyValue { key: "b", value: str(s: "echo y") },
+    YamlKeyValue { key: "c", value: str(s: "echo z\n\n") },
+    YamlKeyValue { key: "d", value: YamlInt { lexeme: "1" } }
+  ] })
+}
+
+// Blank lines and `#` lines inside a literal are content; the indentation is detected from the
+// first content line, not assumed to be two spaces.
+test fn literal_content_keeps_blank_and_hash_lines_and_detects_indentation() -> Bool {
+  reads(src: "run: |\n      echo a\n\n      # kept\n        deeper\nnext: x\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "run", value: str(s: "echo a\n\n# kept\n  deeper\n") },
+    YamlKeyValue { key: "next", value: str(s: "x") }
+  ] })
+}
+
+test fn red_folded_scalars_and_indentation_indicators_refuse() -> Bool {
+  refuses_at(src: "a: >\n  x\n", line: 1, reason_part: "folded")
+    && refuses_at(src: "a: |2\n  x\n", line: 1, reason_part: "block scalar header")
+}
+
+// ---------------------------------------------------------------------------------------------
+// BLOCK STRUCTURE
+// ---------------------------------------------------------------------------------------------
+
+test fn nested_mappings_and_sequences_decode() -> Bool {
+  reads(src: "jobs:\n  build:\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 1\n      - run: make\n", v: one(key: "jobs", v: one(key: "build", v: one(key: "steps", v: YamlSequence { elements: [
+    YamlMapping { entries: [
+      YamlKeyValue { key: "uses", value: str(s: "actions/checkout@v4") },
+      YamlKeyValue { key: "with", value: one(key: "fetch-depth", v: YamlInt { lexeme: "1" }) }
+    ] },
+    one(key: "run", v: str(s: "make"))
+  ] }))))
+}
+
+test fn a_sequence_at_its_keys_column_and_a_compact_nested_sequence_decode() -> Bool {
+  reads(src: "a:\n- x\n- - y\n  - z\nb: 1\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: YamlSequence { elements: [str(s: "x"), YamlSequence { elements: [str(s: "y"), str(s: "z")] }] } },
+    YamlKeyValue { key: "b", value: YamlInt { lexeme: "1" } }
+  ] })
+}
+
+test fn wider_indentation_decodes() -> Bool {
+  reads(src: "a:\n    b: 1\n    c:\n        - x\n", v: one(key: "a", v: YamlMapping { entries: [
+    YamlKeyValue { key: "b", value: YamlInt { lexeme: "1" } },
+    YamlKeyValue { key: "c", value: YamlSequence { elements: [str(s: "x")] } }
+  ] }))
+}
+
+test fn red_irregular_indentation_and_multi_line_plain_scalars_refuse() -> Bool {
+  refuses_at(src: "a:\n    b: 1\n  c: 2\n", line: 3, reason_part: "unexpected indentation")
+    && refuses_at(src: "a: one\n  two\n", line: 2, reason_part: "unexpected indentation")
+}
+
+test fn red_a_duplicate_key_refuses_at_its_second_occurrence() -> Bool {
+  refuses_at(src: "a: 1\nb: 2\na: 3\n", line: 3, reason_part: "duplicate mapping key `a`")
+}
+
+// ---------------------------------------------------------------------------------------------
+// COMMENTS AND BLANK LINES
+// ---------------------------------------------------------------------------------------------
+
+test fn comments_and_blank_lines_between_nodes_carry_no_content() -> Bool {
+  reads(src: "# header\nname: ci\n\njobs:\n  # about the job\n  build:\n\n      # odd indent\n    steps:\n      - run: a\n\n      # between steps\n      - run: b\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "name", value: str(s: "ci") },
+    YamlKeyValue { key: "jobs", value: one(key: "build", v: one(key: "steps", v: YamlSequence { elements: [one(key: "run", v: str(s: "a")), one(key: "run", v: str(s: "b"))] })) }
+  ] })
+}
+
+test fn red_a_comment_after_a_value_refuses_rather_than_becoming_content() -> Bool {
+  refuses_at(src: "name: x # trailing comment\n", line: 1, reason_part: "inline YAML comments")
+    && refuses_at(src: "name: # comment\n", line: 1, reason_part: "inline YAML comments")
+    && refuses_at(src: "a: 'x' # comment\n", line: 1, reason_part: "single-quoted")
+}
+
+// ---------------------------------------------------------------------------------------------
+// DOCUMENT AND CHARACTER REPERTOIRE
+// ---------------------------------------------------------------------------------------------
+
+test fn red_document_level_refusals_are_located() -> Bool {
+  refuses_at(src: "", line: 0, reason_part: "no content node")
+    && refuses_at(src: "# only a comment\n", line: 0, reason_part: "no content node")
+    && refuses_at(src: "just a bare word\n", line: 1, reason_part: "expected a block mapping entry")
+    && refuses_at(src: "---\na: 1\n", line: 1, reason_part: "document markers")
+    && refuses_at(src: "a: &x 1\n", line: 1, reason_part: "anchors")
+    && refuses_at(src: "a: !!str 1\n", line: 1, reason_part: "tags")
+    && refuses_at(src: "a:\n\tb: 1\n", line: 2, reason_part: "tab")
+    && refuses_at(src: "a: 1\nb: 2 \n", line: 2, reason_part: "ends in whitespace")
+    && refuses_at(src: concat("a: 1\nb: x", concat(from_code_point(cp: 160), "y\n")), line: 2, reason_part: "U+00A0")
+    && refuses_at(src: "a: 1\r\nb: 2\r\n", line: 1, reason_part: "U+000D")
 }
