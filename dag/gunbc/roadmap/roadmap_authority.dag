@@ -2701,8 +2701,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // THE TYPED-MODULE STORE LANE, parked at wind-down (2026-09-20) so that what is UNFINISHED about
 // it is a roadmap fact rather than a session's memory. gunbc#11793 landed the provider row
 // (gunbc.floor_materialization host_persisted_typecheck_store) and its realization
-// (v1_compiler.shared_typecheck_store PersistentTypedStore). Three things it did NOT land are
+// (v1_compiler.shared_typecheck_store PersistentTypedStore). Two things it did NOT land are
 // below, and the first is the one that decides whether any of it was worth doing.
+//
+// A THIRD NODE WAS WRITTEN HERE AND DELETED IN THE SAME CHANGE (review 69189). It described the
+// review-69138 repairs -- the seed-growth receipt, the grounded lockstep, the two deletions -- and
+// every one of them lands in the diff that authored it. `active` mints a node open and
+// Dispatchable, so it was a brief that would have sent a worker to redo landed work, and the
+// receipt file written beside it already said the opposite. A roadmap node is for what is still
+// OWED; the PR and gunbc.typed_module_store_seed_growth are the record of what was done.
 fn typed_module_store_nodes() -> List<RoadmapNode> {
   [
     active(identity: "rn_HPHX9GMDAXMMWWYGB6ZCSCYDWJ", id: "typed-store-cold-warm-measurement",
@@ -2729,19 +2736,6 @@ fn typed_module_store_nodes() -> List<RoadmapNode> {
         red_control: "A v1 Rust change to inference must still miss every entry; a corpus-only .dag commit must hit for unaffected modules. Both directions, or the new identity is either unsound or useless.",
         out_of_scope: "Do not remove build provenance: the SHA stays in the CLI version. Do not run an old compiler to manufacture hits.",
         handback: "The new derivation, its single consuming authority, and the two-direction experiment."
-      )
-    ),
-    active(identity: "rn_S4NNKK4FP46DGZ76AERHD93PEA", id: "typed-store-review-69138-followup",
-      owner: "v1-performance",
-      path: "docs/plans/typed-module-cross-run-materialization.md",
-      t: fields(
-        headline: "Land the three review-69138 repairs that missed the merge queue",
-        boundary: "gunbc#11793 entered the merge queue with review 69138 at REQUEST_CHANGES and the branch frozen, so three prepared repairs did not reach it: (1) gunbc.typed_module_store_seed_growth, the SeedGrowthJustification row that gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes a STOP-LINE for hand src/v1 growth, joined to seed_growth_justification_roster; (2) persist_cap_matches_modeled_authority reading dag/gunbc/floor/floor_materialization.dag instead of asserting a Rust literal against a Rust literal; (3) deletion of persist_format_version and persistent_typed_store_is_armed_for_test, which have zero consumers.",
-        displaced_cost: "Without (1) the repo carries ~670 lines of unenumerated hand src/v1 Rust, which the authority calls a stop-line. Without (2) a tautology is cited by two carriers as their lockstep and would stay green through any edit to the authority it claims to track. Without (3) two dangling declarations sit in the seed.",
-        first_slice: "All three are written and were blocked only by the frozen branch; carry them onto a follow-up branch unchanged.",
-        red_control: "The lockstep must go red when either side of the cap changes alone -- verified against the real declaration before landing.",
-        out_of_scope: "No new store behaviour; this node repairs what review 69138 found and nothing else.",
-        handback: "The follow-up PR with the roster join, the grounded lockstep, and the two deletions."
       )
     ),
   ]
