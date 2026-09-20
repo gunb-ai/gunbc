@@ -241,12 +241,16 @@ type CliBootstrapDagOperationBinding {
 // WHAT THE OPERAND CARRIES IS AN AUTHORITY, NOT A SPELLING, which is the same rule
 // `CliOptionValue` already holds itself to. `CliAbsoluteLabelOperand` names `extdeps.bazel.label`
 // `Label` — so the admissible forms, and every refusal for a form outside them, are decided by the
-// cited label grammar and never re-decided here. Target PATTERNS (`...`, `:all`, `:*`) refuse
-// there, with their own cause, because a pattern denotes a SET and this operand denotes one
-// target; a second pattern test written at this layer would be a second authority for a question
-// that authority already answers.
+// cited label grammar and never re-decided here. `CliTargetPatternOperand` names
+// `extdeps.bazel.target_pattern` `TargetPattern`, the same authority's SET-denoting supergrammar:
+// the single-target form delegates to the label grammar there, so a target name is still spelled
+// and refused in exactly one place, while `//pkg:all`, `//pkg:*` and `//pkg/...` are ADMITTED and
+// the forms that authority excludes (`:all-targets`, relative and repository-qualified text)
+// refuse with its own typed causes. A second pattern test written at this layer would be a second
+// authority for a question that authority already answers.
 type CliOperandValue
   = CliAbsoluteLabelOperand {}
+  | CliTargetPatternOperand {}
   | CliScmReadVerbOperand {}
   | CliProgramOperand {}
 
@@ -807,19 +811,23 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       verb: "test",
       variant: "Test",
       doc: [
-        "Run one target by its absolute label and report the standing its own",
-        "producer answers in. The label is exact: a target PATTERN refuses, and",
-        "an unbound or unknown target refuses rather than reporting a pass."
+        "Run targets named by an absolute label or a bazel-style target PATTERN, and",
+        "report the standing each subject's own producer answers in. An exact label",
+        "routes to its bound producer; a set form (`//pkg:all`, `//pkg:*`,",
+        "`//pkg/...`) selects and runs every matching witness module. A form the",
+        "pattern grammar does not admit, or an unbound or unknown target, refuses",
+        "rather than reporting a pass."
       ],
       operands: [
         CliOperandRow {
           field: "target",
-          placeholder: "LABEL",
-          value: CliAbsoluteLabelOperand {},
+          placeholder: "TARGET_PATTERN",
+          value: CliTargetPatternOperand {},
           arity: CliExactlyOneOperand {},
           doc: [
-            "Absolute label of exactly one target, e.g.",
-            "`//gunbc/instruments:heads-reading-differential`."
+            "Absolute label of one target, or a pattern denoting a set:",
+            "`//gunbc/instruments:heads-reading-differential`,",
+            "`//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`."
           ],
           emission: CarriedByGeneratedDispatch
         }

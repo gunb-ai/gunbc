@@ -42,6 +42,12 @@ import gunbc.target_invocation {
   InvocationObservationHeld, InvocationObservationDidNotHold,
   InvocationSubjectUnreached, InvocationRefused,
   route_target_invocation, route_target_invocation_in, invocation_exit_status,
+  TestOperandExactTarget, TestOperandWitnessSelection, TestOperandRefused,
+  admit_test_operand, test_operand_refusal_rendered,
+}
+import extdeps.bazel.target_pattern {
+  PatternNotAbsolute, PatternAllTargetsUnsupported, PatternLabelRefused,
+  render_target_pattern,
 }
 import gunbc.instrument_targets {
   heads_reading_differential_label,
@@ -648,5 +654,92 @@ test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
         TargetInvocationRouteRefused { cause: c } =>
           string_contains(s: invocation_refusal_rendered(cause: c), pattern: "different structure")
       }
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE VERB'S OPERAND ADMISSION: ONE EXACT LABEL, TWO SET FORMS, AND THE REFUSED SHAPES
+// ---------------------------------------------------------------------------------------------
+
+// ADMISSION IS THE PATTERN AUTHORITY'S ANSWER, NOT A STRING TEST AT THE VERB. Each row below
+// plants an operand text and asserts the ADMISSION COPRODUCT's arm, so a route that string-matched
+// suffixes of its own — or admitted everything and let the failure surface later — reds here.
+
+// AN EXACT LABEL IS STILL THE EXACT ROUTE. The admission hands the single-target form to the label
+// the grammar spelled, and the composed assertion — admit, then route through the live registry —
+// proves the set-form admission changed nothing for the operand the verb was born serving. Without
+// the second half, an admission that answered ExactTarget for every text would pass.
+test fn an_exact_label_is_admitted_as_the_single_target_and_still_routes() -> Bool {
+  match admit_test_operand(operand: differential_operand()) {
+    TestOperandExactTarget { label: l } =>
+      label_eq(a: l, b: heads_reading_differential_label())
+        && (match invoke_target(operand: differential_operand()) {
+          TargetInvocationRouted { binding: b } =>
+            b.producer == HeadsReadingDifferentialProducer {}
+          TargetInvocationRouteRefused { cause: _ } => false
+        })
+    TestOperandWitnessSelection { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// A SUBTREE PATTERN IS A WITNESS SELECTION, RENDERED BACK AS ITSELF. Asserting the render —
+// not merely the arm — is what discriminates against an admission that parsed `//pkg/...` as a
+// package-wide pattern: the two arms render differently.
+test fn a_subtree_pattern_is_admitted_as_a_witness_selection() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim/compute/...") {
+    TestOperandWitnessSelection { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute/..."
+    TestOperandExactTarget { label: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// A PACKAGE-WIDE PATTERN IS THE SAME ROUTE, AND `:*` RENDERS CANONICALLY AS `:all` — the cited
+// authority treats them alike, so the admission must not invent a third arm for the second
+// spelling.
+test fn package_patterns_are_admitted_as_witness_selections() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim/compute:all") {
+    TestOperandWitnessSelection { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
+    TestOperandExactTarget { label: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  } && match admit_test_operand(operand: "//dag/test/claim/compute:*") {
+    TestOperandWitnessSelection { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
+    TestOperandExactTarget { label: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// THE REFUSED SHAPES ARRIVE AS THE AUTHORITY'S OWN TYPED CAUSES. A relative text and the
+// `:all-targets` form have different remedies, so they are different arms; and a single target
+// the label grammar refuses carries that refusal INSIDE `PatternLabelRefused`, which is what
+// keeps "the pattern layer refuses" and "the label layer refuses" from collapsing into one bit.
+test fn refused_operand_forms_carry_the_pattern_authoritys_typed_causes() -> Bool {
+  (match admit_test_operand(operand: "dag/test/claim/compute/...") {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternNotAbsolute { text: t } => t == "dag/test/claim/compute/..."  _ => false }
+    _ => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim:all-targets") {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternAllTargetsUnsupported { text: t } => t == "//dag/test/claim:all-targets"  _ => false }
+    _ => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim:bad/name") {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternLabelRefused { cause: _ } => true  _ => false }
+    _ => false
+  })
+}
+
+// AND THE REFUSAL RENDERS FOR A HUMAN. A typed cause nothing renders is a cause that exists for
+// programs only; the text names the operand and the authority's own refusal text.
+test fn a_refused_operand_renders_the_operand_and_the_authoritys_cause() -> Bool {
+  match admit_test_operand(operand: "dag/test/claim/compute/...") {
+    TestOperandRefused { operand: o, cause: c } =>
+      string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "dag/test/claim/compute/...")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "not absolute")
+    _ => false
   }
 }

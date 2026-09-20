@@ -1,20 +1,28 @@
-// THE HOST REALIZATION OF `gunbc test <label>`, AND IT IS A HAND MIRROR OF A `.dag` AUTHORITY.
+// THE HOST REALIZATION OF `gunbc test <target-pattern>`, AND IT IS A HAND MIRROR OF A `.dag`
+// AUTHORITY.
 //
-// The model is `gunbc.target_invocation` (generic route, termination vocabulary),
-// `gunbc.instrument_targets` (live target and binding rows, the differential's classifier and
-// rendering) and `extdeps.bazel.label` (the label grammar mirrored here). None is in the v1
-// seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is the only `gunbc.*` mirror the
-// emitter produces — so this file is hand-written beside the carrier, as `required_regen_host.rs`
-// mirrors `v2.workflow.required_regen`. The seam is therefore MITIGATABLE, not structurally
-// guaranteed: the two can drift until the seam is emitted rather than authored. The obligation
-// is enrolled in `gunbc.target_invocation_seed_growth`.
+// The model is `gunbc.target_invocation` (operand admission, generic exact-label route,
+// termination vocabulary), `gunbc.instrument_targets` (live target and binding rows, the
+// differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
+// here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
+// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed here: they delegate to
+// the `.dag` authority `gunbc.compute.test_run` `test_verb_pattern_cli` through the interpreter,
+// so witness selection and execution stay modeled and this file stays a mirror. None of the
+// modeled modules is in the v1 seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is
+// the only `gunbc.*` mirror the emitter produces — so this file is hand-written beside the
+// carrier, as `required_regen_host.rs` mirrors `v2.workflow.required_regen`. The seam is
+// therefore MITIGATABLE, not structurally guaranteed: the two can drift until the seam is
+// emitted rather than authored. The obligation is enrolled in
+// `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit label -> build the registry
-// -> exact lookup -> invoke the bound producer -> render its native standing. No per-instrument
-// arm on that route, and none may be added; a second instrument is a row in `instrument_registry`
-// plus one `Producer` arm in `run_producer` — the peripheral realization dispatch DESIGN section 3
-// keeps out of the interface. Deliberately NOT here: any consultation of `//:required` aggregate
-// policy or the Blaze status export — both refuse instrument producers by design.
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> a single target
+// builds the registry, exact lookup, invoke the bound producer, render its native standing; a
+// set form runs the witness machinery in `.dag`. No per-instrument arm on that route, and none
+// may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
+// `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
+// interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
+// Blaze status export — both refuse instrument producers by design — and any re-implementation
+// of witness selection, which is `gunbc.compute.test_selection`'s to own.
 
 use crate::cli_run;
 
@@ -33,36 +41,6 @@ pub enum LabelRefusal {
     DotSegment(String),
     TargetPattern(String),
     TargetNameContainsSlash(String),
-}
-
-/// Rendering is a FREE FUNCTION, not an inherent method: `std.decl_ref` `DeclarationRef` names a
-/// declaration or a named field but has no spelling for an impl method, so an inherent method
-/// would be uncitable in the seed-growth roster that must enumerate every item this file adds.
-fn label_refusal_rendered(cause: &LabelRefusal) -> String {
-    {
-        match cause {
-            LabelRefusal::RepositoryQualifiedLabel(t) => {
-                format!("repository-qualified labels are outside the admitted subset: {t}")
-            }
-            LabelRefusal::MissingRepositoryRootPrefix(t) => {
-                format!("label is not absolute (expected a leading `//`): {t}")
-            }
-            LabelRefusal::MultipleColonSeparators(t) => {
-                format!("label carries more than one `:` separator: {t}")
-            }
-            LabelRefusal::EmptyTargetName(t) => format!("label names no target: {t}"),
-            LabelRefusal::EmptyPackageSegment(t) => {
-                format!("label carries an empty package segment: {t}")
-            }
-            LabelRefusal::DotSegment(s) => format!("label carries a dot package segment: {s}"),
-            LabelRefusal::TargetPattern(p) => format!(
-                "`{p}` is a target PATTERN and denotes a set; `gunbc test` names exactly one target"
-            ),
-            LabelRefusal::TargetNameContainsSlash(n) => {
-                format!("target name contains `/`, which this subset does not admit: {n}")
-            }
-        }
-    }
 }
 
 /// A label in the main repository: a package (the root package is its own state, the empty
@@ -141,6 +119,97 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
         package_segments: segments,
         target: parse_target_name(&target_text)?,
     })
+}
+
+/// `extdeps.bazel.target_pattern` `TargetPattern`, mirrored: a pattern denotes a SET, a label one
+/// target. The single-target arm delegates to the label grammar above so a target name is spelled
+/// and refused in exactly one place on this side of the seam as well.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPattern {
+    SingleTarget(Label),
+    PackageTargets(Vec<String>),
+    SubtreeTargets(Vec<String>),
+}
+
+/// `extdeps.bazel.target_pattern` `TargetPatternRefusal`, mirrored arm for arm: the remedies
+/// differ (make it absolute; fix the package the label grammar refuses; fix the single target the
+/// label grammar refuses; `:all-targets` has no meaning over a corpus of test modules), so the
+/// causes are not collapsible into one malformed-operand bit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetPatternRefusal {
+    PatternNotAbsolute(String),
+    PatternPackageRefused(LabelRefusal),
+    PatternLabelRefused(LabelRefusal),
+    PatternAllTargetsUnsupported(String),
+}
+
+/// `target_pattern_refusal_text`, mirrored.
+fn target_pattern_refusal_text(cause: &TargetPatternRefusal) -> String {
+    match cause {
+        TargetPatternRefusal::PatternNotAbsolute(t) => {
+            format!("target pattern is not absolute (must start with //): {t}")
+        }
+        TargetPatternRefusal::PatternPackageRefused(_) => {
+            "target pattern names a package the label grammar refuses".to_string()
+        }
+        TargetPatternRefusal::PatternLabelRefused(_) => {
+            "target pattern names a single target the label grammar refuses".to_string()
+        }
+        TargetPatternRefusal::PatternAllTargetsUnsupported(t) => {
+            format!(":all-targets has no meaning over a corpus of test modules: {t}")
+        }
+    }
+}
+
+fn parse_pattern_package(package_text: &str) -> Result<Vec<String>, TargetPatternRefusal> {
+    if package_text.is_empty() {
+        Ok(Vec::new())
+    } else {
+        parse_package_segments(package_text).map_err(TargetPatternRefusal::PatternPackageRefused)
+    }
+}
+
+/// `parse_target_pattern`, mirrored. The branch order is the authority's: absolute prefix, the
+/// `:all-targets` exclusion, the subtree suffixes, the package-wide suffixes, and only then the
+/// single-target delegation — a different order would admit or refuse different texts.
+pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRefusal> {
+    if !text.starts_with("//") {
+        return Err(TargetPatternRefusal::PatternNotAbsolute(text.to_string()));
+    }
+    if text.ends_with(":all-targets") {
+        return Err(TargetPatternRefusal::PatternAllTargetsUnsupported(
+            text.to_string(),
+        ));
+    }
+    let body = &text[2..];
+    let subtree_body = if body.ends_with("/...:all") {
+        Some(&body[..body.len() - ":all".len()])
+    } else if body.ends_with("/...:*") {
+        Some(&body[..body.len() - ":*".len()])
+    } else if body.ends_with("/...") || body == "..." {
+        Some(body)
+    } else if body == "...:all" || body == "...:*" {
+        Some("...")
+    } else {
+        None
+    };
+    if let Some(stripped) = subtree_body {
+        let package_text = if stripped == "..." {
+            ""
+        } else {
+            &stripped[..stripped.len() - "/...".len()]
+        };
+        return parse_pattern_package(package_text).map(TargetPattern::SubtreeTargets);
+    }
+    if let Some(stripped) = body
+        .strip_suffix(":all")
+        .or_else(|| body.strip_suffix(":*"))
+    {
+        return parse_pattern_package(stripped).map(TargetPattern::PackageTargets);
+    }
+    parse_label(text)
+        .map(TargetPattern::SingleTarget)
+        .map_err(TargetPatternRefusal::PatternLabelRefused)
 }
 
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
@@ -242,22 +311,22 @@ fn instrument_label(target: &str) -> Label {
     }
 }
 
-/// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, deliberately.
+/// `gunbc.target_invocation` refusal vocabulary AT THIS SEAM, narrowed twice, deliberately.
 ///
 /// The model separates a known target with no bound producer from an unknown target because
 /// `gunbc.target_binding` keeps two lists. Here the registry is a list of PAIRS, so a producer-less
 /// target is unwritable (DESIGN section 4b, structural impossibility) and an unconstructible arm
 /// would be decoration read as coverage. If the host ever takes the two populations separately,
 /// the arm returns with the state that makes it reachable.
+///
+/// `OperandNotALabel` is likewise ABSENT since the operand became a target PATTERN: every label
+/// refusal now arrives inside `parse_target_pattern`'s `PatternLabelRefused`, rendered by
+/// `target_pattern_refusal_text`, so the arm has no constructor left. The modeled
+/// `TargetInvocationRefusal` keeps it — `route_target_invocation` remains the exact-label route
+/// the witness-selection half delegates around.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
-    OperandNotALabel {
-        operand: String,
-        cause: LabelRefusal,
-    },
-    TargetIsUnknown {
-        target: String,
-    },
+    TargetIsUnknown { target: String },
 }
 
 /// THE REFUSAL NAMES WHAT WOULD HAVE WORKED, AND IT IS DERIVED RATHER THAN WRITTEN DOWN.
@@ -279,10 +348,6 @@ fn rostered_targets_rendered() -> String {
 fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     {
         match refusal {
-            InvocationRefusal::OperandNotALabel { operand, cause } => format!(
-                "gunbc test: operand is not an absolute label: {operand}\n  cause: {}",
-                label_refusal_rendered(cause)
-            ),
             InvocationRefusal::TargetIsUnknown { target } => {
                 format!(
                     "gunbc test: no such target: {target}\n{}",
@@ -839,21 +904,24 @@ fn behavioral_outcome(
     }
 }
 
-/// THE ONE SEAM: argv operand -> label -> registry -> exact binding -> producer -> native standing.
-///
-/// Lookup is `label_eq` once per row, and EXACT — no prefix, suffix or "did you mean": a near miss
-/// silently running a different target is worse than a refusal naming the one asked for.
+/// THE ONE SEAM: argv operand -> pattern admission -> route. A SINGLE target builds the registry
+/// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
+/// different target is worse than a refusal naming the one asked for. A SET form delegates to the
+/// `.dag` authority `gunbc.compute.test_run` — selection and execution are modeled there, and a
+/// host re-implementation would be the second authority this file exists to avoid being.
 pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let label = match parse_label(operand) {
-        Ok(l) => l,
+    let label = match parse_target_pattern(operand) {
+        Ok(TargetPattern::SingleTarget(label)) => label,
+        Ok(TargetPattern::PackageTargets(_)) | Ok(TargetPattern::SubtreeTargets(_)) => {
+            return run_witness_pattern(operand);
+        }
         Err(cause) => {
-            let refusal = InvocationRefusal::OperandNotALabel {
-                operand: operand.to_string(),
-                cause,
-            };
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: invocation_refusal_rendered(&refusal),
+                message: format!(
+                    "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
+                    target_pattern_refusal_text(&cause)
+                ),
             };
         }
     };
@@ -870,5 +938,133 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             }
         }
         Some((_, producer)) => run_producer(producer),
+    }
+}
+
+/// The host the verb runs on, as the short name `dashboard_instance_for_host` is keyed on.
+/// `/proc/sys/kernel/hostname` first (no libc buffer sizing), then the POSIX call; an unreadable
+/// name is returned as such and the instance lookup refuses it, rather than fabricating a host.
+fn short_hostname() -> String {
+    if let Ok(name) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.split('.').next().unwrap_or(trimmed).to_string();
+        }
+    }
+    let mut buf = [0u8; 256];
+    // SAFETY: `buf` is a live, fully-owned buffer; `gethostname` writes at most `buf.len()`
+    // bytes into it and nothing else.
+    let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+    if rc == 0 {
+        let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+        let name = String::from_utf8_lossy(&buf[..end]).trim().to_string();
+        if !name.is_empty() {
+            return name.split('.').next().unwrap_or(&name).to_string();
+        }
+    }
+    "hostname-unreadable".to_string()
+}
+
+/// THE WITNESS-SET ROUTE: hand the operand to `gunbc.compute.test_run` `test_verb_pattern_cli`
+/// and report its ProcessExit in this seam's termination vocabulary. The instance is resolved
+/// there by HOST — the verb runs wherever the caller is standing, and the worktree under test is
+/// this checkout; the snapshot, selection, per-module claims run and receipt are all the modeled
+/// machinery's. The receipt JSON is the message, exactly as the worker flow writes it.
+///
+/// THE THREE TERMINATIONS map off the modeled exit: success is every selected witness green (or
+/// wholly declined), `ExitFailure { code: 1 }` is a run that took readings and found a
+/// non-green module — `ObservationDidNotHold` — and any other failure code is a refusal before
+/// or around the run (unadmitted pattern shape the mirror already excluded, unknown host,
+/// snapshot or receipt failure). A resolve or eval failure of the entry itself is
+/// `SubjectUnreached`: the machinery never observed anything.
+fn run_witness_pattern(operand: &str) -> InvocationOutcome {
+    const ENTRY: &str = "dag/gunbc/compute/test_run.dag";
+    const FUNCTION: &str = "gunbc.compute.test_run.test_verb_pattern_cli";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("gunbc test: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("gunbc test: resolve failed for {ENTRY}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "gunbc test: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let worktree = cli_run::workspace_root().to_string_lossy().into_owned();
+    let receipt_path = format!("{worktree}/.gunbc-test-receipt.json");
+    let arguments = vec![
+        (
+            Some("host".to_string()),
+            crate::v1_interpreter::str_value(short_hostname()),
+        ),
+        (
+            Some("worktree".to_string()),
+            crate::v1_interpreter::str_value(worktree),
+        ),
+        (
+            Some("pattern".to_string()),
+            crate::v1_interpreter::str_value(operand),
+        ),
+        (
+            Some("receipt_path".to_string()),
+            crate::v1_interpreter::str_value(receipt_path.clone()),
+        ),
+    ];
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &arguments, true) {
+            Ok(value) => value,
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("gunbc test: eval failed: {cause}"),
+                }
+            }
+        };
+    let exit = cli_run::classify_exit(&value, &ctx);
+    let receipt = std::fs::read_to_string(&receipt_path).unwrap_or_default();
+    match exit {
+        cli_run::ExitClass::Success => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: receipt,
+        },
+        cli_run::ExitClass::Failure { code: 1, reason } => InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: if receipt.is_empty() {
+                reason.unwrap_or_else(|| "gunbc test: run did not hold".to_string())
+            } else {
+                receipt
+            },
+        },
+        cli_run::ExitClass::Failure { code: _, reason } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: reason.unwrap_or_else(|| "gunbc test: refused".to_string()),
+        },
+        cli_run::ExitClass::NotProcessExit { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("gunbc test: {FUNCTION} returned `{type_name}`, not a ProcessExit"),
+        },
     }
 }

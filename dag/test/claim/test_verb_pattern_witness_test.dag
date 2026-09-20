@@ -1,0 +1,76 @@
+module test.claim.test_verb_pattern_witness_test
+
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+
+// WHY THIS IS WET, and why nothing cheaper is honest. The property under test is INHABITANCE:
+// the shipped `gunbc test` verb, handed a bazel-style target PATTERN as argv, really selects and
+// executes the matching witnesses in a real checkout and answers with the process status the
+// modeled route decided. The subject is a process boundary — argv in, exit status and receipt
+// out — which no in-process assertion can observe, and a Rust unit test is enrolled nowhere on
+// this repository (the Rust suite left CI 2026-07-11, operator ruling), so the only executing
+// evidence is a subprocess of the compiled seed. The hermetic envelope refuses
+// gunbc.WitnessBin.Run by construction, so these rows run under claim_batch --wet, the same
+// route run_verdict_exit_status_witness_test takes and for the same reason.
+//
+// ON POLARITY: every row reads result.exit_code off a RECORD, never a Bool helper whose refusal
+// path collapses into the value under test — the exact rule
+// run_verdict_exit_status_witness_test's polarity note states. A hermetic context cannot satisfy
+// these rows; it fails them loudly rather than answering on nothing.
+//
+// THE POSITIVE ROW'S COST IS THE MACHINERY'S OWN, stated rather than discovered later: the verb's
+// set-form route is gunbc.compute.test_run — snapshot the worktree, resolve the host's dashboard
+// instance, and run each selected module through the compute contract, whose first cold run for a
+// snapshot builds the tree's binaries. That is the worker flow's real price, not this row's
+// excess; it exceeds bin_witness_wet_per_row_wall_budget_seconds by construction, and the row is
+// enrolled beside the bin-wet class it joins, with its execution evidence recorded on the change
+// that admitted it. The two refusal rows are cheap: admission fails before any instance
+// resolution, so they cost one process spawn each.
+//
+// THE FIXTURE IS PLANTED, NOT BORROWED: the selected package is
+// //dag/test/claim/test_verb_pattern_fixture, authored beside this file with two trivially
+// holding functions, so the receipt's content is independent of any production witness's fate and
+// the row cannot go green or red because some unrelated witness changed.
+
+// THE INHABITANCE ROW: the verb route really executes a witness end-to-end. Exit 0 is the modeled
+// "every selected module ran green", and the receipt — printed as the verb's message on stderr —
+// must name the fixture module, which is what separates "the route ran" from "the verb exited 0
+// having selected nothing" (an empty selection is a modeled FAILURE, exit 1, so the conjunction
+// is not satisfiable by a route that silently selects nothing).
+test fn the_test_verb_executes_a_subtree_pattern_end_to_end() -> Bool {
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
+    args: ["test", "//dag/test/claim/test_verb_pattern_fixture/..."]
+  )
+  result.exit_code == 0
+    && string_contains(s: result.stderr, pattern: "fixture_passing_witness_test")
+}
+
+// THE REFUSAL POLARITY CONTROLS, and they are controls for two different claims. Without the
+// first, the positive row is satisfiable by a verb that exits 0 for every operand; it plants the
+// one pattern FORM the grammar excludes by name and asserts the typed refusal reaches the process
+// status the model assigns it — 2, no observation taken, distinct from 1 (a run that did not
+// hold). The second plants a relative text: admission must refuse it as not absolute rather than
+// interpret it against the cwd, which is the fabricated-plausible-output shape one layer up.
+test fn the_test_verb_refuses_an_all_targets_pattern_with_status_2() -> Bool {
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
+    args: ["test", "//dag/test/claim:all-targets"]
+  )
+  result.exit_code == 2
+}
+
+test fn the_test_verb_refuses_a_relative_operand_with_status_2() -> Bool {
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
+    args: ["test", "dag/test/claim/test_verb_pattern_fixture/..."]
+  )
+  result.exit_code == 2
+}
