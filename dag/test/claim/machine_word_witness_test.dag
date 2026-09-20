@@ -1,5 +1,16 @@
 module test.claim.machine_word_witness
 
+// Octet IS IMPORTED WHERE EVERY OTHER NAME HERE IS BARE, and the asymmetry is the point:
+// extdeps.network.ipv4 also declares `type Octet = Int where range(min: 0, max: 255)`, so a bare
+// Octet is two declarations and resolves to neither. The other machine_word names are unique
+// corpus-wide and bind without help. I NOTED THAT COLLISION AT THE START OF THIS LANE, as the
+// reason not to mint a second octet spelling, and then minted one under the carrier ruling without
+// re-checking my own note -- which is why this file failed to resolve and its 60 claims never ran
+// on srv1 (receipt at 63bb03a4cf). The two Octets are a real section 3 question, raised with the
+// program rather than settled here: ipv4's is the same concept (a value in 0..255) in a
+// network-layer row.
+import std.machine_word { Octet }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
