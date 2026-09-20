@@ -47,7 +47,7 @@ import gunbc.auth.approval_request_submission { approval_submission_mac_key_secr
 // nothing here runs past one.
 //
 // THE MATERIAL IS 32 OCTETS FROM /dev/urandom RENDERED AS 64 LOWER HEX -- the spelling
-// extdeps.crypto.mac hmac_sha256_hex takes as key material -- and it never reaches argv or a log:
+// extdeps.crypto.mac mac_sign takes as key material -- and it never reaches argv or a log:
 // the actuator's snapshot writes it 0600 into a run-owned directory, digests the FILE, and the
 // version is verified by reading back the store. What this run prints is the version and the
 // digest prefix, which is what the SecretRef rows pin.

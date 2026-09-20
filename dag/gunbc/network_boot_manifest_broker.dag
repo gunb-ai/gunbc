@@ -25,10 +25,15 @@ import extdeps.crypto.mac {
   MacKeyRetired,
   MacSuiteMismatch,
   MacTagMalformed,
+  MacTagNotHex,
+  MacKeyMaterialMalformed,
+  MacVerificationRefused,
   VerifiedMessage,
   MacSigning,
   MacSigned,
   MacKeyMaterialNotHex,
+  MacComputationRefused,
+  HmacRefusal,
   mac_sign,
   mac_verify,
 }
@@ -80,6 +85,7 @@ type SignedBootManifestTicket {
 type BootManifestIssuanceRefusal
   = ManifestIssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
   | ManifestIssuanceKeyMaterialNotHex { key_id: MacKeyId }
+  | ManifestIssuanceComputationRefused { key_id: MacKeyId, cause: HmacRefusal }
   | ManifestIssuanceWindowInverted { not_before: EpochMs, expiry: EpochMs }
   | ManifestIssuanceTrustUnestablished
   | ManifestIssuanceDhcpArchUnpublished
@@ -231,6 +237,8 @@ fn issue_signed_boot_manifest_under_trust(identity: SignedBootManifestIdentity, 
         match mac_sign(key: key, message: message) {
           MacKeyMaterialNotHex { key_id: k } =>
             BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
+          MacComputationRefused { key_id: k, cause: c } =>
+            BootManifestIssuanceRefused { cause: ManifestIssuanceComputationRefused { key_id: k, cause: c } }
           MacSigned { tag: t } =>
             BootManifestIssued {
               ticket: SignedBootManifestTicket { identity: identity, tag_hex: t.hex },
@@ -280,6 +288,9 @@ fn verify_signed_boot_manifest_under_trust(
     MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
     MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
     MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
+    MacTagNotHex { key_id: _ } => refused(class: ManifestVerificationMac)
+    MacKeyMaterialMalformed { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+    MacVerificationRefused { key_id: _, cause: _ } => refused(class: ManifestVerificationMac)
   }
 }
 

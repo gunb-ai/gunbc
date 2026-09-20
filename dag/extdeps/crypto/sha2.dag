@@ -205,3 +205,10 @@ fn sha256(message: List<UInt8>) -> List<UInt8> {
 fn sha256_hex(message: List<UInt8>) -> String {
   base16_encode_lower(octets: sha256(message: message))
 }
+
+// The two sizes HMAC (RFC 2104) needs from its hash: the block B the key is padded to, and the
+// digest L the tag is. Named here so extdeps.crypto.mac reads them from the hash it instantiates
+// rather than spelling 64 and 32 beside a second SHA-256.
+fn sha256_block_octets() -> Int { 64 }
+
+fn sha256_digest_octets() -> Int { 32 }

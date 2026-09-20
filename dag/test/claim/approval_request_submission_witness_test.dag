@@ -3,7 +3,7 @@ module test.claim.approval_request_submission_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, Secret }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacVerified, mac_verify }
+import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacComputationRefused, MacVerified, mac_verify }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
@@ -51,6 +51,7 @@ fn signed_envelope() -> String {
   match sign_submission(key: submission_key(), request: request()) {
     MacSigned { tag: t } => submission_envelope_json(request: request(), tag_hex: t.hex)
     MacKeyMaterialNotHex { key_id: _ } => ""
+    MacComputationRefused { key_id: _, cause: _ } => ""
   }
 }
 
@@ -112,6 +113,7 @@ test fn the_capability_key_cannot_file_a_request() -> Bool {
         _ => false
       }
     MacKeyMaterialNotHex { key_id: _ } => false
+    MacComputationRefused { key_id: _, cause: _ } => false
   }
 }
 

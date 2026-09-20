@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // seam, which is right for discriminating verify_capability's policy and says nothing about whether
 // a tag the broker mints actually verifies. This file is that inhabitance claim: every capability
 // below is produced by issue_capability, and every verdict comes from mac_verify running
-// hmac_sha256_verify_hex over the bytes the verifier itself serialized. Deleting issuance, the
+// the modeled HMAC-SHA-256 over the bytes the verifier itself serialized. Deleting issuance, the
 // transcoding, or the shared signing input must turn the round-trip red.
 
 data broker_key_id: MacKeyId = "broker-2026-09" as MacKeyId

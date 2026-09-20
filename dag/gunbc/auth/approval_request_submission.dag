@@ -3,7 +3,7 @@ module gunbc.auth.approval_request_submission
 import std.types { Bool, Int, NonEmptyStr, String, Secret, HttpStatus }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
-import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacComputationRefused, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, NtfyPublished, NtfyPublishRefused, NtfyPublishUnreached, NtfyPublishUndecodable, ntfy_publish_outcome_of, ntfy_priority_wire, ntfy_cache_wire }
@@ -207,12 +207,18 @@ type LinkIssuance
   = LinksIssued { approve: NonEmptyStr, deny: NonEmptyStr }
   | LinksNotIssued { key_id: MacKeyId }
 
+// A signing refusal of either kind -- key material that is not hex, or the HMAC computation refusing
+// (extdeps.crypto.mac MacComputationRefused, unreachable for a well-formed key) -- means no link
+// exists under that key, which is exactly what LinksNotIssued reports; the typed cause stays on the
+// MacSigning value that produced it.
 fn issue_links(capability_key: MacKey, base: NonEmptyStr, request: StoredApprovalRequest) -> LinkIssuance {
   match mac_sign(key: capability_key, message: approval_capability_signing_input(c: claims_for(request: request, decision: ProposeApprove))) {
     MacKeyMaterialNotHex { key_id: k } => LinksNotIssued { key_id: k }
+    MacComputationRefused { key_id: k, cause: _ } => LinksNotIssued { key_id: k }
     MacSigned { tag: approve_tag } =>
       match mac_sign(key: capability_key, message: approval_capability_signing_input(c: claims_for(request: request, decision: ProposeDeny))) {
         MacKeyMaterialNotHex { key_id: k } => LinksNotIssued { key_id: k }
+        MacComputationRefused { key_id: k, cause: _ } => LinksNotIssued { key_id: k }
         MacSigned { tag: deny_tag } => LinksIssued {
           approve: approval_link(base: base, request: request, decision: ProposeApprove, tag_hex: approve_tag.hex),
           deny: approval_link(base: base, request: request, decision: ProposeDeny, tag_hex: deny_tag.hex),
