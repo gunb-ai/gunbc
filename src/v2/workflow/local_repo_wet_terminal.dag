@@ -180,13 +180,14 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // too-small host produces an OOM kill and not a verdict -- which is `SelectedButNotExecuted`,
 // carrying no evidence in either direction.
 //
-// TWELVE FABRIC DB MEMBERS (test.claim.fabric.fabric_db_file_store_wet_witness and
-// test.claim.fabric.fabric_event_log_wet_witness). Their effects are a temp directory and files
+// FIFTEEN FABRIC DB MEMBERS (test.claim.fabric.fabric_db_file_store_wet_witness,
+// test.claim.fabric.fabric_event_log_wet_witness and
+// test.claim.fabric.fabric_partition_read_wet_witness). Their effects are a temp directory and files
 // created inside it -- the fabric DB's object and head areas -- with no network and nothing outside
 // the directory. They are the file store's refusal arms (lost race, missing object, a hole, a
-// corrupt object, the bound, a navigating name), the served handler's store side, and the event log's route over it. They replaced
+// corrupt object, the bound, a navigating name), the served handler's store side, the read-only partition readout, and the event log's route over it. They replaced
 // the three seat-ledger append members when the log moved off git (2026-09-19). Measured wet
-// through `gunbc run` over this tree before scheduling: all twelve held.
+// through `gunbc run` over this tree before scheduling: all fifteen held.
 //
 // THREE DEVBOOT TEXT-BLOB MEMBERS (test.claim.devboot_text_blob_real_execution), the same
 // local-repo effects: a temp directory holding a bare store or a worktree repository, a symlink
@@ -820,6 +821,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_partition_read_wet_witness", function: "an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_partition_read_wet_witness_test.dag",
+      function: "an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_partition_read_wet_witness", function: "a_two_event_partition_reports_both_events_oldest_first_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_partition_read_wet_witness_test.dag",
+      function: "a_two_event_partition_reports_both_events_oldest_first_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_partition_read_wet_witness", function: "a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_partition_read_wet_witness_test.dag",
+      function: "a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_event_log_wet_witness", function: "three_chained_appends_read_back_whole_oldest_first_by_real_execution" },
       entry: "dag/test/claim/fabric/fabric_event_log_wet_witness_test.dag",
       function: "three_chained_appends_read_back_whole_oldest_first_by_real_execution",
@@ -1069,6 +1088,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_source_patch_converge_witness", function: "empty_diff_has_a_real_digest" },
       entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
       function: "empty_diff_has_a_real_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "absent_binary_is_a_typed_spawn_refusal" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "absent_binary_is_a_typed_spawn_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "a_refusal_after_a_success_keeps_the_earlier_result" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "a_refusal_after_a_success_keeps_the_earlier_result",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "present_binary_exits" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "present_binary_exits",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "nonzero_exit_is_not_a_spawn_refusal" },
+      entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
+      function: "nonzero_exit_is_not_a_spawn_refusal",
       expectation: ExpectedToHold {}
     }
   ]

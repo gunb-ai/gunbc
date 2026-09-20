@@ -1,0 +1,45 @@
+module gunbc.guarantee_stall.runner_microvm_floor_fit_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// THE FLOOR DOES NOT FIT A GUEST AT THE CELL ROW THE FLEET RUNS, AND THAT IS A TRACKED STATE, NOT A
+// DISCHARGED ONE. This row replaces runner_microvm_guest_size_derivation_stall, whose two trigger
+// clauses gunbc#11672 executed -- guest topology is derived from the cell's absolute CPUQuota, and
+// guest RAM is the cell's remainder beside a declared reserve, admitted against the Work's stated
+// minimum. What that predecessor explicitly did NOT claim, and what is still not claimed here, is
+// that PRODUCTION reaches RunnerMicroVmAdmitted: on the fleet's own inputs gunbc_runner_microvm_shape
+// evaluates to ShapeRefusedWorkMemoryExceedsCellRemainder. The arithmetic is the module's own:
+// the floor's resident held-set demand (gunbc.floor_demand, 2026-09-19 receipt) plus the guest's
+// cache allowance derived from the same receipt exceeds MemoryMax less the realization reserve.
+// That is the wall doing its job on real receipts, and the refusal carries all three figures --
+// but a production path on which no guest can be shaped is a class below its ceiling, and
+// DESIGN 4b(2) says it names its trigger rather than sitting untracked (review 68307).
+//
+// MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
+// because the floor's stated memory demand plus the guest allowance does not fit the cell's
+// remainder. runner_microvm_shape itself is NOT a member: driven with a cell that holds the
+// demand it resolves and is admitted, and every refusal arm has an executed control. The stated
+// demand is not a member either: it is a measured lower bound, and the state this row tracks is
+// not that the number is wrong but that the row it is judged against was sized before it existed.
+//
+// THE CONTROLS ARE BOTH POLARITIES OF ONE CLAIM. test.claim.runner_microvm_witness_test carries a
+// witness that must pass in whichever state production is in (resolved iff the sum fits) and an
+// expecting-red probe pinned to TODAY's refusal with today's figures, which reds the day the fit
+// changes and then flips to the regression control that production RESOLVES (DESIGN 4b(4)).
+data runner_microvm_floor_fit_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.runner_microvm cannot shape a production guest for the floor: the floor's measured held-set demand plus the guest's cache allowance exceeds the fleet cell's MemoryMax less the realization reserve, so gunbc_runner_microvm_vm_config is MicroVmConfigUnresolved on every production path and RunnerMicroVmAdmitted is reachable only under supplied inputs",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "which of the two rows moves, and by how much, is an operator decision with a fleet cost: raising gunbc.runner_slot_allocation's per-slot MemoryMax above demand plus allowance plus reserve (28 GiB at the 2026-09-19 figures, which lowers each host's memory-admitted width -- the binding axis since gunbc#11716 cleared the CPU ceiling -- by the envelope quotient gunbc.runner_slot_allocation host_memory_admitted_width derives) or reducing the floor's demand below the current remainder. The in-guest cold receipt (gunbc.floor_cold_build_receipt) may also move the demand: the host-slot reading is censored on the held-set axis (anonymous memory being swapped at the line), and a guest that holds its own anonymous set may read differently",
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.runner_microvm gunbc_runner_microvm_shape",
+      "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
+      "gunbc.runner_microvm_boot_probe runner_microvm_boot_probe_config",
+    ],
+  },
+  next_rung_trigger: climbs_when(capability: "gunbc_runner_microvm_shape resolves on production inputs -- the floor's stated memory demand plus gunbc_runner_microvm_guest_cache_allowance fits gunbc_runner_slot_desired().memory_max less the declared realization allowance -- with the expecting-red probe in test.claim.runner_microvm_witness_test flipped to a regression control asserting resolution, and the cell row or demand receipt that moved cited on the flip. Deleting the allowance, the reserve, or the receipt to make the sum fit is not the capability; neither is a fixture cell"),
+}

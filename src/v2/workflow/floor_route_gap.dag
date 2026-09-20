@@ -1233,10 +1233,11 @@ fn floor_route_gap_expectation_chunk_16() -> List<FloorRouteGapExpectation> {
 }
 
 // THE FABRIC DB WET EVIDENCE: the nine file-store identities (one of them the served handler's
-// store side) and the three event-log identities over it. First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment:
-// this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
-// witness_exclusion_frontier LocalRepoWetLane rows for fabric_db_file_store_wet_witness_test.dag and
-// fabric_event_log_wet_witness_test.dag.
+// store side), the three event-log identities over it, and the three read-only readout identities.
+// First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier LocalRepoWetLane rows for fabric_db_file_store_wet_witness_test.dag,
+// fabric_event_log_wet_witness_test.dag and fabric_partition_read_wet_witness_test.dag.
 fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_db_file_store_wet_witness.a_chain_appended_through_the_store_is_read_back_whole_by_the_closure", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1257,6 +1258,12 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_db_file_store_wet_witness.a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.a_two_event_partition_reports_both_events_oldest_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_partition_read_wet_witness.a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.three_chained_appends_read_back_whole_oldest_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_event_log_wet_witness.a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1275,10 +1282,35 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
   }
   }
   }
+  }
+  }
+  }
+}
+
+// The four test.claim.shell_spawn_refused_real_execution_witness identities. Their subject IS the
+// host spawn -- whether argv[0] can be executed, and whether the shell transport turns a failed
+// spawn into ShellOutcome.ShellSpawnRefused instead of aborting the evaluation -- so
+// test.ShellSpawnProbe.Observed carries no mock_response and can carry none: a mocked refusal would
+// let the discriminating red pass without a spawn ever failing. Triple enrollment, the same shape
+// as chunk_12: this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
+// shell_spawn_refused_real_execution_witness_test.dag. Floor run 35470010097 measured the
+// unenrolled Observed / NoMockResponse gap on each identity while all four passed on the wet lane.
+fn floor_route_gap_expectation_chunk_18() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.absent_binary_is_a_typed_spawn_refusal", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.a_refusal_after_a_success_keeps_the_earlier_result", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.present_binary_exits", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.nonzero_exit_is_not_a_spawn_refusal", operation: "Observed", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Empty {} } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Empty {} } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

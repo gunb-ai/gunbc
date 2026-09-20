@@ -1,0 +1,45 @@
+module gunbc.rung_drop.witness_floor_off_the_required_gate
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// WHY THIS ROW EXISTS SEPARATELY FROM THE CHANGE THAT CAUSED IT. gunbc#11742 replaced the emitted
+// witnesses.yml with gunbc.compiler_gate_workflow, whose header carries the operator ruling, the
+// measurement and a dissolve-on condition -- and it is a good header. What it is not is a row on
+// the roster DESIGN section 4b(3) names as the authority for a lowered rung, so the drop was
+// invisible to gunbc.rung_drop and to docs/design-rung-drops.md while the capability was gone.
+//
+// THE TRIGGER WAS SELF-ERASING, WHICH IS THE LOAD-BEARING REASON AND NOT A FILING PREFERENCE. The
+// header's dissolve-on condition ends by deleting the module that carries it, so on the day the
+// gate is restored the only written record of what was lost would be removed by the act of
+// restoring it. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a trigger that disappears
+// when satisfied cannot be checked afterwards by anyone asking what the gate used to hold.
+//
+// THIS ROW DOES NOT DISPUTE THE DECISION. The fleet was stalled: about 100 self-hosted
+// runner-minutes per push across build, floor and heal on a ~45-runner fleet, with queues reaching
+// 49 minutes and the merge queue stalled behind them. Cutting the gate to a compiler build is the
+// operator's call and this row records its cost rather than arguing it.
+data witness_floor_off_the_required_gate: RungDrop = RungDrop {
+  identity: "witness_floor_off_the_required_gate" as NonEmptyStr,
+
+  subject: "The witness floor as a required merge gate",
+
+  declared: "2026-09-20",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "the whole enrolled witness population (4185 claims executed on the last measured run 35462055101) rather than a named subset of it",
+      "the namespace-wave-admission phase -- the refusal that catches a consumed transition-admission row",
+      "the generated-artifact phase -- the refusal that catches a committed projection diverging from its authority",
+      "the regen fixed-point phase",
+      "the parse sweep over every authored root",
+    ],
+    restoration_trigger: "THE CAPABILITY: the required gate again plans and executes the enrolled witness population on the revision that lands, at a cost the fleet can carry. gunbc.compiler_gate_workflow's header names the construction expected to get there -- the fold's preparation cost cut, by reusing resolved-module and reach-probe results across runs or by scoping preparation to a diff's closure -- and the MEASUREMENT that makes this the right target is that the claims were never the cost: on run 35462055101 the 4185 claims executed in 53 seconds while strict-preparation of 3197 modules took 14.3 minutes, reach probes 11 minutes, and parse, admission and bookkeeping the rest. WHAT DOES NOT RETIRE THIS ROW, stated because each is the likely mistake: re-emitting witnesses.yml from gunbc.witness_floor_workflow without the preparation repair, which restores the cost that caused the cut; a faster floor that still does not run on the merge path; and deleting gunbc.compiler_gate_workflow, which removes the stopgap rather than restoring the gate. The row retires on an OBSERVED required run that planned and executed the population on a landing revision, not on an emission",
+  },
+}
