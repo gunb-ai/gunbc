@@ -1,0 +1,91 @@
+module test.claim.fabric.fabric_partition_read_wet_witness
+
+import extdeps.shell
+import std.types { Bool, NonEmptyStr, String, EpochSecs }
+import product.capacity.event_chain { PartitionId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt }
+import product.capacity.pool_events { PoolEvent, PoolAcquired }
+import gunbc.fabric_db_client { FabricDbBinding, FabricDbLocalFiles }
+import gunbc.fabric_db_file_store { FabricDbFileRoot, fabric_db_file_root, fabric_db_file_root_ensure }
+import gunbc.fabric_event_log { event_log_append, EventAppended, EventAppendStale, EventAppendRefused }
+import gunbc.instruments.fabric_partition_read {
+  PartitionReadReport, PartitionReadReported, PartitionReadUnreported, partition_read_report,
+}
+
+// Wet controls for the read-only partition entry, against a fabric DB in a temporary directory: the
+// readout reports what the log holds and nothing about seats, and it refuses rather than reporting a
+// partial chain. These run the same production fold a seat acquisition reads through.
+
+fn witness_partition() -> PartitionId { "readout-seats" as PartitionId }
+
+fn fresh_store() -> FabricDbFileRoot {
+  let files = fabric_db_file_root(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_readout.XXXXXX").path as NonEmptyStr)
+  let _ready = fabric_db_file_root_ensure(root: files)
+  files
+}
+
+fn event(parent: HeadExpectation, at: EpochSecs, reference: String) -> ChainEvent<PoolEvent> {
+  ChainEvent {
+    partition: witness_partition(),
+    parent: match parent { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    recorded_at: at,
+    actor: "readout-witness" as NonEmptyStr,
+    payload: PoolAcquired { reference: reference as NonEmptyStr, amount: 1, term_seconds: 300 },
+  }
+}
+
+fn appended(store: FabricDbBinding, parent: HeadExpectation, at: EpochSecs, reference: String) -> HeadExpectation? {
+  match event_log_append(store: store, partition: witness_partition(), event: event(parent: parent, at: at, reference: reference), expected: parent) {
+    EventAppended { id: i } => Present { value: HeadAt { id: i } }
+    EventAppendStale { expected: _, observed: _ } => none
+    EventAppendRefused { cause: _ } => none
+  }
+}
+
+// AN EMPTY PARTITION READS AS ABSENT, which is what a live partition answers after the cutover.
+test fn an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution() -> Bool {
+  match partition_read_report(store: FabricDbLocalFiles { root: fresh_store() }, partition: witness_partition(), budget: 16) {
+    PartitionReadReported { text: t } => t.contains("head absent") && t.contains("events 0")
+    PartitionReadUnreported { detail: _ } => false
+  }
+}
+
+// THE READOUT IS THE CHAIN THE STORE HOLDS: two appended events come back oldest first, each under
+// the id the append was answered with, carrying their own wire text.
+test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution() -> Bool {
+  let store = FabricDbLocalFiles { root: fresh_store() }
+  match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
+    Absent => false
+    Present { value: h1 } =>
+      match appended(store: store, parent: h1, at: 1001, reference: "second") {
+        Absent => false
+        Present { value: h2 } =>
+          match partition_read_report(store: store, partition: witness_partition(), budget: 16) {
+            PartitionReadUnreported { detail: _ } => false
+            PartitionReadReported { text: t } =>
+              t.contains("events 2")
+                && t.contains(match h1 { HeadAt { id: i } => i as String  HeadAbsent => "" })
+                && t.contains(match h2 { HeadAt { id: i } => i as String  HeadAbsent => "" })
+                && t.contains("first") && t.contains("second")
+          }
+      }
+  }
+}
+
+// THE BOUND REFUSES RATHER THAN REPORTING THE PART THAT FIT. A readout that truncated would be a
+// fabricated answer about a live seat pool -- the reader would count fewer acquisitions than the
+// partition holds.
+test fn a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution() -> Bool {
+  let store = FabricDbLocalFiles { root: fresh_store() }
+  match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
+    Absent => false
+    Present { value: h1 } =>
+      match appended(store: store, parent: h1, at: 1001, reference: "second") {
+        Absent => false
+        Present { value: _ } =>
+          match partition_read_report(store: store, partition: witness_partition(), budget: 1) {
+            PartitionReadUnreported { detail: d } => d.contains("read budget")
+            PartitionReadReported { text: _ } => false
+          }
+      }
+  }
+}

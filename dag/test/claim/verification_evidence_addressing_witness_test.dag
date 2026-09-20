@@ -28,9 +28,7 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapNodeIdentity,
   RoadmapNodeId,
-  Sized,
-  IntricacyHigh,
-  VolumeMedium,
+  Dispatchable,
   PrsMerged,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
@@ -306,9 +304,7 @@ fn fixture_roadmap_node() -> RoadmapNode {
     node: fixture_node_id(),
     line: DerivableLine { prs: [1], title: "recut-a", description: "" },
     carriers: [],
-    sizing: Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: PrsMerged,
     },
