@@ -116,7 +116,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
           Present { value: arg } =>
             let kind_name = authored_name(env: env, node: kind_node)
             let param_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
-            match type_arg_kind_inhabitance(arg: arg, kind_node: kind_node, env: env) {
+            match type_arg_kind_inhabitance(arg: arg, kind_node: kind_node, env: env, module_name: module_name) {
               KindInhabited => []
               KindNotInhabited =>
                 [make_error_node(
@@ -172,7 +172,7 @@ type KindInhabitance
 // RUNG HONESTY: a class's rung is the minimum across its paths, so this position's rung is set by
 // the LITERAL axis, not by the named one. The position is NOT fully grounded and must not be cited
 // as such.
-fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv) -> KindInhabitance {
+fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv, module_name: String) -> KindInhabitance {
   let arg_is_type_var = match arg.inferred {
     Present { value: inf } => is_type_variable(inferred: inf)
     Absent => false
@@ -185,6 +185,7 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv) -> KindIn
       Present { value: kind_decl } =>
         let arg_name = authored_name(env: env, node: arg)
         if kind_names_admissible_inhabitant(kind_decl: kind_decl, arg_name: arg_name, env: env) { KindInhabited }
+        else if kind_inhabitant_matches_resolved(kind_node: kind_node, arg: arg, env: env, module_name: module_name) { KindInhabited }
         else if type_arg_name_is_bound_generic_parameter(name: arg_name, env: env) { KindInhabited }
         else { KindNotInhabited }
     }
@@ -197,6 +198,24 @@ fn type_arg_kind_inhabitance(arg: Node, kind_node: Node, env: TypeEnv) -> KindIn
 // and narrow in the REFUSING direction, which is the correct direction for a wall to be wrong in.
 fn kind_names_admissible_inhabitant(kind_decl: Node, arg_name: String, env: TypeEnv) -> Bool {
   kind_admissible_inhabitant_name(kind_decl: kind_decl, env: env) == arg_name
+}
+
+// RESOLVE BOTH SIDES AND COMPARE, because the kind declaration does NOT carry its target where this
+// check can read it. MEASURED, by a trace this refusal printed on the real corpus:
+//   'PointerWidth [decl=WidthResolution inferred=absent resolved_target= children=0]'
+// A single-arm `type WidthResolution = PointerWidth` is parsed as a TYPE ALIAS, so the declaration
+// reaching this site is a bare nominal node -- no inferred target, no children. Reading
+// kind_decl.inferred therefore answers nothing, which is why the wall refused its own declared
+// inhabitant and the positive control failed. Three separate readings of local_binding_for_item and
+// lookup_type_by_name predicted otherwise; the trace is what settled it.
+// So both sides go through the module's own resolution, symmetrically, and are compared on the
+// resolved identity rather than on a field one side happens not to carry.
+fn kind_inhabitant_matches_resolved(kind_node: Node, arg: Node, env: TypeEnv, module_name: String) -> Bool {
+  let resolved_kind = resolve_node_bounded(n: kind_node, env: env, module_name: module_name, depth: 0, masked: false).resolved
+  let resolved_arg = resolve_node_bounded(n: arg, env: env, module_name: module_name, depth: 0, masked: false).resolved
+  let kind_name = node_authored_or_own_name(n: resolved_kind, env: env)
+  let arg_name = node_authored_or_own_name(n: resolved_arg, env: env)
+  kind_name != "" && kind_name == arg_name
 }
 
 // AUTHORED NAME, ELSE THE NODE'S OWN NAME. authored_name reads the SOURCE TEXT at a node's
