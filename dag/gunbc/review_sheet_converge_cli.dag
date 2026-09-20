@@ -362,7 +362,7 @@ type FormatDisposition
 // THE SCHEMA IS VALIDATED BEFORE THE FORMATTER IS REACHED, and a refusal SKIPS the format rather
 // than formatting to a guessed extent: converge_review_sheet_format takes ValidatedHeaderSchema,
 // so there is no arm of this fold that can hand it a schema whose header row is malformed.
-fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: Network {
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition {
   match validate_header_schema(schema: ci_prospect_sheet_schema()) {
     HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
     HeaderSchemaValidated { validated: v } =>
@@ -370,7 +370,7 @@ fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition uses net: 
   }
 }
 
-fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
+fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition {
   match o {
     SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
     SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
