@@ -584,11 +584,11 @@ type D0Observation {
 
 type OccupancyReconciliation
   = DeclaredOccupantDrifted { drifted: List<HostIdentity> }
-  | OccupancyNotQuiet { head: HostIdentity }
+  | OccupancyNotQuiet { live: List<HostIdentity> }
   | OccupancyUnread { hosts: List<HostIdentity>, cause: NonEmptyStr }
 
 type RankVerdict
-  = RankConverged
+  = RankLive { host: HostIdentity }
   | RankDrifted { host: HostIdentity }
   | RankUnread { host: HostIdentity, cause: NonEmptyStr }
 
@@ -604,7 +604,7 @@ fn rank_verdict(declared: DeclaredRankUnit, ranks: List<RankOccupancyReading>) -
           match digests_agree(left: d, right: declared.digest) {
             DigestsIncomparable => RankUnread { host: declared.host, cause: "the installed unit's digest and the declared digest are of different hash families" as NonEmptyStr }
             DigestsDiffer => RankDrifted { host: declared.host }
-            DigestsAgree => if active { RankConverged } else { RankDrifted { host: declared.host } }
+            DigestsAgree => if active { RankLive { host: declared.host } } else { RankDrifted { host: declared.host } }
           }
       }
   }
@@ -613,7 +613,7 @@ fn rank_verdict(declared: DeclaredRankUnit, ranks: List<RankOccupancyReading>) -
 fn verdict_unread(v: RankVerdict) -> List<RankVerdict> {
   match v {
     RankUnread { host: _, cause: _ } => [v]
-    RankConverged => [] as List<RankVerdict>
+    RankLive { host: _ } => [] as List<RankVerdict>
     RankDrifted { host: _ } => [] as List<RankVerdict>
   }
 }
@@ -621,7 +621,15 @@ fn verdict_unread(v: RankVerdict) -> List<RankVerdict> {
 fn verdict_drifted_host(v: RankVerdict) -> List<HostIdentity> {
   match v {
     RankDrifted { host: h } => [h]
-    RankConverged => [] as List<HostIdentity>
+    RankLive { host: _ } => [] as List<HostIdentity>
+    RankUnread { host: _, cause: _ } => [] as List<HostIdentity>
+  }
+}
+
+fn live_host(v: RankVerdict) -> List<HostIdentity> {
+  match v {
+    RankLive { host: h } => [h]
+    RankDrifted { host: _ } => [] as List<HostIdentity>
     RankUnread { host: _, cause: _ } => [] as List<HostIdentity>
   }
 }
@@ -629,7 +637,7 @@ fn verdict_drifted_host(v: RankVerdict) -> List<HostIdentity> {
 fn unread_host(v: RankVerdict) -> List<HostIdentity> {
   match v {
     RankUnread { host: h, cause: _ } => [h]
-    RankConverged => [] as List<HostIdentity>
+    RankLive { host: _ } => [] as List<HostIdentity>
     RankDrifted { host: _ } => [] as List<HostIdentity>
   }
 }
@@ -637,7 +645,7 @@ fn unread_host(v: RankVerdict) -> List<HostIdentity> {
 fn unread_cause(v: RankVerdict) -> List<String> {
   match v {
     RankUnread { host: h, cause: c } => [join([h as String, ": ", c as String], "")]
-    RankConverged => [] as List<String>
+    RankLive { host: _ } => [] as List<String>
     RankDrifted { host: _ } => [] as List<String>
   }
 }
@@ -648,23 +656,29 @@ fn unread_cause(v: RankVerdict) -> List<String> {
 // installed) corroborates absence, ACTIVE is a listener the route did not reach (OccupancyNotQuiet
 // -- an unidentified incumbent, never a reconciled answer), unread fences. With the head quiet,
 // every declared rank is read against its unit: one unread rank makes the whole occupancy unread
-// -- a pair three-quarters reconciled is not reconciled -- and with every rank read the drift is
-// decided. Because the head was just read inactive, the head rank is drifted (declared bytes, not
-// running) or unread (not installed), so the reconciled answer this route reaches is always
-// DeclaredOccupantDrifted: the declared occupant, observed not running, which is exactly the
-// population the suspension records and D1 cleans.
+// -- a pair three-quarters reconciled is not reconciled -- and A LIVE RANK ANYWHERE IS NOT QUIET:
+// a worker whose declared unit is installed, byte-identical and active is a running occupant, so
+// the answer is OccupancyNotQuiet naming every live rank, never a drifted population with the
+// running rank dropped (that was the widen review 69399 found). Only with every rank read and
+// none live is the drift decided; because the head was just read inactive, the head rank is
+// drifted (declared bytes, not running) or unread (not installed), so the reconciled answer this
+// route reaches is DeclaredOccupantDrifted: the declared occupant, observed not running, which
+// is exactly the population the suspension records and D1 cleans.
 fn reconcile_occupancy(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> OccupancyReconciliation {
   match first(filter(ranks, r => host_identity_eq(a: r.host, b: declared.head.host))) {
     Absent => OccupancyUnread { hosts: [declared.head.host], cause: "no occupancy reading was taken for the head rank" as NonEmptyStr }
     Present { value: r } =>
       match r.occupancy {
         UnitOccupancyUnread { refusal: why } => OccupancyUnread { hosts: [declared.head.host], cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
-        UnitInstalled { active: true, unit_digest: _ } => OccupancyNotQuiet { head: declared.head.host }
+        UnitInstalled { active: true, unit_digest: _ } => OccupancyNotQuiet { live: [declared.head.host] }
         _ => {
           let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
           let unread = flat_map(verdicts, v => verdict_unread(v: v))
+          let live = flat_map(verdicts, v => live_host(v: v))
           if length(unread) != 0 {
             OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
+          } else if length(live) != 0 {
+            OccupancyNotQuiet { live: live }
           } else {
             DeclaredOccupantDrifted { drifted: flat_map(verdicts, v => verdict_drifted_host(v: v)) }
           }
@@ -741,7 +755,7 @@ fn d0_decide(
             HeadEndpointQuiet =>
           match reconcile_occupancy(declared: d, ranks: observation.ranks) {
             OccupancyUnread { hosts: _, cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and ", c as String], "") as NonEmptyStr })
-            OccupancyNotQuiet { head: h } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and the declared serving unit on the head ", h as String, " is ACTIVE, so a listener may exist behind the failed connect"], "") as NonEmptyStr })
+            OccupancyNotQuiet { live: lv } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and the declared serving unit is ACTIVE on [", hosts_wire(hs: lv), "], so an occupant is running behind the failed connect"], "") as NonEmptyStr })
             DeclaredOccupantDrifted { drifted: ds } =>
               D0DecidedSuspend {
                 next: SuspendedForAuthorizedSuccessor { group: group, hosts: hosts, authorization: authorization, exact_candidate_realization: candidate, lease: lease, cleanup: cleanup },
@@ -822,7 +836,7 @@ fn head_endpoint_line(h: HeadEndpointReading) -> String {
 
 fn reconciliation_line(r: OccupancyReconciliation) -> String {
   match r {
-    OccupancyNotQuiet { head: h } => join(["  reconciliation: occupancy-not-quiet head ", h as String, " active"], "")
+    OccupancyNotQuiet { live: lv } => join(["  reconciliation: occupancy-not-quiet, active on [", hosts_wire(hs: lv), "]"], "")
     DeclaredOccupantDrifted { drifted: ds } => join(["  reconciliation: declared-occupant-drifted ", join(map(ds, h => h as String), ",")], "")
     OccupancyUnread { hosts: hs, cause: c } => join(["  reconciliation: occupancy-unread ", join(map(hs, h => h as String), ","), ": ", c as String], "")
   }
@@ -986,7 +1000,7 @@ fn refuse(reason: String) -> ProcessExit {
 // the claim stays held, and a rerun finalizes the placement from the join before it completes.
 type D0Outcome
   = D0Settled { decision: D0Decision, generation: Nat, receipt_path: String, entry_state: ContentHash }
-  | D0PlacementStillFencing { decision: D0Decision?, generation: Nat, entry_state: ContentHash?, preparation: EventId, cause: String }
+  | D0PlacementStillFencing { decision: D0Decision?, generation: Nat, entry_state: ContentHash?, preparation: EventId?, cause: String }
   | D0Refused { cause: String }
 
 
@@ -1003,7 +1017,7 @@ fn d0_outcome_text(o: D0Outcome) -> String {
     D0Settled { decision: d, generation: g, receipt_path: p, entry_state: es } =>
       join(concat(decision_lines(d: d), [join(["  settled at generation ", to_string(g), " entry-state ", serialize_content_hash(hash: es) as String, " receipt ", p], "")]), "\n")
     D0PlacementStillFencing { decision: d, generation: g, entry_state: es, preparation: pr, cause: c } =>
-      join(concat(match d { Absent => ["  (the transfer into suspension landed; nothing was read yet)"]  Present { value: dd } => decision_lines(d: dd) }, [join(["  the authority moved at generation ", to_string(g), match es { Absent => ""  Present { value: h } => join([" entry-state ", serialize_content_hash(hash: h) as String], "") }, " but its placement preparation ", pr as String, " did not finalize: ", c, "; the consent is not complete -- a rerun under this transaction finalizes it from the join"], "")]), "
+      join(concat(match d { Absent => ["  (the transfer into suspension landed; nothing was read yet)"]  Present { value: dd } => decision_lines(d: dd) }, [join(["  the authority moved at generation ", to_string(g), match es { Absent => ""  Present { value: h } => join([" entry-state ", serialize_content_hash(hash: h) as String], "") }, " but its placement preparation ", (match pr { Absent => "(could not be named)"  Present { value: id } => id as String }), " did not finalize: ", c, "; the consent is not complete -- a rerun under this transaction finalizes it from the join"], "")]), "
 ")
     D0Refused { cause: c } => join(["pair_serving_d0 refused: ", c], "")
   }
@@ -1051,9 +1065,11 @@ fn d0_settle(store: FabricStorageBinding, pending: PairServingGroupAuthority, he
             AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } =>
               D0Settled { decision: decision, generation: g, receipt_path: if wr.success { path } else { join(["(local copy not written: ", wr.error, ")"], "") }, entry_state: digest }
             AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementCleanupStillFencing { preparation: pr, cause: c } } =>
-              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: pr, cause: c }
+              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: Present { value: pr }, cause: c }
+            AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementCleanupUnread { cause: c } } =>
+              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: none, cause: c }
             AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementAbortedAt { preparation: pr, id: _ } } =>
-              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: pr, cause: "the authority landed but its preparation reads aborted -- the placement and the authority disagree; operator" }
+              D0PlacementStillFencing { decision: Present { value: decision }, generation: g, entry_state: Present { value: digest }, preparation: Present { value: pr }, cause: "the authority landed but its preparation reads aborted -- the placement and the authority disagree; operator" }
             AuthorityTransitionStale { expected: e, current: c, placement: pl } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c, placement: pl })], "") }
             AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl } => D0Refused { cause: join(["the settling write did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl })], "") }
           }
@@ -1090,9 +1106,11 @@ fn d0_transaction(store: FabricStorageBinding, group: FabricGroup, current_hosts
                 AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } =>
                   d0_settle(store: store, pending: pending, head: HeadAt { id: admitting }, active: cur, lease: lease, admitted: admitted, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
                 AuthorityTransitionAppended { id: _, generation: pending_generation, next: _, placement: PlacementCleanupStillFencing { preparation: pr, cause: c } } =>
-                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: pr, cause: c }
+                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: Present { value: pr }, cause: c }
+                AuthorityTransitionAppended { id: _, generation: pending_generation, next: _, placement: PlacementCleanupUnread { cause: c } } =>
+                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: none, cause: c }
                 AuthorityTransitionAppended { id: _, generation: pending_generation, next: _, placement: PlacementAbortedAt { preparation: pr, id: _ } } =>
-                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: pr, cause: "the placement and the authority disagree; operator" }
+                  D0PlacementStillFencing { decision: none, generation: pending_generation, entry_state: none, preparation: Present { value: pr }, cause: "the placement and the authority disagree; operator" }
                 AuthorityTransitionStale { expected: e, current: c, placement: pl } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c, placement: pl })], "") }
                 AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why, placement: pl })], "") }
               }
@@ -1285,6 +1303,7 @@ fn d0_settle_admitted(store: FabricStorageBinding, g: FabricGroup, current_hosts
   match placement_repair_pending(store: store, group: g, actor: executor, at: at) {
     Present { value: PlacementAbortedAt { preparation: pr, id: _ } } => exit_failure(reason: join(["the group's pending placement preparation ", pr as String, " was aborted by the repair, which no run of this transaction does: an operator's disposition, so this run does not proceed on it"], ""))
     Present { value: PlacementCleanupStillFencing { preparation: pr, cause: c } } => exit_failure(reason: join(["the group's pending placement preparation ", pr as String, " cannot be repaired by this run: ", c, "\n  the authorization claim stays held"], ""))
+    Present { value: PlacementCleanupUnread { cause: c } } => exit_failure(reason: join(["the group's pending placement could not be read, so this run does not proceed: ", c], ""))
     Absent => d0_settle_admitted_over(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: observe)
     Present { value: PlacementFinalizedAt { preparation: _, id: _ } } => d0_settle_admitted_over(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: observe)
   }
@@ -1386,6 +1405,7 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
         D0RecoverComplete { claim_generation: cg, settled: st } =>
           match placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: st.placement.id), actor: executor, at: at) {
             PlacementCleanupStillFencing { preparation: pr, cause: c } => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the settling write's placement preparation ", pr as String, " is not finalized: ", c, "; the claim stays held until it is"], ""))
+            PlacementCleanupUnread { cause: c } => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the settling write's placement preparation ", st.placement.id as String, " could not be read: ", c, "; the claim is left held for a rerun"], ""))
             PlacementAbortedAt { preparation: pr, id: _ } => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the settling write's placement preparation ", pr as String, " reads aborted -- the placement and the authority disagree; operator"], ""))
             PlacementFinalizedAt { preparation: _, id: _ } =>
           match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: true, cause: "", now: now) {

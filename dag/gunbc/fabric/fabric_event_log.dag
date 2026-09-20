@@ -123,6 +123,13 @@ fn event_log_observe_head(store: FabricStorageBinding, partition: PartitionId) -
 
 // READING A PARTITION: one closure from the head, each held object decoded as an event, and the
 // collected envelopes handed to the pure walk so the chain's shape is decided by one authority.
+// THE ONE READ BUDGET FOR A PARTITION CLOSURE: how many events a single read of any partition may
+// walk before it refuses as ChainBudgetExhausted. Owned here, beside the read it bounds, and
+// consumed by every reader of the log (the seat and quota transactions through the pool-event
+// read, the pair-serving authority and host-placement folds, the partition-read instrument), so a
+// bound that moves moves once.
+fn event_log_read_budget() -> Nat { 4096 }
+
 // THE LOG IS ONE CARRIER FOR EVERY PARTITION KIND. A partition's payload type and its codec are
 // the partition owner's (pool events here; the pair-serving authority and host placement in
 // gunbc.spark.pair_serving_authority_log), so the read and the append take the codec as a value:

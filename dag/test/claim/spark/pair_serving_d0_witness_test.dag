@@ -180,7 +180,7 @@ test fn all_ranks_installed_running_with_declared_bytes_is_not_quiet_and_fences(
   d0w_with_digests(scenario: fn(a, b, c) {
     let ranks = d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })
     (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
-       OccupancyNotQuiet { head: h } => (h as String) == (operator_host_srv5 as String)
+       OccupancyNotQuiet { live: lv } => length(lv) == 1 && any(lv, h => (h as String) == (operator_host_srv5 as String))
        _ => false
      })
       && (match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: ranks, h: c) {
@@ -207,12 +207,14 @@ test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
   })
 }
 
-// One rank carries other bytes (the head, read inactive as the route requires, is drifted too):
-// drifted, naming the head and exactly that rank.
+// One rank carries other bytes while the others are inactive with the declared bytes: every
+// rank is drifted (declared bytes not running is drift, other bytes is drift) and the population
+// names all four, the head and the other-bytes rank among them. A rank ACTIVE with the declared
+// bytes is live and makes the occupancy not quiet -- the claim above -- never a drifted member.
 test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
-    match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: b })) {
-      DeclaredOccupantDrifted { drifted: ds } => length(ds) == 2 && any(ds, h => (h as String) == (operator_host_srv7 as String)) && any(ds, h => (h as String) == (operator_host_srv5 as String))
+    match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: false, unit_digest: b })) {
+      DeclaredOccupantDrifted { drifted: ds } => length(ds) == 4 && any(ds, h => (h as String) == (operator_host_srv7 as String)) && any(ds, h => (h as String) == (operator_host_srv5 as String))
       _ => false
     }
   })
@@ -527,9 +529,9 @@ test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
     let declared = d0w_t_declared(head: a, worker: b)
     let no_status = IncumbentDidNotAnswer { receipt: "the front door could not be connected (curl exit 7)" as NonEmptyStr, head: HeadEndpointQuiet }
     let quiet_ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })
-    (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })) { OccupancyNotQuiet { head: _ } => true  _ => false })
+    (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })) { OccupancyNotQuiet { live: lv } => length(lv) == 1  _ => false })
       && (match reconcile_occupancy(declared: declared, ranks: [] as List<RankOccupancyReading>) { OccupancyUnread { hosts: _, cause: _ } => true  _ => false })
-      && (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) { DeclaredOccupantDrifted { drifted: ds } => length(ds) == 1  _ => false })
+      && (match reconcile_occupancy(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) { OccupancyNotQuiet { live: lv } => length(lv) == 3 && !any(lv, h => (h as String) == (operator_host_srv5 as String))  _ => false })
       && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
             D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
             _ => false

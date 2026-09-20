@@ -893,7 +893,7 @@ fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, res
         SparkHostRefused { cause: c } => SparkHostRefused { cause: c }
         SparkHostAdmitted { host: host, claim: _ } => {
           match host_effect_admit(store: store, host: host, purpose: purpose, executor: executor, term: term, residue: residue, at: at) {
-            HostEffectClaimed { id: id, generation: _ } =>
+            HostEffectClaimed { id: id } =>
               SparkHostAdmitted { host: host, claim: Present { value: HostEffectHandle { host: host, residue: residue, claim: id } } }
             HostEffectClaimRefused { partition: pt, step: st2, reason: why } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the host-effect claim did not land on ", pt as String, " at ", st2, ": ", why], "") as NonEmptyStr }
           }

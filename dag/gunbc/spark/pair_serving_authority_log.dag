@@ -20,7 +20,7 @@ import product.capacity.event_chain {
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_string, member_nonempty, member_nat }
 import gunbc.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition_with,
-  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with, event_log_refusal_wire,
+  EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with, event_log_refusal_wire, event_log_read_budget,
 }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
@@ -1462,7 +1462,6 @@ fn authority_with_lease_observed(a: PairServingGroupAuthority, grant: LeaseGrant
   }
 }
 
-data pair_authority_read_budget: Nat = 4096
 
 // THE GROUP PARTITION, READ AND FOLDED. Every failure to read is Unread with its step; a refused
 // fold is Unread at "fold". The two readable outcomes are the two fold states.
@@ -1478,7 +1477,7 @@ fn fold_refusal_text(at_event: EventId, reason: String) -> String {
 }
 
 fn read_group_partition(store: FabricStorageBinding, group: FabricGroup) -> GroupPartitionRead {
-  match event_log_read_partition_with(store: store, partition: pair_authority_partition(group: group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
+  match event_log_read_partition_with(store: store, partition: pair_authority_partition(group: group), budget: event_log_read_budget(), decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadRefused { cause: c } => GroupPartitionUnread { step: "store", reason: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: head, walk: walk } =>
       match walk {
@@ -1631,7 +1630,7 @@ fn finalization_gaps(group: FabricGroup, partition: GroupPartitionRead, preps: L
 }
 // The placement fold alone (no cross-chain join): what the joined reads start from.
 fn placement_fold_read(store: FabricStorageBinding) -> PlacementRead {
-  match event_log_read_partition_with(store: store, partition: host_placement_partition, budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
+  match event_log_read_partition_with(store: store, partition: host_placement_partition, budget: event_log_read_budget(), decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadRefused { cause: c } => PlacementUnread { step: "store", reason: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: head, walk: walk } =>
       match walk {
@@ -1673,10 +1672,15 @@ type PlacementPreparation
   | PlacementPreparationStale
   | PlacementPreparationRefused { step: String, reason: String }
 
+// A cleanup that could not even name its preparation -- the placement partition or the join was
+// unreadable, or the named preparation is not on the chain -- is PlacementCleanupUnread: it carries
+// no EventId, because there is none to carry, and nothing downstream may treat it as a preparation
+// a rerun finalizes (review 69399: a minted "unknown" id flowed into D0PlacementStillFencing).
 type PlacementCleanup
   = PlacementFinalizedAt { preparation: EventId, id: EventId }
   | PlacementAbortedAt { preparation: EventId, id: EventId }
   | PlacementCleanupStillFencing { preparation: EventId, cause: String }
+  | PlacementCleanupUnread { cause: String }
 
 fn committed_population(a: PairServingGroupAuthority) -> List<HostIdentity> {
   if pair_serving_commits_hosts(a: a) { pair_serving_committed_hosts(a: a) } else { [] as List<HostIdentity> }
@@ -1789,8 +1793,8 @@ fn placement_finalize(store: FabricStorageBinding, consumed: PreparationConsumpt
       if (fae as String) == (ae as String) { PlacementFinalizedAt { preparation: ref.id, id: fb } } else { PlacementCleanupStillFencing { preparation: ref.id, cause: join(["the preparation is finalized to authority event ", fae as String, ", not to its consumer ", ae as String], "") } }
     PreparationConsumedBy { preparation: ref, authority_event: ae, state: _ } => placement_finalize_attempt(store: store, preparation: ref, authority_event: ae, actor: actor, at: at, attempts_left: 3)
     PreparationNotConsumed { record: rec, group_head: _, cancelled: _ } => PlacementCleanupStillFencing { preparation: rec.id, cause: "no authority event consumed this preparation; it is aborted, not finalized" }
-    PreparationAbsent => PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: "the preparation is not on the placement chain" }
-    PreparationConsumptionUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: join(["the join could not be read at ", st, ": ", why], "") }
+    PreparationAbsent => PlacementCleanupUnread { cause: "the preparation is not on the placement chain" }
+    PreparationConsumptionUnread { step: st, reason: why } => PlacementCleanupUnread { cause: join(["the join could not be read at ", st, ": ", why], "") }
   }
 }
 
@@ -1909,17 +1913,19 @@ fn placement_abort(store: FabricStorageBinding, preparation: EventId, reason: St
 // that resumes on a group calls this before its own saga, because one saga is pending at a time.
 fn placement_repair_pending(store: FabricStorageBinding, group: FabricGroup, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup? {
   match placement_fold_read(store: store) {
-    PlacementUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: join(["the placement partition could not be read at ", st, ": ", why], "") } }
+    PlacementUnread { step: st, reason: why } => Present { value: PlacementCleanupUnread { cause: join(["the placement partition could not be read at ", st, ": ", why], "") } }
     PlacementReadAt { head: _, effects: _, preparations: preps } =>
       match first(filter(preps, r => same_group(a: r.group, b: group) && preparation_is_pending(r: r))) {
         Absent => none
-        Present { value: r } =>
-          match preparation_consumption(store: store, preparation: r.id) {
-            PreparationConsumedBy { preparation: _, authority_event: _, state: _ } => Present { value: placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: r.id), actor: actor, at: at) }
+        Present { value: r } => {
+          let consumed = preparation_consumption(store: store, preparation: r.id)
+          match consumed {
+            PreparationConsumedBy { preparation: _, authority_event: _, state: _ } => Present { value: placement_finalize(store: store, consumed: consumed, actor: actor, at: at) }
             PreparationNotConsumed { record: _, group_head: _, cancelled: _ } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["preparation ", r.id as String, " (", preparation_line(r: r), ") is pending and no authority event consumed it; an operator aborts it with host_placement_abort_wet"], "") } }
             PreparationAbsent => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: "the pending preparation vanished between two reads" } }
             PreparationConsumptionUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["the join could not be read at ", st, ": ", why], "") } }
           }
+        }
       }
   }
 }
@@ -1929,6 +1935,7 @@ fn placement_cleanup_line(c: PlacementCleanup) -> String {
     PlacementFinalizedAt { preparation: p, id: _ } => join(["placement finalized (preparation ", p as String, ")"], "")
     PlacementAbortedAt { preparation: p, id: _ } => join(["placement aborted (preparation ", p as String, ")"], "")
     PlacementCleanupStillFencing { preparation: p, cause: c } => join(["placement STILL FENCING under preparation ", p as String, ": ", c], "")
+    PlacementCleanupUnread { cause: c } => join(["placement cleanup UNREAD (no preparation could be named): ", c], "")
   }
 }
 
@@ -2273,7 +2280,7 @@ fn current_authority_wire(c: CurrentAuthority) -> String {
 // before any append when they are not for that claim, and refused again by the fold on every
 // later read.
 type HostEffectClaim
-  = HostEffectClaimed { id: EventId, generation: Nat }
+  = HostEffectClaimed { id: EventId }
   | HostEffectClaimRefused { partition: PartitionId, step: String, reason: String }
 
 fn host_effect_admit_at(store: FabricStorageBinding, read: PlacementRead, host: HostIdentity, purpose: NonEmptyStr, executor: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, at: EpochSecs) -> HostEffectClaim {
@@ -2286,7 +2293,7 @@ fn host_effect_admit_at(store: FabricStorageBinding, read: PlacementRead, host: 
         HostEffectClaimRefused { partition: host_placement_partition, step: "held", reason: join([host as String, " is held by another live host effect: ", join(map(live_host_effects_on(records: effs, hosts: [host], at: at), r => host_effect_line_at(r: r, at: at)), "; ")], "") }
       } else {
         match placement_append(store: store, head: head, payload: HostEffectAdmitted { host: host, purpose: purpose, executor: executor, term: term, residue: residue }, actor: executor, at: at) {
-          EventAppended { id: h } => HostEffectClaimed { id: h, generation: length(effs) }
+          EventAppended { id: h } => HostEffectClaimed { id: h }
           EventAppendStale { expected: _, observed: _ } => HostEffectClaimRefused { partition: host_placement_partition, step: "stale", reason: "the placement partition moved between the admission read and the claim; nothing was placed" }
           EventAppendRefused { cause: c } => HostEffectClaimRefused { partition: host_placement_partition, step: "store", reason: event_log_refusal_wire(cause: c) }
         }
