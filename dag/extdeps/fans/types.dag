@@ -148,9 +148,14 @@ fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {
 }
 
 // THE SIZE OF THE EVIDENCE IS A COUNTED QUANTITY AND NOW SAYS SO. It carried a bare Int with the
-// unit spelled into the field name until gunbc#11623 minted std.measure PublishedLevelCount for its
-// own copy of this concept and found it would have forked one concept across two carriers to leave
-// this one behind.
+// unit spelled into the field name until gunbc#11623 minted std.measure PublishedLevelCount and
+// found it would have forked one concept across two carriers to leave this one behind.
+//
+// THIS IS THE ONLY FOLD THAT ANSWERS "how many published points carry a level". That PR first
+// unified the carrier and left its own copy of the fold standing in product.acoustic_ceiling,
+// which is the same fork one layer down: two definitions that agree today and diverge the first
+// time either is corrected. The consumer now calls this one, so a change to what counts as a
+// published level reaches every reader of the count.
 fn fan_published_level_count(row: FanCatalogRow) -> PublishedLevelCount {
   published_level_count(count: fold(
     row.published_points,

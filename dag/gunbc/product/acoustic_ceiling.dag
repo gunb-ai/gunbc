@@ -1,11 +1,12 @@
 module product.acoustic_ceiling
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { FanCount, Percent, PublishedLevelCount, fan_count_value, measure_le, published_level_count }
+import std.measure { FanCount, Percent, PublishedLevelCount, fan_count_value, measure_le }
 import extdeps.units.iec_61672 { AWeightedLevelDifference, AWeightedSoundPressureLevel, dba_le, dba_level_minus }
 import extdeps.fans.types {
   FanCatalogRow,
   FanPublishedOperatingPoint,
+  fan_published_level_count,
 }
 import product.placement_supply { SiteIdentity }
 
@@ -136,10 +137,6 @@ fn points_within_ceiling(
   filter(row.published_points, p => published_point_within_ceiling(point: p, ceiling: ceiling))
 }
 
-fn row_published_level_count(row: FanCatalogRow) -> PublishedLevelCount {
-  published_level_count(count: filter(row.published_points, p => match p.sound_pressure { none => false, Present { value: _ } => true }).length())
-}
-
 // THE none ARM TAKES THE ROW SO IT CANNOT FABRICATE A ZERO. It is unreachable today - every caller
 // arrives through points_within_ceiling, which admits only points whose sound_pressure is Present -
 // but an unreachable arm that reports "this row publishes no levels" about a row that publishes
@@ -151,7 +148,7 @@ fn duty_ceiling_of_result(
   point: FanPublishedOperatingPoint,
 ) -> DutyCeilingResult {
   match point.sound_pressure {
-    none => DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
+    none => DutyCeilingNoPublishedPointWithin { published_level_count: fan_published_level_count(row: row) }
     Present { value: level } => DutyCeilingPublished { duty: point.duty, level: level }
   }
 }
@@ -170,10 +167,10 @@ fn duty_ceiling_for_fan(
   } else {
     let within = points_within_ceiling(row: row, ceiling: ceiling)
     if within.length() == 0 {
-      DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
+      DutyCeilingNoPublishedPointWithin { published_level_count: fan_published_level_count(row: row) }
     } else {
       match within.first() {
-        Absent => DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
+        Absent => DutyCeilingNoPublishedPointWithin { published_level_count: fan_published_level_count(row: row) }
         Present { value: head } => duty_ceiling_of_result(
           row: row,
           point: fold(within.skip(n: 1), init: head, f: (acc, p) => higher_duty_point(a: acc, b: p)),
