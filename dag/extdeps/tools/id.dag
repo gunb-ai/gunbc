@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, List, Bool, Unit }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,12 +19,29 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the grant authorizes -- and gunbc.host_effect_realize needs both spellings for the same tool.
 data id_binary_path: NonEmptyStr = "/usr/bin/id"
 
+// THE PATH-RESOLVED SPELLING, DECLARED ONCE. The argv rows below and the command builder all name
+// the same program, and spelling it three times would be three places one word could drift.
+data id_program: NonEmptyStr = "id"
+
 fn id_uid_argv() -> List<String> {
-  ["id", "-u"]
+  [id_program as String, "-u"]
 }
 
 fn id_gid_argv() -> List<String> {
-  ["id", "-g"]
+  [id_program as String, "-g"]
+}
+
+// -nG NAMES THE USER EXPLICITLY, AND THAT IS THE WHOLE REASON THIS BUILDER TAKES ONE. id(1) with an
+// operand answers from the account database; id(1) with no operand answers from the CALLING
+// PROCESS's own credentials, which were established at its exec and never change afterwards. A
+// caller asking whether a supplementary group grant has landed must ask the database -- the running
+// process cannot have picked the group up, so the no-operand form would answer the older question
+// and read as a refusal of a grant that is in fact installed.
+//
+// -n asks for names rather than numeric gids, because the group a caller holds is named by the
+// authority it came from (a udev rule naming "kvm"), not by a gid that varies per host.
+fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: id_program, arguments: ["-nG", "--", user as String])
 }
 
 service os.Id {
