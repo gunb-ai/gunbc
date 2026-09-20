@@ -368,82 +368,26 @@ pub struct TransitionAdmission {
     pub label: String,
     pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
-    /// The pull request that deletes this row once its own merge has consumed it, authored by the
-    /// row's owner BEFORE the owning change is enqueued.
-    pub deletion_follow_up: DeletionFollowUp,
-    /// The pull request that authored this row -- the owner a consumed-row receipt names. Typed
-    /// rather than read out of `label`, whose `gunbc#N` prefix is a convention nothing enforces.
-    pub owner_pull_request: u32,
 }
 
-/// ONE OWNED CONSUMED ROW, AS A TYPED AND LOCATED RECEIPT (lane ruling X, fierce-lark-661,
-/// 2026-09-13). A row consumed at the base whose owner authored a deletion follow-up is a declared
-/// frontier, not a refusal: the owner has DECLARED a deletion follow-up number -- this module reads
-/// no forge, so nothing here establishes that the referenced pull request exists, is open, or
-/// deletes these rows -- and refusing the next unrelated
-/// composition while that follow-up is still open would bill a bystander for the owner's window --
-/// the §5 externalization review 65313 found the previous arms still committed. Every run that sees
-/// the row prints this receipt, so the window is visible per run.
+/// Where the admissions of ONE CHANGE are carried: fenced blocks in the change's own commit
+/// messages, never files in the tree.
 ///
-/// WHAT THIS BINARY CANNOT SEE, AND WHO DOES. Whether the follow-up is OPEN (frontier), CLOSED
-/// UNMERGED (the row is an orphan and must refuse at its next touch), or MERGED with the row still
-/// present (the deletion landed without deleting, and must refuse) is forge state, and this module
-/// reads no forge -- AND NO EXECUTING ROUTE IN THIS REPOSITORY READS IT EITHER (review 65476,
-/// verified: there is no `landing_tally` symbol, and nothing outside this module consumes
-/// `deletion_follow_up`). The pre-enqueue landing procedure that reads it is out-of-band human
-/// review, so the follow-up's forge state is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
-/// rather than a checked property, and this receipt exists to make that unchecked window visible
-/// on every run. The trigger that brings it inside is the typed repository/forge read this
-/// module's CLASS B acquisition boundary already waits on: when a fold can ask the forge for a
-/// pull request's state, these three dispositions become a wall instead of a printed receipt.
-/// A receipt
-/// is also not a verdict: the retained roster-touch and `base == head` rules still refuse runs that
-/// carry owned rows, so a printed receipt and a refusal on the same run are the expected
-/// coexistence, not a contradiction.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsumedRowReceipt {
-    pub label: String,
-    pub owner_pull_request: u32,
-    pub deletion_follow_up_pull_request: u32,
-}
-
-/// WHO OWES THE DELETION, AUTHORED WHERE THE DEBT IS CREATED.
+/// WHY THE CARRIER MOVED (gunbc#11587, #11660, #11681 -- consumed rows left on main three times in
+/// three days). A row in the tree is REQUIRED at its owner's gate and CONSUMED the instant that
+/// owner lands, because after the squash both base and head carry the motion it admitted. Every
+/// tree-resident carrier therefore lands a consumed row on main by construction, and the only
+/// questions left were who deletes it and when -- each answer a charge on somebody (the owner's
+/// follow-up, a bystander's roster touch) and each since removed or declared as a drop. A commit
+/// message is scoped to exactly the change that needs it: the pull-request run reads the branch's
+/// commits, the merge-queue run reads the squash commit whose message carries them
+/// (`squash_merge_commit_message: COMMIT_MESSAGES`), and main's TREE never holds the row at all.
+/// Nobody is charged because there is no debt: the consumed state has no constructor on main.
 ///
-/// `deletion_follow_up` RECORDS A DEBT; NOTHING ENFORCES IT IN ADVANCE, AND THAT IS DELIBERATE.
-/// The field stays on the row and stays read, so a row can say which pull request is meant to
-/// delete it once its owner lands. What was removed (2026-09-16, operator ruling) are the two
-/// `merge_group` arms that refused on its absence: `OwnerFollowUpAbsent`, charging a row's owner at
-/// their own queue run, and `ConsumedRowOwnerChargeBypassed`, charging a BYSTANDER composition for
-/// someone else's unauthored follow-up.
-///
-/// WHERE THE DEBT STILL REFUSES, AT THE GRAIN THE REQUIRED PATH ACTUALLY HAS. A consumed row
-/// refuses when `roster_due` -- `base == head` OR a roster-source edit. An earlier revision of this
-/// paragraph stopped there and read as though the deletion were still compelled; it is not, on the
-/// path that gates a merge. The merge queue moved the required verdict off the push to the default
-/// branch (fierce-lark-661, 2026-09-13), and that was the only run where `base == head`, so on the
-/// required path `roster_due` reduces to `roster_touched` alone: a base-consumed row whose owner
-/// authored no follow-up refuses on NO required run until somebody edits the roster directory.
-/// That loss is declared, not implied -- `gunbc.rung_drop.consumed_row_owner_charge_unenforced` --
-/// and citing the `base == head` arm without saying it is off the required path is the §4b(1)
-/// inflation that row exists to prevent.
-///
-/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST -- WHICH IS NOT THE SAME AS SAYING IT COST NOTHING
-/// TO REMOVE. What it established was that a NUMBER was authored and nothing more: whether that
-/// number named an open pull request deleting these rows is checked by no executing route in this
-/// repository -- not by this binary, which reads no forge, and not by any other consumer
-/// (review 65476, verified) -- so a fabricated number passed it. That is what made the charge a poor
-/// trade, and the second arm additionally made a BYSTANDER pay it. But a weak GREEN is not a
-/// decoration: DESIGN section 4b reserves that word for a check whose RED cannot be authored at all,
-/// and both arms had authorable REDs that fired (review 67014). So both removals are declared
-/// section 4b(3) rung drops -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
-/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` -- each naming the capability that
-/// restores it. Reference verification remains out of band or absent, which is now stated rather
-/// than implied by a wall that could not perform it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeletionFollowUp {
-    NotAuthored,
-    PullRequest(u32),
-}
+/// The block body is the same `.dag` module a row file used to hold, parsed by the same fold, so
+/// the vocabulary does not fork. A later block with the same stem SUPERSEDES an earlier one -- the
+/// order the pull-request run reads (oldest commit first) is the order the squash message lists.
+pub const ADMISSION_CARRIER_FENCE: &str = "```transition-admission";
 
 /// THE CI EVENT THIS RUN WAS TRIGGERED BY. IT NO LONGER SELECTS A POLICY, AND THE DOC SAYING IT DID
 /// OUTLIVED THE THING IT DESCRIBED (review 67027).
@@ -451,8 +395,7 @@ pub enum DeletionFollowUp {
 /// Until 2026-09-16 the consumption obligation genuinely differed by event: two `merge_group` arms
 /// charged a deletion follow-up that no other run charged. Those arms were removed on an operator
 /// ruling (gunbc#11481) and nothing downstream branches on the event now -- every run refuses on the
-/// same set: stale rows, unadjudicated deltas, and a consumed row when `base == head` or the roster
-/// source is touched.
+/// same set: a row file in the tree, a carried admission that is stale, and an unadjudicated delta.
 ///
 /// WHAT THE ENUM STILL DOES, STATED AS WHAT IT IS. `adjudication_event_from_name` refuses a
 /// `GITHUB_EVENT_NAME` this enum does not model rather than adjudicating under assumptions nobody
@@ -504,33 +447,13 @@ pub struct WaveAdmissionReport {
     pub deltas: Vec<NamespaceDelta>,
     /// Admission rows that matched no delta in this run.
     pub stale_admissions: Vec<String>,
-    /// Rows whose admitted relocation the BASE already satisfies — consumed by their own merge.
-    /// Typed receipts, never refusals for an unrelated run: the deletion obligation they carry
-    /// stands on the roster's own next touch (see the executor's roster-touched arm). Entered
-    /// only on the POSITIVE proof `admission_satisfied_at`, never as the else-arm of "did
-    /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
-    /// refusal in `stale_admissions`.
+    /// Carried admissions whose admitted relocation the BASE already satisfies: this change
+    /// carries a row for a motion some earlier change already landed. A RECEIPT, NEVER A REFUSAL,
+    /// because it lands nothing -- the carrier is a commit message, so no consumed row reaches
+    /// main's tree and there is no deletion to owe. Entered only on the POSITIVE proof
+    /// `admission_satisfied_at`, never as the else-arm of "did not match a delta" -- a row
+    /// provable against neither side stays an UnmatchedAdmission refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
-    /// Rows USED to admit a delta in this run whose owner authored no deletion follow-up. Each is
-    /// satisfied at the candidate, so it will be consumed when the candidate lands.
-    ///
-    /// NOTHING REFUSES ON THIS SET. It used to be the owner's refusal on a `merge_group` run
-    /// (`OwnerFollowUpAbsent`); that arm was removed on 2026-09-16 and declared as the drop
-    /// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed`. The set is still COUNTED in the
-    /// refusal message when some other arm produces one, which is the record the ruling kept.
-    pub used_without_follow_up: Vec<String>,
-    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up.
-    ///
-    /// NO PRODUCTION READER SINCE gunbc#11481, FLAGGED RATHER THAN HIDDEN. This was the population
-    /// `ConsumedRowOwnerChargeBypassed` refused on; that arm is removed and declared as the drop
-    /// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. The field is still POPULATED and is
-    /// read only by tests, so it is a DESIGN 3c dangling field today -- kept because it is the exact
-    /// population that drop's restoration trigger has to re-cover, and deleting it would discard the
-    /// one derivation a restoration would need. Its honest disposition is decided when that drop is
-    /// retired: consumed by the restored charge, or removed with the drop row.
-    pub consumed_without_follow_up: Vec<String>,
-    /// The complement: consumed rows with an authored follow-up, carried as receipts.
-    pub owned_consumed_receipts: Vec<ConsumedRowReceipt>,
 }
 
 /// The wall's verdict: every delta is either auto-admitted or named by an admission.
@@ -1130,30 +1053,15 @@ pub fn adjudicate(
     // check against the base index), while an author-error row is provable against neither side.
     // Only the proven arm is typed ConsumedByMerge; everything else unused remains an
     // UnmatchedAdmission. The consumed arm does not widen: it is unreachable by fallthrough.
-    // Unmatched rows still refuse every PR; consumed rows come due on landing or roster edits.
+    // The two remain distinct once the carrier moved off the tree: an unmatched carried row is an
+    // author error and refuses, while a carried row the base already satisfies lands nothing (its
+    // carrier is a commit message) and is a receipt.
     //
-    // RETIRED BY: admissions bound to the delta content they admit, adjudicated per run and never
-    // resident on main — the capability that makes a stale-able row unwritable. Until that
-    // carrier exists, consumed rows persist as typed receipts and their deletion is enforced on
-    // the roster file's own next touch.
-    let used_without_follow_up = used
-        .iter()
-        .map(|&i| &admissions[i])
-        .filter(|a| a.deletion_follow_up == DeletionFollowUp::NotAuthored)
-        .map(|a| {
-            format!(
-                "{} ({} {}) is used by this candidate and will be consumed when it lands, but \
-                 its owner authored no deletion follow-up (follow-up PR absent)",
-                a.label,
-                disposition_label(a.disposition),
-                admission_subject_render(&a.subject)
-            )
-        })
-        .collect::<Vec<_>>();
+    // THE RETIREMENT THIS COMMENT USED TO WAIT ON HAS LANDED: admissions are carried by the change
+    // that needs them (`ADMISSION_CARRIER_FENCE`) and are never resident on main, so a consumed row
+    // has no constructor there and nobody owes its deletion.
     let mut stale_admissions = Vec::new();
     let mut consumed_admissions = Vec::new();
-    let mut consumed_without_follow_up = Vec::new();
-    let mut owned_consumed_receipts = Vec::new();
     for (i, a) in admissions.iter().enumerate() {
         if used.contains(&i) {
             continue;
@@ -1164,34 +1072,13 @@ pub fn adjudicate(
                 .map_err(|mismatch| format!("base {mismatch}")),
         };
         match satisfaction {
-            Ok(()) => {
-                let rendered = format!(
-                    "{} ({} {}) already satisfied at the base — consumed by its own merge; \
-                     deletion is owed on landing or the roster's next touch; owner gunbc#{}; {}",
-                    a.label,
-                    disposition_label(a.disposition),
-                    admission_subject_render(&a.subject),
-                    a.owner_pull_request,
-                    match a.deletion_follow_up {
-                        DeletionFollowUp::NotAuthored =>
-                            "no deletion follow-up authored".to_string(),
-                        DeletionFollowUp::PullRequest(n) => format!("deletion follow-up gunbc#{n}"),
-                    }
-                );
-                match a.deletion_follow_up {
-                    DeletionFollowUp::NotAuthored => {
-                        consumed_without_follow_up.push(rendered.clone())
-                    }
-                    DeletionFollowUp::PullRequest(n) => {
-                        owned_consumed_receipts.push(ConsumedRowReceipt {
-                            label: a.label.to_string(),
-                            owner_pull_request: a.owner_pull_request,
-                            deletion_follow_up_pull_request: n,
-                        })
-                    }
-                }
-                consumed_admissions.push(rendered);
-            }
+            Ok(()) => consumed_admissions.push(format!(
+                "{} ({} {}) already satisfied at the base -- an earlier change landed this motion; \
+                 the carried row admits nothing and lands nothing",
+                a.label,
+                disposition_label(a.disposition),
+                admission_subject_render(&a.subject),
+            )),
             Err(mismatch) => stale_admissions.push(format!(
                 "{} ({} {}) has no valid admission in this run: {mismatch}",
                 a.label,
@@ -1206,9 +1093,6 @@ pub fn adjudicate(
         deltas,
         stale_admissions,
         consumed_admissions,
-        used_without_follow_up,
-        consumed_without_follow_up,
-        owned_consumed_receipts,
     }
 }
 
@@ -1492,10 +1376,9 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 /// `NotEvaluated` on the refusing side explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WaveAdmissionOutcome {
-    /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
-    /// merge is the whole population. NOT an admission: nothing was compared, and the phase
-    /// reports it under its own name. Only an empty roster may take this arm: landing still
-    /// adjudicates and refuses stale or consumed rows when there is no diff.
+    /// The baseline resolves to the head, so there is no diff and no commit that could carry an
+    /// admission. A push to `main` after a squash merge is the whole population. NOT an
+    /// admission: nothing was compared, and the phase reports it under its own name.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -1504,94 +1387,163 @@ pub enum WaveAdmissionOutcome {
         head: String,
         /// Boxed because the report dwarfs the other arms (clippy `large_enum_variant`).
         report: Box<WaveAdmissionReport>,
-        /// Whether this diff touches the roster source. Consumed rows come due here
-        /// and on main (base == head); stale rows refuse regardless of this flag.
-        roster_touched: bool,
     },
 }
 
-/// Directory whose membership IS the transition-admission roster (trailing slash so the type
-/// module `dag/gunbc/namespace/transition_admission.dag` is not a roster touch).
+/// The directory that USED to be the admission roster. It is now the one place an admission may
+/// NOT be written: any `.dag` file under it refuses (`tree_carried_admission_refusal`), because a
+/// row in the tree lands on main already consumed. Trailing slash so the type module
+/// `dag/gunbc/namespace/transition_admission.dag` is not under it.
 pub const ADMISSION_ROSTER_REL_PATH: &str = "dag/gunbc/namespace/transition_admission/";
-
-/// True when a diff path is a row file (or the directory itself) under the roster prefix.
-pub fn admission_roster_path_touched(rel: &str) -> bool {
-    rel == ADMISSION_ROSTER_REL_PATH.trim_end_matches('/')
-        || rel.starts_with(ADMISSION_ROSTER_REL_PATH)
-}
 
 const ROW_MODULE_PREFIX: &str = "gunbc.namespace.transition_admission.";
 
-/// Load production admissions from a workspace: the directory fold.
+/// THE RED THIS CARRIER EXISTS FOR: an admission written into the tree.
 ///
-/// AUTHORING IS SAFETY, NOT CONST-NESS. The permission set must be authored and
-/// reviewable, never derived from the delta it admits. `const` used to make that
-/// mechanically true; each permission is now an authored `.dag` row in the PR
-/// diff. `read_dir` enumerates files git already carries — it does not mint
-/// permission. A computed predicate over observed deltas still has no constructor.
-///
-/// Missing directory (`ErrorKind::NotFound`) is the empty roster: git cannot carry an empty
-/// directory, so absence IS the resting empty-const state. That arm yields fewer admissions,
-/// never more — fail-closed on the admission axis. Every other `read_dir`, dirent, stem, parse,
-/// or type error refuses, located, and is never skipped. Standing census of whether the
-/// directory is empty lives on `gunbc.namespace.transition_admission`, not here.
-pub fn load_transition_admissions(workspace: &Path) -> Result<Vec<TransitionAdmission>, String> {
-    load_transition_admissions_from_dir(&workspace.join(ADMISSION_ROSTER_REL_PATH))
+/// Every row file ever placed under `ADMISSION_ROSTER_REL_PATH` was required at its owner's gate
+/// and consumed the moment that owner landed, so a tree-resident row is a consumed row on main
+/// waiting to happen -- the class `gunbc.recurring_failure_mode`
+/// `consumed_admission_externalized_to_the_next_roster_touch`. The refusal fires at the OWNER'S OWN
+/// gate, which is the only run that can pay for it without billing somebody else, and it names the
+/// remedy: move the row into a commit-message block. Missing directory is the resting state (git
+/// carries no empty directory); every other read error refuses, located.
+pub fn tree_carried_admission_refusal(dir: &Path) -> Result<(), String> {
+    let entries = match std::fs::read_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(format!(
+                "transition-admission directory {} is unreadable: {e}",
+                dir.display()
+            ))
+        }
+        Ok(entries) => entries,
+    };
+    let mut rows = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            format!(
+                "transition-admission directory {} dirent failed: {e}",
+                dir.display()
+            )
+        })?;
+        rows.push(entry.file_name().to_string_lossy().into_owned());
+    }
+    if rows.is_empty() {
+        return Ok(());
+    }
+    rows.sort();
+    Err(format!(
+        "{} admission file(s) in the tree under {ADMISSION_ROSTER_REL_PATH} ({}): an admission \
+         written into the tree lands on main already consumed and leaves its deletion to the next \
+         change that touches it. Carry each row in a commit message of the change that needs it, \
+         inside a {ADMISSION_CARRIER_FENCE} ... ``` block, and delete the file",
+        rows.len(),
+        rows.join(", ")
+    ))
 }
 
-pub fn load_transition_admissions_from_dir(dir: &Path) -> Result<Vec<TransitionAdmission>, String> {
-    match std::fs::read_dir(dir) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(format!(
-            "transition-admission roster directory {} is unreadable: {e}",
-            dir.display()
-        )),
-        Ok(entries) => {
-            let mut files = Vec::new();
-            for entry in entries {
-                let entry = entry.map_err(|e| {
-                    format!(
-                        "transition-admission roster directory {} dirent failed: {e}",
-                        dir.display()
-                    )
-                })?;
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("dag") {
-                    continue;
-                }
-                let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-                    format!(
-                        "transition-admission row {} has a non-utf8 stem",
-                        path.display()
-                    )
-                })?;
-                if stem == "roster" {
-                    return Err(format!(
-                        "transition-admission row {} is named roster.dag; this roster has no \
-                         committed list (directory membership is the list)",
-                        path.display()
-                    ));
-                }
-                files.push((stem.to_string(), path));
+/// The admissions ONE CHANGE carries, folded from its commit messages in the order given.
+///
+/// `messages` is `(commit, message)` oldest first. Each `ADMISSION_CARRIER_FENCE` block's body is
+/// one row module, parsed by the same fold a row file used to be; its stem is the module path
+/// after `gunbc.namespace.transition_admission.`. A later block with the same stem SUPERSEDES an
+/// earlier one, which is how an author corrects a row without rewriting history. A fence that
+/// opens and never closes, or a block that does not parse, REFUSES located -- never skipped,
+/// because a skipped block is an admission silently withdrawn.
+pub fn carried_admissions_from_messages(
+    messages: &[(String, String)],
+) -> Result<Vec<TransitionAdmission>, String> {
+    let mut by_stem: Vec<(String, TransitionAdmission)> = Vec::new();
+    for (commit, message) in messages {
+        let mut lines = message.lines().enumerate();
+        while let Some((open_at, line)) = lines.next() {
+            if line.trim_end() != ADMISSION_CARRIER_FENCE {
+                continue;
             }
-            files.sort_by(|a, b| a.0.cmp(&b.0));
-            let mut out = Vec::with_capacity(files.len());
-            for (stem, path) in files {
-                let rel = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("row.dag");
-                let content = std::fs::read_to_string(&path).map_err(|e| {
-                    format!(
-                        "transition-admission row {} is unreadable: {e}",
-                        path.display()
-                    )
-                })?;
-                out.push(parse_transition_admission_row(&path, rel, &stem, &content)?);
+            let mut body = String::new();
+            let mut closed = false;
+            for (_, inner) in lines.by_ref() {
+                if inner.trim_end() == "```" {
+                    closed = true;
+                    break;
+                }
+                body.push_str(inner);
+                body.push('\n');
             }
-            Ok(out)
+            let located = format!("commit {commit} block at message line {}", open_at + 1);
+            if !closed {
+                return Err(format!(
+                    "{located}: {ADMISSION_CARRIER_FENCE} block is never closed by ```"
+                ));
+            }
+            let module_line = body
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or_default();
+            let stem = module_line
+                .trim()
+                .strip_prefix("module ")
+                .and_then(|m| m.trim().strip_prefix(ROW_MODULE_PREFIX))
+                .ok_or_else(|| {
+                    format!(
+                        "{located}: the block must open with `module {ROW_MODULE_PREFIX}<stem>`, \
+                         found `{module_line}`"
+                    )
+                })?
+                .to_string();
+            let admission = parse_transition_admission_row(
+                Path::new(&located),
+                &format!("{stem}.dag"),
+                &stem,
+                &body,
+            )?;
+            match by_stem.iter_mut().find(|(s, _)| *s == stem) {
+                Some(slot) => slot.1 = admission,
+                None => by_stem.push((stem, admission)),
+            }
         }
     }
+    Ok(by_stem.into_iter().map(|(_, a)| a).collect())
+}
+
+/// Read the admissions carried by the commits `base..head`, oldest first.
+///
+/// On a pull-request run those are the branch's commits (and the synthetic merge commit, which
+/// carries no block); on a merge-queue run they are the squash commits of the composition.
+///
+/// DECLARED EXTERNAL BOUNDARY, OBSERVED AND NOT CONVERGED. That a queue squash commit keeps the
+/// branch commits' messages is the GitHub repository setting `squash_merge_commit_message`
+/// (`COMMIT_MESSAGES`), read live 2026-09-19 and observed on merge_group commit
+/// 67d6d727b7ea91b8b6305e2fe1e13350ce75795d, whose message carries each branch commit's body. No
+/// authority in this corpus owns or converges that setting -- `gunbc.repo_ruleset` converges the
+/// queue's `merge_method` but not repository merge settings -- so it is a bet at the boundary, not
+/// a deduced fact (DESIGN section 4d). Its failure direction is CLOSED: a queue squash that dropped
+/// the bodies would carry no block, the delta would be unadjudicated, and the queue run would
+/// refuse -- a stall, never a silent admission. Next rung: repository merge-settings convergence
+/// beside `repo_ruleset`'s queue policy. Main's own commits are outside the range by the
+/// merge base, so a landed change's admissions never reach a later change's run.
+pub fn load_carried_admissions(
+    workspace: &Path,
+    base: &str,
+    head: &str,
+) -> Result<Vec<TransitionAdmission>, String> {
+    let range = format!("{base}..{head}");
+    let log = git_stdout(
+        workspace,
+        &["log", "--reverse", "--format=%H%x00%B%x1e", &range],
+    )?;
+    let messages = log
+        .split('\u{1e}')
+        .map(|record| record.trim_start_matches('\n'))
+        .filter(|record| !record.is_empty())
+        .map(|record| match record.split_once('\0') {
+            Some((commit, message)) => Ok((commit.to_string(), message.to_string())),
+            None => Err(format!(
+                "git log {range} produced a record with no commit id"
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    carried_admissions_from_messages(&messages)
 }
 
 fn parse_transition_admission_row(
@@ -1722,55 +1674,11 @@ fn parse_transition_admission_expr(
     ) else {
         return Err("TransitionAdmission is missing field `disposition`".to_string());
     };
-    let Some(follow_up_e) = crate::v1_std_core::record_lit_named_field_value_optional(
-        expr.clone(),
-        "deletion_follow_up".to_string(),
-        source_indices.clone(),
-    ) else {
-        return Err("TransitionAdmission is missing field `deletion_follow_up`".to_string());
-    };
-    let Some(owner_e) = crate::v1_std_core::record_lit_named_field_value_optional(
-        expr.clone(),
-        "owner_pull_request".to_string(),
-        source_indices.clone(),
-    ) else {
-        return Err("TransitionAdmission is missing field `owner_pull_request`".to_string());
-    };
     Ok(TransitionAdmission {
         label: expr_string(label_e)?,
         subject: parse_admission_subject(subject_e, source_indices)?,
         disposition: parse_disposition(disposition_e, source_indices)?,
-        deletion_follow_up: parse_deletion_follow_up(follow_up_e, source_indices)?,
-        owner_pull_request: expr_u32(owner_e)?,
     })
-}
-
-fn expr_u32(expr: Rc<crate::v1_std_core::Node>) -> Result<u32, String> {
-    let expr = peel_expr(expr);
-    crate::v1_std_core::expr_literal_int_optional(expr)
-        .ok_or_else(|| "expected an integer literal".to_string())
-        .and_then(|n| u32::try_from(n).map_err(|_| format!("integer {n} is not a u32")))
-}
-
-fn parse_deletion_follow_up(
-    expr: Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Result<DeletionFollowUp, String> {
-    let expr = peel_expr(expr);
-    match expr_leaf_name(expr.clone(), source_indices).as_str() {
-        "NotAuthored" => Ok(DeletionFollowUp::NotAuthored),
-        "PullRequest" => {
-            let number = crate::v1_std_core::record_lit_named_field_value_optional(
-                expr.clone(),
-                "number".to_string(),
-                source_indices.clone(),
-            )
-            .or_else(|| expr.children.iter().next().cloned())
-            .ok_or_else(|| "PullRequest is missing `number`".to_string())?;
-            Ok(DeletionFollowUp::PullRequest(expr_u32(number)?))
-        }
-        other => Err(format!("unknown DeletionFollowUp `{other}`")),
-    }
 }
 
 fn parse_disposition(
@@ -1970,102 +1878,51 @@ fn parse_decl_ref_list(
 ///
 /// IT LIVES HERE SO ITS RED IS AUTHORABLE WHERE THE VERDICT IS ACTUALLY REACHED. The decision was
 /// interleaved with the executor's printing, in a private function of a binary, so nothing outside
-/// that binary could construct the refusal and no test could discriminate the roster-touched arm
-/// on the path CI runs. DESIGN §4b puts that squarely: a wall whose RED cannot be authored on the
+/// that binary could construct the refusal and no test could discriminate its arms on the path CI
+/// runs. DESIGN §4b puts that squarely: a wall whose RED cannot be authored on the
 /// acceptance path is a decoration, and the missing harness is the trigger rather than a ceiling.
 /// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
-/// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
-/// (base == head) or on a roster-source edit. THAT IS THE WHOLE REFUSAL SET.
+/// Stale carried rows and unadjudicated deltas refuse. THAT IS THE WHOLE REFUSAL SET, and it is
+/// identical on every run. A row written into the TREE refuses earlier, while admissions are loaded
+/// (`tree_carried_admission_refusal`), before there is an outcome to judge.
 ///
-/// Two `merge_group` arms were removed on 2026-09-16 (operator ruling): `OwnerFollowUpAbsent`,
-/// which refused a used row whose owner had authored no `deletion_follow_up`, and
-/// `ConsumedRowOwnerChargeBypassed`, which refused a bystander composition for a prior owner's
-/// unauthored follow-up. BOTH TOOK COVERAGE WITH THEM AND BOTH ARE DECLARED AS §4b(3) DROPS —
-/// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
-/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. Two earlier revisions of this note said
-/// otherwise and both were caught in review. The first arm did establish only that a number had
-/// been typed -- its own message conceded it "checks that a number is authored, never that it names
-/// an open or deleting pull request" -- but a weak GREEN is not a decoration: §4b reserves that for
-/// a check whose RED cannot be authored at all, and this one's RED was authored and fired
-/// (review 67014). The second billed a change for a debt its own comment said was not its own,
-/// which is a reason to remove it, not a reason its coverage was nothing.
-///
-/// WHAT THIS COSTS, STATED PLAINLY. An earlier revision of this note claimed
-/// the landing arm still compels a consumed row's deletion. On the REQUIRED path it does not.
-/// Lane ruling (fierce-lark-661, 2026-09-13): the merge queue moved the required verdict off the
-/// push to the default branch, and with it the only run where base == head -- so `roster_due`
-/// reduces to `roster_touched` alone there. With `ConsumedRowOwnerChargeBypassed` gone, a
-/// base-consumed row whose owner authored no follow-up refuses on NO required run until somebody
-/// happens to edit the roster directory. That is the coverage the consumed-row drop declares, and
-/// it is a separate row from the owner-side one because the two are restored by different
-/// capabilities: adjudicating a consumed row at all, versus resolving an authored follow-up number
-/// to the pull request it claims to name.
-///
-/// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
-/// receipt; it just no longer refuses. Lifecycle is derived from the candidate-set
-/// proof, never predicted by an authored row. Policy authority:
-/// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
+/// WHAT HAPPENED TO THE CONSUMED-ROW ARMS. `roster_due` (a consumed row refusing at `base == head`
+/// or on a roster-source edit) and, before gunbc#11481, the two `merge_group` follow-up charges all
+/// existed to get a consumed row OFF main after its owner landed it. Admissions are now carried by
+/// the change's own commit messages and never reach main's tree, so there is no consumed row on
+/// main to charge anyone for; a carried row the base already satisfies is a printed receipt.
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` is retired by that capability, not by
+/// re-adding a charge. `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` is NOT retired:
+/// its population is empty (the field is gone) but its trigger -- resolving a follow-up number
+/// against the forge -- has not fired, so it stays Standing and inert. The row is the authority
+/// for its standing; this sentence only points at it. Lifecycle is derived from the candidate-set proof, never predicted by an
+/// authored row. Policy authority: `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
         WaveAdmissionOutcome::NoSubject { head: _ } => None,
         WaveAdmissionOutcome::NotEvaluated { reason: _ } => {
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
-        WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report,
-            roster_touched,
-        } => {
+        WaveAdmissionOutcome::Adjudicated { report, .. } => {
             let unadjudicated = report_unadjudicated(report);
-            let roster_due = base == head || *roster_touched;
-            // THE FOLLOW-UP ARMS ARE GONE, AND THE DEBT IS STILL ENFORCED. Two merge_group arms
-            // used to refuse here: OwnerFollowUpAbsent (a used row whose owner authored no
-            // deletion_follow_up) and ConsumedRowOwnerChargeBypassed (a bystander composition
-            // charged for someone else's unauthored follow-up). Both are removed.
-            //
-            // COVERAGE FALLS WITH THEM AND IT IS DECLARED, NOT WAVED OFF. Each removal has its
-            // own §4b(3) row -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
-            // `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. What SURVIVES is a record
-            // rather than a refusal: `deletion_follow_up` remains on the row and is still read, and
-            // `consumed_due` below still refuses a consumed row at landing or on a roster-source
-            // edit -- which, since the merge queue moved the required verdict off the push to the
-            // default branch, means on a roster-source edit alone on the required path. The two
-            // rows say exactly what that leaves uncovered and what would restore it.
-            let consumed_due = roster_due && !report.consumed_admissions.is_empty();
-            let stale_due = !report.stale_admissions.is_empty();
-            if unadjudicated.is_empty() && !stale_due && !consumed_due {
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() {
                 return None;
             }
-            let remedy = if stale_due || consumed_due {
-                let rows = report
-                    .stale_admissions
-                    .iter()
-                    .chain(&report.consumed_admissions)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                format!(
-                    "; delete these rows from {ADMISSION_ROSTER_REL_PATH}; declared transition \
-                     labels (including their trigger PR where authored): {rows}"
-                )
-            } else {
+            let remedy = if report.stale_admissions.is_empty() {
                 String::new()
+            } else {
+                format!(
+                    "; correct or supersede these carried rows with a later \
+                     {ADMISSION_CARRIER_FENCE} block of the same stem: {}",
+                    report.stale_admissions.join("; ")
+                )
             };
             Some(format!(
-                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}",
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s)){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
-                report.consumed_admissions.len(),
-                if consumed_due || stale_due {
-                    " due for correction or deletion"
-                } else {
-                    ""
-                },
-                report.used_without_follow_up.len(),
             ))
         }
     }
@@ -2110,9 +1967,9 @@ pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// THIS ANSWERS THE PARSER'S QUESTION AND NOTHING ELSE, AND IT IS APPLIED AT THE POINT OF USE.
 /// It used to be applied inside `diff_sides`, so the only available answer to "what did this
 /// change touch" was already narrowed to `.dag` — and a second consumer asking a DIFFERENT
-/// question read that narrowed list as if it were the diff. `roster_touched` asks about a `.rs`
-/// path, a `.rs` path cannot survive a `.dag` filter, and the arm it fed was therefore false on
-/// every production run: an upstream filter written for one question silently deciding another,
+/// question read that narrowed list as if it were the diff. The roster-touch arm (since removed
+/// with the tree-resident roster) asked about a `.rs` path, a `.rs` path cannot survive a `.dag`
+/// filter, and the arm it fed was therefore false on every production run: an upstream filter written for one question silently deciding another,
 /// with nothing joining them (`gunbc.recurring_failure_mode` `incidental_denominator_as_wall`).
 /// The repair is not a second path list — that would be two representations of one fact, the same
 /// class one step later. `diff_sides` reports what the diff touched, once; every consumer applies
@@ -2141,11 +1998,9 @@ pub fn in_sweep_scope(rel: &str) -> bool {
 /// head path, a deletion only a base path, a modification the same path to both.
 ///
 /// THE SIDES ARE UNFILTERED, WHICH IS WHAT MAKES THIS ONE AUTHORITY FOR WHAT THE DIFF TOUCHED.
-/// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff, and two
-/// consumers downstream ask different ones — the base-index reconstruction wants the parser's
-/// `in_sweep_scope`; `roster_touched` matches the roster prefix, including a directory path
-/// that predicate would drop.
-/// A rename may still cross a scope boundary either way, so each consumer applies its own scope
+/// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff -- the
+/// base-index reconstruction wants the parser's `in_sweep_scope`, and a later consumer may ask
+/// another. A rename may still cross a scope boundary either way, so each consumer applies its own scope
 /// PER SIDE at its call site.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
     let mut head_touched = Vec::new();
@@ -2295,8 +2150,6 @@ pub(crate) enum BaselineReconstruction {
         base: String,
         head: String,
         base_index: DeclarationIndex,
-        /// Every head path the diff touched, UNFILTERED -- consumers apply their own scope.
-        head_touched: Vec<String>,
     },
 }
 
@@ -2369,8 +2222,7 @@ pub(crate) fn reconstruct_base_index(
     // `head_touched` and `base_side` are what the diff touched; these two are what the baseline
     // reconstruction may read. Filtering per side rather than once is not redundancy: a rename may
     // cross the sweep boundary in either direction, which is why `diff_sides` splits the sides in
-    // the first place. Everything below that asks a DIFFERENT question — `roster_touched` — reads
-    // the unfiltered list, because prefix match is not the parse-sweep predicate.
+    // the first place.
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
@@ -2554,7 +2406,6 @@ pub(crate) fn reconstruct_base_index(
         base,
         head,
         base_index,
-        head_touched,
     })
 }
 
@@ -2574,43 +2425,29 @@ pub fn run_wave_admission_between(
     head: &str,
     head_index: &DeclarationIndex,
 ) -> Result<WaveAdmissionOutcome, String> {
-    let admissions = load_transition_admissions(workspace)?;
-    let (base, head, base_index, head_touched) =
-        match reconstruct_base_index(workspace, base, head, head_index)? {
-            BaselineReconstruction::NoSubject { head } => {
-                if admissions.is_empty() {
-                    return Ok(WaveAdmissionOutcome::NoSubject { head });
-                }
-                // Landing owns roster debt even though it has no namespace delta to compare.
-                return Ok(WaveAdmissionOutcome::Adjudicated {
-                    base: head.clone(),
-                    head,
-                    report: Box::new(adjudicate(head_index, head_index, &admissions)),
-                    roster_touched: false,
-                });
-            }
-            BaselineReconstruction::NotEvaluated { reason } => {
-                return Ok(WaveAdmissionOutcome::NotEvaluated { reason })
-            }
-            BaselineReconstruction::Reconstructed {
-                base,
-                head,
-                base_index,
-                head_touched,
-            } => (base, head, base_index, head_touched),
-        };
-
-    // READ FROM THE UNFILTERED HEAD SIDE. `roster_touched` matches the roster directory prefix,
-    // not `in_sweep_scope`; row files are `.dag` and in sweep, but a directory path is not.
-    let roster_touched = head_touched
-        .iter()
-        .any(|p| admission_roster_path_touched(p));
+    tree_carried_admission_refusal(&workspace.join(ADMISSION_ROSTER_REL_PATH))?;
+    let (base, head, base_index) = match reconstruct_base_index(workspace, base, head, head_index)?
+    {
+        // base == head: no range, so no commit could carry an admission and there is nothing
+        // to compare.
+        BaselineReconstruction::NoSubject { head } => {
+            return Ok(WaveAdmissionOutcome::NoSubject { head })
+        }
+        BaselineReconstruction::NotEvaluated { reason } => {
+            return Ok(WaveAdmissionOutcome::NotEvaluated { reason })
+        }
+        BaselineReconstruction::Reconstructed {
+            base,
+            head,
+            base_index,
+        } => (base, head, base_index),
+    };
+    let admissions = load_carried_admissions(workspace, &base, &head)?;
     let report = adjudicate(&base_index, head_index, &admissions);
     Ok(WaveAdmissionOutcome::Adjudicated {
         base,
         head,
         report: Box::new(report),
-        roster_touched,
     })
 }
 

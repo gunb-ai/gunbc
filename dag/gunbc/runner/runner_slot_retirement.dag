@@ -23,12 +23,13 @@ import gunbc.host_operation_exec {
 }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point,
+  cgroup_v2_events_path,
   CgroupEventsDecoded,
   CgroupEventsUnparseable,
   decode_cgroup_events_populated,
 }
 import std.resources { Network }
-import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup }
+import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, ControlGroup, systemd_name_component_is_escaped }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
@@ -985,5 +986,100 @@ fn transition_baseline_rows(host: HostIdentity) -> List<String> {
     RetireesUnresolved { host: uh, cause: _ } =>
       [join(["required-unresolved:", uh as String], "")]
     RetireesKnown { units: units } => units |> map(u => join(["required:", u as String], ""))
+  }
+}
+
+// ── Batched readings: one show and one events read for every retiree ──────────────────────────────
+
+// ONE READ OF EVERY RETIREE'S `cgroup.events`, AS ITS HOST ANSWERED IT. `CgroupEventsBatchRead`
+// carries the whole `FILE:LINE` stdout of extdeps.tools.grep grep_fixed_string_in_tree_argv over
+// the `populated` key; `CgroupEventsBatchUnread` is a batch that never ran or was refused, which
+// leaves every retiree with a live cgroup unobserved.
+type CgroupEventsBatch
+  = CgroupEventsBatchRead { stdout: String, stderr: String }
+  | CgroupEventsBatchUnread { cause: String }
+
+fn retirement_cgroup_events_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: control_group)], "") as NonEmptyStr)
+}
+
+// THE DECISION OVER A BATCHED READ, and the same four answers as cgroup_occupancy_from_reads. A blank
+// ControlGroup is absence (control_group_property_means_cgroup_absent), so no file is consulted.
+// Otherwise the unit's answer is ONLY the lines prefixed by its own events path, decoded by the kernel
+// file's own decoder -- so a duplicated or malformed key still refuses. A path with NO line is
+// UNOBSERVED, never empty and never absent: grep is silent both for a file that vanished and for one it
+// could not open, and the directory test that discriminated those in the per-unit read is exactly the
+// round trip this batch removes. A cgroup that vanished between the show and the read is therefore a
+// one-observation delay, in the fail-closed direction.
+fn cgroup_occupancy_from_batched_events(control_group: String, batch: CgroupEventsBatch) -> CgroupOccupancy {
+  if control_group_property_means_cgroup_absent(value: control_group) {
+    CgroupAbsent
+  } else {
+    match batch {
+      CgroupEventsBatchUnread { cause: c } => CgroupUnobserved { cause: join(["the batched cgroup.events read did not run: ", c], "") }
+      CgroupEventsBatchRead { stdout: out, stderr: err } => {
+        let prefix = concat(retirement_cgroup_events_path(control_group: control_group) as String, ":")
+        let own = map(filter(split(s: out, delimiter: "\n"), l => starts_with(s: l, prefix: prefix)), l => substring(s: l, start: string_length(s: prefix), end: string_length(s: l)))
+        if list_length(items: own) == 0 {
+          CgroupUnobserved { cause: join(["the batched read returned no line for ", prefix, " ", trim(s: err)], "") }
+        } else {
+          match decode_cgroup_events_populated(body: join(own, "\n")) {
+            CgroupEventsUnparseable { cause: c } => CgroupUnobserved { cause: join(["cgroup.events could not be decoded: ", c], "") }
+            CgroupEventsDecoded { populated: p } => if p { CgroupObservedPopulated } else { CgroupObservedEmpty }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ROOT ONE READ CAN COVER, AND WHY IT IS NOT THE UNIT'S OWN CGROUP PATH. systemd escapes the
+// runner slice's name, so every retiree's `ControlGroup` carries a `\x2d` component
+// (extdeps.systemd systemd_name_component_is_escaped) -- and the fleet's typed argv edge REFUSES a
+// backslash rather than quoting it (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed),
+// which is the wall working. Naming those paths in an argv therefore cannot execute at all, so the
+// read is rooted at the deepest ancestor with NO escaped component: for
+// `/system.slice/system-actions\x2drunner.slice/<unit>` that is `/sys/fs/cgroup/system.slice`. The
+// tree read finds each unit's file under it and PRINTS the real escaped path, which is output rather
+// than argv, so the keying by retirement_cgroup_events_path is unaffected. A wider root means a wider
+// walk, never a different answer for a retiree.
+type CgroupRootScan {
+  components: List<String>
+  stopped: Bool
+}
+
+fn retirement_cgroup_unescaped_root(control_group: String) -> String {
+  let scan = fold(split(s: trim(s: control_group), delimiter: "/"), init: CgroupRootScan { components: [], stopped: false }, f: (acc, c) =>
+    if acc.stopped || c == "" {
+      acc
+    } else if systemd_name_component_is_escaped(component: c) {
+      CgroupRootScan { components: acc.components, stopped: true }
+    } else {
+      CgroupRootScan { components: concat(acc.components, [c]), stopped: false }
+    })
+  join(concat([cgroup_v2_mount_point as String], scan.components), "/")
+}
+
+// ONE ROOT, OR A TYPED REASON THERE IS NOT ONE. Every retiree of a host sits under the same runner
+// slice, so the roots agree and one read serves them all. Roots that DISAGREE are not folded into
+// their common ancestor: that would silently widen the walk to `/sys/fs/cgroup` on a population this
+// module does not understand, so it is reported and the caller leaves those retirees unobserved.
+type CgroupEventsReadRoot
+  = CgroupEventsReadRootNone
+  | CgroupEventsReadRootOne { root: NonEmptyStr }
+  | CgroupEventsReadRootAmbiguous { roots: List<String> }
+
+fn retirement_cgroup_events_read_root(control_groups: List<String>) -> CgroupEventsReadRoot {
+  let live = filter(control_groups, cg => !control_group_property_means_cgroup_absent(value: cg))
+  let roots = fold(live, init: [], f: (acc, cg) => {
+    let r = retirement_cgroup_unescaped_root(control_group: cg)
+    if any(acc, a => a == r) { acc } else { concat(acc, [r]) }
+  })
+  if list_length(items: roots) == 0 {
+    CgroupEventsReadRootNone
+  } else if list_length(items: roots) > 1 {
+    CgroupEventsReadRootAmbiguous { roots: roots }
+  } else {
+    fold(roots, init: CgroupEventsReadRootNone, f: (acc, r) => CgroupEventsReadRootOne { root: r as NonEmptyStr })
   }
 }

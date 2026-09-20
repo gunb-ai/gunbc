@@ -9,10 +9,13 @@ import std.page_fold { PageSize }
 import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
+import gunbc.host_cli_dependency { HostCliDependencyAbsence }
+import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
 import gunbc.fleet.organization_runner_roster_read {
   OrganizationRunnerScope,
   OrganizationRunnerListing,
   org_runner_route_from_bindings,
+  org_runner_route_on_executor,
   OrgRunnerRouteAdmitted,
   OrgRunnerRouteRefused,
   roster_observe_terminal,
@@ -354,6 +357,31 @@ test fn a_missing_binding_refuses_the_route() -> Bool {
     OrgRunnerRouteAdmitted { route: _ } => false
   }
   no_gh && no_admin
+}
+
+// OR-2b: gh IS AN EXECUTOR PREREQUISITE. An executor without gh refuses the route before any read,
+// naming the binary, even when the credential bindings would admit it; an executor holding gh
+// passes the bindings' own verdict through unchanged (positive control).
+test fn an_executor_without_gh_refuses_the_route_naming_the_prerequisite() -> Bool {
+  let admitted = org_runner_route_from_bindings(admin_token: Present { value: "token-a" }, gh_token: Present { value: "token-a" })
+  let refused = match org_runner_route_on_executor(gh_absence: Present { value: HostCliDependencyAbsence { tool: "gh", hint: "apt install gh" } }, bindings: admitted) {
+    OrgRunnerRouteRefused { reason: r } => string_contains(s: r as String, pattern: "HostDependencyAbsent\{tool=gh")
+    OrgRunnerRouteAdmitted { route: _ } => false
+  }
+  let held = match org_runner_route_on_executor(gh_absence: none, bindings: admitted) {
+    OrgRunnerRouteAdmitted { route: _ } => true
+    OrgRunnerRouteRefused { reason: _ } => false
+  }
+  refused && held
+}
+
+// OR-2c: LEAST ACCESS. The fleet key step's condition is derived from the per-mode demand, so the
+// two API-only modes never materialize host SSH authority while a host mode still does (control).
+test fn api_only_org_modes_do_not_materialize_the_fleet_key() -> Bool {
+  let c = fleet_converge_fleet_ssh_key_step_if
+  !string_contains(s: c, pattern: "'org_runner_roster_observe'")
+    && !string_contains(s: c, pattern: "'org_actions_observe'")
+    && string_contains(s: c, pattern: "'apply'")
 }
 
 // OR-3: READINGS THAT A JOINED RENDERING WOULD CONFUSE ARE COMPARED AS TYPED VALUES.

@@ -14,11 +14,11 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, adjudication_event_from_name, admission_roster_path_touched, base_records,
-    diff_sides, disposition_label, in_sweep_scope, load_transition_admissions_from_dir,
-    report_unadjudicated, wave_admission_refusal, AdjudicationEvent, AdmissionSubject,
-    ConsumedRowReceipt, DeletionFollowUp, DeltaSubject, NamespaceDeltaDisposition,
-    TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport, ADMISSION_ROSTER_REL_PATH,
+    adjudicate, adjudication_event_from_name, base_records, carried_admissions_from_messages,
+    diff_sides, disposition_label, in_sweep_scope, report_unadjudicated,
+    tree_carried_admission_refusal, wave_admission_refusal, AdjudicationEvent, AdmissionSubject,
+    DeltaSubject, NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionOutcome,
+    WaveAdmissionReport, ADMISSION_CARRIER_FENCE, ADMISSION_ROSTER_REL_PATH,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -95,8 +95,6 @@ fn ta_binding(
                 .collect(),
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-        deletion_follow_up: DeletionFollowUp::NotAuthored,
-        owner_pull_request: 0,
     }
 }
 
@@ -886,7 +884,8 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
 
     // THIS ASSERTION MOVED RATHER THAN DIED, AND WHERE IT MOVED TO IS THE POINT. It used to read
     // "a non-`.dag` path enters neither side", because `diff_sides` applied the parser's scope
-    // itself -- which made `roster_touched` unreachable while the roster was a `.rs` file.
+    // itself -- which made the (since removed) roster-touch arm unreachable while the roster was a
+    // `.rs` file.
     // `diff_sides` now reports what the diff touched, unfiltered, and the parser's
     // question is asked by `in_sweep_scope` at the point of use. Both halves are asserted here:
     // the diff carries the paths, and the parser's scope still refuses them.
@@ -916,121 +915,47 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
     );
 }
 
-/// THE PRODUCER RED FOR THE DEAD ARM. `roster_touched` asks whether this run's diff touches the
-/// admission roster prefix (`dag/gunbc/namespace/transition_admission/`). While `diff_sides`
-/// filtered its own answer to the parser's `.dag` question, a `.rs` roster path could not appear
-/// in the list the predicate reads. Row files are now `.dag` and in sweep; the unfiltered list
-/// remains the authority because prefix match is not that predicate.
+/// A CARRIED ROW THE BASE ALREADY SATISFIES LANDS NOTHING, SO NO RUN OWES ANYTHING FOR IT.
 ///
-/// This is the discriminating RED: against the previous implementation the returned head side is
-/// empty and this assertion fails. It is authored on the production path -- `diff_sides` is the
-/// one producer `run_required_wave_admission` calls -- and not over a hand-built value.
+/// This used to be the arm that came due: a consumed row in the tree refused on landing
+/// (`base == head`) or on the next roster touch, which is how a landed change billed its deletion
+/// to whoever touched the roster next. With the carrier in the commit message the row never
+/// reaches main's tree, so the same consumed row is a receipt on every run -- including the one
+/// whose base IS its head. The RED that replaces the old charge is
+/// `a_row_file_in_the_tree_refuses_at_its_owners_own_gate`, which refuses the row before it can
+/// land at all.
 #[test]
-fn the_roster_path_reaches_the_side_the_roster_touched_predicate_reads() {
-    let row = format!("{ADMISSION_ROSTER_REL_PATH}probe_consumer_use_it_widget.dag");
-    let (head, base) = diff_sides(&format!("M\0{row}\0"));
-    assert!(
-        head.iter().any(|p| p == &row),
-        "the head side must carry the row path, or `roster_touched` is false by construction: \
-         head={head:?}"
-    );
-    assert!(
-        base.iter().any(|p| p == &row),
-        "an ordinary modification reports the same path on both sides: base={base:?}"
-    );
-    assert!(
-        admission_roster_path_touched(&row),
-        "the roster prefix must match the row path"
-    );
-    assert!(
-        in_sweep_scope(&row),
-        "row files are `.dag` under dag/ and belong in the parse sweep"
-    );
-    assert!(
-        !admission_roster_path_touched("dag/gunbc/namespace/transition_admission.dag"),
-        "the type module is not a roster row"
-    );
-}
-
-/// The two sides of one scenario that really does leave a consumed row standing, wrapped as the
-/// outcome the executor judges. Only `roster_touched` and the two revision strings are supplied;
-/// the report itself is produced by `adjudicate` over authored trees, so what is being judged is a
-/// real consumed admission rather than a shape.
-fn adjudicated_with_a_consumed_row(name: &str, roster_touched: bool) -> WaveAdmissionOutcome {
+fn a_carried_row_the_base_already_satisfies_is_a_receipt_on_every_run() {
     let sides = [
         ("home.dag", HOME),
         ("other.dag", OTHER),
         ("consumer.dag", CONSUMER_IMPORTS_OTHER),
     ];
-    let report = compare_with(name, &sides, &sides, &authored_like_production());
+    let report = compare_with(
+        "carried_consumed",
+        &sides,
+        &sides,
+        &authored_like_production(),
+    );
     assert!(
         !report.consumed_admissions.is_empty() && report.stale_admissions.is_empty(),
         "fixture precondition: exactly a consumed row and no refusal -- consumed={:?} stale={:?}",
         report.consumed_admissions,
         report.stale_admissions
     );
-    WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched,
+    for (base, head) in [("base", "head"), ("same", "same")] {
+        let outcome = WaveAdmissionOutcome::Adjudicated {
+            base: base.to_string(),
+            head: head.to_string(),
+            report: Box::new(report.clone()),
+        };
+        assert_eq!(
+            wave_admission_refusal(&outcome),
+            None,
+            "a consumed carried row lands nothing, so no run -- {base}..{head} -- may be billed \
+             for it"
+        );
     }
-}
-
-/// THE DECIDER RED, AND IT DISCRIMINATES ON THE ARM RATHER THAN ON THE ROW. One consumed row, two
-/// runs: the run that touches the roster must refuse and name the obligation, and the run that does
-/// not must be admitted. An implementation that refuses on the presence of a consumed row alone
-/// reds the second assertion; one that never refuses -- which is what the `.dag` filter produced --
-/// reds the first.
-///
-/// The verdict is asked of `wave_admission_refusal`, which is the function the executor now calls,
-/// so this runs on the acceptance path rather than restating it.
-#[test]
-fn a_consumed_row_comes_due_on_the_roster_touching_pr() {
-    let due = wave_admission_refusal(&adjudicated_with_a_consumed_row("consumed_due", true));
-    let refusal = due.expect(
-        "a consumed row standing on a change that touches the roster file must refuse: this is \
-         the whole deletion obligation, and it was unreachable while `diff_sides` filtered the \
-         roster path out of the side `roster_touched` reads",
-    );
-    assert!(
-        refusal.contains("due for correction or deletion"),
-        "the refusal must name the obligation rather than a count alone: {refusal}"
-    );
-
-    let bystander =
-        wave_admission_refusal(&adjudicated_with_a_consumed_row("consumed_inert", false));
-    assert_eq!(
-        bystander, None,
-        "and a run that does not touch the roster must still be ADMITTED -- billing the cleanup \
-         to bystanders is the externalized degradation gunbc#9824 removed and this arm must not \
-         reintroduce it"
-    );
-}
-
-/// The positive control for the surrounding machinery: with no admissions at all, a run that
-/// touches the roster file is admitted. Without this, the test above could pass because the
-/// roster-touched arm refuses unconditionally.
-#[test]
-fn touching_the_roster_with_no_consumed_row_is_admitted() {
-    let sides = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let report = compare_with("roster_touched_empty_roster", &sides, &sides, &[]);
-    let outcome = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: true,
-    };
-    assert_eq!(
-        wave_admission_refusal(&outcome),
-        None,
-        "an empty roster is not permissive, but it is also not a refusal: touching the file with \
-         nothing due must pass"
-    );
 }
 
 // ── THE FIELD-LABEL PAIR: what a name OCCURRENCE has to be before it can carry a verdict ──
@@ -2012,20 +1937,6 @@ fn an_ambiguous_base_binding_is_not_consumption() {
 }
 
 #[test]
-fn landing_refuses_consumed_rows_without_a_roster_diff() {
-    let mut outcome = adjudicated_with_a_consumed_row("landing_consumed", false);
-    if let WaveAdmissionOutcome::Adjudicated { base, head, .. } = &mut outcome {
-        *base = head.clone();
-    }
-    let refusal = wave_admission_refusal(&outcome).expect("landing owes deletion");
-    assert!(refusal.contains("delete these rows"));
-    assert!(refusal.contains(ADMISSION_ROSTER_REL_PATH));
-    if let WaveAdmissionOutcome::Adjudicated { report, .. } = &outcome {
-        assert!(refusal.contains(&report.consumed_admissions[0]));
-    }
-}
-
-#[test]
 fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
     let base = [
         ("home.dag", HOME),
@@ -2044,11 +1955,10 @@ fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
         "gadget",
         &["probe.other"],
     )];
-    for (name, head_sources, same_revision, roster_touched, refuses) in [
-        ("inherited_stale", &base, false, false, true),
-        ("edited_stale", &base, false, true, true),
-        ("landing_stale", &base, true, false, true),
-        ("inherited_stale_with_delta", &moved, false, false, true),
+    for (name, head_sources, same_revision) in [
+        ("inherited_stale", &base, false),
+        ("landing_stale", &base, true),
+        ("inherited_stale_with_delta", &moved, false),
     ] {
         let report = compare_with(name, &base, head_sources, &admissions);
         assert_eq!(report.stale_admissions.len(), 1);
@@ -2060,19 +1970,16 @@ fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
             base: "base".into(),
             head: if same_revision { "base" } else { "head" }.into(),
             report: Box::new(report),
-            roster_touched,
         };
-        assert_eq!(
-            wave_admission_refusal(&outcome).is_some(),
-            refuses,
+        let refusal = wave_admission_refusal(&outcome).unwrap_or_else(|| panic!("{name} refuses"));
+        assert!(
+            refusal.contains("gunbc#11137 unmatched inherited row"),
             "{name}"
         );
-        if same_revision || roster_touched {
-            let refusal = wave_admission_refusal(&outcome).unwrap();
-            assert!(refusal.contains("gunbc#11137 unmatched inherited row"));
-            assert!(refusal.contains("delete these rows"));
-            assert!(refusal.contains(ADMISSION_ROSTER_REL_PATH));
-        }
+        assert!(
+            refusal.contains(ADMISSION_CARRIER_FENCE),
+            "{name}: names the remedy"
+        );
     }
 }
 
@@ -2119,7 +2026,6 @@ fn multi_candidate_narrowing_admits_then_consumes_only_the_exact_authored_set() 
                 base: "base".into(),
                 head: "head".into(),
                 report: Box::new(report),
-                roster_touched: false,
             };
             if matches {
                 assert!(wave_admission_refusal(&outcome).is_none());
@@ -2141,10 +2047,9 @@ fn row_source(stem: &str, label: &str, spelling: &str) -> String {
     format!(
         "module gunbc.namespace.transition_admission.{stem}\n\n\
          import std.types {{ NonEmptyStr, List }}\n\
-         import std.integer {{ UInt32 }}\n\
          import std.decl_ref {{ decl_ref }}\n\
          import gunbc.compiler_frontend_program_interlock {{ TargetChanged }}\n\
-         import gunbc.namespace.transition_admission {{ TransitionAdmission, Binding, NotAuthored }}\n\n\
+         import gunbc.namespace.transition_admission {{ TransitionAdmission, Binding }}\n\n\
          data {stem}: TransitionAdmission = TransitionAdmission {{\n\
            label: \"{label}\" as NonEmptyStr,\n\
            subject: Binding {{\n\
@@ -2153,124 +2058,33 @@ fn row_source(stem: &str, label: &str, spelling: &str) -> String {
              expected_candidates: [decl_ref(\"probe.other\", \"{spelling}\")],\n\
            }},\n\
            disposition: TargetChanged,\n\
-           deletion_follow_up: NotAuthored,\n\
-           owner_pull_request: 0 as UInt32,\n\
          }}\n"
     )
 }
 
-#[test]
-fn a_malformed_row_file_refuses_located_and_is_not_skipped() {
-    let dir = std::env::temp_dir().join("gunbc_transition_admission_malformed");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("probe_consumer_use_it_widget.dag");
-    std::fs::write(
-        &path,
-        "module gunbc.namespace.transition_admission.probe_consumer_use_it_widget\n\ndata x: Int = 1\n",
-    )
-    .unwrap();
-    let err = load_transition_admissions_from_dir(&dir).expect_err("malformed must refuse");
-    assert!(
-        err.contains(&path.display().to_string()),
-        "refusal must name the file: {err}"
-    );
+/// One commit message carrying `rows` as fenced blocks, the way an author writes it.
+fn carrying(rows: &[String]) -> String {
+    let mut message =
+        "Move widget into probe.other\n\nThe consumer now binds the new home.\n".to_string();
+    for row in rows {
+        message.push_str(&format!("\n{ADMISSION_CARRIER_FENCE}\n{row}```\n"));
+    }
+    message
 }
 
 #[test]
-fn a_candidate_decl_name_that_is_not_the_binding_spelling_refuses() {
-    let dir = std::env::temp_dir().join("gunbc_transition_admission_phantom_leaf");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("probe_consumer_use_it_widget.dag");
-    std::fs::write(
-        &path,
-        row_source("probe_consumer_use_it_widget", "from-file", "widget").replace(
-            "decl_ref(\"probe.other\", \"widget\")",
-            "decl_ref(\"probe.other\", \"not_the_spelling\")",
-        ),
-    )
-    .unwrap();
-    let err = load_transition_admissions_from_dir(&dir).expect_err("phantom leaf must refuse");
-    assert!(
-        err.contains(&path.display().to_string()),
-        "refusal must name the file: {err}"
-    );
-    assert!(
-        err.contains("must equal Binding.spelling `widget`"),
-        "refusal must name the mismatch: {err}"
-    );
-}
-
-#[test]
-fn two_row_files_on_two_branches_merge_without_conflict() {
-    let root = std::env::temp_dir().join("gunbc_transition_admission_two_file_merge");
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
-    let git = |args: &[&str]| {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(&root)
-            .output()
-            .expect("git");
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    };
-    git(&["init", "-q"]);
-    git(&["config", "user.email", "wave@example.test"]);
-    git(&["config", "user.name", "wave"]);
-    std::fs::write(root.join("README"), "roster\n").unwrap();
-    git(&["add", "README"]);
-    git(&["commit", "-q", "-m", "base"]);
-    git(&["checkout", "-q", "-b", "left"]);
-    std::fs::create_dir_all(root.join("rows")).unwrap();
-    std::fs::write(
-        root.join("rows/probe_consumer_use_it_widget.dag"),
-        row_source("probe_consumer_use_it_widget", "left", "widget"),
-    )
-    .unwrap();
-    git(&["add", "rows/probe_consumer_use_it_widget.dag"]);
-    git(&["commit", "-q", "-m", "left row"]);
-    git(&["checkout", "-q", "HEAD~1"]);
-    git(&["checkout", "-q", "-b", "right"]);
-    std::fs::create_dir_all(root.join("rows")).unwrap();
-    std::fs::write(
-        root.join("rows/probe_consumer_use_it_gadget.dag"),
-        row_source("probe_consumer_use_it_gadget", "right", "gadget"),
-    )
-    .unwrap();
-    git(&["add", "rows/probe_consumer_use_it_gadget.dag"]);
-    git(&["commit", "-q", "-m", "right row"]);
-    let merge = std::process::Command::new("git")
-        .args(["merge", "--no-edit", "left"])
-        .current_dir(&root)
-        .output()
-        .expect("merge");
-    assert!(
-        merge.status.success(),
-        "two row files must merge cleanly: {}",
-        String::from_utf8_lossy(&merge.stderr)
-    );
-    assert!(root.join("rows/probe_consumer_use_it_widget.dag").exists());
-    assert!(root.join("rows/probe_consumer_use_it_gadget.dag").exists());
-}
-
-#[test]
-fn a_directory_row_loads_as_the_production_admission() {
-    let dir = std::env::temp_dir().join("gunbc_transition_admission_load");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("probe_consumer_use_it_widget.dag"),
-        row_source("probe_consumer_use_it_widget", "from-file", "widget"),
-    )
-    .unwrap();
-    let loaded = load_transition_admissions_from_dir(&dir).expect("well-formed row");
+fn a_carried_block_loads_as_the_production_admission() {
+    let loaded = carried_admissions_from_messages(&[(
+        "c0ffee".to_string(),
+        carrying(&[row_source(
+            "probe_consumer_use_it_widget",
+            "from-message",
+            "widget",
+        )]),
+    )])
+    .expect("well-formed carried row");
     assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].label, "from-file");
+    assert_eq!(loaded[0].label, "from-message");
     match &loaded[0].subject {
         AdmissionSubject::Binding {
             module,
@@ -2285,267 +2099,116 @@ fn a_directory_row_loads_as_the_production_admission() {
         }
         other => panic!("expected Binding, got {other:?}"),
     }
-}
-// ── THE OWNER'S CHARGE ON THE MERGE-QUEUE COMPOSITION (lane ruling C, fierce-lark-661, 2026-09-13) ──
-//
-// The merge queue moved the required verdict off the push to the default branch, which was the only
-// run where base == head and a consumed row came due without a roster edit. A row this candidate
-// USES is satisfied at the candidate, so its consumption on landing is known at the owner's own
-// merge_group run; that run is where the deletion is charged. Every arm below is one scenario with
-// one fact changed.
-
-/// The fixture row, identical to `AUTHORED_LIKE_PRODUCTION` but for its follow-up.
-fn used_row(follow_up: DeletionFollowUp) -> [TransitionAdmission; 1] {
-    [TransitionAdmission {
-        label: "gunbc#77777 fixture transition".to_string(),
-        subject: AdmissionSubject::Binding {
-            module: "probe.consumer".to_string(),
-            in_declaration: "use_it".to_string(),
-            spelling: "widget".to_string(),
-            expected_candidates: vec!["probe.other".to_string()],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-        deletion_follow_up: follow_up,
-        owner_pull_request: 77777,
-    }]
-}
-
-/// The owner's composition: the candidate moves the binding, and the row admits it.
-fn owner_composition(name: &str, follow_up: DeletionFollowUp) -> WaveAdmissionOutcome {
-    let base = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_HOME),
-    ];
-    let head = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let report = compare_with(name, &base, &head, &used_row(follow_up));
-    assert!(
-        report_unadjudicated(&report).is_empty()
-            && report.stale_admissions.is_empty()
-            && report.consumed_admissions.is_empty(),
-        "fixture precondition: the row is USED, not stale or consumed -- stale={:?} consumed={:?}",
-        report.stale_admissions,
-        report.consumed_admissions
-    );
-    WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: true,
-    }
-}
-
-/// THE ARM IS GONE, AND THIS IS THE CONTROL THAT SAYS SO. The owner's merge_group run no longer
-/// refuses a used row whose follow-up is `NotAuthored` (2026-09-16, operator ruling). This is the
-/// inverse of the RED this test used to carry, kept executing rather than deleted so the removal is
-/// covered by evidence instead of by an absence of evidence.
-///
-/// WHAT STILL REFUSES IS TESTED ELSEWHERE and is not weakened here: a consumed row when
-/// `roster_due` -- `base == head`, which the merge queue left with no required run, or a
-/// roster-source edit, which is what remains of it there -- a stale row, and an unadjudicated
-/// delta. The debt
-/// remains RECORDED on the row and counted in the message; what was removed is the ADVANCE charge,
-/// whose admitting side was free because any number satisfied it.
-#[test]
-fn the_owners_merge_group_run_admits_a_used_row_without_a_deletion_follow_up() {
-    let outcome = owner_composition("owner_mg_no_follow_up", DeletionFollowUp::NotAuthored);
-    assert!(
-        wave_admission_refusal(&outcome).is_none(),
-        "a used row with no follow-up must no longer refuse on the owner's merge_group run: {:?}",
-        wave_admission_refusal(&outcome)
-    );
-}
-
-/// THE POSITIVE CONTROL, case (3) of the requirement: a transition admission still needed for the
-/// transition under evaluation stays green once its owner authored the follow-up -- the rule is not
-/// "a non-empty roster refuses the queue".
-#[test]
-fn the_owners_merge_group_run_admits_a_used_row_whose_follow_up_is_authored() {
-    assert_eq!(
-        wave_admission_refusal(&owner_composition(
-            "owner_mg_with_follow_up",
-            DeletionFollowUp::PullRequest(77778)
-        )),
-        None
-    );
-}
-
-/// THE WINDOW, EXECUTED (lane ruling X; review 65313). A row consumed at the base whose owner
-/// authored a deletion follow-up, seen by an UNRELATED merge_group composition that does not touch
-/// the roster. Under the previous arms this exact fixture REFUSED as ConsumedRowOwnerChargeBypassed:
-/// the owner's charge only establishes that a follow-up number is authored, so between the owner's
-/// landing and its follow-up's landing every composition saw the row and the bystander was billed.
-/// Under X it is ADMITTED and carries a typed receipt naming the row, its owner and its follow-up.
-#[test]
-fn an_owned_consumed_row_is_a_receipt_on_a_bystanders_merge_group_run_not_a_refusal() {
-    let sides = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let report = compare_with(
-        "bystander_mg_owned_consumed",
-        &sides,
-        &sides,
-        &used_row(DeletionFollowUp::PullRequest(77778)),
-    );
-    assert!(
-        !report.consumed_admissions.is_empty() && report.consumed_without_follow_up.is_empty(),
-        "fixture precondition: one consumed row, owned"
+    // THE SQUASH MESSAGE THE MERGE QUEUE COMPOSES (`COMMIT_MESSAGES`): each branch commit becomes
+    // a `* subject` bullet with its body kept verbatim, so the same block must load from it.
+    let squashed = format!(
+        "Move widget (#1)\n\n* {}",
+        carrying(&[row_source(
+            "probe_consumer_use_it_widget",
+            "from-message",
+            "widget"
+        )])
     );
     assert_eq!(
-        report.owned_consumed_receipts,
-        vec![ConsumedRowReceipt {
-            label: "gunbc#77777 fixture transition".to_string(),
-            owner_pull_request: 77777,
-            deletion_follow_up_pull_request: 77778,
-        }],
-        "the receipt must name the row, its owner and its follow-up as typed fields"
-    );
-    let composition = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: false,
-    };
-    assert_eq!(
-        wave_admission_refusal(&composition),
-        None,
-        "an owned consumed row must not bill the bystander for the owner's window"
+        carried_admissions_from_messages(&[("squash".to_string(), squashed)]).expect("squash"),
+        loaded
     );
 }
 
-/// THE RECEIPT IS NOT A VERDICT, ON THE TWO ARMS X DID NOT TOUCH (ruling A, fierce-lark-661,
-/// 2026-09-13). The retained roster-touch and `base == head` rules refuse on `consumed_admissions`
-/// regardless of ownership, so on those two runs the SAME owned row yields a typed receipt AND a
-/// refusal. The printer must therefore never say "not refused" -- this fixture is the executed
-/// counterexample to that sentence, and it pins the retained arms so widening X to them would go
-/// red here rather than silently.
 #[test]
-fn an_owned_consumed_rows_receipt_coexists_with_the_retained_roster_and_base_equals_head_refusals()
-{
-    let sides = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let expected_receipt = vec![ConsumedRowReceipt {
-        label: "gunbc#77777 fixture transition".to_string(),
-        owner_pull_request: 77777,
-        deletion_follow_up_pull_request: 77778,
-    }];
+fn a_later_block_of_the_same_stem_supersedes_an_earlier_one() {
+    let stem = "probe_consumer_use_it_widget";
+    let loaded = carried_admissions_from_messages(&[
+        (
+            "first".to_string(),
+            carrying(&[row_source(stem, "first", "widget")]),
+        ),
+        (
+            "second".to_string(),
+            carrying(&[row_source(stem, "corrected", "widget")]),
+        ),
+    ])
+    .expect("two well-formed blocks");
+    assert_eq!(loaded.len(), 1, "one stem is one admission: {loaded:?}");
+    assert_eq!(loaded[0].label, "corrected");
+}
 
-    let roster_touched_report = compare_with(
-        "owned_consumed_roster_touched",
-        &sides,
-        &sides,
-        &used_row(DeletionFollowUp::PullRequest(77778)),
-    );
-    assert_eq!(
-        roster_touched_report.owned_consumed_receipts, expected_receipt,
-        "fixture precondition: the row is owned, so it is a receipt on both arms"
-    );
-    let roster_touched = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(roster_touched_report),
-        roster_touched: true,
-    };
-    let roster_refusal = wave_admission_refusal(&roster_touched)
-        .expect("the retained roster-touch rule still refuses an owned consumed row (gunbc#9824)");
+#[test]
+fn a_malformed_carried_block_refuses_located_and_is_not_skipped() {
+    let err = carried_admissions_from_messages(&[(
+        "badc0de".to_string(),
+        carrying(&[
+            "module gunbc.namespace.transition_admission.probe_consumer_use_it_widget\n\ndata x: Int = 1\n"
+                .to_string(),
+        ]),
+    )])
+    .expect_err("malformed must refuse");
     assert!(
-        roster_refusal.contains("gunbc#77777 fixture transition"),
-        "the retained refusal must still name the row: {roster_refusal}"
+        err.contains("commit badc0de"),
+        "refusal must name the commit: {err}"
     );
 
-    let base_equals_head_report = compare_with(
-        "owned_consumed_base_equals_head",
-        &sides,
-        &sides,
-        &used_row(DeletionFollowUp::PullRequest(77778)),
+    let unclosed = format!(
+        "subject\n\n{ADMISSION_CARRIER_FENCE}\n{}",
+        row_source("probe_consumer_use_it_widget", "open", "widget")
     );
-    assert_eq!(
-        base_equals_head_report.owned_consumed_receipts, expected_receipt,
-        "fixture precondition: the row is owned, so it is a receipt on both arms"
-    );
-    let base_equals_head = WaveAdmissionOutcome::Adjudicated {
-        base: "same".to_string(),
-        head: "same".to_string(),
-        report: Box::new(base_equals_head_report),
-        roster_touched: false,
-    };
-    let base_refusal = wave_admission_refusal(&base_equals_head)
-        .expect("the retained base == head rule still refuses an owned consumed row (gunbc#9824)");
+    let err = carried_admissions_from_messages(&[("0pen".to_string(), unclosed)])
+        .expect_err("an unclosed fence must refuse, not drop the admission");
+    assert!(err.contains("never closed"), "{err}");
+}
+
+#[test]
+fn a_candidate_decl_name_that_is_not_the_binding_spelling_refuses() {
+    let err = carried_admissions_from_messages(&[(
+        "phantom".to_string(),
+        carrying(&[
+            row_source("probe_consumer_use_it_widget", "from-message", "widget").replace(
+                "decl_ref(\"probe.other\", \"widget\")",
+                "decl_ref(\"probe.other\", \"not_the_spelling\")",
+            ),
+        ]),
+    )])
+    .expect_err("phantom leaf must refuse");
     assert!(
-        base_refusal.contains("gunbc#77777 fixture transition"),
-        "the retained refusal must still name the row: {base_refusal}"
+        err.contains("commit phantom"),
+        "refusal must name the commit: {err}"
+    );
+    assert!(
+        err.contains("must equal Binding.spelling `widget`"),
+        "refusal must name the mismatch: {err}"
     );
 }
 
-/// THE GENUINE BYPASS STILL REFUSES: the same consumed row with NO authored follow-up, on the same
-/// bystander composition, refuses and names the owing change -- so X narrowed the backstop to its
-/// true subject rather than deleting it. And off the queue the same bystander stays admitted.
+/// THE RED, AT THE LOADER: a row FILE in the old roster directory refuses, and names the remedy.
+/// The end-to-end form over a real repository is
+/// `wave_admission_carrier::a_row_file_in_the_tree_refuses_at_its_owners_own_gate`.
 #[test]
-fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_is_admitted() {
-    let sides = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let report = compare_with(
-        "bystander_mg_unowned_consumed",
-        &sides,
-        &sides,
-        &used_row(DeletionFollowUp::NotAuthored),
-    );
-    assert!(
-        !report.consumed_without_follow_up.is_empty() && report.owned_consumed_receipts.is_empty(),
-        "fixture precondition: one consumed row, unowned"
-    );
-    let composition = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: false,
-    };
-    // THE BYSTANDER IS NO LONGER BILLED. This fixture used to refuse as
-    // ConsumedRowOwnerChargeBypassed: an unrelated composition was charged because a PRIOR owner
-    // authored no deletion follow-up. That arm was removed (2026-09-16, operator ruling) and this
-    // assertion is its inverse, kept executing so the removal has evidence rather than an absence.
-    // A SECOND CONSTRUCTION USED TO FOLLOW THIS ONE, for the pull_request event. With the event
-    // removed it was byte-identical to `composition`, so it re-asserted this assertion on an equal
-    // value; deleted for the same reason its sibling test was (review 67062). What still refuses on
-    // a consumed row is `roster_due` -- and since the merge queue left `base == head` with no
-    // required run, that is a roster-source edit alone on the required path, which is the coverage
-    // `gunbc.rung_drop.consumed_row_owner_charge_unenforced` declares as dropped.
+fn a_row_file_in_the_tree_refuses_and_an_absent_directory_is_the_resting_state() {
+    let root = std::env::temp_dir().join("gunbc_transition_admission_tree_row");
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join(ADMISSION_ROSTER_REL_PATH);
     assert_eq!(
-        wave_admission_refusal(&composition),
-        None,
-        "a bystander composition must not be charged for a prior owner's unauthored follow-up"
+        tree_carried_admission_refusal(&dir),
+        Ok(()),
+        "absent is the resting state"
     );
-}
-
-/// The deletion PR clears the refusal: its composition touches the roster and carries no row, so its
-/// own merge_group run is admitted.
-#[test]
-fn the_deletion_follow_ups_merge_group_run_is_admitted() {
-    let sides = [
-        ("home.dag", HOME),
-        ("other.dag", OTHER),
-        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
-    ];
-    let report = compare_with("deletion_mg", &sides, &sides, &[]);
-    let outcome = WaveAdmissionOutcome::Adjudicated {
-        base: "base".to_string(),
-        head: "head".to_string(),
-        report: Box::new(report),
-        roster_touched: true,
-    };
-    assert_eq!(wave_admission_refusal(&outcome), None);
+    std::fs::create_dir_all(&dir).unwrap();
+    assert_eq!(
+        tree_carried_admission_refusal(&dir),
+        Ok(()),
+        "empty is the resting state"
+    );
+    std::fs::write(
+        dir.join("probe_consumer_use_it_widget.dag"),
+        row_source("probe_consumer_use_it_widget", "in-the-tree", "widget"),
+    )
+    .unwrap();
+    let err = tree_carried_admission_refusal(&dir).expect_err("a tree row must refuse");
+    assert!(err.contains("probe_consumer_use_it_widget.dag"), "{err}");
+    assert!(
+        err.contains(ADMISSION_CARRIER_FENCE),
+        "names the remedy: {err}"
+    );
 }
 
 /// An event the consumption policy does not model refuses instead of borrowing a policy.
@@ -2595,8 +2258,6 @@ fn ta_relocation(
             to_module: to_module.to_string(),
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-        deletion_follow_up: DeletionFollowUp::NotAuthored,
-        owner_pull_request: 0,
     }
 }
 
@@ -2732,10 +2393,9 @@ fn relocation_row_source(stem: &str, from_module: &str) -> String {
     format!(
         "module gunbc.namespace.transition_admission.{stem}\n\n\
          import std.types {{ NonEmptyStr, List }}\n\
-         import std.integer {{ UInt32 }}\n\
          import std.decl_ref {{ decl_ref }}\n\
          import gunbc.compiler_frontend_program_interlock {{ TargetChanged }}\n\
-         import gunbc.namespace.transition_admission {{ TransitionAdmission, Relocation, NotAuthored }}\n\n\
+         import gunbc.namespace.transition_admission {{ TransitionAdmission, Relocation }}\n\n\
          data {stem}: TransitionAdmission = TransitionAdmission {{\n\
            label: \"move-widget\" as NonEmptyStr,\n\
            subject: Relocation {{\n\
@@ -2743,23 +2403,17 @@ fn relocation_row_source(stem: &str, from_module: &str) -> String {
              from_module: \"{from_module}\" as NonEmptyStr,\n\
            }},\n\
            disposition: TargetChanged,\n\
-           deletion_follow_up: NotAuthored,\n\
-           owner_pull_request: 0 as UInt32,\n\
          }}\n"
     )
 }
 
 #[test]
-fn a_relocation_row_file_loads_to_the_subject_it_spells() {
-    let dir = std::env::temp_dir().join("gunbc_transition_admission_relocation_row");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("probe_widget_moves.dag"),
-        relocation_row_source("probe_widget_moves", "probe.home"),
-    )
-    .unwrap();
-    let loaded = load_transition_admissions_from_dir(&dir).expect("well-formed relocation row");
+fn a_carried_relocation_block_loads_to_the_subject_it_spells() {
+    let loaded = carried_admissions_from_messages(&[(
+        "reloc".to_string(),
+        carrying(&[relocation_row_source("probe_widget_moves", "probe.home")]),
+    )])
+    .expect("well-formed relocation block");
     assert_eq!(loaded.len(), 1);
     assert_eq!(
         loaded[0].subject,
@@ -2772,20 +2426,15 @@ fn a_relocation_row_file_loads_to_the_subject_it_spells() {
 }
 
 #[test]
-fn a_relocation_from_a_module_to_itself_refuses_located() {
-    let dir = std::env::temp_dir().join("gunbc_transition_admission_relocation_self");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("probe_widget_moves.dag");
-    std::fs::write(
-        &path,
-        relocation_row_source("probe_widget_moves", "probe.other"),
-    )
-    .unwrap();
-    let err = load_transition_admissions_from_dir(&dir).expect_err("self-relocation must refuse");
+fn a_carried_relocation_from_a_module_to_itself_refuses_located() {
+    let err = carried_admissions_from_messages(&[(
+        "selfmove".to_string(),
+        carrying(&[relocation_row_source("probe_widget_moves", "probe.other")]),
+    )])
+    .expect_err("self-relocation must refuse");
     assert!(
-        err.contains(&path.display().to_string()),
-        "refusal must name the file: {err}"
+        err.contains("commit selfmove"),
+        "refusal must name the commit: {err}"
     );
     assert!(
         err.contains("to itself"),
