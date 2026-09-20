@@ -25,6 +25,7 @@ import extdeps.languages.json.parse {
 import extdeps.shell.credentials { env_credential }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.fleet.org_actions_standing {
   ObservedGroupAccess,
   OrgActionsGoal,
@@ -272,36 +273,46 @@ fn org_actions_inspect_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
     Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
-    Present { value: _ } => {
-      let inspection: OrgActionsInspection = inspect_goal(
-        subject: org_actions_organization,
-        goal: desired_org_actions_goal,
-        request: OrgActionsReadRequest { credential_env: org_admin_token_env_name },
-        observe: observe_org_actions,
-        assess: assess_org_actions,
+    Present { value: _ } => match first_absent_gh_cli_operation_host_cli_dependency() {
+      Present { value: a } =>
+        exit_failure(reason: concat("OrgActionsExecutorPrerequisiteAbsent: ", host_dependency_absent_wire(tool: a.tool, hint: a.hint)))
+      Absent => org_actions_inspect_with_credential()
+    }
+  }
+}
+
+// The observation, once the credential and the executor prerequisite both hold. Split out by
+// gunbc#11736's shape: `gh` is an executor prerequisite of every gh-CLI org read, and an absent
+// binary is neither a credential fault nor an observation of the organization -- it means the read
+// was never attempted, so it refuses BEFORE inspect_goal rather than becoming a read refusal.
+fn org_actions_inspect_with_credential() -> ProcessExit {
+  let inspection: OrgActionsInspection = inspect_goal(
+    subject: org_actions_organization,
+    goal: desired_org_actions_goal,
+    request: OrgActionsReadRequest { credential_env: org_admin_token_env_name },
+    observe: observe_org_actions,
+    assess: assess_org_actions,
+  )
+  match inspection {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause } =>
+      exit_failure(reason: render_org_actions_read_refusal(cause: cause))
+    GoalInspected { subject, goal: _, request: _, observed: _, assessment } => {
+      let observed_on = clock_now_probed_at_or_unknown()
+      let wrote = Filesystem.Write(
+        path: org_actions_validation_receipt_path,
+        content: org_actions_receipt_text(organization: subject, assessment: assessment, observed_on: observed_on)
       )
-      match inspection {
-        GoalObservationRefused { subject: _, goal: _, request: _, cause } =>
-          exit_failure(reason: render_org_actions_read_refusal(cause: cause))
-        GoalInspected { subject, goal: _, request: _, observed: _, assessment } => {
-          let observed_on = clock_now_probed_at_or_unknown()
-          let wrote = Filesystem.Write(
-            path: org_actions_validation_receipt_path,
-            content: org_actions_receipt_text(organization: subject, assessment: assessment, observed_on: observed_on)
-          )
-          if !wrote.success {
-            exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
-          } else {
-            match assessment {
-              GoalSatisfied { evidence: _ } => ExitSuccess
-              GoalDiverged { deviations: _ } =>
-                exit_failure(reason: concat("OrgActionsSettingsDiverged ", org_actions_standing_wire(a: assessment)))
-              GoalIndeterminate { known_deviations: _, unknowns: _ } =>
-                exit_failure(reason: "OrgActionsSettingsIndeterminate: unreachable for this binding, whose UnknownFact is Never")
-              GoalAssessmentRefused { cause: _ } =>
-                exit_failure(reason: "OrgActionsAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never")
-            }
-          }
+      if !wrote.success {
+        exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
+      } else {
+        match assessment {
+          GoalSatisfied { evidence: _ } => ExitSuccess
+          GoalDiverged { deviations: _ } =>
+            exit_failure(reason: concat("OrgActionsSettingsDiverged ", org_actions_standing_wire(a: assessment)))
+          GoalIndeterminate { known_deviations: _, unknowns: _ } =>
+            exit_failure(reason: "OrgActionsSettingsIndeterminate: unreachable for this binding, whose UnknownFact is Never")
+          GoalAssessmentRefused { cause: _ } =>
+            exit_failure(reason: "OrgActionsAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never")
         }
       }
     }
