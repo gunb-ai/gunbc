@@ -869,6 +869,24 @@ mod persistent_typed_store_tests {
         );
     }
 
+    /// A named directory that cannot be opened is an ERROR, not an empty
+    /// store. This is the arm that decides whether an armed-but-unusable store
+    /// runs cold or stops the line, and `persistent_typed_store_for` turns this
+    /// `Err` into a located refusal: the operator named a store, so silently
+    /// proceeding without one would be a promise quietly broken.
+    #[test]
+    fn a_root_that_cannot_be_opened_is_an_error_and_not_an_empty_store() {
+        let root = TempRoot::new("unopenable");
+        // A regular FILE standing where the store's directory must be created.
+        let blocked = root.0.join("not-a-directory");
+        std::fs::write(&blocked, b"occupied").expect("write blocker");
+        let opened = PersistentTypedStore::open(&blocked, &roots(), 1 << 20);
+        assert!(
+            opened.is_err(),
+            "an unopenable root must refuse, not report an empty store"
+        );
+    }
+
     /// The realization's default ceiling is the modeled one. A literal here
     /// disagreeing with `gunbc.floor_materialization`
     /// `floor_typecheck_store_persist_cap_bytes` is two authorities for one
