@@ -90,6 +90,14 @@ import gunbc.witness_floor_workflow {
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.repo_self_build { repo_self_build_command }
+// THE EPOCH TRAVELS IN THE EMITTED WORKFLOW, and dropping it broke the fleet. The Required CI
+// contract's identity is (repository, this workflow's path, epoch), and
+// gunbc.required_ci_epoch_observation reads that epoch STRUCTURALLY out of the workflow bytes at the
+// triggering commit -- the bytes GitHub executed -- so that the judge does not author what it
+// requires. A witnesses.yml without this env member observes RequiredCiEpochAbsent, and
+// fleet-desired then refuses to advance the fleet's desired state on every push to main. Measured:
+// main went red at 85c1356300c (2026-09-19T23:50Z) and stayed red for seven consecutive pushes.
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import gunbc.ci_spec {
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
@@ -439,7 +447,8 @@ data compiler_gate_workflow: Workflow = Workflow {
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
-      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path))
+      kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path)),
+      kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
     ]
   },
   permissions: Present { value: compiler_gate_permissions },
