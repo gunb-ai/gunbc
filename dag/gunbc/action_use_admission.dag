@@ -420,9 +420,15 @@ fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: Y
 // growth of its authority reds a REQUIRED claim.
 //
 // THE REMEDY IS NAMED HERE SO IT IS NOT RE-DECIDED UNDER PRESSURE: cut the reader's per-entry cost.
-// That is where the cost is -- the largest file is ~619 mapping entries and sequence items, each
-// paying the one-line entry path in extdeps.languages.yaml.ingest yaml_entry, against a small
-// per-block and per-literal-line remainder. A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE,
+// WHICH per-entry path is a measured fact and not a guess, because the first guess was wrong. A
+// probe that parsed documents of one repeated shape each and divided put a one-line `key: value`
+// entry at about 87 eval steps and a two-line step mapping under a sequence at about 243; the
+// committed workflows are mostly step lists, so the SEQUENCE AND MULTI-LINE PATHS carry this claim
+// -- extdeps.languages.yaml.ingest yaml_item and yaml_entry_multiline and the block setup each
+// sequence item re-enters -- and the one-line yaml_entry path does not. Two cuts aimed at the
+// one-line path before that probe ran returned 1,828 and 30 steps; the ones aimed after it returned
+// more. Re-measure before cutting again rather than trusting this sentence.
+// A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE,
 // AND A DECLARED COST DROP ARE NOT REMEDIES: the first moves the line rather than the work, and the
 // other two are the scaffold this change deleted and the debt row DESIGN section 4b(3) keeps for
 // capability losses, not for a claim whose cost is ordinary work nobody cut yet.
@@ -440,7 +446,7 @@ type RealizedCensusCostStanding {
 data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
   subject: "fleet-converge.yml" as NonEmptyStr,
   instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor claim_eval_step_budget_for_identity" as NonEmptyStr,
-  remedy: "cut the per-entry cost of extdeps.languages.yaml.ingest yaml_entry and the paths it routes to (the one-line entry, the multi-line entry, the sequence item); the largest committed workflow is ~619 of those units and they dominate the claim" as NonEmptyStr,
+  remedy: "cut the per-entry cost of extdeps.languages.yaml.ingest, measured per shape before choosing where: a one-line entry costs about 87 eval steps and a two-line step mapping under a sequence about 243, so yaml_item, yaml_entry_multiline and the block setup a sequence item re-enters are where the committed workflows spend, not the one-line yaml_entry path" as NonEmptyStr,
   refused_remedies: [
     "raising the claim's eval-step budget" as NonEmptyStr,
     "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
