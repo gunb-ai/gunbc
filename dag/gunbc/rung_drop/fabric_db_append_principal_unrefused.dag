@@ -1,0 +1,40 @@
+module gunbc.rung_drop.fabric_db_append_principal_unrefused
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED WITH THE CUTOVER THAT CAUSED IT (gunbc#11723, review 68598). Under git, an append to the
+// fabric event log was a push to ssh://<operator>@srv1/..., so a writer had to hold an ssh credential
+// accepted on srv1: a principal refusal the transport performed. The fabric DB endpoint that replaced
+// it binds loopback behind tailscale serve and consults the caller's identity for nothing, so the
+// refusal is erased -- any tailnet member that reaches srv1:10000 may put objects and advance any
+// partition head, which grants and releases capacity seats and quota.
+//
+// It is not restored in the same change because the principal a fleet writer PRESENTS through
+// tailscale serve is not yet observed: the Tailscale-User-Login header is set for user-owned devices
+// and absent for tagged ones, and which the fleet hosts are has not been read. A roster written
+// before that reading would either refuse every real writer or admit every one -- a guess standing
+// where an observation belongs.
+
+data fabric_db_append_principal_unrefused: RungDrop = RungDrop {
+  identity: "fabric_db_append_principal_unrefused" as NonEmptyStr,
+
+  subject: "an append to the fabric event log by a principal that is not a fleet writer",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "gunbc.fabric_db_serve fabric_db_serve_handle, reached only through tailscale serve on srv1 (tailnet membership is the only boundary)" },
+    population: [
+      "gunbc.fabric_db_serve fabric_db_serve_handle",
+      "gunbc.fabric_event_log event_log_append",
+      "gunbc.fabric_event_log fabric_seat_acquire",
+    ],
+    restoration_trigger: "a modeled roster of fabric writer principals, grounded in an observed reading of the identity each fleet writer presents through tailscale serve on srv1 -- SUFFICIENT FOR fabric_db_serve_handle to refuse a put or advance from any identity outside the roster, including an absent identity, with a discriminating RED over the real handler",
+  }
+}

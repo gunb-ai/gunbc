@@ -42,6 +42,7 @@ import extdeps.github.ci_runner {
   org_self_hosted_runners_first_page_target
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.host_cli_dependency { HostCliDependencyAbsence, first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
 import gunbc.fleet.org_actions_inspection {
@@ -619,10 +620,29 @@ fn org_runner_route_from_bindings(admin_token: String?, gh_token: String?) -> Or
   }
 }
 
+// THE ROUTE IS ALSO AN EXECUTOR FACT. Every read on it spawns gh on THIS runner, so a runner
+// without gh is refused here, before the first request, with the prerequisite named -- rather than
+// dying mid-read on an exec error that reads like a remote failure (run 35448023511, srv4). The
+// credential bindings are a separate question and are answered only on an executor that holds gh.
+fn org_runner_route_on_executor(gh_absence: HostCliDependencyAbsence?, bindings: OrgRunnerRouteAdmission) -> OrgRunnerRouteAdmission {
+  match gh_absence {
+    Present { value: a } => OrgRunnerRouteRefused {
+      reason: concat(
+        "the org runner read executes gh on THIS runner and it is not on PATH here, so no request was made: ",
+        host_dependency_absent_wire(tool: a.tool, hint: a.hint)
+      ) as NonEmptyStr
+    }
+    Absent => bindings
+  }
+}
+
 fn organization_runner_read_route() -> OrgRunnerRouteAdmission {
-  org_runner_route_from_bindings(
-    admin_token: shell.Env.Get(name: org_admin_token_env_name).value,
-    gh_token: shell.Env.Get(name: gh_token_env_name).value
+  org_runner_route_on_executor(
+    gh_absence: first_absent_gh_cli_operation_host_cli_dependency(),
+    bindings: org_runner_route_from_bindings(
+      admin_token: shell.Env.Get(name: org_admin_token_env_name).value,
+      gh_token: shell.Env.Get(name: gh_token_env_name).value
+    )
   )
 }
 
