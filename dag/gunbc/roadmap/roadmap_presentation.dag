@@ -1,6 +1,9 @@
 module gunbc.roadmap_presentation
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding,
+  NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
+}
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
   roadmap_parent_ids,
@@ -1326,9 +1329,226 @@ type WorkFamilyView {
   rows: List<WorkRowView>
 }
 
+// PROJECT HIERARCHY (operator request 2026-09-20: "see what projects are being worked on at a
+// glance, expand them to see progress bars"). A PROJECT is a rendered row with at least one
+// rendered TASK, and a row's tasks are its PREREQUISITES — the derivation direction is the edge
+// law's, never its inverse: edge(child: X, parent: Y) says X depends on Y and Y must close before
+// X launches (roadmap_spawner.node_unmet_parent_ids), so display_children(P) =
+// roadmap_parent_ids(edges, P) restricted to rows this page actually renders. The exemplar is the
+// arc shell-typed-invocation: the authority declares edge(child: "shell-typed-invocation", parent:
+// "shell-dag-X") for each of its ten migration tasks, so the arc is the project and the ten
+// shell-dag-* rows are its tasks. Nesting is RECURSIVE — a task that itself has rendered
+// prerequisites is an intermediate project (the shell-residue-zero → shell-gate-migration →
+// shell-effectplan-to-bash chain above the arc).
+//
+// The placement rules, each a pure function of the decided rows and the declared edges:
+// RENDERED-ONLY — a task joins a tree (and a progress denominator) only if its row renders
+// somewhere today: active work (the Active band) or a scheduling band. An unplanned prerequisite
+// renders nowhere today, so counting it would report invisible work (the focus law's "an edge
+// survives only when both endpoints render" applied to progress). FAMILY-FIRST — a family member
+// never nests and never counts: the closing-contract family is the established presentation
+// authority for generated task rows (typed membership, stated-once claim), and edge-nesting it
+// under its gated node would double-render it. ACTIVE-SURFACES — a row with live work keeps the
+// existing attention law and renders flat in the Active band rather than inside a tree (attention
+// outranks taxonomy, the family rule generalized); it still counts in its project's denominator
+// and still pulses its ancestors' auto-open. PRIMARY-PARENT — a task that is a prerequisite of
+// several rendered projects renders under the FIRST one in edge declaration order (never
+// duplicated), while counting toward every project's progress. roadmap_primary_parent was
+// consulted and does NOT fit: it selects a node's own first PREREQUISITE, the opposite direction
+// of the display parent needed here. NOTHING-VANISHES — a row whose display-parent chain does not
+// reach a top-level entry (only possible on a cycle, which the authority's acyclicity witness
+// refuses upstream) renders as an ordinary top-level row, so no input can make a row disappear;
+// the fuel parameters bound the recursion but never bind on an acyclic graph.
+//
+// Closed = accepted or superseded (node_closes_dependency), read off the row's DECIDED lifecycle:
+// DoneLifecycle and SupersededLifecycle close; ReviewLifecycle — a merged PR without an accepting
+// signoff — does not. "Has a PR" is never progress.
+
+type ProjectTreeEntry
+  = ProjectLeaf { row: WorkRowView }
+  | ProjectNested { project: ProjectTreeView }
+
+type ProjectTreeView {
+  row: WorkRowView
+  depth: Int
+  closed_count: Int
+  total_count: Int
+  auto_open: Bool
+  entries: List<ProjectTreeEntry>
+}
+
+fn row_is_closed(row: WorkRowView) -> Bool {
+  match row.lifecycle {
+    OpenLifecycle => false
+    ReviewLifecycle => false
+    DoneLifecycle => true
+    SupersededLifecycle => true
+  }
+}
+
+fn row_key_is_banded(key: String) -> Bool {
+  key == "ready" || key == "upcoming" || key == "done" || key == "superseded"
+}
+
+fn row_is_banded(row: WorkRowView) -> Bool {
+  !row_is_active_work(row: row) && row_key_is_banded(key: work_scheduling_key(s: row.scheduling))
+}
+
+fn row_is_rendered(row: WorkRowView) -> Bool {
+  row_is_active_work(row: row) || row_is_banded(row: row)
+}
+
+fn row_is_family_member(members: List<WorkFamilyMemberFact>, node_id: String) -> Bool {
+  match family_member_for(members: members, node_id: node_id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> List<WorkRowView> {
+  fold(edges, init: [] as List<WorkRowView>, f: (acc, e) =>
+    if (e.child as String) == node_id && !((e.parent as String) == node_id) {
+      match rows |> filter(r =>
+        r.node_id == (e.parent as String)
+          && row_is_rendered(row: r)
+          && !row_is_family_member(members: members, node_id: r.node_id)) |> first {
+        Absent => acc
+        Present { value: r } =>
+          if any(acc, x => x.node_id == r.node_id) { acc } else { append(acc, items: [r]) }
+      }
+    } else {
+      acc
+    })
+}
+
+fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> String? {
+  fold(edges, init: none, f: (acc, e) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      if (e.parent as String) == node_id
+        && !((e.child as String) == node_id)
+        && any(rows, r =>
+          r.node_id == (e.child as String)
+            && row_is_banded(row: r)
+            && !row_is_family_member(members: members, node_id: r.node_id)) {
+        Present { value: e.child as String }
+      } else {
+        none
+      }
+  })
+}
+
+fn row_nest_chain_reaches_top(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: node_id) {
+      Absent => true
+      Present { value: p } =>
+        row_nest_chain_reaches_top(rows: rows, edges: edges, members: members, node_id: p, fuel: fuel - 1)
+    }
+  }
+}
+
+fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> Bool {
+  match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: node_id) {
+    Absent => false
+    Present { value: _ } =>
+      row_nest_chain_reaches_top(rows: rows, edges: edges, members: members, node_id: node_id, fuel: count(rows))
+  }
+}
+
+fn row_is_project(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+  row_is_banded(row: row)
+    && !row_is_family_member(members: members, node_id: row.node_id)
+    && count(project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)) > 0
+}
+
+fn row_pulses(row: WorkRowView) -> Bool {
+  if row_is_active_work(row: row) {
+    true
+  } else {
+    match row.standing {
+      Absent => false
+      Present { value: s } => match s {
+        NodeOpen => false
+        NodeClaimed { by: _, since: _ } => true
+        NodeInProgress { by: _, last_note: _ } => true
+        NodeBlocked { by: _, reason: _ } => true
+        NodeHandedBack { by: _, reason: _ } => true
+        NodeForked { heads: _ } => true
+        NodeHistoryIncomplete { missing_parents: _ } => true
+      }
+    }
+  }
+}
+
+fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+      row_pulses(row: r)
+        || project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
+  }
+}
+
+// The at-a-glance expansion rule: a project opens when work beneath it is alive or recently
+// changed — a live attempt anywhere in its rendered subtree (row_is_active_work, whether that row
+// renders nested or surfaced to the Active band), or a subtask carrying a non-routine event-log
+// standing (claimed / in progress / blocked / handed back / forked / incomplete history — the
+// standing vocabulary's motion states; NodeOpen is the routine default and never opens anything).
+// Quiet projects collapse. Pure function of the decided rows; the renderer only paints the
+// attribute.
+fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int) -> ProjectTreeView {
+  let tasks = project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)
+  let nested = if fuel <= 0 {
+    []
+  } else {
+    tasks |> filter(t =>
+      row_is_banded(row: t)
+        && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
+          Present { value: p } => p == row.node_id
+          Absent => false
+        }))
+  }
+  ProjectTreeView {
+    row: row,
+    depth: depth,
+    closed_count: count(tasks |> filter(t => row_is_closed(row: t))),
+    total_count: count(tasks),
+    auto_open: project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
+    entries: map(nested, t =>
+      if row_is_project(rows: rows, edges: edges, members: members, row: t) {
+        ProjectNested { project: project_tree_view(row: t, rows: rows, edges: edges, members: members, depth: depth + 1, fuel: fuel - 1) }
+      } else {
+        ProjectLeaf { row: t }
+      }),
+  }
+}
+
+fn project_tree_statuses(view: ProjectTreeView) -> List<String> {
+  concat(
+    [ work_lifecycle_key(l: view.row.lifecycle) ],
+    flat_map(view.entries, e => match e {
+      ProjectLeaf { row } => [ work_lifecycle_key(l: row.lifecycle) ]
+      ProjectNested { project } => project_tree_statuses(view: project)
+    }))
+}
+
+fn project_tree_row_ids(view: ProjectTreeView) -> List<String> {
+  concat(
+    [ view.row.node_id ],
+    flat_map(view.entries, e => match e {
+      ProjectLeaf { row } => [ row.node_id ]
+      ProjectNested { project } => project_tree_row_ids(view: project)
+    }))
+}
+
 type WorkBandEntry
   = BandRow { row: WorkRowView }
   | BandFamily { family: WorkFamilyView }
+  | BandProject { project: ProjectTreeView }
 
 type DailyWorkspaceView {
   program: ProgramProgressView?
@@ -1389,17 +1609,32 @@ fn family_band_rows(rows: List<WorkRowView>, members: List<WorkFamilyMemberFact>
   })
 }
 
+// band_entries iterates ONE band's rows for emission, but the hierarchy predicates read ALL rows:
+// a task nested under a project in a different band must be excluded here, or it renders twice.
 fn band_entries(
   rows: List<WorkRowView>,
+  all_rows: List<WorkRowView>,
+  edges: List<RoadmapEdge>,
   families: List<WorkFamilyDecl>,
   members: List<WorkFamilyMemberFact>,
 ) -> List<WorkBandEntry> {
   let grouped = fold(rows, init: BandEntriesAcc { entries: [], emitted_family_ids: [] }, f: (acc, r) =>
     match family_member_for(members: members, node_id: r.node_id) {
-      Absent => BandEntriesAcc {
-        entries: append(acc.entries, items: [BandRow { row: r }]),
-        emitted_family_ids: acc.emitted_family_ids,
-      }
+      Absent =>
+        if row_is_nested(rows: all_rows, edges: edges, members: members, node_id: r.node_id) {
+          acc
+        } else if row_is_project(rows: all_rows, edges: edges, members: members, row: r) {
+          BandEntriesAcc {
+            entries: append(acc.entries, items: [BandProject { project: project_tree_view(
+              row: r, rows: all_rows, edges: edges, members: members, depth: 1, fuel: count(all_rows)) }]),
+            emitted_family_ids: acc.emitted_family_ids,
+          }
+        } else {
+          BandEntriesAcc {
+            entries: append(acc.entries, items: [BandRow { row: r }]),
+            emitted_family_ids: acc.emitted_family_ids,
+          }
+        }
       Present { value: m } =>
         if acc.emitted_family_ids |> any(fid => fid == m.family_id) {
           acc
@@ -1437,6 +1672,7 @@ fn family_decl_for(families: List<WorkFamilyDecl>, family_id: String) -> WorkFam
 
 fn daily_workspace_view(
   rows: List<WorkRowView>,
+  edges: List<RoadmapEdge>,
   program: ProgramProgressView?,
   observation: ObservationImpactView,
   families: List<WorkFamilyDecl>,
@@ -1446,9 +1682,9 @@ fn daily_workspace_view(
     program: program,
     observation: observation,
     active: filter(xs: rows, predicate: r => row_is_active_work(row: r)),
-    ready: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "ready"), families: families, members: members),
-    upcoming: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "upcoming"), families: families, members: members),
-    done: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "done"), families: families, members: members),
-    superseded: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "superseded"), families: families, members: members),
+    ready: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "ready"), all_rows: rows, edges: edges, families: families, members: members),
+    upcoming: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members),
+    done: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "done"), all_rows: rows, edges: edges, families: families, members: members),
+    superseded: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members),
   }
 }

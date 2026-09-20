@@ -59,9 +59,15 @@ import gunbc.roadmap_presentation {
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily,
+  WorkBandEntry, BandRow, BandFamily, BandProject,
+  ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
+  project_tree_view, project_tree_row_ids, project_task_rows,
+  row_is_project, row_is_nested, row_display_parent_id, row_pulses,
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding, NodeOpen, NodeInProgress,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -545,6 +551,7 @@ fn band_entry_row_count(entries: List<WorkBandEntry>) -> Int {
   fold(entries, init: 0, f: (acc, e) => match e {
     BandRow { row: _ } => acc + 1
     BandFamily { family } => acc + count(family.rows)
+    BandProject { project } => acc + count(project_tree_row_ids(view: project))
   })
 }
 
@@ -552,13 +559,14 @@ fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
   fold(entries, init: false, f: (acc, e) => acc || (match e {
     BandRow { row } => row_is_active_work(row: row)
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || row_is_active_work(row: r))
+    BandProject { project: _ } => false
   }))
 }
 
 test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let active_row = fx_row(activity: fx_specimen_activity())
   let idle_row = fx_row(activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [])
   count(ws.active) == 1
     && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
     && band_entry_row_count(entries: ws.upcoming) == 1
@@ -612,7 +620,7 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
   let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, lookalike, m2], program: none, observation: ObservationsNominal,
+  let ws = daily_workspace_view(rows: [m1, lookalike, m2], edges: [], program: none, observation: ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   count(ws.upcoming) == 2
     && (match ws.upcoming.first() {
@@ -625,48 +633,53 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
               Absent => false
             })
         BandRow { row: _ } => false
+        BandProject { project: _ } => false
       }
       Absent => false
     })
     && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
       BandRow { row } => row.node_id == "solo" && row.headline == join([fx_family_claim(), " for: Unlisted"], "")
       BandFamily { family: _ } => false
+      BandProject { project: _ } => false
     }))
 }
 
 test fn witness_family_membership_is_typed_not_parsed() -> Bool {
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m2], program: none, observation: ObservationsNominal,
+  let ws = daily_workspace_view(rows: [m2], edges: [], program: none, observation: ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
       a || r.headline == join([fx_family_claim(), " nested in a subject"], ""))
     BandRow { row: _ } => false
+    BandProject { project: _ } => false
   }))
 }
 
 test fn witness_active_family_member_leaves_group() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, m2], program: none, observation: ObservationsNominal,
+  let ws = daily_workspace_view(rows: [m1, m2], edges: [], program: none, observation: ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   count(ws.active) == 1
     && (match ws.active.first() { Present { value: r } => r.node_id == "cc-a" Absent => false })
     && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
       BandFamily { family } => count(family.rows) == 1
       BandRow { row: _ } => false
+      BandProject { project: _ } => false
     }))
 }
 
 test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1], program: none, observation: ObservationsNominal,
+  let ws = daily_workspace_view(rows: [m1], edges: [], program: none, observation: ObservationsNominal,
     families: [], members: fx_family_members())
   count(ws.upcoming) == 1
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
         BandRow { row } => row.headline == "Write the closing check for: Alpha subject"
         BandFamily { family: _ } => false
+        BandProject { project: _ } => false
       }
       Absent => false
     })
@@ -819,4 +832,329 @@ test fn witness_stale_attempt_nodes_compares_revisions() -> Bool {
   count(stale) == 1
     && (match stale.first() { Present { value: s } => s == "n-stale" Absent => false })
     && count(stale_attempt_nodes(observations: observations, current_revision_hex: "")) == 0
+}
+
+// ── Project hierarchy (operator request 2026-09-20) ────────────────────────────────────────────
+//
+// The derivation direction, pinned first because it has been inverted twice: edge(child: X,
+// parent: Y) means X depends on Y, so a project's TASKS are its PREREQUISITES — the rows named in
+// the parent position of its edges. The exemplar is the arc shell-typed-invocation, which the
+// authority points at its ten shell-dag-* tasks with edge(child: "shell-typed-invocation",
+// parent: "shell-dag-X"). Every fixture here is constructed; no live roadmap population is read.
+
+fn fx_sized(id: String, content: String) -> RoadmapNode {
+  gunbc.roadmap_authority.authored_wi(
+    identity: join(["rnfx-", id], ""),
+    id: id,
+    done: false,
+    content: content,
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    repo: "gunbc")
+}
+
+fn fx_hier_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, activity: ActivityView, standing: RoadmapNodeStanding?) -> WorkRowView {
+  work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: merged, activity: activity,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false, standing: standing, attempt_stale: false,
+    launch: fx_row_launch(nodes: nodes, edges: edges))
+}
+
+fn fx_hier_nodes() -> List<RoadmapNode> {
+  [
+    fx_sized(id: "hier-project", content: "project headline — project brief"),
+    gunbc.roadmap_authority.sign(
+      rn: fx_sized(id: "hier-task-done", content: "done task"),
+      s: gunbc.roadmap_authority.signed(
+        by: "op",
+        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_project_progress_counts_accepted_or_superseded_only", executed_on: "2026-09-20" },
+        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+        as_expected: true)),
+    gunbc.roadmap_authority.superseded(identity: "rnfx-hier-task-superseded", id: "hier-task-superseded", by: "hier-task-done", content: "old shape"),
+    gunbc.roadmap_authority.derivable_wi(
+      identity: "rnfx-hier-task-review", id: "hier-task-review",
+      prs: [7301], title: "review task", description: "",
+      intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    fx_sized(id: "hier-task-open", content: "open task"),
+  ]
+}
+
+fn fx_hier_edges() -> List<RoadmapEdge> {
+  [
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-done"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-superseded"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-review"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-open"),
+  ]
+}
+
+fn fx_hier_rows(activity_for_open: ActivityView, standing_for_open: RoadmapNodeStanding?) -> List<WorkRowView> {
+  let nodes = fx_hier_nodes()
+  let edges = fx_hier_edges()
+  map(nodes, rn => fx_hier_view(
+    rn: rn, nodes: nodes, edges: edges, merged: [7301],
+    activity: if (rn.node as String) == "hier-task-open" { activity_for_open } else { NoActiveWork },
+    standing: if (rn.node as String) == "hier-task-open" { standing_for_open } else { none }))
+}
+
+fn fx_row_of(rows: List<WorkRowView>, node_id: String) -> WorkRowView {
+  match rows |> filter(r => r.node_id == node_id) |> first {
+    Present { value: r } => r
+    Absent => fx_row(activity: NoActiveWork)
+  }
+}
+
+fn fx_entry_id(entry: ProjectTreeEntry) -> String {
+  match entry {
+    ProjectLeaf { row } => row.node_id
+    ProjectNested { project } => project.row.node_id
+  }
+}
+
+fn band_entry_ids(entry: WorkBandEntry) -> List<String> {
+  match entry {
+    BandRow { row } => [ row.node_id ]
+    BandFamily { family } => map(family.rows, r => r.node_id)
+    BandProject { project } => project_tree_row_ids(view: project)
+  }
+}
+
+fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
+  concat(
+    map(ws.active, r => r.node_id),
+    concat(
+      flat_map(ws.ready, e => band_entry_ids(entry: e)),
+      concat(
+        flat_map(ws.upcoming, e => band_entry_ids(entry: e)),
+        concat(
+          flat_map(ws.done, e => band_entry_ids(entry: e)),
+          flat_map(ws.superseded, e => band_entry_ids(entry: e))))))
+}
+
+fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: String) -> ProjectTreeView {
+  project_tree_view(
+    row: fx_row_of(rows: rows, node_id: node_id),
+    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows))
+}
+
+// THE DIRECTION WALL: the project's display children are the rows in the PARENT position of its
+// edges (its prerequisites), in edge declaration order; the prerequisite rows own no tree of their
+// own. An inversion of this derivation reds every conjunct.
+test fn witness_project_tasks_are_prerequisites() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let edges = fx_hier_edges()
+  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project"), r => r.node_id)
+    == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open")) == 0
+    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"))
+    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"))
+}
+
+// PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = accepted or superseded
+// (node_closes_dependency), so the done and superseded tasks close and the review task — a merged
+// PR without an accepting signoff — does not. A derivation that counted "has a PR" as closed
+// would report 3 of 4 here; the correct answer is 2 of 4. The project itself is upcoming (two
+// unmet prerequisites) and carries its four tasks nested in edge declaration order; the bands the
+// tasks left behind are empty because every one of them renders exactly once, inside the tree.
+test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  count(ws.active) == 0
+    && count(ws.upcoming) == 1
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-project"
+            && project.total_count == 4
+            && project.closed_count == 2
+            && map(project.entries, ent => fx_entry_id(entry: ent))
+              == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
+            && !project.auto_open
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.ready) == 0
+    && band_entry_row_count(entries: ws.done) == 0
+    && band_entry_row_count(entries: ws.superseded) == 0
+}
+
+// NOTHING VANISHES, NOTHING DUPLICATES, and a live attempt keeps the attention law: the open task
+// with ActiveWork leaves the tree for the Active band (attention outranks taxonomy), still counts
+// in its project's denominator, and every rendered input row appears in the composed workspace
+// exactly once.
+test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 5
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.active) == 1
+    && (match ws.active.first() { Present { value: r } => r.node_id == "hier-task-open" Absent => false })
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.total_count == 4
+            && map(project.entries, ent => fx_entry_id(entry: ent))
+              == ["hier-task-done", "hier-task-superseded", "hier-task-review"]
+            && project.auto_open
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// MULTI-DEPENDENCY: a task that is a prerequisite of several rendered projects nests under the
+// FIRST one in edge declaration order and renders nowhere else — while still counting toward each
+// project's denominator. roadmap_primary_parent was consulted for this rule and does not fit (it
+// selects a node's own first prerequisite, the opposite direction); the rule is first declared
+// banded dependent, pinned here.
+test fn witness_shared_task_nests_under_first_declared_parent() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-p1", content: "project one"),
+    fx_sized(id: "hier-p2", content: "project two"),
+    fx_sized(id: "hier-shared", content: "shared task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"),
+    gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  (match row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared") {
+    Present { value: p } => p == "hier-p2"
+    Absent => false
+  })
+    && count(ids |> filter(i => i == "hier-shared")) == 1
+    && (match ws.upcoming |> filter(e => match e {
+        BandProject { project } => project.row.node_id == "hier-p1"
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }) |> first {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.total_count == 1 && count(project.entries) == 0
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.upcoming |> filter(e => match e {
+        BandProject { project } => project.row.node_id == "hier-p2"
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }) |> first {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.total_count == 1
+            && map(project.entries, ent => fx_entry_id(entry: ent)) == ["hier-shared"]
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// THE EXPANSION RULE IS A PURE FUNCTION OF SUBTREE STATE: a project opens when a descendant has a
+// live attempt (whether that descendant renders nested or surfaced to the Active band) or a
+// non-routine event-log standing (the motion states — here in_progress), and stays collapsed when
+// every subtask is quiet. NodeOpen is the routine default and never opens anything.
+test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
+  let edges = fx_hier_edges()
+  let live = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeInProgress { by: "op" as NonEmptyStr, last_note: "working" as NonEmptyStr } })
+  let open_standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeOpen })
+  let quiet = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  fx_project_tree(rows: live, edges: edges, node_id: "hier-project").auto_open
+    && fx_project_tree(rows: standing, edges: edges, node_id: "hier-project").auto_open
+    && !fx_project_tree(rows: open_standing, edges: edges, node_id: "hier-project").auto_open
+    && !fx_project_tree(rows: quiet, edges: edges, node_id: "hier-project").auto_open
+    && row_pulses(row: fx_row_of(rows: live, node_id: "hier-task-open"))
+    && !row_pulses(row: fx_row_of(rows: quiet, node_id: "hier-task-open"))
+}
+
+// RECURSION: a task that itself has rendered prerequisites is an intermediate project — the
+// shell-residue-zero → shell-gate-migration → shell-effectplan-to-bash chain shape — nested one
+// level deeper with its own tree, and the whole chain renders exactly once.
+test fn witness_intermediate_project_nests_recursively() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-chain-a", content: "chain top"),
+    fx_sized(id: "hier-chain-b", content: "chain mid"),
+    fx_sized(id: "hier-chain-c", content: "chain base"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 3
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.upcoming) == 1
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-chain-a"
+            && project.depth == 1
+            && (match project.entries.first() {
+              Present { value: ent } => match ent {
+                ProjectNested { project: mid } =>
+                  mid.row.node_id == "hier-chain-b"
+                    && mid.depth == 2
+                    && map(mid.entries, x => fx_entry_id(entry: x)) == ["hier-chain-c"]
+                ProjectLeaf { row: _ } => false
+              }
+              Absent => false
+            })
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.ready) == 0
+}
+
+// FAMILY-FIRST: the closing-contract family is the presentation authority for its generated task
+// rows, so a family member that is also a project's prerequisite stays in its family group —
+// never nested, never counted, never duplicated — and the would-be project renders as an ordinary
+// flat row.
+test fn witness_family_member_never_nests() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-fam-project", content: "family-adjacent project"),
+    fx_sized(id: "hier-fam-task", content: "family member task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-fam-project", parent: "hier-fam-task"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let families = [ WorkFamilyDecl { id: "fx-fam", claim: "fx family claim" } ]
+  let members = [ WorkFamilyMemberFact { family_id: "fx-fam", task_node: "hier-fam-task", subject: "fx subject" } ]
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: families, members: members)
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 2
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"))
+    && (match ws.upcoming.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-fam-project"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.ready.first() {
+      Present { value: e } => match e {
+        BandFamily { family } => map(family.rows, r => r.node_id) == ["hier-fam-task"]
+        BandRow { row: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
 }

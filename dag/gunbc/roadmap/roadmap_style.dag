@@ -1144,6 +1144,45 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
+    StaticRule { selector: ClassSelector { name: "project-progress" }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-progress-count" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-progress-bar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Height, value: scale_var(t: space_6)),
+      decl(prop: MarginTop, value: scale_var(t: space_1)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-progress-closed" }, decls: [
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "project-progress-open" }, decls: [
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      role_decl(prop: Background, r: FigureHaloRole),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.project-tasks" }, decls: [
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_2)),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.project-tasks > summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.project-tasks > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.project-deeper > summary" }, decls: [
+      decl(prop: FontStyle, value: "italic"),
+    ] },
     StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),

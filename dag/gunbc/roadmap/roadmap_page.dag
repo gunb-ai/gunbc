@@ -75,7 +75,9 @@ import gunbc.roadmap_presentation {
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily,
+  WorkBandEntry, BandRow, BandFamily, BandProject,
+  ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
+  project_tree_statuses,
   worker_alive_from_process,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
@@ -776,11 +778,11 @@ fn render_work_row(view: WorkRowView) -> List<Fragment> {
     concat(activity_region_nodes(a: view.activity, rounds: view.rounds, live: view.worker_alive), view_detail_block(view: view)))
 }
 
-fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
+fn node_li_attributes_for(view: WorkRowView, class_infix: String) -> List<Attribute> {
   concat(
     [
       attr(name: "class", value: concat(
-        concat("node node-", work_lifecycle_key(l: view.lifecycle)),
+        concat(concat("node", class_infix), concat(" node-", work_lifecycle_key(l: view.lifecycle))),
         if view.attempt_stale { concat(" ", node_attempt_stale_class) } else { "" })),
       attr(name: "data-node", value: view.node_id),
       attr(name: "tabindex", value: "0"),
@@ -790,6 +792,10 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
     } else {
       []
     })
+}
+
+fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
+  node_li_attributes_for(view: view, class_infix: "")
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
@@ -916,10 +922,102 @@ fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -
   ])
 }
 
+// THE PROJECT ROW (operator request 2026-09-20). The row's own face is the SAME row shape every
+// task renders — the decided head (chips, headline, dispatch actuator), its activity region, its
+// disclosure — followed by the two project-only regions: the derived progress summary ("k of n
+// tasks closed" plus a CSS-only bar whose segments are flex-weighted by the counts, the round
+// strip's proportional-by-construction idiom, so no percentage arithmetic ever rounds) and the
+// task disclosure. The disclosure is the page's existing details/summary idiom; its open attribute
+// is the seam's DECIDED auto_open, never authored per project. Rendered depth is capped at
+// project_render_depth_cap levels: a project AT the cap renders its tasks behind a collapsed
+// "+N deeper" disclosure (N = the tasks hidden at the next level) rather than an open one — the
+// rows beyond still render inside it, so the cap bounds the default view without ever dropping a
+// node. Nested task rows are emitted by the same workspace_row_li as every flat row; the row
+// renderer is not forked.
+
+fn project_render_depth_cap() -> Int { 3 }
+
+fn project_progress_nodes(view: ProjectTreeView) -> List<Fragment> {
+  if view.total_count == 0 {
+    []
+  } else {
+    [ el_class("div", "project-progress", [
+        el_class("span", "project-progress-count", [
+          txt(join([to_string(view.closed_count), " of ", to_string(view.total_count), " tasks closed"], "")),
+        ]),
+        el_class("div", "project-progress-bar", [
+          el_attrs("span", [
+            attr(name: "class", value: "project-progress-closed" ),
+            attr(name: "style", value: join(["flex-grow: ", to_string(view.closed_count)], "")),
+          ], []),
+          el_attrs("span", [
+            attr(name: "class", value: "project-progress-open" ),
+            attr(name: "style", value: join(["flex-grow: ", to_string(value: view.total_count - view.closed_count)], "")),
+          ], []),
+        ]),
+      ]) ]
+  }
+}
+
+fn project_entry_li(entry: ProjectTreeEntry, observation: ObservationImpactView) -> Fragment {
+  match entry {
+    ProjectLeaf { row } => workspace_row_li(view: row, observation: observation)
+    ProjectNested { project } => project_tree_li(view: project, observation: observation)
+  }
+}
+
+fn project_entries_ul(entries: List<ProjectTreeEntry>, observation: ObservationImpactView) -> Fragment {
+  el("ul", map(entries, e => project_entry_li(entry: e, observation: observation)))
+}
+
+fn project_tasks_details(view: ProjectTreeView, observation: ObservationImpactView) -> List<Fragment> {
+  if count(view.entries) == 0 {
+    []
+  } else {
+    if view.depth >= project_render_depth_cap() {
+      [ el_class("details", "project-tasks project-deeper", [
+          el("summary", [
+            el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
+            txt(join(["+", to_string(count(view.entries)), " deeper"], "")),
+          ]),
+          project_entries_ul(entries: view.entries, observation: observation),
+        ]) ]
+    } else {
+      [ el_attrs("details",
+          concat(
+            [ attr(name: "class", value: "project-tasks" ) ],
+            if view.auto_open { [ attr(name: "open", value: "" ) ] } else { [] }),
+          [
+            el("summary", [
+              el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
+              txt("tasks"),
+            ]),
+            project_entries_ul(entries: view.entries, observation: observation),
+          ]) ]
+    }
+  }
+}
+
+fn project_tree_li(view: ProjectTreeView, observation: ObservationImpactView) -> Fragment {
+  let body = if workspace_covers_row_activity(observation: observation, a: view.row.activity) {
+    concat([ render_work_row_head(view: view.row) ], view_detail_block(view: view.row))
+  } else {
+    render_work_row(view: view.row)
+  }
+  Element {
+    tag: "li",
+    attributes: node_li_attributes_for(view: view.row, class_infix: " node-project"),
+    children: concat(body, concat(
+      project_progress_nodes(view: view),
+      project_tasks_details(view: view, observation: observation))),
+  }
+}
+
 fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
   match entry {
     BandRow { row } => workspace_row_li(view: row, observation: observation)
     BandFamily { family } => family_group_li(family: family, observation: observation)
+    BandProject { project } => project_tree_li(view: project, observation: observation)
   }
 }
 
@@ -927,6 +1025,7 @@ fn band_entry_statuses(entry: WorkBandEntry) -> List<String> {
   match entry {
     BandRow { row } => [ work_lifecycle_key(l: row.lifecycle) ]
     BandFamily { family } => map(family.rows, v => work_lifecycle_key(l: v.lifecycle))
+    BandProject { project } => project_tree_statuses(view: project)
   }
 }
 
@@ -1091,6 +1190,7 @@ fn daily_workspace_view_of_for_accepted(
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   daily_workspace_view(
     rows: rows,
+    edges: edges,
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),

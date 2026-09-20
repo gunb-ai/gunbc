@@ -308,7 +308,17 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // which is why that witness was restated and not retuned. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-08-27); this digest only pins bytes, never chosen.
 
-data roadmap_css_lift_parity_digest: String = "62e20cacdf06f99f"
+// Re-pinned 2026-09-20 for the project hierarchy view (operator request: projects with progress
+// bars on the daily workspace): the roadmap bytes move intentionally — the .project-progress
+// family lands (count line, the flex-weighted bar with its closed/open segments) and the
+// details.project-tasks / .project-deeper rules for the task disclosure, all tokened and
+// role-routed (the closed segment takes the figure role, progress = derived fact, lit; the open
+// segment the figure halo). Behavioral receipts: the project-hierarchy witnesses in
+// test.claim.roadmap_presentation_witness (derivation, counting, nesting, no-loss) and
+// test.claim.long.roadmap_page_witness (row shape, derived open attribute, depth-cap affordance,
+// live exemplar), plus the register censuses staying green. Derived by execution from this tree
+// (roadmap_css_derived_digest run 2026-09-20); this digest only pins bytes, never chosen.
+data roadmap_css_lift_parity_digest: String = "91596523ca64b443"
 // Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet
 // info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family
 // lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn

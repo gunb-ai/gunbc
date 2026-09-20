@@ -8,6 +8,7 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, NodeInProgress }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, LaunchIdentity, Operator }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
@@ -823,4 +824,186 @@ test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
     && string_contains(s: roadmap_css(), pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
     && !string_contains(s: roadmap_css(), pattern: "action-live")
     && string_contains(s: roadmap_css(), pattern: ".header-inner { max-width: var(--measure); margin-left: auto; margin-right: auto; display: flex; align-items: center; gap: var(--space-12) }")
+}
+
+// ── Project hierarchy, rendering half (operator request 2026-09-20) ─────────────────────────────
+//
+// The derivation lives in gunbc.roadmap_presentation (witnessed in
+// test.claim.roadmap_presentation_witness over constructed fixtures); these pins are the
+// serialization claims: the project row's shape, the progress summary and CSS-only bar, the
+// derived open attribute, the depth-cap affordance, and the live exemplar — the arc
+// shell-typed-invocation rendering as a project over the real authority with each of its ten
+// tasks rendered exactly once.
+
+fn fx_page_project_nodes() -> List<RoadmapNode> {
+  [
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000001", id: "page-project",
+      done: false, content: "page project headline", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000002", id: "page-task-one",
+      done: false, content: "page task one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERPROJ0000000003", id: "page-task-two",
+      done: false, content: "page task two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+  ]
+}
+
+fn fx_page_project_edges() -> List<RoadmapEdge> {
+  [
+    gunbc.roadmap_authority.edge(child: "page-project", parent: "page-task-one"),
+    gunbc.roadmap_authority.edge(child: "page-project", parent: "page-task-two"),
+  ]
+}
+
+fn fx_page_project_doc() -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [ RoadmapSection {
+      title: "Projects",
+      elements: [ section_group(label: "", nodes: fx_page_project_nodes(), edges: fx_page_project_edges()) ],
+    } ],
+  }
+}
+
+fn fx_page_project_html() -> HtmlEmitResult {
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing()))
+}
+
+fn fx_page_project_html_with_standings() -> HtmlEmitResult {
+  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
+    doc: fx_page_project_doc(),
+    merged: [],
+    accepted_ids: [],
+    withheld: [],
+    main_prefix: [],
+    attempts: [],
+    attempts_refused: none,
+    standings: StandingsObserved { rows: [
+      NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: "op" as NonEmptyStr, last_note: "working" as NonEmptyStr } },
+    ] },
+    launch: dispatch_doc_standing(),
+    stale_nodes: []))
+}
+
+fn occurrence_count(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+// The project row carries its own row shape (head, actuator, disclosure — the SAME renderer as
+// every flat row), the derived "k of n tasks closed" summary with the flex-weighted bar, and the
+// task disclosure holding the nested task rows — each nested row a full row of the existing shape
+// (node-head, dispatch actuator), rendered exactly once across the whole page.
+test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
+  match fx_page_project_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"page-project\" tabindex=\"0\">")
+        && string_contains(s: h, pattern: "0 of 2 tasks closed")
+        && string_contains(s: h, pattern: "class=\"project-progress-bar\"")
+        && string_contains(s: h, pattern: "class=\"project-progress-closed\" style=\"flex-grow: 0\"")
+        && string_contains(s: h, pattern: "class=\"project-progress-open\" style=\"flex-grow: 2\"")
+        && string_contains(s: h, pattern: "<details class=\"project-tasks\">")
+        && string_contains(s: h, pattern: "page task one")
+        && string_contains(s: h, pattern: "page task two")
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "class=\"node-head\"") == 3
+        && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 3
+        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
+  }
+}
+
+// The open attribute is the seam's DECIDED auto_open, never authored: a subtask carrying a
+// non-routine event-log standing (here in_progress) opens the project's task disclosure; the same
+// document with standings unobserved renders it collapsed.
+test fn witness_project_disclosure_open_attribute_is_derived() -> Bool {
+  match fx_page_project_html_with_standings() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: pulsing } =>
+      match fx_page_project_html() {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: quiet } =>
+          string_contains(s: pulsing, pattern: "<details class=\"project-tasks\" open=\"\">")
+            && !string_contains(s: quiet, pattern: "<details class=\"project-tasks\" open=\"\">")
+            && string_contains(s: quiet, pattern: "<details class=\"project-tasks\">")
+      }
+  }
+}
+
+fn fx_page_chain_nodes() -> List<RoadmapNode> {
+  [
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000001", id: "page-chain-c1",
+      done: false, content: "chain level one", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000002", id: "page-chain-c2",
+      done: false, content: "chain level two", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000003", id: "page-chain-c3",
+      done: false, content: "chain level three", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+    gunbc.roadmap_authority.authored_wi(identity: "rnfx_PAGEHIERCHAIN000000004", id: "page-chain-c4",
+      done: false, content: "chain level four", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
+  ]
+}
+
+fn fx_page_chain_edges() -> List<RoadmapEdge> {
+  [
+    gunbc.roadmap_authority.edge(child: "page-chain-c1", parent: "page-chain-c2"),
+    gunbc.roadmap_authority.edge(child: "page-chain-c2", parent: "page-chain-c3"),
+    gunbc.roadmap_authority.edge(child: "page-chain-c3", parent: "page-chain-c4"),
+  ]
+}
+
+fn fx_page_chain_html() -> HtmlEmitResult {
+  let doc = RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [ RoadmapSection {
+      title: "Chain",
+      elements: [ section_group(label: "", nodes: fx_page_chain_nodes(), edges: fx_page_chain_edges()) ],
+    } ],
+  }
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
+}
+
+// THE DEPTH CAP: three project levels render expanded by default; a project AT the cap renders
+// its tasks behind a collapsed "+N deeper" disclosure (N = the tasks hidden at the next level),
+// and the rows beyond still render inside it — the cap bounds the default view, it never drops a
+// node.
+test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
+  match fx_page_chain_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 3
+        && occurrence_count(s: h, pattern: "<details class=\"project-tasks project-deeper\">") == 1
+        && string_contains(s: h, pattern: "+1 deeper")
+        && !string_contains(s: h, pattern: "project-deeper\" open")
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 1
+        && string_contains(s: h, pattern: "chain level four")
+  }
+}
+
+// THE LIVE EXEMPLAR (identity grain, never a population count): over the real unfocused
+// authority, the arc shell-typed-invocation renders as a project row, and the arc plus each of
+// its ten authored shell-dag-* tasks renders exactly once — the no-node-lost / no-duplication law
+// checked against the graph the operator actually works from.
+test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
+  let ids = [
+    "shell-typed-invocation",
+    "shell-dag-cron-entry-line-builder",
+    "shell-dag-floor-peak-calibration-rows",
+    "shell-dag-ci-fmt-gate-line",
+    "shell-dag-ci-deploy-invoke-prelude",
+    "shell-dag-ci-heal-regen-invoke",
+    "shell-dag-compile-pool-slice-install",
+    "shell-dag-slot-population-census-read",
+    "shell-dag-codex-app-server-trip-script",
+    "shell-dag-live-deploy-install-owned",
+    "shell-dag-live-deploy-restart-tailscale",
+  ]
+  match try_serialize_html_source(node: roadmap_daily_workspace_page(
+      doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus), merged: [])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"shell-typed-invocation\"")
+        && all(ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && string_contains(s: h, pattern: " tasks closed")
+  }
 }

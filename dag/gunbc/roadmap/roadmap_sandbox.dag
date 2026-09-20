@@ -523,6 +523,8 @@ fn family_fixture_frame(label: String, cls: String) -> Fragment {
     workspace_entries_ul(
       entries: band_entries(
         rows: fixture_family_rows(),
+        all_rows: fixture_family_rows(),
+        edges: [],
         families: [fixture_family_decl()],
         members: fixture_family_members(),
       ),

@@ -157,12 +157,15 @@ fn fixture_band_entry_signature(e: WorkBandEntry) -> String {
       "|", join(map(family.rows, r => r.headline), ","),
     ], "")
     BandRow { row } => join(["row|", row.headline], "")
+    BandProject { project } => join(["project|", project.row.headline], "")
   }
 }
 
 test fn witness_family_fixture_typed_structure_exact() -> Bool {
   let entries = band_entries(
     rows: fixture_family_rows(),
+    all_rows: fixture_family_rows(),
+    edges: [],
     families: [fixture_family_decl()],
     members: fixture_family_members(),
   )
