@@ -18,6 +18,7 @@ import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
+import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
 }
@@ -61,20 +62,24 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
+  fleet_arm_mutation_group_glm_group_b_native,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
+  fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.ci_spec {
+  site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_org_actions_inspect_invoke,
   gunbc_ci_app_control_plane_inspect_invoke,
+  gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
@@ -85,11 +90,14 @@ import gunbc.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_site_pxe_edge_observe_invoke,
+  gunbc_ci_site_pxe_edge_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_grant_install_invoke,
   gunbc_ci_spark_bootstrap_invoke,
   gunbc_ci_spark_serving_apply_invoke,
+  gunbc_ci_spark_native_serving_apply_invoke,
   gunbc_ci_spark_runtime_image_probe_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
@@ -184,17 +192,21 @@ type FleetConvergeWorkflowMode
   | SparkGrants
   | SparkBootstrap
   | SparkServingApply
+  | SparkNativeServingApply
   | SparkRuntimeImageProbe
   | DashboardDeploy
   | RlmLaunchDeploymentReceipt
   | HostResetReturn
   | RunnerHostFileObserve
   | RunnerHostFileConverge
+  | SitePxeEdgeObserve
+  | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
   | R2MintPreflight
   | R2ObjectWriteMint
   | ApprovalKeyringConverge
   | MtCollins1Boot
+  | MtCollins1FanObserve
   | OrgRunnerRosterObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
@@ -212,17 +224,21 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SparkGrants => "spark_grants"
     SparkBootstrap => "spark_bootstrap"
     SparkServingApply => "spark_serving_apply"
+    SparkNativeServingApply => "spark_native_serving_apply"
     SparkRuntimeImageProbe => "spark_runtime_image_probe"
     DashboardDeploy => "dashboard_deploy"
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
     HostResetReturn => "host_reset_return"
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
+    SitePxeEdgeObserve => "site_pxe_edge_observe"
+    SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
     MtCollins1Boot => "mtcollins1_boot"
+    MtCollins1FanObserve => "mtcollins1_fan_observe"
     OrgRunnerRosterObserve => "org_runner_roster_observe"
   }
 }
@@ -248,7 +264,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -285,17 +301,21 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkGrants => none
     SparkBootstrap => none
     SparkServingApply => none
+    SparkNativeServingApply => none
     SparkRuntimeImageProbe => none
     DashboardDeploy => Present { value: LiveDeploy }
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
     RunnerHostFileObserve => none
     RunnerHostFileConverge => none
+    SitePxeEdgeObserve => none
+    SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
     ApprovalKeyringConverge => none
     MtCollins1Boot => none
+    MtCollins1FanObserve => none
     OrgRunnerRosterObserve => none
   }
 }
@@ -312,9 +332,12 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 // inherit the fleet key by omission. The fleet-converge job materializes the fleet key only for a
 // dispatch whose mode consumes it: an API-only read (the org credential observe and the org runner
 // roster read, both of which reach GitHub over gh and open no host session) must not hold host SSH
-// authority it never uses. Only those two modes are established API-only by this declaration;
-// every other mode keeps the key it held before, which is the status quo rather than a finding
-// that it needs it.
+// authority it never uses. Three modes are established as not consuming it: the two API-only reads,
+// and the Mt. Collins boot, whose route is BMC/IPMI, SOL and HTTP approval submission with no fleet
+// SSH operation. Every mode that predates this declaration keeps the key it held before, which is
+// the status quo rather than a finding that it needs it; a mode added AFTER it has no prior standing
+// to keep, so its arm is derived from its operation route (the approval keyring converge executes
+// over fleet SSH to srv1 and consumes it).
 type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 
 fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> FleetSshKeyDemand {
@@ -333,17 +356,21 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkGrants => FleetSshKeyConsumed
     SparkBootstrap => FleetSshKeyConsumed
     SparkServingApply => FleetSshKeyConsumed
+    SparkNativeServingApply => FleetSshKeyConsumed
     SparkRuntimeImageProbe => FleetSshKeyConsumed
     DashboardDeploy => FleetSshKeyConsumed
     RlmLaunchDeploymentReceipt => FleetSshKeyConsumed
     HostResetReturn => FleetSshKeyConsumed
     RunnerHostFileObserve => FleetSshKeyConsumed
     RunnerHostFileConverge => FleetSshKeyConsumed
+    SitePxeEdgeObserve => FleetSshKeyConsumed
+    SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    MtCollins1Boot => FleetSshKeyConsumed
+    MtCollins1Boot => FleetSshKeyNotConsumed
+    MtCollins1FanObserve => FleetSshKeyNotConsumed
   }
 }
 
@@ -471,7 +498,7 @@ fn fleet_converge_reset_subject_map_json() -> String {
 // rather than braces; until then the observer exposure is real and undefended, and saying so is the
 // difference between a declared gap and the silent one review 62030 found.
 data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = join([
-  "gunbc-host-mutation-${{ fromJSON('",
+  fleet_host_mutation_group_prefix, "${{ fromJSON('",
   fleet_converge_reset_subject_map_json(),
   "')[github.event.inputs.reset_observer] }}",
 ], "")
@@ -739,6 +766,12 @@ data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_m
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
+data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeObserve)
+
+data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
+
+data fleet_converge_site_pxe_edge_any_step_if: String = fleet_converge_any_mode_step_if(modes: [SitePxeEdgeObserve, SitePxeEdgeConverge])
+
 // THE MODE THAT CLOSES #11061'S REFUSAL. That change made a password-session leg refuse with a
 // typed cause naming sshpass; this mode is the route that makes the refusal stop being true. It is
 // a STEP in the existing host-pinned fleet-converge job rather than a job of its own, because the
@@ -773,6 +806,44 @@ data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(m
 data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
 
 data fleet_converge_spark_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkServingApply)
+
+// ── THE NATIVE ARM GETS ITS OWN MODE, BECAUSE IT IS ITS OWN ACTUATION ─────────────────────────
+//
+// WHAT THE SHARED MODE DID. One `spark_serving_apply` dispatch ran BOTH the pair apply and the native
+// arm's apply. Those are two different subjects with two different blast radii: the pair apply is
+// conditional and bounces a converged DeepSeek engine only when its roster moved, while the native
+// apply unconditionally restarts four ranks and reloads a 328 GB arm into a new rendezvous epoch. An
+// operator asking to converge the pair units could not decline the second, and nothing in the mode's
+// name said the second existed. A destructive actuation reachable only as a side effect of asking for
+// a different one is the escape hatch inverted: not a way to skip a refusal, but a way to trigger an
+// effect nobody selected.
+//
+// SO THE SUBJECT IS EXPLICIT AND THE DEFAULT IS TO DO NOTHING. `spark_native_serving_apply` names the
+// arm it relaunches; `spark_serving_apply` no longer reaches it.
+data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkNativeServingApply)
+
+// ── THIS JOB'S MUTATION DOMAIN IS THE EXECUTOR'S, EXCEPT FOR THE ONE MODE WHOSE SUBJECT IS NOT ─
+//
+// gunbc.fleet_workflow_steps fleet_host_mutation_concurrency_group_expression keys the domain to the
+// `host` input, which names the EXECUTOR. Every other mode in this job mutates that executor, so the
+// two coincide. `spark_native_serving_apply` does not: it reaches out from whichever executor was
+// selected and relaunches Group B's four cage-2 hosts, so two dispatches naming different executors
+// would land in different domains and queue behind nothing while reloading the same 328 GB arm. Its
+// group is therefore constant for the arm.
+//
+// AND THIS IS BELT, NOT THE WALL, which is worth saying because a reader could take it for the
+// protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
+// actually run today, and a job carries exactly ONE group -- so keying the native mode to the arm
+// means it no longer queues behind an ordinary converge of a Group-B host, a real and stated trade.
+// The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
+// unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
+// unless it owns that identity.
+data fleet_converge_mutation_concurrency_group_expression: String = join([
+  "${{ github.event.inputs.mode == '",
+  fleet_converge_workflow_mode_wire(mode: SparkNativeServingApply),
+  "' && '", fleet_arm_mutation_group_glm_group_b_native,
+  "' || format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
+], "")
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
@@ -1060,6 +1131,47 @@ fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
   )
 }
 
+// THE SITE PXE EDGE (gunbc.site_pxe_edge_converge): the first onboarding segment's ProxyDHCP + TFTP
+// daemon on srv4, UEFI ARM64 chainloader only. It reuses the runner-host step shaper for the same
+// reason the password-session step does -- same host input binding, same timeout authority, same
+// fleet-key reach as the administrator -- and differs only in id, sentence and mode gate. Observe and
+// converge are two modes so the gate's causes can be read before anything on the /24 changes.
+fn fleet_converge_site_pxe_edge_observe_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "site_pxe_edge_observe",
+    name: "Site PXE edge: observe the chainloader digest, dnsmasq, the edge config and unit (no writes)",
+    invoke: gunbc_ci_site_pxe_edge_observe_invoke(),
+    if_condition: fleet_converge_site_pxe_edge_observe_step_if,
+  )
+}
+
+fn fleet_converge_site_pxe_edge_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "site_pxe_edge_converge",
+    name: "Site PXE edge: if the gate is open, write what differs, restart the unit, read its active state back",
+    invoke: gunbc_ci_site_pxe_edge_converge_invoke(),
+    if_condition: fleet_converge_site_pxe_edge_converge_step_if,
+  )
+}
+
+fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload site PXE edge converge receipt" },
+    id: Present { value: "site_pxe_edge_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "site-pxe-edge-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: site_pxe_edge_converge_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload runner host file converge receipt" },
@@ -1212,6 +1324,56 @@ fn fleet_converge_app_control_plane_step() -> Step {
 // gunbc.auth.access_token_source rather than interpolated into a command line.
 data fleet_converge_r2_mint_preflight_step_if: String = fleet_converge_mode_step_if(mode: R2MintPreflight)
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
+
+// THE MT. COLLINS FAN OBSERVATION MODE, WHICH IS READ-ONLY AND IS THE ONLY MODE IN THIS WORKFLOW
+// THAT TOUCHES THAT UNIT WITHOUT THE BOOT LANE'S KNOWLEDGE.
+//
+// WHY IT IS A MODE RATHER THAN A HAND-RUN. The question it answers - does this controller hold a
+// fixed fan output, and does that output move when the host starts publishing thermals - is a
+// MEASUREMENT, and a measurement pasted into a message is not a receipt anybody can re-derive. As a
+// mode it carries its own credential prelude, writes its series to an artifact the run uploads, and
+// can be dispatched again against a later revision to see whether the answer changed.
+//
+// WHY IT MUST NOT RUN BESIDE A BOOT DISPATCH. Nothing here writes chassis state, but the boot lane
+// does, and a fan series taken across somebody else's power cycle is a series whose power column
+// changed for a reason the series cannot see. That is a scheduling constraint between two dispatches
+// of one workflow, which this repository has no lock for, so it is stated and coordinated rather
+// than claimed as enforced.
+data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
+
+fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)" },
+    id: Present { value: "mtcollins1_fan_observe" },
+    run: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins fan observation series" },
+    id: Present { value: "mtcollins1_fan_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-fan-observation")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 fn fleet_converge_r2_mint_preflight_step() -> Step {
   RunStep {
@@ -1606,6 +1768,34 @@ fn fleet_converge_spark_serving_apply_step() -> Step {
   }
 }
 
+// THE NATIVE ARM'S APPLY, UNDER ITS OWN MODE. The pair step converges the promoted fabric groups'
+// pair units; this step converges group B's native four-rank arm (gunbc.spark.native_serving_apply)
+// over the same password session, and it runs exactly when the operator asks for
+// `spark_native_serving_apply` and never otherwise. THE HEAD IS APPLIED BEFORE THE WORKERS, which is
+// what the source does: the head's engine opens the rendezvous store every worker's restart then
+// joins, and workers restarted first were observed (2026-09-16) joining the PREVIOUS epoch's store
+// while the head crash-looped on DistStoreError. An earlier revision of this text said "workers
+// before the head" while the source did the opposite -- a generated description that contradicted the
+// thing it described, which is worse than none because an operator plans the blast radius from it.
+fn fleet_converge_spark_native_serving_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight that mutates nothing, the incumbent unit preserved, head before workers, a readback of the complete realization bound to each rank's own incarnation, then commit or roll the whole arm back)" },
+    id: Present { value: "spark_native_serving_apply" },
+    run: gunbc_ci_spark_native_serving_apply_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_native_serving_apply_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 // A MODE, NOT A JOB. This is a step inside the existing dispatch-only fleet job, gated by the same
 // mode conditional every other spark_* step uses, so it costs nothing on a push and adds no standing
 // claim on a runner -- which is the bar the job roster is closed to growth against. It shares the
@@ -1698,6 +1888,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_org_runner_roster_receipt_upload_step(),
         fleet_converge_app_control_plane_step(),
         fleet_converge_app_control_plane_receipt_upload_step(),
+        fleet_converge_mtcollins1_fan_observe_step(),
+        fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),
@@ -1715,12 +1907,16 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_bootstrap_step(),
         fleet_converge_spark_serving_apply_step(),
+        fleet_converge_spark_native_serving_apply_step(),
         fleet_converge_spark_runtime_image_probe_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
+        fleet_converge_site_pxe_edge_observe_step(),
+        fleet_converge_site_pxe_edge_converge_step(),
+        fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -1732,7 +1928,7 @@ fn fleet_converge_job() -> Job {
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
-        group: fleet_host_mutation_concurrency_group_expression,
+        group: fleet_converge_mutation_concurrency_group_expression,
         cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
         explicit_single: none
       }
@@ -1864,7 +2060,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

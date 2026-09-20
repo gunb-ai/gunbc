@@ -1,0 +1,378 @@
+module gunbc.runner_throughput_qualification_route
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { byte_size_count, hardware_thread_count_value }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.placement_supply { HostIdentity }
+import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
+import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.runner_slot_allocation {
+  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
+  gunbc_runner_slot_desired, runner_host_label, runner_label_set_union,
+}
+import gunbc.runner_throughput_qualification {
+  WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
+  RouteLegStanding, LegBoundToAuthority, LegAwaitingAuthority, leg_is_bound,
+}
+
+// THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHAT IT MUTATES AND UNDER WHOM.
+//
+// The brief's shape: boot the host through the same approval-gated diskless route the census used,
+// register ONE ephemeral actions-runner slot carrying the gunbc runner-slot shape, dispatch the
+// floor to it, collect the instruments, deregister. Five stages, FOUR of them effectful, at two
+// grains (operator hold on gunbc#11722, item 6): the boot stage writes a BMC, under
+// `gunbc.auth.approval_decision_store grant_from_store`; registering, dispatching to and
+// deregistering an ephemeral GitHub runner are CONTROL-PLANE mutations of GitHub's, each bound to
+// its authority or carried as a declared frontier. An earlier draft classified the three GitHub
+// stages as writing nothing, and a green witness certified it -- a false fact with coverage.
+// Only the collect stage is observation.
+//
+// A ROUTE IS EXECUTABLE ONLY WHEN EVERY EFFECTFUL LEG IS BOUND. `route_is_executable` is false
+// today and the witness asserts that it is false: the boot leg's authority is on gunbc#11484, the
+// image leg's on gunbc#11731, the JIT registration authority on main
+// (`gunbc.runner.runner_jit_perform dispatch_jit_mint`) is shaped for a MicroVmCellBinding and
+// must generalize to a transient-unit slot, and `extdeps.github.workflows CreateDispatch` has no
+// production caller and a heal-specific input contract. Each leg names the capability its landing
+// must be SUFFICIENT FOR (section 4b(3)); a DeclarationRef to an unmerged authority would stop the
+// parse phase, which is why the legs are typed standings rather than refs.
+
+// ── THE STAGES ────────────────────────────────────────────────────────────────────────────────
+
+// THREE EFFECT GRAINS, NONE OF THEM "NONE" FOR A STAGE THAT MUTATES SOMETHING OUTSIDE THE GUEST.
+type StageEffect
+  = BmcWrite { gate: DeclarationRef, boot: RouteLegStanding, image: RouteLegStanding }
+  | GitHubControlPlaneWrite { authority: RouteLegStanding }
+  | ObservationOnly
+
+type QualificationStage
+  = BootHostUnderApprovalGate { host: HostIdentity, boot: RouteLegStanding, image: RouteLegStanding }
+  | RegisterEphemeralRunnerSlot { unit: NonEmptyStr, labels: List<String>, workspace: WorkspaceBacking, registration: RouteLegStanding }
+  | DispatchFloorToSlot { workload: FloorWorkloadPin, selector: List<String>, dispatch: RouteLegStanding }
+  | CollectInstruments { instruments: List<QualificationInstrument> }
+  | DeregisterRunnerSlot { unit: NonEmptyStr, deregistration: RouteLegStanding }
+
+fn stage_effect(stage: QualificationStage) -> StageEffect {
+  match stage {
+    BootHostUnderApprovalGate { host: _, boot: b, image: i } =>
+      BmcWrite {
+        gate: decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "grant_from_store"),
+        boot: b,
+        image: i,
+      }
+    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: r } => GitHubControlPlaneWrite { authority: r }
+    DispatchFloorToSlot { workload: _, selector: _, dispatch: d } => GitHubControlPlaneWrite { authority: d }
+    CollectInstruments { instruments: _ } => ObservationOnly
+    DeregisterRunnerSlot { unit: _, deregistration: d } => GitHubControlPlaneWrite { authority: d }
+  }
+}
+
+// THE GUEST NEEDS THE NETWORK, AND THE STAGES THAT DO SAY WHICH POLICY. The census stages forbid
+// runtime fetches by construction (the payload is on the ISO); the runner stages cannot -- a runner
+// that reaches no GitHub takes no job. So each stage that opens the network names the fleet's
+// default-drop runner policy (`gunbc.runner.runner_host_filtered_egress runner_host_egress_policy`: the
+// resolver and a TCP 443 destination class, the BMC and the LAN denied by name), never an ambient
+// stance. A stage answering `none` opens nothing.
+fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
+  match stage {
+    BootHostUnderApprovalGate { host: _, boot: _, image: _ } => none
+    RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => Present { value: runner_host_egress_policy }
+    DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => Present { value: runner_host_egress_policy }
+    CollectInstruments { instruments: _ } => none
+    DeregisterRunnerSlot { unit: _, deregistration: _ } => Present { value: runner_host_egress_policy }
+  }
+}
+
+// ── THE EPHEMERAL SLOT IS THE FLEET SLOT SHAPE RENDERED AS A TRANSIENT UNIT ───────────────────
+//
+// `gunbc.runner_slot_allocation gunbc_runner_slot_desired` is the one authority for MemoryMax,
+// MemoryHigh, MemorySwapMax, TasksMax, CPUWeight and the CPU quota the fleet's slots run under.
+// The permanent slots reach systemd as a unit file; this one reaches it as `systemd-run`
+// properties, and both spell every property through `extdeps.systemd systemd_unit_property_wire`.
+// AN UNBOUNDED QUOTA EMITS NO CPUQuota WORD: a transient unit carries no absolute CPU ceiling
+// unless one is set, which is exactly the fleet's declared state (SlotCpuQuotaUnbounded, the
+// 2026-09-19 ruling), so the absence is the faithful rendering and cpu_weight governs.
+fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
+  match quota {
+    SlotCpuQuotaUnbounded => []
+    CpuQuotaResolved { threads: t } => {
+      let percent = hardware_thread_count_value(t: t) * 100
+      [SystemdRunProperty { property: CPUQuota, value: concat(percent as String, "%") as NonEmptyStr }]
+    }
+  }
+}
+
+fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> List<SystemdRunProperty> {
+  concat(
+    [
+      SystemdRunProperty { property: MemoryMax, value: byte_size_count(b: desired.memory_max) as String as NonEmptyStr },
+      SystemdRunProperty { property: MemoryHigh, value: byte_size_count(b: desired.memory_high) as String as NonEmptyStr },
+      SystemdRunProperty { property: MemorySwapMax, value: byte_size_count(b: desired.memory_swap_max) as String as NonEmptyStr },
+      SystemdRunProperty { property: TasksMax, value: desired.tasks_max as String as NonEmptyStr },
+      SystemdRunProperty { property: CPUWeight, value: desired.cpu_weight as String as NonEmptyStr },
+    ],
+    cpu_quota_properties(quota: desired.cpu_quota),
+  )
+}
+
+fn ephemeral_slot_argv(unit: NonEmptyStr, desired: RunnerSlotDesired, command_argv: List<String>) -> List<String> {
+  systemd_run_transient_wait_unit_argv(unit: unit, properties: ephemeral_slot_properties(desired: desired), command_argv: command_argv)
+}
+
+// THE ATTEMPT LABEL IS IN runs-on, AND THAT IS THE WHOLE BINDING (gunbc.runner.runner_qualification_receipt
+// records the receipt that was published without it). The slot's class label and the host label
+// come from the fleet authority; the attempt label is minted per boot and is what makes the job
+// unservicable by any other registration.
+fn ephemeral_slot_labels(host: HostIdentity, attempt: NonEmptyStr) -> List<String> {
+  runner_label_set_union(
+    a: runner_label_set_union(a: gunbc_runner_slot_desired().labels.github_labels, b: [runner_host_label(host: host)]),
+    b: [attempt as String],
+  )
+}
+
+fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["gunbc-qualification-", host as String, "-", attempt as String, ".service"], "") as NonEmptyStr
+}
+
+// ── THE INSTRUMENTS THE COLLECT STAGE OWES ────────────────────────────────────────────────────
+//
+// Each instrument names the PRODUCER that re-derives its reading as a DeclarationRef, resolved by
+// the declaration index in the parse phase like every other citation (review 68775: a producer
+// named in prose is a citation nothing can check). The arm says what is read; the ref says who
+// owns the vocabulary the reading is denominated in. None is a benchmark added for this route.
+type QualificationInstrument
+  = FloorPhaseRows
+  | FloorCgroupRows
+  | ClaimCostArtifactEvalSteps
+  | CalibrationSpecimenWitnessLine
+  | GuestIdleMeminfoAndNproc
+
+fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationRef {
+  match i {
+    FloorPhaseRows =>
+      decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
+    FloorCgroupRows =>
+      decl_ref(module_path: "gunbc.host_budget_source", decl_name: "HostBudgetResolution")
+    ClaimCostArtifactEvalSteps =>
+      decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv")
+    CalibrationSpecimenWitnessLine =>
+      decl_ref(module_path: "v2.workflow.floor_eval_step_calibration", decl_name: "floor_eval_step_calibration")
+    GuestIdleMeminfoAndNproc =>
+      decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_field_names")
+  }
+}
+
+fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
+  let producer = qualification_instrument_producer(i: i)
+  let what = match i {
+    FloorPhaseRows => "[floor-phase] rows of claim_executor --required-ci: wall_ms per phase of"
+    FloorCgroupRows => "[floor-cgroup] rows of the same run at the slot cgroup level, memory.high as the bound and memory.peak as the peak, resolved through"
+    ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact, eval_steps summed over the floor phase, parsed by"
+    CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the sample behind"
+    GuestIdleMeminfoAndNproc => "the guest's idle MemTotal and MemAvailable (fields of) plus nproc and uname -m, read before the job starts:"
+  }
+  join([what, " ", producer.module_path as String, " ", producer.decl_name as String], "") as NonEmptyStr
+}
+
+data qualification_instruments: List<QualificationInstrument> = [
+  FloorPhaseRows,
+  FloorCgroupRows,
+  ClaimCostArtifactEvalSteps,
+  CalibrationSpecimenWitnessLine,
+  GuestIdleMeminfoAndNproc,
+]
+
+// ── THE mtcollins1 ROUTE ──────────────────────────────────────────────────────────────────────
+
+// RAM-BACKED TMPFS, AND WHY NOT A SCRATCH EXPORT FROM srv2.
+//
+// The subject of the receipt is THIS HOST. A scratch export from srv2 puts the checkout, the build
+// tree and every page the floor writes on a LAN hop and on srv2's disks, so the wall per phase and
+// the memory peak would be facts about srv2's export and the switch between them, and the receipt
+// would name mtcollins1 while measuring something else. srv2 is also the 125 GiB legacy host that
+// serves the boot image itself; charging it a second host's build I/O during a qualification is
+// exactly the cross-host coupling the fleet budget refuses to leave unpriced.
+//
+// tmpfs keeps every byte on the subject and makes the workspace part of the measured envelope:
+// tmpfs pages are charged to the cgroup that faults them in, so the slot's memory.peak includes
+// the build tree. That is the honest number for a diskless host -- it is what a slot on this
+// host, configured this way, actually costs -- and the receipt carries the backing so a reader
+// never compares it to an NVMe-backed fleet peak as if the two measured the same thing. If the
+// workspace-inclusive peak exceeds the slot high, the answer is not-admitted with the number, and
+// the remedy is a disk or a narrower shape, both of which are a different subject.
+data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
+
+data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "gunbc#11484 (approval loop D): gunbc.machine_intake_mtcollins1_boot_run and the fleet-converge mode mtcollins1_boot" as NonEmptyStr,
+  sufficient_for: "booting mtcollins1 from the derived diskless image under grant_from_store with the SOL collector attached before the BMC stimulus and no controller write on deny, expiry or an unfiled request" as NonEmptyStr,
+}
+
+data mtcollins1_image_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "gunbc#11731 (CENSUS-IMAGE 0A): extdeps.provisioning.ubuntu_seeded_install_media UbuntuSeededInstallMediaBuildInput, whose NoCloud payload is a parameter, with the built identity measured off the written ISO" as NonEmptyStr,
+  sufficient_for: "one image derivation whose seed payload is a parameter, so the runner stage is rendered user-data and NoCloudSeedFile rows after the census's end stage rather than a second ISO authority" as NonEmptyStr,
+}
+
+// THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration are one JIT contract --
+// an ephemeral JIT runner is removed by GitHub when its one job ends -- so both name the same
+// authority; dispatch names the cited REST operation that has no production caller yet.
+data mtcollins1_registration_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "gunbc.runner.runner_jit_perform dispatch_jit_mint generalized over a slot binding that is a transient unit on a live host rather than a MicroVmCellBinding, minting the JIT config whose labels are ephemeral_slot_labels" as NonEmptyStr,
+  sufficient_for: "registering exactly one ephemeral runner for one attempt label with the gunbc runner-slot shape, refused before any launch on an inadmissible envelope" as NonEmptyStr,
+}
+
+data mtcollins1_dispatch_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "a production fold calling extdeps.github.workflows github.Workflows CreateDispatch for the qualification workflow with the attempt label as its input -- which also dissolves that module's create_dispatch_unconsumed_frontier_rows" as NonEmptyStr,
+  sufficient_for: "dispatching the floor to the one registration whose runs-on names the attempt label, so the run is unservicable by any other runner" as NonEmptyStr,
+}
+
+data mtcollins1_deregistration_leg: RouteLegStanding = LegAwaitingAuthority {
+  lands_with: "the same JIT contract as mtcollins1_registration_leg: GitHub removes the ephemeral runner when its one job ends, and gunbc.runner.runner_teardown_receipt RunnerTeardownRequest carries the host-side teardown" as NonEmptyStr,
+  sufficient_for: "the registration being gone from the organization and the unit torn down after the one job, observed rather than assumed" as NonEmptyStr,
+}
+
+// THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
+// `gunbc.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
+// with its trigger beside it); a mode whose boot leg has no authority on main would dispatch nothing
+// and refuse by construction -- a job on the roster that cannot run is a paid runner claim for a
+// decoration. Pre-minting the mode's spelling in this module would be a data row with no reader,
+// and two spellings of one name once the row exists (review 68532).
+
+type QualificationRouteLegs {
+  boot: RouteLegStanding
+  image: RouteLegStanding
+  registration: RouteLegStanding
+  dispatch: RouteLegStanding
+  deregistration: RouteLegStanding
+}
+
+data mtcollins1_route_legs: QualificationRouteLegs = QualificationRouteLegs {
+  boot: mtcollins1_boot_leg,
+  image: mtcollins1_image_leg,
+  registration: mtcollins1_registration_leg,
+  dispatch: mtcollins1_dispatch_leg,
+  deregistration: mtcollins1_deregistration_leg,
+}
+
+fn qualification_route(
+  host: HostIdentity,
+  attempt: NonEmptyStr,
+  workload: FloorWorkloadPin,
+  workspace: WorkspaceBacking,
+  legs: QualificationRouteLegs,
+) -> List<QualificationStage> {
+  let unit = ephemeral_slot_unit(host: host, attempt: attempt)
+  let labels = ephemeral_slot_labels(host: host, attempt: attempt)
+  [
+    BootHostUnderApprovalGate { host: host, boot: legs.boot, image: legs.image },
+    RegisterEphemeralRunnerSlot { unit: unit, labels: labels, workspace: workspace, registration: legs.registration },
+    DispatchFloorToSlot { workload: workload, selector: labels, dispatch: legs.dispatch },
+    CollectInstruments { instruments: qualification_instruments },
+    DeregisterRunnerSlot { unit: unit, deregistration: legs.deregistration },
+  ]
+}
+
+fn mtcollins1_qualification_route(attempt: NonEmptyStr, workload: FloorWorkloadPin) -> List<QualificationStage> {
+  qualification_route(
+    host: operator_host_mtcollins1,
+    attempt: attempt,
+    workload: workload,
+    workspace: mtcollins1_qualification_workspace_backing,
+    legs: mtcollins1_route_legs,
+  )
+}
+
+// ── THE LAWS A WITNESS READS OFF THE ROUTE ────────────────────────────────────────────────────
+
+fn stage_is_effectful(stage: QualificationStage) -> Bool {
+  match stage_effect(stage: stage) {
+    ObservationOnly => false
+    BmcWrite { gate: _, boot: _, image: _ } => true
+    GitHubControlPlaneWrite { authority: _ } => true
+  }
+}
+
+// THE LEGS AN EFFECTFUL STAGE STANDS ON. A BMC write stands on its boot and image legs; a
+// control-plane write on its authority; observation on nothing.
+fn stage_legs(stage: QualificationStage) -> List<RouteLegStanding> {
+  match stage_effect(stage: stage) {
+    ObservationOnly => []
+    BmcWrite { gate: _, boot: b, image: i } => [b, i]
+    GitHubControlPlaneWrite { authority: a } => [a]
+  }
+}
+
+fn route_effectful_stage_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) => if stage_is_effectful(stage: s) { acc + 1 } else { acc })
+}
+
+fn route_bmc_write_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) =>
+    match stage_effect(stage: s) {
+      BmcWrite { gate: _, boot: _, image: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
+
+fn route_control_plane_write_count(route: List<QualificationStage>) -> Int {
+  fold(route, init: 0, f: (acc, s) =>
+    match stage_effect(stage: s) {
+      GitHubControlPlaneWrite { authority: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
+
+// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity.
+fn route_bmc_writes_are_gated(route: List<QualificationStage>) -> Bool {
+  route |> all(s =>
+    match stage_effect(stage: s) {
+      BmcWrite { gate: g, boot: _, image: _ } =>
+        (g.module_path as String) == "gunbc.auth.approval_decision_store" && (g.decl_name as String) == "grant_from_store"
+      _ => true
+    }
+  )
+}
+
+// THE ROUTE IS EXECUTABLE ONLY WHEN EVERY LEG UNDER EVERY EFFECTFUL STAGE IS BOUND.
+fn route_is_executable(route: List<QualificationStage>) -> Bool {
+  route |> all(s => stage_legs(stage: s) |> all(l => leg_is_bound(leg: l)))
+}
+
+fn route_registers_one_slot(route: List<QualificationStage>) -> Bool {
+  fold(route, init: 0, f: (acc, s) =>
+    match s {
+      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => acc + 1
+      _ => acc
+    }
+  ) == 1
+}
+
+fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool {
+  let registered = fold(route, init: [], f: (acc, s) =>
+    match s {
+      RegisterEphemeralRunnerSlot { unit: u, labels: _, workspace: _, registration: _ } => list_push(acc, u as String)
+      _ => acc
+    }
+  )
+  let deregistered = fold(route, init: [], f: (acc, s) =>
+    match s {
+      DeregisterRunnerSlot { unit: u, deregistration: _ } => list_push(acc, u as String)
+      _ => acc
+    }
+  )
+  registered.length() == deregistered.length()
+    && (registered |> all(u => deregistered |> any(d => d == u)))
+}
+
+fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, attempt: NonEmptyStr) -> Bool {
+  route |> all(s =>
+    match s {
+      DispatchFloorToSlot { workload: _, selector: sel, dispatch: _ } => sel |> any(l => l == (attempt as String))
+      _ => true
+    }
+  )
+}
+

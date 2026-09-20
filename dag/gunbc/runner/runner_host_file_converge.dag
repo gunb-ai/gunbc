@@ -74,7 +74,10 @@ import gunbc.runner_unit_file {
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_width_transition {
+  required_retirees_for_host,
+  RequiredRetirees, RetireesKnown, RetireesUnresolved,
+}
 import gunbc.runner_slot_retirement {
   RunnerRetirementStanding,
   RetirementComplete,
@@ -317,18 +320,48 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
             cause: join(["runner_host_file_converge: ", host as String, " has no desired runner slot, so no unit exists to verify the teardown on"], ""),
           }
         } else {
-          RunnerHostFileSubjectAdmitted {
-            subject: RunnerHostFileSubject {
-              host: host,
-              target: SshTarget {
-                endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-                principal: executor_bootstrap_principal.login,
-              },
-              desired_units: units,
-              retired_units: required_retirees_for_host(host: host),
-            },
-          }
+          runner_host_file_subject_over_obligation(
+            host: host,
+            units: units,
+            obligation: required_retirees_for_host(host: host),
+          )
         }
+      }
+  }
+}
+
+// A HOST WHOSE RETIREMENT OBLIGATION IS NOT DERIVABLE GETS NO SUBJECT, because retired_units is
+// what this module tells the host to tear down. `required_retirees_for_host` answers
+// `RetireesUnresolved` when the host's committed width does not resolve, and reading that as an
+// empty retiree list would converge the host's files against "nothing is retiring" -- the silence
+// this change removes everywhere else, surviving in the one module that decides teardown. The
+// refusal arm already exists here, so the obligation joins the other two conditions this
+// constructor refuses on.
+fn runner_host_file_subject_over_obligation(
+  host: HostIdentity,
+  units: List<NonEmptyStr>,
+  obligation: RequiredRetirees,
+) -> RunnerHostFileSubjectAdmission {
+  match obligation {
+    RetireesUnresolved { host: uh, cause: c } =>
+      RunnerHostFileSubjectRefused {
+        cause: join([
+          "runner_host_file_converge: the retirement obligation for ", uh as String,
+          " is not derivable, so the set of units this host would be told to tear down cannot be stated: ",
+          c,
+        ], ""),
+      }
+    RetireesKnown { units: retired } =>
+      RunnerHostFileSubjectAdmitted {
+        subject: RunnerHostFileSubject {
+          host: host,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+            principal: executor_bootstrap_principal.login,
+          },
+          desired_units: units,
+          retired_units: retired,
+        },
       }
   }
 }

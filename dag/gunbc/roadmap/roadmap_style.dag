@@ -188,11 +188,11 @@ fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
 // suffixes; this fold and every reference derive from the same two authorities.
 
 fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
-  fold(rows, init: [], f: (acc, r) => concat(acc, [
+  flat_map(rows, r => [
     decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
     decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
     decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: PressedVar) }, value: band_pressed_paint(r: r)),
-  ]))
+  ])
 }
 
 // The swatch auditioner (remodel W1f, operator 2026-07-24: deliberately undecided on swatches — so
@@ -275,11 +275,11 @@ fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
 }
 
 fn audition_paints(a: AuditionSet) -> List<BandPaint> {
-  fold(a.fills, init: [], f: (acc, row) => match swatch_named(s: a.set, name: row.swatch_name) {
-    Absent => acc
+  flat_map(a.fills, row => match swatch_named(s: a.set, name: row.swatch_name) {
+    Absent => []
     Present { value: fill } => match audition_ink_for(s: a.set, fill: fill) {
-      Absent => acc
-      Present { value: ink } => concat(acc, [BandPaint { key: row.key, fill: fill, ink: ink }])
+      Absent => []
+      Present { value: ink } => [BandPaint { key: row.key, fill: fill, ink: ink }]
     }
   })
 }
