@@ -12,6 +12,8 @@ import extdeps.needrestart {
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv }
 import gunbc.runner_slot_retirement {
@@ -880,12 +882,17 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 
 // INHABITANCE OF THE REAL ROSTER (DESIGN 3, the pairing obligation). The claims above supply a
 // three-retiree roster; this one asserts the real srv1 subject the production route carries reaches
-// the same functions: gunbc.runner_width_transition obliges 38 retirees, their real ControlGroup
-// paths carry systemd's escape, and one admitted argv still covers all of them.
+// the same functions: the subject's roster IS gunbc.runner_width_transition's obligation for srv1,
+// and one admitted argv still covers all of them. The join is by IDENTITY rather than by a size
+// literal -- srv1's declared target width moves, so a transcribed count is a measurement of the
+// current tree and not an oracle (DESIGN 5).
 test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
   let retired = srv1_retired()
+  let required = required_retirees_for_host(host: operator_host_srv1)
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
-  length(retired) == 38
+  length(retired) > 0
+    && length(retired) == length(required)
+    && all(required, u => any(retired, r => (r as String) == (u as String)))
     && argv == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
     && (match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true })
 }
