@@ -74,6 +74,11 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
+import gunbc.fleet_converge_workflow {
+  fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step,
+}
+import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
+import extdeps.github.actions { Step, RunStep }
 import gunbc.fleet_converge_plan {
   fleet_converge_cap_lines,
   fleet_converge_cap_refusal_count,
@@ -2599,4 +2604,31 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }
+}
+
+
+// THE BINDING IS ONLY A WALL IF THE STEP TELLS IT WHICH HOST WAS SELECTED, and for one revision it
+// did not. gunbc.runner_microvm_host_ready seals the operator's choice against the machine's own
+// hostname before any fetch, install or receipt write, reading that choice from
+// FLEET_CONVERGE_EXPECTED_HOST -- and both micro-VM steps carried `env: none`, so every dispatch of
+// either mode would have exited ExpectedHostAbsent having done nothing. The readback the repair
+// exists to deliver had a route that terminated in a refusal, which is DESIGN section 3c's
+// consumption question answered in the negative: a named consumer that cannot start.
+//
+// This asserts over the STEP VALUES rather than the emitted YAML text, because the text is a
+// projection and the defect was in what the projection was given. Both modes are checked: they fail
+// independently, so a control over one would have left the other dark.
+fn microvm_step_env_names(step: Step) -> List<String> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e { Present { value: kvs } => map(kvs, p => p.key)  Absent => [] }
+    _ => []
+  }
+}
+
+test fn both_microvm_steps_pass_the_selected_host_to_the_binding() -> Bool {
+  let converge_env = microvm_step_env_names(step: fleet_converge_microvm_host_converge_step())
+  let probe_env = microvm_step_env_names(step: fleet_converge_microvm_boot_probe_step())
+  any(converge_env, n => n == fleet_converge_expected_host_env_name)
+    && any(probe_env, n => n == fleet_converge_expected_host_env_name)
 }

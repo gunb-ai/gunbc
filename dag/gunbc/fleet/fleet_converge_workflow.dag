@@ -1037,17 +1037,33 @@ fn fleet_converge_guest_image_receipt_upload_step() -> Step {
   }
 }
 
-// THE HOST CONVERGE INSTALLS THE VMM AND REFUSES THE REST. It fetches the cited Firecracker
-// release into an executor-owned root under a verified digest; it does NOT grant kvm group
-// membership, which is a runner-host grant belonging to the sudoers roster rather than to this
-// reconciler, and the receipt says so by name rather than failing vaguely.
+// THE HOST CONVERGE INSTALLS THE VMM AND READS THE GRANT BACK. It fetches the cited Firecracker
+// release into an executor-owned root under a verified digest. It does NOT apply the kvm group
+// membership -- that is emitted into the full-host apply script by gunbc.fleet.fleet_converge_plan
+// host_wide_grant_apply_lines, under the generation lease with every other host mutation -- and this
+// mode READS BACK whether the grant landed, from the account database and the device's own
+// delegation, refusing by name when it has not. The earlier wording here said this mode "refuses the
+// kvm grant by name", which was true of the disclaiming version and is now false in the direction
+// that matters: an operator reading it would not know the grant has an executor at all.
+//
+// THE SELECTED HOST IS PASSED IN, AND WITHOUT IT THIS MODE REFUSES. The entry seals the operator's
+// choice against the machine's own hostname before any fetch, install or receipt write
+// (gunbc.runner_microvm_host_ready microvm_host_binding_wet), so a run that is not told which host
+// was selected cannot tell a correct dispatch from a mis-routed one and declines to mutate anything.
+// That makes this env binding load-bearing rather than decorative: omit it and the mode exits
+// ExpectedHostAbsent on every dispatch, which is exactly what it did between the binding landing and
+// this line being added.
 fn fleet_converge_microvm_host_converge_step() -> Step {
   RunStep {
     name: Present { value: "Runner micro-VM host: install the cited Firecracker release and re-observe" },
     id: Present { value: "microvm_host_converge" },
     run: gunbc_ci_runner_microvm_host_converge_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_microvm_host_converge_step_if },
     continue_on_error: none,
@@ -1184,13 +1200,20 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
   }
 }
 
+// THE PROBE TAKES THE SELECTED HOST FOR THE SAME REASON THE CONVERGE DOES: it reads the host
+// standing before booting anything, and that standing is now bound to the host the dispatch chose.
+// A boot verdict attributed to the wrong machine is worse than no verdict.
 fn fleet_converge_microvm_boot_probe_step() -> Step {
   RunStep {
     name: Present { value: "Runner micro-VM: boot the guest image and read the serial console" },
     id: Present { value: "microvm_boot_probe" },
     run: gunbc_ci_runner_microvm_boot_probe_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_microvm_boot_probe_step_if },
     continue_on_error: none,
@@ -2002,7 +2025,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
