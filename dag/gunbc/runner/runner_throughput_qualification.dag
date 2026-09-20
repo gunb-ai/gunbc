@@ -54,6 +54,11 @@ import v2.workflow.floor_eval_step_calibration {
 // unchanged. That is a seed resolution defect reported to the parent lane, not a modeling fact, and
 // this module routes around it: the fleet authorities are consumed one module up and projected
 // into the carriers below, so the sealed record and the fold stay reachable from the fabric.
+// DECLARED DEPARTURE (DESIGN section 3b), not silence: the split exists for that defect and for
+// nothing else, and it is owned by dashboard work item adhoc-3bd6c9ef-59c ("seed: import-edge
+// shape changes bare algebra-template receiver inference in an unrelated module", eager-owl-205);
+// when that lane names the mechanism and lands its red, this annotation retires and the split is
+// reconsidered.
 //
 // THE OBSERVED RUN IS PRODUCER-OWNED AND SEALED. `ObservedRunnerQualificationRun` carries every
 // identity the assessment joins on -- host, program, revision, calibration specimen, image and

@@ -30,7 +30,9 @@ import gunbc.runner_throughput_qualification {
 // recorded on the leaf: an import edge from the fabric's closure to gunbc.build_cache_instance
 // breaks bare-name resolution in gunbc.harness.harness_backend on the current seed, so the fleet
 // authorities (all of which reach build_cache_instance) are consumed here, one module above the
-// leaf product.fabric.node_qualification imports.
+// leaf product.fabric.node_qualification imports. The defect is dashboard work item
+// adhoc-3bd6c9ef-59c (eager-owl-205); this module's separate existence is the declared departure
+// that item retires.
 //
 // THE SANCTION TRAVELS BESIDE THE SELECTION, NOT INSIDE THE ASSESSMENT. The assessment reads no
 // class-specific fact, so the sanction is not an input to it; it is the input the fabric's
