@@ -1,0 +1,120 @@
+module gunbc.roadmap.roadmap_centering
+
+import std.types { String, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_launch_canary {
+  roadmap_launch_canary_parent_node_id, roadmap_launch_canary_child_node_id,
+}
+
+// CENTERING IS A DISPATCH PREREQUISITE, SUPPLIED — NEVER DERIVED BY THE WORKER (operator ruling,
+// 2026-09-19). The first live harness experiment dispatched a closing-contract task whose worker
+// finished green but spent 23 of its 40 tool rounds orienting: learning how tests run, where
+// witness files live, what a planted input is, and what the authority-row edit looks like. That
+// orientation is one fact per node plus one shared preamble, and re-deriving it per attempt is
+// §2's duplicated work wearing a brief's clothes. This module is the single authority for both:
+//
+// - dispatch_centering_preamble, authored ONCE, prepended to every dispatched brief exactly once
+//   by gunbc.roadmap_dispatch_actuator (the join site per brief assembly, so "exactly once" is
+//   construction, and a witness counts occurrences);
+// - declared_node_centerings, one NodeCentering row per dispatch-ready node carrying the
+//   near-complete plan: exact target files, the exemplar to imitate, the expected oracle shape,
+//   the acceptance command pattern.
+//
+// THE GATE. gunbc.roadmap_launch_admission folds a `centering` gate (pre-session, between
+// `contract` and `dependencies`): node_centering answering CenteringAbsent refuses with the typed
+// LaunchCenteringAbsent cause, so a node without a plan does not admit dispatch from the page, the
+// POST route, or the belt tick.
+//
+// WHY A ROSTER KEYED BY NODE ID AND NOT A FIELD ON RoadmapNode. RoadmapNode has 116 literal
+// construction sites across 23 files, most of them witness fixtures; a field would put an empty
+// value at every one of them and make "uncentered" the common case by construction. A roster
+// joined by the node's minted id keeps uncentered-ness unrepresentable for a rostered node and
+// loud (CenteringAbsent) for every other, and the join is an identity join, not a count. The
+// closing-contract task nodes this experiment dispatches are DERIVED rows
+// (gunbc.roadmap_authority closing_contract_task_for), so their plans could not live on an
+// authored row in any case — the roster is the only carrier that covers declared and derived
+// nodes with one shape.
+//
+// THE CANARY ROWS. gunbc.roadmap_launch_canary is the admission's owned synthetic graph; its
+// nodes must satisfy every gate a real node satisfies, or the admission's admit-path witnesses
+// stop exercising the full ledger and the suite goes green without an inhabitance claim (DESIGN
+// §3 standing rule: deleting the integration must make a control fail). The two canary rows are
+// what keep witness_operator_admitted_for_ready_parent a real path through the centering gate.
+
+data dispatch_centering_preamble: String = "Centering (supplied, not to be re-derived; your standing contract — the tool, the capabilities held and withheld, and the completion terms — is in the system prompt and is not repeated here). HOW TO TEST: the acceptance route is the single test process named in your instructions, spelled by its own authority (gunbc.compute.test_run test_process_command); it snapshots this worktree, builds it once, and runs the selected witness modules hermetically, and the compile process beside it (same module, compile_process_command) is the typecheck route. Select witnesses with the bazel-style pattern those instructions describe, over the directory mirroring your change — for a closing-contract witness that is //dag/test/claim/closing:all. The batch doctrine behind the one-process rule is DESIGN.md's Operational essentials section (batch witness runs, never per-function loops); do not hand-run cargo, gunbc compile, or claim_batch — your instructions withhold that capability, and the reason is stated there, not here. FILE STRUCTURE: witnesses live under dag/test/claim/<area>/, one file per subject; line 1 declares the module mirroring the path (dag/test/claim/closing/foo_witness_test.dag declares `module test.claim.closing.foo_witness_test`), and the file carries `data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly` beside its imports. Write one test fn per clause of the node's bar, each discriminating on a PLANTED input — a fixture constructed in the file, never a count or value copied from the live tree — and keep one positive control beside the refusals. Match the subject's closed verdict type exhaustively: the refusing arm by name, every other arm false. THE EXEMPLAR to imitate is dag/test/claim/closing/ci_executed_coverage_receipt_closing_contract_witness_test.dag (proven passing on the real acceptance path); the exemplar of the authority-row edit that binds a node to its witness is the row `id: \"roadmap-continuation-turn-label\"` in dag/gunbc/roadmap/roadmap_authority.dag (with_execution + gunbc_claim_execution_contract(entry:, function:)). A centering plan for THIS node follows the brief's node fields; it is the plan — execute it, and stop and return if a fact it names is absent from the tree rather than improvising around it."
+
+type NodeCentering {
+  node: RoadmapNodeId
+  plan: NonEmptyStr
+}
+
+fn nc(id: String, plan: String) -> NodeCentering {
+  NodeCentering { node: id as NonEmptyStr as RoadmapNodeId, plan: plan as NonEmptyStr }
+}
+
+// The closing-contract plan shape, stated once per node below with its specifics filled: witness
+// path and module name derive from the node id exactly as gunbc.roadmap_authority
+// closing_contract_witness_path / closing_contract_witness_module spell them, so the plan, the
+// derived task row and the worker agree on one spelling.
+
+fn declared_node_centerings() -> List<NodeCentering> {
+  [
+    nc(
+      id: "fleet-state-frontier-closing-contract",
+      plan: "Target: the closing check for node fleet-state-frontier, whose bar is: an undeclared file, service, credential, or device refuses before anything is changed. (1) Create dag/test/claim/closing/fleet_state_frontier_closing_contract_witness_test.dag, line 1 `module test.claim.closing.fleet_state_frontier_closing_contract_witness_test`, with live_tree_disposition SubstrateInputsOnly; imitate dag/test/claim/closing/ci_executed_coverage_receipt_closing_contract_witness_test.dag. (2) The closed-roster-with-refusal shape this bar wants already exists as an exemplar at gunbc.host.host_assimilation_program (fleet_participation_in_canonical_roster / canonical_participation over FleetParticipation): read it first. Plant a small classification of machine-touching artifacts (files, services, credentials, devices) plus items: one test fn `an_undeclared_artifact_refuses_before_anything_is_changed` asserts the undeclared item lands in the refusing arm carrying the item, never admits; one test fn `a_fully_classified_inventory_admits` is the positive control. If the parent's classification authority does not exist in the tree yet, the witness targets gunbc.host.host_assimilation_program's roster refusal directly as the standing construction and says so in the file header — do not invent a parallel classification module. (3) Rebind the parent: in dag/gunbc/roadmap/roadmap_authority.dag find `id: \"fleet-state-frontier\"` and wrap its constructor as `with_execution(<row>, e: gunbc_claim_execution_contract(entry: \"dag/test/claim/closing/fleet_state_frontier_closing_contract_witness_test.dag\" as FilePath, function: \"an_undeclared_artifact_refuses_before_anything_is_changed\" as NonEmptyStr))`. (4) Acceptance: the named test process with pattern //dag/test/claim/closing:all, green.",
+    ),
+    nc(
+      id: "frontend-escape-scan-construction-closing-contract",
+      plan: "Target: the closing check for node frontend-escape-scan-construction, whose bar has three clauses: (a) a long literal mixing non-ASCII text with escapes separates the two implementations by cost; (b) a deliberately wrong escape decode changes the output; (c) corpus tokens stay identical (the equivalence half, satisfied by changing nothing, never sufficient alone). The subject is the string-literal escape path of the v1 tokenizer in src/v1/01_tokenize.dag: scan_string_body (which collects one-character pieces into acc: List<Int>) and process_escapes — read both before writing anything. (1) Create dag/test/claim/closing/frontend_escape_scan_construction_closing_contract_witness_test.dag, line 1 `module test.claim.closing.frontend_escape_scan_construction_closing_contract_witness_test`, live_tree_disposition SubstrateInputsOnly; imitate the ci_executed_coverage exemplar. (2) One test fn per clause: `a_mixed_non_ascii_literal_with_escapes_separates_the_implementations_by_cost` plants the discriminating literal and asserts the declared descent/cost shape separates; `a_wrong_escape_decode_changes_the_output` plants a wrong decode and asserts different output; `identical_literals_decode_identically` is the positive control. (3) Rebind `id: \"frontend-escape-scan-construction\"` in dag/gunbc/roadmap/roadmap_authority.dag via with_execution + gunbc_claim_execution_contract pointing at the cost-separation fn. (4) Acceptance: the named test process with pattern //dag/test/claim/closing:all, green.",
+    ),
+    nc(
+      id: "observation-scoped-run-seed-growth-justification-closing-contract",
+      plan: "Target: the closing check for node observation-scoped-run-seed-growth-justification, whose bar is: any new hand-written code for scoped-run progress outside the five named files, or without the plan, is refused. The five files and the plan are the node's own SeedGrowthJustification at gunbc.roadmap_authority observation_scoped_run_seed_growth_justification (hand_authored_declarations: v1_compiler.cli_run handle_run_with_options, capture_scoped_run_stderr, replay_scoped_run_stderr; current_boundary names the five files). (1) Create dag/test/claim/closing/observation_scoped_run_seed_growth_justification_closing_contract_witness_test.dag, line 1 `module test.claim.closing.observation_scoped_run_seed_growth_justification_closing_contract_witness_test`, live_tree_disposition SubstrateInputsOnly. (2) One test fn per clause over PLANTED justification values: `a_declaration_outside_the_named_five_is_refused` plants a hand_authored_declarations list carrying a sixth DeclarationRef and asserts the census refuses it; `a_declaration_without_the_plan_is_refused` plants an empty reason/trigger and asserts refusal; `the_named_declarations_with_the_plan_are_admitted` is the positive control over the real justification's own declarations. Read gunbc.roadmap_authority seed_growth_fields and the SeedGrowthJustification type before planting. (3) Rebind `id: \"observation-scoped-run-seed-growth-justification\"` via with_execution + gunbc_claim_execution_contract. (4) Acceptance: the named test process with pattern //dag/test/claim/closing:all, green.",
+    ),
+    nc(
+      id: "five-minute-ci-gate-closing-contract",
+      plan: "READ FIRST: the parent node five-minute-ci-gate is SUPERSEDED in dag/gunbc/roadmap/roadmap_authority.dag (a superseded(...) constructor, superseded by the 2026-08-15 floor cut and the re-cut row ci-required-run-cost). A superseded node states no red_control bar, the launch admission refuses it LaunchNodeSuperseded before any work, and binding an execution contract to it is meaningless — so the honest close of this task is NOT a witness over the deleted ci_floor artifacts (batch scheduler, scoped worker, discovery snapshot: all gone from the tree). Do this: (1) verify in your worktree that the row is still the superseded constructor naming ci-required-run-cost; (2) create dag/test/claim/closing/five_minute_ci_gate_closing_contract_witness_test.dag (module test.claim.closing.five_minute_ci_gate_closing_contract_witness_test) with planted fixtures over gunbc.roadmap_status item_superseded_by: one test fn `a_superseded_node_refuses_dispatch_as_superseded` plants a SupersededLine node and asserts the launch admission's node gate refuses node_superseded, and one test fn `the_supersession_names_a_live_successor` asserts the planted by-string resolves to a declared active row (identity join, never a count); (3) do NOT rebind the superseded row — the handback is the witness plus a recommendation to withdraw the derived task; (4) acceptance: the named test process, pattern //dag/test/claim/closing:all. If the row is NOT superseded in your worktree, stop and return with that finding.",
+    ),
+    nc(
+      id: "fleet-spark-host-enrollment-closing-contract",
+      plan: "READ FIRST: the parent node fleet-spark-host-enrollment is SUPERSEDED in dag/gunbc/roadmap/roadmap_authority.dag — by gunbc.fleet_intent_network srv5..srv12 identity and endpoint rows (#10512, #10517) and gunbc.spark.pair_serving_desired (#10540); what remains is fleet-spark-inference-serving. The Sparks are already enrolled, so a closing check over 'enrollment' closes nothing. Do this: (1) verify the superseded constructor and its by-text in your worktree; (2) create dag/test/claim/closing/fleet_spark_host_enrollment_closing_contract_witness_test.dag (module test.claim.closing.fleet_spark_host_enrollment_closing_contract_witness_test) with planted fixtures: one test fn `a_superseded_enrollment_node_refuses_dispatch` asserts item_superseded_by over the planted line is non-empty and the node gate refuses node_superseded, one test fn `the_enrollment_facts_live_in_the_named_successors` asserts the by-text names gunbc.fleet_intent_network and gunbc.spark.pair_serving_desired (planted string join, not a live-tree scan); (3) do NOT rebind the superseded row; the handback is the witness plus a withdrawal recommendation; (4) acceptance: the named test process, pattern //dag/test/claim/closing:all. If the row is not superseded in your worktree, stop and return.",
+    ),
+    nc(
+      id: "native-selected-witness-bundle-closing-contract",
+      plan: "READ FIRST: the parent node native-selected-witness-bundle is SUPERSEDED in dag/gunbc/roadmap/roadmap_authority.dag by the 2026-08-15 floor cut and the re-cut row ci-required-run-cost — the ci_floor plan, batch scheduler, scoped worker and discovery snapshot it optimized were deleted, and the required run is now one claim_executor --required-ci process. A closing check over the deleted bundle closes nothing. Do this: (1) verify the superseded constructor in your worktree; (2) create dag/test/claim/closing/native_selected_witness_bundle_closing_contract_witness_test.dag (module test.claim.closing.native_selected_witness_bundle_closing_contract_witness_test) with planted fixtures: one test fn `a_superseded_bundle_node_refuses_dispatch` asserts the planted SupersededLine refuses node_superseded at the launch admission node gate, one test fn `the_cost_bar_is_recut_at_ci_required_run_cost` asserts the planted by-string names ci-required-run-cost; (3) do NOT rebind the superseded row — handback is the witness plus a withdrawal recommendation; (4) acceptance: the named test process, pattern //dag/test/claim/closing:all. If the row is not superseded in your worktree, stop and return.",
+    ),
+    nc(
+      id: "roadmap-continuation-turn-label",
+      plan: "READ FIRST: this node is SIGNED OFF (accepted) in dag/gunbc/roadmap/roadmap_authority.dag — its row carries sign(...) with works: RedControlExecuted over test.claim.roadmap.roadmap_continuation_turn_label_witness_test the_turn_label_names_the_turn_and_the_cap, executed on main floor run 33999810591. The launch admission refuses an accepted node LaunchAlreadyAccepted before any other node-level gate, so a dispatch against this id should never have been admitted. If you were dispatched here anyway: (1) verify the row still carries the signed constructor and that dag/gunbc/roadmap/roadmap_attempt_continuation.dag still exports continuation_turn_label consumed by continuation_brief_prefix; (2) run the named test process with pattern //dag/test/claim/roadmap:roadmap_continuation_turn_label_witness_test and confirm green; (3) change nothing and return — the deliverable is the verification receipt, not a diff. This row is also the tree's exemplar of a bound row: its with_execution + gunbc_claim_execution_contract shape is what every closing-contract sibling imitates.",
+    ),
+    nc(
+      id: roadmap_launch_canary_parent_node_id() as String,
+      plan: "Synthetic canary of the launch admission (gunbc.roadmap_launch_canary): centering supplied so the admission's own admit-path witnesses traverse the centering gate exactly as a real node does. There is no work to do on this node; it exists so the page, the POST route and the belt tick can be witnessed end to end on a graph that touches no host.",
+    ),
+    nc(
+      id: roadmap_launch_canary_child_node_id() as String,
+      plan: "Synthetic canary follow-up (gunbc.roadmap_launch_canary): centered for the same reason as its parent — the dependency-gate witnesses admit this node once the parent is accepted, and that path must traverse the centering gate. No work to do.",
+    ),
+  ]
+}
+
+type NodeCenteringStanding
+  = CenteringPresent { plan: String }
+  | CenteringAbsent
+
+fn node_centering(node: RoadmapNode) -> NodeCenteringStanding {
+  match first(declared_node_centerings() |> filter(c => c.node == node.node)) {
+    Present { value: c } => CenteringPresent { plan: c.plan as String }
+    Absent => CenteringAbsent
+  }
+}
+
+// The brief renderer's spelling of the standing: the plan when present, and a loud marker when
+// not. A brief carrying the marker is never a dispatchable one — the gate refuses first — so the
+// marker exists for preview renders, and it says the refusal's name rather than mimicking a plan.
+fn node_centering_plan_text(node: RoadmapNode) -> String {
+  match node_centering(node: node) {
+    CenteringPresent { plan } => plan
+    CenteringAbsent => "NO CENTERING PLAN IS DECLARED FOR THIS NODE — dispatch refuses centering_absent until one is authored in gunbc.roadmap.roadmap_centering declared_node_centerings."
+  }
+}

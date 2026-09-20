@@ -186,6 +186,7 @@ test fn witness_dependency_gate_is_load_bearing() -> Bool {
     revision: ledger.revision,
     node: ledger.node,
     contract: ledger.contract,
+    centering: ledger.centering,
     dependencies: GatePassed,
     live: ledger.live,
     capacity: ledger.capacity,
@@ -218,6 +219,7 @@ test fn witness_mutating_a_passing_gate_changes_nothing() -> Bool {
     revision: ledger.revision,
     node: ledger.node,
     contract: ledger.contract,
+    centering: ledger.centering,
     dependencies: ledger.dependencies,
     live: ledger.live,
     capacity: GatePassed,
@@ -471,17 +473,18 @@ fn labels_distinct(labels: List<String>) -> Bool {
 
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 23 && labels_distinct(labels: labels)
+  count(labels) == 24 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
   let text = launch_admission_contract_text()
   let hex = launch_admission_contract_digest_hex()
-  string_contains(s: text, pattern: "gates=instance>transition>revision>node>contract>dependencies>live>capacity>cause")
+  string_contains(s: text, pattern: "gates=instance>transition>revision>node>contract>centering>dependencies>live>capacity>cause")
     && string_contains(s: text, pattern: "dependencies_blocked")
+    && string_contains(s: text, pattern: "centering_absent")
     && string_contains(s: text, pattern: "modes=paused,manual_ready,automatic_ready")
     && string_length(s: hex) == 16
-    && count(launch_gate_names()) == 9
+    && count(launch_gate_names()) == 10
 }
 
 // Controls for the four production-boundary findings of review 5059520727 on #9696, each enrolled
@@ -497,6 +500,10 @@ test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
 // identity (node, mode, instance, revision), differing only in cause; the route's JSON and the
 // durable tick receipt carry it whole and the receipt round-trips.
 
+// The capacity witnesses need three admission-eligible nodes; the centering gate (2026-09-19)
+// admits only ids present in gunbc.roadmap.roadmap_centering declared_node_centerings, so the
+// three reuse the two canary ids and the one real centered node id rather than minting fixture
+// ids the roster would have to name.
 fn rlm_ready_node(id: String) -> RoadmapNode {
   canary_node(
     identity: roadmap_launch_canary_parent_identity,
@@ -506,8 +513,12 @@ fn rlm_ready_node(id: String) -> RoadmapNode {
   )
 }
 
+fn rlm_centered_ids() -> List<String> {
+  [parent_id(), child_id(), "roadmap-continuation-turn-label"]
+}
+
 fn rlm_three_ready() -> List<RoadmapNode> {
-  [ rlm_ready_node(id: "rlm-a"), rlm_ready_node(id: "rlm-b"), rlm_ready_node(id: "rlm-c") ]
+  rlm_centered_ids() |> map(id => rlm_ready_node(id: id))
 }
 
 fn rlm_three_graph() -> LaunchGraphStanding {
@@ -546,8 +557,8 @@ test fn witness_three_candidates_one_slot_all_reach_admission() -> Bool {
     merged: [],
   )
   count(ds) == 3
-    && (match nth(ds: ds, n: 0) { Present { value: d } => decision_admits_node(d: d, id: "rlm-a") Absent => false })
-    && (match nth(ds: ds, n: 1) { Present { value: d } => decision_withheld_as(d: d, id: "rlm-b", label: "no_capacity") Absent => false })
+    && (match nth(ds: ds, n: 0) { Present { value: d } => decision_admits_node(d: d, id: parent_id()) Absent => false })
+    && (match nth(ds: ds, n: 1) { Present { value: d } => decision_withheld_as(d: d, id: child_id(), label: "no_capacity") Absent => false })
     && (match nth(ds: ds, n: 2) {
       Present { value: d } =>
         match d {
@@ -842,7 +853,7 @@ test fn witness_contract_binds_the_session_boundary() -> Bool {
   let reclassified = launch_contract_text_of_rows(rows: rows |> map(row => if row.gate == "dependencies" { flip_stage(row: row) } else { row }))
   let reordered = launch_contract_text_of_rows(rows: concat(rows.skip(n: 1), rows.take(n: 1)))
   canonical == launch_admission_contract_text()
-    && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,contract,dependencies;session=live,capacity,cause")
+    && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,contract,centering,dependencies;session=live,capacity,cause")
     && reclassified != canonical
     && reordered != canonical
 }

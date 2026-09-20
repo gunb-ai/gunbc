@@ -6436,6 +6436,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchReviewRequired => BandFail
     LaunchSizeMissing => BandFail
     LaunchExecutionContractMissing { reason: _ } => BandFail
+    LaunchCenteringAbsent => BandFail
     LaunchNotAgentWork { mode: _ } => BandFail
     LaunchDependenciesBlocked { blockers: _ } => BandFail
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail

@@ -17,6 +17,7 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
+import gunbc.roadmap.roadmap_centering { node_centering, CenteringPresent, CenteringAbsent }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
 import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
@@ -218,6 +219,7 @@ type LaunchRefusal
   | LaunchReviewRequired
   | LaunchSizeMissing
   | LaunchExecutionContractMissing { reason: String }
+  | LaunchCenteringAbsent
   | LaunchNotAgentWork { mode: NonAgentWorkMode }
   | LaunchDependenciesBlocked { blockers: List<String> }
   | LaunchSessionsUnobservable { reason: String }
@@ -259,6 +261,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "review_required"
     LaunchSizeMissing => "size_missing"
     LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
+    LaunchCenteringAbsent => "centering_absent"
     LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
     LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
@@ -285,6 +288,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
     LaunchSizeMissing => "node is unsized; a launch needs intricacy, volume, repo and acceptance"
     LaunchExecutionContractMissing { reason } => reason
+    LaunchCenteringAbsent => "node declares no centering plan in gunbc.roadmap.roadmap_centering declared_node_centerings; centering is supplied at dispatch, never derived by the worker"
     LaunchNotAgentWork { mode } =>
       join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
@@ -312,6 +316,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchReviewRequired,
     LaunchSizeMissing,
     LaunchExecutionContractMissing { reason: "r" },
+    LaunchCenteringAbsent,
     LaunchNotAgentWork { mode: OperatorExclusiveMode },
     LaunchNotAgentWork { mode: ExternalLeadMode },
     LaunchNotAgentWork { mode: CalendarObservationMode },
@@ -499,6 +504,7 @@ type LaunchGateLedger {
   revision: LaunchGateVerdict
   node: LaunchGateVerdict
   contract: LaunchGateVerdict
+  centering: LaunchGateVerdict
   dependencies: LaunchGateVerdict
   live: LaunchGateVerdict
   capacity: LaunchGateVerdict
@@ -536,6 +542,7 @@ fn launch_gate_template() -> List<LaunchGateRow> {
     revision: GateNotReached,
     node: GateNotReached,
     contract: GateNotReached,
+    centering: GateNotReached,
     dependencies: GateNotReached,
     live: GateNotReached,
     capacity: GateNotReached,
@@ -591,6 +598,7 @@ fn launch_ledger_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
     LaunchGateRow { gate: "revision", stage: PreSessionGate, verdict: l.revision },
     LaunchGateRow { gate: "node", stage: PreSessionGate, verdict: l.node },
     LaunchGateRow { gate: "contract", stage: PreSessionGate, verdict: l.contract },
+    LaunchGateRow { gate: "centering", stage: PreSessionGate, verdict: l.centering },
     LaunchGateRow { gate: "dependencies", stage: PreSessionGate, verdict: l.dependencies },
     LaunchGateRow { gate: "live", stage: SessionGate, verdict: l.live },
     LaunchGateRow { gate: "capacity", stage: SessionGate, verdict: l.capacity },
@@ -755,6 +763,17 @@ fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
   }
 }
 
+// CENTERING IS CHECKED AS A NODE FACT, beside size and contract and before dependencies: a node
+// whose plan is absent from gunbc.roadmap.roadmap_centering declared_node_centerings refuses with
+// the typed CenteringAbsent cause. The gate reads the one roster; it never inspects the plan's
+// content, which is the worker's centering, not the admission's.
+fn launch_gate_centering(node: RoadmapNode) -> LaunchGateVerdict {
+  match node_centering(node: node) {
+    CenteringPresent { plan: _ } => GatePassed
+    CenteringAbsent => GateRefused { refusal: LaunchCenteringAbsent }
+  }
+}
+
 fn launch_gate_dependencies(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> LaunchGateVerdict {
   let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: node.node)
   if count(unmet) == 0 {
@@ -884,6 +903,7 @@ fn launch_facts_unreached_after_instance(refusal: LaunchRefusal) -> LaunchDecisi
       revision: GateNotReached,
       node: GateNotReached,
       contract: GateNotReached,
+      centering: GateNotReached,
       dependencies: GateNotReached,
       live: GateNotReached,
       capacity: GateNotReached,
@@ -954,6 +974,7 @@ fn launch_decision_facts(
               revision: GateNotReached,
               node: GateNotReached,
               contract: GateNotReached,
+              centering: GateNotReached,
               dependencies: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
@@ -969,6 +990,7 @@ fn launch_decision_facts(
               revision: GateRefused { refusal: refusal },
               node: GateNotReached,
               contract: GateNotReached,
+              centering: GateNotReached,
               dependencies: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
@@ -989,6 +1011,7 @@ fn launch_decision_facts(
               revision: launch_gate_revision(revision: revision),
               node: GateRefused { refusal: refusal },
               contract: GateNotReached,
+              centering: GateNotReached,
               dependencies: GateNotReached,
               live: GateNotReached,
               capacity: GateNotReached,
@@ -1004,6 +1027,7 @@ fn launch_decision_facts(
               revision: launch_gate_revision(revision: revision),
               node: launch_gate_node_state(node: node, merged: merged),
               contract: launch_gate_contract(node: node),
+              centering: launch_gate_centering(node: node),
               dependencies: launch_gate_dependencies(node: node, nodes: nodes, edges: edges),
               live: launch_gate_live(sessions: sessions, node_id: node_id),
               capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),

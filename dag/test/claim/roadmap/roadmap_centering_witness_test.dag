@@ -1,0 +1,236 @@
+module test.claim.roadmap.roadmap_centering_witness_test
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_status { Unsigned }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_canary {
+  roadmap_launch_canary_parent_identity, roadmap_launch_canary_execution_contract,
+  roadmap_launch_canary_parent_node_id,
+}
+import gunbc.roadmap.roadmap_centering {
+  NodeCentering, declared_node_centerings, dispatch_centering_preamble,
+  node_centering, node_centering_plan_text, CenteringPresent, CenteringAbsent,
+}
+import gunbc.roadmap_launch_admission {
+  LaunchCause, Operator,
+  LaunchRefusal, LaunchCenteringAbsent, LaunchAdmission, LaunchAdmitted, LaunchRefused,
+  launch_admission, launch_refusal_label, launch_refusal_reason,
+  LaunchGraphStanding, launch_graph_of_document,
+  LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
+  LaunchGateLedger, LaunchDecisionFacts, launch_decision_facts, launch_admission_of_facts,
+}
+import gunbc.roadmap_dispatch_actuator {
+  DispatchBriefFields, dispatch_brief_with_centering,
+}
+import test.claim.roadmap_launch_canary_witness { canary_node, canary_doc }
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The centering dispatch requirement (operator ruling 2026-09-19), each clause on a PLANTED
+// input: (1) a node with no roster row refuses launch with the typed centering_absent cause, and
+// the gate is the load-bearing one — the same ledger with the centering verdict replaced by
+// GatePassed admits; (2) a rostered node passes the gate and admits; (3) every brief assembled by
+// dispatch_brief_with_centering carries the shared preamble EXACTLY ONCE and the node's plan; (4)
+// the seven experiment node ids each have a roster row whose plan renders into that node's brief,
+// and each id resolves against the authority — the six derived closing-contract ids by their
+// parent row, the seventh directly. Fixtures are constructed here; nothing reads a live host.
+
+fn uncentered_node() -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_parent_identity,
+    id: "centering-fixture-uncentered" as NonEmptyStr as RoadmapNodeId,
+    execution: roadmap_launch_canary_execution_contract(),
+    signoff: Unsigned,
+  )
+}
+
+fn centered_node() -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_parent_identity,
+    id: roadmap_launch_canary_parent_node_id(),
+    execution: roadmap_launch_canary_execution_contract(),
+    signoff: Unsigned,
+  )
+}
+
+fn graph_of(n: RoadmapNode) -> LaunchGraphStanding {
+  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []))
+}
+
+test fn a_node_without_centering_refuses_dispatch_with_the_typed_cause() -> Bool {
+  match launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph_of(n: uncentered_node()),
+    merged: [],
+    node_id: "centering-fixture-uncentered",
+    reserved: 0,
+  ) {
+    LaunchRefused { refusal } =>
+      launch_refusal_label(r: refusal) == "centering_absent"
+        && (match refusal {
+          LaunchCenteringAbsent => string_contains(s: launch_refusal_reason(r: refusal), pattern: "declared_node_centerings")
+          _ => false
+        })
+    LaunchAdmitted { identity: _ } => false
+  }
+}
+
+// The mutation control: the centering gate is the load-bearing one over otherwise-admissible
+// facts — replacing its verdict with GatePassed admits, and the unmutated facts refuse.
+test fn the_centering_gate_is_load_bearing() -> Bool {
+  let facts = launch_decision_facts(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph_of(n: uncentered_node()),
+    merged: [],
+    node_id: "centering-fixture-uncentered",
+    reserved: 0,
+  )
+  let ledger = facts.ledger
+  let mutated = LaunchDecisionFacts { ledger: LaunchGateLedger {
+    instance: ledger.instance,
+    transition: ledger.transition,
+    revision: ledger.revision,
+    node: ledger.node,
+    contract: ledger.contract,
+    centering: GatePassed,
+    dependencies: ledger.dependencies,
+    live: ledger.live,
+    capacity: ledger.capacity,
+    cause: ledger.cause,
+  }, identity: facts.identity }
+  (match ledger.centering {
+    GateRefused { refusal } => launch_refusal_label(r: refusal) == "centering_absent"
+    _ => false
+  })
+    && (match launch_admission_of_facts(f: facts) {
+      LaunchRefused { refusal } => launch_refusal_label(r: refusal) == "centering_absent"
+      LaunchAdmitted { identity: _ } => false
+    })
+    && (match launch_admission_of_facts(f: mutated) {
+      LaunchAdmitted { identity: _ } => true
+      LaunchRefused { refusal: _ } => false
+    })
+}
+
+test fn a_node_with_centering_admits() -> Bool {
+  match node_centering(node: centered_node()) {
+    CenteringAbsent => false
+    CenteringPresent { plan } =>
+      plan != ""
+        && (match launch_admission(
+          cause: Operator,
+          standing: launch_fixture_standing_clear(mode: ManualReady),
+          graph: graph_of(n: centered_node()),
+          merged: [],
+          node_id: roadmap_launch_canary_parent_node_id() as String,
+          reserved: 0,
+        ) {
+          LaunchAdmitted { identity: _ } => true
+          LaunchRefused { refusal: _ } => false
+        })
+  }
+}
+
+fn fixture_fields() -> DispatchBriefFields {
+  DispatchBriefFields {
+    node_id: "fixture-node",
+    displaced_cost: "dc",
+    current_state: "cs",
+    first_slice: "fs",
+    red_control: "rc",
+    out_of_scope: "oos",
+    handback: "hb",
+    paths: "p",
+    commands_to_run: "c",
+    expected_artifact: "ea",
+  }
+}
+
+// count(split(s, x)) == 2 exactly when x occurs exactly once in s.
+fn occurs_exactly_once(s: String, x: String) -> Bool {
+  count(split(s: s, delimiter: x)) == 2
+}
+
+fn brief_for(n: RoadmapNode) -> String {
+  dispatch_brief_with_centering(node: n, fields: fixture_fields())
+}
+
+// ANTI-BYPASS (owner review, 2026-09-19): the gate is not a presence flag — the launch admission's
+// centering gate and the dispatched brief read ONE projection (node_centering), so the plan whose
+// existence admits the node is the same string the worker receives. This claim pins the tie: the
+// plan the gate sees is contained in the brief, and the roster's marker text is the only other
+// thing node_centering_plan_text can render.
+test fn the_plan_that_admits_is_the_plan_the_brief_carries() -> Bool {
+  match node_centering(node: centered_node()) {
+    CenteringAbsent => false
+    CenteringPresent { plan } =>
+      node_centering_plan_text(node: centered_node()) == plan
+        && string_contains(s: brief_for(n: centered_node()), pattern: plan)
+  }
+}
+
+test fn the_brief_carries_the_shared_preamble_exactly_once_and_the_nodes_plan() -> Bool {
+  let brief = brief_for(n: centered_node())
+  occurs_exactly_once(s: brief, x: dispatch_centering_preamble)
+    && (match node_centering(node: centered_node()) {
+      CenteringAbsent => false
+      CenteringPresent { plan } => string_contains(s: brief, pattern: plan)
+    })
+}
+
+test fn the_brief_marks_an_uncentered_node_loudly() -> Bool {
+  string_contains(s: brief_for(n: uncentered_node()), pattern: "NO CENTERING PLAN IS DECLARED FOR THIS NODE")
+}
+
+// THE SEVEN EXPERIMENT ROWS, planted: each id has a roster row, the row's plan renders into a
+// brief for that node, and the id resolves against the roadmap authority — the six derived
+// closing-contract task ids by their parent row (the derived id is the parent id plus the
+// -closing-contract suffix, per gunbc.roadmap_authority closing_contract_task_for), the seventh
+// directly.
+data experiment_node_ids: List<String> = [
+  "five-minute-ci-gate-closing-contract",
+  "fleet-spark-host-enrollment-closing-contract",
+  "fleet-state-frontier-closing-contract",
+  "frontend-escape-scan-construction-closing-contract",
+  "native-selected-witness-bundle-closing-contract",
+  "observation-scoped-run-seed-growth-justification-closing-contract",
+  "roadmap-continuation-turn-label",
+]
+
+fn roster_row_for(id: String) -> NodeCentering? {
+  first(declared_node_centerings() |> filter(c => (c.node as String) == id))
+}
+
+fn id_resolves_against_authority(id: String) -> Bool {
+  let parent = id.replace(from: "-closing-contract", to: "")
+  declared_roadmap_nodes() |> any(n => (n.node as String) == parent)
+}
+
+fn experiment_row_centered(id: String) -> Bool {
+  match roster_row_for(id: id) {
+    Absent => false
+    Present { value: row } =>
+      string_contains(
+        s: brief_for(n: canary_node(
+          identity: roadmap_launch_canary_parent_identity,
+          id: id as NonEmptyStr as RoadmapNodeId,
+          execution: roadmap_launch_canary_execution_contract(),
+          signoff: Unsigned,
+        )),
+        pattern: row.plan as String,
+      )
+  }
+}
+
+test fn the_seven_experiment_nodes_are_centered_and_resolve_and_render() -> Bool {
+  count(experiment_node_ids) == 7
+    && all(experiment_node_ids, id => experiment_row_centered(id: id))
+    && all(experiment_node_ids, id => id_resolves_against_authority(id: id))
+    && all(experiment_node_ids, id => string_length(s: id) > 0)
+}

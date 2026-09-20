@@ -141,7 +141,10 @@ fn rlm_workflow_file_path() -> String {
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
-data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
+// The pin moves only with an intentional admission-contract change in the same commit, which is
+// the drift check working rather than bypassed: 2026-09-19 re-pinned for the `centering` gate
+// (launch_admission_contract_text gains the gate and the centering_absent refusal arm).
+data rlm1_contract_digest_frozen: String = "7bcb9aaf9a17d274"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."

@@ -409,7 +409,7 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 // state, the same idempotent-success fold the CLI exit map uses); LaunchNoActuatingInstance and
 // LaunchInstanceActuationRefused = 403 (no actuating instance stands behind the request);
 // LaunchNodeUnknown = 404; the state conflicts (superseded, accepted, review-only, unsized,
-// contract missing, dependencies blocked, stale or conflicting session, capacity, cause not
+// contract missing, centering absent, dependencies blocked, stale or conflicting session, capacity, cause not
 // permitted by mode) = 409, retryable only after the state changes; the observation refusals
 // (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
 // unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
@@ -427,6 +427,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchReviewRequired => 409
     LaunchSizeMissing => 409
     LaunchExecutionContractMissing { reason: _ } => 409
+    LaunchCenteringAbsent => 409
     LaunchNotAgentWork { mode: _ } => 409
     LaunchDependenciesBlocked { blockers: _ } => 409
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
