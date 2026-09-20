@@ -330,7 +330,7 @@ test fn two_refused_hosts_are_both_retained() -> Bool {
   let p = RunnerDeploymentPlan {
     hosts: [
       refused_fixture(host: operator_host_srv2, cause: SessionReservationUnestablished { cause: "fixture: srv2 denominator unestablished" }),
-      refused_fixture(host: operator_host_srv4, cause: ZeroRunnerWidth { cause: "fixture: srv4 zero width" }),
+      refused_fixture(host: operator_host_srv4, cause: ZeroRunnerWidth),
     ],
   }
   let refused = plan_refused_hosts(p: p)

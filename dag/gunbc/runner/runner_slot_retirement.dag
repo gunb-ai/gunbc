@@ -15,12 +15,12 @@ import gunbc.runner_slot_allocation {
   srv3_fabric_second_slot,
   srv4_fabric_first_slot,
   srv4_fabric_second_slot,
-  RunnerSlotIdentity,
   gunbc_runner_committed_width,
   RunnerWidthDerived,
   RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
