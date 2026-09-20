@@ -28,7 +28,7 @@ module gunbc.compiler_gate_workflow
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map }
-import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -38,7 +38,7 @@ import extdeps.github.actions {
   github_event_name_pull_request
 }
 import gunbc.action_use_admission {
-  checkout_action,
+  checkout_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason
 }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
@@ -58,8 +58,38 @@ import gunbc.witness_floor_workflow {
   WitnessFloorConcurrencyPolicy, ReplaceExistingPending, SupersedeRunningForEvent,
   witness_floor_toolchain_step,
   witness_floor_build_step,
+  witness_floor_required_bins,
+  witness_floor_run_script,
+  witness_floor_precondition,
+  witness_toolchain_homes_isolated_guard_step,
+  witness_step_status_guard,
+  malloc_arena_max_env_key, malloc_arena_max_value,
+  expected_red_roster_join_path,
+  required_floor_disposition_path,
+  long_home_storage_agreement_path,
+  required_floor_claim_cost_path,
+  required_floor_cross_claim_demand_path,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
+import gunbc.ci_spec {
+  gunbc_ci_generated_artifact_verify_invoke,
+  gunbc_ci_generated_artifact_regen_verified_invoke,
+  gunbc_ci_heal_repair_declaration_invoke,
+  gunbc_ci_heal_candidate_invoke
+}
+import gunbc.heal_candidate {
+  heal_candidate_directory,
+  heal_candidate_repository_env,
+  heal_candidate_pull_number_env,
+  heal_candidate_head_ref_env,
+  heal_candidate_base_ref_env,
+  heal_candidate_run_id_env
+}
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+// The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
+import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
@@ -248,6 +278,316 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // A lane that did not conclude success is a refusal, including skipped and cancelled, and the
 // verdict distinguishes a RED lane from one that produced NO CONCLUSION: those are different facts
 // and only the first is a statement about the diff.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE FLEET LANE. The hosted lanes above build and lint, which a 16 GB runner can do; the work below
+// cannot run there at all. Measured 2026-09-19: the witnesses fold peaks at 20.2 GiB and the
+// generated-artifact pass at 12.9 GiB, against 16 GB on a standard hosted runner, and the fold's
+// memory barely moves with the roster because discovery reads the whole corpus (6,182 sources,
+// 21,240 rows) whatever the roster selects. So this lane runs on the fleet, where a slot carries
+// 26 GiB.
+//
+// WHAT IT IS FOR, stated because a build-only gate already cost this repository three things in one
+// night: witnesses.yml lost the contract epoch and fleet-desired refused eight pushes; two typecheck
+// errors landed that regeneration refuses; and three generated artifacts drifted unobserved. A gate
+// that builds and lints cannot see any of them. This lane restores the two verdicts that can: the
+// claims, and whether the committed generated artifacts match their authorities.
+//
+// THE DRIFT GATE IS THE MERGE BLOCKER, and the repair runs only where it refused, so an ordinary
+// push pays the gate once (6.3 min) and skips the repair's three invocations (16 min) entirely --
+// where heal paid all four on every push.
+data compiler_gate_floor_job_id: String = "floor"
+data compiler_gate_floor_timeout_minutes: Int = 90
+data compiler_gate_floor_build_step_name: String = "Build the compiler and the witness executor"
+data compiler_gate_drift_step_id: String = "generated_artifact_gate"
+data compiler_gate_repair_declaration_step_id: String = "repair_declaration"
+data compiler_gate_repair_regen_step_id: String = "repair_regen"
+data compiler_gate_candidate_step_id: String = "repair_candidate"
+data compiler_gate_candidate_retention_days: Int = 3
+
+// FORK CODE DOES NOT RUN ON THE FLEET. heal carried these clauses and this lane took heal's work,
+// and the checkout below is an attacker-authored head sha on a runner that persists between jobs.
+// The guard is scoped to pull_request events: merge_group and workflow_dispatch carry no
+// pull_request context, so unscoped clauses would read null and SKIP this lane -- and a skipped
+// required lane never reports, which stalls the merge queue for good. The repository's Actions
+// policy already requires approval for all external contributors; this is the second wall.
+fn compiler_gate_floor_job_condition() -> String {
+  join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
+}
+
+// DEPENDABOT IS DECLINED BY THE REPAIR, NOT BY THE LANE, and the distinction is a deadlock this
+// nearly shipped with. heal excluded dependabot because heal PUSHES to the head branch, which is
+// dependabot's to manage; the FOLD and the drift gate push nothing, and a dependabot pull request
+// that merges without them is exactly the unobserved head this lane exists to prevent. Skipping the
+// whole lane would also have hung those pull requests forever: dependabot's head repository IS this
+// repository, so the aggregator's fork carve-out below does not cover it and it would reach the
+// error branch on a lane that never ran.
+fn compiler_gate_repair_actor_clause() -> String {
+  concat(" && ", heal_not_dependabot_clause)
+}
+
+// The candidate must describe the pull request head, not the merge result, or a repair would carry
+// main's content into the branch. On merge_group and dispatch the expression is empty and checkout
+// falls back to the triggering ref.
+fn compiler_gate_floor_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the commit this lane judges" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "fetch-depth", value: yaml_int(n: 0)),
+        kv(key: "ref", value: yaml_string(s: "${{ github.event.pull_request.head.sha }}")),
+        kv(key: "persist-credentials", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The floor's own step carries continue-on-error so a separate aggregate could adjudicate its
+// receipt; here a refused claim refuses the lane.
+fn compiler_gate_floor_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Nominal witnesses (one prepared subject, one fold)" },
+    id: Present { value: "required_ci_measure" },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_drift_step() -> Step {
+  RunStep {
+    name: Present { value: "Generated artifacts match their authorities" },
+    id: Present { value: compiler_gate_drift_step_id },
+    run: concat(gunbc_ci_generated_artifact_verify_invoke(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'") },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_repair_condition() -> String {
+  concat(
+    concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'")),
+    compiler_gate_repair_actor_clause()
+  )
+}
+
+fn compiler_gate_step_succeeded_clause(step_id: String) -> String {
+  concat(" && steps.", concat(step_id, ".outcome == 'success'"))
+}
+
+// EVERY REPAIR LINK REQUIRES ITS PREDECESSOR. main_wet writes artifact by artifact, so a
+// regeneration that refuses partway leaves a partially rewritten tree, and a declaration that
+// refused leaves the candidate's ledger trailers unwritten. Either sealed and pushed is a repair
+// nothing judged, and the publisher admits a failed producing run by design.
+fn compiler_gate_regen_condition() -> String {
+  concat(compiler_gate_repair_condition(),
+    compiler_gate_step_succeeded_clause(step_id: compiler_gate_repair_declaration_step_id))
+}
+
+fn compiler_gate_seal_condition() -> String {
+  concat(compiler_gate_regen_condition(),
+    compiler_gate_step_succeeded_clause(step_id: compiler_gate_repair_regen_step_id))
+}
+
+fn compiler_gate_upload_condition() -> String {
+  concat(compiler_gate_seal_condition(),
+    compiler_gate_step_succeeded_clause(step_id: compiler_gate_candidate_step_id))
+}
+
+fn compiler_gate_repair_declaration_step() -> Step {
+  RunStep {
+    name: Present { value: "Declare which ledger rows this repair covers" },
+    id: Present { value: compiler_gate_repair_declaration_step_id },
+    run: gunbc_ci_heal_repair_declaration_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_repair_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_regen_step() -> Step {
+  RunStep {
+    name: Present { value: "Regenerate every committed generated artifact, then verify the tree it wrote" },
+    id: Present { value: compiler_gate_repair_regen_step_id },
+    run: concat(gunbc_ci_generated_artifact_regen_verified_invoke(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_regen_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_candidate_step() -> Step {
+  RunStep {
+    name: Present { value: "Produce the sealed repair candidate" },
+    id: Present { value: compiler_gate_candidate_step_id },
+    run: gunbc_ci_heal_candidate_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ github.event.pull_request.number }}")),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.head.ref }}")),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.ref }}")),
+        kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_seal_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_candidate_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the sealed repair candidate" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: compiler_gate_candidate_retention_days))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: compiler_gate_upload_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_floor_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout the commit this lane judges",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_build_step(
+        step_name: compiler_gate_floor_build_step_name,
+        build_script: repo_self_build_command(bins: witness_floor_required_bins),
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_floor_build_step_name,
+    },
+    CompilerGateBoundStep {
+      step: witness_toolchain_homes_isolated_guard_step(),
+      role: capability_neutral,
+      step_name: "Require isolated toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_floor_run_step(),
+      role: consumes_only(capabilities: [RustfmtCapability]),
+      step_name: "Nominal witnesses (one prepared subject, one fold)",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_drift_step(),
+      role: capability_neutral,
+      step_name: "Generated artifacts match their authorities",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_repair_declaration_step(),
+      role: capability_neutral,
+      step_name: "Declare which ledger rows this repair covers",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_regen_step(),
+      role: capability_neutral,
+      step_name: "Regenerate every committed generated artifact, then verify the tree it wrote",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_step(),
+      role: capability_neutral,
+      step_name: "Produce the sealed repair candidate",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload the sealed repair candidate",
+    },
+  ]
+}
+
+fn compiler_gate_floor_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_floor_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn compiler_gate_floor_scripts_are_renderable() -> Bool {
+  wrap_command_is_renderable(command: witness_floor_run_script())
+    && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
+}
+
+fn compiler_gate_floor_job() -> Job {
+  Job {
+    id: compiler_gate_floor_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: compiler_gate_floor_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: Present {
+      value: [
+        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
+        kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
+        kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
+        kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
+        kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
+        kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path))
+      ]
+    },
+    outputs: none,
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    timeout_minutes: Present { value: compiler_gate_floor_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
+  }
+}
+
 data compiler_gate_aggregate_job_id: String = "witnesses"
 
 fn compiler_gate_aggregate_step() -> Step {
@@ -255,14 +595,17 @@ fn compiler_gate_aggregate_step() -> Step {
     name: Present { value: "Every required lane must have succeeded" },
     id: none,
     run: join([
-      "echo \"required lanes: compiler=$COMPILER clippy=$CLIPPY\"",
-      "if [ \"$COMPILER\" = failure ] || [ \"$CLIPPY\" = failure ]; then echo \"::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log\" >&2; exit 1; fi",
-      "if [ \"$COMPILER\" != success ] || [ \"$CLIPPY\" != success ]; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)\" >&2; exit 1; fi"
+      "echo \"required lanes: compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR (same_repo=$SAME_REPO)\"",
+      "if [ \"$COMPILER\" = failure ] || [ \"$CLIPPY\" = failure ] || [ \"$FLOOR\" = failure ]; then echo \"::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log\" >&2; exit 1; fi",
+      "if [ \"$COMPILER\" != success ] || [ \"$CLIPPY\" != success ]; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)\" >&2; exit 1; fi",
+      "if [ \"$FLOOR\" != success ]; then if [ \"$SAME_REPO\" = false ] && [ \"$FLOOR\" = skipped ]; then echo \"::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head\"; else echo \"::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict\"; exit 1; fi; fi"
     ], "\n"),
     shell: none,
     env: Present { value: [
       kv(key: "COMPILER", value: yaml_string(s: "${{ needs.compiler.result }}")),
-      kv(key: "CLIPPY", value: yaml_string(s: "${{ needs.clippy.result }}"))
+      kv(key: "CLIPPY", value: yaml_string(s: "${{ needs.clippy.result }}")),
+      kv(key: "FLOOR", value: yaml_string(s: "${{ needs.floor.result }}")),
+      kv(key: "SAME_REPO", value: yaml_string(s: "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}"))
     ] },
     working_directory: none,
     if_condition: none,
@@ -277,7 +620,7 @@ fn compiler_gate_aggregate_job() -> Job {
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     steps: [compiler_gate_aggregate_step()],
-    needs: [compiler_gate_job_id, compiler_gate_clippy_job_id],
+    needs: [compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_floor_job_id],
     env: none,
     outputs: none,
     if_condition: Present { value: "always()" },
@@ -325,7 +668,7 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_floor_job(), compiler_gate_aggregate_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
@@ -339,7 +682,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() {
+          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }
