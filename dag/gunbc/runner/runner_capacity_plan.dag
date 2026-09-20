@@ -22,6 +22,7 @@ import gunbc.fleet_runner_connectivity {
   RegistrationNamesNoCommittedSlot,
   decode_registration_slot,
   SlotConnectivityDetached,
+  SlotConnectivityLabelsDiverge,
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
 }
@@ -49,10 +50,10 @@ import gunbc.runner_slot_allocation {
 // plan can never add one. Additions are the desired members not represented by the OBSERVED GitHub
 // population, which is now DECODED FROM THE ROSTER by observed_github_slot_identities rather than
 // synthesized as a dense local prefix — the previous form measured local systemd incarnations and
-// handed them to a check about GitHub registrations, two populations behind one name. The remaining
-// rung is one layer further out and is a different fact: organization_runner_roster_evidence is a
-// declared Scaffold returning the pinned 2026-08-06 incident corpus, so the decode is real and
-// total while the observation it decodes is still a constant. Recorded in
+// handed them to a check about GitHub registrations, two populations behind one name. The observation
+// it decodes is the live organization read, gunbc.fleet.organization_runner_roster_read
+// organization_runner_roster_live_read, at both production call sites; a caller without the
+// org-admin credential receives RosterReadUnavailable and the plan refuses. Recorded in
 // slot_enumeration_narrow_class_note. The admission ceiling DERIVES from
 // gunbc.runner_slot_allocation rather than restating it, so a width no host is admitted to carry is
 // refused instead of admitted and left unfulfilled. The plan is not a circular controller that
@@ -117,13 +118,11 @@ data slot_enumeration_narrow_class_note: String = "ERROR CLASS: A PLANNER'S ENUM
 // not staleness but CATEGORY: local systemd incarnations were standing in for GitHub registrations,
 // two populations behind one name, undetectable because both are lists of slot identities.
 //
-// THIS DECODES AN OBSERVATION THAT IS NOT YET AN OBSERVATION, AND SAYING SO HERE IS THE OBLIGATION.
-// The roster reaching this function comes from organization_runner_roster_evidence, a declared
-// Scaffold returning the pinned 2026-08-06 incident corpus. So the planner does NOT observe GitHub
-// today; it decodes a constant, correctly. That is worth landing -- a correct decoder over a fixture
-// becomes a correct decoder over reality on the day the producer lands, and the category error is
-// closed either way -- but a reader who takes "the planner observes GitHub" from this code will be
-// wrong until that Scaffold dissolves. The gap count went from two to one, not from one to zero.
+// THIS DECODES A LIVE OBSERVATION WHERE THE CALLER HOLDS THE CREDENTIAL, AND NOTHING WHERE IT DOES
+// NOT. The roster reaching this function in production is gunbc.fleet.organization_runner_roster_read
+// organization_runner_roster_live_read: the paginated org read under the in-run gunbai-ci installation
+// token, or RosterReadUnavailable without it. The 2026-08-06 incident corpus survives only as the
+// witness fixture gunbc.fleet_runner_connectivity incident_2026_08_06_roster_fixture.
 //
 // AND THE NAME FORK BELOW IS A PRECONDITION FOR THAT DAY, NOT AN ADJACENT TIDY-UP. Against a fixture
 // whose names were authored to match, three name builders agreeing is trivially true. Against a live
@@ -232,6 +231,13 @@ fn connectivity_replace_action(
             value: RunnerIncarnationReplace {
               slot: s,
               cause: "GitHub registration offline while local unit remains active"
+            }
+          }
+        SlotConnectivityLabelsDiverge { slot: s, registration_id: _ } =>
+          Present {
+            value: RunnerIncarnationReplace {
+              slot: s,
+              cause: "GitHub registration online under labels other than runner_registration_labels for its host"
             }
           }
         SlotConnectivityOrphaned { slot: s } =>

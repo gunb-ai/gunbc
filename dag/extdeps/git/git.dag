@@ -715,6 +715,13 @@ fn git_pathspec_exclude(path: String) -> String {
   concat(":(exclude)", path)
 }
 
+// The long-form magic word `literal` (gitglossary(7) 'pathspec'): the rest of the word is matched as
+// the exact path, with no glob character carrying its wildcard meaning, so a pathspec built from a
+// file path names that file and nothing a pattern reading of it would also select.
+fn git_pathspec_literal(path: String) -> String {
+  concat(":(literal)", path)
+}
+
 // Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
 fn git_argv_of_args(args: List<String>) -> List<String> {
   concat(["git"], args)
@@ -1396,6 +1403,21 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
+  }
+
+  operation LsFilesStageZPathspecInRepo {
+    input { repo: FilePath, pathspec: String }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-z", "--stage", "--", "{pathspec}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
   }
 
   operation LsFilesStageZInRepo {

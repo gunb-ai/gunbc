@@ -1,0 +1,201 @@
+module test.claim.heal_candidate_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import std.types { String, NonEmptyStr, Bool }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import extdeps.git.object_store {
+  GitObjectId, GitSha1ObjectId, GitRegularBlobMode, GitExecutableBlobMode, git_object_id_wire_hex
+}
+import gunbc.heal_candidate {
+  BaseIndexObservation, BaseIndexAbsent, BaseIndexBlob, BaseIndexRefused, base_index_observation,
+  CandidateEntryDecision, EntryUnchanged, EntryDrifted, EntryDecisionRefused, candidate_entry_decision
+}
+import gunbc.heal_publication_boundary {
+  CandidateEntry, PublisherPathPolicy, publisher_path_admission, PathAdmitted, PathAdmissionRefused
+}
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
+import gunbc.heal_candidate { candidate_proposable_paths }
+
+// NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
+// committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the
+// cost is the registry fold itself, not the per-path predicate, so `any` short-circuiting on the
+// first match does not help and neither does any other formulation. The required floor refused a
+// 44,281-step sibling of exactly this shape at the 302ms enrolment margin; shipping a 43,066-step
+// one would repeat it.
+//
+// TWO EARLIER READINGS WERE WRONG AND ARE RECORDED SO THE NEXT AUTHOR DOES NOT REDERIVE THEM. A
+// version of this claim once measured 3,232 steps -- borrowed, not earned: a more expensive sibling
+// had already computed the same fold and cross-claim sharing reused it, so deleting the sibling made
+// the "cheap" claim cost 44,097. And the cost was attributed to is_workflow_projection_path at
+// roughly a thousand steps per path, which the short-circuit experiment falsified.
+//
+// WHAT IS LOST IS LESS THAN IT LOOKS. The claim above establishes what the filter DOES, and
+// gunbc.heal_candidate calls that same function on the real registry. If the registry happened to
+// carry no workflow projection the filter would be a no-op and the property would hold vacuously,
+// which is the harmless direction. The direction that matters -- a workflow path reaching the
+// candidate and refusing the whole publication -- is exactly what the supplied-path claim forbids.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// `git ls-files -z --stage` prints `<mode> SP <oid> SP <stage>TAB<path>` and terminates each record
+// with NUL. These fixtures are that wire, so the decoder under test reads what git writes.
+data base_hex: String = "2222222222222222222222222222222222222222"
+data proposed_hex: String = "3333333333333333333333333333333333333333"
+
+fn oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
+}
+
+fn stage_record(mode: String, hex: String, stage: String, path: String) -> String {
+  join([mode, " ", hex, " ", stage, from_code_point(9), path, from_code_point(0)], "")
+}
+
+fn design_record(mode: String, stage: String) -> String {
+  stage_record(mode: mode, hex: base_hex, stage: stage, path: "DESIGN.md")
+}
+
+// ── what one index listing decides ──────────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL. A tracked regular file decodes to its mode and blob, or every refusal below
+// is satisfied by a reader that never admits anything.
+test fn witness_a_tracked_regular_file_decodes_to_its_blob_and_mode() -> Bool {
+  match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100644", stage: "0")) {
+    BaseIndexBlob { mode, oid: observed } =>
+      match mode {
+        GitRegularBlobMode => (git_object_id_wire_hex(oid: observed) as String) == base_hex
+        _ => false
+      }
+    BaseIndexAbsent => false
+    BaseIndexRefused { detail: _ } => false
+  }
+}
+
+test fn witness_a_tracked_executable_file_keeps_its_mode() -> Bool {
+  match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100755", stage: "0")) {
+    BaseIndexBlob { mode, oid: _ } =>
+      match mode {
+        GitExecutableBlobMode => true
+        _ => false
+      }
+    BaseIndexAbsent => false
+    BaseIndexRefused { detail: _ } => false
+  }
+}
+
+// AN EMPTY LISTING IS AN ABSENCE, NOT A MALFORMED ONE. git prints nothing for a path the index does
+// not carry, which is the state of a newly registered artifact on a branch that never committed it;
+// reading that as a decode failure would turn every added path into a refusal.
+test fn witness_an_empty_listing_is_an_absence() -> Bool {
+  match base_index_observation(path: "docs/plans/new.md", raw: "") {
+    BaseIndexAbsent => true
+    BaseIndexBlob { mode: _, oid: _ } => false
+    BaseIndexRefused { detail: _ } => false
+  }
+}
+
+test fn witness_a_listing_for_another_path_refuses() -> Bool {
+  match base_index_observation(path: "ROADMAP.md", raw: design_record(mode: "100644", stage: "0")) {
+    BaseIndexRefused { detail: _ } => true
+    BaseIndexAbsent => false
+    BaseIndexBlob { mode: _, oid: _ } => false
+  }
+}
+
+// AN UNMERGED PATH HAS NO ONE BLOB, so it is refused rather than read at whichever stage came first.
+test fn witness_an_unmerged_path_refuses() -> Bool {
+  match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100644", stage: "2")) {
+    BaseIndexRefused { detail: _ } => true
+    BaseIndexAbsent => false
+    BaseIndexBlob { mode: _, oid: _ } => false
+  }
+}
+
+test fn witness_a_symlink_where_a_generated_file_belongs_refuses() -> Bool {
+  match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "120000", stage: "0")) {
+    BaseIndexRefused { detail: _ } => true
+    BaseIndexAbsent => false
+    BaseIndexBlob { mode: _, oid: _ } => false
+  }
+}
+
+test fn witness_more_than_one_matching_entry_refuses() -> Bool {
+  let two = join([design_record(mode: "100644", stage: "0"), design_record(mode: "100644", stage: "0")], "")
+  match base_index_observation(path: "DESIGN.md", raw: two) {
+    BaseIndexRefused { detail: _ } => true
+    BaseIndexAbsent => false
+    BaseIndexBlob { mode: _, oid: _ } => false
+  }
+}
+
+// ── what the decision does with it ──────────────────────────────────────────────────────────
+
+fn decision_for(base: BaseIndexObservation, proposed: String) -> CandidateEntryDecision {
+  candidate_entry_decision(path: "DESIGN.md", base: base, proposed: oid(hex: proposed))
+}
+
+// EQUAL IDS ARE NO DRIFT. This is the arm that keeps a clean tree from producing a candidate at all.
+test fn witness_an_unchanged_blob_is_not_drift() -> Bool {
+  match decision_for(base: BaseIndexBlob { mode: GitRegularBlobMode, oid: oid(hex: base_hex) }, proposed: base_hex) {
+    EntryUnchanged => true
+    EntryDrifted { entry: _ } => false
+    EntryDecisionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_a_changed_blob_carries_its_base_and_mode() -> Bool {
+  match decision_for(base: BaseIndexBlob { mode: GitExecutableBlobMode, oid: oid(hex: base_hex) }, proposed: proposed_hex) {
+    EntryDrifted { entry } =>
+      match entry.base_blob {
+        Present { value: b } =>
+          (git_object_id_wire_hex(oid: b) as String) == base_hex
+            && (git_object_id_wire_hex(oid: entry.proposed_blob) as String) == proposed_hex
+            && match entry.mode { GitExecutableBlobMode => true  _ => false }
+        Absent => false
+      }
+    EntryUnchanged => false
+    EntryDecisionRefused { detail: _ } => false
+  }
+}
+
+// AN ADDED PATH CARRIES NO BASE AND IS A REGULAR FILE, which is exactly what the publisher admits
+// for a path absent at the head it is publishing onto.
+test fn witness_an_absent_path_is_added_as_a_regular_file_with_no_base() -> Bool {
+  match decision_for(base: BaseIndexAbsent, proposed: proposed_hex) {
+    EntryDrifted { entry } =>
+      match entry.base_blob {
+        Absent => match entry.mode { GitRegularBlobMode => true  _ => false }
+        Present { value: _ } => false
+      }
+    EntryUnchanged => false
+    EntryDecisionRefused { detail: _ } => false
+  }
+}
+
+// A REFUSED BASE STAYS A REFUSAL, never an addition: a path whose index entry could not be read is
+// not a path known to be absent, and publishing it as an addition would overwrite whatever is there.
+test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
+  match decision_for(base: BaseIndexRefused { detail: "the index listing did not decode" }, proposed: proposed_hex) {
+    EntryDecisionRefused { detail } => string_contains(s: detail, pattern: "DESIGN.md")
+    EntryUnchanged => false
+    EntryDrifted { entry: _ } => false
+  }
+}
+
+// ── which paths the candidate is willing to propose ─────────────────────────────────────────
+
+// THE UNIVERSAL PROPERTY IS WITNESSED OVER SUPPLIED PATHS, because asserting it over the real
+// registry costs 44,281 eval steps and 103ms -- it folds is_workflow_projection_path over every
+// registered artifact at roughly a thousand steps each -- and the required floor REFUSED it at
+// enrolment against the 302ms margin. The property itself is what matters and it does not need the
+// real list to be established: given a list containing a workflow projection and an ordinary
+// artifact, the filter must drop the former and keep the latter.
+test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool {
+  let supplied = [".github/workflows/heal.yml", "DESIGN.md", ".github/workflows/witnesses.yml", "ROADMAP.md"]
+  let kept = proposable_paths_of(paths: supplied)
+  count(kept) == 2
+    && all(kept, p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
+    && any(kept, p => p == "DESIGN.md")
+    && any(kept, p => p == "ROADMAP.md")
+}

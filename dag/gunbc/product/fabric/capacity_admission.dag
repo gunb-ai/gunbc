@@ -1,0 +1,324 @@
+module product.fabric.capacity_admission
+
+import std.types { List, EpochSecs }
+import std.decl_ref { DeclarationRef }
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUsePermit, ProviderUseRefusal, admit_provider_use,
+  ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied, permit_standing,
+  PermitAuthorizesUse, PermitNamesAnotherOfferThan, PermitNamesAnotherRouteThan,
+  PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+}
+import product.fabric.offer_route {
+  OfferRouteRow, correspond_offer_route,
+  OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
+}
+import product.fabric.supply {
+  SupplierOffer, ObservedSupply, QuotedSupply, UnobservedSupply,
+  OfferFungibility, offer_fungibility_for,
+  Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
+}
+import product.fabric.node_qualification {
+  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
+  QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
+  ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
+}
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, route_readiness,
+  RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
+}
+
+// ONE AUTHORITY FOR "THIS OFFER MAY SERVE THIS WORK", BECAUSE THERE WERE TWO AND THEY DISAGREED.
+//
+// product.fabric.candidate_field screened an offer for DISPATCH: route correspondence, route
+// readiness, provider-use admission, binding. product.fabric.failure_scenario_admission screened the
+// same offers for PLANNING: fungibility, route readiness, supply evidence. Each omitted what the
+// other checked, so one offer could be admitted supply in one decision and refused in the other, in
+// both directions - an offer carrying UnobservedSupply could enter the candidate field, and an offer
+// whose provider-use admission DENIES it could still be counted as a reserve. DESIGN section 3 calls
+// that a fork of one authority, and it is exactly the shape that gets consolidated later at interest.
+//
+// The repair is NOT to copy each fold's missing checks into the other - that keeps two implementations
+// of one judgement and makes them drift more slowly. It is this carrier: the screens run ONCE, in one
+// order, and both consumers receive the result. Selection adds price and dispatch observations to it;
+// failure-scenario admission removes instances of it under each scenario. Neither re-screens.
+//
+// WHAT IS SEALED AND WHY. sole_constructor confines construction to admit_capacity below, so an
+// AdmittedCapacity cannot be assembled from parts by a caller that skipped a screen. The permit comes
+// out of the admission decision itself rather than being passed in, so there is nowhere to invent one.
+// The ceiling is unchanged and stated: this establishes that the screens RAN and agreed, never that
+// the observations handed to them were honestly taken - that stays a boundary obligation on whoever
+// produced them.
+//
+// AND ONE THING IT DELIBERATELY DOES NOT ESTABLISH, named because the sealed value is counted as
+// failover reserve downstream: the evidence screen proves the supply is OBSERVED OR QUOTED, not that
+// it is available AT THE DECISION INSTANT. ObservedSupply.observed_at may be arbitrarily stale and
+// QuotedSupply.valid_until may have passed, and neither is compared here - Timestamp is a string and
+// the decision instant is EpochSecs, so the comparison is not expressible until they share a time
+// representation. route_readiness says the same thing from its side: an exercise proves the path, not
+// capacity now. So a reserve computed from these values is a reserve of supply someone once saw.
+// TRIGGER: a comparable time representation on OfferEvidence, at which point this screen refuses a
+// stale observation and an expired quote by name, and a quote, an observed quota and committed
+// capacity become three states rather than one.
+// THE CARRIER KEEPS THE SUBJECT IT PROVED AGAINST, not only the answer. Fungibility is established
+// against a particular ExecutionRequirements and the permit is minted for a particular demand and
+// work; a carrier that dropped the requirements would let a consumer join it to a demand whose shape
+// it was never checked against - eight threads admitted, sixteen counted - and one that dropped the
+// demand would let capacity permitted for customer A be counted for customer B on the strength of a
+// shared work identity (side review of this chain).
+type AdmittedCapacity<P> sole_constructor {
+  offer: SupplierOffer<P>
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  requirements: ExecutionRequirements
+  permit: ProviderUsePermit<P>
+  exercise: RouteExercise
+}
+
+// ONE ARM PER SCREEN THAT CAN REFUSE, each naming a different thing to go and do: model the route,
+// settle which row governs it, fix a row carried onto the wrong offer, observe the supply, exercise
+// the route, clear whatever the use admission names, or repair a permit on the wrong subject.
+type CapacityRefusal<P>
+  = CapacityRouteNotModeled { offer: FabricIdentity<P, OfferKey> }
+  | CapacityRouteAmbiguous { offer: FabricIdentity<P, OfferKey>, claimed: List<ProviderRoute> }
+  | CapacityRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
+  | CapacitySupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
+  | CapacityRouteNeverExercised { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute }
+  | CapacityRouteExerciseExpired { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
+  | CapacityNodeNotQualified { offer: FabricIdentity<P, OfferKey>, refusals: List<QualificationRefusal> }
+  | CapacityDeliveryClaimNamesAnotherOffer { offer: FabricIdentity<P, OfferKey>, claim_names: FabricIdentity<P, OfferKey> }
+  | CapacityDeliveryClaimReceiptMismatch {
+      offer: FabricIdentity<P, OfferKey>,
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
+  | CapacityNotFungibleForWork { offer: FabricIdentity<P, OfferKey>, fungibility: OfferFungibility }
+  | CapacityUseRefused { offer: FabricIdentity<P, OfferKey>, cause: ProviderUseRefusal }
+  | CapacityPermitNamesAnotherOffer { offer: FabricIdentity<P, OfferKey>, permit_names: FabricIdentity<P, OfferKey> }
+  | CapacityPermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | CapacityPermitNamesAnotherWork { permit_work: FabricIdentity<P, WorkKey>, subject_work: FabricIdentity<P, WorkKey> }
+  | CapacityPermitNamesAnotherDemand { permit_demand: FabricIdentity<P, DemandKey>, subject_demand: FabricIdentity<P, DemandKey> }
+
+// A PLACEMENT ADMITTED ONLY TO PERFORM A ROUTE'S FIRST EXERCISE IS NOT RESERVE CAPACITY.
+//
+// route_readiness admits an unexercised route for exactly one thing: the work that IS its exercise.
+// An earlier revision sealed that arm into the same AdmittedCapacity as ordinary work, and since the
+// scenario fold deliberately screens nothing and sums every capacity it is handed, capacity that
+// exists only to bootstrap a route could be counted as surviving reserve (side review of this
+// chain). The repair is NOT a readiness check inside the scenario fold - that would rebuild the fork
+// this module removed - but a different carrier out of the same authority: the exercise placement can
+// be dispatched (the candidate field takes either) and can never be summed as a reserve, because the
+// fold's parameter type does not admit it.
+type RouteExercisePlacement<P> sole_constructor {
+  offer: SupplierOffer<P>
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  requirements: ExecutionRequirements
+  permit: ProviderUsePermit<P>
+}
+
+type CapacityAdmission<P>
+  = CapacityAdmittedForOrdinaryWork { capacity: AdmittedCapacity<P> }
+  | RouteExercisePlacementAdmitted { placement: RouteExercisePlacement<P> }
+  | CapacityRefused { refusal: CapacityRefusal<P> }
+
+// THE ORDER IS THE ONE THE INPUTS FORCE, and the cheapest refusals sit earliest so an operator is
+// told the earliest unmet fact rather than the last one: a route nobody modeled is a different
+// errand from a permit on the wrong subject, and reporting the second when the first is true sends
+// someone to the wrong place. admit_provider_use cannot be called without the facts the
+// correspondence produces, so the screens before it are not merely conventionally ordered.
+fn admit_capacity<P>(
+  routes: List<OfferRouteRow<P>>,
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  exercises: List<RouteExercise>,
+  readiness_requirement: RouteReadinessRequirement<P>,
+  at: EpochSecs,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  delivery: OfferDeliveryClaim<P>,
+) -> CapacityAdmission<P> {
+  match correspond_offer_route(roster: routes, offer: offer.id, route: offer.route) {
+    OfferRouteNotModeled { offer: o } => CapacityRefused { refusal: CapacityRouteNotModeled { offer: o } }
+    OfferRouteAmbiguous { offer: o, claimed: c } =>
+      CapacityRefused { refusal: CapacityRouteAmbiguous { offer: o, claimed: c } }
+    OfferRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } =>
+      CapacityRefused { refusal: CapacityRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } }
+    OfferRouteModeled { facts: facts } =>
+      match offer.evidence {
+        UnobservedSupply { obligation: o } =>
+          CapacityRefused { refusal: CapacitySupplyUnobserved { offer: offer.id, obligation: o } }
+        ObservedSupply { observed_at: _, receipt: _ } =>
+          admit_ready_offer(
+            sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+            facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
+            requirements: requirements, offer: offer, delivery: delivery)
+        QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } =>
+          admit_ready_offer(
+            sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+            facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
+            requirements: requirements, offer: offer, delivery: delivery)
+      }
+  }
+}
+
+// THE READINESS COPRODUCT IS MATCHED ONCE AND ITS PAYLOAD IS CARRIED, rather than read twice through
+// a Bool: the admitted arms put the readiness they decided on the sealed carrier, and the refused
+// arms hand back the route and instants they already hold.
+fn admit_ready_offer<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  exercises: List<RouteExercise>,
+  readiness_requirement: RouteReadinessRequirement<P>,
+  at: EpochSecs,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  delivery: OfferDeliveryClaim<P>,
+) -> CapacityAdmission<P> {
+  match route_readiness(
+    exercises: exercises, requirement: readiness_requirement,
+    route: facts.route, work: scope.work, at: at) {
+    RouteNeverExercised { route: r } =>
+      CapacityRefused { refusal: CapacityRouteNeverExercised { offer: offer.id, route: r } }
+    RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
+      CapacityRefused {
+        refusal: CapacityRouteExerciseExpired { offer: offer.id, route: r, latest_valid_through: v, at: t },
+      }
+    RouteReady { exercise: e } =>
+      admit_delivered_offer(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: Present { value: e },
+        delivery: delivery)
+    RouteAdmittedForItsOwnExercise { route: r } =>
+      admit_delivered_offer(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: Absent,
+        delivery: delivery)
+  }
+}
+
+// NODE DELIVERY IS A SUPPLY FACT, SO IT IS SCREENED HERE WITH THE OTHERS (gunbc#11568 wrote this
+// screen into product.fabric.candidate_field; it moved here when that module stopped owning the
+// screens). An offer that CLAIMS a node group's delivery is qualified on MEASURED delivery rather than
+// its advertisement, and the claim must name the offer it rides on. Decided after readiness - a route
+// nobody has exercised is reported as that, not masked behind a qualification verdict - and before
+// fungibility and admission. Screening it only on the dispatch path would let the planning fold count
+// an unqualified group as reserve, which is the fork this module exists to prevent.
+//
+// CARRIED OVER FROM gunbc#11568 WITH THE SCREEN: Group B is a historical demonstration bound to
+// gunbc.spark.group_b_node_qualification group_b_claimed_offer. TRIGGER: a Spark rail SupplierOffer
+// carries OfferClaimsNodeDelivery of its own FabricIdentity. SUFFICIENT FOR: an unqualified group is
+// refused by name, and a claim cannot ride a different offer.
+fn admit_delivered_offer<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  exercise: RouteExercise?,
+  delivery: OfferDeliveryClaim<P>,
+) -> CapacityAdmission<P> {
+  match delivery {
+    OfferDoesNotClaimNodeDelivery =>
+      admit_use_for(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: exercise)
+    OfferClaimsNodeDelivery { offer: named, admission: _ } =>
+      if !fabric_identity_eq(left: offer.id, right: named) {
+        CapacityRefused { refusal: CapacityDeliveryClaimNamesAnotherOffer { offer: offer.id, claim_names: named } }
+      } else {
+        match claimed_delivery_check(claim: delivery) {
+          ClaimedDeliveryHolds =>
+            admit_use_for(
+              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+              facts: facts, requirements: requirements, offer: offer, exercise: exercise)
+          ClaimedDeliveryUnqualified { refusals: r } =>
+            CapacityRefused { refusal: CapacityNodeNotQualified { offer: offer.id, refusals: r } }
+          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
+            CapacityRefused {
+              refusal: CapacityDeliveryClaimReceiptMismatch { offer: offer.id, claim_names: c, receipt_names: rec },
+            }
+        }
+      }
+  }
+}
+
+fn admit_use_for<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  exercise: RouteExercise?,
+) -> CapacityAdmission<P> {
+  match offer_fungibility_for(requirements: requirements, offer: offer) {
+    TrustDomainMismatch { required: rq, offered: of } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: TrustDomainMismatch { required: rq, offered: of } } }
+    CapabilitiesNotOffered { required: rq, offered: of } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: CapabilitiesNotOffered { required: rq, offered: of } } }
+    IsolationNotProvided { missing: m } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: IsolationNotProvided { missing: m } } }
+    ShapeAxesNotCovered { unmet: u } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: ShapeAxesNotCovered { unmet: u } } }
+    Fungible =>
+    match admit_provider_use(
+      roster: sanctions,
+      facts: facts,
+      active: active,
+      scope: scope,
+      offer: offer.id,
+      decision_receipt: decision_receipt,
+    ) {
+      ProviderUseDenied { decision: _, cause: c } =>
+        CapacityRefused { refusal: CapacityUseRefused { offer: offer.id, cause: c } }
+      ProviderUseAdmitted { permit: permit } =>
+        match permit_standing(
+          permit: permit, offer: offer.id, route: offer.route, demand: scope.demand, work: scope.work) {
+          PermitNamesAnotherOfferThan { permit_names: n } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherOffer { offer: offer.id, permit_names: n } }
+          PermitNamesAnotherRouteThan =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherRoute { offer: offer.id } }
+          PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherWork { permit_work: pw, subject_work: sw } }
+          PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } }
+          PermitAuthorizesUse =>
+            match exercise {
+              Present { value: e } =>
+                CapacityAdmittedForOrdinaryWork {
+                  capacity: AdmittedCapacity {
+                    offer: offer,
+                    demand: scope.demand,
+                    work: scope.work,
+                    requirements: requirements,
+                    permit: permit,
+                    exercise: e,
+                  },
+                }
+              Absent =>
+                RouteExercisePlacementAdmitted {
+                  placement: RouteExercisePlacement {
+                    offer: offer,
+                    demand: scope.demand,
+                    work: scope.work,
+                    requirements: requirements,
+                    permit: permit,
+                  },
+                }
+            }
+        }
+    }
+  }
+}

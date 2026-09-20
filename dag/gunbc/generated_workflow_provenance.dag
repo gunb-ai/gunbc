@@ -6,6 +6,8 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
 }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
@@ -34,13 +36,15 @@ data generated_workflow_artifacts: List<GeneratedArtifact> = [
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
 ]
 
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
   match a {
     WitnessFloorYamlArtifact => Present { value: GeneratedWorkflowProvenance {
-      generator: "gunbc.witness_floor_workflow expected_witness_floor_yml",
-      authority: "gunbc.witness_floor_workflow witness_floor_workflow",
+      generator: "gunbc.compiler_gate_workflow expected_compiler_gate_yml",
+      authority: "gunbc.compiler_gate_workflow compiler_gate_workflow",
     } }
     FleetConvergeYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_converge_workflow expected_fleet_converge_yml",
@@ -49,6 +53,14 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
       authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
+    } }
+    HealWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_workflow expected_heal_workflow_yml",
+      authority: "gunbc.heal_workflow heal_workflow",
+    } }
+    HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
+      authority: "gunbc.heal_publisher_workflow heal_publisher_workflow",
     } }
     _ => none
   }
