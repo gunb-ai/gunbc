@@ -1191,7 +1191,7 @@ fn parse_observe_content_hash_observed(stdout: String) -> ContentHash? {
   } else {
     let tail = parts.skip(n: 1).first()
     let line = split(s: tail, delimiter: "\n").first()
-    match fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
+    match (match split(s: line, delimiter: " ").first() { Absent => none  Present { value: wire_field } => fnv1a64_structural_hex_digest(hex: wire_field) }) {
       Present { value: structural } =>
         Present { value: as_content_hash_structural(structural: structural) }
       Absent => none

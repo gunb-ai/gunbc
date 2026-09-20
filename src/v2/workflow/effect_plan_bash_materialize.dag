@@ -19,6 +19,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
+import std.algebra { Cons, Empty }
+import v2.std.text { string_all_chars_in, string_any_char_in, string_contains_char }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
@@ -518,50 +520,43 @@ fn effect_plan_bash_encode_call(
 // NestedBranchRefused with the inner refusal (its step_index is branch-relative). An empty branch
 // has no bash spelling (`then ; fi` is a syntax error) and refuses as IfBranchEmpty.
 
-fn effect_plan_bash_string_has_char_from(
-  s: String,
-  chars: String,
-  i: Int,
-  n: Int
-) -> Bool {
-  if i >= n {
-    false
-  } else if string_contains(s: chars, pattern: char_at(s: s, pos: i)) {
-    true
-  } else {
-    effect_plan_bash_string_has_char_from(s: s, chars: chars, i: i + 1, n: n)
-  }
-}
-
 fn effect_plan_bash_operand_carries_shell_spelling(operand: String) -> Bool {
-  effect_plan_bash_string_has_char_from(
+  string_any_char_in(
     s: operand,
-    chars: effect_plan_bash_predicate_operand_shell_spelling_chars,
-    i: 0,
-    n: string_length(s: operand)
+    alphabet: effect_plan_bash_predicate_operand_shell_spelling_chars
   )
 }
 
-fn effect_plan_bash_decimal_digits_from(s: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else if string_contains(s: "0123456789", pattern: char_at(s: s, pos: i)) {
-    effect_plan_bash_decimal_digits_from(s: s, i: i + 1, n: n)
-  } else {
-    false
+data effect_plan_bash_decimal_digit_alphabet: String = "0123456789"
+
+// The sign is carried as a one-character alphabet rather than a Char literal: the substrate has no
+// Char literal spelling, and membership in a one-character alphabet is the same question.
+data effect_plan_bash_decimal_sign: String = "-"
+
+// A NON-EMPTY run of decimal digits. The Empty arm is the whole reason this is a separate
+// declaration: it is what refuses a bare sign, which the index walk expressed as an `n > 1` guard
+// at the call site instead.
+fn effect_plan_bash_decimal_digits_ok(s: String) -> Bool {
+  match s {
+    Empty => false
+    Cons { head: _, tail: _ } =>
+      string_all_chars_in(s: s, alphabet: effect_plan_bash_decimal_digit_alphabet)
   }
 }
 
 // `[ a -ne b ]` on a non-integer prints an error and takes the ELSE branch with status 2, which is
 // a wrong answer wearing a diagnostic; so an IntNe literal operand must be a decimal integer.
+// The sign and the digits are the cons split: a leading `-` consumes the head and the rest must be
+// a non-empty digit run, so no separate length guard carries that fact.
 fn effect_plan_bash_decimal_integer_ok(s: String) -> Bool {
-  let n = string_length(s: s)
-  if n == 0 {
-    false
-  } else if char_at(s: s, pos: 0) == "-" {
-    n > 1 && effect_plan_bash_decimal_digits_from(s: s, i: 1, n: n)
-  } else {
-    effect_plan_bash_decimal_digits_from(s: s, i: 0, n: n)
+  match s {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      if string_contains_char(s: effect_plan_bash_decimal_sign, c: first) {
+        effect_plan_bash_decimal_digits_ok(s: rest)
+      } else {
+        effect_plan_bash_decimal_digits_ok(s: s)
+      }
   }
 }
 
