@@ -18,6 +18,9 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_envelope_complete,
   host_capture_nproc_exact,
   host_capture_section_exit_zero,
+  host_capture_section_open,
+  host_capture_line_close,
+  host_capture_run_token,
   host_capture_workload_stable,
 }
 import gunbc.machine_intake_mtcollins1_census_image {
@@ -84,8 +87,8 @@ fn census_program_index(needle: String) -> Int {
 // the program's last line; nothing the census reads can follow the halt.
 test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Bool {
   let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
-  let end_at = census_program_index(needle: "mtcollins1 attempt=$GUNBC_ATTEMPT end")
-  let last_section_at = census_program_index(needle: "----SECTION edac-after----")
+  let end_at = census_program_index(needle: concat(host_capture_run_token, "$GUNBC_BOOT_ID end"))
+  let last_section_at = census_program_index(needle: concat(host_capture_section_open, "edac-after", host_capture_line_close))
   let sync_at = census_program_index(needle: "\nsync\n")
   let halt_at = census_program_index(needle: "\npoweroff -f\n")
   string_contains(s: program, pattern: concat("exec >", mtcollins1_census_console_device as String, " 2>&1"))
