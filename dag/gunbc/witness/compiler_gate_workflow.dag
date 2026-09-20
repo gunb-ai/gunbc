@@ -69,6 +69,8 @@ import gunbc.witness_floor_workflow {
   long_home_storage_agreement_path,
   required_floor_claim_cost_path,
   required_floor_cross_claim_demand_path,
+  required_ci_measurement_bound_steps,
+  required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
@@ -348,8 +350,15 @@ fn compiler_gate_floor_checkout_step() -> Step {
   }
 }
 
-// The floor's own step carries continue-on-error so a separate aggregate could adjudicate its
-// receipt; here a refused claim refuses the lane.
+// THIS STEP DOES NOT REFUSE THE LANE, AND THE SENTENCE THAT SAID IT DID WAS FALSE. Its run is
+// witness_floor_run_script, which passes --measurement-receipt; under that flag claim_executor
+// writes every blocker into the receipt and returns success (a completed measurement carrying
+// blockers is a fact to adjudicate, not a process failure -- that is what keeps a refused floor
+// and a killed runner distinct). The verdict is the D0-ADJUDICATE step bound after it, exactly as
+// gunbc.witness_floor_workflow binds it. Measured before that step was bound here (PR #11821, run
+// 35497139573): the log read 'floor refused ... phases_run=2 phases_failed=2', no claim ran, and
+// the lane concluded success -- a required gate green over a refusal, DESIGN section 5's hard-reject
+// arm. Every floor success between #11742 and the landing of the bundle below is unverified.
 fn compiler_gate_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "Nominal witnesses (one prepared subject, one fold)" },
@@ -479,7 +488,7 @@ fn compiler_gate_candidate_upload_step() -> Step {
 }
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
-  [
+  concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_checkout_step(),
       role: capability_neutral,
@@ -518,6 +527,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [RustfmtCapability]),
       step_name: "Nominal witnesses (one prepared subject, one fold)",
     },
+  ], concat(compiler_gate_floor_measurement_bound_steps(), [
     CompilerGateBoundStep {
       step: compiler_gate_drift_step(),
       role: capability_neutral,
@@ -543,7 +553,21 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       role: capability_neutral,
       step_name: "Upload the sealed repair candidate",
     },
-  ]
+  ]))
+}
+
+// THE RECEIPT'S THREE CONSUMERS, TAKEN FROM THE ONE AUTHORITY THAT DECLARES THEM. D0-MEASURE seals
+// an unreached receipt when the instrument never returned one, D0-PUBLISH uploads it, and
+// D0-ADJUDICATE reads it back and exits 1 on any blocker -- the step whose absence let a refused
+// floor conclude success. Bound here by re-binding gunbc.witness_floor_workflow's rows rather than
+// re-declaring them, so this lane and the floor workflow cannot carry two refusal mechanisms for
+// one receipt (DESIGN section 3). The rows already bind their env to steps.build_witness_fold,
+// which is the id witness_floor_build_step gives this job's build step too.
+fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
+  list_map(
+    xs: required_ci_measurement_bound_steps(),
+    f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
+  )
 }
 
 fn compiler_gate_floor_capability_closure_holds() -> Bool {
@@ -560,6 +584,7 @@ fn compiler_gate_floor_capability_closure_holds() -> Bool {
 fn compiler_gate_floor_scripts_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_run_script())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
+    && required_ci_measurement_scripts_are_renderable()
 }
 
 fn compiler_gate_floor_job() -> Job {

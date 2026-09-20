@@ -1,0 +1,72 @@
+module test.claim.compiler_gate_workflow_witness_test
+
+import std.types { Bool, Int, String }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { fold_list }
+import extdeps.github.actions { Step, RunStep, UsesStep, Job }
+import gunbc.compiler_gate_workflow { compiler_gate_floor_job, expected_compiler_gate_yml }
+import gunbc.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
+
+// ── THE RECEIPT'S PRODUCER IS BOUND WITH ITS CONSUMER, IN THAT ORDER ─────────────────────────
+//
+// The floor's run step passes --measurement-receipt, and under that flag claim_executor returns
+// success for a completed measurement CARRYING BLOCKERS: the blockers go into the receipt, and the
+// verdict is whoever reads the receipt back. A producer bound without that reader is a required
+// lane that cannot go red -- measured on PR #11821 run 35497139573, where the step log read
+// 'floor refused ... phases_run=2 phases_failed=2', no claim ran, and the lane concluded success.
+//
+// So this claim is over POSITIONS in the emitted job, not over the presence of a string: the step
+// whose run carries --adjudicate-measurement-receipt must exist, and it must come AFTER the step
+// whose run carries --measurement-receipt. Removing the adjudicator, or binding it ahead of the
+// producer it reads, reds this; a run step that stopped passing --measurement-receipt (the
+// alternative repair, refused because it fuses a refused floor with a killed runner) reds the
+// producer half.
+//
+// The RED was authorable and was the state of main when this file was written: the gate's floor
+// job bound the producer and nothing else.
+
+type StepPositions {
+  next: Int
+  producer: Int
+  adjudicator: Int
+}
+
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn floor_step_positions(job: Job) -> StepPositions {
+  fold_list(
+    xs: job.steps,
+    empty: StepPositions { next: 0, producer: -1, adjudicator: -1 },
+    cons: fn(acc, step) {
+      let run = step_run_text(step: step)
+      let is_adjudicator = string_contains(s: run, pattern: "--adjudicate-measurement-receipt")
+      let is_producer = !is_adjudicator && string_contains(s: run, pattern: "--measurement-receipt")
+      StepPositions {
+        next: acc.next + 1,
+        producer: if is_producer && acc.producer < 0 { acc.next } else { acc.producer },
+        adjudicator: if is_adjudicator && acc.adjudicator < 0 { acc.next } else { acc.adjudicator },
+      }
+    }
+  )
+}
+
+test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
+  let p = floor_step_positions(job: compiler_gate_floor_job())
+  p.producer >= 0 && p.adjudicator >= 0 && p.producer < p.adjudicator
+}
+
+// The emitted file is what the runner executes, so the same fact is asserted on the bytes the
+// gate commits, read through the same producer the drift gate compares against.
+test fn w_the_emitted_gate_yml_carries_the_adjudicator() -> Bool {
+  match expected_compiler_gate_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "--adjudicate-measurement-receipt")
+        && string_contains(s: yml, pattern: "D0-ADJUDICATE: consume the published measurement receipt")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
