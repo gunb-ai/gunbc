@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Unit }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -21,6 +21,7 @@ import std.scoped_authorization {
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim, unterminated_claim_exit }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootGate,
+  MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium,
   MtCollins1BootSubject,
   mtcollins1_boot_authorization_request,
   mtcollins1_boot_gate_from_poll,
@@ -354,21 +355,44 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_volume_id), which blkid prints
 // in the boot-media section; the digest-grade binding of the attached image to that medium is
 // census stage 0D and lands with the built image, whose name is its digest.
-fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
+// THE MEDIUM DECIDES BEFORE THE CONTROLLER IS TOUCHED. The census terminal is printed by the census
+// program on the census medium and by nothing else, so a boot that attaches the stock installer can
+// never observe it: that is decidable from the medium row alone, and a run that discovered it by
+// holding the grant, taking the SOL lease, powering the unit and timing out would report a
+// hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+fn mtcollins1_boot_medium_refusal(medium: MtCollins1BootMedium) -> String? {
+  match medium {
+    MtCollins1StockInstallerMedium =>
+      Present { value: "mtcollins1 boot: the boot medium is the stock installer, which carries no census program, so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched" }
+    MtCollins1CensusMedium { image_name: _, image_sha256: _ } => none
+  }
+}
+
+fn mtcollins1_boot_medium_label(medium: MtCollins1BootMedium) -> NonEmptyStr? {
+  match medium {
+    MtCollins1StockInstallerMedium => none
+    MtCollins1CensusMedium { image_name: _, image_sha256: _ } => Present { value: mtcollins1_census_volume_id }
+  }
+}
+
+fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> Bool {
   let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
-  match host_capture_bind(capture: capture, machine: subject.machine) {
-    HostCaptureUnbound { reason: _ } => false
-    HostCaptureBound { envelope: envelope } =>
-      host_capture_bound_nproc_exact(envelope: envelope, threads: threads)
-        && host_capture_bound_section_exit_zero(envelope: envelope, name: "boot-media")
-        && match host_capture_bound_section(envelope: envelope, name: "boot-media") {
-          Absent => false
-          Present { value: media } =>
-            string_contains(s: media.body, pattern: mtcollins1_census_volume_id as String)
-        }
-        && host_capture_bound_edac_clean(envelope: envelope, name: "edac-before")
-        && host_capture_bound_workload_stable(envelope: envelope)
-        && host_capture_bound_edac_clean(envelope: envelope, name: "edac-after")
+  match mtcollins1_boot_medium_label(medium: medium) {
+    Absent => false
+    Present { value: label } =>
+      match host_capture_bind(capture: capture, machine: subject.machine) {
+        HostCaptureUnbound { reason: _ } => false
+        HostCaptureBound { envelope: envelope } =>
+          host_capture_bound_nproc_exact(envelope: envelope, threads: threads)
+            && host_capture_bound_section_exit_zero(envelope: envelope, name: "boot-media")
+            && match host_capture_bound_section(envelope: envelope, name: "boot-media") {
+              Absent => false
+              Present { value: media } => string_contains(s: media.body, pattern: label as String)
+            }
+            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-before")
+            && host_capture_bound_workload_stable(envelope: envelope)
+            && host_capture_bound_edac_clean(envelope: envelope, name: "edac-after")
+      }
   }
 }
 
@@ -381,7 +405,7 @@ fn mtcollins1_boot_await_capture_terminal(
     exit_failure(reason: "mtcollins1 boot: timed out waiting for the host-capture terminal in SOL; capture preserved; claim will abort, not complete")
   } else {
     let capture = Filesystem.Read(path: capture_path)
-    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject) {
+    if capture.success && mtcollins1_boot_terminal_observed(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) {
       ExitSuccess
     } else {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
@@ -596,6 +620,10 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   }
   if sha == "" {
     return exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision")
+  }
+  match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => Unit
   }
   let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
   let request = mtcollins1_boot_authorization_request(

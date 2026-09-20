@@ -48,12 +48,41 @@ type MtCollins1BootSubject {
 
 data mtcollins1_boot_machine: NonEmptyStr = "mtcollins1"
 
+// WHICH MEDIUM THIS BOOT ATTACHES IS ONE ROW, and the signed subject, the attach and the terminal
+// verdict all derive from it. It was three facts before: the subject and the attach read the stock
+// pins from their owners while the verdict named the census medium's label, so a run could hold the
+// grant, take the SOL lease and power the unit only to time out on a terminal the attached medium
+// could never print (review 69352). The stock arm carries no fields because its identity is owned
+// upstream (gunbc.machine_intake_mtcollins1_boot_artifact, gunbc.machine_intake_mtcollins1_boot_image_fetch);
+// the census arm carries the built image's name and digest, which exist only once census stage 0B/0C
+// has published it -- so switching this row IS census stage 0D, and until then the census verdict
+// refuses at the gate rather than after a hardware run.
+type MtCollins1BootMedium
+  = MtCollins1StockInstallerMedium
+  | MtCollins1CensusMedium { image_name: NonEmptyStr, image_sha256: NonEmptyStr }
+
+data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1StockInstallerMedium
+
+fn mtcollins1_boot_medium_image_name(medium: MtCollins1BootMedium) -> NonEmptyStr {
+  match medium {
+    MtCollins1StockInstallerMedium => mtcollins1_diskless_image_name
+    MtCollins1CensusMedium { image_name: n, image_sha256: _ } => n
+  }
+}
+
+fn mtcollins1_boot_medium_image_sha256(medium: MtCollins1BootMedium) -> NonEmptyStr {
+  match medium {
+    MtCollins1StockInstallerMedium => mtcollins1_boot_image_sha256
+    MtCollins1CensusMedium { image_name: _, image_sha256: d } => d
+  }
+}
+
 fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
   MtCollins1BootSubject {
     machine: mtcollins1_boot_machine,
     bmc_host: mtcollins1_endpoint.host,
-    image_name: mtcollins1_diskless_image_name,
-    image_sha256: mtcollins1_boot_image_sha256,
+    image_name: mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium),
+    image_sha256: mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium),
     export_host: operator_host_srv2 as NonEmptyStr,
     export_dir: mtcollins1_boot_export_dir,
     selection: mtcollins1_cdrom_selection,
