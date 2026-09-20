@@ -24,21 +24,34 @@ import extdeps.virtualization.firecracker {
   FirecrackerRelease, firecracker_release_aarch64, firecracker_requires_kvm_device,
   firecracker_release_tarball_filename, firecracker_release_download_url,
   firecracker_release_binary_path_in_tarball, firecracker_release_aarch64_tarball_sha256,
-  firecracker_version_command, firecracker_version_line,
+  firecracker_version_command, firecracker_version_line, kvm_device_group,
 }
 import gunbc.command_runner {
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
   run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec,
+}
+import extdeps.tools.id { id_group_names_command }
+import extdeps.tools.coreutils_stat {
+  PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable, coreutils_stat_path_ownership,
+  PathModeObservation, PathModeObserved, PathModeUnobservable, coreutils_stat_path_mode,
+}
+import gunbc.host_effect { LocalShell }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.runner_host_deploy {
+  RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
 
 // THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner_microvm
 // models what a runner guest is and admits a VM config; nothing had ever asked a host whether it
 // could run one. Two facts decide that: the KVM device exists and the executor may write to it, and
 // the cited Firecracker release is installed and answers `--version` with the modeled version. This
-// module observes both as a typed standing, plans the one install it owns (the release tarball,
-// digest-verified, into an executor-owned root, so no host grant is spent on it), and refuses the
-// rest: the KVM group membership is a host grant that belongs to the runner host's sudoers roster,
-// not to this reconciler.
+// module observes both as a typed standing and installs the one release it owns (the release tarball,
+// digest-verified, into an executor-owned root, so no host grant is spent on it). The KVM group
+// membership is applied by the fleet converge spine, and READ BACK here.
 //
 // THE FIRST MEASUREMENT HERE WAS INVALIDATED BY THE MEASURER, WHICH IS WHY IT IS DATED AND
 // ATTRIBUTED RATHER THAN STATED AS THE HOST'S STANDING. Observed on srv2 2026-09-05: /dev/kvm
@@ -51,18 +64,66 @@ import gunbc.command_runner {
 // is a property of one shell session, NOT of convergence, and it must not be read as evidence that
 // a host reaches this standing on its own.
 //
-// THE GAP THAT PERMITTED IT is that EnsureSupplementaryGroupMembership is AUTHORIZED and never
-// APPLIED: gunbc.runner.runner_host_grants runner_host_privileged_operations emits the row, and its
-// only consumer is runner_host_sudoers_content, which renders permission to run the argv. This
-// reconciler disclaims it (above). So the operation is granted by one module, disclaimed by
-// another, and executed by neither -- a hole an operator falls into once per host, by hand. The
-// refusal below is CORRECT and stays; what is missing is an applier for the host-grant ops, which
-// is an ownership decision about host actuation and not this module's to take unilaterally.
+// THE GAP THAT PERMITTED IT WAS THAT EnsureSupplementaryGroupMembership WAS AUTHORIZED AND NEVER
+// APPLIED, AND IT IS THE CONVERGE SPINE THAT NOW APPLIES IT. gunbc.runner.runner_host_grants
+// runner_host_wide_refused_operations emits the row and runner_host_sudoers_content renders
+// PERMISSION to run its argv; until now nothing ran it, so the operation was granted by one module,
+// disclaimed by this one, and executed by neither -- the rostered class
+// gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path, whose observable form
+// is one hand-typed argv per host. The executor is gunbc.fleet.fleet_converge_plan, which emits the
+// host-wide operations into the full-host apply script beside the fabric-cell effects, under the
+// same generation lease as every other host mutation. This module stays the OBSERVER, which is what
+// its disclaimer was right about; what was wrong was that its observation could not tell a landed
+// grant from a missing one.
+//
+// THE CONVERGE MAY NOT OBSERVE ITS OWN GRANT LANDING, AND SAYING OTHERWISE WOULD BE THE FABRICATED
+// ARM. A supplementary group enters a process's credentials at exec and never afterwards, so the
+// process that ran `usermod -aG` still holds the old set and `test -w /dev/kvm` under it still
+// answers false. Reading that as "the grant failed" would refuse a converged host forever; reading
+// it as success would assert a capability nobody observed. So the readback asks the ACCOUNT
+// DATABASE instead -- `id -nG <login>` names the login explicitly, which is the fact that decides
+// what the NEXT incarnation gets -- and the standing carries process writability and database
+// enrolment as two separate observations, with the receipt stating which one carried the host.
 
 type KvmDeviceStanding
   = KvmDeviceWritable
   | KvmDevicePresentNotWritable
   | KvmDeviceAbsent
+
+// THE DEVICE AND THE GRANT ARE TWO FACTS, AND COLLAPSING THEM IS WHAT MADE THE OLD STANDING UNABLE
+// TO DESCRIBE A CONVERGED HOST. KvmDeviceStanding above answers "can THIS process open the device",
+// which is a property of credentials established before the converge started. This answers "does
+// the account database enrol the executor login in the device's group", which is what every later
+// incarnation will inherit. A host mid-converge reads present-not-writable AND enrolled, and that
+// pair is the truth rather than a contradiction.
+//
+// UNREADABLE IS ITS OWN ARM BECAUSE "we could not ask" AND "the login is not a member" HAVE
+// OPPOSITE REMEDIES: the first is a broken probe on the converging host, the second is a grant that
+// did not land. Folding them would make a failed `id` read as a missing grant and send an operator
+// to re-run an apply that already worked.
+type KvmGroupEnrolment
+  = KvmGroupEnrolled { login: NonEmptyStr, group: NonEmptyStr }
+  | KvmGroupNotEnrolled { login: NonEmptyStr, group: NonEmptyStr }
+  | KvmGroupEnrolmentUnreadable { login: NonEmptyStr, cause: String }
+
+// ENROLMENT PLUS PRESENCE DOES NOT PROVE THE NEXT INCARNATION CAN OPEN THE DEVICE, and this type is
+// what closes that gap. `present-not-writable` beside `enrolled` has TWO explanations: the grant has
+// landed and this process simply predates it, or /dev/kvm is not delegated to the group the grant
+// names at all. udev's Ubuntu default hands the device to group kvm at mode 0660
+// (50-udev-default.rules, cited at extdeps.virtualization.firecracker kvm_device_group), but that is
+// UPSTREAM DESIRED STATE, not a readback of this host -- a local rule, a different distribution or a
+// hand-chmod makes it false, and reading a capability off an upstream default is asserting as
+// deduced what was only inferred (DESIGN section 4d).
+//
+// So the delegation is OBSERVED: the device's own group name and its group-write bit, joined into
+// one verdict. Contradicted carries what was actually seen, because the remedy differs by which
+// half failed -- a device owned by a different group is a udev question, a device owned by kvm with
+// no group-write is a mode question -- and Unreadable stays separate from both for the reason every
+// other arm here does.
+type KvmDeviceDelegation
+  = KvmDeviceDelegated { group: NonEmptyStr }
+  | KvmDeviceDelegationContradicted { expected_group: NonEmptyStr, observed_group: NonEmptyStr, group_writable: Bool }
+  | KvmDeviceDelegationUnreadable { cause: String }
 
 type FirecrackerBinaryStanding
   = FirecrackerInstalled { binary: String, version_line: String }
@@ -97,6 +158,8 @@ type FootprintInstrumentStanding {
 
 type FirecrackerHostStanding {
   kvm: KvmDeviceStanding
+  kvm_group: KvmGroupEnrolment
+  kvm_delegation: KvmDeviceDelegation
   binary: FirecrackerBinaryStanding
   footprint_instruments: FootprintInstrumentStanding
 }
@@ -150,15 +213,71 @@ fn binary_standing_of(binary: String, executable: Bool, version_output: String, 
   }
 }
 
-fn firecracker_host_ready(standing: FirecrackerHostStanding) -> Bool {
+// THE CONVERGE'S QUESTION IS ABOUT THE NEXT INCARNATION, SO IT IS ANSWERED ENTIRELY FROM DURABLE
+// HOST STATE AND NEVER FROM THIS PROCESS'S CREDENTIALS. Three facts, all required: the device
+// exists, the host delegates it to the group the grant names with group-write, and the account
+// database enrols the executor login in that group. Any incarnation started after this line
+// inherits all three; none of them can be read off whether the CURRENT process happens to hold an
+// open path to the device.
+//
+// THIS DELIBERATELY DOES NOT SHORT-CIRCUIT ON KvmDeviceWritable, AND THAT WAS THE DEFECT. An
+// earlier revision admitted a writable device outright, which answers the next-incarnation question
+// from the current incarnation: a process that inherited the group before the grant was revoked can
+// still open the device, so the host would read ready while the login was no longer enrolled at
+// all -- and the next incarnation, the one the whole split exists to speak for, would fail. A
+// writable device is now evidence for `firecracker_host_ready_in_this_process` and for nothing
+// else.
+// THE POSITIVE ARMS CARRY A LOGIN AND A GROUP, AND DISCARDING THEM IS HOW TWO TRUE OBSERVATIONS
+// COMPOSE INTO A FALSE CONCLUSION. An earlier revision matched `KvmGroupEnrolled { login: _, group: _ }`
+// and `KvmDeviceDelegated { group: _ }` for their SHAPE alone, so "the device is delegated to group A"
+// beside "some login is enrolled in group B" read as ready -- and the login it believed was whichever
+// one the observation happened to be asked about, not the one this host's roster row names. Three
+// equalities are checked rather than assumed: the enrolled login IS the bound spec's job_user, and the
+// enrolled group and the delegated group are BOTH the group udev hands the device to.
+fn kvm_reachable(standing: FirecrackerHostStanding, expected_login: NonEmptyStr) -> Bool {
+  (match standing.kvm {
+    KvmDeviceAbsent => false
+    KvmDeviceWritable => true
+    KvmDevicePresentNotWritable => true
+  })
+    && (match standing.kvm_delegation {
+      KvmDeviceDelegated { group: dg } => (dg as String) == (kvm_device_group as String)
+      KvmDeviceDelegationContradicted { expected_group: _, observed_group: _, group_writable: _ } => false
+      KvmDeviceDelegationUnreadable { cause: _ } => false
+    })
+    && (match standing.kvm_group {
+      KvmGroupEnrolled { login: l, group: eg } =>
+        (l as String) == (expected_login as String) && (eg as String) == (kvm_device_group as String)
+      KvmGroupNotEnrolled { login: _, group: _ } => false
+      KvmGroupEnrolmentUnreadable { login: _, cause: _ } => false
+    })
+}
+
+fn firecracker_binary_installed(standing: FirecrackerHostStanding) -> Bool {
+  match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  _ => false }
+}
+
+// THE CONVERGE'S QUESTION: has this host been brought to the state where its executor can run a
+// guest? That is answered by the grant, whose effect lands at the next incarnation.
+fn firecracker_host_ready(standing: FirecrackerHostStanding, expected_login: NonEmptyStr) -> Bool {
+  kvm_reachable(standing: standing, expected_login: expected_login)
+    && firecracker_binary_installed(standing: standing)
+}
+
+// A DIFFERENT QUESTION WITH A DIFFERENT ANSWER, AND KEEPING THEM APART IS THE POINT. A caller that
+// is about to OPEN /dev/kvm in its own process -- the boot probe -- is not asking whether the host
+// converged; it is asking whether ITS credentials reach the device right now. An enrolment this
+// process did not inherit answers the first question and not the second, so a probe gated on
+// readiness would attempt a boot it cannot perform and report a VMM error as an IMAGE verdict.
+fn firecracker_host_ready_in_this_process(standing: FirecrackerHostStanding) -> Bool {
   (match standing.kvm { KvmDeviceWritable => true  _ => false })
-    && (match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  _ => false })
+    && firecracker_binary_installed(standing: standing)
 }
 
 fn kvm_standing_text(k: KvmDeviceStanding) -> String {
   match k {
     KvmDeviceWritable => "kvm=writable"
-    KvmDevicePresentNotWritable => join(["kvm=present-not-writable (", firecracker_requires_kvm_device as String, " exists but the executor may not open it; the kvm group membership is a runner-host grant, not this reconciler's)"], "")
+    KvmDevicePresentNotWritable => join(["kvm=present-not-writable (", firecracker_requires_kvm_device as String, " exists but THIS process may not open it; a process's supplementary groups are fixed at its exec, so a grant applied during this run is not visible here)"], "")
     KvmDeviceAbsent => join(["kvm=absent (", firecracker_requires_kvm_device as String, " does not exist; the KVM module is not loaded or the host does not virtualize)"], "")
   }
 }
@@ -171,10 +290,44 @@ fn binary_standing_text(b: FirecrackerBinaryStanding) -> String {
   }
 }
 
-fn firecracker_host_standing_text(s: FirecrackerHostStanding) -> String {
-  join([kvm_standing_text(k: s.kvm), "\n", binary_standing_text(b: s.binary), "\n",
+// THE RECEIPT SAYS WHEN THE GRANT TAKES EFFECT, because an operator reading "enrolled" beside
+// "present-not-writable" will otherwise reach for a restart to force the pickup. Nothing needs to be
+// restarted: the runner slots are just-in-time incarnations, so the next one to start after this
+// line was written holds the group, which happens on its own when the current job ends.
+fn kvm_group_standing_text(g: KvmGroupEnrolment) -> String {
+  match g {
+    KvmGroupEnrolled { login: l, group: gr } =>
+      join(["kvm-group=enrolled (", l as String, " is a member of ", gr as String,
+            " in the account database; effective for executor incarnations started AFTER this line, not for any process already running)"], "")
+    KvmGroupNotEnrolled { login: l, group: gr } =>
+      join(["kvm-group=not-enrolled (", l as String, " is not a member of ", gr as String, ")"], "")
+    KvmGroupEnrolmentUnreadable { login: l, cause: c } =>
+      join(["kvm-group=unreadable (membership of ", l as String, " could not be read: ", c, ")"], "")
+  }
+}
+
+fn kvm_delegation_text(d: KvmDeviceDelegation) -> String {
+  match d {
+    KvmDeviceDelegated { group: g } =>
+      join(["kvm-delegation=delegated (", firecracker_requires_kvm_device as String, " is owned by group ", g as String, " and is group-writable, so membership of that group is what opens it)"], "")
+    KvmDeviceDelegationContradicted { expected_group: e, observed_group: o, group_writable: w } =>
+      join(["kvm-delegation=contradicted (the grant enrols in group ", e as String, " but ", firecracker_requires_kvm_device as String,
+            " is owned by group ", o as String, " and is ", if w { "group-writable" } else { "NOT group-writable" },
+            "; membership of ", e as String, " would not open this device)"], "")
+    KvmDeviceDelegationUnreadable { cause: c } =>
+      join(["kvm-delegation=unreadable (", c, ")"], "")
+  }
+}
+
+// THE RECEIPT NAMES THE BOUND HOST AND THE BOUND LOGIN, because a standing that says ready without
+// saying ready-for-whom-on-which-machine is the certification defect this module was just repaired
+// for. Both come from the sealed binding, never from the observation being described.
+fn firecracker_host_standing_text(s: FirecrackerHostStanding, host: NonEmptyStr, expected_login: NonEmptyStr) -> String {
+  join(["bound-host=", host as String, " executor=", expected_login as String, "\n",
+        kvm_standing_text(k: s.kvm), "\n", kvm_delegation_text(d: s.kvm_delegation), "\n", kvm_group_standing_text(g: s.kvm_group), "\n",
+        binary_standing_text(b: s.binary), "\n",
         footprint_instrument_text(f: s.footprint_instruments), "\n",
-        if firecracker_host_ready(standing: s) { "standing=ready" } else { "standing=not-ready" }], "")
+        if firecracker_host_ready(standing: s, expected_login: expected_login) { "standing=ready" } else { "standing=not-ready" }], "")
 }
 
 // The install is the one effect this module owns: fetch the cited tarball, verify the published
@@ -200,6 +353,135 @@ fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: 
   ]
 }
 
+// THE SUBJECT IS THE HOST THE PROCESS IS RUNNING ON, AND IT IS RESOLVED RATHER THAN PASSED. The
+// mode is host-pinned by the workflow, so "which host" is not a parameter of the operation but its
+// subject (gunbc.fleet_converge_workflow says the same about the two micro-VM modes). The executor
+// login whose grant is applied and read back comes from the roster row for that host, never from a
+// literal here: a second spelling of "ghrunner" in this module would be a grant applied to one
+// account and authorized for another.
+// RESOLVING THE HOSTNAME STOPS THE WRONG SPEC; IT DOES NOT STOP MUTATING THE WRONG HOST. An earlier
+// revision read the kernel hostname and looked up its spec, which prevents srv1's spec being applied
+// to srv3 -- and then converges srv3 and writes a receipt certifying it, because the run's own
+// concurrency group is keyed to the host the OPERATOR REQUESTED. A mutable scheduling label is
+// routing evidence, not machine identity (the subject-binding rule of gunbc#11751), so the operator's
+// choice and the machine's own answer are TWO facts and this type is their join.
+//
+// THE BINDING IS SEALED BEFORE ANY MUTATION, which is the whole point rather than a nicety: a
+// mismatch must refuse having performed zero install operations, so nothing downstream of this join
+// may fetch, install, create a receipt directory or reach a readiness verdict. The converge below
+// matches this FIRST, outside every other arm.
+type MicrovmHostBinding
+  = MicrovmHostBound { spec: RunnerHostSpec, host: NonEmptyStr }
+  | MicrovmHostBindingRefused { cause: MicrovmHostBindingRefusal }
+
+// FOUR CAUSES, NOT ONE STRING, because they send an operator to four different places: a dispatch
+// that named no host, a machine that could not name itself, a machine that is not the one the
+// dispatch selected, and a machine no roster describes.
+type MicrovmHostBindingRefusal
+  = ExpectedHostAbsent { detail: String }
+  | HostObservationFailed { reason: String }
+  | HostBindingRefused { expected: NonEmptyStr, observed: NonEmptyStr }
+  | HostNotRostered { host: NonEmptyStr }
+
+// THE JOIN IS PURE SO THE MISMATCH IS DISCRIMINABLE WITHOUT A HOST. Its inputs are the two supplied
+// values a witness can construct; the wet wrapper below is the only thing that has to run on a
+// machine to obtain them (DESIGN section 3: a witness discriminates at one interface).
+fn microvm_host_binding_of(expected: NonEmptyStr, observed: NonEmptyStr) -> MicrovmHostBinding {
+  if (trim(s: expected as String)) != (trim(s: observed as String)) {
+    MicrovmHostBindingRefused { cause: HostBindingRefused { expected: expected, observed: observed } }
+  } else {
+    match runner_host_spec_for(host: (trim(s: observed as String)) as HostIdentity) {
+      RunnerHostSpecFound { spec: sp } => MicrovmHostBound { spec: sp, host: observed }
+      RunnerHostSpecAbsent { host: h } => MicrovmHostBindingRefused { cause: HostNotRostered { host: h } }
+    }
+  }
+}
+
+fn microvm_host_binding_refusal_text(c: MicrovmHostBindingRefusal) -> String {
+  match c {
+    ExpectedHostAbsent { detail: d } =>
+      join(["ExpectedHostAbsent -- ", fleet_converge_expected_host_env_name, " ", d,
+            "; the subject is the host the dispatch selected and this run was given none, so it will not converge whatever machine it happens to be running on"], "")
+    HostObservationFailed { reason: r } =>
+      join(["HostObservationFailed -- the host could not name itself (", r, "), so its identity cannot be joined to the dispatch's selection"], "")
+    HostBindingRefused { expected: e, observed: o } =>
+      join(["HostBindingRefused -- the dispatch selected ", e as String, " and this machine answers ", o as String,
+            "; NOTHING has been fetched, installed or written. A run that continued here would mutate ", o as String,
+            " and certify it under ", e as String, "'s name"], "")
+    HostNotRostered { host: h } =>
+      join(["HostNotRostered -- ", h as String, " carries no runner host spec, so no executor login and no grant roster are declared for it"], "")
+  }
+}
+
+fn microvm_host_binding_wet() -> MicrovmHostBinding {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: _, detail: d } =>
+      MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: d } }
+    ActionsVariablePresent { value: expected } =>
+      match hostname_short_read(transport: LocalShell) {
+        HostnameShortCaptureRefused { reason: r } =>
+          MicrovmHostBindingRefused { cause: HostObservationFailed { reason: r } }
+        HostnameShortCaptured { value: v } =>
+          if trim(s: expected) == "" {
+            MicrovmHostBindingRefused { cause: ExpectedHostAbsent { detail: "is set to an empty value" } }
+          } else if trim(s: v) == "" {
+            MicrovmHostBindingRefused { cause: HostObservationFailed { reason: "hostname -s returned empty output" } }
+          } else {
+            microvm_host_binding_of(expected: trim(s: expected) as NonEmptyStr, observed: trim(s: v) as NonEmptyStr)
+          }
+      }
+  }
+}
+
+// A WORD MATCH OVER `id -nG`, WHICH PRINTS NAMES SEPARATED BY SINGLE SPACES. A substring test would
+// admit "kvm-admin" as evidence of membership in "kvm", which is exactly the kind of near-miss a
+// grant readback must not accept.
+fn group_names_contain(output: String, group: NonEmptyStr) -> Bool {
+  fold(split(trim(s: output), " "), init: false, f: (acc, w) => acc || trim(s: w) == (group as String))
+}
+
+// THE TWO HALVES ARE OBSERVED SEPARATELY AND JOINED HERE, because either can fail on its own and
+// the join is where "what did we see" turns into "does membership of this group open this device".
+// Both probes are typed metadata observations over extdeps.tools.coreutils_stat; neither reads a
+// mode as a string, because extdeps.access.posix owns what the digits mean.
+fn observe_kvm_device_delegation_wet() -> KvmDeviceDelegation {
+  let path = (firecracker_requires_kvm_device as String) as NonEmptyStr
+  match coreutils_stat_path_ownership(path: path) {
+    PathOwnershipUnobservable { path: _, reason: r } =>
+      KvmDeviceDelegationUnreadable { cause: join(["the device's owning group could not be read: ", r], "") }
+    PathOwnershipObserved { path: _, ownership: _, owner_name: _, group_name: g } =>
+      match coreutils_stat_path_mode(path: path) {
+        PathModeUnobservable { path: _, reason: r } =>
+          KvmDeviceDelegationUnreadable { cause: join(["the device's permission bits could not be read: ", r], "") }
+        PathModeObserved { path: _, mode: m } =>
+          if (g as String) == (kvm_device_group as String) && m.group.write {
+            KvmDeviceDelegated { group: kvm_device_group }
+          } else {
+            KvmDeviceDelegationContradicted {
+              expected_group: kvm_device_group,
+              observed_group: g,
+              group_writable: m.group.write,
+            }
+          }
+      }
+  }
+}
+
+fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
+  match run_shell_command_capture(command: id_group_names_command(user: login), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      if group_names_contain(output: t, group: kvm_device_group) {
+        KvmGroupEnrolled { login: login, group: kvm_device_group }
+      } else {
+        KvmGroupNotEnrolled { login: login, group: kvm_device_group }
+      }
+    ProcessOutputAbsent =>
+      KvmGroupEnrolmentUnreadable { login: login, cause: "id -nG exited successfully and printed nothing, so no group list was read" }
+    ProcessRefused { exit_code: c, stderr: e } =>
+      KvmGroupEnrolmentUnreadable { login: login, cause: join(["id -nG exited ", to_string(c), ": ", trim(s: e)], "") }
+  }
+}
+
 fn executor_home_wet() -> String? {
   match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
     Absent => none
@@ -213,7 +495,7 @@ fn executor_home_wet() -> String? {
 // let "we could not ask" and "the host cannot measure" render identically to whoever reads the
 // receipt and decides what can measure the reserve.
 
-fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
+fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
@@ -238,6 +520,8 @@ fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStandin
   }
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
+    kvm_group: observe_kvm_group_enrolment_wet(login: login),
+    kvm_delegation: observe_kvm_device_delegation_wet(),
     binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
     footprint_instruments: FootprintInstrumentStanding {
       instruments: [
@@ -263,66 +547,95 @@ fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStandin
   }
 }
 
-fn runner_microvm_host_observe_wet() -> ProcessExit
-{
-  match executor_home_wet() {
-    Absent => exit_failure(reason: "runner_microvm_host_observe: HOME is unset, so the executor-owned install root cannot be named")
-    Present { value: home } => {
-      let standing = observe_firecracker_host_standing_wet(root: firecracker_install_root(executor_home: home))
-      let text = firecracker_host_standing_text(s: standing)
-      let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_host_standing_receipt_dir)], transport: LocalExec)
-      let w = Filesystem.Write(path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n"))
-      if !w.success {
-        exit_failure(reason: join(["runner_microvm_host_observe: receipt write refused: ", w.error], ""))
-      } else if firecracker_host_ready(standing: standing) {
+fn write_host_standing_receipt(text: String) -> String? {
+  let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_host_standing_receipt_dir)], transport: LocalExec)
+  let w = Filesystem.Write(path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n"))
+  if w.success { none } else { Present { value: w.error } }
+}
+
+// The receipt is written BEFORE the verdict is decided, on every path, so a not-ready host leaves
+// the observation that says why rather than only an exit code.
+fn host_standing_verdict(entry: String, standing: FirecrackerHostStanding, host: NonEmptyStr, expected_login: NonEmptyStr) -> ProcessExit {
+  let text = firecracker_host_standing_text(s: standing, host: host, expected_login: expected_login)
+  match write_host_standing_receipt(text: text) {
+    Present { value: e } => exit_failure(reason: join([entry, ": receipt write refused: ", e], ""))
+    Absent =>
+      if firecracker_host_ready(standing: standing, expected_login: expected_login) {
         ExitSuccess
       } else {
-        exit_failure(reason: join(["runner_microvm_host_observe: host is not ready --\n", text], ""))
+        exit_failure(reason: join([entry, ": host is not ready --\n", text], ""))
       }
-    }
   }
 }
 
-// Converge = observe, install only the binary if absent, observe again. The KVM half is never
-// actuated here: a device this executor cannot open is reported, and the report names the grant.
+fn runner_microvm_host_observe_wet() -> ProcessExit
+{
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_microvm_host_observe: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
+      match executor_home_wet() {
+        Absent => exit_failure(reason: "runner_microvm_host_observe: HOME is unset, so the executor-owned install root cannot be named")
+        Present { value: home } =>
+          host_standing_verdict(
+            entry: "runner_microvm_host_observe",
+            standing: observe_firecracker_host_standing_wet(root: firecracker_install_root(executor_home: home), login: spec.job_user),
+            host: host,
+            expected_login: spec.job_user,
+          )
+      }
+  }
+}
+
+// Converge = resolve the subject, observe, install the binary if absent, observe again, report.
+// THE KVM GRANT IS APPLIED BY THE FLEET CONVERGE SPINE AND NOT HERE, AND THAT PLACEMENT IS A
+// RULING RATHER THAN A PREFERENCE. gunbc.recurring_failure_mode
+// capability_arrives_outside_the_converged_path forbids an applier bolted beside this module -- the
+// one that disclaimed the grant -- because an apply reached outside gunbc.fleet.fleet_converge_plan
+// inherits none of fleet_converge_plan_held_lease, so two applies against one baseline could both
+// proceed, and an applier that lives beside the disclaimer inherits the disclaimer's blind spots.
+// The grant is emitted into the full-host apply script by gunbc.fleet.fleet_converge_plan
+// host_wide_grant_apply_lines.
+// WHAT THIS MODULE OWNS IS THE READBACK, at the point the capability is CLAIMED: the standing above
+// carries the executor's group enrolment as its own typed fact, so a host whose grant never landed
+// refuses here with a cause that names the login and the group.
 fn runner_microvm_host_converge_wet() -> ProcessExit
 {
-  match executor_home_wet() {
-    Absent => exit_failure(reason: "runner_microvm_host_converge: HOME is unset, so the executor-owned install root cannot be named")
-    Present { value: home } => {
-      let root = firecracker_install_root(executor_home: home)
-      let before = observe_firecracker_host_standing_wet(root: root)
-      let install = match before.binary {
-        FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
-        _ => {
-          let scratch = join([root, "/scratch"], "")
-          match run_shell_commands(commands: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec) {
-            ExitSuccess =>
-              match sha256sum_verify_via_shell(path: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr, expected_digest: firecracker_release_aarch64_tarball_sha256) {
-                Sha256Matches => run_shell_commands(commands: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec)
-                Sha256Mismatch => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
-                Sha256VerifyInfraFailure { reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r as String, "); installing NOTHING"], ""))
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_microvm_host_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
+      match executor_home_wet() {
+        Absent => exit_failure(reason: "runner_microvm_host_converge: HOME is unset, so the executor-owned install root cannot be named")
+        Present { value: home } => {
+          let root = firecracker_install_root(executor_home: home)
+          let before = observe_firecracker_host_standing_wet(root: root, login: spec.job_user)
+          let install = match before.binary {
+            FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
+            _ => {
+              let scratch = join([root, "/scratch"], "")
+              match run_shell_commands(commands: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec) {
+                ExitSuccess =>
+                  match sha256sum_verify_via_shell(path: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr, expected_digest: firecracker_release_aarch64_tarball_sha256) {
+                    Sha256Matches => run_shell_commands(commands: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec)
+                    Sha256Mismatch => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
+                    Sha256VerifyInfraFailure { reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r as String, "); installing NOTHING"], ""))
+                  }
+                other => other
               }
+            }
+          }
+          match install {
+            ExitSuccess =>
+              host_standing_verdict(
+                entry: "runner_microvm_host_converge",
+                standing: observe_firecracker_host_standing_wet(root: root, login: spec.job_user),
+                host: host,
+                expected_login: spec.job_user,
+              )
             other => other
           }
         }
       }
-      match install {
-        ExitSuccess => {
-          let after = observe_firecracker_host_standing_wet(root: root)
-          let text = firecracker_host_standing_text(s: after)
-          let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_host_standing_receipt_dir)], transport: LocalExec)
-          let w = Filesystem.Write(path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n"))
-          if !w.success {
-            exit_failure(reason: join(["runner_microvm_host_converge: receipt write refused: ", w.error], ""))
-          } else if firecracker_host_ready(standing: after) {
-            ExitSuccess
-          } else {
-            exit_failure(reason: join(["runner_microvm_host_converge: converged what it owns; host is still not ready --\n", text], ""))
-          }
-        }
-        other => other
-      }
-    }
   }
 }
