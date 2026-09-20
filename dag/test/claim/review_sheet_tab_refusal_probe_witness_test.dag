@@ -116,3 +116,40 @@ test fn an_unadmitted_caller_cannot_reach_a_located_tab_through_the_witness_wrap
     wanted: "ConstructorCallAdmissionRefused", subject: "located_tab_for_witness",
   ) >= 1
 }
+
+// (e) THE FORMAT EFFECTS CANNOT BE REACHED WITHOUT A LOCATED TAB. Each batchUpdate function takes
+// a request record, and while those records were ordinary a foreign module could author one and
+// format an arbitrary tab of an arbitrary workbook without a LocatedReviewTab, a validated schema
+// or a converge -- the production entry required a located tab and the effects did not. The
+// closure is on the INPUT rather than on the five callers: every record is sole_constructor and
+// its only mints require a located tab, so the refusal lands at the RECORD. That is why these
+// four claims name record types rather than callees, and it is the stronger form -- an
+// unconstructible argument cannot reach those functions by any route, named or unnamed, so
+// confinement does not depend on an admission list staying complete as the module grows.
+test fn a_freeze_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "FreezeRowsRequest",
+  ) >= 1
+}
+
+test fn a_header_band_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "HeaderBandRequest",
+  ) >= 1
+}
+
+test fn a_standing_rule_request_cannot_be_authored_outside_the_located_builders() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "StandingRuleRequest",
+  ) >= 1
+}
+
+test fn a_whole_format_plan_cannot_be_authored_outside_the_located_builders() -> Bool {
+  blocking_count_for_class_and_subject(
+    c: census_of(source: probe_source(name: "review_sheet_tab_forged_probe")),
+    wanted: "SoleConstructorViolation", subject: "FormatRequestPlan",
+  ) >= 1
+}

@@ -31,6 +31,7 @@ module test.probe.review_sheet_tab_forged_probe
 // strict-resolve exclusion, so this source reaches the compiler only through that witness.
 
 import std.types { NonEmptyStr, String, Int }
+import std.resources { Network }
 import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.google.sheets { SpreadsheetRead, SheetsSheetRead, SheetsSheetPropertiesRead }
 import gunbc.review_sheet_tab_locator {
@@ -43,6 +44,19 @@ import gunbc.review_sheet_tab_locator {
   review_tab_standing_of_outcome,
 }
 import test.claim.review_sheet_format_target_witness { located_tab_for_witness }
+import gunbc.review_sheet_format_actuator {
+  FreezeRowsRequest,
+  HeaderBandRequest,
+  StandingRuleRequest,
+  FormatRequestPlan,
+  FormatStepOutcome,
+  FormatReport,
+  freeze_header,
+  format_header_band,
+  color_standing,
+  format_review_sheet,
+  standing_admitted_color,
+}
 
 fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
   LocatedReviewTab {
@@ -92,5 +106,51 @@ fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -
     spreadsheet_id: spreadsheet_id,
     outcome: RestOk,
     read: authored_single_tab_response(sheet_id: 0, title: "Sheet1"),
+  )
+}
+
+// (e) THE FORMAT EFFECTS, REACHED WITHOUT A LOCATED TAB AT ALL. Each batchUpdate function takes a
+// request record, and while those records were ordinary this module could author one and format an
+// arbitrary tab of an arbitrary workbook -- no LocatedReviewTab, no validated schema, no converge.
+// The production entry required a located tab; the effects did not, which is the same
+// admitted-edge-does-not-confine-a-value class one layer out from the carrier. Every record is now
+// sole_constructor with its only mints requiring a LocatedReviewTab, so each literal below refuses
+// at the RECORD rather than at the callee -- a stronger closure than sealing the five functions,
+// because an unconstructible argument cannot reach them by any route, named or unnamed.
+fn forge_a_freeze_of_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  freeze_header(
+    q: FreezeRowsRequest { spreadsheet_id: "someone-elses-workbook", sheet_id: 7, frozen_row_count: 1 }
+  )
+}
+
+fn forge_a_header_band_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  format_header_band(
+    q: HeaderBandRequest {
+      spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
+      start_row: 0, end_row: 1, start_col: 0, end_col: 17,
+    }
+  )
+}
+
+fn forge_a_standing_rule_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Network {
+  color_standing(
+    q: StandingRuleRequest {
+      spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
+      start_row: 1, start_col: 3, end_col: 4, match_text: "Opportunity", rule_index: 0,
+    },
+    color: standing_admitted_color(),
+  )
+}
+
+fn forge_every_mutation_from_an_authored_plan(
+  freeze: FreezeRowsRequest,
+  header: HeaderBandRequest,
+  rule: StandingRuleRequest,
+) -> FormatReport uses net: Network {
+  format_review_sheet(
+    plan: FormatRequestPlan {
+      freeze: freeze, header: header, opportunity: rule, arbitrage: rule,
+      incompatible: rule, required: rule, replay: rule,
+    }
   )
 }

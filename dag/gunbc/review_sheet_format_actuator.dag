@@ -246,13 +246,35 @@ fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOu
 // wire, so it discriminates a plan built from the constant and does NOT discriminate a step
 // rewritten to ignore the request it was handed. Closing that needs the mock corpus to carry the
 // three batchUpdate operations, which it does not.
-type FreezeRowsRequest {
+// THE REQUEST RECORDS ARE SEALED, AND THAT IS WHAT KEEPS THE EFFECTS BEHIND THE LOCATED TAB.
+// These records exist so the addressing is a VALUE a claim can read rather than an argument buried
+// in an effect. As ordinary records that was a bypass of the whole discipline above: every
+// batchUpdate function below takes one, none of them was admission-restricted, and a record anyone
+// could author meant a foreign module could call freeze_header or format_review_sheet with a
+// spreadsheet id and sheet id it chose -- formatting an arbitrary tab of an arbitrary workbook
+// without obtaining a LocatedReviewTab, validating a header schema, or running the converge at all
+// (side-chat hold on gunbc#11725). The production entry required a located tab; the effects did not.
+//
+// THE CLOSURE IS ON THE INPUT, NOT ON THE CALLERS, for the same reason the carrier's was. Sealing
+// five effectful functions to their exact predecessors would work and would leave confinement
+// depending on an admission list staying complete as this module grows -- the two-lists-with-no-join
+// defect that has already cost this branch a false seal claim and two silent mutation gaps. Instead
+// every request record is sole_constructor and the ONLY expressions that build them are the three
+// builders below, each of which requires a LocatedReviewTab. An unconstructible argument needs no
+// guard on the function that consumes it: the effect functions stay unrestricted because there is
+// no way to reach them except through a plan derived from a tab that was actually read.
+//
+// WHAT THAT LEAVES OPEN, said rather than implied: read_format_at takes a range String beside the
+// located tab, so a caller holding a genuine tab may read any range WITHIN that spreadsheet. The
+// subject stays confined -- the spreadsheet and tab are the located ones -- and it is a read, not a
+// mutation. Narrowing the range to a derived value is the next rung and nothing today needs it.
+type FreezeRowsRequest sole_constructor {
   spreadsheet_id: String
   sheet_id: Int
   frozen_row_count: Int
 }
 
-type HeaderBandRequest {
+type HeaderBandRequest sole_constructor {
   spreadsheet_id: String
   sheet_id: Int
   start_row: Int
@@ -261,7 +283,7 @@ type HeaderBandRequest {
   end_col: Int
 }
 
-type StandingRuleRequest {
+type StandingRuleRequest sole_constructor {
   spreadsheet_id: String
   sheet_id: Int
   start_row: Int
@@ -307,7 +329,7 @@ fn standing_rule_request(
   }
 }
 
-type FormatRequestPlan {
+type FormatRequestPlan sole_constructor {
   freeze: FreezeRowsRequest
   header: HeaderBandRequest
   opportunity: StandingRuleRequest
