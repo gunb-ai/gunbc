@@ -233,6 +233,10 @@ fn megarac_session_presence(get_succeeded: Bool, get_body: String) -> SessionPre
 // a cookie the controller had already dropped, answers 4xx both times and would otherwise read
 // as a clean release -- the absorbing fallback DESIGN section 5 forbids, one status code wide.
 // So the fold takes both observations and mints SessionReleased for exactly present -> absent.
+// ONE REFUSAL VALUE FOR THE SENTINEL-CSRF CASE, consumed by the re-observation fold and by the
+// unreadable-token arm that closes without probing (review 68789: the arm had re-typed the sentence).
+data megarac_sentinel_csrf_release_refusal: SessionRelease = SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" }
+
 fn megarac_session_release_by_reobservation(
   before: SessionPresence,
   after: SessionPresence,
@@ -240,7 +244,7 @@ fn megarac_session_release_by_reobservation(
 ) -> SessionRelease {
   match csrf {
     SessionCsrfUnreadable =>
-      SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" }
+      megarac_sentinel_csrf_release_refusal
     SessionCsrfParsed =>
       match before {
         SessionPresent =>
@@ -354,7 +358,7 @@ fn megarac_release_unreadable_session(
   )
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" },
+    session_release: megarac_sentinel_csrf_release_refusal,
   }
 }
 
