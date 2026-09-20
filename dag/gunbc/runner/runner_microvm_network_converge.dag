@@ -53,6 +53,7 @@ import gunbc.runner_microvm_network {
   AutoAssignmentAbsentFromKernel, AutoAssignmentSysctlOff, AutoAssignmentOn, AutoAssignmentUnread,
   TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
   slot_network_subject, runner_microvm_nft_read_operation, runner_slot_subnet,
+  render_converged_slot_network,
 }
 
 data runner_microvm_network_converge_disposition: Disposition = SingleAuthority
@@ -199,8 +200,38 @@ fn parse_disable_ipv6(readable: Bool, text: String) -> TapIpv6Standing {
   }
 }
 
-fn ip_forward_is_on(readable: Bool, text: String) -> Bool {
-  readable && trim(s: text) == "1"
+// FORWARDING IS ON, OFF, OR UNREAD -- A Bool CANNOT SAY "I DID NOT LOOK". A failed read folding into
+// false made the refusal say "net.ipv4.ip_forward reads 0", a value nobody read (review 69041). It
+// failed closed, but it sent an operator to turn on a setting that may already be on.
+type IpForwardStanding
+  = IpForwardOn
+  | IpForwardOff
+  | IpForwardUnread { reason: NonEmptyStr }
+
+fn ip_forward_standing(readable: Bool, text: String) -> IpForwardStanding {
+  if !readable {
+    IpForwardUnread { reason: "net.ipv4.ip_forward could not be read" as NonEmptyStr }
+  } else if trim(s: text) == "1" {
+    IpForwardOn
+  } else if trim(s: text) == "0" {
+    IpForwardOff
+  } else {
+    IpForwardUnread { reason: join(["net.ipv4.ip_forward read back as an unexpected value: ", trim(s: text)], "") as NonEmptyStr }
+  }
+}
+
+// A SLOT PROBE CARRIES ITS OWN ABSENCE FOR THE SAME REASON. A refused `ip -o -4 addr show` produced
+// an empty string, which read as "the tap holds no address" -- so an operator was sent to fix a tap
+// when the probe was what failed (review 69041).
+type SlotProbeReading
+  = SlotProbeRead { text: String }
+  | SlotProbeUnread { reason: NonEmptyStr }
+
+fn slot_probe_text(r: SlotProbeReading) -> String {
+  match r {
+    SlotProbeRead { text: t } => t
+    SlotProbeUnread { reason: _ } => ""
+  }
 }
 
 // THE HOST'S OWN ADDRESS ON THE TAP, AND THE ROUTE THROUGH IT, ARE READ FROM THE KERNEL rather than
@@ -292,6 +323,9 @@ type ConvergeRefusal
   | SlotAddressNotHeld { slot: RunnerSlotIdentity, expected: NonEmptyStr }
   | SlotRouteNotHeld { slot: RunnerSlotIdentity, expected: NonEmptyStr }
   | IpForwardingOff
+  | IpForwardingUnread { reason: NonEmptyStr }
+  | SlotAddressUnread { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | SlotRouteUnread { slot: RunnerSlotIdentity, reason: NonEmptyStr }
   | RulesetUnread { reason: NonEmptyStr }
   | HelperStandingUnread { reason: NonEmptyStr }
   | HelperAutoAssignmentOn
@@ -305,14 +339,14 @@ type ConvergeOutcome
 type SlotReading {
   slot: RunnerSlotIdentity
   tap_ipv6: TapIpv6Standing
-  addr_stdout: String
-  route_stdout: String
+  addr: SlotProbeReading
+  route: SlotProbeReading
 }
 
 type HostReading {
   host: HostIdentity
   generation: ConvergeGeneration
-  ip_forward_on: Bool
+  ip_forward: IpForwardStanding
   ruleset_digest: Sha256Digest?
   auto_assignment: HelperAutoAssignment
   nft_ct_helper_statements: HelperSurfaceReading
@@ -326,7 +360,7 @@ fn converged_slot_of_reading(r: SlotReading) -> ConvergedSlot {
   ConvergedSlot {
     subject: slot_network_subject(slot: r.slot),
     host_address_cidr: runner_slot_host_cidr(net: net) as NonEmptyStr,
-    guest_route: trim(s: r.route_stdout) as NonEmptyStr,
+    guest_route: trim(s: slot_probe_text(r: r.route)) as NonEmptyStr,
     tap_ipv6: r.tap_ipv6,
   }
 }
@@ -341,12 +375,22 @@ fn slot_refusal(r: SlotReading) -> List<ConvergeRefusal> {
     TapIpv6Unread { reason: _ } => [SlotTapIpv6Unread { slot: r.slot, standing: r.tap_ipv6 }]
     TapIpv6Enabled => [SlotTapIpv6Enabled { slot: r.slot }]
     TapIpv6Disabled =>
-      if !addr_reading_carries(stdout: r.addr_stdout, cidr: cidr) {
-        [SlotAddressNotHeld { slot: r.slot, expected: cidr as NonEmptyStr }]
-      } else if !route_reading_carries(stdout: r.route_stdout, cidr: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String) {
-        [SlotRouteNotHeld { slot: r.slot, expected: render_ipv4_prefix(p: runner_slot_subnet(net: net)) }]
-      } else {
-        []
+      match r.addr {
+        SlotProbeUnread { reason: why } => [SlotAddressUnread { slot: r.slot, reason: why }]
+        SlotProbeRead { text: addr_text } =>
+          if !addr_reading_carries(stdout: addr_text, cidr: cidr) {
+            [SlotAddressNotHeld { slot: r.slot, expected: cidr as NonEmptyStr }]
+          } else {
+            match r.route {
+              SlotProbeUnread { reason: why } => [SlotRouteUnread { slot: r.slot, reason: why }]
+              SlotProbeRead { text: route_text } =>
+                if !route_reading_carries(stdout: route_text, cidr: render_ipv4_prefix(p: runner_slot_subnet(net: net)) as String) {
+                  [SlotRouteNotHeld { slot: r.slot, expected: render_ipv4_prefix(p: runner_slot_subnet(net: net)) }]
+                } else {
+                  []
+                }
+            }
+          }
       }
   }
 }
@@ -364,7 +408,11 @@ fn first_refusal(rs: List<ConvergeRefusal>) -> ConvergeRefusal? {
 fn host_refusals(h: HostReading) -> List<ConvergeRefusal> {
   concat(
     concat(
-      if h.ip_forward_on { [] } else { [IpForwardingOff] },
+      match h.ip_forward {
+        IpForwardOn => []
+        IpForwardOff => [IpForwardingOff]
+        IpForwardUnread { reason: why } => [IpForwardingUnread { reason: why }]
+      },
       match h.ruleset_digest {
         Present { value: _ } => []
         Absent => [RulesetUnread { reason: "nft list table did not return a digestible listing of the installed table" as NonEmptyStr }]
@@ -493,14 +541,23 @@ fn listing_digest(d: Sha256FileDigest) -> Sha256Digest? {
   }
 }
 
+fn slot_probe_reading(o: ProcessOutcome, probe: String) -> SlotProbeReading {
+  match o {
+    ProcessOutputPresent { text: t } => SlotProbeRead { text: t }
+    ProcessOutputAbsent => SlotProbeRead { text: "" }
+    ProcessRefused { exit_code: code, stderr: _ } =>
+      SlotProbeUnread { reason: join([probe, " exited ", to_string(code)], "") as NonEmptyStr }
+  }
+}
+
 fn read_slot_wet(slot: RunnerSlotIdentity) -> SlotReading {
   let net = runner_slot_network(slot: slot)
   let v6 = read_proc_value(path: runner_slot_ipv6_disabled_proc_path(net: net))
   SlotReading {
     slot: slot,
     tap_ipv6: parse_disable_ipv6(readable: proc_readable(o: v6), text: proc_text(o: v6)),
-    addr_stdout: outcome_stdout(o: capture_stdout(c: ip_addr_show_command(device: net.tap_device as String))),
-    route_stdout: outcome_stdout(o: capture_stdout(c: ip_route_show_command(device: net.tap_device as String))),
+    addr: slot_probe_reading(o: capture_stdout(c: ip_addr_show_command(device: net.tap_device as String)), probe: "ip -o -4 addr show"),
+    route: slot_probe_reading(o: capture_stdout(c: ip_route_show_command(device: net.tap_device as String)), probe: "ip -o -4 route show"),
   }
 }
 
@@ -523,7 +580,7 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration) -> HostRead
   HostReading {
     host: host,
     generation: generation,
-    ip_forward_on: ip_forward_is_on(readable: proc_readable(o: forward), text: proc_text(o: forward)),
+    ip_forward: ip_forward_standing(readable: proc_readable(o: forward), text: proc_text(o: forward)),
     ruleset_digest: digest,
     auto_assignment: parse_auto_assignment(
       observed: observe_helper_sysctl_wet(),
@@ -598,6 +655,9 @@ fn refusal_text(r: ConvergeRefusal) -> String {
     SlotAddressNotHeld { slot: s, expected: e } => join(["slot ", runner_slot_instance_name(slot: s), ": the tap does not hold ", e as String], "")
     SlotRouteNotHeld { slot: s, expected: e } => join(["slot ", runner_slot_instance_name(slot: s), ": no route over ", e as String], "")
     IpForwardingOff => "net.ipv4.ip_forward reads 0"
+    IpForwardingUnread { reason: why } => why as String
+    SlotAddressUnread { slot: sl, reason: why } => join(["slot ", runner_slot_instance_name(slot: sl), ": ", why as String], "")
+    SlotRouteUnread { slot: sl, reason: why } => join(["slot ", runner_slot_instance_name(slot: sl), ": ", why as String], "")
     RulesetUnread { reason: why } => join(["the installed ruleset could not be listed: ", why as String], "")
     HelperStandingUnread { reason: why } => join(["helper standing not established: ", why as String], "")
     HelperAutoAssignmentOn => "automatic conntrack helper assignment is ON"
@@ -610,7 +670,9 @@ fn refusal_text(r: ConvergeRefusal) -> String {
 // the lifecycle controller read to learn what the converge established, so a rendering that dropped
 // the per-slot subjects, their addresses, routes and v6 standing, or the helper readings, would make
 // the receipt unable to answer the questions ConvergedSlotNetwork exists to answer (side-chat hold
-// on #11751).
+// on #11751). The operator's reading comes first; the WIRE form follows it in the same file, so one
+// artifact serves both readers and the lifecycle controller can reconstruct the sealed value with
+// parse_converged_slot_network rather than re-deriving it from prose.
 fn helper_surface_text(name: String, r: HelperSurfaceReading) -> String {
   match r {
     HelperSurfaceCounted { count: n } => join(["  ", name, "=", to_string(n), "\n"], "")
@@ -666,7 +728,7 @@ fn converged_receipt_text(c: ConvergedSlotNetwork) -> String {
 fn receipt_text(o: ConvergeOutcome) -> String {
   match o {
     ConvergeRefused { refusal: r } => join(["microvm-network-converge REFUSED: ", refusal_text(r: r), "\n"], "")
-    ConvergedNetwork { receipt: c } => converged_receipt_text(c: c)
+    ConvergedNetwork { receipt: c } => join([converged_receipt_text(c: c), render_converged_slot_network(c: c)], "")
   }
 }
 

@@ -1,13 +1,14 @@
 module gunbc.runner_microvm_network
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Port }
+import std.algebra { trim }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
@@ -1359,3 +1360,321 @@ data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dis
 data guest_resolver_configuration_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. TRIGGER: the guest image makes /etc/resolv.conf follow the booted dns0 (/proc/net/pnp) and a booted guest resolves github.com through runner_microvm_guest_resolver. SUFFICIENT FOR deleting this row. NOT satisfied by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
 )
+
+// --- the receipt as a wire value: what a later process reads back ---
+
+// A RECEIPT NOBODY CAN PARSE IS A REPORT, NOT A RECEIPT. The converge builds a ConvergedSlotNetwork
+// in memory and writes a file; the lifecycle controller runs later, in another process, and needs
+// the VALUE -- slot_network_sanitation_subject takes a receipt, not prose (side-chat hold on #11751).
+// So the file has a schema line and a total parse back, and the two live beside the type they carry
+// rather than in either consumer.
+//
+// THE DERIVABLE FIELDS ARE VERIFIED, NOT TRUSTED. A slot's tap, guest address and MAC follow from its
+// identity, so the parse derives them and REFUSES when the wire disagrees: a receipt describing a
+// tap this fleet would never mint is a receipt about something else.
+data converged_slot_network_wire_schema: NonEmptyStr = "gunbc.converged_slot_network.v1" as NonEmptyStr
+
+fn helper_surface_wire(r: HelperSurfaceReading) -> String {
+  match r {
+    HelperSurfaceCounted { count: n } => join(["counted:", to_string(n)], "")
+    HelperSurfaceUnread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn auto_assignment_wire(a: HelperAutoAssignment) -> String {
+  match a {
+    AutoAssignmentAbsentFromKernel { kernel_release: k } => join(["absent_from_kernel:", k as String], "")
+    AutoAssignmentSysctlOff => "sysctl_off"
+    AutoAssignmentOn => "on"
+    AutoAssignmentUnread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn tap_ipv6_wire(t: TapIpv6Standing) -> String {
+  match t {
+    TapIpv6Disabled => "disabled"
+    TapIpv6Enabled => "enabled"
+    TapIpv6Unread { reason: why } => join(["unread:", why as String], "")
+  }
+}
+
+fn converged_slot_wire(c: ConvergedSlot) -> String {
+  join([
+    "slot=", runner_slot_instance_name(slot: c.subject.slot),
+    "|tap=", c.subject.tap_device as String,
+    "|guest=", render_ipv4_address(addr: c.subject.guest_address) as String,
+    "|mac=", render_mac_address(addr: c.subject.guest_mac) as String,
+    "|host_cidr=", c.host_address_cidr as String,
+    "|route=", c.guest_route as String,
+    "|ipv6=", tap_ipv6_wire(t: c.tap_ipv6),
+  ], "")
+}
+
+fn render_converged_slot_network(c: ConvergedSlotNetwork) -> String {
+  join([
+    converged_slot_network_wire_schema as String, "\n",
+    "host=", c.host as String, "\n",
+    "generation=", c.generation as String, "\n",
+    "nft_digest=", c.nft_digest.hex as String, "\n",
+    "helper_auto=", auto_assignment_wire(a: c.helpers.auto_assignment), "\n",
+    "helper_nft=", helper_surface_wire(r: c.helpers.nft_ct_helper_statements), "\n",
+    "helper_xtables=", helper_surface_wire(r: c.helpers.xtables_ct_helper_targets), "\n",
+    "helper_userspace=", helper_surface_wire(r: c.helpers.userspace_helpers), "\n",
+    "helper_expectations=", helper_surface_wire(r: c.helpers.expectations_at_generation), "\n",
+    join(map(c.slots, x => join([converged_slot_wire(c: x), "\n"], "")), ""),
+  ], "")
+}
+
+type ConvergedSlotNetworkParse
+  = ConvergedSlotNetworkParsed { receipt: ConvergedSlotNetwork }
+  | ConvergedSlotNetworkMalformed { cause: NonEmptyStr }
+
+fn wire_lines(text: String) -> List<String> {
+  filter(xs: split(s: text, delimiter: "\n"), predicate: fn(l) { trim(s: l) != "" })
+}
+
+fn wire_value(lines: List<String>, key: String) -> String? {
+  fold(lines, init: none, f: (acc, l) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if trim(s: l).starts_with(prefix: join([key, "="], "")) {
+          Present { value: drop_prefix(s: trim(s: l), prefix: join([key, "="], "")) }
+        } else {
+          acc
+        }
+    }
+  )
+}
+
+fn drop_prefix(s: String, prefix: String) -> String {
+  join(skip(xs: split(s: s, delimiter: prefix), n: 1), prefix)
+}
+
+fn parse_helper_surface(raw: String) -> HelperSurfaceReading? {
+  if raw.starts_with(prefix: "counted:") {
+    match parse_int(s: drop_prefix(s: raw, prefix: "counted:")) {
+      Present { value: n } => Present { value: HelperSurfaceCounted { count: n } }
+      Absent => none
+    }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: HelperSurfaceUnread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn parse_auto_assignment_wire(raw: String) -> HelperAutoAssignment? {
+  if raw.starts_with(prefix: "absent_from_kernel:") {
+    Present { value: AutoAssignmentAbsentFromKernel { kernel_release: drop_prefix(s: raw, prefix: "absent_from_kernel:") as NonEmptyStr } }
+  } else if raw == "sysctl_off" {
+    Present { value: AutoAssignmentSysctlOff }
+  } else if raw == "on" {
+    Present { value: AutoAssignmentOn }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: AutoAssignmentUnread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn parse_tap_ipv6_wire(raw: String) -> TapIpv6Standing? {
+  if raw == "disabled" {
+    Present { value: TapIpv6Disabled }
+  } else if raw == "enabled" {
+    Present { value: TapIpv6Enabled }
+  } else if raw.starts_with(prefix: "unread:") {
+    Present { value: TapIpv6Unread { reason: drop_prefix(s: raw, prefix: "unread:") as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn slot_field(parts: List<String>, key: String) -> String? {
+  wire_value(lines: parts, key: key)
+}
+
+// THE SLOT IS FOUND IN THE CANDIDATE ROSTER, NOT MINTED FROM THE TEXT. A receipt naming a slot this
+// host does not have is a receipt about another fleet, and deriving the identity from a parsed index
+// would let the file invent one.
+fn candidate_named(candidates: List<RunnerSlotIdentity>, name: String) -> RunnerSlotIdentity? {
+  fold(candidates, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if runner_slot_instance_name(slot: c) == name { Present { value: c } } else { acc }
+    }
+  )
+}
+
+fn parse_converged_slot_line(line: String, candidates: List<RunnerSlotIdentity>) -> ConvergedSlot? {
+  let parts = split(s: trim(s: line), delimiter: "|")
+  match slot_field(parts: parts, key: "slot") {
+    Absent => none
+    Present { value: name } =>
+      match candidate_named(candidates: candidates, name: name) {
+        Absent => none
+        Present { value: identity } => {
+          let derived = slot_network_subject(slot: identity)
+          match slot_field(parts: parts, key: "tap") {
+            Absent => none
+            Present { value: tap } =>
+              match slot_field(parts: parts, key: "guest") {
+                Absent => none
+                Present { value: guest } =>
+                  match slot_field(parts: parts, key: "mac") {
+                    Absent => none
+                    Present { value: mac } =>
+                      if (tap != (derived.tap_device as String))
+                        || (guest != (render_ipv4_address(addr: derived.guest_address) as String))
+                        || (mac != (render_mac_address(addr: derived.guest_mac) as String)) {
+                        none
+                      } else {
+                        parse_converged_slot_tail(parts: parts, derived: derived)
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn parse_converged_slot_tail(parts: List<String>, derived: SlotNetworkSubject) -> ConvergedSlot? {
+  match slot_field(parts: parts, key: "host_cidr") {
+    Absent => none
+    Present { value: cidr } =>
+      match slot_field(parts: parts, key: "route") {
+        Absent => none
+        Present { value: route } =>
+          match slot_field(parts: parts, key: "ipv6") {
+            Absent => none
+            Present { value: v6raw } =>
+              match parse_tap_ipv6_wire(raw: v6raw) {
+                Absent => none
+                Present { value: v6 } =>
+                  Present { value: ConvergedSlot {
+                    subject: derived,
+                    host_address_cidr: cidr as NonEmptyStr,
+                    guest_route: route as NonEmptyStr,
+                    tap_ipv6: v6,
+                  } }
+              }
+          }
+      }
+  }
+}
+
+// EVERY FIELD OR NOTHING. A receipt missing its schema line, its host, its generation, its digest,
+// any helper reading, or carrying a slot line this host cannot own, is malformed -- the consumer
+// gets a typed refusal naming the field rather than a partially populated value.
+fn parse_converged_slot_network(text: String, candidates: List<RunnerSlotIdentity>) -> ConvergedSlotNetworkParse {
+  let lines = wire_lines(text: text)
+  match lines.first() {
+    Absent => ConvergedSlotNetworkMalformed { cause: "the receipt is empty" as NonEmptyStr }
+    Present { value: schema } =>
+      if trim(s: schema) != (converged_slot_network_wire_schema as String) {
+        ConvergedSlotNetworkMalformed { cause: "the first line is not this receipt's schema" as NonEmptyStr }
+      } else {
+        parse_converged_body(lines: lines, candidates: candidates)
+      }
+  }
+}
+
+fn parse_converged_body(lines: List<String>, candidates: List<RunnerSlotIdentity>) -> ConvergedSlotNetworkParse {
+  match wire_value(lines: lines, key: "host") {
+    Absent => ConvergedSlotNetworkMalformed { cause: "no host= line" as NonEmptyStr }
+    Present { value: host } =>
+      match wire_value(lines: lines, key: "generation") {
+        Absent => ConvergedSlotNetworkMalformed { cause: "no generation= line" as NonEmptyStr }
+        Present { value: generation } =>
+          match wire_value(lines: lines, key: "nft_digest") {
+            Absent => ConvergedSlotNetworkMalformed { cause: "no nft_digest= line" as NonEmptyStr }
+            Present { value: hex } =>
+              match sha256_hex_digest(hex: hex) {
+                Absent => ConvergedSlotNetworkMalformed { cause: "nft_digest is not a sha256 hex digest" as NonEmptyStr }
+                Present { value: digest } =>
+                  match parse_helper_standing(lines: lines) {
+                    Absent => ConvergedSlotNetworkMalformed { cause: "a helper reading is missing or malformed" as NonEmptyStr }
+                    Present { value: helpers } =>
+                      parse_converged_slots(lines: lines, candidates: candidates, host: host, generation: generation, digest: digest, helpers: helpers)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_helper_standing(lines: List<String>) -> HelperStanding? {
+  match wire_value(lines: lines, key: "helper_auto") {
+    Absent => none
+    Present { value: autoraw } =>
+      match parse_auto_assignment_wire(raw: autoraw) {
+        Absent => none
+        Present { value: auto } =>
+          match parse_helper_surface_at(lines: lines, key: "helper_nft") {
+            Absent => none
+            Present { value: nft } =>
+              match parse_helper_surface_at(lines: lines, key: "helper_xtables") {
+                Absent => none
+                Present { value: xt } =>
+                  match parse_helper_surface_at(lines: lines, key: "helper_userspace") {
+                    Absent => none
+                    Present { value: us } =>
+                      match parse_helper_surface_at(lines: lines, key: "helper_expectations") {
+                        Absent => none
+                        Present { value: ex } =>
+                          Present { value: HelperStanding {
+                            auto_assignment: auto,
+                            nft_ct_helper_statements: nft,
+                            xtables_ct_helper_targets: xt,
+                            userspace_helpers: us,
+                            expectations_at_generation: ex,
+                          } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_helper_surface_at(lines: List<String>, key: String) -> HelperSurfaceReading? {
+  match wire_value(lines: lines, key: key) {
+    Absent => none
+    Present { value: raw } => parse_helper_surface(raw: raw)
+  }
+}
+
+fn slot_lines(lines: List<String>) -> List<String> {
+  filter(xs: lines, predicate: fn(l) { trim(s: l).starts_with(prefix: "slot=") })
+}
+
+fn parse_converged_slots(
+  lines: List<String>,
+  candidates: List<RunnerSlotIdentity>,
+  host: String,
+  generation: String,
+  digest: Sha256Digest,
+  helpers: HelperStanding,
+) -> ConvergedSlotNetworkParse {
+  let raw = slot_lines(lines: lines)
+  let parsed = fold(raw, init: [], f: (acc, l) =>
+    match parse_converged_slot_line(line: l, candidates: candidates) {
+      Present { value: c } => concat(acc, [c])
+      Absent => acc
+    }
+  )
+  if length(parsed) != length(raw) {
+    ConvergedSlotNetworkMalformed { cause: "a slot line named a slot this host does not own, or disagreed with the address this fleet derives for it" as NonEmptyStr }
+  } else {
+    ConvergedSlotNetworkParsed {
+      receipt: ConvergedSlotNetwork {
+        host: host as HostIdentity,
+        generation: generation as ConvergeGeneration,
+        slots: parsed,
+        helpers: helpers,
+        nft_digest: digest,
+      },
+    }
+  }
+}

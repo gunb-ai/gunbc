@@ -330,7 +330,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
-    MicrovmNetworkConverge => FleetSshKeyConsumed
+    MicrovmNetworkConverge => FleetSshKeyNotConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
     MicrovmBootProbe => FleetSshKeyConsumed
@@ -1007,7 +1007,11 @@ fn fleet_converge_microvm_network_converge_step() -> Step {
     id: Present { value: "microvm_network_converge" },
     run: gunbc_ci_runner_microvm_network_converge_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_microvm_network_converge_step_if },
     continue_on_error: none,

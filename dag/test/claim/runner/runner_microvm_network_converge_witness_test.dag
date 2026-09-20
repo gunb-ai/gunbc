@@ -15,15 +15,21 @@ import gunbc.runner_microvm_network {
   TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
   AutoAssignmentAbsentFromKernel, AutoAssignmentOn, AutoAssignmentUnread, HelperAutoAssignment,
   ConvergedSlotNetwork, ConvergeGeneration, runner_microvm_shared_host_grain,
+  render_converged_slot_network, parse_converged_slot_network,
+  ConvergedSlotNetworkParse, ConvergedSlotNetworkParsed, ConvergedSlotNetworkMalformed,
+  helpers_excluded,
   HelperSurfaceReading, HelperSurfaceCounted, HelperSurfaceUnread,
 }
 import gunbc.runner_microvm_network_converge {
-  parse_disable_ipv6, ip_forward_is_on, ct_helper_statement_count,
+  parse_disable_ipv6, ip_forward_standing, ct_helper_statement_count,
   microvm_network_converge_operations, converge_staged_files, StagedFile,
   SlotReading, HostReading, ConvergeOutcome, ConvergedNetwork, ConvergeRefused,
   ConvergeRefusal, SlotTapIpv6Unread, SlotTapIpv6Enabled, SlotAddressNotHeld, SlotRouteNotHeld,
   IpForwardingOff, RulesetUnread, HelperStandingUnread, HelperAutoAssignmentOn, HelpersAttached,
   converge_outcome, absent_from_kernel_or_unread,
+  IpForwardStanding, IpForwardOn, IpForwardOff, IpForwardUnread,
+  SlotProbeReading, SlotProbeRead, SlotProbeUnread,
+  IpForwardingUnread, SlotAddressUnread, SlotRouteUnread,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -47,7 +53,7 @@ fn unread(why: String) -> HelperSurfaceReading {
 }
 
 fn clean_host() -> HostReading {
-  host_with(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent())
+  host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent())
 }
 
 // THE FIXTURE IS SHAPED LIKE `ip -o -4` OUTPUT AND IS AUTHORED, NOT DERIVED. Building it from the
@@ -74,8 +80,8 @@ fn clean_slot(i: Nat) -> SlotReading {
   SlotReading {
     slot: slot(i: i),
     tap_ipv6: TapIpv6Disabled,
-    addr_stdout: slot_addr_stdout(i: i),
-    route_stdout: slot_route_stdout(i: i),
+    addr: SlotProbeRead { text: slot_addr_stdout(i: i) },
+    route: SlotProbeRead { text: slot_route_stdout(i: i) },
   }
 }
 
@@ -88,6 +94,9 @@ fn outcome_label(o: ConvergeOutcome) -> String {
       SlotAddressNotHeld { slot: _, expected: _ } => "no-address"
       SlotRouteNotHeld { slot: _, expected: _ } => "no-route"
       IpForwardingOff => "no-forwarding"
+      IpForwardingUnread { reason: _ } => "forwarding-unread"
+      SlotAddressUnread { slot: _, reason: _ } => "address-unread"
+      SlotRouteUnread { slot: _, reason: _ } => "route-unread"
       RulesetUnread { reason: _ } => "ruleset-unread"
       HelperStandingUnread { reason: _ } => "helpers-unread"
       HelperAutoAssignmentOn => "auto-helpers-on"
@@ -112,9 +121,10 @@ test fn a_tap_ipv6_reading_is_the_value_or_it_is_unread() -> Bool {
     && match parse_disable_ipv6(readable: false, text: "") { TapIpv6Unread { reason: _ } => true, _ => false }
     && match parse_disable_ipv6(readable: true, text: "") { TapIpv6Unread { reason: _ } => true, _ => false }
     && match parse_disable_ipv6(readable: true, text: "yes") { TapIpv6Unread { reason: _ } => true, _ => false }
-    && ip_forward_is_on(readable: true, text: "1\n")
-    && !ip_forward_is_on(readable: true, text: "0\n")
-    && !ip_forward_is_on(readable: false, text: "1\n")
+    && match ip_forward_standing(readable: true, text: "1\n") { IpForwardOn => true, _ => false }
+    && match ip_forward_standing(readable: true, text: "0\n") { IpForwardOff => true, _ => false }
+    && match ip_forward_standing(readable: false, text: "1\n") { IpForwardUnread { reason: _ } => true, _ => false }
+    && match ip_forward_standing(readable: true, text: "yes") { IpForwardUnread { reason: _ } => true, _ => false }
 }
 
 // THE POSITIVE CONTROL: with every fact read and holding, the receipt carries one row per slot read.
@@ -128,19 +138,19 @@ test fn a_receipt_is_produced_only_when_every_fact_was_read_and_holds() -> Bool 
 // would let the sanitation subject admit slots on a host nobody observed.
 test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool {
   let net1 = runner_slot_network(slot: slot(i: 1))
-  let ipv6_on = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Enabled, addr_stdout: "", route_stdout: "" }
+  let ipv6_on = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Enabled, addr: SlotProbeRead { text: "" }, route: SlotProbeRead { text: "" } }
   let ipv6_unread = SlotReading {
     slot: slot(i: 1),
     tap_ipv6: TapIpv6Unread { reason: "probe refused" as NonEmptyStr },
-    addr_stdout: "",
-    route_stdout: "",
+    addr: SlotProbeRead { text: "" },
+    route: SlotProbeRead { text: "" },
   }
-  let no_addr = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Disabled, addr_stdout: "", route_stdout: "" }
+  let no_addr = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Disabled, addr: SlotProbeRead { text: "" }, route: SlotProbeRead { text: "" } }
   let no_route = SlotReading {
     slot: slot(i: 1),
     tap_ipv6: TapIpv6Disabled,
-    addr_stdout: join(["inet ", runner_slot_host_cidr(net: net1)], ""),
-    route_stdout: "",
+    addr: SlotProbeRead { text: join(["inet ", runner_slot_host_cidr(net: net1)], "") },
+    route: SlotProbeRead { text: "" },
   }
   outcome_label(o: converge_outcome(slots: [ipv6_on], h: clean_host())) == "tap-ipv6-on"
     && outcome_label(o: converge_outcome(slots: [ipv6_unread], h: clean_host())) == "tap-ipv6-unread"
@@ -155,7 +165,7 @@ test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool {
 // ONE BUILDER, SIX OVERRIDES. Each claim below supplies the whole HostReading through it, so a field
 // added to the reading breaks every fixture at once rather than defaulting silently.
 fn host_reading(
-  fwd: Bool,
+  fwd: IpForwardStanding,
   digest: Sha256Digest?,
   auto: HelperAutoAssignment,
   nft: HelperSurfaceReading,
@@ -166,7 +176,7 @@ fn host_reading(
   HostReading {
     host: operator_host_srv1,
     generation: "run-3" as ConvergeGeneration,
-    ip_forward_on: fwd,
+    ip_forward: fwd,
     ruleset_digest: digest,
     auto_assignment: auto,
     nft_ct_helper_statements: nft,
@@ -180,7 +190,7 @@ fn kernel_absent() -> HelperAutoAssignment {
   AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr }
 }
 
-fn host_with(fwd: Bool, digest: Sha256Digest?, auto: HelperAutoAssignment) -> HostReading {
+fn host_with(fwd: IpForwardStanding, digest: Sha256Digest?, auto: HelperAutoAssignment) -> HostReading {
   host_reading(fwd: fwd, digest: digest, auto: auto, nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0))
 }
 
@@ -188,12 +198,12 @@ fn host_with(fwd: Bool, digest: Sha256Digest?, auto: HelperAutoAssignment) -> Ho
 // listing, automatic helper assignment on, an unreadable sysctl, and an attached helper on any
 // surface are five different remedies and five different refusals.
 test fn each_host_fact_refuses_under_its_own_name() -> Bool {
-  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: false, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: none, auto: kernel_absent()))) == "ruleset-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: Present { value: converged_digest }, auto: AutoAssignmentOn))) == "auto-helpers-on"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: true, digest: Present { value: converged_digest }, auto: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 2), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-attached"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 1), expectations: counted(n: 0)))) == "helpers-attached"
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOff, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: none, auto: kernel_absent()))) == "ruleset-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: AutoAssignmentOn))) == "auto-helpers-on"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 2), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-attached"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 1), expectations: counted(n: 0)))) == "helpers-attached"
 }
 
 // A SURFACE NOBODY READ IS NOT AN EMPTY ONE. Each of the three helper surfaces and the expectation
@@ -202,10 +212,10 @@ test fn each_host_fact_refuses_under_its_own_name() -> Bool {
 // a legacy CT target or a userspace helper converged green.
 test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool {
   let d = Present { value: converged_digest }
-  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: unread(why: "nfct missing"), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: true, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: unread(why: "conntrack refused")))) == "helpers-unread"
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: unread(why: "nfct missing"), expectations: counted(n: 0)))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: unread(why: "conntrack refused")))) == "helpers-unread"
 }
 
 // A HELPER ATTACHED BY ANY TABLE COUNTS, because an expectation is created by whichever helper is
@@ -271,8 +281,8 @@ test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() ->
   let host_address_form = SlotReading {
     slot: slot(i: 1),
     tap_ipv6: TapIpv6Disabled,
-    addr_stdout: slot_1_addr_stdout(),
-    route_stdout: "172.30.1.1/30 proto kernel scope link ",
+    addr: SlotProbeRead { text: slot_1_addr_stdout() },
+    route: SlotProbeRead { text: "172.30.1.1/30 proto kernel scope link " },
   }
   outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: clean_host())) == "converged"
     && outcome_label(o: converge_outcome(slots: [host_address_form], h: clean_host())) == "no-route"
@@ -295,4 +305,74 @@ test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool {
       AutoAssignmentUnread { reason: _ } => true
       _ => false
     }
+}
+
+// THE RECEIPT ROUND-TRIPS INTO THE VALUE THE SANITATION SUBJECT TAKES. A converge that wrote prose
+// only would leave the lifecycle controller with no modeled route from a completed converge to a
+// ConvergedSlotNetwork (side-chat hold on #11751), so the artifact carries a wire form and this
+// claim runs it both ways: render, parse, and read the parsed value's fields back.
+test fn the_receipt_round_trips_into_a_converged_slot_network() -> Bool {
+  match converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host()) {
+    ConvergeRefused { refusal: _ } => false
+    ConvergedNetwork { receipt: c } =>
+      match parse_converged_slot_network(
+        text: render_converged_slot_network(c: c),
+        candidates: [slot(i: 1), slot(i: 2)],
+      ) {
+        ConvergedSlotNetworkMalformed { cause: _ } => false
+        ConvergedSlotNetworkParsed { receipt: back } =>
+          (back.host as String) == (c.host as String)
+            && (back.generation as String) == (c.generation as String)
+            && (back.nft_digest.hex as String) == (c.nft_digest.hex as String)
+            && length(back.slots) == 2
+            && helpers_excluded(h: back.helpers)
+      }
+  }
+}
+
+// A RECEIPT ABOUT ANOTHER FLEET, OR A TRUNCATED ONE, IS REFUSED RATHER THAN PARTIALLY READ. The reds:
+// a slot line this host does not own accepted, and a missing digest line yielding a receipt.
+test fn a_receipt_that_does_not_describe_this_host_is_refused() -> Bool {
+  match converge_outcome(slots: [clean_slot(i: 1)], h: clean_host()) {
+    ConvergeRefused { refusal: _ } => false
+    ConvergedNetwork { receipt: c } => {
+      let wire = render_converged_slot_network(c: c)
+      match parse_converged_slot_network(text: wire, candidates: [slot(i: 2)]) {
+        ConvergedSlotNetworkMalformed { cause: _ } => true
+        ConvergedSlotNetworkParsed { receipt: _ } => false
+      }
+        && match parse_converged_slot_network(text: "gunbc.converged_slot_network.v1\nhost=srv1\n", candidates: [slot(i: 1)]) {
+          ConvergedSlotNetworkMalformed { cause: _ } => true
+          ConvergedSlotNetworkParsed { receipt: _ } => false
+        }
+        && match parse_converged_slot_network(text: "some other file\n", candidates: [slot(i: 1)]) {
+          ConvergedSlotNetworkMalformed { cause: _ } => true
+          ConvergedSlotNetworkParsed { receipt: _ } => false
+        }
+    }
+  }
+}
+
+// A PROBE THAT DID NOT ANSWER IS NOT A HOST THAT FAILED. Forwarding unread, the address probe
+// refused and the route probe refused each refuse under their OWN name, so an operator fixes the
+// probe rather than being sent to turn on a setting that may already be on or to repair a tap that
+// may be perfect (review 69041). The reds are the previous shapes: a failed read folding into
+// "ip_forward reads 0", and a refused ip command reading as "the tap does not hold its address".
+test fn a_probe_that_did_not_answer_refuses_under_its_own_name() -> Bool {
+  let unread_addr = SlotReading {
+    slot: slot(i: 1),
+    tap_ipv6: TapIpv6Disabled,
+    addr: SlotProbeUnread { reason: "ip -o -4 addr show exited 1" as NonEmptyStr },
+    route: SlotProbeRead { text: slot_route_stdout(i: 1) },
+  }
+  let unread_route = SlotReading {
+    slot: slot(i: 1),
+    tap_ipv6: TapIpv6Disabled,
+    addr: SlotProbeRead { text: slot_addr_stdout(i: 1) },
+    route: SlotProbeUnread { reason: "ip -o -4 route show exited 1" as NonEmptyStr },
+  }
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardUnread { reason: "ip_forward could not be read" as NonEmptyStr }, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "forwarding-unread"
+    && outcome_label(o: converge_outcome(slots: [unread_addr], h: clean_host())) == "address-unread"
+    && outcome_label(o: converge_outcome(slots: [unread_route], h: clean_host())) == "route-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOff, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
 }
