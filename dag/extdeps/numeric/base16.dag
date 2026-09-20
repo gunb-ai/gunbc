@@ -89,6 +89,26 @@ fn base16_encode_lower(octets: List<UInt8>) -> String {
   map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
 }
 
+// THE ALPHABET'S OWN MEMBERSHIP TEST, derived from the digit rows rather than from a second
+// spelling of them. Four consumers each carried `(cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)`
+// -- the 0-9a-f alphabet re-encoded as code-point ranges, which is this table said twice more
+// (DESIGN section 3). Deriving the predicate from base16_digit_rows means a change to the alphabet
+// cannot leave a consumer reading the old one.
+fn base16_is_lower_digit_code_point(cp: Int) -> Bool {
+  any(base16_digit_rows, row => code_point(row.lower) == cp)
+}
+
+// Either case, for a consumer that must tell "not hexadecimal at all" from "hexadecimal but not the
+// canonical lowercase spelling" -- git object ids refuse those separately.
+fn base16_is_digit_code_point(cp: Int) -> Bool {
+  any(base16_digit_rows, row => code_point(row.lower) == cp || code_point(row.upper) == cp)
+}
+
+fn base16_lower_digit_value_at(cp: Int) -> Int? {
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
+    if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
+}
+
 fn base16_lower_digit_value(c: String) -> Int? {
   fold(base16_digit_rows, init: none, f: (acc, row) =>
     if row.lower == c { Present { value: row.value } } else { acc })

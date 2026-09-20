@@ -25,7 +25,7 @@ import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj 
 import extdeps.object_storage { ObjectContainer }
 import extdeps.object_storage.content_addressed { CasAddressingConfig }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.numeric.base16 { base16_decode_lower }
+import extdeps.numeric.base16 { base16_decode_lower, base16_is_digit_code_point }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -1924,12 +1924,6 @@ type GitObjectIdTextDecodeOutcome
   = GitObjectIdTextDecoded { oid: GitObjectId }
   | GitObjectIdTextRefused { cause: GitObjectIdTextRefusal }
 
-fn git_hex_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57)
-    || (cp >= 65 && cp <= 70)
-    || (cp >= 97 && cp <= 102)
-}
-
 fn git_decode_object_id_text(
   format: GitObjectFormat,
   text: String,
@@ -1945,7 +1939,7 @@ fn git_decode_object_id_text(
         observed: text.length(),
       }
     }
-  } else if !all(chars(s: text), cp => git_hex_code_point(cp: cp)) {
+  } else if !all(chars(s: text), cp => base16_is_digit_code_point(cp: cp)) {
     GitObjectIdTextRefused { cause: GitObjectIdTextNonHexadecimal }
   } else if any(chars(s: text), cp => cp >= 65 && cp <= 70) {
     GitObjectIdTextRefused { cause: GitObjectIdTextNonCanonicalUppercase }

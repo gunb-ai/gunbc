@@ -4,6 +4,7 @@ import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
 import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point, base16_lower_digit_value_at }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -181,15 +182,13 @@ fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
   }
 }
 
-fn mac_is_lower_hex_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
-}
-
-fn mac_hex_digit_value(cp: Int) -> Int {
-  if cp >= 48 && cp <= 57 {
-    cp - 48
-  } else {
-    (cp - 97) + 10
+// The digit's value comes from the base16 alphabet. The call is guarded by the membership test
+// above, so the absent arm is unreachable; it answers 0 rather than inventing a digit, and the
+// guard is what makes that honest -- a non-hex octet never reaches here.
+fn mac_lower_digit_value(cp: Int) -> Int {
+  match base16_lower_digit_value_at(cp: cp) {
+    Present { value: v } => v
+    Absent => 0
   }
 }
 
@@ -207,9 +206,9 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
         }
       } else {
-        if points |> all(c => mac_is_lower_hex_code_point(cp: c)) {
+        if points |> all(c => base16_is_lower_digit_code_point(cp: c)) {
           MacOctetOk {
-            value: fold(points, init: 0, f: fn(acc, c) { acc * 16 + mac_hex_digit_value(cp: c) }),
+            value: fold(points, init: 0, f: fn(acc, c) { acc * 16 + mac_lower_digit_value(cp: c) }),
           }
         } else {
           MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
