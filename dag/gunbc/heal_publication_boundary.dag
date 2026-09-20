@@ -168,9 +168,9 @@ type HealPublicationRefusal
   = CandidateUnreadable { detail: String }
   | CandidateFormatUnsupported { format: String }
   | CandidateMemberMalformed { member: String, detail: String }
-  | TriggeringRunNotTheHealWorkflow { workflow_path: String }
+  | TriggeringRunNotTheCandidateProducer { workflow_path: String }
   | TriggeringRunNotAPullRequestRun { originating_event: String }
-  | TriggeringRunNotSuccessful
+  | TriggeringRunReachedNoVerdict
   | TriggeringRunSubjectDisagreed { run_head_sha: String, candidate_head_sha: String }
   | TriggeringRunBranchDisagreed { run_head_branch: String, candidate_head_ref: String }
   | TriggeringRunRepositoryDisagreed { expected: String, observed: String }
@@ -215,9 +215,9 @@ fn heal_publication_refusal_token(r: HealPublicationRefusal) -> NonEmptyStr {
     CandidateUnreadable { detail: _ } => "CandidateUnreadable"
     CandidateFormatUnsupported { format: _ } => "CandidateFormatUnsupported"
     CandidateMemberMalformed { member: _, detail: _ } => "CandidateMemberMalformed"
-    TriggeringRunNotTheHealWorkflow { workflow_path: _ } => "TriggeringRunNotTheHealWorkflow"
+    TriggeringRunNotTheCandidateProducer { workflow_path: _ } => "TriggeringRunNotTheCandidateProducer"
     TriggeringRunNotAPullRequestRun { originating_event: _ } => "TriggeringRunNotAPullRequestRun"
-    TriggeringRunNotSuccessful => "TriggeringRunNotSuccessful"
+    TriggeringRunReachedNoVerdict => "TriggeringRunReachedNoVerdict"
     TriggeringRunSubjectDisagreed { run_head_sha: _, candidate_head_sha: _ } => "TriggeringRunSubjectDisagreed"
     TriggeringRunBranchDisagreed { run_head_branch: _, candidate_head_ref: _ } => "TriggeringRunBranchDisagreed"
     TriggeringRunRepositoryDisagreed { expected: _, observed: _ } => "TriggeringRunRepositoryDisagreed"
@@ -251,9 +251,9 @@ fn heal_publication_refusal_detail(r: HealPublicationRefusal) -> String {
     CandidateUnreadable { detail } => detail
     CandidateFormatUnsupported { format } => concat("format=", format)
     CandidateMemberMalformed { member, detail } => join(["member=", member, " ", detail], "")
-    TriggeringRunNotTheHealWorkflow { workflow_path } => concat("workflow_path=", workflow_path)
+    TriggeringRunNotTheCandidateProducer { workflow_path } => concat("workflow_path=", workflow_path)
     TriggeringRunNotAPullRequestRun { originating_event } => concat("event=", originating_event)
-    TriggeringRunNotSuccessful => "the heal run did not conclude success, so its artifacts describe no finished candidate"
+    TriggeringRunReachedNoVerdict => "the producing run was abandoned (cancelled, skipped, timed out or failed to start), so its artifacts describe no finished judgement about this head"
     TriggeringRunSubjectDisagreed { run_head_sha, candidate_head_sha } =>
       join(["run_head=", run_head_sha, " candidate_head=", candidate_head_sha], "")
     TriggeringRunBranchDisagreed { run_head_branch, candidate_head_ref } =>
@@ -588,7 +588,7 @@ type ProposedBlobObservation
 type PublisherObservations {
   repository_full_name: NonEmptyStr
   default_branch: NonEmptyStr
-  heal_workflow_path: NonEmptyStr
+  candidate_producer_workflow_path: NonEmptyStr
   run: TriggeringRunFacts
   pull_request: PullRequestFacts
   branch_head_sha: String
@@ -640,10 +640,20 @@ fn head_ref_is_addressable(head_ref: String) -> Bool {
     && !string_contains(s: head_ref, pattern: "..")
 }
 
-fn run_conclusion_is_success(c: WorkflowRunConclusion) -> Bool {
+// SUCCESS IS NOT THE ADMISSION RULE, AND STOPPED BEING ONE WHEN THE DRIFT GATE BECAME A MERGE
+// BLOCKER (2026-09-19). The run that seals a candidate is the required gate, and a gate that found
+// drift REFUSES -- that refusal is the block. Requiring Success would mean the publisher could only
+// ever see runs with nothing to repair, so every repair would be sealed and then dropped.
+//
+// WHAT THE RULE PROTECTS IS STILL PROTECTED: that the run reached a verdict about this head rather
+// than being abandoned. A cancelled, skipped, timed-out or startup-failed run never got there, and
+// its artifacts describe no finished judgement. Failure now reads as "ran, and judged" -- every
+// other admission below (repository, producer workflow, originating event, head sha, branch, pull
+// request, blob and tree) is unchanged, so a failed run still cannot publish someone else's blob.
+fn run_conclusion_reached_a_verdict(c: WorkflowRunConclusion) -> Bool {
   match c {
     Success => true
-    Failure => false
+    Failure => true
     Cancelled => false
     Neutral => false
     Skipped => false
@@ -795,12 +805,12 @@ fn admit_heal_publication(
     HealPublicationRefused { refusal: TriggeringRunRepositoryDisagreed { expected: repo, observed: o.run.repository_full_name } }
   } else if o.run.head_repository_full_name != repo {
     HealPublicationRefused { refusal: TriggeringRunRepositoryDisagreed { expected: repo, observed: o.run.head_repository_full_name } }
-  } else if o.run.workflow_path != (o.heal_workflow_path as String) {
-    HealPublicationRefused { refusal: TriggeringRunNotTheHealWorkflow { workflow_path: o.run.workflow_path } }
+  } else if o.run.workflow_path != (o.candidate_producer_workflow_path as String) {
+    HealPublicationRefused { refusal: TriggeringRunNotTheCandidateProducer { workflow_path: o.run.workflow_path } }
   } else if o.run.originating_event != "pull_request" {
     HealPublicationRefused { refusal: TriggeringRunNotAPullRequestRun { originating_event: o.run.originating_event } }
-  } else if !run_conclusion_is_success(c: o.run.conclusion) {
-    HealPublicationRefused { refusal: TriggeringRunNotSuccessful }
+  } else if !run_conclusion_reached_a_verdict(c: o.run.conclusion) {
+    HealPublicationRefused { refusal: TriggeringRunReachedNoVerdict }
   } else if (c.repository_full_name as String) != repo {
     HealPublicationRefused { refusal: CandidateRepositoryDisagreed { expected: repo, candidate: c.repository_full_name as String } }
   } else if o.run.head_sha != (c.expected_head_sha as String) {
