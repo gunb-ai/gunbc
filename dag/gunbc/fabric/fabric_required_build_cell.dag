@@ -405,6 +405,15 @@ fn required_build_cell_lifetime_sample_wire(sample: RequiredBuildCellLifetimeSam
   ], "\n")
 }
 
+// A lifetime-sample field is read through the same Optional that `first()` answers for every other
+// field of the wire: an absent field decodes to nothing, never to an empty digest.
+fn lifetime_sample_field_content_hash(fields: List<String>, n: Int) -> ContentHash? {
+  match fields.skip(n: n).first() {
+    Absent => Absent
+    Present { value: digest } => content_hash_from_structural_digest(digest: digest)
+  }
+}
+
 fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   let fields = split(s: wire, delimiter: "\n")
   if list_length(items: fields) != 7 {
@@ -413,16 +422,10 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
     match parse_int(s: fields.skip(n: 1).first()) {
       Absent => RequiredBuildCellLifetimeSampleUndecodable
       Present { value: generation } =>
-        match fields.skip(n: 3).first() {
-          Absent => RequiredBuildCellLifetimeSampleUndecodable
-          Present { value: reservation_digest } =>
-          match content_hash_from_structural_digest(digest: reservation_digest) {
+        match lifetime_sample_field_content_hash(fields: fields, n: 3) {
           Absent => RequiredBuildCellLifetimeSampleUndecodable
           Present { value: reservation_content } =>
-            match fields.skip(n: 5).first() {
-              Absent => RequiredBuildCellLifetimeSampleUndecodable
-              Present { value: members_digest } =>
-            match content_hash_from_structural_digest(digest: members_digest) {
+            match lifetime_sample_field_content_hash(fields: fields, n: 5) {
               Absent => RequiredBuildCellLifetimeSampleUndecodable
               Present { value: members_content } =>
                 match fields.first() {
@@ -460,8 +463,6 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
         }
     }
   }
-          }
-            }
 }
 
 fn required_build_cell_lifetime_verdict(
