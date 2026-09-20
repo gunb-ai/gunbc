@@ -1,0 +1,73 @@
+module test.claim.shell.shell_dag_compile_pool_slice_install_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.host_effect_realize { compile_pool_slice_install_body }
+import gunbc.host_disk_reclaim_units { reclaim_service_unit_file }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-compile-pool-slice-install, RED BY DESIGN UNTIL THE NODE IS
+// DONE. The node's bar is that gunbc.host_effect_realize compile_pool_slice_install_body stops
+// assembling install/staging shell text: the unit file lands through a typed systemd unit-file
+// install and the staging through typed argv. Today the body opens with `set -euo pipefail`, an
+// authored mktemp assignment and an authored trap line — the two lines the module's own annotation
+// declares unmodelled — so the rendered install surface carries a shell control word before any
+// field is even adversarial. The red arms assert the rendered body carries no shell control word
+// (`set -e`, `||`, `&&`, `;`, `2>/dev/null`), on a benign slice unit and on one whose name plants
+// a command separator; they turn green only when the install and staging are typed and a unit
+// name the typed argv cannot express refuses before any line is produced. Enrolled in
+// v2.workflow.floor_expected_red; the transition red -> green IS the work.
+//
+// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
+// verification as oracle-moved. The callable surface it reads (compile_pool_slice_install_body
+// with its declared slice_unit/slice_unit_file fields) must survive the rebind, because this
+// witness cannot be re-pointed. The unit-file fixture is reclaim_service_unit_file, an existing
+// authored SystemdUnitFile, supplied rather than derived so the claim stays at this one boundary.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+fn install_body_of(slice_unit: String) -> String {
+  compile_pool_slice_install_body(
+    slice_unit: slice_unit as NonEmptyStr,
+    slice_unit_file: reclaim_service_unit_file()
+  )
+}
+
+// RED TODAY: even the benign install body opens with `set -euo pipefail`. Greens when the unit
+// file lands through a typed systemd unit-file install and the staging through typed argv.
+test fn benign_install_body_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: w))
+}
+
+// RED TODAY: a slice unit name carrying a command separator flows into the staged write, the
+// install destination and the systemctl argv. Greens when the typed staging/install refuses it
+// before any line is produced or constructs it with the word boundary intact.
+test fn adversarial_slice_unit_name_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice; reboot"), pattern: w))
+}
+
+// TYPED-FORM POSITIVE CONTROL, green today and after: the body installs the declared slice unit —
+// its name appears at the install destination and the unit file's own [Unit] section is the bytes
+// staged. The rebind changes who constructs the install, never what is installed.
+test fn install_body_installs_the_declared_unit() -> Bool {
+  string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: "gunbc-compile-pool.slice")
+    && string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: "[Unit]")
+}
+
+// POSITIVE CONTROL, green today and after: the install starts the slice and never restarts it —
+// restarting a slice kills every process in it, which is the opposite of converging it. The typed
+// realization preserves start-not-restart.
+test fn install_body_starts_never_restarts() -> Bool {
+  string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: "start")
+    && !string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: "restart")
+}
+
+// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
+// arms are red; green only when every clause holds over the typed rebind.
+test fn compile_pool_slice_install_acceptance_holds() -> Bool {
+  benign_install_body_renders_no_shell_control_word()
+    && adversarial_slice_unit_name_renders_no_shell_control_word()
+    && install_body_installs_the_declared_unit()
+    && install_body_starts_never_restarts()
+}
