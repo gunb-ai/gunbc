@@ -2,6 +2,7 @@ module gunbc.runner_microvm_lifecycle_realize
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, SingleAuthority }
+import std.resources { Network }
 import extdeps.linux.cgroup_v2 {
   CgroupSubtreeProcsDecoding, CgroupSubtreeProcsDecoded, CgroupSubtreeProcsUnparseable,
   decode_cgroup_subtree_procs, cgroup_v2_procs_interface_file, cgroup_v2_procs_path,
@@ -254,7 +255,9 @@ type SliceCgroupPathReading
   = SliceCgroupPath { path: NonEmptyStr }
   | SliceCgroupPathUnread { reason: NonEmptyStr }
 
-fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading {
+fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading
+  uses net: Network
+{
   match systemctl_show_property_read(transport: controller_transport(), unit: slice, property: ControlGroup) {
     SystemdPropertyCaptureRefused { reason: why } =>
       SliceCgroupPathUnread {
@@ -271,14 +274,18 @@ fn read_slice_cgroup_path(slice: NonEmptyStr) -> SliceCgroupPathReading {
   }
 }
 
-fn read_cell_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback {
+fn read_cell_cgroup_subtree(slice: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
   match read_slice_cgroup_path(slice: slice) {
     SliceCgroupPathUnread { reason: why } => CgroupSubtreeReadFailed { reason: why }
     SliceCgroupPath { path: root } => read_cgroup_subtree_at(root: root)
   }
 }
 
-fn read_cgroup_subtree_at(root: NonEmptyStr) -> CgroupSubtreeReadback {
+fn read_cgroup_subtree_at(root: NonEmptyStr) -> CgroupSubtreeReadback
+  uses net: Network
+{
   cgroup_subtree_readback_of_readings(
     root: root,
     root_procs: read_cgroup_root_procs(root: root),
@@ -289,7 +296,9 @@ fn read_cgroup_subtree_at(root: NonEmptyStr) -> CgroupSubtreeReadback {
   )
 }
 
-fn observe_cell_cgroup(slot: RunnerSlotIdentity) -> ObservedCgroup {
+fn observe_cell_cgroup(slot: RunnerSlotIdentity) -> ObservedCgroup
+  uses net: Network
+{
   ObservedCgroup {
     root: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
     readback: read_cell_cgroup_subtree(slice: fabric_cell_slice_name(slot: slot) as NonEmptyStr),
@@ -394,7 +403,9 @@ fn force_kill_unit(unit: NonEmptyStr) -> UnitSignalOutcome {
 // spend the whole bound to arrive at the same unobservable answer. A populated subtree is the only
 // state worth another read, and the budget strictly decreases before the recursive call, which is
 // the descent this loop terminates on.
-fn await_quiet_subtree(slice: NonEmptyStr, reads_left: Int) -> CgroupSubtreeReadback {
+fn await_quiet_subtree(slice: NonEmptyStr, reads_left: Int) -> CgroupSubtreeReadback
+  uses net: Network
+{
   let seen = read_cell_cgroup_subtree(slice: slice)
   match seen {
     CgroupSubtreeEmpty => seen
@@ -423,7 +434,9 @@ fn await_quiet_subtree(slice: NonEmptyStr, reads_left: Int) -> CgroupSubtreeRead
 // not. A read that failed at either point is UNOBSERVED, which is neither a stop nor a survival,
 // and a stop request that was refused outright is unobserved too: nothing was asked of the unit, so
 // nothing about its processes follows.
-fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop {
+fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network
+{
   match request_unit_stop(unit: unit) {
     UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
     UnitSignalled =>
@@ -435,7 +448,9 @@ fn perform_bounded_stop(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop {
   }
 }
 
-fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop {
+fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
+  uses net: Network
+{
   match force_kill_unit(unit: unit) {
     UnitSignalRefused { detail: d } => StopOutcomeUnobserved { reason: d }
     UnitSignalled =>
@@ -465,7 +480,9 @@ fn force_stop_after_graceful(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownS
 // gunbc.runner_microvm_network that executes the tap, conntrack, neighbour and ruleset reads and
 // returns BoundSlotNetworkReadback, at which point this parameter is supplied by it rather than by
 // the caller. SUFFICIENT FOR deleting this paragraph. NOT satisfied by a witness supplying one.
-fn observe_attempt_teardown(bound: CellBoundAttempt, network: BoundSlotNetworkReadback) -> ObservedTeardown {
+fn observe_attempt_teardown(bound: CellBoundAttempt, network: BoundSlotNetworkReadback) -> ObservedTeardown
+  uses net: Network
+{
   let attempt = bound.attempt.attempt
   ObservedTeardown {
     host: attempt.slot.host as String,
@@ -499,7 +516,9 @@ fn settle_attempt_teardown(
   bound: CellBoundAttempt,
   network: BoundSlotNetworkReadback,
   trigger: TerminalTrigger,
-) -> AttemptTeardownOutcome {
+) -> AttemptTeardownOutcome
+  uses net: Network
+{
   match attempt_teardown_readback(
     bound: bound,
     observed: observe_attempt_teardown(bound: bound, network: network),
@@ -529,14 +548,18 @@ type SliceFreezeReadback
   | SliceHoldsFrozenCgroups { cgroups: List<NonEmptyStr> }
   | SliceFreezeUnreadable { reason: NonEmptyStr }
 
-fn read_slice_freeze_state(slice: NonEmptyStr) -> SliceFreezeReadback {
+fn read_slice_freeze_state(slice: NonEmptyStr) -> SliceFreezeReadback
+  uses net: Network
+{
   match read_slice_cgroup_path(slice: slice) {
     SliceCgroupPathUnread { reason: why } => SliceFreezeUnreadable { reason: why }
     SliceCgroupPath { path: root } => read_freeze_state_at(root: root)
   }
 }
 
-fn read_freeze_state_at(root: NonEmptyStr) -> SliceFreezeReadback {
+fn read_freeze_state_at(root: NonEmptyStr) -> SliceFreezeReadback
+  uses net: Network
+{
   let seen = run_shell_command_observe(
     command: grep_every_line_in_tree_command(file_name: cgroup_v2_freeze_interface_file, root: root),
     transport: LocalExec,
