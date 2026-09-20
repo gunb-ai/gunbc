@@ -854,10 +854,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
-        headline: "Nine privileged call sites still take their credential from outside the procedure",
-        boundary: "The census rosters them in order in gunbc.auth.privileged_effect_census follow_up_sites, which lands with gunbc#11734 and does not resolve before it. Seven are one seam each: the call-site GcloudPrintToken / read_supplied_access_token binding becomes gunbc.auth.access_token_source resolve_access_token. The two that are not (an org-wide estate read, a legacy eager credential) need their pattern decided first.",
+        headline: "The privileged call sites that still take their credential from outside the procedure",
+        boundary: "The census rosters them in order in gunbc.auth.privileged_effect_census follow_up_sites, which lands with gunbc#11734 and does not resolve before it -- read the population from that roster rather than from a count quoted here. Most are one seam each: the call-site GcloudPrintToken / read_supplied_access_token binding becomes gunbc.auth.access_token_source resolve_access_token. The two that are not (an org-wide estate read, a legacy eager credential) need their pattern decided first.",
         displaced_cost: "Every one of them is a site where a human pastes or a process assumes a credential, which is the class the census exists to retire; left alone the roster ages into a list nobody believes.",
-        first_slice: "Migrate the seven one-seam sites, each leaving the roster in the same change.",
+        first_slice: "Migrate the one-seam sites the roster names, each leaving the roster in the same change.",
         red_control: "A migrated site removed from the code but left on the roster, or left on the code and removed from the roster, makes the census's roster-join witness (unreasoned_divergences_join_the_follow_up_roster_exactly, landing with gunbc#11734) go red in both directions.",
         out_of_scope: "The approval authority adapter, and the two sites whose pattern is not yet decided.",
         handback: "The migrated sites, the roster shrunk by exactly those, and the witness green."
@@ -885,12 +885,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/auth-and-r2-lane-wind-down-2026-09-20.md",
       t: fields(
         headline: "The fleet principal can actually reach the secrets its runs need",
-        boundary: "Seven Secret Manager IAM cells are declared and unconverged -- four for the R2 origin write token (gunbc.cloudflare.r2_mint_secret_access), three for the bucket-admin token landing with gunbc#11721. Their converge entries shell out to gcloud, which no reachable host carries today.",
+        boundary: "The Secret Manager IAM cells declared in gunbc.cloudflare.r2_mint_secret_access (and the bucket-admin cells landing with gunbc#11721) are unconverged -- read the population from those declarations rather than from a count quoted here. Their converge entries shell out to gcloud, which no reachable host carries today.",
         displaced_cost: "A declared grant nothing applied is a grant that will be discovered missing by a run that needed it, at the moment it needed it; and a fleet-principal run of the write path cannot reach those secrets until they are applied.",
-        first_slice: "Get gcloud onto a host the fleet can run from, then converge the seven cells and record the receipts.",
+        first_slice: "Get gcloud onto a host the fleet can run from, then converge the declared cells and record the receipts.",
         red_control: "A run as the fleet principal reaches the write secret after convergence and refuses before it, so the cells are shown to be load-bearing rather than assumed.",
         out_of_scope: "Any per-identity widening: the least privilege available today is per-secret, and the dedicated service account is its own next rung.",
-        handback: "The seven cells converged with receipts, and the host that can run them named."
+        handback: "The declared cells converged with receipts, and the host that can run them named."
       )
     ),
     active(
