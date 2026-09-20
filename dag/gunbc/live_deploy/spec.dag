@@ -34,6 +34,7 @@ import gunbc.fleet_intent_network {
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
+  srv1_gunbc_approval_broker_root,
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
@@ -46,7 +47,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_compute_root, dashboard_instance_event_log_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
-import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
@@ -451,6 +452,23 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // cap invented for an unmeasured workload fails as a refused approval. The cutover plan's
 // measurement stage (gunbc.auth.approval_broker_cutover) is what replaces them with the broker's
 // own, and until it runs, inheriting a known-safe ceiling is the honest arm.
+// THE BROKER DOES NOT INHERIT THE ROADMAP INSTANCE'S LISTEN HOST, and the stage-A run is why this
+// is stated rather than assumed. It did inherit it, which is instance.listen_host = 0.0.0.0, so the
+// dark unit bound every interface on srv1. The readiness probe still passed -- it dials 127.0.0.1
+// and 0.0.0.0 includes loopback -- so the deployment reported a correct bind while the broker was
+// reachable from anything that could route to the host, bypassing the tailnet front door and
+// therefore the identity header the decide route requires.
+//
+// The host now comes from gunbc.auth.approval_broker_endpoint approval_broker_listen_host, which is
+// the SAME declaration the loopback URL builder consumes, so the address the unit binds and the
+// address a client dials cannot drift apart.
+//
+// THE REPO ROOT IS THE BROKER'S OWN AND NOT THE INSTANCE'S, for the same class of reason. It used
+// to be instance.repo_root -- the roadmap's deployed tree -- which is frozen at a release that
+// predates this module, so the unit could not resolve its own entry and systemd restart-looped it
+// (stage-A run, 2026-09-20). gunbc.host_layout srv1_gunbc_approval_broker_root is a root this
+// deployment populates from the candidate during the dark install, so the broker's tree and the
+// roadmap's move independently -- which is what a separate process at a separate revision means.
 fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig {
   DeploymentServiceConfig {
     unit_name: gunbc_approval_broker_unit_name,
@@ -458,11 +476,11 @@ fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -
     serve_entry: approval_broker_serve_entry_file,
     serve_function: "approval_broker_handle" as NonEmptyStr,
     instance_root: instance.instance_root as String as NonEmptyStr,
-    repo_root: instance.repo_root as String as NonEmptyStr,
+    repo_root: srv1_gunbc_approval_broker_root as String as NonEmptyStr,
     service_user: gunbc_service_user,
     service_uid: gunbc_service_uid,
     listen: HttpServerListenConfig {
-      host: instance.listen_host as String,
+      host: approval_broker_listen_host as String,
       port: port,
     },
     serve_cpu_limit: dashboard_serve_cpu_limit(),

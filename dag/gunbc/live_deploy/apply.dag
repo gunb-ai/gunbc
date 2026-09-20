@@ -72,6 +72,14 @@ import gunbc.live_deploy.readiness {
   ServiceReadiness,
   service_readiness_reason,
 }
+import gunbc.live_deploy.service_ready {
+  approval_broker_expected_startup,
+  live_deploy_service_ready_poll_bound_margin_factor,
+  live_deploy_service_ready_poll_cadence,
+}
+import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { Second, second, second_count }
 import gunbc.readiness { Ready, Pending, Refused }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -676,9 +684,67 @@ fn approval_broker_dark_install_wet_with_access(
 // this comparison existed it passed the stage whose whole purpose is to say which build is
 // listening. The candidate comes from the deploy that just installed it, never from the process
 // being interrogated.
+// ── THE READBACK POLLS, BECAUSE A RESTART DOES NOT BIND INSTANTLY ───────────────────────────
+// THE STAGE-A RUN FAILED HERE ON A SINGLE GET. The step sequence is systemctl restart then probe,
+// and a process that has not finished binding refuses the connection IMMEDIATELY -- curl's deadline
+// does not help, because connection-refused is an answer rather than a timeout. So the one shot
+// landed in the gap between restart and bind and the stage refused a broker that was about to come
+// up perfectly.
+//
+// IT RETRIES ONLY ON Unreachable, WHICH IS THE WHOLE DESIGN. Every other ServeLivenessRead arm is a
+// process that ANSWERED -- unparseable bytes, a missing revision member, a revision that is not
+// this candidate -- and those are settled facts, not transient states. Retrying them would burn the
+// bound and then report "unreachable at the bound" as the cause when the real cause was observed on
+// the first attempt and is something else entirely. That distinction is the not-met versus
+// cannot-tell split this module keeps everywhere else.
+//
+// THE BOUND IS THE BROKER'S OWN, and it is a declared policy budget with an unmeasured subject
+// rather than a derivation -- said plainly because DESIGN section 4d forbids dressing an inference
+// as a deduction. The roadmap's 240 s expected startup is not the broker's: the broker compiles and
+// serves four routes that consult no roadmap, no plan, no site bundle. What supports 60 s is that
+// qualitative fact, not a measurement, and stage C is what replaces it with one. The cadence and
+// the margin factor are the roadmap's own declarations rather than new numbers, because the
+// uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
+fn approval_broker_readback_poll_attempts() -> Int {
+  second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+}
+
+fn approval_broker_liveness_poll(
+  spec: DeploymentSpec,
+  port: Port,
+  attempt: Int,
+  last: ServeLivenessRead,
+) -> ServeLivenessRead {
+  if attempt >= approval_broker_readback_poll_attempts() {
+    last
+  } else {
+    let read = live_deploy_liveness_get_local(port: port, spec: spec)
+    match read {
+      ServeLivenessUnreachable { detail: _ } => {
+        let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence)
+        if delay {
+          approval_broker_liveness_poll(spec: spec, port: port, attempt: attempt + 1, last: read)
+        } else {
+          ServeLivenessUnreachable {
+            detail: "sleep between broker liveness probes failed, so the poll cannot distinguish a slow bind from a dead unit" as NonEmptyStr
+          }
+        }
+      }
+      _ => read
+    }
+  }
+}
+
 fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let port = spec.approval_broker.listen.port
-  let read = live_deploy_liveness_get_local(port: port, spec: spec)
+  let read = approval_broker_liveness_poll(
+    spec: spec,
+    port: port,
+    attempt: 0,
+    last: ServeLivenessUnreachable {
+      detail: "the broker liveness endpoint was never reached within the poll bound after the unit was restarted" as NonEmptyStr
+    },
+  )
   match dark_install_release_discharged(
     listening_port: port,
     read: read,

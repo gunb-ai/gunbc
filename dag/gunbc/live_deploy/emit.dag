@@ -97,6 +97,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
+  srv1_gunbc_approval_broker_root,
   instance_receipts_dir,
   publication_spool_root,
   publication_request_dir,
@@ -1511,6 +1512,91 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   }
 }
 
+// ── THE BROKER'S TREE, COPIED FROM THE CANDIDATE ────────────────────────────────────────────
+// STAGE A INSTALLED A UNIT WITH NO TREE BEHIND IT. WorkingDirectory pointed at the roadmap's
+// deployed tree, which is frozen at a release predating this module, so `gunbc serve --entry
+// dag/gunbc/auth/approval_broker_serve.dag` could not resolve its own entry and systemd
+// restart-looped the unit. The unit was correct; the bytes it was pointed at were not there.
+//
+// SCOPED DELIBERATELY NARROW (operator ruling 2026-09-20: "do not generalize it into a second
+// tree-sync"). This is not a sync: no unit, no timer, no reconciliation, no drift detection. It is
+// three directories copied once, at install, from the checkout the dark install is running in --
+// the same $PWD the existing tree-publication step already names as GUNBC_TREE_SRC. What the
+// broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches, and a
+// binary to interpret them.
+//
+// THE BINARY IS COPIED RATHER THAN SHARED, and that is the same isolation argument as the tree.
+// /opt/gunbc/bin/gunbc is the ROADMAP's binary, frozen with the roadmap; a seed binary older than
+// the sources it is handed refuses to parse constructs those sources use, so a shared binary would
+// reintroduce exactly the coupling the separate root removes.
+data approval_broker_tree_receipt_path: String = "/opt/gunbc/approval-broker/.gunbc-tree-receipt"
+
+data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
+
+// THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
+// paths agree regardless of how either was walked. sort -z before hashing is what makes that true:
+// find's order is filesystem order and differs between the source and the copy, so hashing the
+// concatenation without sorting would report a mismatch between identical trees -- a false refusal
+// at the stage whose whole job is to say the tree IS the candidate.
+fn approval_broker_tree_digest_expr(root: String) -> String {
+  join([
+    "(cd ", root, " && find ", join(approval_broker_tree_subdirs, " "),
+    " -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)",
+  ], "")
+}
+
+fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
+  join([
+    "rsync -a --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$PWD\"/", src_sub, "/ ", root, "/", src_sub, "/",
+  ], "")
+}
+
+// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2, which is what makes "the broker runs the
+// candidate" an OBSERVATION rather than an assumption. Without it the only evidence is the revision
+// the unit reports on /livez -- and that revision is a LAUNCH ARGUMENT this emitter wrote into
+// ExecStart, so the process echoes whatever it was told regardless of which bytes it loaded. A
+// control-plane fact standing in for the subject observation is the substitution
+// gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse; the
+// tree digest is the subject-side fact that closes it.
+//
+// ONLY THE INSTALLED DIGEST IS WRITTEN HERE, and that is a deliberate simplification over recording
+// both sides. The first cut of this command computed the SOURCE digest too, inside the emitted
+// shell, which meant a nested command substitution inside a printf inside an install -- four levels
+// of quoting hand-escaped in a string literal, unverifiable without rendering, and a malformed
+// quote fails the stage in a way that looks like a copy failure. The comparison does not need to
+// happen in shell: the readback runs IN the deploying checkout, so it computes the source digest
+// itself and compares against what it reads here. Shell reports one fact; the fold decides.
+fn approval_broker_tree_receipt_command(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([
+    "printf 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    "\\ninstalled_digest=%s\\n' ",
+    approval_broker_tree_digest_expr(root: root),
+    " | install -m 0644 /dev/stdin ", approval_broker_tree_receipt_path,
+  ], "")
+}
+
+fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let root = srv1_gunbc_approval_broker_root as String
+  concat(
+    concat(
+      [
+        deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: root)),
+      ],
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: install_d_owned_command(spec: spec, path: join([root, "/", sub], "")))
+      ),
+    ),
+    concat(
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
+      ),
+      [deploy_raw(command: approval_broker_tree_receipt_command(root: root, revision: revision))],
+    ),
+  )
+}
+
 fn approval_broker_unit_write_steps_on(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
@@ -2150,7 +2236,10 @@ fn approval_broker_dark_install_intent(
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        concat(
+          approval_broker_tree_copy_steps(spec: spec, revision: revision),
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        ),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),

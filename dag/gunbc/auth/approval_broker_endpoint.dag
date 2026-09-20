@@ -68,8 +68,24 @@ data approval_broker_listen_port: Port = 8085
 // different authentication stories -- the second goes through tailscale serve, which is what
 // injects the identity header the decide route requires -- and each is asserted for its own job
 // (the same split gunbc.auth.approval_ntfy_deployment already draws for the ntfy listener).
+// ── THE ADDRESS THE BROKER BINDS, AND IT IS ONE FACT WITH TWO READERS ───────────────────────
+// THE UNIT'S BIND ADDRESS AND THE URL A CLIENT DIALS MUST BE THE SAME STRING OR THE PROBE IS
+// MEANINGLESS. The stage-A run found the unit binding 0.0.0.0 because the broker's service config
+// inherited the ROADMAP instance's listen_host, while this module was separately spelling
+// 127.0.0.1 into the loopback URL. Two literals, agreeing by luck until one moved -- and the way
+// they disagree is the worst one: the readiness probe dials 127.0.0.1, something answers because
+// 0.0.0.0 includes loopback, and the deployment reports a correct bind while the broker is in fact
+// reachable from every interface on the host.
+//
+// BINDING 0.0.0.0 IS NOT A COSMETIC DEFECT HERE. The whole authentication story for the approval
+// routes is that the tailnet front door injects the identity header the decide route requires; a
+// broker listening on every interface can be reached by anything that can route to the host,
+// bypassing the front door and therefore the identity. The loopback bind is what makes "the front
+// door is the only public path" true rather than merely intended.
+data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
+
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
-  join(["http://127.0.0.1:", to_string(port)], "") as NonEmptyStr
+  join(["http://", approval_broker_listen_host as String, ":", to_string(port)], "") as NonEmptyStr
 }
 
 fn approval_broker_submit_url(port: Port) -> NonEmptyStr {
