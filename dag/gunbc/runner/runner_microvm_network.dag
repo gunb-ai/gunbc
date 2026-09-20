@@ -16,6 +16,11 @@ import gunbc.executor_privileged_operation {
   SystemdDaemonReload, SystemdEnableUnit, ReadNftTable,
 }
 import gunbc.fleet_posix_accounts { fleet_nft_binary_path }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
+  Description, After, Wants, ServiceType, RemainAfterExit, ExecStart, WantedBy,
+  serialize_systemd_unit_file,
+}
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
   NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPriorityRaw, NftPrerouting, NftInput, NftOutput, NftInputInterface, NftPolicy, NftPolicyAccept, NftPolicyDrop,
@@ -607,6 +612,11 @@ data runner_microvm_networkd_dir: NonEmptyStr = "/etc/systemd/network" as NonEmp
 
 data runner_microvm_networkd_unit: NonEmptyStr = "systemd-networkd" as NonEmptyStr
 
+// THE ORDERING DEPENDENCY NAMES THE UNIT FILE, NOT THE systemctl ARGUMENT. `systemctl reload
+// systemd-networkd` resolves the short name, but After=/Wants= in a unit file take the unit's full
+// name, so the two spellings are derived from one row rather than authored twice.
+data runner_microvm_networkd_unit_name: NonEmptyStr = "systemd-networkd.service" as NonEmptyStr
+
 data runner_microvm_networkd_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 
 data runner_microvm_networkd_file_owner: NonEmptyStr = "root" as NonEmptyStr
@@ -739,24 +749,35 @@ fn runner_microvm_nft_unit_path() -> String {
   join([runner_microvm_systemd_unit_dir as String, "/", runner_microvm_nft_unit as String], "")
 }
 
+// THE UNIT IS A MODELED SystemdUnitFile, NOT CONCATENATED INI. extdeps.systemd.unit_file owns that
+// syntax -- its sections, its separators, its terminating newline -- and gunbc.build_cache_unit
+// already records what happens when a consumer re-mints it: a second authority for systemd's own
+// file format, the DESIGN section 3 nicknaming that module exists to prevent (review 69082). The one
+// directive it lacked, RemainAfterExit=, is now a row there rather than a literal here.
+//
 // After= networkd, because the ruleset's rules name tap devices networkd creates; nft accepts rules
 // for a device that does not exist yet, but ordering it after removes the window where a tap is up
 // and unfiltered.
+fn runner_microvm_nft_unit_file() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc microVM host ruleset" as NonEmptyStr },
+      After { target: runner_microvm_networkd_unit_name },
+      Wants { target: runner_microvm_networkd_unit_name },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      RemainAfterExit { active: true },
+      ExecStart {
+        command: join([fleet_nft_binary_path as String, " -f ", runner_microvm_nft_ruleset_path as String], "") as NonEmptyStr,
+      },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
 fn runner_microvm_nft_unit_text() -> String {
-  join([
-    "[Unit]\n",
-    "Description=gunbc microVM host ruleset\n",
-    "After=systemd-networkd.service\n",
-    "Wants=systemd-networkd.service\n",
-    "\n",
-    "[Service]\n",
-    "Type=oneshot\n",
-    "RemainAfterExit=yes\n",
-    "ExecStart=", fleet_nft_binary_path as String, " -f ", runner_microvm_nft_ruleset_path as String, "\n",
-    "\n",
-    "[Install]\n",
-    "WantedBy=multi-user.target\n",
-  ], "")
+  serialize_systemd_unit_file(file: runner_microvm_nft_unit_file())
 }
 
 // FORWARDING IS WHAT MAKES THE TAP A ROUTED LINK RATHER THAN A DEAD END. Without it the guest's

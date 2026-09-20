@@ -187,8 +187,14 @@ fn systemd_environment_reference(name: NonEmptyStr) -> String {
 data systemd_exit_code_variable: NonEmptyStr = "EXIT_CODE" as NonEmptyStr
 data systemd_exit_status_variable: NonEmptyStr = "EXIT_STATUS" as NonEmptyStr
 
+// RemainAfterExit= IS WHAT MAKES A ONESHOT'S WORK OUTLIVE ITS PROCESS. systemd.service(5) (v255):
+// a Type=oneshot unit is "active" only while its ExecStart runs unless this is set, and with it the
+// unit stays active after the process exits -- which is how a unit whose job is to INSTALL state
+// (load a ruleset, apply a sysctl) reports that the state is in place rather than that a program is
+// running. The boolean renders as systemd's own yes/no rather than true/false.
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
+  | RemainAfterExit { active: Bool }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
   | ExecStartPost { command: NonEmptyStr }
@@ -621,6 +627,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
 fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
   match directive {
     ServiceType { mode: v } => join(["Type=", v as String], "")
+    RemainAfterExit { active: v } => join(["RemainAfterExit=", if v { "yes" } else { "no" }], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
     ExecStartPost { command: v } => join(["ExecStartPost=", v as String], "")
