@@ -737,6 +737,38 @@ test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
 // WITHIN, AND THE TWO UNDERDETERMINED ARMS. A drive point the datasheet publishes no level for
 // refuses rather than interpolating, and a listening-position ceiling refuses rather than comparing
 // across positions - the same two walls the ceiling module carries, reached through the standing.
+// A STANDING THAT CANNOT ATTRIBUTE A LEVEL REFUSES AT ANY LEVEL, INCLUDING A QUIET ONE.
+//
+// THIS IS THE RED THE SUITE DID NOT HAVE, and its absence is why the defect survived six reviews.
+// Every ceiling claim here drove `within` through a SteadyCurve standing, so the standing-dependent
+// refusals were only ever reached through the AcousticOverCeiling arm -- which is exactly where
+// they were written. A tach-only standing with a level BELOW the ceiling fell through to
+// FanPolicyWithinSiteCeiling: a positive verdict about the operator's room for a reading the same
+// function refuses one line below, because RPM attributes no level to a commanded duty.
+//
+// The first case is the discriminating one and it goes red on the pre-fix fold. The second pins the
+// asymmetry shut: the SAME standing, over the ceiling, must refuse for the SAME reason, so a future
+// edit cannot fix one direction and leave the other.
+test fn witness_unattributable_standing_refuses_below_the_ceiling_too() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_tach_standing(maximum: rpm(8800)),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: c } => string_contains(c as String, "RPM and not in duty")
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_tach_standing(maximum: rpm(8800)),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    route: fan_converge_route_for_family(family: OpenBmc),
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: c } => string_contains(c as String, "RPM and not in duty")
+    _ => false
+  }
+}
+
 test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
   match fan_policy_against_ceiling(
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),

@@ -366,6 +366,28 @@ fn converge_route_obligation(route: FanDutyConvergeRoute) -> NonEmptyStr? {
   }
 }
 
+// WHETHER A STANDING CAN CARRY AN ACOUSTIC LEVEL AT ALL, ASKED BEFORE ANY LEVEL IS COMPARED.
+//
+// A level is attributed to a COMMANDED OPERATING POINT: the fan's datasheet publishes dB(A) against
+// duty, so a standing that never established a duty has nothing for the level to be a level OF. Two
+// arms are in that position - a tach-only reading, and an underdetermined standing - and for them
+// the supplied level is a number about some other fan at some other duty.
+//
+// THIS IS DELIBERATELY SHAPED LIKE converge_route_obligation AND SITS BESIDE IT, because the two
+// answer the same kind of question: what would have to be true before a ceiling comparison means
+// anything. Present is the obligation that is unmet; Absent is "nothing stands in the way".
+fn standing_attribution_obligation(standing: FanPolicyStanding) -> NonEmptyStr? {
+  match standing {
+    SteadyCurve { host: _, authority: _, drive: _ } => Absent
+    PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: _, drive: _ } => Absent
+    FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: _ } => Absent
+    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: _, drive: _ } => Absent
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } =>
+      Present { value: "this controller reports the fan in RPM and not in duty, so no acoustic level can be attributed to a commanded operating point" as NonEmptyStr }
+    FanPolicyUnderdetermined { host: _, cause: c } => Present { value: c }
+  }
+}
+
 // THE SITE CEILING AS A BOUND ON THE STANDING, WITH THE REFUSAL THE BRIEF ASKED FOR.
 //
 // Two of the four standings are bounded by the ceiling and they are bounded differently, which is
@@ -392,6 +414,18 @@ type FanPolicyCeilingVerdict
   | FanPolicyCeilingUnenforceable { cause: NonEmptyStr }
   | FanPolicyCeilingUnderdetermined { cause: NonEmptyStr }
 
+// THE TWO REFUSING ARMS BELOW ARE UNREACHABLE NOW AND STILL ANSWER TRUTHFULLY. The attribution gate
+// above catches both before any comparison, so this match can no longer be entered with either --
+// but an exhaustive match must name them, and an arm that answered something CONVENIENT here would
+// be a wrong answer waiting for the gate to move. Both re-derive the same cause from the same fold
+// rather than re-typing the sentence, so the two cannot drift apart.
+fn attribution_refusal_cause(standing: FanPolicyStanding) -> NonEmptyStr {
+  match standing_attribution_obligation(standing: standing) {
+    Present { value: c } => c
+    Absent => "this standing attributes a level to a commanded operating point; reaching this arm means the attribution gate above was bypassed" as NonEmptyStr
+  }
+}
+
 fn fan_policy_against_ceiling(
   standing: FanPolicyStanding,
   ceiling: AcousticCeiling,
@@ -405,7 +439,9 @@ fn fan_policy_against_ceiling(
         obligation as String,
       ], "") as NonEmptyStr,
     }
-    Absent => {
+    Absent => match standing_attribution_obligation(standing: standing) {
+      Present { value: cause } => FanPolicyCeilingUnderdetermined { cause: cause }
+      Absent => {
       match level_at_drive {
       Absent => FanPolicyCeilingUnderdetermined {
         cause: "no published acoustic level for the observed drive point: the fan's datasheet publishes no level there and this substrate refuses to interpolate one",
@@ -427,13 +463,12 @@ fn fan_policy_against_ceiling(
             FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: e, window: w, drive: _ } =>
               FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: OutlivedPostTransitionWindow { elapsed: e, window: w } }
             RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } =>
-              FanPolicyCeilingUnderdetermined {
-                cause: "this controller reports the fan in RPM and not in duty, so no acoustic level can be attributed to a commanded operating point",
-              }
-            FanPolicyUnderdetermined { host: _, cause: c } =>
-              FanPolicyCeilingUnderdetermined { cause: c }
+              FanPolicyCeilingUnderdetermined { cause: attribution_refusal_cause(standing: standing) }
+            FanPolicyUnderdetermined { host: _, cause: _ } =>
+              FanPolicyCeilingUnderdetermined { cause: attribution_refusal_cause(standing: standing) }
           }
         }
+      }
       }
       }
     }
