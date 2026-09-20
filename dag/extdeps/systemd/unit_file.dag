@@ -745,6 +745,10 @@ type SystemdUnitFile
 // close for directive names.
 data systemd_instance_name_specifier: String = "%i"
 
+// The administrator's system unit directory, the first entry of systemd's system unit search path
+// (systemd.unit(5), "System Unit Search Path"); units placed here take precedence over packaged ones.
+data systemd_system_unit_directory: NonEmptyStr = "/etc/systemd/system"
+
 data systemd_unit_section_header: String = "[Unit]"
 
 data systemd_service_section_header: String = "[Service]"
