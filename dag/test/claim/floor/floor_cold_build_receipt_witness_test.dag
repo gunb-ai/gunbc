@@ -1,0 +1,156 @@
+module test.claim.floor_cold_build_receipt_witness_test
+
+import std.types { Bool, String, Int, List }
+import std.decl_ref { DeclarationRef }
+import std.measure { byte_size, byte_size_count, second, second_count, minute, minute_to_second, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import gunbc.floor_cold_build_receipt {
+  ColdBuildSubject, ColdBuildReceipt, ColdBuildVerdict,
+  ColdBuildWithinShape, ColdBuildSubjectNotCold, ColdBuildWallExceedsTimeout,
+  ColdBuildPeakExceedsCell, ColdBuildWorkspaceExceedsGrant,
+  cold_build_receipt_verdict, gunbc_floor_cold_build_subject, gunbc_floor_cold_build_verdict,
+  gunbc_floor_cold_build_receipt_standing, ColdBuildReceiptPending, ColdBuildReceiptTaken,
+  cold_wall_prediction_ceiling, subject_is_cold,
+}
+import gunbc.floor_demand { gunbc_floor_job_wall_receipt_2026_09_19 }
+import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+fn cold_subject() -> ColdBuildSubject {
+  ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: false }
+}
+
+fn receipt(subject: ColdBuildSubject, wall: Int, peak: Int, used: Int) -> ColdBuildReceipt {
+  ColdBuildReceipt {
+    subject: subject,
+    run_id: "fixture",
+    whole_job_wall: second(count: wall),
+    build_step_wall: second(count: 600),
+    cell_memory_peak: byte_size(peak),
+    workspace_bytes_used: byte_size(used),
+  }
+}
+
+// THE FIXTURE ACCEPTANCE: a two-hour timeout, an 8 GiB cell, a 4 GiB grant. Each control below
+// moves one reading over one line and expects that line's arm and no other.
+fn verdict_of(r: ColdBuildReceipt) -> ColdBuildVerdict {
+  cold_build_receipt_verdict(
+    receipt: r,
+    timeout: minute(count: 120),
+    cell: gibibyte_to_byte_size(gibibyte(count: 8)),
+    workspace: mebibyte(count: 4096),
+  )
+}
+
+fn gib(n: Int) -> Int {
+  byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: n)))
+}
+
+test fn a_cold_receipt_under_every_line_is_within_shape() -> Bool {
+  match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 7), used: gib(n: 3))) {
+    ColdBuildWithinShape => true
+    _ => false
+  }
+}
+
+// THE BOUNDARIES ARE INCLUSIVE: a wall equal to the timeout, a peak equal to the cell and a
+// workspace equal to the grant are all within shape.
+test fn readings_exactly_on_their_lines_are_within_shape() -> Bool {
+  match verdict_of(r: receipt(subject: cold_subject(), wall: 7200, peak: gib(n: 8), used: gib(n: 4))) {
+    ColdBuildWithinShape => true
+    _ => false
+  }
+}
+
+test fn a_wall_past_the_timeout_refuses_naming_both_durations() -> Bool {
+  match verdict_of(r: receipt(subject: cold_subject(), wall: 7201, peak: gib(n: 7), used: gib(n: 3))) {
+    ColdBuildWallExceedsTimeout { wall: w, timeout: t } => second_count(w) == 7201 && second_count(t) == 7200
+    _ => false
+  }
+}
+
+test fn a_peak_past_the_cell_refuses_naming_both_sizes() -> Bool {
+  match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 8) + 1, used: gib(n: 3))) {
+    ColdBuildPeakExceedsCell { peak: p, cell: c } => byte_size_count(b: p) == gib(n: 8) + 1 && byte_size_count(b: c) == gib(n: 8)
+    _ => false
+  }
+}
+
+test fn a_workspace_past_the_grant_refuses_naming_both_sizes() -> Bool {
+  match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 7), used: gib(n: 4) + 1)) {
+    ColdBuildWorkspaceExceedsGrant { used: u, grant: g } => byte_size_count(b: u) == gib(n: 4) + 1 && byte_size_count(b: g) == gib(n: 4)
+    _ => false
+  }
+}
+
+// A WARM OR FOREIGN SUBJECT IS REFUSED BEFORE ANY READING IS COMPARED, so a receipt that would
+// otherwise be within shape on every line still cannot stand as the cold one.
+test fn a_warm_or_foreign_subject_is_refused_before_its_readings_are_read() -> Bool {
+  let warm = match verdict_of(r: receipt(
+    subject: ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: true },
+    wall: 10, peak: 10, used: 10,
+  )) {
+    ColdBuildSubjectNotCold { subject: s } => s.sccache_reachable
+    _ => false
+  }
+  let unwiped = match verdict_of(r: receipt(
+    subject: ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: false, sccache_reachable: false },
+    wall: 10, peak: 10, used: 10,
+  )) {
+    ColdBuildSubjectNotCold { subject: s } => !s.cargo_home_wiped
+    _ => false
+  }
+  let foreign = match verdict_of(r: receipt(
+    subject: ColdBuildSubject { architecture: X86_64, cargo_home_wiped: true, sccache_reachable: false },
+    wall: 10, peak: 10, used: 10,
+  )) {
+    ColdBuildSubjectNotCold { subject: _ } => true
+    _ => false
+  }
+  warm && unwiped && foreign
+}
+
+// AN IDENTITY JOIN OVER THE PLAN'S REFERENCES rather than a count: each producer the plan must
+// name is looked up by module path and declaration name, so a reference swapped for prose or for
+// a different declaration reds here.
+fn names_declaration(refs: List<DeclarationRef>, module_path: String, decl_name: String) -> Bool {
+  any(refs, r => (r.module_path as String) == module_path && (r.decl_name as String) == decl_name)
+}
+
+// THE PRODUCTION STANDING IS PENDING WITH THE PLAN, the plan's subject is the cold one, its warm
+// baseline is the 2026-09-19 wall receipt, and the prediction ceiling sits above that baseline and
+// under the lane timeout -- so the receipt, when taken, has a line to fall on either side of.
+test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_baseline() -> Bool {
+  match gunbc_floor_cold_build_receipt_standing() {
+    ColdBuildReceiptTaken { receipt: _, verdict: _ } => false
+    ColdBuildReceiptPending { plan: p } =>
+      subject_is_cold(subject: p.subject)
+        && subject_is_cold(subject: gunbc_floor_cold_build_subject())
+        && p.warm_baseline.run_id == gunbc_floor_job_wall_receipt_2026_09_19.run_id
+        && !subject_is_cold(subject: ColdBuildSubject { architecture: p.cold_proxy_build_step.measured_on, cargo_home_wiped: true, sccache_reachable: false })
+        && second_count(p.cold_proxy_build_step.build_step_wall) > second_count(p.warm_baseline.build_step_wall)
+        && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline))
+          > second_count(p.warm_baseline.whole_job_wall)
+        && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline)) < second_count(minute_to_second(m: witness_floor_lane_timeout))
+        && names_declaration(refs: p.instruments, module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun")
+        && names_declaration(refs: p.instruments, module_path: "extdeps.linux.cgroup_v2_memory", decl_name: "CgroupMemoryInterfaceFile")
+        && names_declaration(refs: p.instruments, module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command")
+        && names_declaration(refs: p.revises, module_path: "gunbc.runner_microvm", decl_name: "runner_microvm_workspace_grant")
+        && names_declaration(refs: p.revises, module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components")
+  }
+}
+
+// THE PRODUCTION VERDICT READS THE PRODUCTION ROWS: a fixture receipt that fits the fleet's own
+// cell and grant is within shape, and one over the fleet's MemoryMax names that row's value.
+test fn the_production_verdict_judges_against_the_fleet_rows() -> Bool {
+  let cell = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  let fits = match gunbc_floor_cold_build_verdict(receipt: receipt(subject: cold_subject(), wall: 3600, peak: cell, used: gib(n: 2))) {
+    ColdBuildWithinShape => true
+    _ => false
+  }
+  let over = match gunbc_floor_cold_build_verdict(receipt: receipt(subject: cold_subject(), wall: 3600, peak: cell + 1, used: gib(n: 2))) {
+    ColdBuildPeakExceedsCell { peak: _, cell: c } => byte_size_count(b: c) == cell
+    _ => false
+  }
+  fits && over
+}
