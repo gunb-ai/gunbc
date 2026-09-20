@@ -43,8 +43,8 @@ data generated_workflow_artifacts: List<GeneratedArtifact> = [
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
   match a {
     WitnessFloorYamlArtifact => Present { value: GeneratedWorkflowProvenance {
-      generator: "gunbc.witness_floor_workflow expected_witness_floor_yml",
-      authority: "gunbc.witness_floor_workflow witness_floor_workflow",
+      generator: "gunbc.compiler_gate_workflow expected_compiler_gate_yml",
+      authority: "gunbc.compiler_gate_workflow compiler_gate_workflow",
     } }
     FleetConvergeYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_converge_workflow expected_fleet_converge_yml",

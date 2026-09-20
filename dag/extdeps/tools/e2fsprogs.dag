@@ -53,6 +53,18 @@ fn mke2fs_format_command(fs: Ext2FilesystemType, image_path: String) -> ArgvComm
   )
 }
 
+data dumpe2fs_program: NonEmptyStr = "dumpe2fs"
+
+// `-h` PRINTS THE SUPERBLOCK AND STOPS, which is the whole readback a freshly formatted image needs:
+// the magic number that says an ext filesystem is there, and the block count and block size whose
+// product is its size. It reads the image file directly, so no loop device or mount is reached --
+// the same property that makes mke2fs usable unprivileged here. A nonzero exit does NOT by itself
+// separate "no ext superblock" from "file unreadable", so a caller reports it as a failed reading and
+// never as a filesystem-type fact.
+fn dumpe2fs_superblock_command(image_path: String) -> ArgvCommand {
+  argv_command(program: dumpe2fs_program, arguments: ["-h", image_path])
+}
+
 // `-d` IS WHAT MAKES A ROOT FILESYSTEM BUILDABLE WITHOUT MOUNTING ONE, and that is the reason this
 // builder exists rather than a mount-copy-unmount sequence. mke2fs populates the new filesystem from
 // a directory tree in userspace, so the image is produced by one process with no loop device, no

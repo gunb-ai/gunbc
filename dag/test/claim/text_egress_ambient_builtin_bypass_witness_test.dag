@@ -1,0 +1,51 @@
+module test.claim.text_egress_ambient_builtin_bypass_witness
+
+import v2.std.algebra { any, contains }
+import v2.std.collection { List }
+import v2.std.fn_index { FnArrowDecl, callee_texts_in_subtree, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.text { String, string_eq }
+
+// THE BYPASS DISCRIMINATOR FOR THE TEXT EGRESS. The behavioural rows in
+// test.claim.text_alphabet_membership_witness cannot see a bypass: restoring the index walk over
+// `char_at` / `string_length` / `string_contains` would answer identically on every one of them,
+// because the host builtins compute the same predicate. What distinguishes the two is the ROUTE,
+// so this claim reads the route -- the live call texts in the switched module's own declarations --
+// rather than the answer.
+//
+// THE POSITIVE CONTROL BELOW IS NOT DECORATION. An absence claim over a reader that returns nothing
+// is permanently green and would be cited as coverage after it stopped meaning anything (DESIGN
+// section 4b: ask whether the RED is authorable). The control names a module that still reaches
+// these builtins, so the reader must FIND them there for the absence above it to carry information.
+// When a later cut in this family switches that module, this control must move to another module
+// that still reaches one -- it does not retire while any remain.
+
+data no_pool_roots: List<String> = []
+data switched_module_files: List<String> = ["src/v2/compiler/05_emit_orchestration.dag"]
+data unswitched_module_files: List<String> = ["src/v2/workflow/floor_naming_hygiene.dag"]
+
+data ambient_text_builtins: List<String> = ["char_at", "string_length", "string_contains"]
+
+fn decl_reaches_ambient_text_builtin(decl: FnArrowDecl) -> Bool {
+  any(
+    xs: callee_texts_in_subtree(node: decl.output),
+    predicate: fn(callee) {
+      contains(xs: ambient_text_builtins, item: callee, eq: string_eq)
+    }
+  )
+}
+
+fn module_reaches_ambient_text_builtin(files: List<String>) -> Bool {
+  any(
+    xs: fn_arrow_decl_facts_live(pool_roots: no_pool_roots, pool_files: files),
+    predicate: decl_reaches_ambient_text_builtin
+  )
+}
+
+test fn switched_emit_orchestration_reaches_no_ambient_text_builtin() -> Bool {
+  !module_reaches_ambient_text_builtin(files: switched_module_files)
+}
+
+test fn the_route_reader_finds_an_ambient_text_builtin_where_one_remains() -> Bool {
+  module_reaches_ambient_text_builtin(files: unswitched_module_files)
+}

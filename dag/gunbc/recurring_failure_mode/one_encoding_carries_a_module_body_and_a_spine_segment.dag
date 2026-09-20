@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.one_encoding_carries_a_module_body_and_a_spine_segment
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data one_encoding_carries_a_module_body_and_a_spine_segment: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_encoding_carries_a_module_body_and_a_spine_segment" as NonEmptyStr,
+
+  receipts: [
+    "one encoding carries two meanings: the containment spine is a chain of single-Named-edge Conj wrappers, and a module body whose only member is a Named edge to a Conj has exactly that shape. `p { Flag: Conj }` and the path `p.Flag` were one tree. INVALID STATE: a grafted module whose qualified name, read back from its own nesting, is longer than the name it was authored with -- the first declaration has become a segment.",
+
+    "HARM, measured 2026-09-19 on gunbc#11574: every module whose graft body is one Conj-targeted member refuses resolve_module_not_found (the seek is for `p`, the tree answers `p.Flag`); CI's declarations phase reports unresolved-module-identities over the small fixture modules with that shape; symbol_index_fill descends the member as a segment and never indexes it. The specimen was a type-only coproduct module once its Named edge targeted the type_alias_rhs shell; `type Name = String where ...` alone had been red the same way on main before it. The reference-site collector had already met this and worked around it by COUNTING segments from the header qualified name (module_spine_unwrapped) -- circular for a grafted root, whose qualified name is itself read from the shape.",
+
+    "WHY THE READER CANNOT FIX IT: every consumer of the spine -- qualified_name_from_graft_spine, symbol_index_fill_containment_node, admit_named_exports_descend_spine, module_spine_unwrapped -- asks namespace_graft_spine_segment_edge_optional, and that predicate can only guess at the shape. DESIGN section 6b: the symptom sits at the reader; the earliest boundary that cannot justify itself is the producer that emitted a body indistinguishable from a segment. DESIGN section 5: make the state unwritable rather than teach a reader to guess.",
+
+    "THE REPAIR is producer-side and consumes the provenance vocabulary the graft already used for its module shell: namespace_graft_build_body_conj stamps the body with grammar_production_identity_node_projection -> Atom(namespace_graft_module_body_identity), and the one spine predicate stops at a node so marked. No captured projection is emitted, because the members ARE the body and a captured wrapper would re-create the very one-Named-Conj level the fill misreads. Readers that fold body children already treat projection edges as machinery (symbol_index_fill); export admission and the reference-site collector now apply the same rule to that edge.",
+
+    "EVIDENCE ENROLLED: v2.test.claim.namespace_graft.graft_shape_test namespace_graft_one_conj_member_body_is_not_a_segment_RED (a one-Conj-member body under a four-segment name reads four segments; FAILS with the producer marker removed) paired with namespace_graft_two_segment_path_still_reads_two_segments_holds (the same body under a two-segment name reads exactly two -- a marker that ended every spine after one segment would green the RED and red this) and namespace_graft_body_carries_producer_marker_holds.",
+
+    "NODE IDENTITY: the marker adds a child to every grafted body Conj, so the content hash of every grafted body, its spine wrappers and its module shell changes corpus-wide. It adds no source occurrence (OccurrenceSynthetic) and moves no declaration's occurrence identity or semantic hash of any member subtree. Nothing on main keys a committed artifact on a grafted root's content hash; a consumer that does must re-take its digests at this landing.",
+
+    "RUNG FOUND AT: silent wrongness (a fabricated qualified name accepted as the module's identity). RUNG NOW: 4, structurally impossible for the graft's own output -- the body cannot be emitted without its marker, and no reader guesses. RESIDUAL, honestly outside the marker: a hand-built spine (a fixture constructing containment nodes directly rather than through module_header_containment_graft) can still author the ambiguous shape; that residue is a fixture-authoring fact, and the discriminating RED above is the control that would catch a producer regressing to it.",
+  ],
+
+  evidence: [],
+}

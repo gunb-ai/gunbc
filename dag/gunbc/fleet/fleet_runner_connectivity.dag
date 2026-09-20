@@ -2,9 +2,7 @@ module gunbc.fleet_runner_connectivity
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
+import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
@@ -237,50 +235,79 @@ fn incident_registration(
     name: name,
     status: status,
     busy: busy,
-    ephemeral: true,
-    version: incident_runner_version,
+    ephemeral: Present { value: true },
+    version: Present { value: incident_runner_version },
     os: "Linux" as NonEmptyStr,
     labels: incident_runner_labels(host: host),
   }
 }
 
-data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+// THE CORPUS IS AUTHORED PER HOST AND CONCATENATED, SO A HOST SLICE IS A PROJECTION AND NOT A
+// SECOND SPELLING. The 2026-09-13 26/25 GiB transition (gunbc.runner_slot_allocation) deleted
+// srv2's held width: its commitment is unestablished, gunbc_runner_slots_per_host answers 0 and
+// committed_slot_identities(srv2) is empty, so srv2-01/02/05 below now decode
+// RegistrationNamesNoCommittedSlot and gunbc.runner_capacity_plan REFUSES any plan handed the
+// whole-org corpus. That refusal is correct -- three owned registrations on a host with no
+// established commitment are exactly the surplus convergence must account for -- and the rows are
+// NOT deleted from the corpus, because the corpus is what the org held on 2026-08-06. Witnesses
+// whose subject is the managed pair supply the srv3/srv4 slice instead of the whole org, and the
+// slice is the same rows under one authority rather than a copy that could drift from them.
+data incident_2026_08_06_srv1_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv1, id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
   incident_registration(host: operator_host_srv1, id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv1, id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv2_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv2, id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv2, id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv2, id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv3, id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv3, id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
+]
+
+data incident_2026_08_06_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(host: operator_host_srv4, id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
   incident_registration(host: operator_host_srv4, id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
 ]
 
-fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
+data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  concat(incident_2026_08_06_srv1_registrations, incident_2026_08_06_srv2_registrations),
+  concat(incident_2026_08_06_srv3_registrations, incident_2026_08_06_srv4_registrations),
+)
+
+// THE MANAGED-PAIR SLICE OF THE SAME CORPUS: srv3 and srv4 hold {01,02,04,05} each, 03 missing on
+// both. This is the roster a claim about the managed pair's additions is entitled to -- the holes
+// are the discriminating content, and srv1/srv2 are not in its subject.
+data incident_2026_08_06_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  incident_2026_08_06_srv3_registrations,
+  incident_2026_08_06_srv4_registrations,
+)
+
+fn incident_2026_08_06_managed_roster_fixture() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-06" as NonEmptyStr,
+    registrations: incident_2026_08_06_managed_registrations,
+  }
+}
+
+// THE 2026-08-06 INCIDENT ROSTER, KEPT ONLY AS A DATED HISTORICAL FIXTURE FOR WITNESSES. Production
+// planning reads gunbc.fleet.organization_runner_roster_read organization_runner_roster_live_read;
+// nothing outside a witness may plan from this population.
+fn incident_2026_08_06_roster_fixture() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
     observed_on: "2026-08-06" as NonEmptyStr,
     registrations: incident_2026_08_06_registrations,
   }
-}
-
-data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.fleet_runner_connectivity",
-    decl_name: "organization_runner_roster_show_effective_read",
-    field: WholeDeclaration,
-  }
-}
-
-data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
-  reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
 }
 
 fn registration_matches_name(
@@ -524,7 +551,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
 }
 
 fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
-  let roster = organization_runner_roster_evidence()
+  let roster = incident_2026_08_06_roster_fixture()
   let incarnations = local_runner_slot_incarnations()
   match fold(
     incarnations,
@@ -679,7 +706,7 @@ fn fleet_runner_capacity_width_snapshot_from_roster(
 }
 
 fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
-  fleet_runner_capacity_width_snapshot_from_roster(roster: organization_runner_roster_evidence())
+  fleet_runner_capacity_width_snapshot_from_roster(roster: incident_2026_08_06_roster_fixture())
 }
 
 fn connectivity_verdicts_for_active_incarnations(
