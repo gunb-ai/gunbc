@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.supervisor_liveness_consumed_as_participation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data supervisor_liveness_consumed_as_participation: RecurringFailureMode = RecurringFailureMode {
+  identity: "supervisor_liveness_consumed_as_participation" as NonEmptyStr,
+
+  receipts: [
+    "**supervisor liveness consumed as participation** (a process supervisor reports a unit alive, and a reader takes that as evidence the service is doing its job. The two are different facts whenever the supervisor's readiness signal is weaker than the service's actual obligation, and for a DISTRIBUTED service they are never the same fact: the supervisor watches one process, and the obligation is a property of the group.)",
+
+    "INVALID STATE: a health, readiness or placement decision derived from a per-process liveness signal whose definition cannot reach the property being decided -- and, because the signal is green, no restart policy, alert or refusal fires.",
+
+    "WHY IT SURVIVES REVIEW: the reading is TRUE. The unit is active, the process does exist, the supervisor is not lying. What is wrong is the inference, and the inference is invisible in the diff -- it looks like reading a field. systemd makes this especially quiet: `ActiveState=active` is defined per `Type=`, and for `simple`, `exec`, `forking` and `idle` it means only that the manager started the exec. A reader who has never read systemd.service(5) will assume it means the service works, and for `Type=notify` it nearly does, so the habit is reinforced by the cases where it happens to hold.",
+
+    "SPECIMEN (2026-09-16, group B's four-rank GLM arm). The rail dropped while its transceivers were being reprogrammed. Rank 0's unit restarted and opened a fresh torch TCPStore; the three worker ranks stayed attached to the store they had joined 46 minutes earlier, spinning on `Failed to check the \"should dump\" flag on TCPStore ... Broken pipe`. All four units reported ActiveState=active for the better part of an hour. `Restart=always` never fired, because from the manager's vantage nothing had failed: four processes, four running services, zero participation. The engine could not answer a request, and no unit-level reading could say so. Recovery took an out-of-band converge.",
+
+    "THE DISCRIMINATOR, and it is mechanical: ask what the signal is DEFINED to establish, then ask what the consumer concludes. A gap between the two is the defect, independent of whether it has bitten yet. For a group service the gap is structural rather than incidental -- no per-process signal can establish a group property -- so any arm whose correctness depends on N processes agreeing owes a reading at the GROUP grain. The dual tell is a hang: a service that WEDGES rather than exits converts every restart policy into a no-op, so `Restart=always` beside a process that can hang is not a recovery mechanism, it is decoration.",
+
+    "NOT THE SAME AS absorbing_fallback, and worth separating: there is no widening arm here and no confidence threshold. The failure is an inference from an honest reading, so there is nothing to refuse and no degradation to count -- which is why it is quieter. It is also not inert_lens: the mechanism ran and answered correctly; it was asked the wrong question.",
+
+    "RUNG: found BELOW the ladder. A serving arm that could not answer was reported healthy by every mechanism watching it, with no typed refusal anywhere.",
+
+    "CEILING 3, structurally guaranteed, and the reachable step was taken here: extdeps.systemd.unit_file systemd_readiness_from_active_state makes the inference a total function of the declared `Type=`, so a consumer wanting readiness gets ReadinessNotEstablished for every mode that cannot support it, carrying the mode and what it does establish. A reader can no longer conclude readiness from active state without going through a refusal. What that does NOT reach is rung 4: the corpus can still DECLARE a Type=simple unit for a service that needs a readiness signal, which is a legitimate thing to do, so the invalid state is the missing independent reading rather than the unit itself.",
+
+    "NEXT-RUNG TRIGGER for the group arm specifically: a rank that EXITS when it loses its rendezvous instead of spinning, which makes the arm's recovery posture SelfHealingOnFault (gunbc.spark.rendezvous_participation ArmRecoveryPosture) and retires the converge dependency. Until then the posture is the declared ConvergeRecovered row with gunbc.spark.rendezvous_participation serving_group_rendezvous_reach as its noticer, whose GroupHostsNotAllConnected arm refuses the serving route through gunbc.spark.serving_offer ServiceRanksAdriftFromTheRendezvous. The noticer REPORTS and does not act, which is stated rather than hidden. AND THE NOTICER IS ONE-SIDED, which is its own smaller instance of this very class: the ss reading carries no process attribution, so a host WITHOUT a connection to the current master is evidence its rank is adrift while a host WITH one is not evidence that it is running the declared rank. It is therefore consumed as a negative gate only, and binding the socket to the exact container and its effective --node-rank (gunbc.spark.serving_rank_observe ObservedRankIncarnation) is the second next-rung trigger.",
+
+    "REVIEW TELL: a health, readiness or placement decision whose only evidence is a supervisor field -- ActiveState, a container's Running flag, a pid's existence, a process count. Ask what that field is defined to establish for THIS unit's declared type, and, if the service is distributed, at what grain the decision's subject actually lives. A single-host reading answering for a multi-host arm is the finding regardless of which field it read.",
+  ],
+
+  evidence: [],
+}

@@ -13,7 +13,8 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
+import extdeps.linux.procfs { ProcNetPnp, procfs_path_literal }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
 import extdeps.tools.e2fsprogs { Ext2FilesystemType, Ext4, mke2fs_populate_command }
 import extdeps.tools.sha256sum {
@@ -34,7 +35,7 @@ import extdeps.systemd.unit_file {
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
   systemd_environment_reference, systemd_exit_code_variable, systemd_exit_status_variable,
-  ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
+  ServiceType, ExecMode, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in, ServiceTasksMax,
@@ -444,7 +445,7 @@ fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyS
       FailureAction { action: runner_guest_agent_end_action },
     ],
     service: [
-      ServiceType { mode: "exec" as NonEmptyStr },
+      ServiceType { mode: ExecMode },
       Restart { policy: "no" as NonEmptyStr },
       ServiceTasksMax { count: gunbc_runner_microvm_task_ceiling() },
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
@@ -485,12 +486,14 @@ fn runner_guest_agent_unit_path(root: String, image: RunnerGuestImage) -> String
 // actually reads was correct. A correct assertion over the wrong subject.
 //
 // THE REPAIR IS A DROP-IN ON THE TARGET, NOT A SYMLINK, and that choice is deliberate rather than
-// convenient. A symlink would be the closer analogue of `systemctl enable`, and it is also a file
-// KIND this build cannot currently create -- Filesystem.Write writes regular files. Reaching for a
-// symlink here would mean minting an `ln -s` argv builder to make the image build depend on a second
-// mechanism, when systemd already documents a fragment that expresses the dependency directly and IS
-// a regular file honestly used as one. `<target>.d/*.conf` carrying `[Unit] Wants=` is merged into
-// the target's own configuration by the ordinary drop-in path, which has no symlink requirement.
+// convenient. A symlink would be the closer analogue of `systemctl enable`, but systemd documents a
+// fragment that expresses the dependency directly and IS a regular file honestly used as one:
+// `<target>.d/*.conf` carrying `[Unit] Wants=` is merged into the target's own configuration by the
+// ordinary drop-in path, which has no symlink requirement. The build CAN now place a symlink (the
+// resolver link below goes through extdeps.tools.gnu_coreutils ln_symbolic_force_command), and that
+// does not move this decision: where upstream documents a regular-file form, a link is a second
+// spelling of the same activation, and the regular file is the one Filesystem.Write can render from
+// the modeled unit rather than a path a caller pairs with it.
 //
 // The unit keeps its [Install] section, and that is not a second authority for the same fact: the
 // section states which target this agent BELONGS to, so `systemctl enable` inside a running guest
@@ -595,6 +598,7 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
       archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
       into_directory: runner_guest_tree_dir(root: root, image: image),
     ),
+    runner_guest_resolver_link_command(root: root, image: image),
     mkdir_parents_command(path: runner_guest_tree_runner_dir(root: root, image: image)),
     tar_extract_command(
       archive: runner_guest_runner_tarball_path(root: root, artifact: artifact),
@@ -604,6 +608,44 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
     mkdir_parents_command(path: runner_guest_tree_unit_dir(root: root, image: image)),
     mkdir_parents_command(path: runner_guest_agent_drop_in_dir(root: root, image: image)),
   ]
+}
+
+// THE GUEST'S RESOLVER IS THE KERNEL'S dns0, READ THROUGH ONE LINK, AND THE LINK IS WHAT UPSTREAM
+// DOCUMENTS. The host boots the guest with `ip=...:<dns0>` (gunbc.runner_microvm_network
+// runner_slot_guest_ip_boot_arg, whose dns0 is runner_microvm_guest_resolver -- the one address the
+// egress grant admits on port 53). The kernel does not write /etc/resolv.conf; it exports dns0 to
+// /proc/net/pnp under the prefix "nameserver " and says in its own words that /etc/resolv.conf is
+// linked to it (Documentation/admin-guide/nfs/nfsroot.rst, cited on extdeps.linux.procfs ProcNetPnp).
+// So the image's /etc/resolv.conf IS that link, and the guest's resolver configuration is derived from
+// the same row the grant is derived from, at boot, with no copy of the address baked into the image.
+//
+// A LINK AND NOT A FILE, BECAUSE NO FILE COULD BE RIGHT AT BUILD TIME. /proc/net/pnp exists only once
+// the guest kernel has run its IP configuration, so there is nothing to copy while the tree is being
+// staged; and a regular file carrying the address would be a second authority for
+// runner_microvm_guest_resolver that would silently diverge from the ip= line the next time the row
+// moved. A systemd unit copying the file at boot was the other modeled option and was not taken: it
+// is a moving part ordered against network-online.target for a fact the kernel has already produced
+// before init starts, and it would carry shell semantics (`cp` at boot) where the link carries none.
+//
+// Whatever the base rootfs ships at /etc/resolv.conf is unobserved here -- an Ubuntu image commonly
+// carries a link to systemd-resolved's stub file, but this fleet has not read this one's -- so the
+// builder is the exact-destination form (-sfnT): an existing file or link is replaced, and a real
+// DIRECTORY there makes the build REFUSE rather than create the link inside it and report success
+// over an image with no resolver link. The refusal is the located diagnostic; the extracted kind
+// is then a fact to observe, not a guess to widen the builder around.
+fn runner_guest_resolver_link_target() -> String {
+  procfs_path_literal(p: ProcNetPnp) as String
+}
+
+fn runner_guest_tree_resolv_conf_path(root: String, image: RunnerGuestImage) -> String {
+  join([runner_guest_tree_dir(root: root, image: image), "/etc/resolv.conf"], "")
+}
+
+fn runner_guest_resolver_link_command(root: String, image: RunnerGuestImage) -> ArgvCommand {
+  ln_symbolic_force_command(
+    target: runner_guest_resolver_link_target(),
+    link_name: runner_guest_tree_resolv_conf_path(root: root, image: image),
+  )
 }
 
 fn runner_guest_tree_runner_dir(root: String, image: RunnerGuestImage) -> String {
