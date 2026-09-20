@@ -60,7 +60,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_build_step,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
-import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 
 // The ruleset requires a check named `witnesses`, and a job's check is named by its id.
 data compiler_gate_job_id: String = "witnesses"
@@ -120,6 +120,87 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
   ]
 }
 
+// CLIPPY IS A SEPARATE JOB BECAUSE IT IS A SEPARATE CLAIM, AND BECAUSE IT WAS LOST.
+//
+// It used to run as rust_clippy_all_targets_step inside required-witnesses-build. That job no
+// longer exists, and nothing inherited the step, so lint over every target has been ungated --
+// while gunbc.contributor_onboarding_path still tells a contributor it is "a merge is blocked
+// on". A wall that no step executes is a decoration (DESIGN 4b), so this restores the executing
+// gate rather than adding a new one.
+//
+// Its own job, not another step on the compiler gate, for two reasons. The claims are
+// independent -- "the workspace compiles" and "the workspace is lint-clean over every target"
+// fail for different causes and a reader should see which -- and they are the only command that
+// compiles the integration-test and example targets, so a red there is invisible to every other
+// step. Serialising them behind one job would also hide the second failure whenever the first
+// one fails.
+//
+// A hosted runner, free on a public repository, so this is not the standing claim on a paid
+// runner that closed the job roster on 2026-09-04.
+data compiler_gate_clippy_job_id: String = "clippy"
+data compiler_gate_clippy_step_name: String = "Lint every target"
+
+fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_checkout_step(),
+      role: capability_neutral,
+      step_name: "Checkout",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    CompilerGateBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    CompilerGateBoundStep {
+      step: witness_floor_build_step(
+        step_name: compiler_gate_clippy_step_name,
+        build_script: repo_self_clippy_command(),
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_clippy_step_name,
+    },
+  ]
+}
+
+fn compiler_gate_clippy_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_clippy_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn compiler_gate_clippy_job() -> Job {
+  Job {
+    id: compiler_gate_clippy_job_id,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    steps: list_map(xs: compiler_gate_clippy_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: compiler_gate_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
+  }
+}
+
 fn compiler_gate_capability_closure_holds() -> Bool {
   capability_closure_is_closed(
     v: workflow_job_capability_closure(
@@ -173,7 +254,7 @@ data compiler_gate_workflow: Workflow = Workflow {
   },
   env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_job()]
+  jobs: [compiler_gate_job(), compiler_gate_clippy_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in compiler_gate_bound_steps."
@@ -187,7 +268,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() {
+          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() {
             WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }
