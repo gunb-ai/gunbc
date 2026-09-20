@@ -3,6 +3,9 @@ module v2.test.claim.reference_derived_residency_reading
 import gunbc.namespace_reference_derived_residency_qualification {
   BoundedRealizationQualified,
   BoundedRealizationRefused,
+  CarrierKeyPopulation,
+  CarrierPayloadGrain,
+  carrier_holds_whole_corpus_syntax,
   IdentityDigestPerKey,
   KeyedBySingleSubject,
   KeyedByWholePoolPopulation,
@@ -120,36 +123,81 @@ fn reading_of(decl_name: String, decl: Node) -> ProducerCarrierReading {
   )
 }
 
-fn is_whole_population_syntax(r: ProducerCarrierReading) -> Bool {
-  match r.grain {
-    SyntaxNodePerKey =>
-      match r.population {
-        KeyedByWholePoolPopulation => true
-        KeyedBySingleSubject => false
-      }
+// PER-AXIS CLAIMS. An earlier revision asserted only the CONJUNCTION, through a hand-copy of the
+// authority's own predicate -- a second authority for one fact (DESIGN section 2, section 3) whose
+// concrete cost was that it CONCEALED a defect: the population axis was mislabelled on two of these
+// four fixtures and every conjunction claim still passed. The predicate is now imported from the
+// module that owns it, and each axis is asserted on its own so a mislabelled field cannot hide behind
+// a conjunction that happens to come out right (review 68711).
+
+fn grain_of(decl_name: String, decl: Node) -> CarrierPayloadGrain {
+  reading_of(decl_name: decl_name, decl: decl).grain
+}
+
+fn population_of(decl_name: String, decl: Node) -> CarrierKeyPopulation {
+  reading_of(decl_name: decl_name, decl: decl).population
+}
+
+fn grain_is_syntax(g: CarrierPayloadGrain) -> Bool {
+  match g {
+    SyntaxNodePerKey => true
     IdentityDigestPerKey => false
   }
 }
 
-test fn a_tree_map_declaration_derives_as_whole_population_syntax() -> Bool {
-  is_whole_population_syntax(r: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+fn population_is_whole_pool(p: CarrierKeyPopulation) -> Bool {
+  match p {
+    KeyedByWholePoolPopulation => true
+    KeyedBySingleSubject => false
+  }
 }
 
-test fn an_index_entries_declaration_derives_as_whole_population_syntax() -> Bool {
-  is_whole_population_syntax(r: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+test fn a_tree_map_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
 }
 
-// THE DISCRIMINATING CONTRAST. A declaration that holds a Node for ONE subject is syntax and is not a
-// population. A derivation that answered "holds a Node" would collapse this into the two above and
-// could not describe any bounded producer at all.
-test fn a_single_subject_node_field_is_not_whole_population_syntax() -> Bool {
-  !is_whole_population_syntax(r: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+test fn a_tree_map_field_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
 }
 
-// THE OTHER HALF OF THE SAME CONTRAST: a population whose per-key payload is a digest rather than a
-// tree is bounded, which is what makes the check capable of ever going green on a repaired producer.
-test fn a_digest_keyed_population_is_not_whole_population_syntax() -> Bool {
-  !is_whole_population_syntax(r: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+test fn an_index_entries_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+}
+
+test fn an_index_entries_field_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+}
+
+// A bare Node field is SYNTAX for ONE subject: syntax grain, and not a population.
+test fn a_bare_node_field_derives_syntax_grain() -> Bool {
+  grain_is_syntax(g: grain_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+}
+
+test fn a_bare_node_field_does_not_derive_a_population() -> Bool {
+  !population_is_whole_pool(p: population_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+}
+
+// THE TARGET SHAPE OF THE REPAIR, AND THE PAIR THAT WAS UNCONSTRUCTIBLE BEFORE review 68711. A
+// digest-keyed map over the whole pool is a POPULATION whose payload is BOUNDED. Under the earlier
+// conflated derivation population implied syntax, so this pair could not be expressed at all and the
+// module could not describe the producer shape it exists to admit. Asserting each axis directly is
+// what makes the shape reachable rather than argued for in a comment.
+test fn a_digest_keyed_map_derives_a_bounded_grain() -> Bool {
+  !grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+test fn a_digest_keyed_map_still_derives_a_whole_pool_population() -> Bool {
+  population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+// THE CONJUNCTION, through the AUTHORITY'S OWN predicate rather than a copy of it. Only syntax held
+// per population member is whole-corpus residency; each of the other three fixtures fails exactly one
+// of the two conjuncts, which is what makes the conjunction do real work.
+test fn only_syntax_held_per_population_member_is_whole_corpus_residency() -> Bool {
+  carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+    && carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+    && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+    && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
 }
 
 fn lifecycle_from(constructed: List<ProducerCarrierReading>) -> ProductionLifecycleReading {

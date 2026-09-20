@@ -81,18 +81,24 @@ fn type_expr_holds_syntax(target: Node) -> Bool {
   subtree_mentions_atom(root: target, needle: ^Node)
 }
 
-fn field_is_whole_population_syntax(target: Node) -> Bool {
-  type_expr_holds_syntax(target: target) && type_expr_is_keyed_population(target: target)
-}
-
-// A declaration's reading is its WORST field: one field holding syntax per population member is
-// enough to make the carrier scale with the corpus, whatever the other fields hold.
-fn decl_has_whole_population_syntax_field(decl: Node) -> Bool {
+// THE TWO QUESTIONS ARE ASKED SEPARATELY, and that separation is the whole content of this module.
+// An earlier revision decided POPULATION with a predicate requiring BOTH a Node payload AND a
+// collection, which made the population axis mean "keyed over a population OF SYNTAX" while the type
+// it feeds declares itself as "what the carrier is keyed over" -- one name, two meanings, DESIGN
+// section 3's fork (review 68711). Two things broke and both are load-bearing: the pair
+// (IdentityDigestPerKey, KeyedByWholePoolPopulation) -- THE TARGET SHAPE OF THE REPAIR, the name
+// table this module exists to admit -- was UNCONSTRUCTIBLE because population implied syntax; and the
+// grain arm of the qualifier's conjunction was consequently dead on every derived reading.
+//
+// A declaration's reading is its WORST field on each axis independently: one field held per key
+// makes the carrier a population, and one field carrying syntax makes its payload syntax, whatever
+// the other fields hold.
+fn decl_has_keyed_population_field(decl: Node) -> Bool {
   match decl.kind {
     TypeNode { connective: _ } =>
       fold(decl.children, init: false, f: fn(acc, edge) {
         match edge.label {
-          Named { name: _ } => acc || field_is_whole_population_syntax(target: edge.target)
+          Named { name: _ } => acc || type_expr_is_keyed_population(target: edge.target)
           Positional => acc
         }
       })
@@ -113,6 +119,7 @@ fn decl_has_syntax_field(decl: Node) -> Bool {
   }
 }
 
+// GRAIN ALONE: is the per-key payload syntax, regardless of how many keys there are.
 fn carrier_payload_grain_of(decl: Node) -> CarrierPayloadGrain {
   if decl_has_syntax_field(decl: decl) {
     SyntaxNodePerKey
@@ -121,8 +128,11 @@ fn carrier_payload_grain_of(decl: Node) -> CarrierPayloadGrain {
   }
 }
 
+// POPULATION ALONE: is anything held per key, regardless of payload. A digest-keyed map over the
+// whole pool is a POPULATION with a bounded payload -- exactly the shape a bounded realization has --
+// and it must be expressible or the check can never describe a repaired producer.
 fn carrier_key_population_of(decl: Node) -> CarrierKeyPopulation {
-  if decl_has_whole_population_syntax_field(decl: decl) {
+  if decl_has_keyed_population_field(decl: decl) {
     KeyedByWholePoolPopulation
   } else {
     KeyedBySingleSubject
