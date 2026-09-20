@@ -1,14 +1,14 @@
-module test.claim.fabric.fabric_db_witness
+module test.claim.fabric.fabric_storage_witness
 
 import std.types { NonEmptyStr, String, Bool, List }
-import std.fabric_db {
+import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_ref_eq,
   fabric_object_preimage, fabric_object_decode, fabric_objects_decode_stream, fabric_object_verified,
   FabricObjectVerified, FabricObjectVerificationFailed, FabricObjectCorrupt, FabricStoreUnreachable, FabricObjectMissing,
   FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt, fabric_head_admits,
 }
 
-// Evidence for the pure half of std.fabric_db: the canonical preimage round-trips, is
+// Evidence for the pure half of std.fabric_storage: the canonical preimage round-trips, is
 // self-delimiting in a stream, refuses truncation, and a fetched object is verified against the ref
 // it was asked for. Values are supplied; the store realization's evidence is its own witness.
 

@@ -1,7 +1,10 @@
 module test.claim.base16_rfc4648_witness_test
 
 import std.integer { UInt8 }
-import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
+import extdeps.numeric.base16 {
+  base16_encode_lower, base16_decode_lower,
+  base16_is_lower_digit_code_point, base16_is_digit_code_point, base16_lower_digit_value_at,
+}
 import extdeps.git.object_store { git_sha1_object_id, git_object_id_raw_octets }
 import extdeps.mercurial {
   mercurial_decode_node_identity,
@@ -22,6 +25,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // discriminator: each consumer is asked a question only the authority answers, on an asymmetric
 // vector, so mutating base16_decode_lower or base16_encode_lower turns these RED -- a consumer that
 // had kept its own codec would stay green under that mutation.
+
+data asymmetric_aa: List<UInt8> = [170]
+
+data asymmetric_f0: List<UInt8> = [240]
 
 data asymmetric_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 0, 255]
 
@@ -76,6 +83,69 @@ test fn base16_refuses_non_hex_digit() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+// THE ALPHABET IS ONE TABLE, AND MEMBERSHIP IS DERIVED FROM IT. Four consumers used to spell the
+// same alphabet as code-point ranges; these claims pin the derived predicates, and the consumer
+// claims below go red if a consumer stops routing through the rows.
+data lower_hex_points: List<Int> = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102]
+
+data upper_hex_points: List<Int> = [65, 66, 67, 68, 69, 70]
+
+data non_hex_points: List<Int> = [47, 58, 64, 71, 96, 103, 32, 45]
+
+test fn the_lowercase_alphabet_is_exactly_the_digit_rows() -> Bool {
+  all(lower_hex_points, cp => base16_is_lower_digit_code_point(cp: cp))
+    && all(upper_hex_points, cp => !base16_is_lower_digit_code_point(cp: cp))
+    && all(non_hex_points, cp => !base16_is_lower_digit_code_point(cp: cp))
+}
+
+// The either-case predicate exists so a consumer can tell "not hexadecimal" from "hexadecimal but
+// not the canonical lowercase spelling"; it admits both cases and nothing else.
+test fn the_either_case_alphabet_admits_both_spellings_and_nothing_else() -> Bool {
+  all(lower_hex_points, cp => base16_is_digit_code_point(cp: cp))
+    && all(upper_hex_points, cp => base16_is_digit_code_point(cp: cp))
+    && all(non_hex_points, cp => !base16_is_digit_code_point(cp: cp))
+}
+
+// Code point 0 is the last assertion, and it is not decoration: char_at past the end answers "" and
+// code_point("") is 0, so a String-shaped wrapper over this lookup read an empty string as a digit
+// position (review 69058). The lookup itself must refuse it.
+test fn a_digit_value_is_read_from_the_same_rows() -> Bool {
+  base16_lower_digit_value_at(cp: 48) == Present { value: 0 }
+    && base16_lower_digit_value_at(cp: 97) == Present { value: 10 }
+    && base16_lower_digit_value_at(cp: 102) == Present { value: 15 }
+    && base16_lower_digit_value_at(cp: 65) == none
+    && base16_lower_digit_value_at(cp: 0) == none
+}
+
+// THE DECODER READS EVERY CHARACTER. The deleted String wrapper read its argument with code_point,
+// which returns only the first scalar, so "aa" and "f0" answered as if they were single digits
+// (review 69058). This pins the surviving decode route over two-character text.
+
+fn decodes_to(hex: String, expected: List<UInt8>) -> Bool {
+  match base16_decode_lower(hex: hex) {
+    Present { value: octets } => octets == expected
+    Absent => false
+  }
+}
+
+fn decode_refuses(hex: String) -> Bool {
+  match base16_decode_lower(hex: hex) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn two_character_text_decodes_as_two_digits_never_as_its_first() -> Bool {
+  decodes_to(hex: "aa", expected: asymmetric_aa)
+    && decodes_to(hex: "f0", expected: asymmetric_f0)
+    && decode_refuses(hex: "aZ")
+    && decode_refuses(hex: "a")
+    && match base16_decode_lower(hex: "") {
+      Present { value: octets } => count(octets) == 0
+      Absent => false
+    }
 }
 
 test fn git_raw_octets_route_through_base16() -> Bool {

@@ -62,16 +62,16 @@ import gunbc.live_deploy.member_identity {
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
 import extdeps.crypto.hash { digest_shell_verify_line }
-import gunbc.fabric_db_placement { fabric_db_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_listen_port }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_db_unit_name, deployment_fabric_db_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricDbServeUnit, FabricDbServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -560,14 +560,14 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
-// gunbc.fabric_db_serve fabric_db_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
-// route to it (FabricDbServeMapping), which is the deployment fact extdeps.tailscale.identity says
+// gunbc.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
+// route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
 // the identity header's trust rests on. Same principal, slice, tree, binary and declared evaluation
 // caps as the dashboard's unit: a request is one store operation on local files, and the caps turn an
 // unbounded hold of the serial accept loop into a typed refusal exactly as they do there. The process
 // keeps no state between requests -- the store is the files under the ensured fabric DB directory --
 // so Restart=on-failure loses nothing.
-fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
@@ -585,8 +585,8 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/fabric/fabric_db_serve.dag --function fabric_db_serve_handle",
-        " --host 127.0.0.1 --port ", to_string(fabric_db_listen_port),
+        " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
+        " --host 127.0.0.1 --port ", to_string(fabric_storage_listen_port),
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -597,10 +597,10 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
   }
 }
 
-fn apply_fabric_db_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
+fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fabric_db_unit_name(names: spec.names) as String,
-    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_db_unit_file(spec: spec, revision: revision))), proto: live_deploy_protocol),
+    stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision))), proto: live_deploy_protocol),
   ))
 }
 
@@ -1691,20 +1691,20 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
-    FabricDbServeUnit => [
-      apply_fabric_db_unit_write_step(spec: spec, revision: revision),
+    FabricStorageServeUnit => [
+      apply_fabric_storage_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_fabric_db_unit_name(names: spec.names) as String,
+        stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_db_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_db_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
     ]
-    FabricDbServeMapping => [
+    FabricStorageServeMapping => [
       deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_db_serve_endpoint())),
+        argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
     DeployedTreeRemoteUnit => [
@@ -1750,13 +1750,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    FabricDbServeMapping => [
+    FabricStorageServeMapping => [
       deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_db_serve_endpoint())),
+        argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
-    FabricDbServeUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fabric_db_unit_name(names: spec.names), privileged: true),
+    FabricStorageServeUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
