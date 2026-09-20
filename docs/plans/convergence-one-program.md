@@ -70,6 +70,16 @@ point of use, and discovering that on main is strictly worse than discovering it
   DELETE: obligations 1–8 are met or dissolved by the live path, and the App-token migration
   **raised** the rung — a serial mint where each link exits on failure is construction where the
   dead surface had validation. The deletion was dispatched and not finished.
+- **A read-write-re-read fold is unfalsifiable under the current replay harness**, and this is a
+  frame-level gap rather than a defect in any subject. REST replay keys a fixture by exact
+  invocation, and the first read and the re-read of such a fold are the *same* invocation — same
+  operation, target and input digest — so no fixture set can answer 200 to one and 403 to the
+  other. Sequencing is not expressible at all. Worse, an invocation's `input_digest` is minted
+  host-side over the bound parameter environment and has no `.dag` constructor, so an authored
+  fixture cannot reproduce it for any operation that takes inputs; the existing probe matches only
+  because its operations take none. This is why C9a.1's unreadable-re-read stop is declared
+  unexecuted for its route. It belongs to `v2.std.witness_evaluation`, and closing it is what
+  would let that stop be executed rather than argued.
 - **The projected `restoration_trigger`** on the namespace-wave-admission drop does not state
   that restoration half (1) was built and then deleted; #11795's amendment supplies that context
   in the projection, so check the rendered page before re-opening it.
@@ -122,6 +132,15 @@ settled.
 **Before C8's first apply: stat the live directory** and compare its mode and owner against what
 the ensured step emits. If the observed mode is tighter, the ensured-directory arm needs a mode
 carried per subject — the `ManagedDirectory` derivation — **before** anything applies, not after.
+
+**A typed outcome on the policy read is a fail-open, and the next reader will re-derive it.** The
+obvious way to make C9a.1's inaccessible arm a typed value is to declare `RestOutcome` on
+`GetSecretIamPolicy`. Do not. The other caller reads the policy in the node-pattern form, which
+cannot branch, so a failed read there returns an empty policy with a blank etag that flows
+straight into `SetSecretIamPolicy` — an unconditional whole-policy overwrite of a live IAM policy,
+driven by a read that never happened. That is strictly worse than the defect C9a.1 repairs. The
+ordering is therefore fixed: make that caller an `EffectPlan` step that can refuse **first**, and
+only then declare the outcome.
 
 ## Process facts a later program will need
 
