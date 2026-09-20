@@ -4,8 +4,10 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
-  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
+  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
+  yaml_value_kind, yaml_value_kind_token
 }
+import v2.std.algebra { zip_eq }
 import std.layout {
   Doc, DocLine, DocConcat,
   LayoutProtocol,
@@ -90,6 +92,36 @@ fn emit_scalar(v: YamlValue) -> String {
     YamlSequence { elements: _ } => ""
     YamlMapping { entries: _ } => ""
   }
+}
+
+// EQUALITY OF TWO YAML VALUES, DECIDED BY THE PROJECTION THAT DECIDES THE BYTES. A consumer asking
+// whether an emitted `with:` or `env:` entry is the canonical one must compare values the way the
+// emitter renders them, or the comparator and the YAML the workflow actually carries can disagree
+// (gunbc#11693 review 69015). So: kinds must agree (emit_scalar collapses null, sequence and mapping
+// to "" and a kind-blind comparison would call them equal), scalars compare through emit_scalar,
+// and sequences and mappings compare structurally through this same relation.
+fn yaml_value_equal(a: YamlValue, b: YamlValue) -> Bool {
+  if yaml_value_kind_token(k: yaml_value_kind(v: a)) != yaml_value_kind_token(k: yaml_value_kind(v: b)) {
+    false
+  } else {
+    match a {
+      YamlSequence { elements: xs } =>
+        match b {
+          YamlSequence { elements: ys } => zip_eq(a: xs, b: ys, eq: yaml_value_equal)
+          _ => false
+        }
+      YamlMapping { entries: xs } =>
+        match b {
+          YamlMapping { entries: ys } => zip_eq(a: xs, b: ys, eq: yaml_key_value_equal)
+          _ => false
+        }
+      _ => emit_scalar(v: a) == emit_scalar(v: b)
+    }
+  }
+}
+
+fn yaml_key_value_equal(a: YamlKeyValue, b: YamlKeyValue) -> Bool {
+  a.key == b.key && yaml_value_equal(a: a.value, b: b.value)
 }
 
 fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {

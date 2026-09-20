@@ -19,7 +19,8 @@ module gunbc.fleet_workflow_steps
 // does not have.
 import std.measure { minute_count }
 import std.types { Duration }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue, YamlString, YamlInt, YamlFloat, YamlBool, YamlNull, YamlSequence, YamlMapping }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
+import extdeps.languages.yaml.emit { yaml_key_value_equal }
 import extdeps.github.action_release { action_release_same_producer }
 import gunbc.cli_invoke { gunbc_bin_name, release_bin_rel_path, release_bin_dir_rel }
 import extdeps.languages.yaml.gha_workflow { shell_type_string }
@@ -739,38 +740,11 @@ type ReleaseBinsDeliveryPremise
   = ReleaseBinsDelivered { producer_job: String, consumer_job: String, consumer_step: String }
   | ReleaseBinsDeliveryRefused { cause: String }
 
-// Scalar YAML equality for `with:` and `env:` entries. A sequence or mapping value is not a scalar
-// and two of them never compare equal here, which refuses rather than guesses.
-fn yaml_scalar_text(v: YamlValue) -> String? {
-  match v {
-    YamlString { value: s } => Present { value: concat("s:", s) }
-    YamlInt { lexeme: l } => Present { value: concat("i:", l) }
-    YamlFloat { lexeme: l } => Present { value: concat("f:", l) }
-    YamlBool { value: b } => Present { value: if b { "b:true" } else { "b:false" } }
-    YamlNull => Present { value: "null" }
-    YamlSequence { elements: _ } => none
-    YamlMapping { entries: _ } => none
-  }
-}
-
-fn kv_equal(a: YamlKeyValue, b: YamlKeyValue) -> Bool {
-  a.key == b.key
-    && (match yaml_scalar_text(v: a.value) {
-      Absent => false
-      Present { value: x } =>
-        match yaml_scalar_text(v: b.value) {
-          Absent => false
-          Present { value: y } => x == y
-        }
-    })
-}
-
+// `with:` and `env:` entries compare through the equality the YAML emitter owns
+// (extdeps.languages.yaml.emit yaml_key_value_equal), so the comparator reads a value exactly as
+// the workflow file will carry it.
 fn kv_lists_equal(a: List<YamlKeyValue>, b: List<YamlKeyValue>) -> Bool {
-  zip_eq(a: a, b: b, eq: kv_equal_fn)
-}
-
-fn kv_equal_fn(x: YamlKeyValue, y: YamlKeyValue) -> Bool {
-  kv_equal(a: x, b: y)
+  zip_eq(a: a, b: b, eq: yaml_key_value_equal)
 }
 
 fn string_eq(x: String, y: String) -> Bool {
