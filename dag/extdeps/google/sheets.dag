@@ -309,7 +309,7 @@ fn a1_sheet_title_refusal_text(refusal: A1SheetTitleRefusal) -> String {
     A1TitleBadEscape { at: i } =>
       concat("A1 sheet title: apostrophe in an unquoted title at offset ", to_string(i))
     A1TitleApostropheAmbiguous { at: i } =>
-      concat("A1 sheet title: '' is one escaped apostrophe or two literal ones; ambiguous at offset ", to_string(i))
+      concat("A1 sheet title: apostrophe spelling is ambiguous, and the API's escape rule is unobserved; at offset ", to_string(i))
     A1TitleEmpty => "A1 sheet title: empty title"
   }
 }

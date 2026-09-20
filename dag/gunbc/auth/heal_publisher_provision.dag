@@ -54,9 +54,25 @@ fn rest_ok(o: RestOutcome) -> Bool {
   }
 }
 
-// THE ONE CELL THIS ENTRY OWNS on the service account's own policy: who may act as it. The member is
-// the publisher pool, so the only identity that can impersonate this account is a token that already
-// satisfied the provider's condition.
+// THE ONE CELL THIS ENTRY OWNS on the service account's own policy: who may act as it.
+//
+// THE MEMBER IS THE WHOLE POOL, AND THIS NOTE USED TO CLAIM MORE THAN THAT BUYS. It read "the only
+// identity that can impersonate this account is a token that already satisfied the provider's
+// condition" -- true only because the pool holds exactly one provider today. The member is
+// heal_publisher_wif_principal_set(), which ends in `/*`: every identity in the pool, not every
+// identity that satisfied heal_publisher_wif_attribute_condition. Adding a second provider to this
+// pool would widen impersonation silently, and the sentence above would have kept vouching for it.
+//
+// THE TIGHTENING IS AVAILABLE AND IS NOT TAKEN HERE. The provider maps attribute.repository_id and
+// attribute.workflow_ref, so the member could be scoped to one of those rather than to `/*`. It is
+// left as a stated frontier because narrowing a live impersonation binding is only safe when the
+// scoped value is verified to match what GitHub actually asserts: a value that is merely plausible
+// removes the publisher's ability to mint a token at all, which is heal broken rather than heal
+// tightened. TRIGGER: an observed federation receipt carrying the asserted attribute, compared
+// against the scoped member before the narrowed cell is written.
+//
+// Until then the pool is the honest description of the member, and the guard that actually holds is
+// the provider's attribute condition -- one provider, whose condition is the wall.
 fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
