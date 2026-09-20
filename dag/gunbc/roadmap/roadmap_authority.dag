@@ -2884,6 +2884,96 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
+    active(
+      identity: "rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2",
+      id: "review-sheet-identity-producer-and-admission",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Give the landed review-sheet identity kernel its producers and its declared-id admission",
+        boundary: "gunbc.review_sheet_identity landed as a pure kernel and is enrolled in the census closure frontier with three consumer rows whose triggers name EXECUTION rather than import. This node is the execution: the shared marker-query constructor, the Drive superseded-marker producer, and the subject-bound operator-declaration reader, each emitting LegacyExtentEvidence into the one complete join; then the declared-id admission that reconciles a LegacyFileSelection against a standing, a contradicting observation, an exact file-by-id preflight and the intended subject. The kernel decides standing and the producers decide none.",
+        displaced_cost: "An empty appProperties search establishes only that the REQUESTING OAUTH CLIENT received no matching rows, never that no legacy-marked file exists, because appProperties are private to the requesting application and nothing in this corpus observes the application identity of its own token. Until a producer carries that distinction into the kernel, the live converge keeps reading an unresolved extent as an absent one, which is how the first duplicate sheet was minted.",
+        first_slice: "The three producers and the complete join, discharging the kernel's enrolled consumer frontier rows; then the admission fold.",
+        red_control: "A selection beside an unresolved extent stays unresolved; a positive find under unresolved visibility does not settle the extent empty; deleting the producer integration makes a control fail rather than leaving the supplied-input claims green.",
+        out_of_scope: "No re-execution of the combined migration route of the closed gunbc#11596, which decided semantics inside effectful routing and is the shape this kernel replaces. No second relocation of the marker before these producers exist.",
+        handback: "The producers, the join, the admission fold, and the frontier rows retired by execution rather than by import."
+      )
+    ),
+    active(
+      identity: "rn_8QF2XJNLD6VKC3ZRW9HTYB4MSP",
+      id: "review-sheet-properties-write-and-legacy-retirement",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Write the current marker back and retire the legacy generation",
+        boundary: "The UpdateFileProperties PATCH that stamps the current marker, with a readback asserting the PATCHED FILE ID rather than a count, and then the retirement of the legacy marker generation once the extent is settled.",
+        displaced_cost: "Without a readback bound to the file id, a landed write reports as a transport failure and a failed write reports as success; without retirement the two generations both answer for one fact.",
+        first_slice: "The PATCH and its readback.",
+        red_control: "A field mask that does not name every required field of its declared response type decodes short, so fields=id against a DriveFile must refuse rather than report a landed write as a transport failure.",
+        out_of_scope: "No marker relocation.",
+        handback: "The write, the id-bound readback, and the legacy generation retired with its extent settled."
+      )
+    ),
+    active(
+      identity: "rn_9JXQW2VTNB5KZCR7MHPD4GYL60",
+      id: "census-job-level-observation-and-reprojection",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Derive prospect rows from job-level observation, because the workflow-level scan cannot",
+        boundary: "Read jobs?filter=all across every page AND every attempt, and derive from it the facts the prospect rows actually need: real runner and provider identity, job occupancy, pre-start observation, cancelled occupancy, and provider execution standing. Then reproject those into the private commercial reading and the operator-safe sheet rows. The bounded scan producer landed in gunbc#11656 yields a declared candidate POPULATION and is a prerequisite, not a substitute.",
+        displaced_cost: "The 57 transcribed rows in the sheets-census prototype carry economic readings that were shown not to have the meanings assigned to them, and without this arc there is no route that re-derives them. Until it exists the sheet can be presented and cannot be refreshed, and its numbers cannot be quoted.",
+        first_slice: "The job-level read with attempts and paging, and occupancy derived from it for one known repository, compared against the transcribed row for that same repository.",
+        red_control: "Each of the four invalidated inferences must be refused rather than reproduced: a workflow wall duration offered as summed runner occupancy; a workflow-run admission delay offered as runner queue delay; a provider declaration read as provider execution; provider adoption read as positive spend. A repository whose jobs paginate must not report only its first page.",
+        out_of_scope: "No re-presentation of the prototype totals as current, and no commercial projection over a population the job-level read has not covered.",
+        handback: "The job-level observation carrier, the occupancy derivation, the reprojection, and a statement of which transcribed rows survived re-derivation and which did not."
+      )
+    ),
+    active(
+      identity: "rn_2HKDQZ8WVNX4TBM6RCPJLG0517",
+      id: "census-app-registration-installation-and-custody",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Actually register, install and take custody of the census App",
+        boundary: "gunbc#11552 landed the acquisition MODEL and its route; it did not achieve acquisition. The step that stalls is real: gunbc.github_app_acquisition tells the operator to paste the manifest into the App-creation form's manifest field, and GitHub exposes no such field -- the manifest protocol requires a form POST carrying a manifest parameter, and a GET renders the blank create page. This node covers manifest submission, installation consent, callback capture and credential custody, and it treats registration and INSTALLATION as the two separate facts they are.",
+        displaced_cost: "gunbc#11677 consumes an App and an installation that have already been admitted; it creates neither. So every downstream census route that depends on an installation token is blocked on a fact no receipt in this corpus currently establishes, while the acquisition model reads as though it were done.",
+        first_slice: "Make the submission step executable, or replace the instruction with one that is. The named dissolution path is browser automation driving the form under an owner session.",
+        red_control: "An instruction a reader cannot execute must refuse rather than render: the step that names a form field GitHub does not expose is the specimen. A stored credential plus a failed live request must not read as an acquired App.",
+        out_of_scope: "No claim that ownership consent can be automated away -- GitHub requires an owner to submit, and that is an honest HumanIntervention until browser automation drives it.",
+        handback: "A receipt naming the registered App, the installation, and the custody location of its key, or a typed refusal saying which of the three is missing."
+      )
+    ),
+    active(
+      identity: "rn_5TBHM9XKCWQ2VLF7NRJD8GYZ3E",
+      id: "census-installation-token-via-app-jws-route",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Lift the census API budget by reusing the App JWS route rather than building a second signer",
+        boundary: "A second composed performer in gunbc.github_effect_perform consuming the clock/claims/jws/openssl/AppInstallationAccessTokens.Create prefix that gunbc#11677 establishes, factored into one function returning a sole_constructor installation-token carrier that each performer consumes inside its own call. Not a second module and not a second signer.",
+        displaced_cost: "The census reads a public population under an unauthenticated rate limit, so its scans are truncated by budget rather than by the question. The route to fix it already exists; building a parallel one forks the custody authority.",
+        first_slice: "The factored prefix and the composed performer. gunbc#11671, gunbc#11677 and gunbc#11679 are all merged, so the route is available to build against today and nothing external gates this.",
+        red_control: "Run with the personal-access-token route unavailable, so a successful code-search page is attributable only to the token producer rather than proving a token could be rendered.",
+        out_of_scope: "No rs256_sign host primitive: PRIMITIVE-EGRESS-0 admits openssl only as one handler behind a key-custody signer interface over a key reference, and CRYPTO-0 is actively deleting host crypto primitives, so a new one lands against that program. No bare Secret return, and no second environment-variable token that a personal access token could silently satisfy.",
+        handback: "The carrier, the performer, and the live control taken with the fallback route removed."
+      )
+    ),
+    active(
+      identity: "rn_6WDPNLJ4RQKZXC2VTH7BM9SYFG",
+      id: "ntfy-publisher-token-onto-gcp-custody",
+      owner: "buyer-review",
+      path: "docs/plans/review-sheet-and-census-lane-handoff.md",
+      t: fields(
+        headline: "Dissolve the ntfy publisher-token HumanIntervention into the Mt Collins custody pattern",
+        boundary: "Consolidate gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention into the custody authority gunbc#11679 establishes, as ONE fleet-converge mode whose credential is a dispatch choice over a CLOSED ROSTER of custody rows. The controller key becomes that roster's first row rather than a constant. Each row carries a SecretRef, a path, an owner principal, a group principal, a mode ARM, and the directory's own owner, group and mode.",
+        displaced_cost: "The read side is already modeled and only delivery is manual, so every credential rotation spends an operator. One converge mode per credential grows a hand-enumerated roster, and a free-text credential input is a stringly selector; the closed roster is what keeps both out.",
+        first_slice: "The consolidation onto the custody authority gunbc#11679 established, with the controller key as the first roster row. gunbc#11679 is merged, so nothing external gates this.",
+        red_control: "A 0640 token for a service group needs a directory that group can traverse, so a row whose directory mode refuses every group bit must fail; the exact-mode and forbidden-bits legs are derived from the mode arm, never taken as a caller octal.",
+        out_of_scope: "This does NOT retire gunbc.rung_drop approval_store_single_writer_by_agreement. A find-metadata readback establishes which principals HOLD PERMISSION BITS and not that a non-writer cannot open the store; that trigger needs an execution-as-another-user leg, and its row already names a permission-bits readback among the things that do not retire it.",
+        handback: "The custody authority with the controller key and the ntfy token as rows, and the HumanIntervention deleted rather than left beside it."
+      )
+    ),
   ], concat(guarantee_ladder_nodes(), typed_module_store_nodes()))
 }
 
@@ -2941,6 +3031,9 @@ fn typed_module_store_nodes() -> List<RoadmapNode> {
 // external review after the edge was added on exactly that reasoning.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
+    edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
+    edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),

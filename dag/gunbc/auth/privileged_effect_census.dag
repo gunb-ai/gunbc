@@ -285,6 +285,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
+    effect: recurring_credential_read(subject: "read the gunbai-ci App key over WIF and place it on one runner host as root:root 0400, outside every jail root, for the microVM lifecycle controller" as NonEmptyStr),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.tools.bmc_health_reader_converge", decl_name: "bmc_health_reader_converge"),
     effect: recurring_credential_read(subject: "BMC health reader credential read" as NonEmptyStr),
     realized: RealizedRunSelected,
