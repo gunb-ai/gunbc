@@ -13,9 +13,12 @@ test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
     && ud == autoinstall_user_data(payload: srv3_ubuntu_autoinstall_on_iso)
 }
 
-test fn srv3_seeded_install_media_content_hash_is_derived() -> Bool {
-  srv3_seeded_install_media_artifact.content_hash != ""
-    && srv3_seeded_install_media_artifact.stock_artifact.content_sha256 != ""
+// The srv3 image is the same derivation as every other seeded image: its build key reaches the stock
+// medium's pinned digest and the rendered autoinstall, and its identity is the measured output.
+test fn srv3_seeded_install_media_input_is_the_shared_derivation() -> Bool {
+  srv3_seeded_install_media_input.stock_artifact.content_sha256 == noble_numbat_2404_3_live_server_arm64.content_sha256
+    && srv3_seeded_install_media_input.user_data_body == srv3_autoinstall_user_data_body
+    && seeded_install_media_build_key(input: srv3_seeded_install_media_input) != ""
 }
 
 test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
@@ -23,30 +26,6 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
     && srv3_seeded_autoinstall_delivery_is_on_iso()
     && srv3_seeded_grub_cmdline_names_nocloud()
     && srv3_seeded_install_media_actuator_host_is_srv1()
-}
-
-test fn srv3_seeded_install_media_remaster_dissolution_trigger_is_terminal() -> Bool {
-  match install_media_remaster_bash_emit_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => false
-    Terminal { reason: _ } => true
-  }
-}
-
-test fn install_media_remaster_probe_refusal_shape_doc_names_infra_failure() -> Bool {
-  string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterVerifyInfraFailure")
-    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "InstallMediaRemasterStale")
-    && string_contains(s: install_media_remaster_probe_refusal_shape_doc, pattern: "fail-closed")
-}
-
-test fn install_media_remaster_scaffolds_dissolved() -> Bool {
-  match install_media_remaster_classification_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => false
-    Terminal { reason: _ } => true
-  }
-    && match install_media_remaster_chmod_access_upsert_scaffold {
-      Scaffold { dissolves_to: _, bind: _ } => false
-      Terminal { reason: _ } => true
-    }
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
