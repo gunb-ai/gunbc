@@ -1584,8 +1584,14 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // restart-looped: the same symptom as the missing tree, from the other half of the pair.
 //
 // THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
-// 2026-09-20). The fleet-converge job unpacks release-bins.tgz into $ROOT/target/release and runs
-// claim_executor --verify-build-artifacts over every member BEFORE any mode step.
+// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci_spec
+// ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
+// gunbc.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
+// the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
+// put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier
+// one. That is what makes the copy source a verified artifact rather than a file that happens to be
+// on disk: the verification and the copy are two steps of one job, and a failed verify stops the
+// job before the install step runs.
 //
 // THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
 // self-hosted runner labelled with the dispatch's own host input, and gunbc.ci_deploy_access
