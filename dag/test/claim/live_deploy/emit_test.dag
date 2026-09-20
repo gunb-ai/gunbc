@@ -1060,6 +1060,12 @@ fn preamble_step_command(step: PipelineStep) -> String {
 // authority as the operation it guards (gunbc.executor_privileged_operation), so the login arrives
 // single-quoted -- equivalent shell, one fewer place that decides quoting. What the witness owes is
 // that the check runs and short-circuits the useradd, which is what it now asserts.
+// THE COUNT IS 3 RATHER THAN 2 BECAUSE C7 ADDED A THIRD PREAMBLE STEP: the provider-state root's
+// ensure (gunbc.live_deploy.emit provider_state_ensure_steps), derived from the spec so that no
+// deploy can omit it. The conjunct is kept at an exact count rather than relaxed to `>= 2`: it
+// exists so that a step creeping into the preamble is noticed here, and a bound that admits any
+// number of new steps would stop noticing. This claim's own subject -- that the publication
+// principal is ensured as a nologin system account -- is unchanged and still asserted below.
 test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
   let spec = deployment_spec_srv1()
   let ensure = deploy_publication_principal_ensure_command(spec: spec)
@@ -1074,7 +1080,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
     && string_contains(s: ensure, pattern: "--system")
     && string_contains(s: ensure, pattern: "--no-create-home")
     && string_contains(s: ensure, pattern: "/usr/sbin/nologin")
-    && count(preamble) == 2
+    && count(preamble) == 3
     && any(preamble, step => preamble_step_command(step: step) == ensure)
 }
 

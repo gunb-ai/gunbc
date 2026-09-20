@@ -45,6 +45,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root,
+  dashboard_instance_provider_state_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -106,6 +107,7 @@ type EnsuredDependencyKind =
   | DevbootArtifactStoreDirectory
   | CodexRuntimeReleaseDirectory
   | FabricDbStoreDirectory
+  | ProviderStateRootDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
 // the first. What Ensured means was already exactly right for the build service's artifact store:
@@ -248,6 +250,7 @@ type DeploymentHostTarget {
 type DeploymentServiceConfig {
   unit_name: NonEmptyStr
   serve_binary: NonEmptyStr
+  provider_state_root: NonEmptyStr
   serve_function: NonEmptyStr
   instance_root: NonEmptyStr
   repo_root: NonEmptyStr
@@ -914,6 +917,62 @@ fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDepe
   concat(deployment_ensured_packages(), target.ensured_directories)
 }
 
+// THE PROVIDER-STATE ROOT IS AN ENSURED MEMBER OF THE INSTANCE, NOT OF THE HOST (CONVERGENCE-ONE
+// C7, operator ruling 2026-09-19: live_deploy owns provider-state creation). The dashboard
+// launcher's provision plan was its only creator, so deleting that launcher without this member
+// would lose the creation silently: a fresh host would get a provider login with nowhere to write.
+//
+// It is Ensured rather than Owned for the reason the provision op already gave: the directory is
+// never torn down and never populated by the deploy. Credentials inside it are user-authored secret
+// state, so a retract that removed it would destroy a login the deploy did not create.
+//
+// IT IS DERIVED FROM THE SPEC, NOT AUTHORED INTO ITS STEP LIST, AND THAT IS THE WHOLE SAFETY
+// ARGUMENT. The first cut of this change appended the member to deployment_steps_apply_order and
+// then had the emitter REFUSE a spec whose steps omitted it -- a five-armed standing type, a poison
+// string and two witnesses, all validating a constraint the model could carry instead. DESIGN 5 is
+// explicit that construction beats validation, and review 68784 was right that the check restated
+// what the model already knew. So the path became a field of DeploymentServiceConfig, beside the
+// other instance-projected paths it already carries (serve_binary, instance_root, repo_root), the
+// owner is read from that same config's service principal, and every consumer -- the emitted ensure
+// and the read-back member -- derives from this one function. A spec cannot omit the member, carry
+// it twice, name a package instead of a directory, or give it an owner other than the principal
+// that writes the login: none of those four states has a constructor any more, so the arms that
+// once refused them are deleted rather than left as permanently-green decoration (DESIGN 4b: ask
+// whether the RED is authorable before writing the check).
+//
+// The directory is installed with the ensured-directory arm's mode (install_d_shared_mode), the
+// same mode the provision op's mkdir produced. Credential files inside carry their own modes. A
+// tighter mode is a ManagedDirectory derivation, and adopting one would change what
+// EnsuredHostDirectory means for every kind.
+//
+// DISPOSITION CENSUS, stated here because deleting a creator with a blank row is the serve-binary
+// deadlock. After this change, the provider-state root of each instance is created by:
+//   srv1_live      -- this member, on the production route (deployment_spec_srv1 ->
+//                     live_deploy_apply_script_for), read back as a DirectoryRoot. The provision
+//                     plan's DashboardEnsureProviderStateRoot is now redundant for this instance
+//                     and goes with the launcher deletion, not before.
+//   srv1_lab       -- the provision plan (gunbc.roadmap_dashboard_instance
+//   srv2_lab          dashboard_instance_provision_plan DashboardEnsureProviderStateRoot) stays
+//   srv2_deploy       the ONLY creator. Their specs carry this member, but no production caller
+//   macbook_local     applies those specs, so the member creates nothing for them yet. The
+//                     provision op may be deleted for an instance only when a production caller
+//                     applies its spec.
+fn deployment_provider_state_step(spec: DeploymentSpec) -> DeploymentDependencyStep {
+  DeploymentDependencyStep {
+    kind: ProviderStateRootDirectory,
+    subject: EnsuredHostDirectory {
+      path: spec.service.provider_state_root,
+      owner: spec.service.service_user,
+    },
+  }
+}
+
+// The path the ensure creates and the path the readback reads, from one function so they cannot
+// disagree.
+fn deployment_provider_state_path(spec: DeploymentSpec) -> NonEmptyStr {
+  ensured_subject_identity(subject: deployment_provider_state_step(spec: spec).subject)
+}
+
 // Apply order is dependency-honest: the binary lands before the tree, because the tree is published
 // by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
 // convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
@@ -1017,6 +1076,7 @@ fn deployment_service_config(
   DeploymentServiceConfig {
     unit_name: names.unit_name,
     serve_binary: instance.serve_binary as String as NonEmptyStr,
+    provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,
     instance_root: instance.instance_root as String as NonEmptyStr,
     repo_root: instance.repo_root as String as NonEmptyStr,

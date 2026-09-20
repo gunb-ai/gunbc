@@ -608,12 +608,14 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
     DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
+              provider_state_root: ps,
               instance_root: ir, repo_root: rr,
               service_user: wrong_user,
               service_uid: uid, listen: l,
@@ -645,12 +647,14 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
     DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          provider_state_root: ps,
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
+              provider_state_root: ps,
               instance_root: ir, repo_root: wrong_root,
               service_user: su, service_uid: uid, listen: l,
               serve_cpu_limit: cpu, serve_wall_limit: wall,
@@ -691,12 +695,14 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
     DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
+              provider_state_root: ps,
               instance_root: ir, repo_root: rr,
               service_user: su, service_uid: uid,
               listen: HttpServerListenConfig { host: l.host, port: wrong_port },
