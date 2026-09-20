@@ -15,7 +15,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd {
+import extdeps.systemd { systemd_unit_property_wire,
   SystemdUnitProperty, InvocationIDProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
@@ -384,7 +384,7 @@ fn force_stop_attempt(unit: NonEmptyStr, slice: NonEmptyStr) -> TeardownStop
 fn observe_unit_invocation_id(unit: NonEmptyStr) -> String
   uses net: Network
 {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: InvocationIDProperty)
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
   if shown.success == false {
     ""
   } else {
@@ -616,7 +616,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, receipt: AttemptStagingReceipt) -
 fn unit_exec_main_status(unit: NonEmptyStr) -> Int
   uses net: Network
 {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: ExecMainStatus)
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus))
   if shown.success == false {
     -1
   } else {

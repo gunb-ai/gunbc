@@ -3,13 +3,10 @@ module test.manual.runner_microvm_lifecycle_wet_receipt
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
 import std.resources { Network }
-import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutcome }
-import extdeps.tools.chmod { chmod_binary_path, chmod_set_mode_command }
-import extdeps.systemd { SliceProperty, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
+import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
-import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
@@ -85,16 +82,24 @@ fn sigterm_ignoring_payload() -> List<String> {
   ["/bin/sh", "-c", "trap '' TERM; sleep 600"]
 }
 
-// A SURVIVOR THE UNIT'S OWN KILL CANNOT REACH: a scope started under the SLICE rather than under the
-// unit. `systemctl kill --kill-whom=all <unit>` signals the unit's control group and nothing else,
-// so this process is still there afterwards -- which is the host fact ForceStopBoundExceeded names.
+// A SURVIVOR THE UNIT'S OWN KILL CANNOT REACH: a second transient unit under the SLICE rather than
+// under the first unit. `systemctl kill --kill-whom=all <unit>` signals that unit's control group and
+// nothing else, so this process is still there afterwards -- which is the host fact
+// ForceStopBoundExceeded names.
+//
+// THE CHILD IS A TRANSIENT SERVICE AND NOT A BACKGROUNDED SCOPE, AND THE FIRST CUT GOT THIS WRONG.
+// It ran `systemd-run --scope ... &` and then `sleep 1`, which is a race against the claim: the stop
+// arrived while the payload was still sleeping, systemd SIGTERMed the not-yet-created scope along
+// with everything else in the unit, and the readback correctly found an EMPTY slice. The claim FAILED
+// and the controller was right. `systemd-run` without `--scope` returns only once PID 1 has started
+// the unit, so when the payload exits the survivor already exists -- the dependency is on systemd's
+// own acknowledgement rather than on a sleep being long enough.
 fn sibling_survivor_payload(scope_unit: String) -> List<String> {
   [
     "/bin/sh", "-c",
     join([
-      "systemd-run --scope --quiet --collect --unit=", scope_unit,
-      " --slice=", wet_slice as String, " /bin/sleep 600 &",
-      " sleep 1; exit 0",
+      "systemd-run --quiet --collect --unit=", scope_unit,
+      " --property=Slice=", wet_slice as String, " /bin/sleep 600",
     ], ""),
   ]
 }
@@ -104,19 +109,6 @@ fn wet_slice_cgroup_path() -> String {
     SliceCgroupPath { path: p } => p as String
     SliceNameNotASlice { spelling: s } => s
   }
-}
-
-fn chmod_wet_events(mode: NonEmptyStr) -> ProcessOutcome
-  uses net: Network
-{
-  run_shell_command_capture(
-    command: chmod_set_mode_command(
-      chmod_program: chmod_binary_path,
-      mode: mode,
-      path: cgroup_v2_events_path(cgroup_path: wet_slice_cgroup_path() as NonEmptyStr) as String,
-    ),
-    transport: LocalExec,
-  )
 }
 
 fn readback_is_populated(r: CgroupSubtreeReadback) -> Bool {
@@ -133,10 +125,6 @@ fn readback_is_read_failure(r: CgroupSubtreeReadback) -> Bool {
     CgroupSubtreeEmpty => false
     CgroupSubtreePopulated { pids: _, cgroups: _ } => false
   }
-}
-
-fn process_outcome_ok(outcome: ProcessOutcome) -> Bool {
-  process_outcome_admitted(outcome: outcome)
 }
 
 fn resource_is_absent_here(r: ResourceReadback) -> Bool {
@@ -224,6 +212,8 @@ test fn a_survivor_the_unit_kill_cannot_reach_exceeds_the_force_bound() -> Bool
     false
   } else if !start_payload(unit: "gunbc-wet-survivor.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-survivor-child")) {
     false
+  } else if !readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice)) {
+    false
   } else {
     match stop_attempt(unit: "gunbc-wet-survivor.service" as NonEmptyStr, slice: wet_slice) {
       ForceStopBoundExceeded { survivors: s } => (s |> count) > 0
@@ -235,58 +225,125 @@ test fn a_survivor_the_unit_kill_cannot_reach_exceeds_the_force_bound() -> Bool
 
 // RED 4 -- A CGROUP READ THAT FAILS IS UNOBSERVABLE, NEVER EMPTY.
 //
-// "could not read" is the one answer that must not release a cell, and the whole readback is built so
-// that the unreadable case cannot fall through to CgroupSubtreeEmpty. The condition is produced by
-// making the slice's own cgroup.events unreadable, which is what a permissions or mount defect would
-// do; the claim restores the mode afterwards, and asserts the restoration by reading the subtree
-// again and getting a real answer, so a failure to restore is visible here rather than to whoever
-// runs next.
-test fn a_failed_cgroup_read_is_unobservable_and_never_empty() -> Bool
+// "could not read" is the one answer that must not release a cell, and the readback is built so the
+// unreadable case cannot fall through to CgroupSubtreeEmpty. Both arms are asserted here, over two
+// paths that a naive reader cannot tell apart: BOTH are directories that exist, and only one of them
+// has a cgroup.events to read.
+//
+// THE CONDITION IS THE KERNEL'S OWN, NOT ONE THIS CLAIM MANUFACTURES. The cgroup v2 admin guide says
+// cgroup.events "exists on non-root cgroups"; systemd names the root slice `-.slice`, which
+// extdeps.systemd systemd_slice_cgroup_path resolves to the mount point itself. So a readback of
+// `-.slice` finds a directory and then finds no cgroup.events, which is exactly the shape of a
+// permissions or mount defect on a real cell. Measured on srv1: /sys/fs/cgroup/cgroup.events does not
+// exist.
+//
+// WHY NOT chmod: the first cut of this claim made the test slice's own cgroup.events mode 000. That
+// claim FAILED, and the failure was the claim's, not the readback's -- this file runs as root, and
+// root bypasses the permission bits, so the file was still perfectly readable. A blinding that does
+// not blind is a red that cannot go red, which is the decoration DESIGN section 4b warns about at the
+// top rung; it is recorded here rather than quietly replaced.
+test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
+  uses net: Network
+{
+  readback_is_read_failure(r: observe_cgroup_subtree(slice: "-.slice" as NonEmptyStr))
+}
+
+
+// THE SHOW-PROPERTY PAIR, AND IT IS A DISCRIMINATOR RATHER THAN TWO READINGS.
+//
+// systemd.Systemctl.ShowProperty takes a SystemdUnitProperty and interpolates it into
+// `--property={property}`. extdeps.systemd carries systemd_unit_property_wire precisely because a
+// variant's NAME and its wire spelling are not the same string -- ActiveState happens to be both,
+// InvocationIDProperty is spelled `InvocationID` on the wire -- so if the transport renders the
+// VARIANT name, every property whose two spellings differ reads EMPTY with exit 0. systemctl does
+// not refuse an unknown property; it prints nothing and succeeds, which makes this a silent empty
+// reading rather than a failure. Measured at the shell on srv1:
+// `systemctl show <unit> --property=InvocationID --value` prints the id and
+// `--property=InvocationIDProperty --value` prints nothing, exit 0.
+//
+// THE TWO CLAIMS TOGETHER SAY WHICH IT IS. If both pass, the operation renders the wire spelling and
+// gunbc.runner_microvm_lifecycle_realize observe_unit_invocation_id is sound. If the ActiveState one
+// passes and the InvocationID one fails, the operation renders the variant name and every consumer
+// that names a property whose spellings differ is reading an empty string as a fact.
+test fn show_property_reads_a_units_active_state() -> Bool
   uses net: Network
 {
   if !clear_slice() {
     false
-  } else if !start_payload(unit: "gunbc-wet-unreadable.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
-    false
-  } else if !process_outcome_ok(outcome: chmod_wet_events(mode: "000" as NonEmptyStr)) {
+  } else if !start_payload(unit: "gunbc-wet-show.service" as NonEmptyStr, argv: ["/bin/sleep", "300"]) {
     false
   } else {
-    let blinded = observe_cgroup_subtree(slice: wet_slice)
-    if !process_outcome_ok(outcome: chmod_wet_events(mode: "444" as NonEmptyStr)) {
-      false
-    } else {
-      readback_is_read_failure(r: blinded) && readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice))
-    }
+    unit_property_text(unit: "gunbc-wet-show.service" as NonEmptyStr, property: ActiveState) == "active"
   }
 }
 
-// RED 5 -- A STOP FOR THE PREVIOUS INCARNATION IS REFUSED, AGAINST REAL INVOCATION IDS.
+test fn show_property_reads_a_units_invocation_id() -> Bool
+  uses net: Network
+{
+  if !clear_slice() {
+    false
+  } else if !start_payload(unit: "gunbc-wet-show-inv.service" as NonEmptyStr, argv: ["/bin/sleep", "301"]) {
+    false
+  } else {
+    string_length(s: observe_unit_invocation_id(unit: "gunbc-wet-show-inv.service" as NonEmptyStr)) == 32
+  }
+}
+
+fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> String
+  uses net: Network
+{
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  if shown.success == false { "" } else { trim(s: shown.value) }
+}
+
+// RED 5 -- TWO INCARNATIONS OF ONE UNIT NAME CARRY DIFFERENT INVOCATION IDS, READ OFF systemd.
 //
-// THE IDS ARE READ OFF systemd RATHER THAN INVENTED, and that is what makes this a wet claim rather
-// than a second copy of the hermetic one. systemd mints a fresh InvocationID on every start, so
-// starting the same unit name twice produces exactly the warm-pool case: one unit name, two
-// incarnations, and a stop that names the first must not tear down the second. The claim asserts the
-// two ids actually differ -- if they did not, the refusal below would be vacuous.
+// THE IDS ARE OBSERVED RATHER THAN INVENTED, and that is what makes this a wet claim rather than a
+// second copy of the hermetic one. systemd mints a fresh InvocationID on every start, so starting one
+// unit NAME twice is exactly the warm-pool case gunbc.runner_microvm_lifecycle
+// stop_request_admission exists for: one name, two incarnations, and a stop that names the first must
+// not tear down the second. If the two ids did not differ, that refusal would be vacuous, so this is
+// the fact the refusal rests on.
+//
+// THE TWO STARTS CARRY DIFFERENT ARGV, AND THAT IS A SUBSTRATE OBLIGATION RATHER THAN A CHOICE. This
+// is a pure dependency graph: two calls with identical arguments are ONE node, so a claim that asked
+// for the same start twice would get one start and then compare an id against itself. The first cut
+// of this claim did exactly that and FAILED for that reason, not because the ids agreed. The unit
+// NAME -- the thing under test -- is held constant; only the sleep duration differs, which nothing
+// here reads.
 test fn two_starts_of_one_unit_name_carry_different_invocation_ids() -> Bool
   uses net: Network
 {
   if !clear_slice() {
     false
-  } else if !start_payload(unit: "gunbc-wet-incarnation.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+  } else if !start_payload(unit: incarnation_unit(), argv: ["/bin/sleep", "600"]) {
     false
   } else {
-    let first = observe_unit_invocation_id(unit: "gunbc-wet-incarnation.service" as NonEmptyStr)
+    let first = observe_unit_invocation_id(unit: incarnation_unit())
     if first == "" {
       false
-    } else if !clear_slice() {
+    } else if !stop_incarnation_unit(after: first) {
       false
-    } else if !start_payload(unit: "gunbc-wet-incarnation.service" as NonEmptyStr, argv: ["/bin/sleep", "600"]) {
+    } else if !start_payload(unit: incarnation_unit(), argv: ["/bin/sleep", "601"]) {
       false
     } else {
-      let second = observe_unit_invocation_id(unit: "gunbc-wet-incarnation.service" as NonEmptyStr)
+      let second = observe_unit_invocation_id(unit: incarnation_unit())
       second != "" && second != first
     }
   }
+}
+
+fn incarnation_unit() -> NonEmptyStr {
+  "gunbc-wet-incarnation.service" as NonEmptyStr
+}
+
+// THE STOP TAKES THE FIRST ID AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE THE READ THAT PRODUCED IT.
+// Order in this substrate is data dependence and nothing else; a stop that took no argument would be
+// a node the evaluator may run before, after or instead of the read.
+fn stop_incarnation_unit(after: String) -> Bool
+  uses net: Network
+{
+  after != "" && systemd.Systemctl.Stop(unit: incarnation_unit()).success
 }
 
 // RED 6 -- A JOB THAT EXITS ZERO AND LEAVES A PROCESS BEHIND LEAVES THE CELL DIRTY.
@@ -304,6 +361,8 @@ test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
   if !clear_slice() {
     false
   } else if !start_payload(unit: "gunbc-wet-background.service" as NonEmptyStr, argv: sibling_survivor_payload(scope_unit: "gunbc-wet-background-child")) {
+    false
+  } else if !readback_is_populated(r: observe_cgroup_subtree(slice: wet_slice)) {
     false
   } else {
     match stop_attempt(unit: "gunbc-wet-background.service" as NonEmptyStr, slice: wet_slice) {

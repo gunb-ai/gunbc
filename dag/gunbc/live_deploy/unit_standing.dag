@@ -53,7 +53,7 @@ type UnitPropertyRead
   | UnitPropertyUnreadable { unit: String, property: String }
 
 fn read_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitPropertyRead {
-  let got = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  let got = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   if got.success {
     UnitPropertyValue { value: trim(s: got.value) }
   } else {

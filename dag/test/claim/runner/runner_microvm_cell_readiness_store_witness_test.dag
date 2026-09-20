@@ -1,0 +1,215 @@
+module test.claim.runner.runner_microvm_cell_readiness_store_witness_test
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
+}
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined,
+  NoSurvivingProcesses, CgroupEmpty, SecretsRemoved,
+  SanitationObservation, FactRefuted, FactUnobservable,
+  UnprovenFact, FactNotObserved, FactObservedFailing,
+}
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessRecord, CellAttemptInFlight, CellSettled, InFlightAttempt,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  Decoded, DecodeOk, DecodeRefused,
+  encode_store, decode_store, encode_record,
+}
+
+// THE STORE'S CODEC, AND THE ONE THING A CODEC WITNESS MUST NOT DO.
+//
+// It must not assert that encode produces a particular string. That pins the bytes, which are this
+// module's own choice, and it goes red on every harmless reformatting while staying green through
+// the failure that matters -- a field the decoder silently drops. So every positive claim below is a
+// ROUND TRIP: the record that comes back out is compared against the one that went in, through
+// encode_record, which is the single authority for what a record's bytes are. A dropped field
+// changes those bytes and the claim reds; a reformatting changes both sides identically and it does
+// not.
+//
+// AND EVERY REFUSAL IS ASSERTED AS A REFUSAL, not merely as "not equal". The decoder's whole
+// contract is that a store it cannot read becomes StoreUnreadable at HOST grain rather than a
+// shorter list of records -- a store with one cell missing reads as CellNeverSettled for that cell,
+// which refuses, but at the wrong grain and with the wrong remedy. A claim that only checked
+// inequality would pass against a decoder that dropped the bad record and returned the rest.
+
+fn witness_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 as Nat }
+}
+
+fn witness_attempt() -> MicroVmAttempt? {
+  match microvm_attempt(slot: witness_slot(), attempt_id: "w-42") {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: a }
+    MicroVmAttemptRefused { refusal: _ } => none
+  }
+}
+
+data witness_cell: CellId = "srv1-07" as CellId
+
+data witness_device_path: String = "/srv/gunbc/cells/srv1-07/attempts/w-42/jail/firecracker/w-42/root/jit.bin"
+
+fn witness_in_flight() -> InFlightAttempt? {
+  match witness_attempt() {
+    Absent => none
+    Present { value: a } =>
+      Present {
+        value: InFlightAttempt {
+          attempt: a,
+          invocation_id: "inv-aaaa" as NonEmptyStr,
+          jit_registration_id: "reg-1234" as NonEmptyStr,
+          credential_device_path: witness_device_path,
+        },
+      }
+  }
+}
+
+fn round_trips(records: List<CellReadinessRecord>) -> Bool {
+  match decode_store(text: encode_store(records: records)) {
+    DecodeRefused { reason: _ } => false
+    DecodeOk { value: back } =>
+      (back |> count) == (records |> count) && encode_store(records: back) == encode_store(records: records)
+  }
+}
+
+fn refuses(text: String) -> Bool {
+  match decode_store(text: text) {
+    DecodeRefused { reason: r } => (r as String) != ""
+    DecodeOk { value: _ } => false
+  }
+}
+
+// A SETTLED READY RECORD SURVIVES THE ROUND TRIP.
+test fn a_settled_ready_record_round_trips() -> Bool {
+  round_trips(records: [CellSettled { cell: witness_cell, generation: 3, readiness: CellReady { cell: witness_cell } }])
+}
+
+// THE IN-FLIGHT RECORD'S CREDENTIAL DEVICE PATH SURVIVES, and this is the discriminating claim for
+// the field gunbc#11677's jail-interior device made necessary. A codec that encoded the attempt but
+// dropped the device path would satisfy every other claim here: the attempt, the invocation and the
+// registration would all come back. What it would lose is the one fact recovery needs -- which file
+// to prove absent -- so the path is compared explicitly rather than trusted to the count.
+test fn an_in_flight_record_keeps_its_credential_device_path() -> Bool {
+  match witness_in_flight() {
+    Absent => false
+    Present { value: a } => {
+      let record = CellAttemptInFlight { cell: witness_cell, generation: 4, attempt: a }
+      match decode_store(text: encode_store(records: [record])) {
+        DecodeRefused { reason: _ } => false
+        DecodeOk { value: back } =>
+          match back.first() {
+            Absent => false
+            Present { value: r } => decoded_device_path(record: r) == witness_device_path
+          }
+      }
+    }
+  }
+}
+
+fn decoded_device_path(record: CellReadinessRecord) -> String {
+  match record {
+    CellAttemptInFlight { cell: _, generation: _, attempt: a } => a.credential_device_path
+    CellSettled { cell: _, generation: _, readiness: _ } => ""
+  }
+}
+
+// A QUARANTINE'S UNPROVEN LIST SURVIVES WHOLE, ALL THREE SHAPES OF IT. FactNotObserved, a refuted
+// observation carrying a detail and an unobservable one carrying a reason are three different things
+// an operator acts on differently, and a codec that folded them would leave a quarantine that says
+// nothing about why.
+test fn a_quarantine_keeps_every_unproven_shape() -> Bool {
+  round_trips(records: [
+    CellSettled {
+      cell: witness_cell,
+      generation: 5,
+      readiness: CellQuarantined {
+        cell: witness_cell,
+        unproven: [
+          FactNotObserved { fact: SecretsRemoved },
+          FactObservedFailing {
+            observation: FactRefuted { fact: NoSurvivingProcesses, detail: "pids 4821,4822 are still running" as NonEmptyStr },
+          },
+          FactObservedFailing {
+            observation: FactUnobservable { fact: CgroupEmpty, reason: "cgroup.events could not be read" as NonEmptyStr },
+          },
+        ],
+      },
+    },
+  ])
+}
+
+// RED -- A BODY THAT IS NOT JSON REFUSES.
+test fn a_body_that_is_not_json_refuses() -> Bool {
+  refuses(text: "not json at all")
+}
+
+// RED -- A BODY THAT IS JSON BUT NOT AN ARRAY REFUSES, rather than reading as a store with no
+// records. An empty store and a store whose shape nobody understands are different facts, and only
+// the first may ever admit anything.
+test fn a_json_object_at_the_top_refuses() -> Bool {
+  refuses(text: "{\"records\": []}")
+}
+
+// RED -- AN UNKNOWN SANITATION FACT LABEL REFUSES AND IS NEVER DEFAULTED. The fact vocabulary is
+// closed; a label this corpus does not declare came from a store written by something else, or by a
+// version that knew a fact this one does not, and quietly mapping it onto a known fact would put a
+// verdict under a name nobody established.
+test fn an_unknown_sanitation_fact_label_refuses() -> Bool {
+  refuses(text: "[{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"quarantined\",\"cell\":\"srv1-07\",\"unproven\":[{\"kind\":\"not_observed\",\"fact\":\"something-nobody-declared\"}]}}]")
+}
+
+// RED -- ONE UNREADABLE ELEMENT REFUSES THE WHOLE STORE, and this is the claim that separates a
+// fail-closed decoder from a lenient one. The document below carries a perfectly good settled record
+// FOLLOWED BY a malformed one. A decoder that skipped what it could not read would return one record
+// and look successful, and the cell whose record it dropped would then read as never settled -- a
+// refusal at the wrong grain, pointing an operator at a cell instead of at the store.
+test fn one_unreadable_record_refuses_the_whole_store() -> Bool {
+  refuses(text: "[{\"kind\":\"settled\",\"cell\":\"srv1-07\",\"generation\":5,\"readiness\":{\"state\":\"ready\",\"cell\":\"srv1-07\"}},{\"kind\":\"settled\",\"cell\":\"srv1-08\",\"generation\":1,\"readiness\":{\"state\":\"who-knows\",\"cell\":\"srv1-08\"}}]")
+}
+
+// RED -- AN ATTEMPT ID THAT ESCAPES ITS OWN DIRECTORY REFUSES, because the decoder rebuilds the
+// attempt THROUGH microvm_attempt rather than assembling the sealed record directly. A decoder that
+// assembled it would let a store edited by hand reintroduce `../shared` as an attempt id, and every
+// path the controller derives -- the jail, the attempt directory, the subtree teardown proves empty
+// -- would move together onto another attempt's storage.
+test fn an_attempt_id_with_a_separator_refuses() -> Bool {
+  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"../shared\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]")
+}
+
+// RED -- A NEGATIVE SLOT INDEX REFUSES AT THE DECODER. A slot index is a Nat, and `as Nat` refuses
+// only when it EVALUATES -- so a decoder that cast without checking would typecheck, pass every
+// other claim here, and abort mid-run on a store someone hand-edited. The check is in the decoder
+// and this is what holds it there.
+test fn a_negative_slot_index_refuses() -> Bool {
+  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":-1,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]")
+}
+
+// RED -- A RECORD MISSING THE CREDENTIAL DEVICE PATH REFUSES rather than decoding with an empty one.
+// An empty path would compare equal to nothing the host holds, so teardown's SubjectCredentialDrive
+// join would refuse every readback with a confusing message about a path that was never staged;
+// refusing at the decoder puts the failure where the defect is.
+test fn a_record_without_the_credential_device_path_refuses() -> Bool {
+  refuses(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\"}}]")
+}
+
+// THE POSITIVE CONTROL FOR THE REFUSALS ABOVE. Every red in this file is `refuses(...)`, so a
+// decoder that refused EVERYTHING would pass all of them. This is the document the reds are
+// perturbations of, and it must decode.
+test fn the_document_the_reds_perturb_decodes() -> Bool {
+  match decode_store(text: "[{\"kind\":\"in_flight\",\"cell\":\"srv1-07\",\"generation\":4,\"attempt\":{\"host\":\"srv1\",\"slot_index\":7,\"attempt_id\":\"w-42\",\"invocation_id\":\"inv\",\"jit_registration_id\":\"reg\",\"credential_device_path\":\"/x\"}}]") {
+    DecodeOk { value: rs } => (rs |> count) == 1
+    DecodeRefused { reason: _ } => false
+  }
+}
+
+// AN EMPTY STORE IS A STORE WITH NO RECORDS, AND IT DECODES. It is not the same fact as an absent
+// store -- gunbc.runner_microvm_cell_readiness_store read_cell_readiness_store reports the absent
+// one as StoreUnreadable at host grain -- and this keeps the two distinguishable at the codec.
+test fn an_empty_array_decodes_to_no_records() -> Bool {
+  match decode_store(text: "[]") {
+    DecodeOk { value: rs } => (rs |> count) == 0
+    DecodeRefused { reason: _ } => false
+  }
+}
