@@ -565,7 +565,7 @@ fn live_deploy_fabric_db_unit_file(spec: DeploymentSpec, revision: ReleaseRevisi
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: concat([
-      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceType { mode: SimpleMode },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
