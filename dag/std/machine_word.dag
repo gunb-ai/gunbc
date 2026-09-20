@@ -1,0 +1,866 @@
+module std.machine_word
+
+import std.induction { int_pow_bounded }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
+import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int, uint8_int_value, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
+import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
+
+// THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
+//
+// std.integer models the width tower type-level: UInt32 = Compose<UInt, MachineWidth<32>>, one axis
+// rather than ten types. That is the right shape for DECLARING what a value is, and it is not
+// sufficient for OPERATING on one: an operation has to reduce modulo the width, and a phantom
+// cannot be reduced by. WordWidth is therefore the value-level projection of MachineWidth<N> over
+// the widths this substrate realizes, joined to it by word_width_bits, and NOT a second width
+// authority -- a width that std.integer cannot spell must not appear here, and one it can spell but
+// this substrate cannot realize refuses by name rather than being omitted (Width64 below).
+//
+// std.bit's Word8..Word128 are a different concept again and are deliberately not reused: they are
+// bit-RECORDS (List<Byte> of List<Bit>) with no cardinality refinement, consumed as type vocabulary
+// by extdeps.languages.rust.primitives and v2.std.machine to NAME a width. They carry no value a
+// fold can compute with. Reusing the name for a computational carrier would be a meaning fork.
+//
+// ENDIANNESS IS NOT DECLARED HERE. extdeps.toolchain.architecture_profile already owns it, and byte
+// order is one concept whether it is read off an architecture profile or supplied to a conversion.
+// A std module importing extdeps is not a layer inversion: DESIGN section 3 makes acyclicity the
+// only structural law of the import graph and the folders browsing conventions.
+type WordWidth
+  = Width8
+  | Width16
+  | Width32
+  | Width64
+
+// THE BIT COUNT IS A MEASURE, AND std.measure ALREADY OWNS IT. BitWidth = Measure<Information,
+// One, Nat> is the corpus's carrier for exactly this fact, and std.integer
+// uint8_channel_bit_width_int consumes it for exactly this purpose -- so returning a bare Int here
+// would have been a second representation of a unit the corpus already models, which is section 2's
+// re-invention and section 3's fork in one. The width answers the CARRIER; word_width_bits is the
+// projection to Int for the arithmetic below, derived through bit_width_count rather than spelled
+// independently, which is the same two-step std.integer uses.
+fn word_bit_width(w: WordWidth) -> BitWidth {
+  match w {
+    Width8 => bit_width(count: 8)
+    Width16 => bit_width(count: 16)
+    Width32 => bit_width(count: 32)
+    Width64 => bit_width(count: 64)
+  }
+}
+
+fn word_width_bits(w: WordWidth) -> Int {
+  bit_width_count(b: word_bit_width(w: w))
+}
+
+// THE CARRIER. The width travels WITH the value rather than beside it in a caller's convention,
+// which is what makes a width MISMATCH a fact an operation can refuse on instead of a silent
+// reinterpretation. The value field is the residue in [0, 2^bits), and word_of_int is the only
+// sanctioned entry that establishes that. RESIDUE, NAMED: the record is directly constructible, so
+// a caller can write Word { width: Width32, value: 0 - 1 } and no construction refuses it. That is
+// mitigatable, not structural. NEXT-RUNG TRIGGER: sole_constructor over this carrier -- the
+// capability that makes word_of_int the only way to inhabit Word -- at which point the range
+// invariant holds by construction and word_of_int's range arm becomes unreachable rather than
+// merely sanctioned.
+type Word {
+  width: WordWidth
+  value: Int
+}
+
+type WordRefusal
+  = WordValueOutOfRange { width: WordWidth, value: Int }
+  | WordWidthUnrealizable { width: WordWidth }
+  | WordWidthMismatch { left: WordWidth, right: WordWidth }
+  | ShiftAmountOutOfRange { width: WordWidth, amount: Int }
+  | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
+  | IntegerDoesNotFitOctets { value: Int, octets: Int }
+  | OctetCountOutOfRange { observed: Int }
+
+type WordResult
+  = WordReady { word: Word }
+  | WordRefused { cause: WordRefusal }
+
+// TWO RESULT TYPES, AND THE SPLIT IS THE POINT RATHER THAN AN INCONVENIENCE. OctetsResult is what
+// crosses this module's boundary, so its ready arm carries the SEALED carrier: a caller that gets one
+// holds the proof, not a list it must be trusted to have checked. RawOctetsResult never leaves the
+// module -- it is the accumulator's own type, before the proof exists -- and keeping the two distinct
+// is what makes "the members were admitted" a fact established at exactly one place (word_to_octets
+// mints once, at the end) instead of a property every internal helper must preserve by discipline.
+type OctetsResult
+  = OctetsReady { octets: QualifiedOctets }
+  | OctetsRefused { cause: WordRefusal }
+
+type RawOctetsResult
+  = RawOctetsReady { octets: List<UInt8> }
+  | RawOctetsRefused { cause: WordRefusal }
+
+type CarryingSum {
+  sum: Word
+  carry: Bool
+}
+
+type CarryingSumResult
+  = CarryingSumReady { result: CarryingSum }
+  | CarryingSumRefused { cause: WordRefusal }
+
+// THE ONE PLACE A WIDTH BECOMES A NUMBER, and the one place a width is refused.
+//
+// 2^64 is not representable in the Int the seed and the emitted Rust realize as i64, so a Width64
+// word has no residue this carrier can hold and EVERY operation on one refuses with
+// WordWidthUnrealizable rather than answering with a truncated or wrapped number. That refusal is
+// the honest statement of the realization boundary std.checked_arithmetic declares: the model has
+// unbounded integers, the realization has i64, and code that computes 64-bit words on an i64 is
+// asserting the first about the second. NEXT-RUNG TRIGGER, naming the capability and not an
+// artifact: a multi-limb magnitude carrier in this module sufficient for a word whose modulus
+// exceeds the Int bound to be REPRESENTED and operated on -- at which point Width64 stops refusing
+// and the big-integer substrate P-256/P-384 needs is the same carrier, not a second one.
+//
+// THE MODULUS IS DERIVED ONCE PER WIDTH, NOT ONCE PER OPERATION, AND THAT IS A CORRECTNESS-GRADE
+// FIX RATHER THAN A TUNING ONE. The first cut called int_pow_bounded here, which is a non-tail
+// linear recursion with a checked multiply per step, so EVERY operation -- including shifts and
+// rotates that are otherwise a division -- paid a walk proportional to its width just to learn a
+// constant. WordWidth is a CLOSED four-member coproduct, so the fact being recomputed is one of
+// four numbers, and DESIGN section 2 is explicit that when repeated demands share a least common
+// ancestor the repetition is authored duplication to be carried rather than made cheap; section 6
+// forecloses the "n is small here" defence outright. Stating the shape in an annotation, which the
+// first cut did, is not discharging it.
+//
+// THE VALUES ARE DERIVED, NOT TRANSCRIBED, AND THE DERIVATION IS CHECKED BY EXECUTION. The reason
+// to avoid a literal table is that a second representation of a derived constant can go stale
+// silently; that objection is against TRANSCRIBING a value, not against materialising one. So
+// std.induction int_pow_bounded remains the authority for what 2^bits IS, and
+// word_modulus_agrees_with_the_power_authority_holds runs this function against it for every
+// member of the closed set, including Width64 where both must answer with nothing. A wrong number
+// here reds that claim; it does not wait to be noticed.
+fn word_modulus(w: WordWidth) -> Int? {
+  match w {
+    Width8 => Present { value: 256 }
+    Width16 => Present { value: 65536 }
+    Width32 => Present { value: 4294967296 }
+    Width64 => none
+  }
+}
+
+// THE SPLIT POINT OF A WIDTH, DERIVED ONCE FOR THE SAME REASON THE MODULUS IS. word_wrapping_multiply
+// splits its left operand at half the width and walked int_pow_bounded per call to find where. The
+// reviewer named word_modulus, but the defect is the CLASS -- a constant over a closed coproduct
+// recomputed per demand -- and fixing only the instance that was cited would be repairing the
+// symptom rather than the boundary (DESIGN section 6b). Checked against the authority by
+// word_half_radix_agrees_with_the_power_authority_holds, exactly as the modulus is.
+fn word_half_radix(w: WordWidth) -> Int? {
+  match w {
+    Width8 => Present { value: 16 }
+    Width16 => Present { value: 256 }
+    Width32 => Present { value: 65536 }
+    Width64 => none
+  }
+}
+
+fn word_of_int(width: WordWidth, value: Int) -> WordResult {
+  match word_modulus(w: width) {
+    Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
+    Present { value: m } =>
+      if value < 0 || value >= m {
+        WordRefused { cause: WordValueOutOfRange { width: width, value: value } }
+      } else {
+        WordReady { word: Word { width: width, value: value } }
+      }
+  }
+}
+
+// THE QUALIFICATION IS A CARRIER, NOT A CHECK EACH HELPER REMEMBERS TO REPEAT.
+//
+// .dag has NO module-private, so every top-level helper is a callable boundary and there is no
+// wall to hide one behind. The first repair qualified each PUBLIC operation and left the helpers
+// below them taking raw Word -- word_from_octets_realizable was callable directly with Width64 and
+// would reconstruct up to 2^64 - 1 in the i64 before word_of_int refused, which is the exact
+// overflow-after-compute defect the public wrapper exists to prevent. Splitting that body out and
+// naming it "_realizable" asserted a property the language does not enforce: a name is not a proof.
+//
+// Re-validating inside every helper is the wrong repair -- that is validation multiplied by helper
+// count, and it fails the moment someone adds helper N+1 and forgets, which is precisely how the
+// projection survived the last pass. So the proof moves into the TYPE. QualifiedWord is produced
+// only by word_qualified and word_pair_qualified; RealizableWidth is produced only by
+// word_realizable_width, the one function that refuses Width64. Every helper below the public
+// boundary takes those carriers and therefore CANNOT be handed an unqualified value -- not because
+// a wall stops it, but because the call does not typecheck.
+//
+// SEALED, AND THIS IS THE ONE PLACE IT IS SAID. QualifiedWord is sole_constructor: its only literal
+// is inside word_qualified below, in this module, so a caller outside it cannot forge
+// QualifiedWord { word: ... } -- the same wall RealizableWidth and std.integer QualifiedOctets carry,
+// with the same measured refusal ("cannot be constructed outside its defining module"). An earlier
+// cut left this record ordinary and named sole construction as a PENDING trigger while using it two
+// declarations below (review 69249): a climb available in the same file is "can climb now", and
+// naming it as future work is the rung inflation DESIGN 4b(1) describes. Every consumer that once
+// had an arm reachable only by that forgery cites this paragraph rather than restating it -- a fact
+// with two statements can disagree with itself, and it did (review 68594). No admit_callers roster
+// is needed: nothing outside this module constructs the carrier.
+//
+// THE WALL IS WITNESSED, AND THE WITNESS IS A DIRECT CALL RATHER THAN A FIXTURE. Everything above
+// rests on one property: handing the wrong carrier where a declared one is expected does not
+// typecheck. That is MEASURED -- `qualified_word_value(q: Word { ... })` refuses with "expected
+// Product(QualifiedWord), got Product(Word)", and `RealizableWidth { width: Width64 }` refuses with
+// "missing required field 'modulus'" -- so neither carrier is reachable by naming a width or by
+// handing over an unqualified value, and both refusals are authorable in an ordinary module.
+//
+// A CENSUS FIXTURE STOOD HERE AND IS DELETED, which is a correction rather than a simplification,
+// and it is kept in writing because two approving reviews cited it as the evidence for this wall.
+// It compiled probe sources held as strings and counted blocking rows by diagnostic class and
+// SUBJECT NAME. Running it showed both halves broken: subject_name holds DECLARATION names, never
+// the probe module name the fixture passed, so every lookup matched nothing and the verdicts were
+// decided by a key that could not hit; and its surviving RED asserted that a List<Word> where
+// List<UInt8> is declared would refuse, which the count-check annotation below records as measured
+// FALSE. A check whose RED is unauthorable is the decoration DESIGN section 4b names, and its
+// predecessor had already failed once on the 0 - 1 not-runnable sentinel -- the one piece of that
+// evidence design that behaved correctly under pressure, because it failed in BOTH directions
+// rather than letting the green pass. A dead claim is worse than an absent one; the scalar
+// refusals above are what survived contact with execution.
+
+// THE OCTET IS std.integer UInt8, NOT A CARRIER OF THIS MODULE'S OWN.
+//
+// This module briefly declared `type Octet { value: Int }` with its own constructor. That was the
+// THIRD name for one concept: extdeps.network.mac had already settled it -- UInt8 is the universal
+// authority for an 8-bit unsigned integer and ipv4's Octet is a pre-existing duplicate left
+// untouched -- and this lane's own first annotation said as much before minting one anyway. The
+// octet's constructor is std.integer uint8_of_int, at the type's home, and "the width is eight" is
+// MachineWidth<8> structurally rather than a field this module has to carry correctly.
+//
+// What that does NOT buy is inhabitance: the composition is transparent to Int at a formal, so the
+// constructor is mitigation and its rung and trigger are stated once, at std.integer.
+
+// WHAT THE OCTET CARRIER DOES AND DOES NOT ESTABLISH IS STATED AT std.integer UInt8 AND NOWHERE
+// ELSE. Consumers with an arm reachable only by a bypassed octet -- std.encoding base64_encode is
+// the current one -- cite that paragraph rather than restating it, because a fact with two
+// statements is a fact that can disagree with itself, and this pair already did so twice. This
+// module is a CONSUMER of that carrier, so it is one of the places that must not restate it.
+
+type QualifiedWord sole_constructor {
+  word: Word
+}
+
+type QualifiedWordResult
+  = QualifiedWordReady { qualified: QualifiedWord }
+  | QualifiedWordRefused { cause: WordRefusal }
+
+// SEALED, AND THE FORGERY THIS CLOSES WAS MEASURED RATHER THAN IMAGINED. As an ordinary record this
+// was a two-field literal anyone could write, so RealizableWidth { width: Width64, modulus: 1 }
+// reached word_from_octets_realizable and walked straight past the one refusal this carrier exists to
+// carry. A record whose fields are public is a proof anyone can assert; sole_constructor makes the
+// assertion unwritable outside this module, and word_realizable_width below is the one route in.
+type RealizableWidth sole_constructor {
+  width: WordWidth
+  modulus: Int
+}
+
+type RealizableWidthResult
+  = RealizableWidthReady { realizable: RealizableWidth }
+  | RealizableWidthRefused { cause: WordRefusal }
+
+// The ONE producer of RealizableWidth, and the one place Width64 is refused. A helper holding this
+// carrier has the modulus in hand and never asks for it again, so the width refusal cannot be
+// skipped by a caller who reached the helper another way.
+fn word_realizable_width(w: WordWidth) -> RealizableWidthResult {
+  match word_modulus(w: w) {
+    Absent => RealizableWidthRefused { cause: WordWidthUnrealizable { width: w } }
+    Present { value: m } => RealizableWidthReady { realizable: RealizableWidth { width: w, modulus: m } }
+  }
+}
+
+fn qualified_word_value(q: QualifiedWord) -> Int {
+  q.word.value
+}
+
+fn qualified_word_width(q: QualifiedWord) -> WordWidth {
+  q.word.width
+}
+
+fn qualified_word_unwrap(q: QualifiedWord) -> Word {
+  q.word
+}
+
+// THE ROUND TRIP NEEDS NO UNWRAP ANY MORE. word_to_octets answers List<UInt8> and word_from_octets
+// takes List<UInt8>, so feeding one into the other is direct -- which is what SHA-2 block packing
+// does. The previous qualified_words_to_words existed only because the two sides disagreed about
+// what an octet was; naming the octet UInt8 on both sides removed the disagreement rather than
+// bridging it.
+
+// The ONE producer of QualifiedWord. word_of_int establishes both facts a helper below here needs:
+// the width is realizable and the value inhabits it.
+fn word_qualified(w: Word) -> QualifiedWordResult {
+  match word_of_int(width: w.width, value: w.value) {
+    WordRefused { cause: c } => QualifiedWordRefused { cause: c }
+    WordReady { word: x } => QualifiedWordReady { qualified: QualifiedWord { word: x } }
+  }
+}
+
+type WordPairResult
+  = WordPairReady { left: QualifiedWord, right: QualifiedWord }
+  | WordPairRefused { cause: WordRefusal }
+
+// The width disagreement is decided BEFORE either operand is qualified, because a mismatch is a
+// fact about the call and an out-of-range value is a fact about one operand; reporting the operand
+// first would answer a narrower question than the one that is wrong.
+fn word_pair_qualified(a: Word, b: Word) -> WordPairResult {
+  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
+    WordPairRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
+  } else {
+    match word_qualified(w: a) {
+      QualifiedWordRefused { cause: c } => WordPairRefused { cause: c }
+      QualifiedWordReady { qualified: qa } =>
+        match word_qualified(w: b) {
+          QualifiedWordRefused { cause: c } => WordPairRefused { cause: c }
+          QualifiedWordReady { qualified: qb } => WordPairReady { left: qa, right: qb }
+        }
+    }
+  }
+}
+
+// BITWISE OPERATIONS ARE ONE FOLD, NOT THREE. The three connectives differ only in the two-bit
+// decision at each place; the decomposition, the place accumulation and the bound are identical, so
+// authoring them separately would be three copies of one loop that can drift apart. The identity
+// a + b = (a xor b) + 2 * (a and b) would let two of the three be derived arithmetically from the
+// third, which is correct and grounded but reads as a trick: the loop states what the operation IS.
+type BitwiseOp
+  = BitAnd
+  | BitOr
+  | BitXor
+
+fn bitwise_place_bit(op: BitwiseOp, x: Int, y: Int) -> Int {
+  match op {
+    BitAnd => if x == 1 && y == 1 { 1 } else { 0 }
+    BitOr => if x == 1 || y == 1 { 1 } else { 0 }
+    BitXor => if x == y { 0 } else { 1 }
+  }
+}
+
+fn bitwise_fold(op: BitwiseOp, a: Int, b: Int, remaining: Int, place: Int, acc: Int) -> Int {
+  if remaining <= 0 {
+    acc
+  } else {
+    bitwise_fold(
+      op: op,
+      a: a / 2,
+      b: b / 2,
+      remaining: remaining - 1,
+      place: place * 2,
+      acc: acc + (bitwise_place_bit(op: op, x: a % 2, y: b % 2) * place)
+    )
+  }
+}
+
+fn word_bitwise(op: BitwiseOp, a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_of_int(
+            width: r.width,
+            value: bitwise_fold(op: op, a: qualified_word_value(q: x), b: qualified_word_value(q: y), remaining: word_width_bits(w: r.width), place: 1, acc: 0)
+          )
+      }
+  }
+}
+
+fn word_and(a: Word, b: Word) -> WordResult {
+  word_bitwise(op: BitAnd, a: a, b: b)
+}
+
+fn word_or(a: Word, b: Word) -> WordResult {
+  word_bitwise(op: BitOr, a: a, b: b)
+}
+
+fn word_xor(a: Word, b: Word) -> WordResult {
+  word_bitwise(op: BitXor, a: a, b: b)
+}
+
+// Complement is the ones-complement within the width, which is the modulus minus one minus the
+// value. It needs no bit walk: every place flips, and flipping every place of a residue below 2^w
+// is exactly subtracting it from the all-ones value.
+fn word_not(a: Word) -> WordResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => WordRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          word_of_int(width: r.width, value: r.modulus - 1 - qualified_word_value(q: x))
+      }
+  }
+}
+
+// SHIFTS ARE TOTAL AND BOUNDED. An amount at or above the width is refused rather than answered
+// with zero: in C it is undefined behaviour, in Rust it panics, and on x86 it silently masks the
+// amount -- three different answers to one question, which is exactly the state a typed refusal
+// exists to keep out of the model. Negative amounts are refused rather than reinterpreted as the
+// opposite direction, because a shift that changes direction on the sign of its amount is two
+// operations wearing one name.
+//
+// THE REDUCTION HAPPENS BEFORE THE MULTIPLICATION, NOT AFTER. Writing (value * 2^k) % modulus is
+// the obvious form and it OVERFLOWS the i64 realization for a 32-bit word shifted left by 31 --
+// the product reaches 2^63 before the modulus is ever applied, so the check would be inspecting
+// whatever the realization did about an overflow it had already suffered. Dropping the bits that
+// the shift discards FIRST keeps every intermediate inside the width.
+fn word_shift_left(a: Word, amount: Int) -> WordResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => WordRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if amount < 0 || amount >= word_width_bits(w: r.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: r.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: r.width } }
+              Present { value: factor } => word_of_int(width: r.width, value: (qualified_word_value(q: x) % (r.modulus / factor)) * factor)
+            }
+          }
+      }
+  }
+}
+
+fn word_shift_right(a: Word, amount: Int) -> WordResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => WordRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if amount < 0 || amount >= word_width_bits(w: r.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: r.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: r.width } }
+              Present { value: factor } => word_of_int(width: r.width, value: qualified_word_value(q: x) / factor)
+            }
+          }
+      }
+  }
+}
+
+// A rotation is the two shifts summed, and they are summed rather than OR-ed because the two
+// results occupy disjoint places by construction -- no place can be set in both, so addition and
+// disjunction agree and addition does not walk the bits. The zero amount is its own arm because
+// the complementary shift would then be by the full width, which shifts refuse.
+fn word_rotate_left(a: Word, amount: Int) -> WordResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => WordRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if amount < 0 || amount >= word_width_bits(w: r.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: r.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: qualified_word_unwrap(q: x) }
+            } else {
+              match word_shift_left(a: qualified_word_unwrap(q: x), amount: amount) {
+                WordRefused { cause: c } => WordRefused { cause: c }
+                WordReady { word: high } =>
+                  match word_shift_right(a: qualified_word_unwrap(q: x), amount: word_width_bits(w: r.width) - amount) {
+                    WordRefused { cause: c } => WordRefused { cause: c }
+                    WordReady { word: low } => word_of_int(width: r.width, value: high.value + low.value)
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE WIDTH IS ESTABLISHED BEFORE THE AMOUNT, which is what the other three shift and rotate arms
+// already did and this one did not: a Width64 rotate by 64 reported ShiftAmountOutOfRange, naming
+// the amount, when the width itself is the thing that cannot exist. Two operations disagreeing
+// about which refusal a caller sees for the same malformed call is a fork in the refusal
+// vocabulary, and the narrower answer is the wrong one.
+fn word_rotate_right(a: Word, amount: Int) -> WordResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => WordRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          if amount < 0 || amount >= word_width_bits(w: r.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: r.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: qualified_word_unwrap(q: x) }
+            } else {
+              word_rotate_left(a: qualified_word_unwrap(q: x), amount: word_width_bits(w: r.width) - amount)
+            }
+          }
+      }
+  }
+}
+
+// WRAPPING IS THE DECLARED OVERFLOW RULE OF THESE OPERATIONS, NOT A REALIZATION ACCIDENT.
+// std.integer's IntegerOverflowSemantics names ReturnWrapping as one rule among raising and
+// undefined; these functions ARE that rule applied at the declared width, and a caller that wants
+// the crossing reported instead uses word_carrying_add, which returns the carry as a value.
+fn word_wrapping_add(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } => word_of_int(width: r.width, value: (qualified_word_value(q: x) + qualified_word_value(q: y)) % r.modulus)
+      }
+  }
+}
+
+fn word_wrapping_subtract(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } => word_of_int(width: r.width, value: (qualified_word_value(q: x) - qualified_word_value(q: y) + r.modulus) % r.modulus)
+      }
+  }
+}
+
+// THE PRODUCT IS SPLIT BECAUSE THE PRODUCT DOES NOT FIT. Two 32-bit residues multiply to 64 bits,
+// which the i64 realization cannot hold, so the obvious (a * b) % m is an overflow inspected after
+// the fact rather than a check. Splitting the left operand at half the width makes both partial
+// products at most bits + bits/2 wide, and reducing the high partial product before scaling it
+// keeps the scaled term inside the width. Every width here is even, so the half is exact.
+fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+        RealizableWidthReady { realizable: r } =>
+          match word_half_radix(w: r.width) {
+            Absent => WordRefused { cause: WordWidthUnrealizable { width: r.width } }
+            Present { value: half } => {
+              let xv = qualified_word_value(q: x)
+              let yv = qualified_word_value(q: y)
+              let low_term = ((xv % half) * yv) % r.modulus
+              let high_term = (((xv / half) * yv) % half) * half
+              word_of_int(width: r.width, value: (low_term + high_term) % r.modulus)
+            }
+          }
+      }
+  }
+}
+
+fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => CarryingSumRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_realizable_width(w: qualified_word_width(q: x)) {
+        RealizableWidthRefused { cause: c } => CarryingSumRefused { cause: c }
+        RealizableWidthReady { realizable: r } => {
+          let total = qualified_word_value(q: x) + qualified_word_value(q: y)
+          match word_of_int(width: r.width, value: total % r.modulus) {
+            WordRefused { cause: c } => CarryingSumRefused { cause: c }
+            WordReady { word: sum } => CarryingSumReady { result: CarryingSum { sum: sum, carry: total >= r.modulus } }
+          }
+        }
+      }
+  }
+}
+
+// AN OCTET IS A WIDTH-8 WORD, NOT A BARE Int. The whole point of this module is that a width is a
+// fact the value carries; handing back List<Int> from a conversion would put the width back into a
+// caller's convention at exactly the seam -- packing and unpacking -- where getting it wrong is
+// invisible. extdeps.network.ipv4's `Octet = Int where range(0, 255)` is a network-layer row and is
+// left alone: minting a third spelling of the same concept here would be the nicknaming
+// DESIGN section 3 forbids, and reusing a network row as the substrate's byte would be worse.
+// The octet's own width, routed through the same carrier rather than re-typing bits_per_byte's Nat
+// down to Int in passing. This is std.integer uint8_channel_bit_width_int's exact form.
+fn octet_bit_width() -> Int {
+  bit_width_count(b: bit_width(count: bits_per_byte()))
+}
+
+// AN OCTET'S RADIX IS THE Width8 MODULUS. It was a separate int_pow_bounded walk, paid by every
+// packing and unpacking call, to arrive at a number this module already answers. That is the same
+// closed-set recomputation review 68053 named at word_modulus, one function along, and it is fixed
+// by REUSE rather than by a second constant: nothing new is introduced here, so nothing new can go
+// stale. octet_radix_is_the_width8_modulus_holds is its executing check.
+fn octet_radix() -> Int? {
+  word_modulus(w: Width8)
+}
+
+fn word_octet_count(w: WordWidth) -> Int {
+  word_width_bits(w: w) / octet_bit_width()
+}
+
+// THE ACCUMULATOR TAKES NO RADIX, BECAUSE THE RADIX IS NOT A PARAMETER OF THE PROBLEM.
+//
+// It used to take one, and mint Word { width: Width8, value: value % radix } from it. That is an
+// invalid proof minted INSIDE the module by an ordinary call: radix 65536 produces members up to
+// 65535 wearing a Width8 label, and the annotation here claimed "the proof is discharged, not
+// assumed" -- true only if the caller passed the octet modulus, which the signature never required.
+// A constructor whose correctness depends on an argument nobody checks is not a constructor.
+//
+// The octet modulus is a constant OF the octet width, so it is read here rather than received, and
+// each member is built through std.integer uint8_of_int, which carries the refusal rather than
+// asserting the range.
+fn octets_little_endian_accumulate(value: Int, remaining: Int, acc: List<UInt8>) -> RawOctetsResult {
+  if remaining <= 0 {
+    RawOctetsReady { octets: acc }
+  } else {
+    match word_modulus(w: Width8) {
+      Absent => RawOctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
+      Present { value: radix } =>
+        match uint8_of_int(value: value % radix) {
+          UInt8OutOfRange { observed: o } => RawOctetsRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
+          UInt8Ready { value: octet } =>
+            octets_little_endian_accumulate(value: value / radix, remaining: remaining - 1, acc: acc |> list_push(octet))
+        }
+    }
+  }
+}
+
+// AN UNREPRESENTABLE CAPACITY IS NOT A REFUSAL, AND THE DIFFERENCE IS THE WHOLE POINT OF ASKING
+// SEPARATELY. A field of eight octets holds up to 2^64 values, which the Int realization cannot
+// count to; treating that as "the value does not fit" would refuse every eight-octet length field,
+// which is exactly what SHA-2 message padding renders. When the capacity exceeds what an Int can
+// represent, every nonnegative Int is BELOW it by construction, so the honest answer is that it
+// fits -- an absent capacity here is ignorance about the bound, not an answer about the value, and
+// the two are only interchangeable in the direction that happens to be safe.
+// AN ABSENT CAPACITY HAS TWO CAUSES AND ONLY ONE OF THEM IS SAFE TO READ AS "IT FITS". The
+// annotation below already said an absent capacity is ignorance about the bound rather than an
+// answer about the value -- and this function then treated EVERY absent capacity as "does not
+// exceed". int_pow_bounded answers Absent both when the power overflows the Int bound (where every
+// representable value genuinely is below it) and when the EXPONENT IS NEGATIVE, which is not a
+// statement about capacity at all. So count = -1 fell through to an accumulator that stops at
+// remaining <= 0 and returned OctetsReady [] -- a successful empty rendering of a nonsense request,
+// which is the fabricated plausible output DESIGN section 5 forbids, produced by the exact
+// conflation the neighbouring annotation warned about. The count is now decided on its own terms
+// BEFORE the capacity is asked, so the remaining Absent has only the one meaning the reading
+// assumes.
+fn int_exceeds_octet_capacity(value: Int, count: Int, radix: Int) -> Bool {
+  match int_pow_bounded(base: radix, exp: count) {
+    Absent => false
+    Present { value: capacity } => value >= capacity
+  }
+}
+
+// THE ACCUMULATOR APPENDS AND THE BIG-ENDIAN ORDER IS A REVERSE, rather than the natural-reading
+// form that prepends each octet onto the front of the accumulator. list_push extends its LEFT
+// operand, so appending clones one element per step while prepending clones the whole accumulated
+// list per step -- the quadratic shape std.nat nat_range_accumulate records at the same grain.
+fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> RawOctetsResult {
+  match octet_radix() {
+    Absent => RawOctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
+    Present { value: radix } =>
+      if count < 0 {
+        RawOctetsRefused { cause: OctetCountOutOfRange { observed: count } }
+      } else if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
+        RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: value, octets: count } }
+      } else {
+        match octets_little_endian_accumulate(value: value, remaining: count, acc: []) {
+          RawOctetsRefused { cause: c } => RawOctetsRefused { cause: c }
+          RawOctetsReady { octets: little } =>
+            match endianness {
+              LittleEndian => RawOctetsReady { octets: little }
+              BigEndian => RawOctetsReady { octets: reverse(little) }
+            }
+        }
+      }
+  }
+}
+
+// THE ONE PLACE THIS MODULE MINTS THE PROOF, and it is admitted at std.integer qualified_octets by
+// name. It is sound to mint here rather than to re-verify: every member came out of
+// octets_little_endian_accumulate as a remainder modulo the octet radix, each one already through
+// uint8_of_int, so routing the list back through the admission fold would add a refusal arm that no
+// input can reach -- the unreachable arm this change deletes elsewhere rather than adds here.
+fn word_to_octets(a: Word, endianness: Endianness) -> OctetsResult {
+  match word_qualified(w: a) {
+    QualifiedWordRefused { cause: c } => OctetsRefused { cause: c }
+    QualifiedWordReady { qualified: x } =>
+      match int_to_octets(value: qualified_word_value(q: x), count: word_octet_count(w: qualified_word_width(q: x)), endianness: endianness) {
+        RawOctetsRefused { cause: c } => OctetsRefused { cause: c }
+        RawOctetsReady { octets: raw } => OctetsReady { octets: qualified_octets(members: raw) }
+      }
+  }
+}
+
+fn octets_big_endian_value(octets: List<UInt8>, radix: Int, acc: Int) -> Int {
+  match octets.first() {
+    Absent => acc
+    Present { value: head } =>
+      octets_big_endian_value(octets: octets.skip(n: 1), radix: radix, acc: acc * radix + uint8_int_value(v: head))
+  }
+}
+
+// THE ADMISSION FOLD IS NOT HERE ANY MORE. octets_of_ints lived in this module and admitted raw
+// Ints into List<UInt8>; that fold is now std.integer uint8_octets_of_ints, beside the type whose
+// admission it performs, and it returns the sealed QualifiedOctets rather than a bare list. Keeping a
+// second fold here would be the section 3 fork -- two functions answering "were these admitted?" --
+// and the one that stayed is the one at the octet's own home.
+
+// The count check is EXACT, not a lower bound. A packing that accepted more octets than the width
+// holds would silently drop the excess, and one that accepted fewer would silently zero-extend --
+// two different fabricated answers to the same malformed input. It is the ONLY check left here:
+// the per-octet width check this sentence used to describe is gone with the List<Word> parameter.
+// MEASURE FIRST, THEN CLAIM, AND THE MEASUREMENT SPLITS THE CLAIM IN TWO. An earlier cut said the
+// element type makes the bad call fail to typecheck. At a SCALAR parameter that is true and shown:
+// `uint8_int_value(v: Word { ... })` refuses with "expected Node(UInt8<Primitive(UInt),
+// Primitive(MachineWidth)>), got Product(Word)". INSIDE List<...> IT IS FALSE: `fn f(w: List<Word>)
+// -> WordResult { word_from_octets(width: Width32, octets: w, ...) }` COMPILES, and a call with
+// four Width16 Words dies at RUNTIME with an untyped interpreter `TypeError: cannot apply Add to
+// Record and Int` -- loud, so nothing is fabricated, but not a typed located refusal.
+//
+// The cause is the generic position, not a weakness in UInt8: the compiler's own census emits
+// `DeclaredTypeInhabitanceUndecided` at "generic type argument". So the carrier's guarantee is
+// structural at a scalar formal and STOPS AT THE LIST BOUNDARY, and the rung for "the members of
+// this list are octets" is MITIGATABLE, with the next-rung trigger being element-type decision
+// inside generics -- a compiler capability, not a change to this module. OctetWidthMismatch is
+// still deleted rather than kept: it refused a width FIELD that the member type does not carry,
+// which is a different proposition from the one measured here and remains unraisable.
+// THE WIDTH IS ESTABLISHED BEFORE ANY OCTET IS ACCUMULATED, AND THE HELPER CANNOT BE REACHED
+// WITHOUT IT.
+//
+// This was the one exported operation that did arithmetic before guarding on its own width: it
+// guarded on octet_radix, which asks about Width8 and therefore always answers, so a Width64 call
+// passed the count and per-octet checks and then accumulated eight octets to as much as 2^64 - 1
+// in the Int the seed realizes as i64, with word_of_int refusing only afterwards -- a refusal
+// inspecting a number the realization had already wrapped on.
+//
+// The first repair put the guard in the public wrapper and split the body into a helper named
+// "_realizable". That name asserted a property nothing enforced: .dag has no module-private, so the
+// helper was itself a callable boundary and `word_from_octets_realizable(Width64, ...)` walked
+// straight back into the overflow. The helper now takes RealizableWidth, and THAT half is a real
+// compile-time wall, measured: `RealizableWidth { width: Width64 }` is refused with "missing
+// required field 'modulus'", so reaching this helper by naming a width alone does not compile. The
+// List<UInt8> half is NOT a wall -- a List<Word> reaches it and typechecks, dying only at runtime
+// -- so the two parameters sit on different rungs and are not claimed together. Member construction
+// is mitigation at std.integer, not this signature.
+fn word_from_octets_realizable(width: RealizableWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
+  let members = qualified_octet_members(q: octets)
+  let expected = word_octet_count(w: width.width)
+  let observed = list_length(items: members)
+  if observed != expected {
+    WordRefused { cause: OctetCountMismatch { width: width.width, expected: expected, observed: observed } }
+  } else {
+    match octet_radix() {
+      Absent => WordRefused { cause: WordWidthUnrealizable { width: Width8 } }
+      Present { value: radix } => {
+        let ordered = match endianness {
+          BigEndian => members
+          LittleEndian => reverse(members)
+        }
+        word_of_int(width: width.width, value: octets_big_endian_value(octets: ordered, radix: radix, acc: 0))
+      }
+    }
+  }
+}
+
+// The public entry takes what a caller actually has -- a plain WordWidth and plain Words -- and
+// establishes both proofs ONCE before handing the carriers down. This is the only place the two
+// qualifications happen for this route, which is what makes the helper's signature a wall rather
+// than a second checkpoint.
+fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
+  match word_realizable_width(w: width) {
+    RealizableWidthRefused { cause: c } => WordRefused { cause: c }
+    RealizableWidthReady { realizable: r } =>
+      word_from_octets_realizable(width: r, octets: octets, endianness: endianness)
+  }
+}
+
+// THE PROJECTION TAKES THE CARRIER, SO THE REFUSAL ARM IT NEEDED IS GONE.
+//
+// octet_int_values mapped o.value over raw members with no qualification and no refusal arm, on the
+// base64 decode production route. The first repair gave it a typed refusal and re-checked its
+// members -- validation multiplied by helper count, the shape a carrier exists to replace. The
+// second took List<QualifiedWord>, which was WORSE than it looked: that carrier proves a value
+// inhabits its own width, so a sanctioned Width16 member projected 256 as an octet value and the
+// re-check had been removed. Taking List<UInt8> DOES NOT make the Word-list call fail to typecheck
+// -- that was this annotation's third wrong claim in a row and it is measured false above at the
+// count check. What the parameter buys is that there is no width FIELD for this helper to inspect,
+// so the helper has nothing left to refuse and the result is a plain List<Int>; what it does NOT
+// buy is that the members are octets at all. Both gaps -- wrong element type, and an unconstructed
+// in-type value like a bare 256 -- are mitigation, stated at their homes rather than re-argued
+// here, and neither is closed by this signature.
+fn octet_int_values(octets: QualifiedOctets) -> List<Int> {
+  qualified_octet_members(q: octets) |> map(o => uint8_int_value(v: o))
+}
+
+// THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
+//
+// DESIGN section 3c admits exactly three states for a new declaration: consumed by execution here,
+// consumed by a named later change with the trigger stated beside it, or dangling -- and only the
+// third is red. The operations below are the second state, and the first cut of this module put
+// that claim in a `//` block naming SHA-256 and P-256. Section 4c rules that an annotation is never
+// evidence a machine claim holds, because no Accepted program can read one, so a frontier stated in
+// prose is indistinguishable from a dangling declaration to everything except a human reader who
+// happens to look.
+//
+// DECLARING THE ROWS IS HALF OF IT; BEING FOLDED IS THE OTHER HALF, AND THE FIRST CUT OF THIS
+// ROSTER HAD ONLY THE FIRST. It asserted in prose that gunbc.dissolution_census reads these rows
+// while the census folded one roster this was not a member of, so the expiry of every row below
+// was computed by nothing -- an inert lens, and the same 4c violation this roster exists to
+// correct, committed in the sentence claiming to correct it (review 68088). Membership is
+// gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
+// enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
+//
+// EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
+// bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required
+// declarations phase resolves it against THE TREE IT RUNS IN and refuses CITED-MODULE-ABSENT when
+// the module is not there. extdeps.crypto.sha2 exists on gunbc#11647 and nowhere else, so binding
+// these four rows to its symbols refused the whole parse phase -- "the symbol exists on a branch"
+// is not a fact this tree can check, and seeing it on a branch is exactly what made the citation
+// look safe. DeclarationAppears is still the right shape for a forward reference to a declaration
+// in a module that ALREADY EXISTS; it is the absent MODULE that cannot be cited. The consuming
+// symbols are named in prose in each description instead, where they are a reader's pointer rather
+// than a resolvable reference this tree would have to honour. Where the consuming change is named but
+// has authored no declaration to point at, the row is unbound and says so -- a forward reference to
+// a name nobody has written would be a citation that can never resolve, which is worse than an
+// honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
+// does not exist).
+//
+// WHAT IS NOT HERE IS AS DELIBERATE AS WHAT IS. word_rotate_left carries no row because
+// word_rotate_right consumes it inside this module -- it is executed, not awaited. word_zero and
+// word_equal were DELETED rather than given rows: no change named either one, and section 3c's
+// remedy for a declaration with no consumer at all is to remove it, not to describe it. They cost
+// one line each to reintroduce beside the first caller that wants them.
+data machine_word_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
+    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; the consumer is extdeps.crypto.sha2 sha256_add_all on gunbc#11647, ~1,000 calls per compression block.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_add_all (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
+    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; the consumer is extdeps.crypto.sha2 sha256_sigma on gunbc#11647, the one fold all four go through.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_sigma (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
+    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; the consumer is extdeps.crypto.sha2 sha256_xor3 on gunbc#11647.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_xor3 (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
+    reason: "SHA-256 Ch complements its selector word; the consumer is extdeps.crypto.sha2 sha256_ch on gunbc#11647, the only consumer of complement in that algorithm.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_ch (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
+    reason: "The FNV-1a kernel CONTENT-HASH-0 (gunbc#11637) models is a wrapping multiply against a prime, which is why the split-product form exists here at all. It is UNBOUND rather than bound to a symbol because that lane has authored no declaration to cite, and because FNV runs at Width64, which this substrate refuses until the multi-limb carrier lands -- so this row is retired by the FNV kernel consuming this function, not by the carrier alone.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the FNV-1a kernel in CONTENT-HASH-0 (gunbc#11637) calls word_wrapping_multiply. Not discharged by the multi-limb carrier landing, which is a precondition rather than the consumer.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_subtract"),
+    reason: "Multi-limb subtraction borrows, which is this operation at limb width. UNBOUND: the limb carrier is this module's own next cut and has authored no declaration to cite.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_wrapping_subtract for limb borrow. If that carrier lands without consuming it, this declaration is deleted rather than re-described.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.integer", decl_name: "uint8_of_int"),
+    reason: "extdeps.network.ipv4 declares type Octet = Int where range(min: 0, max: 255), a pre-existing duplicate of UInt8 that extdeps.network.mac's note already identifies as such and deliberately leaves alone. With uint8_of_int landed, ipv4's Octet has an authority to consume and its own refusal to delete. NOT DONE HERE: retyping a public network surface is that lane's cut, and this lane touching it would be the second authority it exists to remove.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.network.ipv4 Octet consumes std.integer UInt8 and its range refinement is deleted, leaving one 8-bit unsigned authority in the corpus. Named by extdeps.network.mac's own module note as the outstanding move; this row records that uint8_of_int is now what it would consume.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_carrying_add"),
+    reason: "Multi-limb addition propagates carry between limbs, which is what makes the carry an answer rather than a discarded overflow; CarryingSum and CarryingSumResult exist only to give it one. UNBOUND for the same reason as the borrow.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_carrying_add to propagate carry between limbs. If that carrier lands without consuming it, this declaration and CarryingSum/CarryingSumResult are deleted rather than re-described.")
+  ),
+]

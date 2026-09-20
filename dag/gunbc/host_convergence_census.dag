@@ -60,6 +60,7 @@ type HostConvergenceSubject
   | SparkRuntimeImage
   | RunnerHostFiles
   | RunnerPasswordSessionTools
+  | MicrovmControllerAppKey
   | MicrovmHost
   | GuestImage
   | Srv3InstallMedia
@@ -682,6 +683,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "runner_password_session_tool_converge_ci_wet"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
+    subject: MicrovmControllerAppKey,
+    phases: protocol_phases(false, true, true, true, true, true, false),
+    current_authority: cite(module_path: "gunbc.microvm_controller_app_key_converge", decl_name: "microvm_controller_app_key_converge_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.runner_microvm_host_ready", decl_name: "runner_microvm_host_converge_wet"),

@@ -1,0 +1,923 @@
+module gunbc.auth.approval_broker_cutover
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Port, HttpStatus }
+import std.measure { ByteSize }
+import gunbc.serve_liveness {
+  serve_liveness_path,
+  ServeLivenessRead, ServeLivenessUnreachable,
+  ServeLivenessObserved, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
+  ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
+  ServeLivenessRevisionMalformed,
+  observe_serve_liveness, serve_liveness_read_reason,
+}
+import gunbc.auth.approval_broker_marker {
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_served_token, approval_broker_marker_agreement,
+  MarkerAgreement, MarkerAgrees, MarkerDiffers,
+  ObservedMarker, NoMarkerInBody, MarkerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+}
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_loopback_base_url, approval_broker_liveness_url,
+  approval_broker_listen_port,
+  approval_broker_confirm_path_template, approval_broker_submit_path,
+  approval_broker_status_path_template,
+  approval_broker_confirm_front_door, approval_broker_status_front_door,
+}
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
+import gunbc.auth.approval_broker_demand {
+  BrokerDemandReading, DemandUnmeasured, DemandMeasured,
+  BrokerDemandPhase, PeakOfIncarnationExercising, broker_demand_phase_label,
+}
+import gunbc.auth.approval_writer_authority {
+  ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+}
+import gunbc.auth.approval_cutover_posture {
+  ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
+  approval_cutover_posture, approval_cutover_posture_label,
+}
+
+// ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
+// THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a
+// single-writer discipline: a decision wins by being the one that committed, and "the one" is a
+// property of there being one process able to commit. Two implementations serving /approve against
+// one store is not a slower or messier cutover, it is a different store -- a request could be
+// filed by one process and redeemed by the other, or two redemptions could each believe they won.
+//
+// AND THE OTHER DIRECTION IS EQUALLY REAL. Removing the routes from the roadmap in the same motion
+// that introduces the broker leaves a window in which NOBODY serves them, and an approval link
+// already on a phone is a capability that outlives the deployment that issued it. An outage of the
+// approval loop is strictly worse than the co-tenancy the split repairs.
+//
+// So the transition is neither atomic nor free-running: it is a STAGED TRANSACTION whose stages are
+// ordered, whose entry conditions are evidence rather than intention, and whose advance is a fold
+// that REFUSES with a located cause when the evidence is absent. DESIGN section 6 names a
+// hand-authored migration script as out-of-band actuation; this is the authority that plan reads,
+// so "which stage are we at and may we advance" is answered from modeled evidence rather than from
+// whoever is holding the terminal.
+//
+// WHAT THIS MODULE IS NOT. It does not actuate. It decides admission, and an operator or a deploy
+// plan performs the stage and brings back the observation. That split is deliberate: an advance
+// that could both decide and act would be able to report success for an effect nobody observed,
+// which is the fabricated-plausible-output arm DESIGN section 5 forbids at exactly this boundary.
+
+// ── WHO THE APPROVAL PATHS ARE ROUTED TO, AS ONE THREE-VALUED FACT ──────────────────────────
+// TWO EARLIER CUTS OF THIS ROW WERE BOTH WRONG, IN OPPOSITE DIRECTIONS, AND THE SECOND ERROR IS
+// INSTRUCTIVE. First there was no row at all and an ordinary apply could put the broker where the
+// front door reaches it while the roadmap still served those paths -- two routed writers, forbidden
+// only by prose (review 68050). The repair introduced a two-valued switch and used the broker's
+// PORT as the lever: dark while the roadmap still mounted the rows, serving afterwards.
+//
+// THAT LEVER WAS A PROXY FOR THE WRONG FACT, and review 68075 found what it cost. The front-door
+// mounts kept naming the SERVING port, so stage 4 would have repointed /approve and /approvals at
+// 127.0.0.1:8085 while the broker was bound to 18085 -- every approval link on a phone dying at
+// that instant, the roadmap no longer routed to paths it was still serving, and stage 5's probes
+// then refusing forever so the plan could never reach stage 6. A staged transaction that deadlocks
+// in its worst state is worse than the atomic cut it was chosen over.
+//
+// THE REAL QUANTITY HAS THREE VALUES, NOT TWO, and every earlier cut failed by forcing it into two.
+// Between repointing the front door and retiring the roadmap's rows there is a legitimate middle
+// state -- the broker is routed, the roadmap still HOLDS the rows but nothing reaches them -- and a
+// two-valued row cannot express it, so it collapsed either into an outage or into two writers.
+//
+//   ApprovalPathsRoutedToRoadmap  stages A-C: the roadmap answers the public paths; the broker is
+//                                 deployed on its final port with no front-door mount and no writer
+//                                 authority, so a loopback client reaching it is REFUSED rather
+//                                 than merely unlikely to find it.
+//   ApprovalPathsRoutedToBroker   stages D-F: the broker answers behind the two mounts; the
+//                                 roadmap's rows exist and nothing routes to them.
+//   ApprovalPathsOwnedByBroker    stage 6+: the roadmap's rows are gone.
+//
+// THIS ROW DECIDES ROUTING AND NOTHING ELSE, which is the correction the cutover HOLD forced. An
+// earlier cut also derived the broker's PORT from it, so "not routed" and "bound elsewhere" were
+// one fact -- and the front-door mounts named the serving port while the unit bound the other, a
+// graph with no path to its own last stage. The port is now fixed for the process's whole life
+// (gunbc.auth.approval_broker_endpoint approval_broker_listen_port).
+//
+// AND ROUTING IS NOT AUTHORITY EITHER -- they are two DERIVATIONS of one intent. Who may MUTATE the
+// store is gunbc.auth.approval_writer_authority, consulted by both processes before any store
+// effect, because a client on the host reaches loopback whatever the front door says and an
+// unrouted process was never an unable-to-write one. Both this row and that one now read
+// gunbc.auth.approval_cutover_posture.
+//
+// AN EARLIER CUT DECLARED THEM SEPARATELY and argued that their mismatches were LOUD -- a repointed
+// front door without the authority move is a broker refusing every decision, and the converse is a
+// roadmap refusing every decision. That was true and it was not good enough: both are an outage of
+// the approval loop sitting between two edits somebody has to remember to make together, and the
+// cut was ordered as ONE transaction. Deriving both makes the mismatched states unwritable rather
+// than merely audible.
+type ApprovalRouteOwnership
+  = ApprovalPathsRoutedToRoadmap
+  | ApprovalPathsRoutedToBroker
+  | ApprovalPathsOwnedByBroker
+
+fn approval_route_ownership_for(posture: ApprovalCutoverPosture) -> ApprovalRouteOwnership {
+  match posture {
+    RoadmapServesAndWrites => ApprovalPathsRoutedToRoadmap
+    BrokerServesAndWrites => ApprovalPathsRoutedToBroker
+    BrokerOwnsAlone => ApprovalPathsOwnedByBroker
+  }
+}
+
+data approval_route_ownership: ApprovalRouteOwnership = approval_route_ownership_for(posture: approval_cutover_posture)
+
+// WHETHER THE FRONT DOOR CARRIES THE TWO APPROVAL MOUNTS AT ALL. This is the half the port proxy
+// could not express: a mount that exists must name the port the broker is on, and while the roadmap
+// answers there must be no mount.
+fn approval_front_door_mounts_installed() -> Bool {
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => false
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => true
+  }
+}
+
+fn roadmap_still_mounts_approval_routes() -> Bool {
+  match approval_route_ownership {
+    ApprovalPathsRoutedToRoadmap => true
+    ApprovalPathsRoutedToBroker => true
+    ApprovalPathsOwnedByBroker => false
+  }
+}
+
+// THE ONE INVARIANT EVERY ARM MUST SATISFY: exactly one party is routed to the approval paths.
+// The roadmap is routed when it holds the rows and no mount diverts them; the broker is routed when
+// a mount names it. Neither two nor zero is admissible, and this is the projection a claim asserts
+// over every arm rather than over the one the row happens to hold.
+fn roadmap_is_routed_for_approvals() -> Bool {
+  roadmap_still_mounts_approval_routes() && !approval_front_door_mounts_installed()
+}
+
+fn broker_is_routed_for_approvals() -> Bool {
+  approval_front_door_mounts_installed()
+}
+
+type ApprovalBrokerCutoverStage
+  = DeployDark
+  | ProveRelease
+  | MeasureDemand
+  | RepointFrontDoor
+  | ProbeRouteClasses
+  | RetireRoadmapRoutes
+
+fn approval_broker_cutover_stages() -> List<ApprovalBrokerCutoverStage> {
+  [DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes]
+}
+
+fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> NonEmptyStr {
+  match stage {
+    DeployDark => "deploy-dark" as NonEmptyStr
+    ProveRelease => "prove-release" as NonEmptyStr
+    MeasureDemand => "measure-demand" as NonEmptyStr
+    RepointFrontDoor => "repoint-front-door" as NonEmptyStr
+    ProbeRouteClasses => "probe-route-classes" as NonEmptyStr
+    RetireRoadmapRoutes => "retire-roadmap-routes" as NonEmptyStr
+  }
+}
+
+// WHAT EACH STAGE IS FOR, in the order the ordering exists to enforce:
+//
+//   1. DeployDark        -- the broker unit and slice are installed and started on the broker's
+//                           one port, with no front-door mount naming it and no writer authority.
+//                           A loopback client that finds the port is REFUSED, so the roadmap is
+//                           still the only process that can write the store.
+//   2. ProveRelease      -- the dark process reads back the release it was launched with. A process
+//                           that cannot say which release it is must never be routed to, because
+//                           every later stage's evidence would be about an unknown build.
+//   3. MeasureDemand     -- the six readings the slice bound was asked to be derived from, taken
+//                           against the dark process: cold bind and load peak, idle resident,
+//                           submission-plus-notification peak, confirm-page peak, redemption peak,
+//                           status-poll peak. Until this stage the bound in
+//                           gunbc.live_deploy.slice_bounds is a declared policy budget over an
+//                           UNMEASURED subject -- its original containment derivation was falsified
+//                           when the roadmap serve process it bounded turned out to peak near 18 GB
+//                           -- and this stage is what replaces it with the broker's own numbers.
+//   4. RepointFrontDoor  -- the two approval mounts move to the broker. THIS is the stage that
+//                           makes the broker a writer, and stage 6 is what stops the roadmap being
+//                           one; between them the roadmap is REACHABLE but no longer ROUTED, which
+//                           is why probing comes before retiring.
+//   5. ProbeRouteClasses -- all four route classes are exercised THROUGH the front door. This is
+//                           also where the one thing this corpus does not know about the upstream
+//                           is settled: whether a --set-path mount presents the mount prefix to the
+//                           backend (gunbc.auth.approval_broker_endpoint
+//                           approval_broker_front_door_path_preservation). A 404 here is a located
+//                           refusal with the roadmap still able to serve, which is the whole reason
+//                           this stage is before the next one and not after it.
+//   6. RetireRoadmapRoutes -- the cutover arm and its projection are deleted from
+//                           gunbc.roadmap_serve, and the roadmap process stops being able to reach
+//                           the store or either keyring at all.
+
+// ── THE EVIDENCE ─────────────────────────────────────────────────────────────────────────────
+// EACH FIELD IS AN OBSERVATION SOMEONE BROUGHT BACK, never an intention someone declared. The
+// distinction is the whole value of the type: a stage whose entry condition is "we decided to" can
+// always be satisfied, and a plan that can always advance is not a plan.
+
+type DarkDeploymentStanding
+  = DarkUnitNotStarted { detail: NonEmptyStr }
+  | DarkUnitListening { port: Port }
+
+// THE RELEASE READBACK IS DERIVED FROM THE BYTES THE PROCESS ANSWERED, NOT DECLARED (review 68036).
+// It used to be a free-standing pair an operator could construct either way, which made the one
+// stage whose whole job is "prove this process is the build you deployed" satisfiable by saying so.
+// It is now produced by release_readback_from_read below over a gunbc.serve_liveness reading -- so
+// the arm this evidence carries is decided by what the process answered, and the detail on the
+// refusing arm is that module's located reason rather than prose someone typed.
+type ReleaseReadback
+  = ReleaseNotReadBack { detail: NonEmptyStr }
+  | ReleaseReadBack { revision: NonEmptyStr }
+
+// THE ONLY WAY TO BUILD THE ADMITTING ARM. Every refusing arm of the read maps to
+// ReleaseNotReadBack carrying that read's own reason; only an observed, 40-hex-validated revision
+// produces ReleaseReadBack. So a stage cannot be advanced past "prove release" by a body that
+// answered 200 with nothing useful in it -- a 200 is the caller's observation, and what the process
+// SAID is what this decides on.
+// ONE FOLD, AND THE SECOND ONE IS DELETED (review 68172). A `release_readback_from_livez(body)`
+// stood beside this arm for arm -- same seven refusals, same reasons, same admitting arm -- because
+// the body-taking spelling was written first and this reading-taking one was added when the
+// production route needed to fold a probe outcome. Production moved here and nothing moved the
+// other, so the corpus carried two folds answering one question and the WITNESSES asserted the join
+// through the one production does not call. That is exactly the defect review 68036 caught on this
+// same document, reintroduced by the repair for review 68058: a claim over a route nobody serves.
+//
+// Callers that hold BYTES compose: release_readback_from_read(read: observe_serve_liveness(body: b)).
+// The composition is two named folds and needs no third name (DESIGN section 2: net concepts must
+// not grow by re-invention).
+fn release_readback_from_read(read: ServeLivenessRead) -> ReleaseReadback {
+  match read {
+    ServeLivenessObserved { revision: rev } => ReleaseReadBack { revision: rev as String as NonEmptyStr }
+    ServeLivenessUnreachable { detail: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessBodyUnparseable => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessBodyNotAnObject => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionAbsent => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionDuplicated { count: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionNotAString => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionMalformed { text: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+  }
+}
+
+// THE SIX READINGS ARE ONE VALUE BECAUSE THEY ARE ONE QUESTION. A bound derived from five of them
+// is a bound with an unmeasured peak in it, and the peak that is missing is the one that will be
+// hit. Absence is not zero, so the unmeasured state is its own arm rather than a reading of 0.
+// ── THE DEMAND READING LIVES IN ITS OWN MODULE NOW ──────────────────────────────────────────
+// IT MOVED BECAUSE IT GAINED A PRODUCER. While DemandMeasured was declared here, the only thing
+// that built one was a witness fixture, so this plan's admitting arm was unreachable in production
+// -- the gate below could refuse forever and never pass. gunbc.auth.approval_broker_demand now owns
+// the vocabulary AND the fold that constructs a reading from what a run actually observed, and this
+// module consumes it. The plan decides what a reading permits; it does not decide what a reading
+// IS, and it never had the observations to construct one.
+//
+// WHAT THE READINGS BECAME, because the shape changed rather than just moving: five named per-phase
+// peak fields became a roster-checked list of PeakOfIncarnationExercising. The old fields invited
+// exactly the misreading their names carried -- confirm_page_peak read as the confirm page's
+// marginal cost -- when every number is a whole incarnation's peak including its cold load, which
+// is what the slice must actually hold. The reasons the readings are ByteSize rather than Int
+// (review 68036) and that declared_concurrency stays an Int move with them.
+
+type FrontDoorStanding
+  = FrontDoorPointsAtRoadmap
+  | FrontDoorPointsAtBroker { port: Port }
+
+// ONE ARM PER ROUTE CLASS, and a class is UNPROBED until an answer came back through the front
+// door. A probe that was skipped and a probe that returned a 404 are different facts about the
+// deployment and must not fold together, because the first says nothing was learned and the second
+// says something was learned and it was bad -- DESIGN's not-met versus cannot-tell.
+//
+// AN ANSWER CARRIES WHAT THE BODY SAID ABOUT ITS OWN PRODUCER, because a status alone is
+// CALLER-ASSERTIBLE about the wrong subject (cutover HOLD item 4). RouteClassAnswered used to hold
+// an Int, and a 200 through the front door then established that SOMETHING answered -- which,
+// during the stages when the roadmap is still mounted, is true when the roadmap answered and the
+// repoint never took. A 404 was worse: it folded "the front door did not route this" together with
+// "it routed it and stripped the prefix, so the broker's table saw /<capability>", and those want
+// opposite repairs. The observed marker separates them, and gunbc.auth.approval_broker_marker is
+// where the tokens are declared so the probe and the responder read one spelling.
+// THE STATUS FIELDS ARE HttpStatus, NOT Int (review 69024). std.types already owns the carrier --
+// `type HttpStatus = Int where range(min: 100, max: 599)`, with http_status_of as its admission
+// fold -- and this change's OWN sibling consumes it: gunbc.auth.approval_broker_serve
+// broker_text_response takes `status: HttpStatus`. Declaring Int here made the two halves of one
+// change disagree about where the fact lives, which is DESIGN section 3's nicknaming and fails
+// section 2's test that net concepts must not grow by re-invention.
+//
+// IT IS LOAD-BEARING RATHER THAN COSMETIC BECAUSE OF WHO WRITES THESE ROWS. Every constructor of
+// these arms today is CALLER-SUPPLIED evidence in a witness -- there is no production probe yet --
+// so a row carrying `status: 7` was writable, and the fixture population is exactly what the
+// refinement walls.
+//
+// WHAT THE REFINEMENT DOES AND DOES NOT DO, said rather than assumed: `where range` refuses a
+// LITERAL outside the range at authoring time, which is the fixture case above. It does not refuse
+// a value computed at runtime. So the remaining obligation is http_status_of at the eventual probe
+// boundary, where a real HTTP client's integer enters -- named here so the wall is not mistaken for
+// covering that too.
+type RouteClassProbe
+  = RouteClassUnprobed
+  | RouteClassRefused { status: HttpStatus, detail: NonEmptyStr }
+  | RouteClassAnswered { status: HttpStatus, observed: ObservedMarker }
+
+// THE CANDIDATE THIS DEPLOY INSTALLED, CARRIED SO THE READBACK CAN BE COMPARED RATHER THAN MERELY
+// PARSED (cutover HOLD item 4). Without it, release_admission accepted ANY well-formed 40-hex
+// revision, so a broker left running from an earlier admitted release passed the stage whose entire
+// purpose is to establish WHICH BUILD is listening -- and every later stage's evidence would then
+// be about that other build while reading as if it were about this one.
+//
+// It is the deploy's own candidate revision, supplied by the caller that performed the install,
+// never read back from the same process being interrogated: asking the subject to supply the value
+// it is checked against is not a comparison.
+type ApprovalBrokerCutoverEvidence {
+  dark: DarkDeploymentStanding
+  expected_release: NonEmptyStr
+  release_readback: ReleaseReadback
+  demand: BrokerDemandReading
+  front_door: FrontDoorStanding
+  confirm_probe: RouteClassProbe
+  decide_probe: RouteClassProbe
+  submit_probe: RouteClassProbe
+  status_probe: RouteClassProbe
+}
+
+// ── ADMISSION ────────────────────────────────────────────────────────────────────────────────
+// EVERY REFUSAL NAMES THE STAGE AND WHAT IS MISSING. None of them is a boolean false: a caller that
+// cannot advance learns which observation to go and take, which is the difference between a typed
+// refusal and a gate.
+type CutoverRefusal
+  = DarkDeploymentNotListening { detail: NonEmptyStr }
+  | DarkDeploymentOnUnexpectedPort { observed: Port, expected: Port }
+  | DarkStageBrokerAlreadyHoldsWriterAuthority
+  | ReleaseUnreadable { detail: NonEmptyStr }
+  | ReleaseDoesNotMatchCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
+  | DemandNotMeasured { missing: NonEmptyStr }
+  | FrontDoorStillAtRoadmap
+  | RouteClassNotProbed { route: NonEmptyStr }
+  | RouteClassProbeRefused { route: NonEmptyStr, status: HttpStatus, detail: NonEmptyStr }
+  | RouteClassAnsweredByNoBroker { route: NonEmptyStr, status: HttpStatus }
+  | RouteClassAnsweredByWrongFold { route: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+  | BothWritersWouldBeLive { detail: NonEmptyStr }
+  | TreeReceiptNotObserved { detail: NonEmptyStr }
+  | TreeIsNotTheCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
+
+type CutoverAdmission
+  = StageAdmitted { stage: ApprovalBrokerCutoverStage }
+  | StageRefused { stage: ApprovalBrokerCutoverStage, cause: CutoverRefusal }
+
+// THE EXPECTED MARKER IS SUPPLIED BY THE CALLER THAT KNOWS THE ROUTE CLASS, not derived here from
+// the route string. Parsing "which handler should /approvals reach" out of a path literal would
+// re-implement the router in the admission fold -- a second authority for routing, and one that
+// would keep agreeing with the first until a path moved.
+// THE EXPECTED PROCESS IS BrokerProcess AND IS NOT A PARAMETER, because there is exactly one answer
+// this stage accepts. The probe exists to establish that the FRONT DOOR NOW REACHES THE BROKER; a
+// caller able to pass RoadmapProcess could satisfy it with the state it is meant to detect, which
+// is the caller-assertibility the whole marker scheme exists to remove. Fixing it here means the
+// stage cannot be parameterised into agreement.
+fn route_class_admission(
+  route: NonEmptyStr,
+  expected: ApprovalBrokerMarker,
+  probe: RouteClassProbe,
+) -> CutoverRefusal? {
+  match probe {
+    RouteClassUnprobed => Present { value: RouteClassNotProbed { route: route } }
+    RouteClassRefused { status: st, detail: d } =>
+      Present { value: RouteClassProbeRefused { route: route, status: st, detail: d } }
+    RouteClassAnswered { status: st, observed: o } =>
+      match o {
+        NoMarkerInBody => Present { value: RouteClassAnsweredByNoBroker { route: route, status: st } }
+        MarkerObserved { process: op, marker: m } =>
+          match approval_broker_marker_agreement(
+            observed_process: op,
+            observed: m,
+            expected_process: BrokerProcess,
+            expected: expected,
+          ) {
+            MarkerAgrees => Absent
+            MarkerDiffers => Present { value: RouteClassAnsweredByWrongFold {
+              route: route,
+              expected: approval_broker_served_token(p: BrokerProcess, m: expected),
+              observed: approval_broker_served_token(p: op, m: m),
+            } }
+          }
+      }
+  }
+}
+
+fn first_refusal(causes: List<CutoverRefusal?>) -> CutoverRefusal? {
+  fold(causes, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => c
+    }
+  )
+}
+
+fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  first_refusal(causes: [
+    route_class_admission(route: approval_broker_confirm_path_template, expected: ConfirmHandlerObserved, probe: e.confirm_probe),
+    route_class_admission(route: "POST \{capability\} decide" as NonEmptyStr, expected: DecisionHandlerObserved, probe: e.decide_probe),
+    route_class_admission(route: approval_broker_submit_path, expected: SubmissionHandlerObserved, probe: e.submit_probe),
+    route_class_admission(route: approval_broker_status_path_template, expected: StatusHandlerObserved, probe: e.status_probe),
+  ])
+}
+
+// WHAT MAKES THE DARK STAGE DARK, RESTATED AFTER THE PORT PROXY WAS REMOVED. This refusal used to
+// say a broker on the SERVING port is not dark. That was the port proxy's own logic and it is now
+// backwards: the broker binds one port for its whole life, so being on that port is what a correct
+// dark deployment looks like, and being anywhere else means the unit is not the one this plan
+// reasons about (side-chat HOLD item 1).
+//
+// DARKNESS IS NOW THE TWO FACTS THAT ACTUALLY DECIDE IT: nothing routes the public paths to the
+// broker, and the broker does not hold writer authority. The second is the one a port could never
+// express -- a loopback client reaches the process whatever the front door says -- so a broker
+// already holding authority at the dark stage is refused by name rather than observed to be
+// unlikely.
+fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.dark {
+    DarkUnitNotStarted { detail: d } => Present { value: DarkDeploymentNotListening { detail: d } }
+    DarkUnitListening { port: p } =>
+      if !(p == approval_broker_listen_port) {
+        Present { value: DarkDeploymentOnUnexpectedPort { observed: p, expected: approval_broker_listen_port } }
+      } else {
+        match approval_writer_authority {
+          BrokerWriter => Present { value: DarkStageBrokerAlreadyHoldsWriterAuthority }
+          RoadmapWriter => Absent
+        }
+      }
+  }
+}
+
+// THE READBACK MUST NAME THE CANDIDATE, NOT MERELY LOOK LIKE A REVISION. Three outcomes, and the
+// middle one is the whole of the repair: unreadable (nothing to compare), readable but a different
+// build (the stale-broker case, previously ADMITTED), and readable and this build.
+// DOES THE READBACK NAME THE CANDIDATE. It is its own coproduct rather than a Bool for the ordinary
+// reason -- the differing arm carries BOTH revisions, and a Bool would make the caller re-derive
+// them -- and it is a separate fold because an `if` whose branches are an Optional's two
+// constructors does not unify here: every admission in this file that mixes Present and Absent does
+// it through MATCH ARMS, and the two spellings are not interchangeable (resolve refused line 386
+// twice, in both branch orders, before this shape).
+type ReleaseCandidateMatch
+  = RevisionMatchesCandidate
+  | RevisionDiffersFromCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
+
+fn release_revision_match(expected: NonEmptyStr, observed: NonEmptyStr) -> ReleaseCandidateMatch {
+  if (observed as String) == (expected as String) {
+    RevisionMatchesCandidate
+  } else {
+    RevisionDiffersFromCandidate { expected: expected, observed: observed }
+  }
+}
+
+fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.release_readback {
+    ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
+    ReleaseReadBack { revision: r } =>
+      match release_revision_match(expected: e.expected_release, observed: r) {
+        RevisionMatchesCandidate => Absent
+        RevisionDiffersFromCandidate { expected: x, observed: o } =>
+          Present { value: ReleaseDoesNotMatchCandidate { expected: x, observed: o } }
+      }
+  }
+}
+
+fn demand_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.demand {
+    DemandUnmeasured { missing: m } => Present { value: DemandNotMeasured { missing: m } }
+    DemandMeasured {
+      incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _,
+      declared_concurrency: _,
+    } => Absent
+  }
+}
+
+fn front_door_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.front_door {
+    FrontDoorPointsAtRoadmap => Present { value: FrontDoorStillAtRoadmap }
+    FrontDoorPointsAtBroker { port: _ } => Absent
+  }
+}
+
+// ── ENTERING A STAGE AND DISCHARGING IT ARE TWO QUESTIONS ───────────────────────────────────
+// THE FIRST CUT HAD ONLY ONE FOLD AND ITS ONE PRODUCTION CALLER ASKED THE WRONG QUESTION (review
+// 68058). Admission is CUMULATIVE over PRIOR stages -- what must already be observed before this
+// stage may be attempted -- so `admission(ProveRelease)` consulted the dark deployment and NOT the
+// release readback, which is correct for what it means and useless as a check that the release was
+// proved. The dark-install entry asked it anyway and reported success for a broker that never
+// bound its port or answered a branch name, while the annotation above that entry asserted the
+// opposite. That is rung inflation on a check of my own (DESIGN section 4b, and section 4b's prior
+// question: is the RED authorable before the check is written -- here it was not).
+//
+// SO THE PER-STAGE OBSERVATION IS NAMED ONCE and the two questions are both derived from it:
+// admission folds the stages BEFORE this one, discharge folds the stages UP TO AND INCLUDING it.
+// One roster, so a new stage cannot be added to one question and forgotten in the other.
+//
+// RetireRoadmapRoutes HAS NO OWN OBSERVATION because its discharge is not something anyone reports:
+// it is roadmap_approval_mount being flipped, which approval_broker_cutover_complete reads
+// directly. A stage whose completion is a corpus fact must not also have an evidence field, or the
+// two can disagree and the one that is asserted wins.
+fn cutover_stage_own_cause(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverRefusal? {
+  match stage {
+    DeployDark => dark_deployment_admission(e: e)
+    ProveRelease => release_admission(e: e)
+    MeasureDemand => demand_admission(e: e)
+    RepointFrontDoor => front_door_admission(e: e)
+    ProbeRouteClasses => all_route_classes_probed(e: e)
+    RetireRoadmapRoutes => none
+  }
+}
+
+fn cutover_causes_through(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverRefusal? {
+  match stage {
+    DeployDark => cutover_stage_own_cause(stage: DeployDark, e: e)
+    ProveRelease => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+    ])
+    MeasureDemand => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+    ])
+    RepointFrontDoor => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+    ])
+    ProbeRouteClasses => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+      cutover_stage_own_cause(stage: ProbeRouteClasses, e: e),
+    ])
+    RetireRoadmapRoutes => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+      cutover_stage_own_cause(stage: ProbeRouteClasses, e: e),
+    ])
+  }
+}
+
+// MAY THIS STAGE BE ATTEMPTED: every EARLIER stage's observation is in. The refusal reported is the
+// first missing one, which is the one to go and take.
+fn approval_broker_cutover_admission(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverAdmission {
+  let cause = match stage {
+    DeployDark => none
+    ProveRelease => cutover_causes_through(stage: DeployDark, e: e)
+    MeasureDemand => cutover_causes_through(stage: ProveRelease, e: e)
+    RepointFrontDoor => cutover_causes_through(stage: MeasureDemand, e: e)
+    ProbeRouteClasses => cutover_causes_through(stage: RepointFrontDoor, e: e)
+    RetireRoadmapRoutes => cutover_causes_through(stage: ProbeRouteClasses, e: e)
+  }
+  match cause {
+    Present { value: c } => StageRefused { stage: stage, cause: c }
+    Absent => StageAdmitted { stage: stage }
+  }
+}
+
+// HAS THIS STAGE BEEN DISCHARGED: its OWN observation is in, and every earlier one too. This is the
+// question a caller asks when it has just performed a stage and wants to know whether it worked --
+// which is what the dark install asks, and what it previously got wrong by asking the other one.
+fn approval_broker_cutover_stage_discharged(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverAdmission {
+  match cutover_causes_through(stage: stage, e: e) {
+    Present { value: c } => StageRefused { stage: stage, cause: c }
+    Absent => StageAdmitted { stage: stage }
+  }
+}
+
+fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
+  match c {
+    DarkDeploymentNotListening { detail: d } =>
+      join(["the approval broker is not listening: ", d as String], "") as NonEmptyStr
+    DarkDeploymentOnUnexpectedPort { observed: o, expected: x } =>
+      join([
+        "the approval broker answered on port ", to_string(o), " but this deployment binds it to ",
+        to_string(x), " for the process's whole life, so whatever answered is not the unit this ",
+        "plan is reasoning about -- and every later reading, release, identity and demand alike, ",
+        "would be about a process nobody deployed.",
+      ], "") as NonEmptyStr
+    DarkStageBrokerAlreadyHoldsWriterAuthority =>
+      join([
+        "the broker already holds approval-store writer authority, so this is not a dark stage: ",
+        "the stage whose purpose is to observe the broker while it CANNOT mutate the store would ",
+        "be observing the live writer. The deployment's posture is: ",
+        approval_cutover_posture_label(p: approval_cutover_posture) as String,
+        " -- authority and routing both derive from that one row ",
+        "(gunbc.auth.approval_cutover_posture), and it moves in one modeled transaction after the ",
+        "demand is measured.",
+      ], "") as NonEmptyStr
+    ReleaseUnreadable { detail: d } =>
+      join(["the dark broker did not read back a release revision: ", d as String,
+            ". Every later stage's evidence would be about an unknown build."], "") as NonEmptyStr
+    ReleaseDoesNotMatchCandidate { expected: x, observed: o } =>
+      join([
+        "the broker is running release ", o as String, " but this deploy installed ", x as String,
+        ". The unit was written and something is answering, but it is not this build -- most likely ",
+        "the service did not restart, or restarted from an older admitted release. Every later ",
+        "stage's readings would describe that process while reading as if they described this one, ",
+        "which is why the demand measurement and the route probes sit BEHIND this stage.",
+      ], "") as NonEmptyStr
+    DemandNotMeasured { missing: m } =>
+      join([
+        "the broker's own memory demand is unmeasured: ", m as String,
+        ". Its slice bound is currently a declared policy budget over an unmeasured subject, and ",
+        "repointing traffic before measuring would mean sizing a live writer from a number nothing ",
+        "has observed.",
+      ], "") as NonEmptyStr
+    FrontDoorStillAtRoadmap =>
+      "the front door still proxies the approval paths to the roadmap port; nothing has moved yet" as NonEmptyStr
+    RouteClassNotProbed { route: r } =>
+      join([
+        "route class ", r as String, " was never probed through the front door. Unprobed is not ",
+        "passing: it says nothing was learned, which is exactly the state the roadmap's rows must ",
+        "not be removed under.",
+      ], "") as NonEmptyStr
+    RouteClassAnsweredByNoBroker { route: r, status: st } =>
+      join([
+        "route class ", r as String, " answered ", to_string(st),
+        " through the front door, but the body carries NO approval-broker marker at all -- so ",
+        "NEITHER serving process produced it. Both mark every response by construction ",
+        "(gunbc.auth.approval_broker_marker, threaded through the one response constructor), so an ",
+        "unmarked answer means something outside this deployment is serving these paths, or the ",
+        "front door reaches nothing. A 200 here is refused for the same cause as a 404. ",
+        "NOTE THE NEIGHBOURING ARM: a body marked roadmap/... is a DIFFERENT and more likely ",
+        "failure -- the repoint not having taken -- and is refused as RouteClassAnsweredByWrongFold ",
+        "rather than here, because something was learned and it named the wrong process.",
+      ], "") as NonEmptyStr
+    RouteClassAnsweredByWrongFold { route: r, expected: ex, observed: ob } =>
+      join([
+        "route class ", r as String, " was answered by ", ob as String,
+        " and this stage requires ", ex as String,
+        ". READ THE PROCESS SEGMENT FIRST. A roadmap/... marker means the FRONT DOOR STILL REACHES ",
+        "THE ROADMAP: it mounts these same four folds until the last stage, so it answers this path ",
+        "correctly and would look like a success on status alone -- that is the reading this ",
+        "comparison exists to refuse (review 68539, which found it ADMITTED when the marker named ",
+        "only the fold). The repair is the front door, not the broker. ",
+        "A broker/no-route-matched marker on a path the broker demonstrably routes is the OTHER ",
+        "reading: the request reached the broker and its table refused it, which is the prefix ",
+        "strip -- a --set-path mount presenting /<capability> to a table matching /approve/",
+        "<capability>, exactly the standing ",
+        "gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation names as ",
+        "unsettled and this probe as the instrument that settles. Either way the repair is modeled, ",
+        "with the roadmap still able to serve.",
+      ], "") as NonEmptyStr
+    RouteClassProbeRefused { route: r, status: st, detail: d } =>
+      join([
+        "route class ", r as String, " answered ", to_string(st), " through the front door: ",
+        d as String,
+        ". This arm is the probe REFUSING -- no usable answer came back at all -- so there is no ",
+        "body to read a marker from and nothing here discriminates which process was reached. The ",
+        "prefix-strip question is settled by the marker arms above, on a probe that did answer.",
+      ], "") as NonEmptyStr
+    TreeReceiptNotObserved { detail: d } =>
+      join([
+        "the broker's tree receipt was not observed, so nothing establishes which bytes the unit is ",
+        "running: ", d as String,
+        " Until it is read, the only release evidence is the revision the process reports on /livez, ",
+        "and that revision is a launch argument this deployment wrote into ExecStart -- the process ",
+        "echoes it whatever tree it loaded.",
+      ], "") as NonEmptyStr
+    TreeIsNotTheCandidate { expected: ex, observed: ob } =>
+      join([
+        "the broker's tree receipt names candidate ", ob as String,
+        " but this deploy installed ", ex as String,
+        ". The tree at the broker root is from an EARLIER deploy: the copy step did not run, or ran ",
+        "and left the previous receipt in place. A /livez readback cannot see this, because the unit ",
+        "reports the revision it was launched with rather than the revision of the bytes it loaded.",
+      ], "") as NonEmptyStr
+    BothWritersWouldBeLive { detail: d } =>
+      join(["refusing: this would leave two processes able to write the approval store -- ", d as String], "") as NonEmptyStr
+  }
+}
+
+// WHERE THE PLAN IS, ASKED PER STAGE RATHER THAN ANSWERED AS ONE VALUE. A
+// approval_broker_cutover_position fold stood here, folding the roster to the furthest DISCHARGED
+// stage. Nothing consumed it (review 68420 found its sibling of the same class), and a declaration
+// nothing reads is DESIGN section 2's redundant work however well shaped it is. The question it
+// answered is still answerable and is strictly more useful asked directly:
+// approval_broker_cutover_stage_discharged names WHICH observation is missing, where a single
+// furthest-stage value would have said only how far along the plan is.
+
+// THE TERMINAL CONDITION, stated as the fact stage 6 establishes rather than as a stage that has
+// been performed: the roadmap no longer mounts an approval route. It reads roadmap_approval_mount
+// -- the declaration that DECIDES it -- rather than an evidence field an operator supplied, which
+// is the correction review 68050 forced: the field restated a corpus fact, so a caller could assert
+// the cutover complete while the rows were still mounted, and a plan reading its own intent is not
+// reading anything.
+fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
+  !roadmap_still_mounts_approval_routes()
+    && match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
+      StageAdmitted { stage: _ } => true
+      StageRefused { stage: _, cause: _ } => false
+    }
+}
+
+// ── WHAT STAGE 4 INSTALLS ────────────────────────────────────────────────────────────────────
+// THE TWO MOUNTS ARE A VALUE THE PLAN CARRIES, not a command someone types at stage 4. That is the
+// difference between a modeled deploy step and the hand-authored migration script DESIGN section 6
+// classifies as out-of-band actuation: the argv the operator runs and the argv the plan reasons
+// about are the same projection of the same endpoint, so "was the front door repointed" is a
+// question about a value rather than about what was typed.
+//
+// THEY ADD MAPPINGS RATHER THAN REPLACING ONE, and that is what keeps the roadmap serving
+// everything else through the cutover. tailscale keys a mapping on (listener port x mount path x
+// service), so two --set-path endpoints on the same https listener sit beside the roadmap's root
+// mount instead of rebinding it -- the collision the endpoint key exists to make expressible, here
+// deliberately avoided rather than deliberately caused.
+fn approval_broker_front_door_endpoints(https_port: Port, backend_port: Port) -> List<TailscaleServeEndpoint> {
+  [
+    approval_broker_confirm_front_door(https_port: https_port, backend_port: backend_port),
+    approval_broker_status_front_door(https_port: https_port, backend_port: backend_port),
+  ]
+}
+
+// THE BACKEND IS THE BROKER'S ONE PORT. Review 68075 found these mounts naming a port the unit was
+// not bound to; the repair derived both from an ownership row, and the cutover HOLD then removed
+// the port from that row entirely. With one port for the process's whole life, the mount and the
+// unit cannot disagree because there is nothing left for them to disagree about.
+fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>> {
+  map(
+    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_listen_port),
+    e => tailscale_serve_enable_argv(endpoint: e),
+  )
+}
+
+// ── WHAT THE DARK INSTALL ASKS THIS PLAN, IN PRODUCTION ─────────────────────────────────────
+// REVIEW 68050'S SECOND FINDING: the admission fold had no production consumer, so it gated
+// nothing -- an inert lens, which DESIGN section 4b calls a lie rather than a weak wall. This is
+// the consumer. gunbc.live_deploy.apply's dark-install entry probes the broker it just installed
+// and hands the reading here, so stage 2 is DECIDED by what the process answered rather than by an
+// operator saying it answered.
+//
+// THE OTHER STAGES' EVIDENCE IS DELIBERATELY ABSENT RATHER THAN FABRICATED. A deploy that has just
+// installed the broker has taken no demand measurement, repointed no front door and probed no route
+// class, and supplying plausible arms for them would be exactly the fabricated-output failure this
+// plan exists to prevent. So this builds the evidence it HAS and leaves the rest at its unmeasured
+// and unprobed arms, which is why the admission it can reach is ProveRelease and no further -- the
+// cumulative rule then refuses every later stage on its own missing observation, by name.
+// THE DARK ARM IS DERIVED FROM THE PROBE, NOT FROM THE CALLER'S ARGUMENT (review 68058). It was
+// built from the port the deploy intended to use, which made "is a broker listening" a restatement
+// of "we asked systemd to start one". A probe that did not land is a unit that is not listening,
+// and that is the only thing that can distinguish them from here.
+fn dark_install_evidence(
+  listening_port: Port,
+  read: ServeLivenessRead,
+  expected_release: NonEmptyStr,
+) -> ApprovalBrokerCutoverEvidence {
+  ApprovalBrokerCutoverEvidence {
+    expected_release: expected_release,
+    dark: match read {
+      ServeLivenessUnreachable { detail: d } => DarkUnitNotStarted { detail: d }
+      _ => DarkUnitListening { port: listening_port }
+    },
+    release_readback: release_readback_from_read(read: read),
+    demand: DemandUnmeasured { missing: "the six readings stage 3 takes against this dark process" as NonEmptyStr },
+    front_door: FrontDoorPointsAtRoadmap,
+    confirm_probe: RouteClassUnprobed,
+    decide_probe: RouteClassUnprobed,
+    submit_probe: RouteClassUnprobed,
+    status_probe: RouteClassUnprobed,
+  }
+}
+
+// IT ASKS DISCHARGE, NOT ADMISSION, and that is the whole correction. Admission for ProveRelease
+// asks whether the release readback MAY BE ATTEMPTED; discharge asks whether it SUCCEEDED. The
+// first is a constant pass from this caller and was being reported as a receipt that the plan is
+// consumed -- worse than an absent check, because it was cited as evidence (review 68058).
+//
+// WHAT GOES RED FROM THIS CALLER: a probe that did not land, bytes that are not JSON, a JSON value
+// that is not an object, a document with no revision member or two of them, a non-string revision,
+// a revision that is not 40 lowercase hex, and -- the case the cutover HOLD's item 4 named -- a
+// well-formed revision that is NOT THE CANDIDATE this deploy installed. Through
+// dark_deployment_admission it also reds on a unit answering a port this deployment does not bind,
+// and on a broker that already holds writer authority at a dark stage.
+//
+// THE CANDIDATE COMPARISON IS THE expected_release PARAMETER, supplied by the caller that performed
+// the install (gunbc.live_deploy.apply approval_broker_dark_install_readback_exit passes
+// candidate.revision) and never read back from the process being interrogated. release_admission
+// compares it and returns ReleaseDoesNotMatchCandidate naming both revisions, so a service that did
+// not restart is distinguishable from one that came back on an older admitted release.
+//
+// THIS PARAGRAPH PREVIOUSLY SAID THE OPPOSITE and survived the commit that closed the gap (review
+// 68395). It read "any 40-hex value satisfies the reading today ... which is deferred work", which
+// was true when written and false from the moment HOLD item 4 landed. DESIGN section 4c is about
+// annotations that restate what a declaration says; a row that CONTRADICTS the declaration under it
+// is the worse case, because the next reader either re-implements a wall that exists or files a
+// debt row for a discharged obligation.
+// ── THE TREE RECEIPT, ACTUALLY READ ─────────────────────────────────────────────────────────
+// REVIEW 68965 FOUND THIS WRITTEN AND NEVER READ, and the annotation beside the writer claimed the
+// opposite: that stage 2 consumed it. It did not. The only evidence the stage had was the revision
+// the process reports on /livez, which this deployment's own emitter wrote into ExecStart -- so the
+// stage compared a launch argument against the launch argument, which is exactly the control-plane
+// echo gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
+// A broker whose tree copy silently left stale bytes passed it.
+//
+// WHAT THIS READS AND WHAT IT ESTABLISHES, stated at its real strength rather than the strength the
+// old annotation claimed. The receipt is a FILE ON THE HOST, written by the copy step at the broker
+// root, carrying the candidate revision that copy was for and the digest of the bytes it installed.
+// Reading it establishes that THE COPY FOR THIS CANDIDATE RAN AND RECORDED A DIGEST -- which a
+// stale tree from an earlier deploy fails, and which the /livez echo cannot tell you at all.
+//
+// THE PATH IS PER-CANDIDATE NOW, AND THAT CHANGES WHAT "STALE" CAN EVEN MEAN (operator ruling
+// 2026-09-20). The receipt lives inside releases/<candidate sha>/, and the readback derives the path
+// it reads from the candidate it just deployed -- so an earlier deploy's receipt is not an older
+// line at the same path that this fold must out-argue, it is a file somewhere else entirely. The
+// failure mode collapses from "read the wrong revision's receipt and believe it" to "the file is
+// absent", which is the arm below that refuses. A mutable shared root is what made the first
+// reading necessary; the immutable locus makes it structural.
+//
+// WHAT IT DOES NOT YET ESTABLISH, named rather than implied: that the installed digest EQUALS a
+// digest computed independently over the deploying checkout. That comparison needs the source-side
+// digest computed at readback time, and this fold does not compute it. So the receipt is a subject
+// side fact about which candidate was copied, not yet a proof that the bytes match. The trigger
+// that closes it: the readback computing the source tree digest in the deploying checkout with the
+// same fold the copy step uses, and refusing on inequality.
+type BrokerTreeReceiptRead
+  = TreeReceiptUnreadable { detail: NonEmptyStr }
+  | TreeReceiptMalformed { detail: NonEmptyStr }
+  | TreeReceiptObserved { revision: NonEmptyStr, installed_digest: NonEmptyStr }
+
+// THE FIRST MATCHING LINE WINS and later ones are ignored, which is the safe direction here: the
+// copy step writes each key once, so a second occurrence means the receipt was appended to rather
+// than replaced -- and reading the FIRST is reading the older value, which fails the revision
+// comparison below rather than silently accepting a newer line over a stale file.
+fn tree_receipt_field(text: String, key: String) -> String {
+  let marker = join([key, "="], "")
+  fold(split(s: text, delimiter: "\n"), init: "", f: (acc, line) =>
+    if acc != "" { acc }
+    else if starts_with(s: line, prefix: marker) {
+      substring(s: line, start: string_length(s: marker), end: string_length(s: line))
+    } else { acc }
+  )
+}
+
+fn observe_broker_tree_receipt(success: Bool, body: String, error: NonEmptyStr) -> BrokerTreeReceiptRead {
+  if !success {
+    TreeReceiptUnreadable { detail: error }
+  } else {
+    let rev = tree_receipt_field(text: body, key: "candidate_revision")
+    let dig = tree_receipt_field(text: body, key: "installed_digest")
+    if rev == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
+    } else if dig == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no installed_digest line, so the copy recorded nothing about the bytes it installed" as NonEmptyStr }
+    } else {
+      TreeReceiptObserved { revision: rev as NonEmptyStr, installed_digest: dig as NonEmptyStr }
+    }
+  }
+}
+
+// THE REFUSAL IS ITS OWN ARM RATHER THAN FOLDED INTO ReleaseUnreadable, because the two answer
+// different questions and a reader needs to know which one failed: the release readback asks WHICH
+// BUILD IS LISTENING, the tree receipt asks WHICH BYTES WERE INSTALLED. A broker can answer /livez
+// correctly from a stale tree, which is the whole case this arm exists for.
+fn tree_receipt_admission(read: BrokerTreeReceiptRead, expected_release: NonEmptyStr) -> CutoverRefusal? {
+  match read {
+    TreeReceiptUnreadable { detail: d } =>
+      Present { value: TreeReceiptNotObserved { detail: join([
+        "the broker tree receipt could not be read at the broker root: ", d as String,
+        ". The copy step writes it at the end of the tree install, so an absent receipt means that step did not complete -- the unit may be pointed at a directory nothing populated.",
+      ], "") as NonEmptyStr } }
+    TreeReceiptMalformed { detail: d } =>
+      Present { value: TreeReceiptNotObserved { detail: d } }
+    TreeReceiptObserved { revision: r, installed_digest: _ } =>
+      match release_revision_match(expected: expected_release, observed: r) {
+        RevisionMatchesCandidate => Absent
+        RevisionDiffersFromCandidate { expected: ex, observed: ob } =>
+          Present { value: TreeIsNotTheCandidate { expected: ex, observed: ob } }
+      }
+  }
+}
+
+// THE TREE RECEIPT IS CHECKED BEFORE THE RELEASE READBACK, and the order is deliberate. A stale
+// tree answers /livez perfectly -- it is a working broker, just not this candidate's -- so checking
+// the release first would report success on the very case the receipt exists to catch. Refusing on
+// the receipt first means the operator is told the bytes are wrong rather than told everything is
+// fine.
+fn dark_install_release_discharged(
+  listening_port: Port,
+  read: ServeLivenessRead,
+  tree_receipt: BrokerTreeReceiptRead,
+  expected_release: NonEmptyStr,
+) -> CutoverAdmission {
+  match tree_receipt_admission(read: tree_receipt, expected_release: expected_release) {
+    Present { value: cause } => StageRefused { stage: ProveRelease, cause: cause }
+    Absent =>
+      approval_broker_cutover_stage_discharged(
+        stage: ProveRelease,
+        e: dark_install_evidence(
+          listening_port: listening_port,
+          read: read,
+          expected_release: expected_release,
+        ),
+      )
+  }
+}

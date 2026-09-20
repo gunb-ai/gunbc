@@ -1,17 +1,27 @@
 module gunbc.srv3_seeded_install_media_artifact
 
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.provisioning.ubuntu_install_media {
+  noble_numbat_2404_3_live_server_arm64,
+  ubuntu_install_media_artifacts_dir,
+  ubuntu_install_media_install_path,
+}
 import extdeps.provisioning.ubuntu_seeded_install_media {
-  UbuntuSeededInstallMediaArtifactRow,
+  UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_default_nocloud_dir,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
-  seeded_install_media_content_hash,
-  ubuntu_seeded_install_media_install_path,
 }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
-import std.types { NonEmptyStr }
-import std.content_hash { ContentHash }
+import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.seeded_install_media_publish {
+  HostArtifactsDirectory,
+  SeededImagePublication,
+  SeededImageResolution,
+  SeededImageWriteBoundary,
+  publish_seeded_image,
+  resolve_seeded_image,
+}
+import std.types { List, NonEmptyStr }
 
 data srv3_autoinstall_user_data_body: NonEmptyStr = autoinstall_user_data(
   payload: srv3_ubuntu_autoinstall_on_iso,
@@ -25,22 +35,34 @@ data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_
   nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
 )
 
-data srv3_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
-  stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
-  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-)
-
-data srv3_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {
+// The install payload is srv3's autoinstall, so the image is an INSTALLER and keeps the label the
+// earlier remaster gave it; nothing reads srv3's boot-medium label.
+data srv3_seeded_install_media_input: UbuntuSeededInstallMediaBuildInput = UbuntuSeededInstallMediaBuildInput {
   stock_artifact: noble_numbat_2404_3_live_server_arm64,
-  autoinstall: srv3_ubuntu_autoinstall_on_iso,
-  autoinstall_user_data_body: srv3_autoinstall_user_data_body,
-  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
   nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
-  content_hash: srv3_seeded_install_media_content_hash,
+  user_data_body: srv3_autoinstall_user_data_body,
+  seed_files: [],
+  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
+  volume_id: "UBUNTU_SEEDED",
+  pinned_dates: seeded_install_media_pinned_dates,
+  image_stem: "ubuntu-24.04.3-live-server-srv3-seeded",
+  builder_revision: seeded_install_media_builder_revision,
 }
 
-data srv3_seeded_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_seeded_install_media_install_path(
-  artifact: srv3_seeded_install_media_artifact,
-)
+// The actuator host serves the image over its own NBD proxy from its artifacts directory, beside the
+// stock medium it was derived from.
+data srv3_seeded_install_media_boundary: SeededImageWriteBoundary = HostArtifactsDirectory {
+  dir: ubuntu_install_media_artifacts_dir(),
+}
+
+fn srv3_seeded_install_media_publish() -> SeededImagePublication {
+  publish_seeded_image(
+    input: srv3_seeded_install_media_input,
+    stock_path: ubuntu_install_media_install_path(artifact: noble_numbat_2404_3_live_server_arm64),
+    boundary: srv3_seeded_install_media_boundary,
+  )
+}
+
+fn srv3_seeded_install_media_resolve() -> SeededImageResolution {
+  resolve_seeded_image(input: srv3_seeded_install_media_input, dir: ubuntu_install_media_artifacts_dir())
+}
