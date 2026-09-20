@@ -25,7 +25,6 @@ import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
-  runner_microvm_attempt_jit_drive_path,
 }
 import extdeps.github.actions_jit_runner {
   JitRunnerGroupId, JitConfigMintOutcome, jit_config_mint_outcome,
@@ -42,7 +41,7 @@ import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
   JitDispatchRefusal, DispatchRefusedCellNotOwned, DispatchRefusedCredential,
   DispatchRefusedAttemptUnbound,
-  JitCredentialDelivery, JitCredentialBoundToDrive, JitCredentialNotDispatched,
+  JitCredentialDelivery, JitCredentialBoundToAttempt, JitCredentialNotDispatched,
   JitCredentialMintNotCreated,
   dispatch_jit_mint, receive_jit_mint, jit_credential_delivered,
 }
@@ -1063,19 +1062,15 @@ test fn witness_jit_mint_refuses_a_credential_missing_the_runner_permission() ->
 }
 
 // POSITIVE CONTROL. Without it both refusals above are satisfied by a planner that refuses
-// unconditionally. It also pins the two facts the mint's caller consumes: the drive destination is
-// the ATTEMPT's own path, and the runner name is the unit name rather than a second identifier.
+// unconditionally. It also pins the fact the mint's caller consumes: the runner name is the unit
+// name rather than a second identifier.
 test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -> Bool {
   match planned(owned: true, perms: runner_grant) {
     JitMintAuthorized {
       attempt: a,
-      endpoint_path: path,
       request: req,
-      drive_destination: dest,
     } =>
-      path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
-        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
-        && string_contains(s: dest, pattern: "/jit.img")
+      (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && runner_label_sets_equal(
              a: map(req.labels, l => l.value as String),
              b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],
@@ -1102,11 +1097,11 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
 
 // ---------------------------------------------------------------------------------------------
 // JIT MINT DISPATCH AND DELIVERY. gunbc.runner.runner_jit_perform is the consumer that closed
-// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: nothing in gunbc
-// performs a GitHubEffect, so no input here was produced by GitHub. What they establish is that the
-// fold discriminates -- and, in the delivery arms, that a credential cannot be obtained apart from
-// the drive destination the ownership proof named. They establish nothing about a live mint, and
-// runner_jit_perform's own transport frontier is what records that.
+// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: their outcomes
+// are supplied, not produced by GitHub. What they establish is that the fold discriminates -- and,
+// in the delivery arms, that a credential cannot be obtained apart from the attempt the ownership
+// proof named. The performer is gunbc.github_effect_perform, and its consumer frontier records that
+// no production route runs it yet.
 
 fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch {
   dispatch_jit_mint(
@@ -1181,22 +1176,22 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
 }
 
 // POSITIVE CONTROL. Without it the three reds above are satisfied by a dispatcher that refuses
-// unconditionally. It also pins the two-step shape: the installation token URL is derived from the
-// credential's own installation id rather than spelled, and the second step is the org-derived
-// generate-jitconfig path, so a dispatch cannot address another organization's runners.
+// unconditionally. It also pins the two-step shape: the App and installation the token is minted
+// for are the credential's own (not spelled at a call site), and the organization is the one the
+// plan authorized, so a dispatch cannot address another organization's runners.
 test fn witness_jit_dispatch_authorizes_and_names_both_steps_of_the_app_path() -> Bool {
   match dispatched(owned: true, perms: runner_grant) {
     JitMintDispatchAuthorized {
       attempt: a,
-      installation_token_url: token_url,
-      endpoint_path: path,
+      app: app,
+      installation: installation,
+      organization: org,
       request: req,
-      drive_destination: dest,
     } =>
-      token_url == "https://api.github.com/app/installations/999/access_tokens"
-        && path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+      installation.value == 999
+        && app == gunbai_bot_declared
+        && (org.login as String) == "gunb-ai"
         && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
-        && string_contains(s: dest, pattern: "/jit.img")
     _ => false
   }
 }
@@ -1235,23 +1230,25 @@ test fn witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_cr
 }
 
 // DELIVERY POSITIVE CONTROL, and it pins the property the push direction rests on: the credential
-// is reachable ONLY beside the attempt's own drive destination. There is no value in this module's
+// is reachable ONLY bound to the attempt the dispatch proved. There is no value in this module's
 // vocabulary that hands a caller a credential it may address anywhere else, which is the structural
 // form of "there is no endpoint a host may ask".
-test fn witness_a_minted_credential_is_bound_to_the_attempts_own_drive_destination() -> Bool {
+test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool {
   let delivery = receive_jit_mint(
     dispatch: dispatched(owned: true, perms: runner_grant),
     outcome: minted_outcome,
   )
   jit_credential_delivered(delivery: delivery)
     && match delivery {
-      JitCredentialBoundToDrive {
+      JitCredentialBoundToAttempt {
         attempt: a,
-        drive_destination: dest,
         credential: c,
         runner_id: id,
       } =>
-        dest == runner_microvm_attempt_jit_drive_path(attempt: a)
+        match dispatched(owned: true, perms: runner_grant) {
+          JitMintDispatchAuthorized { attempt: d, app: _, installation: _, organization: _, request: _ } => a == d
+          _ => false
+        }
           && (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
           && id == 4242
       _ => false
