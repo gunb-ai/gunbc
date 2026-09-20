@@ -1,7 +1,6 @@
 module gunbc.plans.demand_restatement_follow_up
 
-import std.types { NonEmptyStr, List, String }
-import std.integer { UInt32 }
+import std.types { NonEmptyStr, List, String, Int }
 
 // ONE ROSTERED MODULE whose restatement rows cut (c) did not measure: the module, and how many rows
 // it carries. The count is a field rather than a number baked into the module's spelling, so a
@@ -10,7 +9,7 @@ import std.integer { UInt32 }
 // a declaration this roster does not need (DESIGN 3c).
 type DemandRestatementFollowUpModule {
   module_path: NonEmptyStr
-  rows: UInt32
+  rows: Int
 }
 
 // THE COMMIT RANGE OVER WHICH THESE ROWS ARRIVED. Cut (c) deletes an authored `uses` row when the
@@ -20,7 +19,7 @@ type DemandRestatementFollowUpModule {
 // merge, and every merge of main brought more. The rows rostered below arrived that way, AFTER the
 // measured population was fixed.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..af316cc415d" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..a35c7cede3e" as NonEmptyStr
 
 // THE ROSTER, carried rather than deleted on the assumption that these rows would have typed the
 // same way. Deleting them unmeasured is the fail-open the cut exists to avoid: a row whose derived
@@ -31,13 +30,13 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..af31
 // demand is nonempty. The criterion does not change -- only the population is new.
 
 data demand_restatement_follow_up_modules: List<DemandRestatementFollowUpModule> = [
-  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_mtcollins1_boot_run" as NonEmptyStr, rows: 9 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "gunbc.auth.approval_keyring_converge" as NonEmptyStr, rows: 5 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_batch_actuator" as NonEmptyStr, rows: 4 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "test.probe.review_sheet_tab_forged_probe" as NonEmptyStr, rows: 4 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "gunbc.authorization_claim_slot" as NonEmptyStr, rows: 2 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_megarac_media_attach" as NonEmptyStr, rows: 1 as UInt32 },
-  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_tab_locator" as NonEmptyStr, rows: 1 as UInt32 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_mtcollins1_boot_run" as NonEmptyStr, rows: 9 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.auth.approval_keyring_converge" as NonEmptyStr, rows: 5 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_batch_actuator" as NonEmptyStr, rows: 4 },
+  DemandRestatementFollowUpModule { module_path: "test.probe.review_sheet_tab_forged_probe" as NonEmptyStr, rows: 4 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.authorization_claim_slot" as NonEmptyStr, rows: 2 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.machine_intake_megarac_media_attach" as NonEmptyStr, rows: 1 },
+  DemandRestatementFollowUpModule { module_path: "gunbc.review_sheet_tab_locator" as NonEmptyStr, rows: 1 },
 ]
 
 // THE MODULE PATHS, for a consumer that renders the roster as prose.
