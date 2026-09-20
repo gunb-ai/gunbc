@@ -398,7 +398,7 @@ fn registry_contains(a: GeneratedArtifact) -> Bool {
 // that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
-    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: "expected_witness_floor_yml")
+    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
     FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
     FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")

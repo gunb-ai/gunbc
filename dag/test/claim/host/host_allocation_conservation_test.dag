@@ -7,7 +7,8 @@ module test.claim.host_allocation_conservation
 // already using; making them explicit costs nothing and buys a witness you can execute while you
 // are writing it, which is the difference between finding a defect now and finding it in CI.
 import std.types { String, Bool, Int, List }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count_value }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -47,7 +48,9 @@ import gunbc.runner_slot_allocation {
   RunnerSlotShapeRefusedZeroMemoryMax,
   RunnerSlotDesired,
   RunnerSlotLabels,
-  CpuQuotaRefused,
+  SlotCpuQuotaUnbounded,
+  gunbc_runner_cores_per_slot,
+  host_cpu_admitted_width,
   host_disk_admitted_width,
   DiskWidthUnconstrained,
   DiskAdmitsWidth,
@@ -972,7 +975,7 @@ fn zero_memory_slot_shape() -> RunnerSlotDesired {
     memory_high: byte_size(0),
     tasks_max: 16384,
     cpu_weight: 100,
-    cpu_quota: CpuQuotaRefused { cause: "zero-memory fixture carries no surveyed quota" },
+    cpu_quota: SlotCpuQuotaUnbounded,
     labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] },
   }
 }
@@ -992,58 +995,20 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
   }
 }
 
-// THE RATIO'S REFUSAL, RED AND POSITIVE CONTROL. The shape this replaces mapped every refusing
-// memory-per-vCPU reading to byte_size(0) and let the zero travel: through cores-per-slot, through
-// the CPU axis, into a fleet-wide deployment=refused cause=zero_runner_width that named neither the
-// ratio nor the conversion that broke it. That is an absorbing arm, not a refusal, and it hid a
-// real defect for a full CI cycle -- the reading is quoted in the vendor's own unit and was being
-// read as a byte count, making the per-core figure 3 BYTES.
+// THE CPU AXIS IS A QUOTIENT OF TWO CITED CONSTANTS AND IT DOES NOT BIND. cores_per_slot is the
+// authored policy of one (gunbc_runner_cores_per_slot_policy, operator ruling 2026-09-19); the host
+// core count is the Ampere catalog row. The rows that stood here -- a basisless-ratio refusal, an
+// absent-survey refusal, and w_live_ratio_resolves_to_the_vendors_decimal_gigabytes -- were the
+// red and positive control of a vendor memory-per-vCPU reading that no longer exists; their
+// subject was deleted, so they are deleted rather than retargeted at a literal.
 //
-// Each refusing arm is now handed to the derivation directly, which is only possible because
-// runner_memory_per_core_of takes the reading as a parameter.
-fn basisless_uniform_reading() -> MemoryPerVcpuReading {
-  UniformMemoryPerVcpu {
-    per_vcpu: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
-    sizes_agreeing: 5,
-  }
-}
-
-test fn w_basisless_ratio_refuses_rather_than_answering_zero() -> Bool {
-  match runner_memory_per_core_of(reading: basisless_uniform_reading()) {
-    MemoryPerCoreUnresolved { cause: _ } => true
-    MemoryPerCoreResolved { bytes: _ } => false
-  }
-}
-
-test fn w_absent_survey_refuses_rather_than_answering_zero() -> Bool {
-  match runner_memory_per_core_of(reading: NoShapesForProviderArchitecture) {
-    MemoryPerCoreUnresolved { cause: _ } => true
-    MemoryPerCoreResolved { bytes: _ } => false
-  }
-}
-
-// THE POSITIVE CONTROL, and it is also the unit-conversion regression control: the live survey is
-// ubicloud aarch64, whose catalog states decimal gigabytes, so the resolved figure must be the
-// vendor's 3 GB in bytes. Reading that numeral as gibibytes, or failing to convert it at all,
-// both go red here.
-test fn w_live_ratio_resolves_to_the_vendors_decimal_gigabytes() -> Bool {
-  match gunbc_runner_memory_per_core() {
-    MemoryPerCoreResolved { bytes: b } => byte_size_count(b: b) == 3000000000
-    MemoryPerCoreUnresolved { cause: _ } => false
-  }
-}
-
-// AND THE SLOT WIDTH THE RATIO IMPLIES, asserted as the derivation rather than as its current
-// answer: 128 cores over a per-slot core count that is itself derived from the slot's memory
-// ceiling and the surveyed ratio.
-test fn w_cpu_axis_admits_a_width_from_the_resolved_ratio() -> Bool {
-  match gunbc_runner_cores_per_slot() {
-    CoresPerSlotUnresolved { cause: _ } => false
-    CoresPerSlotResolved { threads: t } =>
-      hardware_thread_count_value(t: t) > 0
-        && (match host_cpu_admitted_width(host: operator_host_srv1) {
-             CpuAdmitsWidth { slots: n } => n == altra_max_m12830_catalog.cores / hardware_thread_count_value(t: t)
-             CpuWidthUnresolved { cause: _ } => false
-           })
-  }
+// RED: a policy re-derived from memory_max resolves above 1 at the 26 GiB slot and fails the first
+// clause; an axis that stopped consulting the catalog (a 128 written here) fails the second the day
+// the catalog row moves; and the third clause is the ruling's whole consequence -- with the CPU
+// axis at 128 the memory admission IS the committed width on every derived host.
+test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
+  hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
+    && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
+    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
 }
